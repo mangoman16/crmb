@@ -1,9 +1,21 @@
 <!doctype html>
-<html lang="<?=e(locale())?>">
+<?php [$theme,$textScale]=appearance($user); ?>
+<html lang="<?=e(locale())?>"<?=$theme!=='auto'?' data-theme="'.e($theme).'"':''?><?=$textScale!=='normal'?' data-text="'.e($textScale).'"':''?>>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#13243a">
+    <?php /* Matching the bar to the surface keeps the notch area from banding in standalone mode. */ ?>
+    <meta name="theme-color" content="<?=$theme==='dark'?'#101922':'#13243a'?>"<?=$theme==='auto'?' media="(prefers-color-scheme: light)"':''?>>
+    <?php if($theme==='auto'): ?><meta name="theme-color" content="#101922" media="(prefers-color-scheme: dark)"><?php endif ?>
+    <?php /* Home-screen install: the manifest covers modern iOS and Android, the
+             apple-* tags cover older iOS versions that ignore display:standalone. */ ?>
+    <link rel="manifest" href="<?=e(rtrim(config('app_url'),'/'))?>/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="<?=e(setting('club_name','Badminton'))?>">
+    <meta name="format-detection" content="telephone=no">
     <meta name="description" content="<?=e(t('Dein Badminton-Portal: Schüler, Beiträge und Nachrichten.','Your badminton portal: students, payments and messages.'))?>">
     <title><?=e(setting('club_name','Badminton'))?></title>
     <link rel="icon" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/favicon.svg" type="image/svg+xml">

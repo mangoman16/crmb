@@ -92,7 +92,7 @@ function dispatch_settings_or_messages(string $action): array {
         require_staff();run('DELETE FROM saved_filters WHERE id=?',[(int)post('id')]);return ['students',[]];
     case 'preferences_save':
         $u=require_user();$newsletter=(bool)post('newsletter');$notifications=(bool)post('notifications');
-        run('UPDATE accounts SET name=?,locale=?,newsletter=?,notifications=? WHERE id=?',[required_text('name'),choose(post('locale'),['de','en']),$newsletter?1:0,$notifications?1:0,$u['id']]);
+        run('UPDATE accounts SET name=?,locale=?,theme=?,text_scale=?,newsletter=?,notifications=? WHERE id=?',[required_text('name'),choose(post('locale'),['de','en']),choose(post('theme','auto'),['auto','light','dark']),choose(post('text_scale','normal'),['normal','large','larger','largest']),$newsletter?1:0,$notifications?1:0,$u['id']]);
         if((bool)$u['newsletter']!==$newsletter)record_consent((int)$u['id'],'newsletter',$newsletter);
         if((bool)$u['notifications']!==$notifications)record_consent((int)$u['id'],'notifications',$notifications);
         $_SESSION['locale']=post('locale');flash(t('Einstellungen gespeichert.','Preferences saved.'));return ['profile',[]];

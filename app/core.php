@@ -74,6 +74,13 @@ function unseal(string $value): string { $b=base64_decode($value,true); if($b===
 function email_value(string $value): string { $v=mb_strtolower(trim($value)); if(!filter_var($v,FILTER_VALIDATE_EMAIL) || strlen($v)>254) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.')); return $v; }
 function choose(string $value,array $allowed): string { if(!in_array($value,$allowed,true)) throw new UserError(t('Ungültige Auswahl.','Invalid choice.')); return $value; }
 function notice_version(): string { return substr(hash('sha256',setting('privacy_de','').setting('privacy_en','')),0,16); }
+// Appearance follows the signed-in account; signed-out pages follow the device.
+function appearance(?array $user): array {
+    return [
+        in_array($user['theme']??'auto',['auto','light','dark'],true)?($user['theme']??'auto'):'auto',
+        in_array($user['text_scale']??'normal',['normal','large','larger','largest'],true)?($user['text_scale']??'normal'):'normal',
+    ];
+}
 function maintenance_file(): string { return config('maintenance_file') ?: ROOT.'/storage/maintenance.flag'; }
 // Split a migration file into statements on semicolons that are not inside a string
 // literal, a quoted identifier or a comment. Splitting on every semicolon breaks any

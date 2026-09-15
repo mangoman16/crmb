@@ -15,6 +15,7 @@ server {
     autoindex off;
     client_max_body_size 2m;
 
+    types { application/manifest+json webmanifest; }
     location / { try_files $uri $uri/ /index.php?$query_string; }
     location = /index.php {
         include fastcgi_params;
