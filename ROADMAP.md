@@ -1,7 +1,9 @@
 # Roadmap
 
 Where the project actually stands and what to do next, in priority order.
-Findings referenced as (A#) are numbered in [AUDIT.md](AUDIT.md).
+Findings referenced as (A#) are numbered in [AUDIT.md](AUDIT.md). The reasoning
+behind this order — phases, decisions taken, and the questions still open for
+her — is in [PROJECT.md](PROJECT.md).
 
 Nothing has ever been deployed and no real student data exists yet, so the
 whole list is still cheap to reorder. Say what matters to her and it moves.

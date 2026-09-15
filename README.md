@@ -138,7 +138,9 @@ a database whose name ends in `_test`:
 CRM_TEST_DRIVER=mysql CRM_CONFIG=/path/to/test-config.php php tests/run.php
 ```
 
-Conventions for changing this code are in [CLAUDE.md](CLAUDE.md).
+Conventions for changing this code are in [CLAUDE.md](CLAUDE.md). Where the
+project is going, and what has to be true before it holds real data, is in
+[PROJECT.md](PROJECT.md).
 
 ## Start here
 
