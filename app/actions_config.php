@@ -217,7 +217,8 @@ function dispatch_config(string $action): array {
             $saved++;
         }
         audit('attendance.saved','class',(int)$c['id']);
-        flash($saved.' '.t('Einträge gespeichert.','entries saved.').($cleared?' '.$cleared.' '.t('entfernt.','removed.'):''));
+        flash(plural($saved,'Eintrag gespeichert.','Einträge gespeichert.','entry saved.','entries saved.')
+              .($cleared?' '.plural($cleared,'entfernt.','entfernt.','removed.','removed.'):''));
         return ['classes',['id'=>$c['id'],'tab'=>'attendance','on'=>$on]];
 
     case 'attendance_clear':
@@ -235,7 +236,8 @@ function dispatch_config(string $action): array {
         $period=billing_valid_period(post('period',billing_current_period()));
         $result=billing_run($period);
         flash($result['created']
-            ? $result['created'].' '.t('Beiträge für ','charges created for ').billing_month_name($period).' '.substr($period,0,4).t(' angelegt.','.')
+            ? plural($result['created'],'Beitrag für','Beiträge für','charge created for','charges created for')
+              .' '.billing_month_name($period).' '.substr($period,0,4).t(' angelegt.','.')
             : t('Nichts zu tun: für diesen Monat gibt es bereits alle Beiträge.','Nothing to do: every charge for that month already exists.'),
             $result['created']?'success':'error');
         return ['payments',['period'=>$period]];

@@ -49,6 +49,15 @@ function cents(string $v, bool $zero=true): int {
     if(!$zero && $n===0) throw new UserError(t('Der Betrag muss größer als null sein.','The amount must be greater than zero.'));
     return $n;
 }
+/**
+ * Count with the right singular or plural wording.
+ *
+ * "1 Beiträge werden angelegt" is the kind of thing that makes software read as
+ * machine-written, which is precisely what this interface should not do.
+ */
+function plural(int $n, string $de1, string $deN, string $en1, string $enN): string {
+    return $n.' '.($n===1 ? t($de1,$en1) : t($deN,$enN));
+}
 function money(?int $v): string { return number_format(($v??0)/100,2,locale()==='de'?',':'.',locale()==='de'?'.':',').' €'; }
 function amount_input(?int $v): string { return $v===null ? '' : number_format($v/100,2,'.',''); }
 // Stored timestamps are UTC (now()). DATE columns are calendar dates and must not be

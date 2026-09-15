@@ -23,7 +23,7 @@ $willSkip=array_values(array_filter($plan,fn($r)=>$r['skip']!==null));
 <?php if($willCreate): ?>
     <div class="billing-summary">
         <strong><?=count($willCreate)?></strong>
-        <span><?=e(t('Beiträge werden angelegt','charges will be created'))?> · <?=e(money(array_sum(array_column($willCreate,'amount'))))?></span>
+        <span><?=e(count($willCreate)===1?t('Beitrag wird angelegt','charge will be created'):t('Beiträge werden angelegt','charges will be created'))?> · <?=e(money(array_sum(array_column($willCreate,'amount'))))?></span>
     </div>
     <details>
         <summary><?=e(t('Wen betrifft das?','Who does this affect?'))?></summary>
@@ -32,13 +32,13 @@ $willSkip=array_values(array_filter($plan,fn($r)=>$r['skip']!==null));
         <?php endforeach ?>
     </details>
     <?php start_form('billing_generate',['period'=>$period]);
-          submit_button(count($willCreate).' '.t('Beiträge jetzt anlegen','charges — create now')); ?></form>
+          submit_button(plural(count($willCreate),'Beitrag jetzt anlegen','Beiträge jetzt anlegen','charge — create now','charges — create now')); ?></form>
 <?php else: ?>
     <p class="muted"><?=e(t('Für diesen Monat gibt es nichts anzulegen.','There is nothing to create for this month.'))?></p>
 <?php endif ?>
 <?php if($willSkip): ?>
     <details>
-        <summary><?=count($willSkip)?> <?=e(t('werden übersprungen','are skipped'))?></summary>
+        <summary><?=e(plural(count($willSkip),'wird übersprungen','werden übersprungen','is skipped','are skipped'))?></summary>
         <?php foreach($willSkip as $r): ?>
         <div class="record-row"><div><strong><?=e($r['name'])?></strong><p><?=e($r['skip'])?></p></div></div>
         <?php endforeach ?>
