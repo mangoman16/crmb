@@ -9,10 +9,11 @@ Version **0.1.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Students, named contact people, membership dates, configurable statuses and dated absences.
 - Editable custom fields: types, options, defaults, sections, ordering, student permissions and archiving.
 - Named tariffs, default prices, individual prices and manual charges with coverage dates. Partial, confirmed and voided payments.
-- In-app conversations, recipient filters, saved filters, message templates and a preview before group sending.
+- In-app conversations with unread markers, recipient filters, saved filters, message templates and a preview before group sending.
 - News, optional newsletter emails, separate private-message notifications, and unsubscribe links.
-- SMTP settings, encrypted SMTP password, a mail queue and an outgoing-mail overview.
+- SMTP settings, encrypted SMTP password, a mail queue with automatic retry and an outgoing-mail overview.
 - Editable German/English privacy drafts, acknowledgement and subscription records.
+- Light and dark appearance following the device, adjustable text size, and installable to a phone home screen.
 - Versioned database migrations, a maintenance switch and record-count checks for updates.
 
 ## Start here
@@ -30,7 +31,11 @@ Charges are entered manually because the billing rules are not yet fixed. Tariff
 
 Custom content, tariff names and message templates are entered by the operator; switching the interface language does not translate their content. The privacy notice is an editable draft that still needs the actual operator and service-provider details. Invitations stay disabled until SMTP is configured and both privacy texts are completed in settings.
 
-This is an initial release for installation and review. Validation results and remaining hosting checks are in [VALIDATION.md](VALIDATION.md).
+This is an initial release for installation and review. Validation results and
+remaining hosting checks are in [VALIDATION.md](VALIDATION.md). A full bug,
+security and design review of this release is in [AUDIT.md](AUDIT.md), and what
+is done versus outstanding is in [ROADMAP.md](ROADMAP.md) — start there. The
+migrations added by that review have not yet been run against MySQL or MariaDB.
 
 ## Layout
 
