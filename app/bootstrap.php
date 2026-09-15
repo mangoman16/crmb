@@ -23,6 +23,7 @@ if (!filter_var($config['app_url'], FILTER_VALIDATE_URL) || !in_array(parse_url(
 require __DIR__ . '/core.php';
 require __DIR__ . '/tx.php';
 require __DIR__ . '/validate.php';
+require __DIR__ . '/history.php';
 require __DIR__ . '/defaults.php';
 require __DIR__ . '/auth.php';
 require __DIR__ . '/domain.php';

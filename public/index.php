@@ -10,7 +10,7 @@ try {
     require ROOT.'/app/actions_config.php';
     require ROOT.'/app/ui.php';
     $page=is_scalar($_GET['page']??'')?(string)($_GET['page']??'dashboard'):'dashboard';
-    $allowed=['dashboard','students','student','payments','classes','accounts','messages','compose','news','outbox','settings','profile','login','forgot','activate','unsubscribe','privacy'];
+    $allowed=['dashboard','students','student','payments','classes','accounts','messages','compose','news','outbox','settings','history','profile','login','forgot','activate','unsubscribe','privacy'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
     if($_SERVER['REQUEST_METHOD']==='POST') {
         try {
@@ -46,7 +46,7 @@ try {
     $user=$public?current_user():require_user();
     if($user)touch_last_seen($user);
     if(in_array($page,['accounts','payments','compose','outbox','classes'],true))require_staff();
-    if($page==='settings')require_admin();
+    if(in_array($page,['settings','history'],true))require_admin();
     ob_start();
     if($page==='not_found')echo '<h1>404</h1><p>'.e(t('Seite nicht gefunden.','Page not found.')).'</p>';
     else require ROOT.'/views/'.$page.'.php';

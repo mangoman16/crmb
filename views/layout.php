@@ -30,7 +30,7 @@ if(is_staff($user)){$nav['classes']=['calendar',t('Kurse','Classes')];$nav['paym
 $nav['messages']=['mail',t('Nachrichten','Messages')];$nav['news']=['news',t('Neuigkeiten','News')];
 $unreadTotal=unread_count($user);
 if(is_staff($user)){$nav['accounts']=['lock',t('Konten','Accounts')];$nav['outbox']=['mail',t('Postausgang','Outbox')];}
-if(is_admin($user))$nav['settings']=['settings',t('Einstellungen','Settings')];
+if(is_admin($user)){$nav['history']=['calendar',t('Änderungen','Changes')];$nav['settings']=['settings',t('Einstellungen','Settings')];}
 ?>
 <aside class="sidebar" id="sidebar">
     <a class="brand" href="<?=e(url('dashboard'))?>"><span class="brand-mark">B<span></span></span><span><?=e(setting('club_name','Badminton'))?><small><?=e(is_staff($user)?t('Verwaltung','Management'):t('Mein Portal','My portal'))?></small></span></a>

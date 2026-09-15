@@ -159,6 +159,22 @@ html[data-text=largest]{font-size:21px}
   .sticky-save .button{width:100%}
 }
 
+
+/* --- change history (0.4) ------------------------------------------------- */
+.history-row{display:flex;gap:16px;align-items:flex-start;padding:16px 0;border-top:1px solid var(--border);flex-wrap:wrap}
+.history-row:first-child{border-top:0}
+.history-what{flex:1;min-width:0}
+.history-what small{display:block;margin-top:4px}
+.history-what details{margin-top:10px}
+.history-what .facts{margin-top:10px}
+.history-what dd{overflow-wrap:anywhere}
+.was{color:var(--muted);text-decoration:line-through}
+@media(max-width:760px){
+  .history-row{gap:10px;padding:14px 0}
+  .history-row .row-actions{flex-basis:100%}
+  .history-row .row-actions .button{flex:1}
+}
+
 @media print{.pay-qr{background:#fff}}
 
 @media print{.sidebar,.topbar,.mobile-nav,.form-footer,.button,.saved-filters,.filters{display:none!important}.app-shell{margin:0}.main-content{padding:0}.card{box-shadow:none;break-inside:avoid}.stats-grid{grid-template-columns:repeat(4,1fr)}body{background:white}.tabs{display:none}}

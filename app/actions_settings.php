@@ -27,34 +27,6 @@ function dispatch_settings_or_messages(string $action): array {
         if($id)run('UPDATE field_definitions SET label=?,label_en=?,field_type=?,section_name=?,options_json=?,default_json=?,required=?,visibility=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
         else {run('INSERT INTO field_definitions (label,label_en,field_type,section_name,options_json,default_json,required,visibility,sort_order,archived) VALUES (?,?,?,?,?,?,?,?,?,?)',$args);$id=(int)db()->lastInsertId();}
         audit('field.saved','field',$id);flash(t('Feld gespeichert.','Field saved.'));return ['settings',['tab'=>'fields']];
-    case 'defaults_save':
-        require_admin();set_setting('club_name',required_text('club_name',100));
-        foreach(['statuses','absence_reasons'] as $key) {
-            $values=[];
-            $keys=$_POST[$key.'_keys']??[];$labels=$_POST[$key.'_labels']??[];
-            if(!is_array($keys)||!is_array($labels))throw new UserError('Invalid list');
-            foreach($labels as $i=>$label) {
-                if(!is_scalar($label)||!is_scalar($keys[$i]??''))throw new UserError('Invalid list');
-                $label=trim((string)$label);if($label==='')continue;
-                $code=trim((string)($keys[$i]??''));if($code==='')$code='custom_'.bin2hex(random_bytes(4));
-                $parts=[$code,$label];
-                if(!preg_match('/^[a-z][a-z0-9_]{0,39}$/D',$parts[0]) || strlen($parts[1])>100) throw new UserError(t('Bitte gültige Bezeichnungen eingeben.','Please enter valid labels.'));
-                if(isset($values[$parts[0]]))throw new UserError(t('Kürzel doppelt vorhanden.','Duplicate key.'));
-                $values[$parts[0]]=$parts[1];
-            }
-            if(!$values || count($values)>80)throw new UserError(t('Bitte eine gültige Liste eingeben.','Please enter a valid list.'));
-            $used=$key==='statuses'?rows('SELECT DISTINCT status AS code FROM students'):rows('SELECT DISTINCT reason AS code FROM absences');
-            foreach($used as $r)if(!isset($values[$r['code']]))throw new UserError(t('Verwendetes Kürzel muss erhalten bleiben: ','Keep this key because records use it: ').$r['code']);
-            set_setting($key,$values);
-        }
-        set_setting('default_status',choose(post('default_status'),array_keys(statuses())));
-        $tariff=(int)post('default_tariff')?:null;
-        if($tariff && !one('SELECT id FROM tariffs WHERE id=? AND archived=0',[$tariff]))throw new UserError('Invalid tariff');
-        set_setting('default_tariff',$tariff);
-        $methods=array_values(array_unique(array_filter(array_map('trim',explode("\n",post('payment_methods'))),fn($x)=>$x!=='')));
-        if(!$methods || count($methods)>30 || mb_strlen(post('payment_methods'))>2000)throw new UserError('Invalid payment methods');
-        foreach($methods as $method)if(mb_strlen($method)>100)throw new UserError('Payment method too long');
-        set_setting('payment_methods',$methods);audit('defaults.saved','settings');flash(t('Vorgaben gespeichert.','Defaults saved.'));return ['settings',['tab'=>'defaults']];
     case 'smtp_save':
         require_admin();$old=setting('smtp',[]);$host=required_text('host',253);
         if(!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9.-]*$/D',$host))throw new UserError(t('SMTP-Hostname ohne Protokoll oder Pfad eingeben.','Enter an SMTP hostname without a protocol or path.'));

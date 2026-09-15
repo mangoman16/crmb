@@ -112,10 +112,15 @@ function dispatch_action(string $action): array {
             $join=date_value(post('joined_on'));$end=date_value(post('ended_on'));date_range($join,$end);
             $args=[$accountId,$first,$last,$birth,$join,$end,$status,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
             if($id) {
-                $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,birth_date=?,joined_on=?,ended_on=?,status=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
-                if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
+                tracked('students',$id,$first.' '.$last,function() use ($args,$id) {
+                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,birth_date=?,joined_on=?,ended_on=?,status=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
+                    if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
+                });
             }
-            else {run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);$id=(int)db()->lastInsertId();}
+            else {$id=tracked_insert('students',$first.' '.$last,function() use ($args) {
+                run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+                return (int)db()->lastInsertId();
+            });}
         } else {
             $updated=run('UPDATE students SET first_name=?,last_name=?,birth_date=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[$first,$last,$birth,now(),$id,(int)post('revision')]);
             if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
@@ -125,7 +130,9 @@ function dispatch_action(string $action): array {
         require_staff();$s=student((int)post('id'));
         if(post('confirmation')!==$s['first_name'].' '.$s['last_name']) throw new UserError(t('Bitte den vollständigen Namen eingeben.','Please enter the full name.'));
         if(scalar('SELECT COUNT(*) FROM charges WHERE student_id=?',[$s['id']])) throw new UserError(t('Es sind Beiträge vorhanden. Mitgliedschaft stattdessen beenden; Zahlungsdaten bleiben erhalten.','Charges exist. End the membership instead to retain payment records.'));
-        run('DELETE FROM students WHERE id=?',[$s['id']]);audit('student.deleted','student',(int)$s['id']);flash(t('Schüler gelöscht.','Student deleted.'));return ['students',[]];
+        tracked('students',(int)$s['id'],$s['first_name'].' '.$s['last_name'],fn()=>run('DELETE FROM students WHERE id=?',[$s['id']]),'delete');
+        audit('student.deleted','student',(int)$s['id']);
+        flash(t('Schüler gelöscht. Das lässt sich unter „Änderungen“ rückgängig machen.','Student deleted. This can be undone under “Changes”.'));return ['students',[]];
     case 'contact_add':
         $s=student((int)post('student_id'));$email=post('email');if($email!=='')$email=email_value($email);
         run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email) VALUES (?,?,?,?,?)',[$s['id'],required_text('owner_name'),required_text('relation_label',100),text_limit('phone',80),$email]);
@@ -151,7 +158,8 @@ function dispatch_action(string $action): array {
     case 'charge_cancel':
         require_staff();$c=one('SELECT * FROM charges WHERE id=? FOR UPDATE',[(int)post('id')]);if(!$c)throw new UserError('Not found');
         if(scalar('SELECT COUNT(*) FROM payments WHERE charge_id=? AND voided=0',[$c['id']])) throw new UserError(t('Zugehörige Zahlungen zuerst stornieren.','Void associated payments first.'));
-        run('UPDATE charges SET cancelled=1 WHERE id=?',[$c['id']]);audit('charge.cancelled','charge',(int)$c['id']);return ['student',['id'=>$c['student_id'],'tab'=>'payments']];
+        tracked('charges',(int)$c['id'],(string)$c['label'],fn()=>run('UPDATE charges SET cancelled=1 WHERE id=?',[$c['id']]));
+        audit('charge.cancelled','charge',(int)$c['id']);return ['student',['id'=>$c['student_id'],'tab'=>'payments']];
     case 'payment_add':
         $u=require_staff();$c=one('SELECT * FROM charges WHERE id=? AND cancelled=0 FOR UPDATE',[(int)post('charge_id')]);if(!$c)throw new UserError('Not found');
         $amount=cents(post('amount'),false);
@@ -163,8 +171,10 @@ function dispatch_action(string $action): array {
     case 'payment_state':
         $u=require_staff();$p=one('SELECT p.*,c.student_id FROM payments p JOIN charges c ON c.id=p.charge_id WHERE p.id=? FOR UPDATE',[(int)post('id')]);if(!$p || $p['voided'])throw new UserError('Not found');
         $mode=choose(post('mode'),['confirm','void']);
-        if($mode==='confirm')run('UPDATE payments SET confirmed_at=?,confirmed_by=? WHERE id=?',[now(),$u['id'],$p['id']]);
-        else run('UPDATE payments SET voided=1 WHERE id=?',[$p['id']]);
+        tracked('payments',(int)$p['id'],money((int)$p['amount_cents']),function() use ($mode,$u,$p) {
+            if($mode==='confirm')run('UPDATE payments SET confirmed_at=?,confirmed_by=? WHERE id=?',[now(),$u['id'],$p['id']]);
+            else run('UPDATE payments SET voided=1 WHERE id=?',[$p['id']]);
+        });
         audit('payment.'.$mode,'payment',(int)$p['id']);return ['student',['id'=>$p['student_id'],'tab'=>'payments']];
     }
     return dispatch_config($action);
