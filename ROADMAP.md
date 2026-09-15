@@ -78,6 +78,23 @@ from.
 taste: the attendance control was rebuilt after five labels were found
 truncating and overlapping at 390px.
 
+### 0.4.0 — transactions, undo, tests
+**One transaction per write**, nesting safely through savepoints, so a failure
+halfway leaves nothing half-applied and a repeated submission creates nothing.
+
+**Undo.** Changes to fourteen tables record what the row looked like before and
+after, with a button to put each one back — including undeleting a student under
+their original number. This closes the old item 8 below.
+
+**A test suite that runs without MySQL.** `php tests/run.php` boots the real
+application against a disposable database built from the real migrations: 719
+checks over dates, transactions, billing, security, attendance, settings,
+history, query counts, the rendered pages, and the shape of the source. It
+proves the PHP logic, not the MySQL dialect — item 1 below still stands.
+
+**Query counts held down where they grow with the roll**: the student list went
+from 56 queries at sixty students to 6, and the suite fails if that comes back.
+
 ---
 
 ## Next — before she uses it
@@ -86,9 +103,11 @@ These are the things that stand between "the code is good" and "her data is
 safe in it". Nothing below is optional.
 
 1. **Run the migrations and the test suites against MariaDB or MySQL.**
-   Migrations 002, 003 and 004 have never executed against MySQL or MariaDB
-   anywhere. Use a disposable database, then `tests/integration.py` and
-   `tests/smtp_integration.py` per `tests/README.md`. The runner itself is
+   Migrations 002 to 006 have never executed against MySQL or MariaDB anywhere.
+   Use a disposable database, then `CRM_TEST_DRIVER=mysql php tests/run.php`,
+   which runs the same 719 checks against the real engine and reports what the
+   SQLite driver could not cover. Then `tests/integration.py` and
+   `tests/smtp_integration.py` per `tests/README.md`. The update runner is
    verified idempotent, but only against SQLite.
 2. **Backups.** You said you will handle these yourself, so this is not on my
    list — one thing to know: the config file holds `app_key`, which is what
@@ -115,31 +134,29 @@ Ordered by how likely I think each is to come up in her first month.
 7. **Export.** CSV of students, payments and assessments, so her data is never
    hostage to this app and she can hand her accountant a file. Use a library
    rather than hand-rolled CSV escaping.
-8. **Undo, or at least a soft delete.** Deleting a student is permanent and
-    guarded only by typing the full name. A `deleted_at` column and a
-    restore window would suit a nervous user far better than a confirmation
-    box. Charges already block deletion, which is good; this generalises it.
-9. **A calendar or term view.** "Who is at training on Thursday" is a question
+8. **A calendar or term view.** "Who is at training on Thursday" is a question
     the absence data can already answer but nothing asks.
-10. **Push notifications for a new message.** Web push works in standalone
+9. **Push notifications for a new message.** Web push works in standalone
     iOS web apps from iOS 16.4, so the manifest added in this review is the
     prerequisite. Email notification already exists and may well be enough —
     worth asking before building.
 
 ## Later — worth doing, not worth doing first
 
-11. **Search across messages and notes.** Fine without it at her scale.
-12. **Rename and edit saved filters.** Currently create and delete only (A22).
-13. **Two-factor authentication** for the admin account. Password plus
+10. **Search across messages and notes.** Fine without it at her scale.
+11. **Rename and edit saved filters.** Currently create and delete only (A22).
+12. **Two-factor authentication** for the admin account. Password plus
     invitation-only access is a reasonable posture for a family app; this is
     hardening, not a gap.
-14. **An audit-log viewer.** Everything is recorded in `audit_log` but nothing
-    displays it.
-15. **Prune `audit_log` and `consent_log`.** They grow without bound. Not a
+13. **An audit-log viewer.** Everything is recorded in `audit_log` but nothing
+    displays it. The "Änderungen" page added in 0.4.0 shows record versions,
+    which is the part an operator acts on; this is the separate, never-rewritten
+    log of what happened.
+14. **Prune `audit_log` and `consent_log`.** They grow without bound. Not a
     problem for years at this scale, and both are records you may want to keep
     deliberately rather than expire — decide the retention period as part of
     item 4.
-16. **Batch attendance entry.** Only worth it if she starts tracking
+15. **Batch attendance entry.** Only worth it if she starts tracking
     per-session attendance, which today she does not.
 
 ## Explicitly not planned

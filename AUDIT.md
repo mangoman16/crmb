@@ -1,4 +1,4 @@
-# Review of v0.1.0, and what 0.2.0 and 0.3.0 added
+# Review of v0.1.0, and what 0.2.0 to 0.4.0 added
 
 Bug, security and design review of the v0.1.0 source, and what was changed in
 response. Every line of `app/`, `views/`, `public/`, `bin/` and
@@ -439,14 +439,70 @@ MySQL (see the section below):
   student's row went from about 370px tall to 132px, and the page for four
   students from 3648px to 1564px.
 
+## Verified in 0.4.0
+
+The previous rounds were verified by rendering pages and calling helpers by
+hand. This round the checks were made repeatable: `php tests/run.php` boots the
+real application against a disposable database built from the real migrations
+and runs 719 assertions in about three seconds. What that established:
+
+- **A failing action leaves nothing behind.** An insert followed by an error
+  rolls back completely. An inner scope that fails and is handled by its caller
+  rolls back to its savepoint without taking the outer work with it — the
+  behaviour a caller that catches the error is entitled to expect, and the
+  reason nesting uses savepoints rather than a counter that only counts.
+- **A repeated submission is refused by the primary key**, not by a select that
+  two simultaneous submissions could both pass.
+- **A failed action still counts against its rate limit.** Counters live on a
+  second connection, so the rollback of the guarded action cannot refund them.
+  Verified by failing an action inside the transaction and reading the counter
+  after.
+- **Undo puts back what a change touched, and nothing else.** An undo of an old
+  edit leaves a later edit to a different column standing. An undelete restores
+  the row under its original number. The undo is itself recorded, and a version
+  cannot be applied twice. Column names are validated before they are written
+  back, on both paths.
+- **Money cannot drift.** A hundred additions of 0.07 come to exactly 7.00 in
+  stored cents, and do not in floating point — which is why cents are stored.
+- **A parent sees their own children and nobody else.** Checked by rendering the
+  real dashboard with two families' students present and reading the HTML: the
+  other family's names are absent, and so is the club's outstanding total, which
+  the fixture deliberately makes a different number from the parent's own.
+- **Pages cost a flat number of queries.** The student list issued one balance
+  query per card: 56 with sixty students. It is now 6 for the whole page, and
+  the suite fails if the per-row pattern returns — verified by reinstating it.
+- **Nothing reaches a page unescaped.** The rule reads each printed expression
+  down to the parts that can actually be printed, so a ternary is judged by its
+  branches rather than its condition, and it uses PHP's tokenizer, which covers
+  the 55 `echo` statements in views as well as the 493 short-echo tags. Helpers
+  that merely truncate a string or look a code up in an editable setting are not
+  counted as escaping; with them excluded the views still pass, which is the
+  useful result — they were already wrapped in `e()`.
+- **The source still has the shape it should.** A suite reads the files
+  themselves: every function called is defined, the action dispatch chain is
+  intact, and no file has been truncated. This exists because a bad extraction
+  during this work silently reduced `app/actions_config.php` to 36 bytes and
+  every behavioural test stayed green, since none of them touched it. That is
+  the failure mode worth a test.
+- **The rendered pages are clean.** 260 page loads — three roles across five
+  viewport and colour-scheme combinations — with no HTTP error, no PHP notice,
+  no horizontal overflow, no touch target under 44pt and no clipped label. The
+  stylesheet was confirmed served as `text/css` for that run, after an earlier
+  run was found to have been measuring unstyled pages because the preview
+  server handed static files to the front controller.
+
 ## Not done, and why
 
 - **Nothing was run against MySQL or MariaDB.** No server could be installed
   here and there is no container runtime. The SQLite translation used for
-  rendering required rewriting the upsert idioms, `FOR UPDATE`, `GET_LOCK`, the
-  inline index syntax and `ALTER TABLE ... ADD CONSTRAINT`, so it proves the
-  templates and PHP logic work — not that the SQL runs on the target engine.
-  **Migrations 002 to 005 have never been executed against MySQL or
+  rendering and for the test suite required rewriting the upsert idioms,
+  `FOR UPDATE`, `GET_LOCK`, `IF()`, `GREATEST`/`LEAST`, the inline index syntax
+  and `ALTER TABLE ... ADD CONSTRAINT`, so it proves the templates and PHP logic
+  work — not that the SQL runs on the target engine. Run
+  `CRM_TEST_DRIVER=mysql php tests/run.php` against a disposable database to
+  close that gap; the runner lists what the SQLite driver could not cover, which
+  today is the foreign key on `charges`.
+  **Migrations 002 to 006 have never been executed against MySQL or
   MariaDB.** Run `php bin/console.php update` against a disposable copy before
   touching anything real. The two `ADD CONSTRAINT` statements in 004 are the
   ones SQLite could not exercise at all.

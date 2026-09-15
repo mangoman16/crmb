@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.4.0 — unreleased
+
+Transactions, undo, and a test suite that runs anywhere.
+
+- Every write is wrapped in one transaction that either completes or leaves
+  nothing behind. Nesting uses savepoints, so a helper does not need to know
+  whether its caller already opened a transaction, and an inner failure a caller
+  chooses to handle no longer discards the outer work. Leaving a request with a
+  transaction still open is logged rather than silently rolled back on teardown.
+- A repeated form submission is refused by the database, not by a check that two
+  simultaneous submissions could both pass.
+- Record versioning with undo. Changes to fourteen tables store what the row
+  looked like before and after, shown on an "Änderungen" page with a button to
+  put each one back. An undo writes back only the columns that change touched,
+  so undoing an old edit does not also undo every later one. Deleting a student
+  is now a mistake to reverse rather than a restore from backup: the row is
+  re-inserted under its original number so everything referring to it lines up
+  again. The undo is itself recorded, so the history stays complete.
+- Rate-limit counters are kept on a second connection, so a failed action still
+  counts against the limit instead of rolling its own counter back.
+- Balances for a list of students are resolved in one query. The student list
+  went from one query per card — 56 with sixty students — to six for the page.
+  The billing preview and run, and the dashboard's absent-students tile, had the
+  same shape and were batched the same way.
+- A test suite that needs no MySQL: `php tests/run.php` boots the real
+  application against a disposable database built from the real migrations, and
+  covers dates, transactions, billing, security, attendance, settings, history,
+  query counts, the rendered pages and the shape of the source itself. This
+  proves the PHP logic, not the MySQL dialect — see AUDIT.md.
+- Migration 006.
+
 ## 0.3.0 — unreleased
 
 Monthly charges, attendance, and a mobile-first pass.

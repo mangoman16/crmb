@@ -40,9 +40,36 @@ does_not_throw(fn() => student($kidA), 'their own child is visible');
 throws(fn() => student($kidB), 'another parent\'s child is not');
 ```
 
-Available: `ok`, `is_same`, `is_equal`, `throws`, `does_not_throw`,
-`fixture`, `make_account`, `make_student`, `make_tariff`, `make_class`,
-`sign_in_as`, `sign_out`, `test_reset`.
+Assertions: `ok`, `is_same`, `is_equal`, `throws`, `does_not_throw`.
+
+Fixtures: `fixture`, `make_account`, `make_student`, `make_tariff`,
+`make_class`, `sign_in_as`, `sign_out`, `test_reset`.
+
+Two more are worth knowing about:
+
+`render_view('dashboard')` renders a real page and returns its HTML, with the
+signed-in account deciding what the page shows. Checking the page itself catches
+what a test re-implementing its logic cannot, because the re-implementation
+drifts — and it is how the "a parent sees only their own children" rule is
+pinned.
+
+`query_count(fn() => ...)` reports how many statements the application prepared,
+counted by the driver rather than by instrumenting the code. Use it on anything
+that renders a list, so that one query per row is caught while it is cheap to
+fix.
+
+## The suites
+
+Most cover a part of the domain — `billing`, `attendance`, `settings`,
+`security`, `dates`, `history`, `transactions`. Three are different in kind:
+
+- `views` renders the real pages and reads what came out.
+- `performance` counts queries, so a page that grows a query per row fails.
+- `structure` reads the source files themselves: every function called is
+  defined, the action dispatch chain is intact, nothing printed to a page is
+  unescaped, and no file has been truncated. That last one exists because a bad
+  edit once reduced a dispatch file to 36 bytes while every other test stayed
+  green — nothing else was reading it.
 
 ## The other two suites
 
