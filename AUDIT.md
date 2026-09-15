@@ -1,4 +1,4 @@
-# Review of v0.1.0
+# Review of v0.1.0, and what 0.2.0 added
 
 Bug, security and design review of the v0.1.0 source, and what was changed in
 response. Every line of `app/`, `views/`, `public/`, `bin/` and
@@ -170,11 +170,12 @@ syntax and does nothing on nginx — on nginx the `root` directive in
 - **Enumeration.** Login verifies against a dummy hash when no account matches,
   so the timing does not distinguish. Password reset always reports the same
   message.
-- **Dependencies.** PHPMailer 7.1.1, one dependency, pinned in
-  `composer.lock`. I could not reach a vulnerability database from this
-  environment, so I have **not** independently verified it is free of
-  advisories — re-run `composer audit` on a machine with network access before
-  going live.
+- **Dependencies.** PHPMailer 7.1.1 and, added in 0.2.0, bacon/bacon-qr-code
+  3.1.1 with dasprid/enum, all pinned in `composer.lock`. Composer's advisory
+  check ran during the 0.2.0 install and reported **no known advisories**. This
+  supersedes the earlier note in this file that it could not be verified. It is
+  still worth re-running `composer audit` at install time, since advisories are
+  published after the fact.
 
 ---
 
@@ -381,15 +382,47 @@ independent security audit had happened.
 
 ---
 
+## Verified in 0.2.0
+
+Added as the feature work went in, all against the SQLite preview rather than
+MySQL (see the section below):
+
+- **Assessments do not leak to a parent account.** A signed-in parent opening
+  their own child's page was probed for nine different markers — every skill
+  name, the area names, an assessment note, and the entry form's action — and
+  every one returned zero occurrences. The tab is also absent from the
+  non-staff whitelist, so typing the URL gets the profile tab instead.
+- **Role boundaries hold.** A trainer gets 403 on settings; a parent gets 403
+  on classes, payments, accounts and settings.
+- **The payment QR is correct end to end.** The SVG was read back out of the
+  rendered parent page, rasterised and decoded with OpenCV: it carries a valid
+  EPC069-12 payload whose amount is the **outstanding 25.00, not the full
+  45.00** of a partly paid charge, with the profile's IBAN, BIC and a reference
+  naming the charge and student.
+- **IBAN validation.** mod-97 checked against four published IBANs (AT, DE, GB,
+  CH) and six deliberate corruptions: 10/10 correct.
+- **The migration runner is idempotent.** Three consecutive runs on a fresh
+  database apply once then nothing; a migration added later applies alone; a
+  column added later gives existing rows its default rather than NULL; editing
+  an applied migration is refused by name; a migration failing at statement 2
+  of 3 stops there, is not recorded, and does not run statement 3.
+- **Every page renders clean for every role.** 20+ pages across administrator,
+  trainer and parent, at 320-1600px in light and dark: no PHP notices, no
+  JavaScript errors, no horizontal overflow, and every visible touch target at
+  44px or more. Four regressions found this way and fixed, including 17px
+  student-name links in the new class view.
+
 ## Not done, and why
 
 - **Nothing was run against MySQL or MariaDB.** No server could be installed
   here and there is no container runtime. The SQLite translation used for
-  rendering required rewriting the four upsert idioms, `FOR UPDATE`,
-  `GET_LOCK` and the inline index syntax, so it proves the templates and PHP
-  logic work — not that the SQL runs on the target engine. **Migrations 002 and
-  003 have never been executed.** Run `php bin/console.php migrate` against a
-  disposable copy before touching anything real.
+  rendering required rewriting the upsert idioms, `FOR UPDATE`, `GET_LOCK`, the
+  inline index syntax and `ALTER TABLE ... ADD CONSTRAINT`, so it proves the
+  templates and PHP logic work — not that the SQL runs on the target engine.
+  **Migrations 002, 003 and 004 have never been executed against MySQL or
+  MariaDB.** Run `php bin/console.php update` against a disposable copy before
+  touching anything real. The two `ADD CONSTRAINT` statements in 004 are the
+  ones SQLite could not exercise at all.
 - **`tests/integration.py` and `tests/smtp_integration.py` were not run**, for
   the same reason. They need a live database and a local SMTP capture server.
   They are the right next step on a machine that has both.

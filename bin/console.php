@@ -43,11 +43,30 @@ try{
         try{
             foreach(glob(ROOT.'/database/migrations/*.sql') as $file){
                 $version=basename($file);$hash=hash_file('sha256',$file);$old=one('SELECT * FROM schema_migrations WHERE version=?',[$version]);
-                if($old){if(!hash_equals($old['checksum'],$hash))throw new RuntimeException('Applied migration changed: '.$version);continue;}
-                $sql=file_get_contents($file);
-                foreach(split_sql($sql) as $statement)db()->exec($statement);
+                if($old){
+                    if(!hash_equals($old['checksum'],$hash))
+                        throw new RuntimeException('Migration '.$version.' has changed since it was applied. Never edit an applied migration; add a new one instead. To accept a deliberate change, update its checksum in schema_migrations.');
+                    continue;
+                }
+                $statements=split_sql(file_get_contents($file));
+                foreach($statements as $i=>$statement){
+                    try{ db()->exec($statement); }
+                    catch(Throwable $e){
+                        // MySQL DDL is not transactional, so a failure here leaves the
+                        // migration half applied and unrecorded. Say exactly which
+                        // statement stopped, because the operator has to decide between
+                        // finishing it by hand and restoring a backup.
+                        throw new RuntimeException(
+                            $version.' failed at statement '.($i+1).' of '.count($statements).":\n\n"
+                            .substr(preg_replace('/\s+/',' ',$statement),0,300)."\n\n"
+                            .$e->getMessage()."\n\n"
+                            ."Statements 1 to ".$i." were applied and this migration is NOT recorded as done,\n"
+                            ."so re-running would start it again from the beginning. Restore your backup, or\n"
+                            ."finish this migration by hand and add the row to schema_migrations yourself.");
+                    }
+                }
                 run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)',[$version,$hash,now()]);
-                echo 'Applied '.$version.PHP_EOL;
+                echo 'Applied '.$version.' ('.count($statements).' statements)'.PHP_EOL;
             }
             require ROOT.'/database/defaults.php';
         }finally{run("SELECT RELEASE_LOCK('badminton_crm_migrate')");}

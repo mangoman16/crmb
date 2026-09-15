@@ -19,8 +19,8 @@
     <meta name="description" content="<?=e(setting('club_name').' – '.t('Schüler, Beiträge und Nachrichten.','students, payments and messages.'))?>">
     <title><?=e(setting('club_name','Badminton'))?></title>
     <link rel="icon" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.css?v=0.1.0">
-    <script defer src="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.js?v=0.1.0"></script>
+    <link rel="stylesheet" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.css?v=<?=e(trim(file_get_contents(ROOT.'/VERSION')))?>">
+    <script defer src="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.js?v=<?=e(trim(file_get_contents(ROOT.'/VERSION')))?>"></script>
 </head>
 <body class="<?=$public?'public-page':'app-page'?>">
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>

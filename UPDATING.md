@@ -1,6 +1,6 @@
 # Updates with minimal risk to existing data
 
-This application does not manage backups. Existing backup arrangements remain the operator’s responsibility. The update procedure below keeps application releases separate from the database and configuration, blocks new writes during a change, and provides checks before reopening the portal.
+This application does not manage backups; that stays with the operator. `php bin/console.php update` runs the whole sequence below for you, and the rest of this document explains what it does and how to recover when something goes wrong. The update procedure below keeps application releases separate from the database and configuration, blocks new writes during a change, and provides checks before reopening the portal.
 
 ## Keep these three things separate
 
@@ -21,6 +21,55 @@ Each release can contain a symlink `config/config.php` to the shared configurati
 - Database migrations are ordered SQL files. The migration ledger stores each file’s checksum. Do not edit a migration that has already been applied; add a new file.
 - Future schema changes should first add compatible structures, then migrate values and verify them. Remove obsolete structures only in a separate later release after checking that no current code needs them.
 - Renaming a custom field keeps its numeric ID. Archiving retains its values. A field type with stored data cannot be changed silently.
+
+## The short version
+
+Once the release directory is in place and `current` points at it:
+
+```bash
+php bin/console.php update
+```
+
+That is the whole upgrade. It switches maintenance mode on, applies any new
+migrations, compares record counts before and after, and only then switches
+maintenance off. If anything fails it stops and **leaves the portal closed**,
+so nobody sees a half-migrated portal.
+
+An administrator can still sign in while maintenance mode is on, and a banner
+at the top of every page offers to switch it off. That is deliberate: switching
+it on from **Einstellungen → System** must not be able to lock you out.
+
+### What re-running is guaranteed to do
+
+The migration ledger records each applied file and its checksum, so the runner
+is safe to run repeatedly. Verified behaviour:
+
+| Situation | What happens |
+|---|---|
+| Running `update` again with nothing new | Applies nothing, reopens the portal |
+| A new migration added in a later version | Applies only that one |
+| A column added later to an existing table | Existing rows get the column's default, never NULL |
+| A migration file edited after being applied | Refused by name, with the reason |
+| A migration failing partway | Stops at that statement, does **not** record the migration, names the statement number |
+
+The last row is the case that needs you. MySQL cannot roll back DDL, so a
+migration that fails at statement 5 of 12 leaves the first four applied and the
+migration unrecorded — re-running would start it from the beginning and fail
+again on the work already done. The error says exactly which statement stopped
+and what to do: restore your backup, or finish that migration by hand and add
+its row to `schema_migrations` yourself.
+
+## Adding a feature after going live
+
+New settings do **not** need a migration. Every operator setting is declared in
+`app/defaults.php` with a type and a default, so a key with no stored row reads
+as its declared default. Adding one there makes it appear in the settings form
+automatically, with an existing install picking up the default on first read.
+
+Schema changes do need a migration. Add a new numbered file in
+`database/migrations/`; never edit one that has shipped. Give every new column a
+`DEFAULT` where the type allows, so rows written by the previous version cannot
+leave a NULL the new code has to guess about.
 
 ## Before the maintenance window
 

@@ -1,6 +1,37 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — unreleased
+
+Roles, classes, payment QR codes and skill assessment.
+
+- Roles are administrator, trainer and student. Administrators configure
+  everything; trainers do the day-to-day work. `manager` is renamed to `trainer`
+  by migration and still accepted on read.
+- Training classes with a schedule, tariff, bank details and members. A student
+  can belong to several; leaving is recorded rather than erased.
+- Skill assessment for staff: configurable rating scales, skill areas, skills,
+  dated values with notes, inline progress charts, and grouping into bands whose
+  thresholds are a setting. Not visible to student accounts.
+- Payment profiles with IBAN checked by its mod-97 checksum, and a transfer QR
+  code for outstanding amounts. The payload comes from an editable template
+  defaulting to the SEPA EPC069-12 format. Generated on the server; no external
+  service is contacted.
+- Payment reminder email as a third notification category, with its own
+  preference and unsubscribe link.
+- Online status per account.
+- Maintenance mode switchable from the settings screen, with an administrator
+  bypass so it cannot lock the operator out.
+- `php bin/console.php update`: maintenance on, migrate, compare record counts,
+  maintenance off, refusing to reopen if any count dropped. `create-admin` gains
+  `--force` for a deliberate second administrator.
+- Every operator setting is declared once in `app/defaults.php` with a type and
+  a default, and rendered from that declaration, so a missing row is never
+  undefined and a new setting needs no migration.
+- Plainer wording throughout, and a parent's dashboard reduced to what concerns
+  them.
+- Migrations 004.
+
+## 0.1.0 review — included in 0.2.0
 
 Review of 0.1.0: bug, security and design findings and their fixes. Full detail
 in AUDIT.md, priorities in ROADMAP.md.

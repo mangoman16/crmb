@@ -38,6 +38,33 @@ real app icon and standalone chrome (A12); unread-message markers (A11); nine
 touch targets raised to Apple's 44pt minimum (A13); appearance and text-size
 settings stored per account.
 
+### 0.2.0 — roles, classes, payments, skills
+**Roles** administrator / trainer / student, with configuration reserved to the
+administrator and day-to-day work open to the trainer.
+
+**Classes** with schedule, tariff, bank details and members; a student can be in
+several, and leaving is recorded rather than erased.
+
+**Skill assessment**, trainer-only: configurable scales, areas, skills, dated
+values with notes, progress charts, and banding by area whose thresholds are a
+setting rather than code. Verified that a parent account sees none of it.
+
+**Payment QR codes** for outstanding amounts, from an editable payload template
+defaulting to SEPA EPC069-12, generated on the server. IBANs validated by
+checksum. A charge finds its recipient from the charge, then the class, then the
+default.
+
+**Defaults registry** — every setting declared once with a type and a default,
+rendered from that declaration, so nothing is undefined and a new setting needs
+no migration.
+
+**Update path** — one `console.php update` command, verified idempotent, with a
+checksum guard against edited migrations and an actionable message when one
+fails partway.
+
+Also: online status, maintenance mode from the UI with an administrator bypass,
+payment reminder emails, plainer wording, and a simplified parent dashboard.
+
 ---
 
 ## Next — before she uses it
@@ -46,16 +73,15 @@ These are the things that stand between "the code is good" and "her data is
 safe in it". Nothing below is optional.
 
 1. **Run the migrations and the test suites against MariaDB or MySQL.**
-   Migrations 002 and 003 have never executed anywhere (A: "Not done"). Use a
-   disposable database, then `tests/integration.py` and
-   `tests/smtp_integration.py` per `tests/README.md`.
-2. **Backups, with a restore you have actually performed.** There is no backup
-   system and this is the largest remaining risk — larger than any finding in
-   the audit. A nightly `mysqldump` plus the config file, kept off the server,
-   and one practice restore. Losing a year of payment records to a failed disk
-   would be unrecoverable; every other item on this list is fixable later.
-   Note the config holds `app_key`, which is required to read sealed SMTP
-   credentials and queued mail: back it up, separately from the dump.
+   Migrations 002, 003 and 004 have never executed against MySQL or MariaDB
+   anywhere. Use a disposable database, then `tests/integration.py` and
+   `tests/smtp_integration.py` per `tests/README.md`. The runner itself is
+   verified idempotent, but only against SQLite.
+2. **Backups.** You said you will handle these yourself, so this is not on my
+   list — one thing to know: the config file holds `app_key`, which is what
+   decrypts the stored SMTP password and any queued mail. A database dump
+   without that key restores your records but not those. Back it up too, and
+   separately.
 3. **Re-run `composer audit`** somewhere with network access. It could not be
    verified here.
 4. **Finish the privacy notice.** The drafts are placeholders. Real operator
@@ -73,43 +99,41 @@ safe in it". Nothing below is optional.
 
 Ordered by how likely I think each is to come up in her first month.
 
-7. **Charges that create themselves.** Today every monthly charge is entered by
-   hand for every student. The tariff already stores a period and payment term,
-   so the data is there; only the generation is missing. This is deliberately
-   deferred in v0.1.0 because the billing rules are not fixed, and it is
-   probably the single biggest time saver. Needs a decision first: on which day
-   does a monthly charge appear, and what happens to a student who is absent
-   for a month?
-8. **A payment reminder she can send in two taps.** The template and the
-   overdue filter exist, so this is wiring, not new machinery.
-9. **Export.** CSV of students and payments, so her data is never hostage to
-   this app, and so she can hand her accountant a file. Use a library rather
-   than hand-rolled CSV escaping.
-10. **Undo, or at least a soft delete.** Deleting a student is permanent and
+7. **Charges that create themselves.** Still the single biggest time saver, and
+   now the largest remaining gap: every monthly charge is entered by hand for
+   every student. Classes carry a tariff and a payment term, so the data is all
+   there; only the generation is missing. **This needs two decisions from you
+   before it can be built:** on which day does a monthly charge appear, and what
+   happens to a student who is away for a month — no charge, a reduced one, or
+   charged as normal?
+8. **Export.** CSV of students, payments and assessments, so her data is never
+   hostage to this app and she can hand her accountant a file. Use a library
+   rather than hand-rolled CSV escaping.
+9. **Undo, or at least a soft delete.** Deleting a student is permanent and
     guarded only by typing the full name. A `deleted_at` column and a
     restore window would suit a nervous user far better than a confirmation
     box. Charges already block deletion, which is good; this generalises it.
-11. **A calendar or term view.** "Who is at training on Thursday" is a question
+10. **A calendar or term view.** "Who is at training on Thursday" is a question
     the absence data can already answer but nothing asks.
-12. **Push notifications for a new message.** Web push works in standalone
+11. **Push notifications for a new message.** Web push works in standalone
     iOS web apps from iOS 16.4, so the manifest added in this review is the
     prerequisite. Email notification already exists and may well be enough —
     worth asking before building.
 
 ## Later — worth doing, not worth doing first
 
-13. **Search across messages and notes.** Fine without it at her scale.
-14. **Rename and edit saved filters.** Currently create and delete only (A22).
-15. **Two-factor authentication** for the admin account. Password plus
+12. **Search across messages and notes.** Fine without it at her scale.
+13. **Rename and edit saved filters.** Currently create and delete only (A22).
+14. **Two-factor authentication** for the admin account. Password plus
     invitation-only access is a reasonable posture for a family app; this is
     hardening, not a gap.
-16. **An audit-log viewer.** Everything is recorded in `audit_log` but nothing
+15. **An audit-log viewer.** Everything is recorded in `audit_log` but nothing
     displays it.
-17. **Prune `audit_log` and `consent_log`.** They grow without bound. Not a
+16. **Prune `audit_log` and `consent_log`.** They grow without bound. Not a
     problem for years at this scale, and both are records you may want to keep
     deliberately rather than expire — decide the retention period as part of
     item 4.
-18. **Batch attendance entry.** Only worth it if she starts tracking
+17. **Batch attendance entry.** Only worth it if she starts tracking
     per-session attendance, which today she does not.
 
 ## Explicitly not planned
