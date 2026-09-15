@@ -1,11 +1,6 @@
 <?php
 declare(strict_types=1);
 
-function thread_record(int $id): array {
-    $u=require_user();
-    $r=one('SELECT t.*,a.name AS account_name FROM threads t JOIN accounts a ON a.id=t.account_id WHERE t.id=?'.(is_staff($u)?'':' AND t.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
-    if(!$r)throw new UserError(t('Unterhaltung nicht gefunden.','Conversation not found.'));return $r;
-}
 // Read state is per account: staff see every thread, so a shared marker on the thread
 // itself would make one manager's reading hide a reply from another.
 function mark_thread_read(int $threadId, int $accountId): void {

@@ -10,6 +10,17 @@ function student(int $id): array {
     $s=one('SELECT s.*,t.name AS tariff_name FROM students s LEFT JOIN tariffs t ON t.id=s.tariff_id WHERE s.id=?'.(is_staff($u)?'':' AND s.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
     if(!$s) throw new UserError(t('Schüler nicht gefunden.','Student not found.')); return $s;
 }
+/**
+ * A conversation the signed-in account is allowed to see.
+ *
+ * Staff see every thread; anyone else only their own. Same shape as student():
+ * the scoping is part of the lookup, so no caller can forget it.
+ */
+function thread_record(int $id): array {
+    $u=require_user();
+    $r=one('SELECT t.*,a.name AS account_name FROM threads t JOIN accounts a ON a.id=t.account_id WHERE t.id=?'.(is_staff($u)?'':' AND t.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
+    if(!$r)throw new UserError(t('Unterhaltung nicht gefunden.','Conversation not found.'));return $r;
+}
 function balance(int $studentId, bool $overdue=false): int {
     $charges=rows('SELECT c.amount_cents,COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=c.id AND p.confirmed_at IS NOT NULL AND p.voided=0),0) AS paid FROM charges c WHERE c.student_id=? AND c.cancelled=0'.($overdue?' AND c.due_on<?':''),$overdue?[$studentId,today()]:[$studentId]);
     return array_sum(array_map(fn($c)=>max(0,(int)$c['amount_cents']-(int)$c['paid']),$charges));

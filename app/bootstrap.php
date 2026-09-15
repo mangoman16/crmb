@@ -8,6 +8,11 @@ if (!is_file($configPath)) {
     exit("Konfiguration fehlt. Bitte INSTALL.md befolgen. / Configuration missing; see INSTALL.md.\n");
 }
 $config = require $configPath;
+// config() reads the global, so publish it explicitly rather than relying on
+// this file happening to be required at global scope. Required from inside a
+// function - as a test harness or an installer might - every config() lookup
+// would otherwise return null, and the failures would surface far from here.
+$GLOBALS['config'] = $config;
 date_default_timezone_set($config['timezone'] ?? 'Europe/Vienna');
 if (strlen((string) base64_decode($config['app_key'] ?? '', true)) !== 32) {
     throw new RuntimeException('APP key must be a base64 encoded 32-byte key.');
@@ -16,6 +21,8 @@ if (!filter_var($config['app_url'], FILTER_VALIDATE_URL) || !in_array(parse_url(
     throw new RuntimeException('Invalid app_url.');
 }
 require __DIR__ . '/core.php';
+require __DIR__ . '/tx.php';
+require __DIR__ . '/validate.php';
 require __DIR__ . '/defaults.php';
 require __DIR__ . '/auth.php';
 require __DIR__ . '/domain.php';

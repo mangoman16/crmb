@@ -13,15 +13,11 @@ function handle_post(): array {
         $actor=require_user();throttle('account-security',(string)$actor['id'],10);
     }
     $request=post('request_id');
-    if(!preg_match('/^[a-f0-9]{64}$/D',$request)) throw new UserError('Invalid request');
-    db()->beginTransaction();
-    try {
-        if(scalar('SELECT request_id FROM form_requests WHERE request_id=?',[$request])) throw new UserError(t('Diese Eingabe wurde bereits verarbeitet.','This submission has already been processed.'));
-        run('INSERT INTO form_requests (request_id,created_at) VALUES (?,?)',[$request,now()]);
-        $destination=dispatch_action($action);
-        db()->commit();
-        return $destination;
-    } catch(Throwable $ex) { if(db()->inTransaction()) db()->rollBack(); throw $ex; }
+    // One transaction around the whole action: it either happens or it does not.
+    return transactional(function() use ($request,$action) {
+        claim_request($request);
+        return dispatch_action($action);
+    });
 }
 
 function dispatch_action(string $action): array {

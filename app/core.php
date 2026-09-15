@@ -4,12 +4,17 @@ declare(strict_types=1);
 class UserError extends RuntimeException {}
 function config(string $key): mixed { global $config; return $config[$key] ?? null; }
 function connect(): PDO {
+    // Seam for the test harness, which supplies its own connection so the suite
+    // can run without a database server. Nothing in the application sets this;
+    // if it is unset, the normal MySQL connection below is used.
+    $override = $GLOBALS['crm_connect_override'] ?? null;
+    if ($override instanceof Closure) return $override();
     $c = config('db');
     $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};dbname={$c['database']};charset=utf8mb4", $c['username'], $c['password'], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false]);
     $pdo->exec("SET time_zone = '+00:00'");
     return $pdo;
 }
-function db(): PDO { static $pdo; return $pdo ??= connect(); }
+function db(): PDO { static $pdo; if(!$pdo){$pdo=connect();$GLOBALS['crm_db_opened']=true;} return $pdo; }
 // A rate limit must survive the rollback of the action it is guarding, otherwise a
 // failed attempt refunds its own counter and the limit never triggers. A second
 // connection keeps the counters outside the action's transaction.
@@ -25,7 +30,10 @@ function locale(): string { return $_SESSION['locale'] ?? 'de'; }
 function t(string $de, string $en): string { return locale()==='en' ? $en : $de; }
 function e(mixed $value): string { return htmlspecialchars((string)($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function url(string $page='', array $params=[]): string { return rtrim(config('app_url'),'/') . '/index.php' . ($page ? '?' . http_build_query(['page'=>$page]+$params) : ''); }
-function go(string $page, array $params=[]): never { header('Location: '.url($page,$params),true,303); exit; }
+function go(string $page, array $params=[]): never {
+    tx_abandon_open('redirect to '.$page);
+    header('Location: '.url($page,$params),true,303); exit;
+}
 function flash(string $message, string $kind='success'): void { $_SESSION['flash']=['message'=>$message,'kind'=>$kind]; }
 function csrf(): string { return $_SESSION['csrf'] ??= bin2hex(random_bytes(32)); }
 function form_open(string $action, array $hidden=[], string $class=''): void {
@@ -94,6 +102,8 @@ function setting(string $key, mixed $default=null): mixed {
     if($default!==null) return $default;
     return setting_default($key);
 }
+/** Drop the whole settings cache. Used by the test harness between cases. */
+function setting_cache_clear(): void { $cache=&setting_cache(); $cache=[]; }
 function set_setting(string $key, mixed $value): void {
     run('INSERT INTO settings (setting_key,setting_value,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)',[$key,json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),now()]);
     $cache=&setting_cache(); unset($cache[$key]);

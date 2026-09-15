@@ -1,25 +1,52 @@
-# Integration tests
-
-These tests create and delete synthetic accounts, students, payments and messages. Use only a disposable local installation with a database whose name ends in `_test`. They never belong on a production database. The database helper is CLI-only and outside the public directory.
-
-Prerequisites: Python 3, PHP with the application extensions and Composer dependencies, and a local MySQL/MariaDB server. `integration.py` uses only the Python standard library. The optional local TLS test additionally uses Python `cryptography` to generate a temporary test certificate; it does not weaken the application's certificate checks.
-
-1. Create a fresh empty database such as `badminton_crm_test`.
-2. Create a separate configuration with a local `app_url`, fresh test `app_key`, test database credentials and `secure_cookies=false`. Keep it outside the repository.
-3. Set `CRM_CONFIG` to its absolute path, then run `php bin/console.php migrate`.
-4. Run `php bin/console.php create-admin`, entering **Test Coach**, **coach@example.test**, and **Temporary-CRM-2026!** twice. These credentials are fixtures used only in this disposable test setup.
-5. Start `php -S 127.0.0.1:4180 -t public` with the same `CRM_CONFIG`.
-6. Run in another terminal with the same environment:
+# Tests
 
 ```bash
-export CRM_TEST_ALLOW_DESTRUCTIVE=1
-export CRM_TEST_URL=http://127.0.0.1:4180
-export CRM_TEST_APP_URL=http://127.0.0.1:4180
-export CRM_TEST_PHP=/usr/bin/php
-python3 tests/integration.py
-python3 tests/smtp_integration.py
+php tests/run.php            # every suite
+php tests/run.php billing    # one suite
 ```
 
-The second suite expects the state produced by the first. It starts a local fake SMTP server on port 2525, authenticates over STARTTLS with its temporary trusted certificate, captures messages locally and checks the queue. It also verifies password/email changes, unsubscribing and maintenance. No email is sent to an external mail server.
+No database server is needed. The suite builds a disposable SQLite database from
+the real files in `database/migrations/` and boots the real application against
+it, so a test exercises the code that ships rather than a copy of it.
 
-Start again with a fresh disposable database for a repeat run. Do not reuse the fixture credentials anywhere else. The test HTML snapshots contain synthetic test records and are for layout review only; they are not deployed with the application.
+## What the default driver does and does not prove
+
+The application is written for MySQL. `tests/harness.php` translates the dialect
+on the way in — upserts, `FOR UPDATE`, `IF()` — by rewriting statements as they
+are prepared, so the application's own SQL strings are what run. That proves the
+PHP logic and the shape of the data. It does **not** prove the SQL runs on MySQL.
+
+Anything the translation cannot represent is printed at the end of a run rather
+than skipped quietly, so coverage cannot silently shrink.
+
+To prove the SQL, run against a real database whose name ends in `_test`:
+
+```bash
+CRM_TEST_DRIVER=mysql CRM_CONFIG=/path/to/test-config.php php tests/run.php
+```
+
+The harness refuses to run if that database name does not end in `_test`.
+
+## Writing a test
+
+Suites are plain PHP files in `tests/suites/`, run in alphabetical order with a
+freshly emptied database and the seeded defaults. Group related assertions with
+`case_()` and describe the behaviour, not the mechanics:
+
+```php
+case_('A parent reaches only their own children');
+sign_in_as($parentA);
+does_not_throw(fn() => student($kidA), 'their own child is visible');
+throws(fn() => student($kidB), 'another parent\'s child is not');
+```
+
+Available: `ok`, `is_same`, `is_equal`, `throws`, `does_not_throw`,
+`fixture`, `make_account`, `make_student`, `make_tariff`, `make_class`,
+`sign_in_as`, `sign_out`, `test_reset`.
+
+## The other two suites
+
+`integration.py` and `smtp_integration.py` drive a running server over HTTP and
+need a live database and a local SMTP capture server. See the instructions at
+the top of each. They are slower and cover the request path; the PHP suite here
+covers the rules.
