@@ -173,7 +173,7 @@ function dispatch_config(string $action): array {
         // Group by account: one parent with three children gets three lines of
         // detail, not three separate emails.
         foreach(rows('SELECT c.*, s.first_name, s.last_name, s.account_id,'
-            .' COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=c.id AND p.confirmed_at IS NOT NULL AND p.voided=0),0) AS paid'
+            .' '.charge_paid_sql().' AS paid'
             .' FROM charges c JOIN students s ON s.id=c.student_id'
             .' WHERE c.cancelled=0 AND c.due_on<?'.($only?' AND s.id=?':'')
             .' ORDER BY s.account_id, c.due_on', $only?[today(),$only]:[today()]) as $c) {

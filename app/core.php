@@ -24,6 +24,18 @@ function run_counter(string $sql, array $params=[]): PDOStatement { $s=counter_d
 function rows(string $sql, array $params=[]): array { return run($sql,$params)->fetchAll(); }
 function one(string $sql, array $params=[]): ?array { return run($sql,$params)->fetch() ?: null; }
 function scalar(string $sql, array $params=[]): mixed { return run($sql,$params)->fetchColumn(); }
+/**
+ * A table, column or alias name that is about to be interpolated into SQL.
+ *
+ * Identifiers cannot be bound as parameters the way values can, so the few the
+ * application builds itself are checked against the shape this schema uses.
+ * Every caller passes a name from its own code or from an allowlist; this is
+ * the backstop that keeps that assumption honest rather than assumed.
+ */
+function sql_name(string $name, string $kind='identifier'): string {
+    if(!preg_match('/^[a-z_][a-z0-9_]*$/D',$name)) throw new RuntimeException('Refusing to use '.var_export($name,true).' as a SQL '.$kind);
+    return $name;
+}
 function now(): string { return gmdate('Y-m-d H:i:s'); }
 function today(): string { return date('Y-m-d'); }
 function locale(): string { return $_SESSION['locale'] ?? 'de'; }

@@ -5,6 +5,9 @@ declare(strict_types=1);
 if(PHP_SAPI!=='cli'){http_response_code(404);exit;}
 $command=$argv[1]??'help';
 if($command==='key'){echo base64_encode(random_bytes(32)).PHP_EOL;exit;}
+// Answered before the configuration is loaded, because the point of asking is
+// usually to identify a release directory that has not been configured yet.
+if($command==='version'){echo trim((string)file_get_contents(__DIR__.'/../VERSION')).PHP_EOL;exit;}
 if($command==='help'){
     echo "Badminton CRM\n\n"
         ."php bin/console.php update            One-step upgrade: maintenance on, migrate, maintenance off\n"
@@ -22,7 +25,6 @@ if($command==='help'){
 }
 try{
     require __DIR__.'/../app/bootstrap.php';
-    if($command==='version'){echo trim(file_get_contents(ROOT.'/VERSION')).PHP_EOL;exit;}
     if($command==='maintenance:on'){
         if(file_put_contents(maintenance_file(),now().PHP_EOL)===false)throw new RuntimeException('Cannot create maintenance file.');
         echo "Maintenance enabled. New web requests and mail workers are paused. Let running requests finish before migrating.\n";exit;

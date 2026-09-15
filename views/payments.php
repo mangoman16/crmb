@@ -46,7 +46,7 @@ $willSkip=array_values(array_filter($plan,fn($r)=>$r['skip']!==null));
 <?php endif ?>
 </section>
 <?php
-$charges=rows('SELECT c.*,s.first_name,s.last_name,COALESCE((SELECT SUM(amount_cents) FROM payments p WHERE p.charge_id=c.id AND p.confirmed_at IS NOT NULL AND p.voided=0),0) AS paid FROM charges c JOIN students s ON s.id=c.student_id WHERE c.cancelled=0'.($overdue?' AND c.due_on<?':'').' ORDER BY c.due_on,c.id',$overdue?[today()]:[]);
+$charges=rows('SELECT c.*,s.first_name,s.last_name,'.charge_paid_sql().' AS paid FROM charges c JOIN students s ON s.id=c.student_id WHERE c.cancelled=0'.($overdue?' AND c.due_on<?':'').' ORDER BY c.due_on,c.id',$overdue?[today()]:[]);
 ?>
 <div class="saved-filters"><a class="chip" href="<?=e(url('payments'))?>"><?=e(t('Alle offenen Beiträge','All outstanding charges'))?></a><a class="chip" href="<?=e(url('payments',['overdue'=>1]))?>"><?=e(t('Nur überfällig','Overdue only'))?></a><?=link_button(t('Zahlungserinnerung schreiben','Write payment reminder'),'compose',['overdue'=>1],'secondary')?>
 <?php start_form('payment_remind',[],'inline-form');submit_button(t('Alle überfälligen per E-Mail erinnern','Email everyone overdue'),'secondary');?></form></div>

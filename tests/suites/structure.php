@@ -198,3 +198,77 @@ foreach (glob(APP_ROOT.'/views/*.php') as $view) {
 }
 foreach (array_unique($offenders) as $o) ok(false, 'unescaped output — '.$o);
 ok(true, 'checked '.$checked.' printed expressions across '.count(glob(APP_ROOT.'/views/*.php')).' views');
+
+case_('The commands that identify a release work before it is configured');
+/* During an update you unpack a release and want to know which one it is
+   before linking a configuration into it. These three must therefore answer
+   without a database or a config file; everything else may reasonably refuse. */
+$console = escapeshellarg(APP_ROOT.'/bin/console.php');
+$bare = function (string $command) use ($console): array {
+    // An empty CRM_CONFIG is the point: the release has not been configured yet.
+    exec('CRM_CONFIG= '.escapeshellarg(PHP_BINARY).' '.$console.' '.escapeshellarg($command).' 2>&1', $out, $code);
+    return ['out' => implode("\n", $out), 'code' => $code];
+};
+$version = $bare('version');
+is_same(0, $version['code'], 'version exits cleanly');
+is_same(trim((string)file_get_contents(APP_ROOT.'/VERSION')), trim($version['out']), 'version prints what VERSION says');
+
+$help = $bare('help');
+is_same(0, $help['code'], 'help exits cleanly');
+ok(str_contains($help['out'], 'console.php'), 'help lists the commands');
+
+$key = $bare('key');
+is_same(0, $key['code'], 'key exits cleanly');
+ok(strlen(base64_decode(trim($key['out']), true) ?: '') === 32, 'key prints 32 bytes of base64, the length seal() needs');
+
+case_('Every command the help text lists is one the console handles');
+$source = (string)file_get_contents(APP_ROOT.'/bin/console.php');
+preg_match_all('/console\.php ([a-z][a-z:-]*)/', $help['out'], $listed);
+preg_match_all('/\$command===\x27([a-z][a-z:-]*)\x27/', $source, $handled);
+foreach (array_unique($listed[1]) as $name)
+    ok(in_array($name, $handled[1], true), 'help lists "'.$name.'", and the console handles it');
+foreach (array_unique($handled[1]) as $name) {
+    // A help text that lists itself tells the reader nothing they have not
+    // just demonstrated they know.
+    if ($name === 'help') continue;
+    ok(in_array($name, $listed[1], true), 'the console handles "'.$name.'", and help lists it');
+}
+
+case_('The rule for what counts as paid is written once');
+/* Every balance, the overdue filter and the payments screen depend on it. A
+   second copy is the one that gets forgotten when the rule changes, and the
+   two then disagree about what a family owes. */
+$spelled = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php')) as $file) {
+    foreach (file($file) as $n => $line) {
+        if (!preg_match('/confirmed_at\s+IS\s+NOT\s+NULL/i', $line)) continue;
+        if (basename($file) === 'domain.php' && str_contains($line, 'sql_name')) continue;   // the definition
+        $spelled[] = basename($file).':'.($n + 1);
+    }
+}
+foreach ($spelled as $where) ok(false, 'the paid-payment rule is spelled out again at '.$where.' — use charge_paid_sql() or payment_counts_sql()');
+ok(true, 'payment_counts_sql() is the only place the condition appears');
+
+case_('charge_paid_sql() still produces the query it replaced');
+is_same('COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=c.id'
+       .' AND p.confirmed_at IS NOT NULL AND p.voided=0),0)',
+        charge_paid_sql(), 'unchanged from the hand-written version it replaced');
+
+case_('A name interpolated into SQL cannot smuggle anything in');
+/* Identifiers cannot be bound as parameters, so sql_name() is the one backstop
+   for every table, column and alias the application builds itself. */
+foreach (['c WHERE 1=1 --', 'p; DROP TABLE payments', 'a b', "a'b", '`a`', 'a)', '', '1abc', 'A', 'ä'] as $bad)
+    throws(fn() => sql_name($bad), 'refused: '.var_export($bad, true));
+foreach (['c', 'ch2', 'class_students', '_internal', 'a1_b2'] as $good)
+    does_not_throw(fn() => sql_name($good), 'accepted: '.$good);
+is_same('charges', sql_name('charges', 'table'), 'a valid name comes back unchanged');
+$refusal = '';
+try { sql_name('x y', 'column'); } catch (Throwable $e) { $refusal = $e->getMessage(); }
+ok(str_contains($refusal, 'column'), 'the error says which kind of name was refused');
+ok(str_contains($refusal, 'x y'), 'and which name it was');
+
+case_('Callers route their identifiers through it');
+throws(fn() => charge_paid_sql('c WHERE 1=1 --'), 'charge_paid_sql checks its alias');
+throws(fn() => payment_counts_sql('p; DROP TABLE payments'), 'payment_counts_sql checks its alias');
+throws(fn() => lock_row('students; DROP TABLE students', 1), 'lock_row checks its table');
+does_not_throw(fn() => charge_paid_sql('ch2'), 'a digit in an alias is fine, which the old table check wrongly refused');

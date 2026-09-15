@@ -189,8 +189,7 @@ function revert_version(int $versionId): void {
             if (!$before) throw new UserError(t('Für diese Löschung ist kein Stand gespeichert.', 'No stored state for that deletion.'));
             if (entity_snapshot($entity, $id)) throw new UserError(t('Es gibt bereits wieder einen Eintrag mit dieser Nummer.', 'A record with that number exists again.'));
             $columns = array_keys($before);
-            foreach ($columns as $column) if (!preg_match('/^[a-z_][a-z0-9_]*$/D', (string)$column))
-                throw new RuntimeException('Refusing to restore a column named '.var_export($column, true));
+            foreach ($columns as $column) sql_name((string)$column, 'column');
             run('INSERT INTO '.$entity.' ('.implode(',', array_map(fn($c) => '`'.$c.'`', $columns)).')'
                 .' VALUES ('.implode(',', array_fill(0, count($columns), '?')).')', array_values($before));
             history_record($entity, $id, 'revert', t('Löschen zurückgenommen', 'Deletion undone'), null, entity_snapshot($entity, $id));
@@ -203,9 +202,7 @@ function revert_version(int $versionId): void {
             if (!$changes) throw new UserError(t('An dieser Änderung gibt es nichts zurückzunehmen.', 'There is nothing to undo in that change.'));
             $set = []; $args = [];
             foreach (array_keys($changes) as $column) {
-                if (!preg_match('/^[a-z_][a-z0-9_]*$/D', (string)$column))
-                    throw new RuntimeException('Refusing to restore a column named '.var_export($column, true));
-                $set[] = '`'.$column.'`=?'; $args[] = $before[$column];
+                $set[] = '`'.sql_name((string)$column, 'column').'`=?'; $args[] = $before[$column];
             }
             $args[] = $id;
             run('UPDATE '.$entity.' SET '.implode(',', $set).' WHERE id=?', $args);

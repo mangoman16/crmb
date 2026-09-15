@@ -29,6 +29,19 @@ Transactions, undo, and a test suite that runs anywhere.
   covers dates, transactions, billing, security, attendance, settings, history,
   query counts, the rendered pages and the shape of the source itself. This
   proves the PHP logic, not the MySQL dialect — see AUDIT.md.
+- The rule for what counts as a received payment — confirmed and not voided —
+  was written out in six places across three files, where every balance, the
+  overdue filter and the payments screen each carried their own copy. It is now
+  `payment_counts_sql()` / `charge_paid_sql()` in one place, producing the same
+  SQL, and a test fails if it is spelled out again.
+- One `sql_name()` replaces four hand-written checks on table, column and alias
+  names that had drifted into three different patterns; the one guarding
+  `lock_row()` rejected any table name containing a digit.
+- `console.php version` no longer needs a configuration file. Asking which
+  release a directory holds is something you do *before* linking a config into
+  it, which is exactly when the old version refused to answer.
+- README gained install and update guides as runnable bash, and CLAUDE.md
+  records the conventions for changing this code.
 - Migration 006.
 
 ## 0.3.0 — unreleased

@@ -77,8 +77,7 @@ function transactional(callable $fn): mixed {
  */
 function lock_row(string $table, int $id): ?array {
     if (tx_depth() === 0) throw new RuntimeException('lock_row('.$table.') outside a transaction locks nothing.');
-    if (!preg_match('/^[a-z_]+$/D', $table)) throw new RuntimeException('Invalid table name');
-    return one('SELECT * FROM '.$table.' WHERE id=? FOR UPDATE', [$id]);
+    return one('SELECT * FROM '.sql_name($table,'table').' WHERE id=? FOR UPDATE', [$id]);
 }
 
 /**

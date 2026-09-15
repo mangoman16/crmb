@@ -21,8 +21,31 @@ function thread_record(int $id): array {
     $r=one('SELECT t.*,a.name AS account_name FROM threads t JOIN accounts a ON a.id=t.account_id WHERE t.id=?'.(is_staff($u)?'':' AND t.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
     if(!$r)throw new UserError(t('Unterhaltung nicht gefunden.','Conversation not found.'));return $r;
 }
+/**
+ * What counts as money actually received.
+ *
+ * A payment counts once it has been confirmed and has not been voided. This one
+ * rule decides every balance, the overdue filter and the payments screen, so it
+ * is written here and nowhere else — a second copy is the one that gets
+ * forgotten when the rule changes, and the two then disagree about what a family
+ * owes. The `structure` suite fails if the condition reappears spelled out.
+ */
+function payment_counts_sql(string $payment='p'): string {
+    return sql_name($payment,'alias').'.confirmed_at IS NOT NULL AND '.sql_name($payment,'alias').'.voided=0';
+}
+
+/**
+ * SQL for the amount confirmed against one charge, as a correlated subquery.
+ *
+ * $charge is how the charges table is aliased in the surrounding query.
+ */
+function charge_paid_sql(string $charge='c'): string {
+    return 'COALESCE((SELECT SUM(p.amount_cents) FROM payments p'
+        .' WHERE p.charge_id='.sql_name($charge,'alias').'.id AND '.payment_counts_sql().'),0)';
+}
+
 function balance(int $studentId, bool $overdue=false): int {
-    $charges=rows('SELECT c.amount_cents,COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=c.id AND p.confirmed_at IS NOT NULL AND p.voided=0),0) AS paid FROM charges c WHERE c.student_id=? AND c.cancelled=0'.($overdue?' AND c.due_on<?':''),$overdue?[$studentId,today()]:[$studentId]);
+    $charges=rows('SELECT c.amount_cents,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? AND c.cancelled=0'.($overdue?' AND c.due_on<?':''),$overdue?[$studentId,today()]:[$studentId]);
     return array_sum(array_map(fn($c)=>max(0,(int)$c['amount_cents']-(int)$c['paid']),$charges));
 }
 /**
@@ -36,13 +59,13 @@ function balances(bool $overdue=false): array {
     $out=[];
     foreach(rows('SELECT c.student_id, SUM(GREATEST(0, c.amount_cents - COALESCE(p.paid,0))) AS due'
         .' FROM charges c LEFT JOIN (SELECT charge_id, SUM(amount_cents) AS paid FROM payments'
-        .'   WHERE confirmed_at IS NOT NULL AND voided=0 GROUP BY charge_id) p ON p.charge_id=c.id'
+        .'   WHERE '.payment_counts_sql('payments').' GROUP BY charge_id) p ON p.charge_id=c.id'
         .' WHERE c.cancelled=0'.($overdue?' AND c.due_on<?':'').' GROUP BY c.student_id',
         $overdue?[today()]:[]) as $r) $out[(int)$r['student_id']]=(int)$r['due'];
     return $out;
 }
 
-function student_charges(int $id): array { return rows('SELECT c.*,COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=c.id AND p.confirmed_at IS NOT NULL AND p.voided=0),0) AS paid FROM charges c WHERE c.student_id=? ORDER BY c.due_on DESC,c.id DESC',[$id]); }
+function student_charges(int $id): array { return rows('SELECT c.*,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? ORDER BY c.due_on DESC,c.id DESC',[$id]); }
 function field_definitions(bool $archived=false): array { return rows('SELECT * FROM field_definitions'.($archived?'':' WHERE archived=0').' ORDER BY sort_order,id'); }
 function field_label(array $f): string { return locale()==='en' && $f['label_en']?$f['label_en']:$f['label']; }
 function field_value(int $studentId,int $fieldId): mixed { $v=scalar('SELECT value_json FROM field_values WHERE student_id=? AND field_id=?',[$studentId,$fieldId]); return $v===false?null:json_decode($v,true); }
@@ -89,7 +112,7 @@ function filtered_students(array $f,?int $accountId=null): array {
     if(!empty($f['status'])){$where[]='s.status=?';$p[]=$f['status'];}
     if(!empty($f['tariff'])){$where[]='s.tariff_id=?';$p[]=(int)$f['tariff'];}
     if(!empty($f['absence'])){$where[]='EXISTS (SELECT 1 FROM absences a WHERE a.student_id=s.id AND a.reason=? AND a.starts_on<=? AND a.ends_on>=?)';array_push($p,$f['absence'],today(),today());}
-    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND c.cancelled=0 AND c.due_on<? AND c.amount_cents>COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=c.id AND p.confirmed_at IS NOT NULL AND p.voided=0),0))';$p[]=today();}
+    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND c.cancelled=0 AND c.due_on<? AND c.amount_cents>'.charge_paid_sql().')';$p[]=today();}
     if(!empty($f['field']) && isset($f['value'])){
         $def=one('SELECT * FROM field_definitions WHERE id=? AND archived=0',[(int)$f['field']]);
         if($def && (is_staff() || $def['visibility']!=='internal')) {
