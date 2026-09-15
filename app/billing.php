@@ -62,10 +62,13 @@ function billing_first_charged_period(array $student): ?string {
  * The student's agreed price wins over the tariff's, which is what the two
  * fields already mean everywhere else in the application.
  */
-function billing_amount(array $student): ?int {
+function billing_amount(array $student, ?array $tariffs=null): ?int {
     if($student['price_cents']!==null) return (int)$student['price_cents'];
     if($student['tariff_id']) {
-        $t=one('SELECT price_cents, period FROM tariffs WHERE id=?',[(int)$student['tariff_id']]);
+        $id=(int)$student['tariff_id'];
+        // $tariffs lets a caller working through many students pass a map it has
+        // already loaded, instead of one lookup per student.
+        $t=$tariffs!==null ? ($tariffs[$id]??null) : one('SELECT price_cents, period FROM tariffs WHERE id=?',[$id]);
         // Only a recurring tariff should produce a monthly charge; "once" and
         // fixed-period tariffs are billed by hand on purpose.
         if($t && $t['period']==='monthly') return (int)$t['price_cents'];
@@ -86,11 +89,21 @@ function billing_plan(string $period): array {
     $end=billing_period_end($period);
     $dueDays=(int)setting('billing_due_days');
     $due=(new DateTimeImmutable($start))->modify('+'.$dueDays.' days')->format('Y-m-d');
+
+    // Everything this needs is fetched up front. The preview is rendered on
+    // every visit to the payments screen, so a query per student would make the
+    // page slower with every child added.
+    $already=[];
+    foreach(rows("SELECT billing_key FROM charges WHERE billing_key LIKE ?",['auto:'.$period.':%']) as $r)
+        $already[$r['billing_key']]=true;
+    $tariffs=[];
+    foreach(rows('SELECT id, price_cents, period FROM tariffs') as $r) $tariffs[(int)$r['id']]=$r;
+
     $rows=[];
     foreach(rows('SELECT s.*, t.name AS tariff_name FROM students s LEFT JOIN tariffs t ON t.id=s.tariff_id ORDER BY s.last_name, s.first_name, s.id') as $s) {
         $name=$s['first_name'].' '.$s['last_name'];
-        $existing=one('SELECT id FROM charges WHERE billing_key=?',[billing_key($period,(int)$s['id'])]);
-        $amount=billing_amount($s);
+        $existing=isset($already[billing_key($period,(int)$s['id'])]);
+        $amount=billing_amount($s,$tariffs);
         $free=billing_free_period($s);
         $joined=$s['joined_on'] ?: substr((string)$s['created_at'],0,10);
         $entry=['student_id'=>(int)$s['id'],'name'=>$name,'amount'=>$amount,'period'=>$period,
@@ -125,12 +138,15 @@ function billing_run(string $period): array {
     $period=billing_valid_period($period);
     $label=setting('billing_label');
     $created=0; $skipped=0;
+    // The first class a student is in decides which account the money goes to;
+    // without one the charge falls back to the default profile. Loaded once.
+    $classOf=[];
+    foreach(rows('SELECT student_id, MIN(class_id) AS class_id FROM class_students WHERE left_on IS NULL GROUP BY student_id') as $r)
+        $classOf[(int)$r['student_id']]=(int)$r['class_id'];
     foreach(billing_plan($period) as $entry) {
         if($entry['skip']!==null) { $skipped++; continue; }
         $s=$entry['charge'];
-        // The first class the student is in decides which account the money goes
-        // to; without one the charge falls back to the default profile.
-        $classId=scalar('SELECT class_id FROM class_students WHERE student_id=? AND left_on IS NULL ORDER BY class_id LIMIT 1',[$entry['student_id']]);
+        $classId=$classOf[$entry['student_id']]??null;
         try {
             run('INSERT INTO charges (student_id,class_id,payment_profile_id,label,origin,billing_key,amount_cents,period_from,period_to,due_on,created_at)'
                 .' VALUES (?,?,?,?,?,?,?,?,?,?,?)',

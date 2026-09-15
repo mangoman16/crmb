@@ -4,6 +4,6 @@
 <div class="card"><?php if(!$jobs)echo '<p class="muted">'.e(t('Noch keine E-Mails.','No emails yet.')).'</p>';foreach($jobs as $j):?><details class="mail-item"><summary><span><strong><?=e($j['subject'])?></strong><small><?=e($j['recipient'])?> · <?=e(fmt_datetime($j['created_at']))?></small></span><?php badge(['queued'=>t('Wartend','Queued'),'sent'=>t('Gesendet','Sent'),'failed'=>t('Fehlgeschlagen','Failed'),'cancelled'=>t('Abgebrochen','Cancelled')][$j['status']],$j['status']==='failed'?'red':($j['status']==='sent'?'green':''));?></summary>
 <?php if($j['category']!=='security'&&$j['payload']):?><div class="prewrap"><?=e(unseal($j['payload']))?></div><?php endif ?>
 <?php if($j['error']):?><p class="due"><?=e($j['error'])?></p><?php endif ?>
-<p class="muted"><?=e(t('Versuche: ','Attempts: '))?><?=$j['attempts']?><?php if($j['sent_at'])echo ' · '.e(t('Gesendet: ','Sent: ').fmt_datetime($j['sent_at']));?></p>
+<p class="muted"><?=e(t('Versuche: ','Attempts: '))?><?=(int)$j['attempts']?><?php if($j['sent_at'])echo ' · '.e(t('Gesendet: ','Sent: ').fmt_datetime($j['sent_at']));?></p>
 <?php if($j['status']==='failed'&&$j['category']!=='security'){start_form('mail_retry',['id'=>$j['id']]);submit_button(t('Erneut vormerken','Queue again'),'secondary');echo '</form>';}?></details><?php endforeach ?></div>
 <nav class="pagination"><?php if($p>1)echo link_button(t('Zurück','Previous'),'outbox',['p'=>$p-1],'secondary');if(count($jobs)===50)echo link_button(t('Weitere','More'),'outbox',['p'=>$p+1],'secondary');?></nav>

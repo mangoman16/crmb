@@ -25,6 +25,23 @@ function balance(int $studentId, bool $overdue=false): int {
     $charges=rows('SELECT c.amount_cents,COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=c.id AND p.confirmed_at IS NOT NULL AND p.voided=0),0) AS paid FROM charges c WHERE c.student_id=? AND c.cancelled=0'.($overdue?' AND c.due_on<?':''),$overdue?[$studentId,today()]:[$studentId]);
     return array_sum(array_map(fn($c)=>max(0,(int)$c['amount_cents']-(int)$c['paid']),$charges));
 }
+/**
+ * Outstanding amounts for many students at once, as id => cents.
+ *
+ * The list views show a balance on every card. Calling balance() per card is one
+ * query per student, which is invisible with five children and slow with sixty,
+ * so anything rendering a list resolves them together.
+ */
+function balances(bool $overdue=false): array {
+    $out=[];
+    foreach(rows('SELECT c.student_id, SUM(GREATEST(0, c.amount_cents - COALESCE(p.paid,0))) AS due'
+        .' FROM charges c LEFT JOIN (SELECT charge_id, SUM(amount_cents) AS paid FROM payments'
+        .'   WHERE confirmed_at IS NOT NULL AND voided=0 GROUP BY charge_id) p ON p.charge_id=c.id'
+        .' WHERE c.cancelled=0'.($overdue?' AND c.due_on<?':'').' GROUP BY c.student_id',
+        $overdue?[today()]:[]) as $r) $out[(int)$r['student_id']]=(int)$r['due'];
+    return $out;
+}
+
 function student_charges(int $id): array { return rows('SELECT c.*,COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=c.id AND p.confirmed_at IS NOT NULL AND p.voided=0),0) AS paid FROM charges c WHERE c.student_id=? ORDER BY c.due_on DESC,c.id DESC',[$id]); }
 function field_definitions(bool $archived=false): array { return rows('SELECT * FROM field_definitions'.($archived?'':' WHERE archived=0').' ORDER BY sort_order,id'); }
 function field_label(array $f): string { return locale()==='en' && $f['label_en']?$f['label_en']:$f['label']; }

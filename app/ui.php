@@ -53,8 +53,15 @@ function link_button(string $label,string $page,array $params=[],string $class='
 function empty_state(string $title,string $body='',string $action=''): void { echo '<div class="empty"><div class="empty-icon">'.icon('users').'</div><h2>'.e($title).'</h2>'.($body?'<p>'.e($body).'</p>':'').$action.'</div>'; }
 function tabs(array $items,string $active,string $page,array $params=[]): void { echo '<nav class="tabs" aria-label="'.e(t('Bereiche','Sections')).'">';foreach($items as $key=>$label)echo '<a '.($key===$active?'aria-current="page"':'').' href="'.e(url($page,['tab'=>$key]+$params)).'">'.e($label).'</a>';echo '</nav>'; }
 function badge(string $text,string $style=''): void {echo '<span class="badge '.e($style).'">'.e($text).'</span>';}
+/**
+ * One student in a list.
+ *
+ * $s['due_cents'] may be supplied by a caller that resolved every balance in one
+ * query; without it the card falls back to looking up its own, which is correct
+ * but costs a query per card.
+ */
 function student_card(array $s): void {
-    $due=balance((int)$s['id'],true);
+    $due=array_key_exists('due_cents',$s)?(int)$s['due_cents']:balance((int)$s['id'],true);
     echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'"><span class="avatar">'.e(mb_substr($s['first_name'],0,1).mb_substr($s['last_name'],0,1)).'</span><div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e($s['tariff_name']?:t('Kein Tarif','No tariff')).($s['price_cents']!==null?' · '.e(money((int)$s['price_cents'])):'').'</p></div><div class="student-card-status">';
     badge(status_label($s['status']),$s['status']==='active'?'green':'');
     if($due)echo '<span class="due">'.e(money($due)).' '.e(t('überfällig','overdue')).'</span>';

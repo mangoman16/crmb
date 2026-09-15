@@ -311,6 +311,59 @@ function sign_out(): void {
     current_user(true);
 }
 
+/**
+ * How many statements $fn causes the application to prepare.
+ *
+ * Counted by the driver rather than by instrumenting the application, so the
+ * measurement cannot drift from what actually runs.
+ */
+function query_count(callable $fn): int {
+    $pdo = db();
+    if (!$pdo instanceof TestSqlitePdo) { $fn(); return 0; }
+    $before = $pdo->statementsPrepared();
+    $fn();
+    return $pdo->statementsPrepared() - $before;
+}
+
+/**
+ * Render a real view and return the HTML it produced.
+ *
+ * A check that renders the actual page catches what a test re-implementing the
+ * page's logic would miss, because the re-implementation drifts. The view's
+ * dependencies are loaded the way public/index.php loads them, and the same
+ * variables are in scope: $page, $public and $user.
+ */
+function render_view(string $page, array $query = []): string {
+    static $loaded = false;
+    if (!$loaded) {
+        foreach (['actions', 'actions_settings', 'actions_messages', 'actions_config', 'ui'] as $unit)
+            require_once APP_ROOT . '/app/' . $unit . '.php';
+        $loaded = true;
+    }
+    $file = APP_ROOT . '/views/' . $page . '.php';
+    if (!is_file($file)) throw new RuntimeException('No such view: ' . $page);
+
+    $public = in_array($page, ['login', 'forgot', 'activate', 'unsubscribe', 'privacy', 'not_found'], true);
+    $user = current_user();
+    if (!$public && !$user) throw new RuntimeException('View ' . $page . ' needs a signed-in account.');
+
+    // The query string belongs to this render only; anything checked afterwards
+    // should see what it set up, not the leftovers of a page.
+    $restore = $_GET;
+    $_GET = $query;
+    $level = ob_get_level();
+    ob_start();
+    try {
+        require $file;
+        return (string)ob_get_clean();
+    } catch (Throwable $e) {
+        while (ob_get_level() > $level) ob_end_clean();
+        throw $e;
+    } finally {
+        $_GET = $restore;
+    }
+}
+
 /** Populate $_POST for an action, including the fields handle_post() requires. */
 function post_data(array $fields): void {
     $_POST = $fields;

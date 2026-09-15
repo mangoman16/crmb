@@ -26,8 +26,13 @@ declare(strict_types=1);
 final class TestSqlitePdo extends PDO {
     /** @var array<string,string[]> table => unique column groups, cached */
     private array $uniques = [];
+    private int $prepared = 0;
+
+    /** Statements prepared so far, so a test can assert a query count. */
+    public function statementsPrepared(): int { return $this->prepared; }
 
     public function prepare(string $query, array $options = []): PDOStatement|false {
+        $this->prepared++;
         return parent::prepare($this->translate($query), $options);
     }
 

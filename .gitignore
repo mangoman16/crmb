@@ -8,3 +8,4 @@
 __pycache__/
 *.pyc
 /source-history.bundle
+/tests/.config.generated.php

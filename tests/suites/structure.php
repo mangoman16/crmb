@@ -85,3 +85,116 @@ foreach ($called as $name => $where) {
     ok(false, 'undefined function '.$name.'() called in '.basename($where));
 }
 ok(true, count($defined).' functions defined, '.count($called).' distinct call targets, all resolved');
+
+case_('Nothing reaches the page unescaped');
+/* An expression is safe when every part of it that can actually be printed is
+   safe. A ternary prints one of its branches, never its condition, and a
+   concatenation prints all of its operands, so the check walks the expression
+   down to the parts that reach the page and inspects only those.
+   Written as a block comment on purpose: PHP ends a // comment at a closing
+   tag, so naming the tag in a line comment would end PHP mode mid-file. */
+
+/** Split on a token at parenthesis depth zero, ignoring string literals. */
+function split_top_level(string $expr, string $token): array {
+    $parts = []; $buf = ''; $depth = 0; $quote = null;
+    for ($i = 0; $i < strlen($expr); $i++) {
+        $ch = $expr[$i];
+        if ($quote !== null) { $buf .= $ch; if ($ch === $quote && $expr[$i-1] !== '\\') $quote = null; continue; }
+        if ($ch === "'" || $ch === '"') { $quote = $ch; $buf .= $ch; continue; }
+        if ($ch === '(' || $ch === '[') $depth++;
+        if ($ch === ')' || $ch === ']') $depth--;
+        if ($depth === 0 && $ch === $token[0] && substr($expr, $i, strlen($token)) === $token
+            && !($token === '?' && substr($expr, $i, 2) === '??')
+            && !($token === ':' && substr($expr, $i, 2) === '::')) {
+            $parts[] = $buf; $buf = ''; $i += strlen($token) - 1; continue;
+        }
+        $buf .= $ch;
+    }
+    $parts[] = $buf;
+    return $parts;
+}
+
+/** The sub-expressions of $expr whose value can end up on the page. */
+function printable_parts(string $expr): array {
+    $expr = trim($expr);
+    $ternary = split_top_level($expr, '?');
+    if (count($ternary) === 2) {                       // condition ? then : else
+        $branches = split_top_level($ternary[1], ':');
+        if (count($branches) === 2)
+            return array_merge(printable_parts($branches[0]), printable_parts($branches[1]));
+    }
+    $concat = split_top_level($expr, '.');
+    if (count($concat) > 1) {
+        $out = [];
+        foreach ($concat as $piece) $out = array_merge($out, printable_parts($piece));
+        return $out;
+    }
+    return [$expr];
+}
+
+/* Only helpers that either escape their own output or can only return text the
+   operator cannot influence. Anything returning a stored column or a setting
+   belongs in a view wrapped in e(), not on this list: truncating a string with
+   mb_substr() or looking a code up in a settings array does not make it safe. */
+$escaping = ['e',                                                   // escapes
+             'icon','link_button','qr_svg','progress_chart',        // build their own markup and escape inside
+             'money','number_format','count','ceil','floor','round','array_sum','plural',  // numbers
+             'fmt_date','fmt_datetime',                             // formatted dates
+             'role_label','entity_label'];                          // fixed sets in code
+$numericVars = ['id','sid','absent','unreadTotal','pageNum','active','open','overdue','content','rate'];
+
+/**
+ * Every expression a file prints, whether written as a short-echo tag or an
+ * echo statement.
+ *
+ * Tokenised rather than matched with a regular expression, because a regex
+ * cannot tell a semicolon inside a string from the one ending the statement,
+ * and the whole point of this rule is that it does not miss anything.
+ */
+function printed_expressions(string $src): array {
+    $out = [];
+    $tokens = token_get_all($src);
+    for ($i = 0; $i < count($tokens); $i++) {
+        $t = $tokens[$i];
+        if (!is_array($t) || ($t[0] !== T_ECHO && $t[0] !== T_OPEN_TAG_WITH_ECHO)) continue;
+        $buf = ''; $depth = 0;
+        for ($j = $i + 1; $j < count($tokens); $j++) {
+            $u = $tokens[$j];
+            if (is_array($u)) {
+                if ($u[0] === T_CLOSE_TAG) break;
+                $buf .= $u[1];
+                continue;
+            }
+            if ($u === '(' || $u === '[') $depth++;
+            if ($u === ')' || $u === ']') $depth--;
+            if ($depth === 0 && ($u === ';' || $u === ',')) {
+                if (trim($buf) !== '') $out[] = trim($buf);
+                $buf = '';
+                if ($u === ';') break;
+                continue;
+            }
+            $buf .= $u;
+        }
+        if (trim($buf) !== '') $out[] = trim($buf);
+    }
+    return $out;
+}
+
+$offenders = []; $checked = 0;
+foreach (glob(APP_ROOT.'/views/*.php') as $view) {
+    foreach (printed_expressions((string)file_get_contents($view)) as $expr) {
+        $checked++;
+        foreach (printable_parts($expr) as $part) {
+            $part = trim($part);
+            if ($part === '') continue;
+            if (preg_match('/^([\x27"]).*\1$/s', $part)) continue;                       // a literal
+            if (preg_match('/^\$content$/', $part)) continue;                            // assembled, already escaped
+            if (preg_match('/^\(int\)/', $part)) continue;                               // cast to a number
+            if (preg_match('/^\$('.implode('|', $numericVars).')$/', $part)) continue;    // a counter
+            if (preg_match('/^([a-z_]+)\s*\(/i', $part, $fn) && in_array(strtolower($fn[1]), $escaping, true)) continue;
+            $offenders[] = basename($view).': '.preg_replace('/\s+/', ' ', mb_substr($part, 0, 70));
+        }
+    }
+}
+foreach (array_unique($offenders) as $o) ok(false, 'unescaped output — '.$o);
+ok(true, 'checked '.$checked.' printed expressions across '.count(glob(APP_ROOT.'/views/*.php')).' views');
