@@ -66,8 +66,29 @@ function local_time(string $v): ?DateTimeImmutable {
 }
 function fmt_date(?string $v): string { $d=$v!==null&&$v!==''?local_time($v):null; return $d ? $d->format(locale()==='de'?'d.m.Y':'d M Y') : '–'; }
 function fmt_datetime(?string $v): string { $d=$v!==null&&$v!==''?local_time($v):null; return $d ? $d->format(locale()==='de'?'d.m.Y, H:i':'d M Y, H:i') : '–'; }
-function setting(string $key, mixed $default=''): mixed { $v=scalar('SELECT setting_value FROM settings WHERE setting_key=?',[$key]); return $v===false?$default:json_decode($v,true); }
-function set_setting(string $key, mixed $value): void { run('INSERT INTO settings (setting_key,setting_value,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)',[$key,json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),now()]); }
+/** Per-request settings cache, shared by reference so it can be invalidated. */
+function &setting_cache(): array { static $cache=[]; return $cache; }
+/**
+ * Read an operator setting.
+ *
+ * With no stored row the declared default in app/defaults.php applies, so a key
+ * is never undefined and a new setting needs no migration. $default is still
+ * honoured for the few callers that pass one explicitly.
+ */
+function setting(string $key, mixed $default=null): mixed {
+    $cache=&setting_cache();
+    if(!array_key_exists($key,$cache)) {
+        $v=scalar('SELECT setting_value FROM settings WHERE setting_key=?',[$key]);
+        $cache[$key]=$v===false?null:json_decode((string)$v,true);
+    }
+    if($cache[$key]!==null) return $cache[$key];
+    if($default!==null) return $default;
+    return setting_default($key);
+}
+function set_setting(string $key, mixed $value): void {
+    run('INSERT INTO settings (setting_key,setting_value,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)',[$key,json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),now()]);
+    $cache=&setting_cache(); unset($cache[$key]);
+}
 function audit(string $action,string $type,?int $id=null): void { run('INSERT INTO audit_log (actor_id,action,entity_type,entity_id,created_at) VALUES (?,?,?,?,?)',[current_user()['id']??null,$action,$type,$id,now()]); }
 function seal(string $plain): string { $iv=random_bytes(12); $tag=''; $cipher=openssl_encrypt($plain,'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,$iv,$tag); if($cipher===false) throw new RuntimeException('Encryption failed'); return base64_encode($iv.$tag.$cipher); }
 function unseal(string $value): string { $b=base64_decode($value,true); if($b===false || strlen($b)<28) throw new RuntimeException('Invalid encrypted data'); $plain=openssl_decrypt(substr($b,28),'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,substr($b,0,12),substr($b,12,16)); if($plain===false) throw new RuntimeException('Cannot decrypt with this app key'); return $plain; }

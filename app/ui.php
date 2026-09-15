@@ -23,11 +23,20 @@ function start_form(string $action,array $hidden=[],string $class='form'): void 
     global $page;
     form_open($action,$hidden+['return_page'=>$page??'dashboard','return_id'=>(int)($_GET['id']??0),'return_tab'=>(string)($_GET['tab']??'')],$class);
 }
-function input(string $name,string $label,mixed $value='',string $type='text',bool $required=false,string $hint=''): void {
+/**
+ * A labelled form field.
+ *
+ * $placeholder is for compact rows where a visible label would crowd the
+ * layout; the label is still rendered for screen readers rather than dropped,
+ * because a bare box tells a sighted user nothing either.
+ */
+function input(string $name,string $label,mixed $value='',string $type='text',bool $required=false,string $hint='',string $placeholder=''): void {
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
-    echo '<div class="field"><label for="'.e($id).'">'.e($label).($required?' <span aria-hidden="true">*</span>':'').'</label>';
-    if($type==='textarea')echo '<textarea id="'.e($id).'" name="'.e($name).'" rows="5" '.($required?'required':'').'>'.e($value).'</textarea>';
-    else echo '<input id="'.e($id).'" name="'.e($name).'" type="'.e($type).'" value="'.e($value).'" '.($required?'required ':'').($type==='password'?'autocomplete="new-password" minlength="12" maxlength="72"':'').($type==='number'?' step="any"':'').'>';
+    $labelClass=$label===''?' class="visually-hidden"':'';
+    echo '<div class="field"><label'.$labelClass.' for="'.e($id).'">'.e($label!==''?$label:($placeholder!==''?$placeholder:$name)).($required?' <span aria-hidden="true">*</span>':'').'</label>';
+    $ph=$placeholder!==''?' placeholder="'.e($placeholder).'"':'';
+    if($type==='textarea')echo '<textarea id="'.e($id).'" name="'.e($name).'" rows="5"'.$ph.' '.($required?'required':'').'>'.e($value).'</textarea>';
+    else echo '<input id="'.e($id).'" name="'.e($name).'" type="'.e($type).'" value="'.e($value).'"'.$ph.' '.($required?'required ':'').($type==='password'?'autocomplete="new-password" minlength="12" maxlength="72"':'').($type==='number'?' step="any"':'').'>';
     if($hint)echo '<small>'.e($hint).'</small>';echo '</div>';
 }
 function select_field(string $name,string $label,array $options,mixed $value='',bool $required=false,bool $multiple=false): void {

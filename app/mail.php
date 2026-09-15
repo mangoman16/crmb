@@ -15,6 +15,28 @@ function notify_thread(array $account,int $threadId,string $subject): void {
 const MAIL_MAX_ATTEMPTS = 5;
 // Backoff per attempt number, in seconds: ~1min, 5min, 15min, 1h.
 const MAIL_BACKOFF = [60, 300, 900, 3600];
+/**
+ * Queue a payment reminder for the account that manages a student.
+ *
+ * Returns false when nothing was queued, so the caller can report how many
+ * parents will actually hear about it rather than implying every selected
+ * student produced an email.
+ */
+function notify_payment(array $account, array $student, int $amountCents, string $dueOn): bool {
+    if($account['state']!=='active' || !$account['verified_at'] || empty($account['payment_notices'])) return false;
+    $en=$account['locale']==='en';
+    $name=$student['first_name'].' '.$student['last_name'];
+    $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+        .($en?'There is an outstanding amount for ':'Für ').$name
+        .($en?' of ':' ist noch ein Betrag von ').money($amountCents)
+        .($en?', due ':' offen, fällig am ').fmt_date($dueOn).".\n\n"
+        .($en?'You can see the amount and the transfer details, including a QR code for your banking app, in the portal:'
+             :'Betrag und Bankverbindung samt QR-Code für die Bank-App findest du im Portal:')."\n"
+        .url('student',['id'=>$student['id'],'tab'=>'payments']);
+    queue_mail((int)$account['id'],$account['email'],
+        $en?'Outstanding badminton payment':'Offener Badminton-Beitrag',$body,'payments');
+    return true;
+}
 function process_mail(int $limit=25, float $budget=0.0): array {
     if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
     if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');
@@ -47,7 +69,8 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                     $eligible=$token && (int)$token['account_id']===(int)$a['id'] && ($token['target_email']??$a['email'])===$job['recipient'];
                 }
                 if($eligible && $job['category']!=='security') $eligible=$a['state']==='active' && $a['verified_at'] && $a['email']===$job['recipient'];
-                if($eligible && in_array($job['category'],['newsletter','notifications'],true)) $eligible=(bool)$a[$job['category']];
+                $switch=['newsletter'=>'newsletter','notifications'=>'notifications','payments'=>'payment_notices'][$job['category']]??null;
+                if($eligible && $switch!==null) $eligible=(bool)($a[$switch]??1);
                 if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='',retry_after=NULL WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}
                 $m=new \PHPMailer\PHPMailer\PHPMailer(true);
                 $m->isSMTP(); $m->Host=$s['host']; $m->Port=(int)$s['port'];
@@ -59,7 +82,7 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                 $m->Subject=$job['subject'];
                 $body=$plainBody; $en=$a['locale']==='en';
                 $body.="\n\n".($en?'This mailbox is not monitored. Please reply inside the app.':'Dieses Postfach wird nicht gelesen. Bitte antworte in der App.');
-                if(in_array($job['category'],['newsletter','notifications'],true)) {
+                if(in_array($job['category'],['newsletter','notifications','payments'],true)) {
                     $link=url('unsubscribe',['account'=>$a['id'],'category'=>$job['category'],'signature'=>unsubscribe_signature((int)$a['id'],$job['category'])]);
                     $body.="\n\n".($en?'Unsubscribe: ':'Abmelden: ').$link;
                     $m->addCustomHeader('List-Unsubscribe','<'.$link.'>');

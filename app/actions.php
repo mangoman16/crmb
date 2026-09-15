@@ -50,6 +50,7 @@ function dispatch_action(string $action): array {
             record_consent((int)$r['account_id'],'privacy_acknowledged',true);
             record_consent((int)$r['account_id'],'newsletter',(bool)post('newsletter'));
             record_consent((int)$r['account_id'],'notifications',(bool)post('notifications'));
+            record_consent((int)$r['account_id'],'payment_notices',true);
         } elseif($r['purpose']==='reset') {
             if($r['state']!=='active') throw new UserError('Invalid account');
             $pass=strong_password(post('password'));
@@ -70,14 +71,13 @@ function dispatch_action(string $action): array {
         $id=(int)post('account');$category=post('category');
         if(!valid_unsubscribe($id,$category,post('signature'))) throw new UserError(t('Ungültiger Abmeldelink.','Invalid unsubscribe link.'));
         if(one('SELECT id FROM accounts WHERE id=?',[$id])) {
-            $column=['newsletter'=>'newsletter','notifications'=>'notifications'][$category] ?? throw new UserError(t('Ungültiger Abmeldelink.','Invalid unsubscribe link.'));
+            $column=unsubscribe_categories()[$category] ?? throw new UserError(t('Ungültiger Abmeldelink.','Invalid unsubscribe link.'));
             run('UPDATE accounts SET '.$column.'=0 WHERE id=?',[$id]); record_consent($id,$category,false);
             run("UPDATE mail_jobs SET status='cancelled',payload='' WHERE account_id=? AND category=? AND status IN ('queued','failed')",[$id,$category]);
         }
         flash(t('Du wurdest für diese E-Mails abgemeldet.','You have unsubscribed from these emails.')); return ['login',[]];
     case 'account_invite':
-        $u=require_staff(); $role=choose(post('role','student'),['student','manager','admin']);
-        if($u['role']!=='admin' && $role!=='student') throw new UserError('Access denied');
+        $u=require_staff(); $role=choose(post('role','student'),assignable_roles($u));
         $email=email_value(required_text('email',254));
         run('INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,?,?,?)',[required_text('name'),$email,$role,choose(post('locale','de'),['de','en']),now()]);
         $id=(int)db()->lastInsertId();
@@ -171,5 +171,5 @@ function dispatch_action(string $action): array {
         else run('UPDATE payments SET voided=1 WHERE id=?',[$p['id']]);
         audit('payment.'.$mode,'payment',(int)$p['id']);return ['student',['id'=>$p['student_id'],'tab'=>'payments']];
     }
-    return dispatch_settings_or_messages($action);
+    return dispatch_config($action);
 }

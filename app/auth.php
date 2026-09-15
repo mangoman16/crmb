@@ -14,7 +14,33 @@ function current_user(bool $reload=false): ?array {
     }
     $_SESSION['last_seen']=time(); return $cached=$a;
 }
-function is_staff(?array $a=null): bool { $a??=current_user(); return $a && in_array($a['role'],['admin','manager'],true); }
+// Staff = admin or trainer. "manager" is the pre-0.2 name for trainer; it is
+// accepted on read so a half-applied migration cannot lock anyone out.
+function is_staff(?array $a=null): bool { $a??=current_user(); return $a && in_array($a['role'],['admin','trainer','manager'],true); }
+function is_admin(?array $a=null): bool { $a??=current_user(); return $a && $a['role']==='admin'; }
+function role_label(string $role): string {
+    return match($role) {
+        'admin'   => t('Administrator','Administrator'),
+        'trainer','manager' => t('Trainerin','Trainer'),
+        default   => t('Schülerkonto','Student account'),
+    };
+}
+/** Roles that may be granted, and who may grant them. Admin only for the first two. */
+function assignable_roles(array $actor): array {
+    return is_admin($actor) ? ['student','trainer','admin'] : ['student'];
+}
+/** Record activity for the online indicator, at most once a minute per account. */
+function touch_last_seen(array $user): void {
+    if(time()-(int)($_SESSION['seen_written']??0) < 60) return;
+    $_SESSION['seen_written']=time();
+    // Written on the counter connection: an action that rolls back should not
+    // also undo the fact that the person was here.
+    run_counter('UPDATE accounts SET last_seen_at=? WHERE id=?',[now(),$user['id']]);
+}
+function is_online(?string $lastSeen): bool {
+    if($lastSeen===null || $lastSeen==='') return false;
+    return (strtotime($lastSeen.' UTC') ?: 0) > time()-((int)setting('online_window_minutes'))*60;
+}
 function require_user(): array { $a=current_user(); if(!$a) go('login'); return $a; }
 function require_staff(): array { $a=require_user(); if(!is_staff($a)) throw new UserError(t('Kein Zugriff.','Access denied.')); return $a; }
 function require_admin(): array { $a=require_user(); if($a['role']!=='admin') throw new UserError(t('Nur für Administratoren.','Administrators only.')); return $a; }
@@ -51,5 +77,6 @@ function send_account_token(array $account,string $purpose,?string $email=null):
     queue_mail((int)$account['id'],$email??$account['email'],$subjects[$purpose],$body,'security');
 }
 function unsubscribe_signature(int $id,string $category): string { return hash_hmac('sha256',$id.'|'.$category,base64_decode(config('app_key'))); }
-function valid_unsubscribe(int $id,string $category,string $signature): bool { return in_array($category,['newsletter','notifications'],true) && hash_equals(unsubscribe_signature($id,$category),$signature); }
+function unsubscribe_categories(): array { return ['newsletter'=>'newsletter','notifications'=>'notifications','payments'=>'payment_notices']; }
+function valid_unsubscribe(int $id,string $category,string $signature): bool { return isset(unsubscribe_categories()[$category]) && hash_equals(unsubscribe_signature($id,$category),$signature); }
 function record_consent(int $id,string $purpose,bool $enabled): void { run('INSERT INTO consent_log (account_id,purpose,enabled,notice_version,created_at) VALUES (?,?,?,?,?)',[$id,$purpose,$enabled?1:0,notice_version(),now()]); }

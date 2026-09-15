@@ -3,9 +3,14 @@ $id=(int)($_GET['id']??0);$staff=is_staff($user);if(!$id)require_staff();
 $defaultTariff=setting('default_tariff',null);
 $s=$id?student($id):['id'=>0,'first_name'=>'','last_name'=>'','birth_date'=>'','joined_on'=>today(),'ended_on'=>'','status'=>setting('default_status','active'),'account_id'=>null,'tariff_id'=>$defaultTariff,'price_cents'=>null,'price_note'=>'','internal_notes'=>''];
 $tab=(string)($_GET['tab']??'details');
-if(!in_array($tab,['details','contacts','payments','absence'],true))$tab='details';
+$tabsAllowed=$staff?['details','contacts','payments','absence','skills','classes']:['details','contacts','payments','absence'];
+if(!in_array($tab,$tabsAllowed,true))$tab='details';
 page_head($id?$s['first_name'].' '.$s['last_name']:t('Neuen Schüler anlegen','Add a student'),$id?status_label($s['status']):'',link_button(t('Alle Schüler','All students'),'students',[],'secondary'));
-if($id)tabs(['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),'absence'=>t('Abwesenheit','Absences')],$tab,'student',['id'=>$id]);
+if($id){
+    $tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),'absence'=>t('Abwesenheit','Absences')];
+    if($staff){$tabLabels['skills']=t('Leistung','Performance');$tabLabels['classes']=t('Kurse','Classes');}
+    tabs($tabLabels,$tab,'student',['id'=>$id]);
+}
 if($tab==='details' || !$id): ?>
 <?php start_form('student_save',['id'=>$id,'revision'=>$s['revision']??0],'form'); ?>
 <section class="card"><h2><?=e(t('Persönliche Daten','Personal details'))?></h2><div class="grid two"><?php input('first_name',t('Vorname','First name'),$s['first_name'],'text',true);input('last_name',t('Nachname','Last name'),$s['last_name'],'text',true);input('birth_date',t('Geburtsdatum','Date of birth'),$s['birth_date'],'date');if($staff)select_field('account_id',t('Zugeordnetes Konto','Linked account'),array_column(rows("SELECT id,CONCAT(name,' · ',email) AS label FROM accounts WHERE role='student' ORDER BY name"),'label','id'),$s['account_id']);?></div></section>
@@ -29,11 +34,45 @@ endforeach ?></div></section><?php endif ?>
 <?php elseif($tab==='absence'): ?>
 <section class="card"><h2><?=e(t('Abwesenheiten','Absences'))?></h2><?php $list=rows('SELECT * FROM absences WHERE student_id=? ORDER BY starts_on DESC',[$id]);if(!$list)echo '<p class="muted">'.e(t('Keine Abwesenheiten eingetragen.','No absences recorded.')).'</p>';foreach($list as $a):?><div class="record-row"><div><strong><?=e(reason_label($a['reason']))?></strong><p><?=e(fmt_date($a['starts_on']).' – '.fmt_date($a['ends_on']))?></p></div><?php start_form('absence_delete',['student_id'=>$id,'id'=>$a['id']],'inline-form');submit_button(t('Entfernen','Remove'),'subtle danger-text');?></form></div><?php endforeach ?></section>
 <section class="card"><h2><?=e(t('Abwesenheit melden','Report absence'))?></h2><?php start_form('absence_add',['student_id'=>$id]);?><div class="grid three"><?php select_field('reason',t('Grund','Reason'),array_combine(array_keys(reasons()),array_map('reason_label',array_keys(reasons()))),'',true);input('starts_on',t('Von','From'),today(),'date',true);input('ends_on',t('Bis einschließlich','Up to and including'),today(),'date',true);?></div><?php submit_button(t('Abwesenheit eintragen','Record absence'));?></form></section>
+<?php elseif($tab==='skills'): require ROOT.'/views/_student_skills.php'; ?>
+<?php elseif($tab==='classes'): $mine=student_classes($id); ?>
+<section class="card"><h2><?=e(t('Kurse dieses Schülers','This student\u2019s classes'))?></h2>
+<?php if(!$mine)echo '<p class="muted">'.e(t('Noch keinem Kurs zugeordnet.','Not in any class yet.')).'</p>';
+foreach($mine as $row):?><div class="record-row<?=$row['left_on']!==null?' is-past':''?>"><div><strong><a href="<?=e(url('classes',['id'=>$row['id']]))?>"><?=e($row['name'])?></a></strong><p><?=e(class_schedule($row))?></p><small><?=e($row['left_on']!==null?t('Ausgetreten am ','Left on ').fmt_date($row['left_on']):t('Dabei seit ','Member since ').fmt_date($row['joined_on']))?></small></div>
+<?php if($row['left_on']===null){start_form('class_member_remove',['class_id'=>$row['id'],'student_id'=>$id,'mode'=>'leave'],'inline-form');submit_button(t('Austritt eintragen','Record leaving'),'subtle');echo '</form>';}?></div><?php endforeach ?></section>
+<?php $joined=array_column(array_filter($mine,fn($r)=>$r['left_on']===null),'id');$open=array_filter(training_classes(),fn($c)=>!in_array($c['id'],$joined));
+if($open):?><section class="card"><h2><?=e(t('Zu einem Kurs hinzufügen','Add to a class'))?></h2><?php start_form('class_member_add',['student_id'=>$id]);?><div class="grid two"><?php
+select_field('class_id',t('Kurs','Class'),array_column($open,'name','id'),'',true);
+input('joined_on',t('Dabei seit','Member since'),today(),'date');?></div><?php submit_button(t('Hinzufügen','Add'));?></form></section><?php endif ?>
 <?php elseif($tab==='payments'): ?>
 <div class="stats-grid compact"><div class="stat"><span><?=e(t('Offen','Outstanding'))?></span><strong><?=e(money(balance($id)))?></strong></div><div class="stat"><span><?=e(t('Überfällig','Overdue'))?></span><strong class="due"><?=e(money(balance($id,true)))?></strong></div></div>
 <?php $charges=student_charges($id);if(!$charges)echo '<div class="card"><p class="muted">'.e(t('Noch keine Beiträge erfasst.','No charges recorded yet.')).'</p></div>';foreach($charges as $c):$remaining=max(0,(int)$c['amount_cents']-(int)$c['paid']); ?>
 <section class="card charge-card"><div class="section-heading"><div><h2><?=e($c['label'])?></h2><p class="muted"><?=e(t('Fällig am ','Due ').fmt_date($c['due_on']))?></p></div><?php badge($c['cancelled']?t('Storniert','Cancelled'):($remaining===0?t('Bezahlt','Paid'):money($remaining).' '.t('offen','outstanding')),$c['cancelled']?'':($remaining===0?'green':($c['due_on']<today()?'red':'')));?></div>
 <dl class="facts"><div><dt><?=e(t('Beitrag','Charge'))?></dt><dd><?=e(money((int)$c['amount_cents']))?></dd></div><div><dt><?=e(t('Zeitraum','Coverage period'))?></dt><dd><?=e($c['period_from']?fmt_date($c['period_from']).' – '.fmt_date($c['period_to']):t('Einmalig / ohne Zeitraum','One-time / no period'))?></dd></div></dl>
+<?php
+// Transfer details for whatever is still open on this charge.
+if($remaining>0 && !$c['cancelled'] && setting('show_payment_qr')):
+    $profile=charge_payment_profile($c);
+    if($profile && $profile['iban']!==''):
+        $reference=charge_reference($c,$s);
+        $payload=qr_payload($profile,$remaining,$reference);
+?>
+<div class="pay-box">
+    <div class="pay-qr"><?=$payload!==''?qr_svg($payload,200):''?></div>
+    <div class="pay-details">
+        <h3><?=e(t('Offenen Betrag überweisen','Transfer the outstanding amount'))?></h3>
+        <p class="muted"><?=e(t('Mit der Bank-App den Code scannen – Betrag und Verwendungszweck werden übernommen.','Scan the code with your banking app and the amount and reference are filled in for you.'))?></p>
+        <dl class="facts">
+            <div><dt><?=e(t('Betrag','Amount'))?></dt><dd><?=e(money($remaining))?></dd></div>
+            <div><dt><?=e(t('Empfänger','Recipient'))?></dt><dd><?=e($profile['recipient']!==''?$profile['recipient']:$profile['name'])?></dd></div>
+            <div><dt>IBAN</dt><dd class="mono"><?=e(trim(chunk_split($profile['iban'],4,' ')))?></dd></div>
+            <?php if($profile['bic']):?><div><dt>BIC</dt><dd class="mono"><?=e($profile['bic'])?></dd></div><?php endif ?>
+            <div><dt><?=e(t('Verwendungszweck','Reference'))?></dt><dd><?=e($reference)?></dd></div>
+        </dl>
+        <?php if($profile['note'])echo '<p class="muted">'.e($profile['note']).'</p>';?>
+    </div>
+</div>
+<?php endif; endif ?>
 <?php $payments=rows('SELECT p.*,a.name AS confirmer FROM payments p LEFT JOIN accounts a ON a.id=p.confirmed_by WHERE charge_id=? ORDER BY paid_on DESC',[$c['id']]);$allocated=0;foreach($payments as $p):if(!$p['voided'])$allocated+=(int)$p['amount_cents'];?><div class="record-row"><div><strong><?=e(money((int)$p['amount_cents']))?></strong><p><?=e(fmt_date($p['paid_on']).' · '.$p['method'])?></p><?php badge($p['voided']?t('Storniert','Voided'):($p['confirmed_at']?t('Bestätigt','Confirmed'):t('Unbestätigt','Unconfirmed')),$p['confirmed_at']&&!$p['voided']?'green':'');if($p['note'])echo '<p>'.e($p['note']).'</p>';if($staff&&$p['confirmed_at'])echo '<small>'.e(t('Bestätigt von ','Confirmed by ').($p['confirmer']??t('gelöschtem Konto','deleted account')).' · '.fmt_datetime($p['confirmed_at'])).'</small>';?></div>
 <?php if($staff&&!$p['voided']):?><div class="row-actions"><?php if(!$p['confirmed_at']){start_form('payment_state',['id'=>$p['id'],'mode'=>'confirm'],'inline-form');submit_button(t('Bestätigen','Confirm'),'secondary');echo '</form>';}start_form('payment_state',['id'=>$p['id'],'mode'=>'void'],'inline-form');submit_button(t('Stornieren','Void'),'subtle danger-text');?></form></div><?php endif ?></div><?php endforeach ?>
 <?php if($staff&&!$c['cancelled']):?>

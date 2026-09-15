@@ -6,7 +6,17 @@ if(PHP_SAPI!=='cli'){http_response_code(404);exit;}
 $command=$argv[1]??'help';
 if($command==='key'){echo base64_encode(random_bytes(32)).PHP_EOL;exit;}
 if($command==='help'){
-    echo "Badminton CRM\n\nphp bin/console.php key\nphp bin/console.php migrate\nphp bin/console.php create-admin\nphp bin/console.php mail:work [limit]\nphp bin/console.php maintenance\nphp bin/console.php maintenance:on\nphp bin/console.php maintenance:off\nphp bin/console.php check\nphp bin/console.php version\n";exit;
+    echo "Badminton CRM\n\n"
+        ."php bin/console.php update            One-step upgrade: maintenance on, migrate, maintenance off\n"
+        ."php bin/console.php key\n"
+        ."php bin/console.php migrate\n"
+        ."php bin/console.php create-admin\n"
+        ."php bin/console.php mail:work [limit]\n"
+        ."php bin/console.php maintenance       Prune expired tokens and temporary records\n"
+        ."php bin/console.php maintenance:on\n"
+        ."php bin/console.php maintenance:off\n"
+        ."php bin/console.php check\n"
+        ."php bin/console.php version\n";exit;
 }
 try{
     require __DIR__.'/../app/bootstrap.php';
@@ -43,8 +53,42 @@ try{
         }finally{run("SELECT RELEASE_LOCK('badminton_crm_migrate')");}
         echo "Database is up to date.\n";exit;
     }
+    if($command==='update'){
+        // Deliberately sequential and loud: each step prints before it runs, so a
+        // failure says exactly how far the upgrade got.
+        $already=is_file(maintenance_file());
+        echo $already?"Maintenance mode was already on; leaving it on at the end.\n":"1/4 Switching maintenance mode on\n";
+        if(!$already && file_put_contents(maintenance_file(),now().PHP_EOL)===false)
+            throw new RuntimeException('Cannot write '.maintenance_file().'. Check that the directory is writable.');
+        try{
+            echo "2/4 Applying migrations\n";
+            $before=[]; $after=[];
+            foreach(['accounts','students','charges','payments','messages'] as $table)
+                $before[$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
+            passthru(escapeshellarg(PHP_BINARY).' '.escapeshellarg(__FILE__).' migrate',$code);
+            if($code!==0) throw new RuntimeException('Migration failed; maintenance mode stays on so nobody sees a half-migrated portal.');
+            echo "3/4 Verifying record counts\n";
+            foreach($before as $table=>$n) {
+                $after[$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
+                printf("    %-10s %d -> %d%s\n",$table,$n,$after[$table],$after[$table]<$n?'  *** ROWS LOST ***':'');
+            }
+            $lost=array_filter($after,fn($n,$t)=>$n<$before[$t],ARRAY_FILTER_USE_BOTH);
+            if($lost) throw new RuntimeException('Row counts dropped; maintenance mode stays on. Restore a backup before continuing.');
+        }catch(Throwable $e){
+            fwrite(STDERR,"\nUpgrade stopped: ".$e->getMessage()."\n");
+            fwrite(STDERR,"The portal stays in maintenance mode. Fix the cause, then run this again.\n");
+            exit(1);
+        }
+        if($already) { echo "4/4 Done. Maintenance mode left on, as it was before.\n"; exit; }
+        echo "4/4 Switching maintenance mode off\n";
+        if(is_file(maintenance_file())&&!unlink(maintenance_file()))throw new RuntimeException('Cannot remove '.maintenance_file().'; the portal is still closed.');
+        echo "Update complete.\n";exit;
+    }
     if($command==='create-admin'){
-        if((int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'")>0)throw new RuntimeException('An administrator already exists. Invite additional accounts in the app.');
+        // A second administrator can be created deliberately with --force; without
+        // it the guard stays, so a stray run cannot quietly add one.
+        if((int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'")>0 && ($argv[2]??'')!=='--force')
+            throw new RuntimeException("An administrator already exists. Invite further accounts in the app, or pass --force to create another from the command line.");
         function ask(string $label,bool $secret=false):string{
             static $tty=null;$tty??=stream_isatty(STDIN);fwrite(STDOUT,$label.': ');
             if($secret&&$tty)shell_exec('stty -echo');
