@@ -1,0 +1,60 @@
+<?php
+declare(strict_types=1);
+
+class UserError extends RuntimeException {}
+function config(string $key): mixed { global $config; return $config[$key] ?? null; }
+function db(): PDO {
+    static $pdo;
+    if (!$pdo) {
+        $c = config('db');
+        $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};dbname={$c['database']};charset=utf8mb4", $c['username'], $c['password'], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false]);
+        $pdo->exec("SET time_zone = '+00:00'");
+    }
+    return $pdo;
+}
+function run(string $sql, array $params=[]): PDOStatement { $s=db()->prepare($sql); $s->execute($params); return $s; }
+function rows(string $sql, array $params=[]): array { return run($sql,$params)->fetchAll(); }
+function one(string $sql, array $params=[]): ?array { return run($sql,$params)->fetch() ?: null; }
+function scalar(string $sql, array $params=[]): mixed { return run($sql,$params)->fetchColumn(); }
+function now(): string { return gmdate('Y-m-d H:i:s'); }
+function today(): string { return date('Y-m-d'); }
+function locale(): string { return $_SESSION['locale'] ?? 'de'; }
+function t(string $de, string $en): string { return locale()==='en' ? $en : $de; }
+function e(mixed $value): string { return htmlspecialchars((string)($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+function url(string $page='', array $params=[]): string { return rtrim(config('app_url'),'/') . '/index.php' . ($page ? '?' . http_build_query(['page'=>$page]+$params) : ''); }
+function go(string $page, array $params=[]): never { header('Location: '.url($page,$params),true,303); exit; }
+function flash(string $message, string $kind='success'): void { $_SESSION['flash']=['message'=>$message,'kind'=>$kind]; }
+function csrf(): string { return $_SESSION['csrf'] ??= bin2hex(random_bytes(32)); }
+function form_open(string $action, array $hidden=[], string $class=''): void {
+    echo '<form method="post" action="'.e(url()).'" class="'.e($class).'">';
+    foreach (['action'=>$action,'csrf'=>csrf(),'request_id'=>bin2hex(random_bytes(32))]+$hidden as $k=>$v) echo '<input type="hidden" name="'.e($k).'" value="'.e($v).'">';
+}
+function post(string $key, string $default=''): string { $v=$_POST[$key]??$default; if(!is_scalar($v)) throw new UserError(t('Ungültige Eingabe.','Invalid input.')); return trim((string)$v); }
+function required_text(string $key, int $max=160): string { $v=post($key); if($v==='' || mb_strlen($v)>$max) throw new UserError(t('Bitte alle Pflichtfelder korrekt ausfüllen.','Please complete all required fields correctly.')); return $v; }
+function text_limit(string $key, int $max=255): string { $v=post($key); if(mb_strlen($v)>$max) throw new UserError(t('Die Eingabe ist zu lang.','Input is too long.')); return $v; }
+function date_value(string $value, bool $required=false): ?string {
+    if($value==='' && !$required) return null;
+    $d=DateTimeImmutable::createFromFormat('!Y-m-d',$value);
+    if(!$d || $d->format('Y-m-d')!==$value) throw new UserError(t('Bitte ein gültiges Datum eingeben.','Please enter a valid date.'));
+    return $value;
+}
+function date_range(?string $from, ?string $to): void { if($from && $to && $from>$to) throw new UserError(t('Das Enddatum liegt vor dem Startdatum.','The end date is before the start date.')); }
+function cents(string $v, bool $zero=true): int {
+    $v=str_replace(',','.',trim($v));
+    if(!preg_match('/^\d{1,7}(?:\.\d{1,2})?$/D',$v)) throw new UserError(t('Betrag ohne Tausendertrennzeichen eingeben, z. B. 45,50.','Enter an amount without thousands separators, e.g. 45.50.'));
+    [$a,$b]=array_pad(explode('.',$v),2,'0'); $n=(int)$a*100+(int)str_pad($b,2,'0');
+    if(!$zero && $n===0) throw new UserError(t('Der Betrag muss größer als null sein.','The amount must be greater than zero.'));
+    return $n;
+}
+function money(?int $v): string { return number_format(($v??0)/100,2,locale()==='de'?',':'.',locale()==='de'?'.':',').' €'; }
+function amount_input(?int $v): string { return $v===null ? '' : number_format($v/100,2,'.',''); }
+function fmt_date(?string $v): string { return $v ? date(locale()==='de'?'d.m.Y':'d M Y',strtotime($v)) : '–'; }
+function setting(string $key, mixed $default=''): mixed { $v=scalar('SELECT setting_value FROM settings WHERE setting_key=?',[$key]); return $v===false?$default:json_decode($v,true); }
+function set_setting(string $key, mixed $value): void { run('INSERT INTO settings (setting_key,setting_value,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)',[$key,json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),now()]); }
+function audit(string $action,string $type,?int $id=null): void { run('INSERT INTO audit_log (actor_id,action,entity_type,entity_id,created_at) VALUES (?,?,?,?,?)',[current_user()['id']??null,$action,$type,$id,now()]); }
+function seal(string $plain): string { $iv=random_bytes(12); $tag=''; $cipher=openssl_encrypt($plain,'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,$iv,$tag); if($cipher===false) throw new RuntimeException('Encryption failed'); return base64_encode($iv.$tag.$cipher); }
+function unseal(string $value): string { $b=base64_decode($value,true); if($b===false || strlen($b)<28) throw new RuntimeException('Invalid encrypted data'); $plain=openssl_decrypt(substr($b,28),'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,substr($b,0,12),substr($b,12,16)); if($plain===false) throw new RuntimeException('Cannot decrypt with this app key'); return $plain; }
+function email_value(string $value): string { $v=mb_strtolower(trim($value)); if(!filter_var($v,FILTER_VALIDATE_EMAIL) || strlen($v)>254) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.')); return $v; }
+function choose(string $value,array $allowed): string { if(!in_array($value,$allowed,true)) throw new UserError(t('Ungültige Auswahl.','Invalid choice.')); return $value; }
+function notice_version(): string { return substr(hash('sha256',setting('privacy_de','').setting('privacy_en','')),0,16); }
+function maintenance_file(): string { return config('maintenance_file') ?: ROOT.'/storage/maintenance.flag'; }

@@ -1,0 +1,33 @@
+DRAFT – complete before use
+
+1. Controller
+[Full name / organisation, address, email address and, if applicable, privacy contact]
+
+2. Purposes
+We use information in the badminton portal to organise training, manage memberships and payments, and communicate with students and their contact people. An invited account may be linked to several students. Its account holder can view those students’ information and edit the fields made available to them.
+
+3. Information processed
+The portal processes account details, student names, optional dates of birth, contact people and their phone numbers or email addresses, membership and tariff information, charges, payments, optional absence reports, messages and additional information explicitly requested in custom fields. Passwords are stored as hashes. SMTP passwords and queued email contents are encrypted in the application database.
+[List the custom fields in actual use and explain the purposes and necessity for each category. Establish an applicable Article 9 GDPR condition for sickness information and a procedure for minors; do not request diagnoses. Alternatively record general absences only.]
+
+4. Legal bases
+[Review and identify the applicable Article 6(1)(b) GDPR contractual basis for training and membership, any specific legal duties under (c), and legitimate interests under (f), where actually applicable. Establish additional conditions for special-category information.]
+Newsletters are emailed only to accounts that enable the newsletter subscription. Subscribing is optional and can be withdrawn in account settings or using the unsubscribe link. Withdrawal does not affect the lawfulness of earlier processing based on consent. Email notifications for private messages have a separate preference. Security emails such as invitations and password links provide account access.
+
+5. Recipients and services
+The training management team and the account holder linked to a student can access information according to their permissions. Other student accounts cannot access it.
+[Specify the hosting provider, processing location, SMTP provider, processors, and any international transfers and applicable safeguards.]
+
+6. Retention and deletion
+[Set specific retention periods or clear criteria for membership details, absences, messages, email logs, consent records, security logs and payment records. Account for applicable statutory retention duties.]
+Deleting an account removes the login and its private conversations. Linked students and payment records remain for separate handling. Suspending an account prevents access without deleting student information.
+
+7. Necessary technical information
+The portal uses a necessary session cookie for sign-in, language and form protection. It does not load external fonts, analytics or advertising services. Temporary technical records limit login attempts and prevent duplicate form submissions.
+[Describe actual web-server logging, scope, purpose and retention.]
+
+8. Your rights
+Subject to the legal conditions, you may have rights of access, rectification, erasure, restriction and data portability. A right to object may apply where processing relies on legitimate interests. Consent may be withdrawn for future processing. Contact the controller listed above to make a request. You may complain to the Austrian Data Protection Authority: https://www.dsb.gv.at/.
+[Specify required versus optional information, the consequences of not providing it, and any information about automated decisions where applicable.]
+
+Last updated: [Date]

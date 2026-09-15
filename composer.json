@@ -1,0 +1,14 @@
+{
+  "name": "farsam/badminton-crm",
+  "description": "Self-hosted badminton student management",
+  "type": "project",
+  "require": {
+    "php": ">=8.2",
+    "ext-pdo": "*",
+    "ext-pdo_mysql": "*",
+    "ext-mbstring": "*",
+    "ext-openssl": "*",
+    "phpmailer/phpmailer": "^7.0"
+  },
+  "config": {"sort-packages": true, "allow-plugins": {}}
+}

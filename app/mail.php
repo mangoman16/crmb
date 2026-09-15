@@ -1,0 +1,70 @@
+<?php
+declare(strict_types=1);
+
+function queue_mail(?int $accountId,string $recipient,string $subject,string $body,string $category): void {
+    email_value($recipient);
+    if(preg_match('/[\r\n]/',$subject) || mb_strlen($subject)>255) throw new UserError(t('Ungültiger Betreff.','Invalid subject.'));
+    run('INSERT INTO mail_jobs (account_id,recipient,subject,payload,category,created_at) VALUES (?,?,?,?,?,?)',[$accountId,$recipient,$subject,seal($body),$category,now()]);
+}
+function cancel_account_mail(int $id): void { run("UPDATE mail_jobs SET status='cancelled',payload='',error=NULL WHERE account_id=? AND status IN ('queued','failed')",[$id]); }
+function notify_thread(array $account,int $threadId,string $subject): void {
+    if($account['state']!=='active' || !$account['verified_at'] || !$account['notifications']) return;
+    $en=$account['locale']==='en';
+    queue_mail((int)$account['id'],$account['email'],$en?'New message in your badminton portal':'Neue Nachricht im Badminton-Portal',($en?'A new message is waiting for you. Open your conversation:':'Du hast eine neue Nachricht. Öffne deine Unterhaltung:')."\n".url('messages',['id'=>$threadId]),'notifications');
+}
+function process_mail(int $limit=25): array {
+    if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
+    if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');
+    // An advisory database lock works across cron processes and hosts.
+    if((int)scalar("SELECT GET_LOCK('badminton_crm_mail',0)")!==1) return ['sent'=>0,'failed'=>0,'skipped'=>0];
+    $count=['sent'=>0,'failed'=>0,'skipped'=>0];
+    try {
+        $s=setting('smtp',[]);
+        if(empty($s['host']) || empty($s['from_email'])) throw new UserError(t('SMTP ist noch nicht eingerichtet.','SMTP is not configured yet.'));
+        foreach(rows("SELECT id FROM mail_jobs WHERE status='queued' ORDER BY id LIMIT ".max(1,min(100,$limit))) as $r) {
+            db()->beginTransaction();
+            try {
+                $job=one('SELECT * FROM mail_jobs WHERE id=? FOR UPDATE',[$r['id']]);
+                if(!$job || $job['status']!=='queued') {db()->commit();continue;}
+                // Hold the account lock during send: suspension/deletion cannot race this check.
+                $a=$job['account_id']?one('SELECT * FROM accounts WHERE id=? FOR UPDATE',[$job['account_id']]):null;
+                $eligible=$a && $a['state']!=='suspended';
+                $plainBody=$job['payload']!==''?unseal($job['payload']):'';
+                if($eligible && $job['category']==='security') {
+                    preg_match('/[?&]token=([a-f0-9]{64})\b/',$plainBody,$match);
+                    $token=isset($match[1])?token_record(hash('sha256',$match[1])):null;
+                    $eligible=$token && (int)$token['account_id']===(int)$a['id'] && ($token['target_email']??$a['email'])===$job['recipient'];
+                }
+                if($eligible && $job['category']!=='security') $eligible=$a['state']==='active' && $a['verified_at'] && $a['email']===$job['recipient'];
+                if($eligible && in_array($job['category'],['newsletter','notifications'],true)) $eligible=(bool)$a[$job['category']];
+                if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='' WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}
+                $m=new \PHPMailer\PHPMailer\PHPMailer(true);
+                $m->isSMTP(); $m->Host=$s['host']; $m->Port=(int)$s['port'];
+                $m->SMTPAuth=($s['username']??'')!==''; $m->Username=$s['username']??'';
+                $m->Password=empty($s['password'])?'':unseal($s['password']);
+                $m->SMTPSecure=$s['encryption']==='tls'?\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS:\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+                $m->Timeout=15; $m->SMTPDebug=0; $m->CharSet='UTF-8';
+                $m->setFrom($s['from_email'],$s['from_name']); $m->addAddress($job['recipient']);
+                $m->Subject=$job['subject'];
+                $body=$plainBody; $en=$a['locale']==='en';
+                $body.="\n\n".($en?'This mailbox is not monitored. Please reply inside the app.':'Dieses Postfach wird nicht gelesen. Bitte antworte in der App.');
+                if(in_array($job['category'],['newsletter','notifications'],true)) {
+                    $link=url('unsubscribe',['account'=>$a['id'],'category'=>$job['category'],'signature'=>unsubscribe_signature((int)$a['id'],$job['category'])]);
+                    $body.="\n\n".($en?'Unsubscribe: ':'Abmelden: ').$link;
+                    $m->addCustomHeader('List-Unsubscribe','<'.$link.'>');
+                }
+                $m->Body=$body; $m->isHTML(false); $m->send();
+                run("UPDATE mail_jobs SET status='sent',sent_at=?,attempts=attempts+1,error=NULL,payload=IF(category='security','',payload) WHERE id=?",[now(),$job['id']]);
+                db()->commit(); $count['sent']++;
+            } catch(Throwable $ex) {
+                if(db()->inTransaction()) db()->rollBack();
+                $message=mb_substr($ex->getMessage(),0,1000);
+                if(!empty($s['password'])) $message=str_replace(unseal($s['password']),'[redacted]',$message);
+                run("UPDATE mail_jobs SET status='failed',attempts=attempts+1,error=? WHERE id=?",[$message,$r['id']]);
+                $count['failed']++;
+            }
+        }
+        set_setting('mail_last_run',now());
+    } finally { run("SELECT RELEASE_LOCK('badminton_crm_mail')"); }
+    return $count;
+}
