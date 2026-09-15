@@ -59,7 +59,7 @@ function process_mail(int $limit=25): array {
             } catch(Throwable $ex) {
                 if(db()->inTransaction()) db()->rollBack();
                 $message=mb_substr($ex->getMessage(),0,1000);
-                if(!empty($s['password'])) $message=str_replace(unseal($s['password']),'[redacted]',$message);
+                if(!empty($s['password'])) { try { $message=str_replace(unseal($s['password']),'[redacted]',$message); } catch(Throwable) { $message='[redacted]'; } }
                 run("UPDATE mail_jobs SET status='failed',attempts=attempts+1,error=? WHERE id=?",[$message,$r['id']]);
                 $count['failed']++;
             }

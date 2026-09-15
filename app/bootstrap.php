@@ -36,6 +36,9 @@ if (PHP_SAPI !== 'cli') {
     header('Referrer-Policy: no-referrer');
     header('Cache-Control: no-store');
     header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+    header('Cross-Origin-Opener-Policy: same-origin');
+    header('Cross-Origin-Resource-Policy: same-origin');
+    header('X-Permitted-Cross-Domain-Policies: none');
     if ($config['secure_cookies']) { header('Strict-Transport-Security: max-age=31536000'); }
     if (isset($_GET['lang']) && in_array($_GET['lang'], ['de','en'], true)) { $_SESSION['locale'] = $_GET['lang']; }
 }

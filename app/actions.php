@@ -70,7 +70,8 @@ function dispatch_action(string $action): array {
         $id=(int)post('account');$category=post('category');
         if(!valid_unsubscribe($id,$category,post('signature'))) throw new UserError(t('Ungültiger Abmeldelink.','Invalid unsubscribe link.'));
         if(one('SELECT id FROM accounts WHERE id=?',[$id])) {
-            run('UPDATE accounts SET '.$category.'=0 WHERE id=?',[$id]); record_consent($id,$category,false);
+            $column=['newsletter'=>'newsletter','notifications'=>'notifications'][$category] ?? throw new UserError(t('Ungültiger Abmeldelink.','Invalid unsubscribe link.'));
+            run('UPDATE accounts SET '.$column.'=0 WHERE id=?',[$id]); record_consent($id,$category,false);
             run("UPDATE mail_jobs SET status='cancelled',payload='' WHERE account_id=? AND category=? AND status IN ('queued','failed')",[$id,$category]);
         }
         flash(t('Du wurdest für diese E-Mails abgemeldet.','You have unsubscribed from these emails.')); return ['login',[]];
@@ -95,7 +96,7 @@ function dispatch_action(string $action): array {
         } else {
             run('DELETE FROM auth_tokens WHERE account_id=?',[$id]);cancel_account_mail($id);
             if($mode==='delete') {
-                if(post('confirmation')!==$a['email']) throw new UserError(t('Zum Löschen die E-Mail-Adresse eingeben.','Enter the email address to delete the account.'));
+                if(mb_strtolower(post('confirmation'))!==$a['email']) throw new UserError(t('Zum Löschen die E-Mail-Adresse eingeben.','Enter the email address to delete the account.'));
                 run('DELETE FROM mail_jobs WHERE account_id=?',[$id]);
                 run('DELETE FROM accounts WHERE id=?',[$id]);
             } else run('UPDATE accounts SET state=?,auth_version=auth_version+1 WHERE id=?',[$mode==='suspend'?'suspended':($a['verified_at']?'active':'invited'),$id]);
@@ -111,7 +112,7 @@ function dispatch_action(string $action): array {
             $tariffId=(int)post('tariff_id')?:null;$tariff=$tariffId?one('SELECT * FROM tariffs WHERE id=?',[$tariffId]):null;
             if($tariffId && (!$tariff || ($tariff['archived'] && $tariffId!==(int)($existing['tariff_id']??0)))) throw new UserError(t('Tarif ist nicht verfügbar.','Tariff is not available.'));
             $price=post('price')!==''?cents(post('price')):($tariff?(int)$tariff['price_cents']:null);
-            $status=post('status');if(!isset(statuses()[$status]) && $status!==($existing['status']??'')) throw new UserError('Invalid status');
+            $status=post('status');if(!isset(statuses()[$status]) && !($existing && $status===$existing['status'])) throw new UserError(t('Bitte einen Status auswählen.','Please choose a status.'));
             $join=date_value(post('joined_on'));$end=date_value(post('ended_on'));date_range($join,$end);
             $args=[$accountId,$first,$last,$birth,$join,$end,$status,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
             if($id) {

@@ -2,6 +2,7 @@
 /vendor/
 /storage/*
 !/storage/.gitkeep
+!/storage/.htaccess
 /.env
 *.log
 __pycache__/

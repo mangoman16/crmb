@@ -3,16 +3,19 @@ declare(strict_types=1);
 
 class UserError extends RuntimeException {}
 function config(string $key): mixed { global $config; return $config[$key] ?? null; }
-function db(): PDO {
-    static $pdo;
-    if (!$pdo) {
-        $c = config('db');
-        $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};dbname={$c['database']};charset=utf8mb4", $c['username'], $c['password'], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false]);
-        $pdo->exec("SET time_zone = '+00:00'");
-    }
+function connect(): PDO {
+    $c = config('db');
+    $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};dbname={$c['database']};charset=utf8mb4", $c['username'], $c['password'], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false]);
+    $pdo->exec("SET time_zone = '+00:00'");
     return $pdo;
 }
+function db(): PDO { static $pdo; return $pdo ??= connect(); }
+// A rate limit must survive the rollback of the action it is guarding, otherwise a
+// failed attempt refunds its own counter and the limit never triggers. A second
+// connection keeps the counters outside the action's transaction.
+function counter_db(): PDO { static $pdo; return $pdo ??= connect(); }
 function run(string $sql, array $params=[]): PDOStatement { $s=db()->prepare($sql); $s->execute($params); return $s; }
+function run_counter(string $sql, array $params=[]): PDOStatement { $s=counter_db()->prepare($sql); $s->execute($params); return $s; }
 function rows(string $sql, array $params=[]): array { return run($sql,$params)->fetchAll(); }
 function one(string $sql, array $params=[]): ?array { return run($sql,$params)->fetch() ?: null; }
 function scalar(string $sql, array $params=[]): mixed { return run($sql,$params)->fetchColumn(); }
@@ -48,7 +51,18 @@ function cents(string $v, bool $zero=true): int {
 }
 function money(?int $v): string { return number_format(($v??0)/100,2,locale()==='de'?',':'.',locale()==='de'?'.':',').' €'; }
 function amount_input(?int $v): string { return $v===null ? '' : number_format($v/100,2,'.',''); }
-function fmt_date(?string $v): string { return $v ? date(locale()==='de'?'d.m.Y':'d M Y',strtotime($v)) : '–'; }
+// Stored timestamps are UTC (now()). DATE columns are calendar dates and must not be
+// shifted; DATETIME values are converted to the configured timezone before display,
+// otherwise a record written after 22:00 UTC shows the previous day in Vienna.
+function local_time(string $v): ?DateTimeImmutable {
+    foreach (['!Y-m-d H:i:s'=>true, '!Y-m-d'=>false] as $format=>$hasTime) {
+        $d = DateTimeImmutable::createFromFormat($format, $v, new DateTimeZone('UTC'));
+        if ($d instanceof DateTimeImmutable) return $hasTime ? $d->setTimezone(new DateTimeZone(date_default_timezone_get())) : $d;
+    }
+    return null;
+}
+function fmt_date(?string $v): string { $d=$v!==null&&$v!==''?local_time($v):null; return $d ? $d->format(locale()==='de'?'d.m.Y':'d M Y') : '–'; }
+function fmt_datetime(?string $v): string { $d=$v!==null&&$v!==''?local_time($v):null; return $d ? $d->format(locale()==='de'?'d.m.Y, H:i':'d M Y, H:i') : '–'; }
 function setting(string $key, mixed $default=''): mixed { $v=scalar('SELECT setting_value FROM settings WHERE setting_key=?',[$key]); return $v===false?$default:json_decode($v,true); }
 function set_setting(string $key, mixed $value): void { run('INSERT INTO settings (setting_key,setting_value,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)',[$key,json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),now()]); }
 function audit(string $action,string $type,?int $id=null): void { run('INSERT INTO audit_log (actor_id,action,entity_type,entity_id,created_at) VALUES (?,?,?,?,?)',[current_user()['id']??null,$action,$type,$id,now()]); }
