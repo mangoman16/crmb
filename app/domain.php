@@ -65,6 +65,24 @@ function balances(bool $overdue=false): array {
     return $out;
 }
 
+/**
+ * The payments recorded against each of several charges, as charge_id => rows.
+ *
+ * The student payments tab lists every charge with its payments underneath.
+ * Fetching them per charge is one query per month of membership, which grows for
+ * as long as she uses the application, so they are fetched together.
+ */
+function payments_by_charge(array $chargeIds): array {
+    $ids = array_values(array_unique(array_map('intval', $chargeIds)));
+    if (!$ids) return [];
+    $out = array_fill_keys($ids, []);
+    $in = implode(',', array_fill(0, count($ids), '?'));
+    foreach (rows('SELECT p.*,a.name AS confirmer FROM payments p LEFT JOIN accounts a ON a.id=p.confirmed_by'
+        .' WHERE p.charge_id IN ('.$in.') ORDER BY p.paid_on DESC, p.id DESC', $ids) as $row)
+        $out[(int)$row['charge_id']][] = $row;
+    return $out;
+}
+
 function student_charges(int $id): array { return rows('SELECT c.*,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? ORDER BY c.due_on DESC,c.id DESC',[$id]); }
 function field_definitions(bool $archived=false): array { return rows('SELECT * FROM field_definitions'.($archived?'':' WHERE archived=0').' ORDER BY sort_order,id'); }
 function field_label(array $f): string { return locale()==='en' && $f['label_en']?$f['label_en']:$f['label']; }

@@ -444,7 +444,7 @@ MySQL (see the section below):
 The previous rounds were verified by rendering pages and calling helpers by
 hand. This round the checks were made repeatable: `php tests/run.php` boots the
 real application against a disposable database built from the real migrations
-and runs 719 assertions in about three seconds. What that established:
+and runs the whole suite in a few seconds. What that established:
 
 - **A failing action leaves nothing behind.** An insert followed by an error
   rolls back completely. An inner scope that fails and is handled by its caller

@@ -75,16 +75,47 @@ function payment_profiles(bool $archived=false): array {
  * code to show" rather than an error.
  */
 function charge_payment_profile(array $charge): ?array {
-    foreach ([
-        (int)($charge['payment_profile_id'] ?? 0),
-        (int)(scalar('SELECT payment_profile_id FROM classes WHERE id=?', [(int)($charge['class_id'] ?? 0)]) ?: 0),
-        (int)setting('default_payment_profile'),
-    ] as $candidate) {
-        if ($candidate <= 0) continue;
-        $p = one('SELECT * FROM payment_profiles WHERE id=? AND archived=0', [$candidate]);
-        if ($p) return $p;
-    }
-    return null;
+    // Each step is taken only if the one before it came up empty. Written as a
+    // list of candidates this read better but evaluated all of them first, so a
+    // charge naming its own profile still paid for a lookup of its class's, and
+    // a charge with no class looked up class 0 — once per charge, on a page that
+    // lists every charge a student has ever had.
+    if ($p = payment_profile((int)($charge['payment_profile_id'] ?? 0))) return $p;
+    if ($p = payment_profile(class_payment_profile_id((int)($charge['class_id'] ?? 0)))) return $p;
+    return payment_profile((int)setting('default_payment_profile'));
+}
+
+/**
+ * The memo behind the two lookups below, by reference so it can be emptied.
+ *
+ * Follows the shape setting_cache() already uses. Holding it for the length of a
+ * request is safe because an action writes and then redirects, so nothing
+ * re-reads a profile it has just changed within the same request.
+ */
+function &payment_cache(): array { static $cache = ['profile'=>[], 'class'=>[]]; return $cache; }
+function payment_cache_clear(): void { $cache =& payment_cache(); $cache = ['profile'=>[], 'class'=>[]]; }
+
+/**
+ * One payment profile by id, remembered for the rest of the request.
+ *
+ * A student's charges nearly all resolve to the same profile, so without this
+ * the same row is fetched once per charge listed.
+ */
+function payment_profile(int $id): ?array {
+    if ($id <= 0) return null;
+    $cache =& payment_cache();
+    if (!array_key_exists($id, $cache['profile']))
+        $cache['profile'][$id] = one('SELECT * FROM payment_profiles WHERE id=? AND archived=0', [$id]);
+    return $cache['profile'][$id];
+}
+
+/** Which profile a class collects into, remembered for the rest of the request. */
+function class_payment_profile_id(int $classId): int {
+    if ($classId <= 0) return 0;
+    $cache =& payment_cache();
+    if (!array_key_exists($classId, $cache['class']))
+        $cache['class'][$classId] = (int)(scalar('SELECT payment_profile_id FROM classes WHERE id=?', [$classId]) ?: 0);
+    return $cache['class'][$classId];
 }
 
 /** The remittance reference for a charge, from the operator's template. */

@@ -81,9 +81,19 @@ function latest_assessments(int $studentId): array {
     return $out;
 }
 
-/** Full dated history for one student and skill, oldest first, for charting. */
-function assessment_history(int $studentId, int $skillId): array {
-    return rows('SELECT value, assessed_on, note FROM assessments WHERE student_id=? AND skill_id=? ORDER BY assessed_on', [$studentId, $skillId]);
+/**
+ * Full dated history per skill for one student, oldest first, as skill_id => rows.
+ *
+ * The skills tab draws a sparkline beside each skill. Fetching one skill's
+ * history at a time was one query per row on a page whose whole purpose is to
+ * show every row.
+ */
+function assessment_histories(int $studentId): array {
+    $out = [];
+    foreach (rows('SELECT skill_id, value, assessed_on, note FROM assessments WHERE student_id=?'
+        .' ORDER BY assessed_on', [$studentId]) as $row)
+        $out[(int)$row['skill_id']][] = $row;
+    return $out;
 }
 
 /**
@@ -92,11 +102,14 @@ function assessment_history(int $studentId, int $skillId): array {
  * Assessments older than assessment_window_days are ignored, so a band reflects
  * where a student is now rather than where they were two seasons ago.
  */
-function area_scores(int $studentId): array {
+function area_scores(int $studentId, ?array $latest=null, ?array $skills=null): array {
     $cutoff = gmdate('Y-m-d', time() - ((int)setting('assessment_window_days')) * 86400);
-    $latest = latest_assessments($studentId);
+    // The skills tab has both of these in hand already; passing them in saves
+    // fetching the same two result sets a second time to render one page.
+    $latest ??= latest_assessments($studentId);
+    $skills ??= skills();
     $byArea = [];
-    foreach (skills() as $skill) {
+    foreach ($skills as $skill) {
         $a = $latest[(int)$skill['id']] ?? null;
         if (!$a || $a['assessed_on'] < $cutoff) continue;
         $byArea[(int)$skill['area_id']]['name'] = $skill['area_name'];
@@ -158,4 +171,29 @@ function progress_chart(array $skill, array $history, int $width=320, int $heigh
         .'<polyline points="'.$area.'" fill="currentColor" opacity=".10" stroke="none"/>'
         .'<polyline points="'.$line.'" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
         .$dots.'</svg>';
+}
+
+/**
+ * Assessments for a student on the given days, as day => rows, newest skill
+ * order first within each day.
+ *
+ * The history list used to run this query once per day shown, so a student with
+ * twenty assessment days cost twenty queries to render one collapsed list.
+ *
+ * The days are passed in rather than selected here because "the last twenty
+ * days" cannot be expressed as a LIMIT inside an IN subquery — MySQL rejects
+ * that — so the caller picks the days first and this fetches them in one go.
+ */
+function assessments_on_dates(int $studentId, array $days): array {
+    $days = array_values(array_unique(array_filter(array_map('strval', $days))));
+    if (!$days) return [];
+    $out = array_fill_keys($days, []);
+    $in = implode(',', array_fill(0, count($days), '?'));
+    foreach (rows('SELECT a.*, s.name, s.area_id, r.min_value, r.max_value, r.step, r.labels_json, ar.name AS area_name'
+        .' FROM assessments a JOIN skills s ON s.id=a.skill_id'
+        .' JOIN rating_scales r ON r.id=s.scale_id JOIN skill_areas ar ON ar.id=s.area_id'
+        .' WHERE a.student_id=? AND a.assessed_on IN ('.$in.')'
+        .' ORDER BY ar.sort_order, s.sort_order', array_merge([$studentId], $days)) as $row)
+        $out[(string)$row['assessed_on']][] = $row;
+    return $out;
 }

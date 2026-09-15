@@ -62,7 +62,7 @@ Match them; do not introduce a second style alongside one that works.
 ## Before you say something works
 
 ```bash
-php tests/run.php                  # 719 assertions, ~3s, no database server needed
+php tests/run.php                  # the whole suite, seconds, no database server needed
 php tests/run.php billing views    # one or more suites
 php -l <file>                      # after any edit that a test might not reach
 ```

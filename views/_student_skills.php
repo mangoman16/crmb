@@ -2,8 +2,9 @@
 // Skills tab on the student page. Staff only - never reached by a student
 // account, which has no tab link and is rejected by the tab whitelist.
 $all=skills();
-$scores=area_scores($id);
 $latest=latest_assessments($id);
+$scores=area_scores($id,$latest,$all);
+$histories=assessment_histories($id);
 $entryDate=date_value((string)($_GET['on']??''))??today();
 if(!$all): empty_state(t('Noch keine Fähigkeiten definiert.','No skills defined yet.'),
     t('Bereiche und Fähigkeiten werden in den Einstellungen angelegt.','Areas and skills are created in the settings.'),
@@ -35,7 +36,7 @@ $byArea=[]; foreach($all as $skill) $byArea[$skill['area_name']][]=$skill; ?>
 <?php foreach($byArea as $areaName=>$list): ?>
     <h3 class="area-heading"><?=e($areaName)?></h3>
     <?php foreach($list as $skill): $sid=(int)$skill['id']; $a=$latest[$sid]??null;
-        $history=assessment_history($id,$sid);
+        $history=$histories[$sid]??[];
         // Prefill only when editing the same date, so opening the form does not
         // silently re-save an older value under today's date.
         $current=$a && $a['assessed_on']===$entryDate ? rtrim(rtrim(number_format((float)$a['value'],2,'.',''),'0'),'.') : '';
@@ -60,14 +61,11 @@ $byArea=[]; foreach($all as $skill) $byArea[$skill['area_name']][]=$skill; ?>
 
 <?php // History, newest first, so a wrong entry can be found and removed.
 $dates=rows('SELECT DISTINCT assessed_on FROM assessments WHERE student_id=? ORDER BY assessed_on DESC LIMIT 20',[$id]);
+$entriesOn=assessments_on_dates($id,array_column($dates,'assessed_on'));
 if($dates): ?>
 <section class="card">
     <h2><?=e(t('Frühere Bewertungen','Earlier assessments'))?></h2>
-    <?php foreach($dates as $d): $day=$d['assessed_on'];
-        $entries=rows('SELECT a.*, s.name, s.area_id, r.min_value, r.max_value, r.step, r.labels_json, ar.name AS area_name
-                       FROM assessments a JOIN skills s ON s.id=a.skill_id
-                       JOIN rating_scales r ON r.id=s.scale_id JOIN skill_areas ar ON ar.id=s.area_id
-                       WHERE a.student_id=? AND a.assessed_on=? ORDER BY ar.sort_order, s.sort_order',[$id,$day]); ?>
+    <?php foreach($dates as $d): $day=$d['assessed_on']; $entries=$entriesOn[(string)$day]??[]; ?>
     <details>
         <summary><?=e(fmt_date($day))?> · <?=count($entries)?> <?=e(t('Werte','values'))?></summary>
         <?php foreach($entries as $x): ?>

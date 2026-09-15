@@ -24,7 +24,7 @@ Version **0.4.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Online status for accounts, and email reminders for outstanding payments.
 - Undo: changes to the main records are versioned, listed under **Änderungen**, and can be put back — including restoring a deleted student under their original number.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs 719 assertions in about three seconds.
+- A test suite that needs no database server: `php tests/run.php` runs the whole suite in a few seconds.
 
 ## Install
 
@@ -125,7 +125,7 @@ php bin/console.php version           # which release this directory is
 ## For developers
 
 ```bash
-php tests/run.php              # every suite: 719 assertions, ~3s, no database server
+php tests/run.php              # every suite, seconds, no database server needed
 php tests/run.php billing      # one suite
 ```
 

@@ -236,6 +236,10 @@ function test_reset(): void {
     $_SESSION = ['locale' => 'de'];
     require APP_ROOT.'/database/defaults.php';
     setting_cache_clear();
+    // Request-scoped memos outlive a request here, because a test run is one
+    // process. Emptying them keeps every suite measuring a cold page, the way
+    // a real first request would be.
+    payment_cache_clear();
 }
 
 function test_has_table(string $name): bool {

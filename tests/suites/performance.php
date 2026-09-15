@@ -89,3 +89,58 @@ $ql = query_count(fn() => render_view('students'));
 ok($ql < 20, 'listing every student is a flat handful of queries (took '.$ql.')');
 $html = render_view('dashboard');
 ok(str_contains($html, 'student-card'), 'the page really rendered its student cards');
+
+case_('The student payments tab does not grow a query per charge');
+/* Charges accumulate every month for as long as she uses this, so a per-charge
+   query here gets slower on its own with nobody changing anything. */
+sign_in_as($trainer);
+$billed = make_student(['first_name'=>'Viele','last_name'=>'Beitraege','tariff_id'=>$tariff]);
+$addCharge = function (int $n) use ($billed) {
+    $c = fixture('charges', ['student_id'=>$billed,'label'=>'Beitrag '.$n,'amount_cents'=>4500,
+        'due_on'=>sprintf('2026-%02d-10', ($n % 12) + 1),'cancelled'=>0,'origin'=>'manual','created_at'=>now()]);
+    fixture('payments', ['charge_id'=>$c,'amount_cents'=>2000,'paid_on'=>sprintf('2026-%02d-11', ($n % 12) + 1),
+        'method'=>'Bar','note'=>'','confirmed_at'=>now(),'voided'=>0]);
+};
+/* Both readings are taken the same way, which needs care here. The settings
+   cache fills on the first render a process ever does — a one-time cost, not a
+   per-charge one — so the page is rendered once and thrown away before
+   measuring. The payment-profile memo is emptied before each reading, since it
+   is request-scoped in production but would persist across both here. */
+for ($n = 0; $n < 3; $n++) $addCharge($n);
+render_view('student', ['id'=>$billed,'tab'=>'payments']);
+payment_cache_clear();
+$few = query_count(fn() => render_view('student', ['id'=>$billed,'tab'=>'payments']));
+for ($n = 3; $n < 36; $n++) $addCharge($n);          // three years of membership
+payment_cache_clear();
+$many = query_count(fn() => render_view('student', ['id'=>$billed,'tab'=>'payments']));
+is_same($few, $many, 'three charges and thirty-six cost the same ('.$few.')');
+ok($many < 12, 'and that is a flat handful, not one per charge (took '.$many.')');
+ok(str_contains(render_view('student', ['id'=>$billed,'tab'=>'payments']), 'Beitrag 35'), 'the last charge really is on the page');
+
+case_('The student skills tab does not grow a query per skill or per assessment day');
+$area  = fixture('skill_areas', ['name'=>'Technik','sort_order'=>1,'archived'=>0,'created_at'=>now()]);
+$scale = fixture('rating_scales', ['name'=>'0-10','min_value'=>0,'max_value'=>10,'step'=>1,
+    'labels_json'=>'{}','archived'=>0,'created_at'=>now()]);
+$rated = make_student(['first_name'=>'Viele','last_name'=>'Faehigkeiten']);
+$addSkill = function (int $n) use ($area, $scale, $rated, $trainer) {
+    $skill = fixture('skills', ['area_id'=>$area,'scale_id'=>$scale,'name'=>'Skill '.$n,
+        'sort_order'=>$n,'archived'=>0,'created_at'=>now()]);
+    // A different day each time, so the history list grows as well.
+    fixture('assessments', ['student_id'=>$rated,'skill_id'=>$skill,'value'=>7,'note'=>'',
+        'assessed_on'=>sprintf('2026-%02d-%02d', ($n % 12) + 1, ($n % 28) + 1),
+        'assessed_by'=>$trainer,'created_at'=>now()]);
+};
+for ($n = 0; $n < 2; $n++) $addSkill($n);
+render_view('student', ['id'=>$rated,'tab'=>'skills']);      // warm-up, as above
+payment_cache_clear();
+$fewSkills = query_count(fn() => render_view('student', ['id'=>$rated,'tab'=>'skills']));
+for ($n = 2; $n < 20; $n++) $addSkill($n);
+payment_cache_clear();
+$manySkills = query_count(fn() => render_view('student', ['id'=>$rated,'tab'=>'skills']));
+/* Not exact equality: whether the area-score tiles render depends on how many
+   assessments fall inside the configured window, and that costs a settings read.
+   The property worth guarding is that ten times the rows does not mean ten times
+   the queries — an N+1 here would be eighteen more, not one. */
+ok($manySkills <= $fewSkills + 2, 'twenty skills cost no more than two queries above two skills ('.$fewSkills.' then '.$manySkills.')');
+ok($manySkills < 12, 'and that is a flat handful (took '.$manySkills.')');
+ok(str_contains(render_view('student', ['id'=>$rated,'tab'=>'skills']), 'Skill 19'), 'the last skill really is on the page');

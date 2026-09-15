@@ -87,10 +87,10 @@ after, with a button to put each one back — including undeleting a student und
 their original number. This closes the old item 8 below.
 
 **A test suite that runs without MySQL.** `php tests/run.php` boots the real
-application against a disposable database built from the real migrations: 719
-checks over dates, transactions, billing, security, attendance, settings,
-history, query counts, the rendered pages, and the shape of the source. It
-proves the PHP logic, not the MySQL dialect — item 1 below still stands.
+application against a disposable database built from the real migrations,
+covering dates, transactions, billing, security, attendance, settings, history,
+query counts, the rendered pages, and the shape of the source. It proves the PHP
+logic, not the MySQL dialect — item 1 below still stands.
 
 **Query counts held down where they grow with the roll**: the student list went
 from 56 queries at sixty students to 6, and the suite fails if that comes back.
@@ -105,7 +105,7 @@ safe in it". Nothing below is optional.
 1. **Run the migrations and the test suites against MariaDB or MySQL.**
    Migrations 002 to 006 have never executed against MySQL or MariaDB anywhere.
    Use a disposable database, then `CRM_TEST_DRIVER=mysql php tests/run.php`,
-   which runs the same 719 checks against the real engine and reports what the
+   which runs the same checks against the real engine and reports what the
    SQLite driver could not cover. Then `tests/integration.py` and
    `tests/smtp_integration.py` per `tests/README.md`. The update runner is
    verified idempotent, but only against SQLite.
