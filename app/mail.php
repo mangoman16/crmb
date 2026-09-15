@@ -12,16 +12,27 @@ function notify_thread(array $account,int $threadId,string $subject): void {
     $en=$account['locale']==='en';
     queue_mail((int)$account['id'],$account['email'],$en?'New message in your badminton portal':'Neue Nachricht im Badminton-Portal',($en?'A new message is waiting for you. Open your conversation:':'Du hast eine neue Nachricht. Öffne deine Unterhaltung:')."\n".url('messages',['id'=>$threadId]),'notifications');
 }
-function process_mail(int $limit=25): array {
+const MAIL_MAX_ATTEMPTS = 5;
+// Backoff per attempt number, in seconds: ~1min, 5min, 15min, 1h.
+const MAIL_BACKOFF = [60, 300, 900, 3600];
+function process_mail(int $limit=25, float $budget=0.0): array {
     if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
     if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');
     // An advisory database lock works across cron processes and hosts.
-    if((int)scalar("SELECT GET_LOCK('badminton_crm_mail',0)")!==1) return ['sent'=>0,'failed'=>0,'skipped'=>0];
-    $count=['sent'=>0,'failed'=>0,'skipped'=>0];
+    if((int)scalar("SELECT GET_LOCK('badminton_crm_mail',0)")!==1) return ['sent'=>0,'failed'=>0,'skipped'=>0,'deferred'=>0];
+    $count=['sent'=>0,'failed'=>0,'skipped'=>0,'deferred'=>0];
     try {
         $s=setting('smtp',[]);
         if(empty($s['host']) || empty($s['from_email'])) throw new UserError(t('SMTP ist noch nicht eingerichtet.','SMTP is not configured yet.'));
+        // Security mail is deliberately excluded from automatic retries: the token in the
+        // body may already have expired, so the user requests a fresh link instead.
+        run("UPDATE mail_jobs SET status='queued' WHERE status='failed' AND category<>'security' AND attempts<".MAIL_MAX_ATTEMPTS." AND retry_after IS NOT NULL AND retry_after<=?",[now()]);
+        $deadline=$budget>0?microtime(true)+$budget:0.0;
         foreach(rows("SELECT id FROM mail_jobs WHERE status='queued' ORDER BY id LIMIT ".max(1,min(100,$limit))) as $r) {
+            // One SMTP conversation can take the full 15s timeout. Without a budget a
+            // web-triggered run of 25 messages outlives max_execution_time and is killed
+            // mid-loop; each job commits on its own, so stopping early is safe.
+            if($deadline>0.0 && microtime(true)>=$deadline) {$count['deferred']++;continue;}
             db()->beginTransaction();
             try {
                 $job=one('SELECT * FROM mail_jobs WHERE id=? FOR UPDATE',[$r['id']]);
@@ -37,7 +48,7 @@ function process_mail(int $limit=25): array {
                 }
                 if($eligible && $job['category']!=='security') $eligible=$a['state']==='active' && $a['verified_at'] && $a['email']===$job['recipient'];
                 if($eligible && in_array($job['category'],['newsletter','notifications'],true)) $eligible=(bool)$a[$job['category']];
-                if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='' WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}
+                if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='',retry_after=NULL WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}
                 $m=new \PHPMailer\PHPMailer\PHPMailer(true);
                 $m->isSMTP(); $m->Host=$s['host']; $m->Port=(int)$s['port'];
                 $m->SMTPAuth=($s['username']??'')!==''; $m->Username=$s['username']??'';
@@ -54,13 +65,16 @@ function process_mail(int $limit=25): array {
                     $m->addCustomHeader('List-Unsubscribe','<'.$link.'>');
                 }
                 $m->Body=$body; $m->isHTML(false); $m->send();
-                run("UPDATE mail_jobs SET status='sent',sent_at=?,attempts=attempts+1,error=NULL,payload=IF(category='security','',payload) WHERE id=?",[now(),$job['id']]);
+                run("UPDATE mail_jobs SET status='sent',sent_at=?,attempts=attempts+1,error=NULL,retry_after=NULL,payload=IF(category='security','',payload) WHERE id=?",[now(),$job['id']]);
                 db()->commit(); $count['sent']++;
             } catch(Throwable $ex) {
                 if(db()->inTransaction()) db()->rollBack();
                 $message=mb_substr($ex->getMessage(),0,1000);
                 if(!empty($s['password'])) { try { $message=str_replace(unseal($s['password']),'[redacted]',$message); } catch(Throwable) { $message='[redacted]'; } }
-                run("UPDATE mail_jobs SET status='failed',attempts=attempts+1,error=? WHERE id=?",[$message,$r['id']]);
+                // The transaction is already rolled back here, so this runs in autocommit.
+                $attempts=(int)scalar('SELECT attempts FROM mail_jobs WHERE id=?',[$r['id']])+1;
+                $retry=$attempts<MAIL_MAX_ATTEMPTS?gmdate('Y-m-d H:i:s',time()+MAIL_BACKOFF[min($attempts,count(MAIL_BACKOFF))-1]):null;
+                run("UPDATE mail_jobs SET status='failed',attempts=?,error=?,retry_after=? WHERE id=?",[$attempts,$message,$retry,$r['id']]);
                 $count['failed']++;
             }
         }

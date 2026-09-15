@@ -6,6 +6,24 @@ function thread_record(int $id): array {
     $r=one('SELECT t.*,a.name AS account_name FROM threads t JOIN accounts a ON a.id=t.account_id WHERE t.id=?'.(is_staff($u)?'':' AND t.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
     if(!$r)throw new UserError(t('Unterhaltung nicht gefunden.','Conversation not found.'));return $r;
 }
+// Read state is per account: staff see every thread, so a shared marker on the thread
+// itself would make one manager's reading hide a reply from another.
+function mark_thread_read(int $threadId, int $accountId): void {
+    run('INSERT INTO thread_reads (thread_id,account_id,last_read_message_id,updated_at) VALUES (?,?,COALESCE((SELECT MAX(id) FROM messages WHERE thread_id=?),0),?) ON DUPLICATE KEY UPDATE last_read_message_id=GREATEST(last_read_message_id,VALUES(last_read_message_id)),updated_at=VALUES(updated_at)',[$threadId,$accountId,$threadId,now()]);
+}
+// A thread counts as unread when its newest message was written by someone else and is
+// newer than this account's marker. Own replies never mark a thread unread.
+function unread_thread_ids(array $user): array {
+    $staff=is_staff($user);
+    return array_column(rows(
+        'SELECT t.id FROM threads t JOIN messages m ON m.id=(SELECT MAX(id) FROM messages WHERE thread_id=t.id)'
+        .' LEFT JOIN thread_reads r ON r.thread_id=t.id AND r.account_id=?'
+        .' WHERE m.sender_id<>? AND m.id>COALESCE(r.last_read_message_id,0)'
+        .($staff?'':' AND t.account_id=?'),
+        $staff?[$user['id'],$user['id']]:[$user['id'],$user['id'],$user['id']]
+    ),'id');
+}
+function unread_count(array $user): int { return count(unread_thread_ids($user)); }
 function dispatch_messages(string $action): array {
     switch($action) {
     case 'message_send':
@@ -19,6 +37,7 @@ function dispatch_messages(string $action): array {
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',[$id,$u['id'],required_text('body',20000),now()]);run('UPDATE threads SET updated_at=? WHERE id=?',[now(),$id]);
         if(is_staff($u))notify_thread(one('SELECT * FROM accounts WHERE id=?',[$thread['account_id']]),$id,$thread['subject']);
         else foreach(rows("SELECT * FROM accounts WHERE role IN ('admin','manager') AND state='active'") as $a)notify_thread($a,$id,$thread['subject']);
+        mark_thread_read($id,(int)$u['id']);
         audit('message.sent','thread',$id);return ['messages',['id'=>$id]];
     case 'bulk_preview':
         require_staff();$ids=$_POST['student_ids']??[];

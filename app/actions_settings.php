@@ -70,7 +70,7 @@ function dispatch_settings_or_messages(string $action): array {
         require_staff();$j=one('SELECT * FROM mail_jobs WHERE id=? AND status=?',[(int)post('id'),'failed']);
         if(!$j)throw new UserError('Not found');
         if($j['category']==='security')throw new UserError(t('Bitte einen neuen Einladungs- oder Passwortlink anfordern.','Please request a fresh invitation or password link.'));
-        run("UPDATE mail_jobs SET status='queued',error=NULL WHERE id=?",[$j['id']]);return ['outbox',[]];
+        run("UPDATE mail_jobs SET status='queued',error=NULL,retry_after=NULL,attempts=0 WHERE id=?",[$j['id']]);return ['outbox',[]];
     case 'mail_run':
         require_admin();return ['outbox',['process'=>1]];
     case 'privacy_save':

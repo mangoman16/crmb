@@ -57,7 +57,10 @@ function amount_input(?int $v): string { return $v===null ? '' : number_format($
 function local_time(string $v): ?DateTimeImmutable {
     foreach (['!Y-m-d H:i:s'=>true, '!Y-m-d'=>false] as $format=>$hasTime) {
         $d = DateTimeImmutable::createFromFormat($format, $v, new DateTimeZone('UTC'));
-        if ($d instanceof DateTimeImmutable) return $hasTime ? $d->setTimezone(new DateTimeZone(date_default_timezone_get())) : $d;
+        // createFromFormat rolls 2026-02-30 over into March and accepts MySQL zero
+        // dates, so require the value to round-trip before trusting it.
+        if (!$d instanceof DateTimeImmutable || $d->format($format === '!Y-m-d' ? 'Y-m-d' : 'Y-m-d H:i:s') !== $v) continue;
+        return $hasTime ? $d->setTimezone(new DateTimeZone(date_default_timezone_get())) : $d;
     }
     return null;
 }
@@ -72,3 +75,25 @@ function email_value(string $value): string { $v=mb_strtolower(trim($value)); if
 function choose(string $value,array $allowed): string { if(!in_array($value,$allowed,true)) throw new UserError(t('Ungültige Auswahl.','Invalid choice.')); return $value; }
 function notice_version(): string { return substr(hash('sha256',setting('privacy_de','').setting('privacy_en','')),0,16); }
 function maintenance_file(): string { return config('maintenance_file') ?: ROOT.'/storage/maintenance.flag'; }
+// Split a migration file into statements on semicolons that are not inside a string
+// literal, a quoted identifier or a comment. Splitting on every semicolon breaks any
+// migration that carries one in a default value, an enum or a trigger body.
+function split_sql(string $sql): array {
+    $statements=[]; $buffer=''; $quote=null; $length=strlen($sql);
+    for($i=0;$i<$length;$i++) {
+        $c=$sql[$i];
+        if($quote!==null) {
+            $buffer.=$c;
+            if($c==='\\' && $i+1<$length) { $buffer.=$sql[++$i]; continue; }
+            if($c===$quote) { if(($sql[$i+1]??'')===$quote) $buffer.=$sql[++$i]; else $quote=null; }
+            continue;
+        }
+        if($c==="'" || $c==='"' || $c==='`') { $quote=$c; $buffer.=$c; continue; }
+        if($c==='-' && ($sql[$i+1]??'')==='-' || $c==='#') { while($i<$length && $sql[$i]!=="\n") $i++; $buffer.="\n"; continue; }
+        if($c==='/' && ($sql[$i+1]??'')==='*') { $end=strpos($sql,'*/',$i+2); $i=$end===false?$length:$end+1; $buffer.=' '; continue; }
+        if($c===';') { if(trim($buffer)!=='') $statements[]=trim($buffer); $buffer=''; continue; }
+        $buffer.=$c;
+    }
+    if(trim($buffer)!=='') $statements[]=trim($buffer);
+    return $statements;
+}

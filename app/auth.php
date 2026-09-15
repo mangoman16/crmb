@@ -1,20 +1,24 @@
 <?php
 declare(strict_types=1);
 
-function current_user(): ?array {
-    if(empty($_SESSION['user_id'])) return null;
+function current_user(bool $reload=false): ?array {
+    static $resolved=false, $cached=null;
+    if($reload) { $resolved=false; $cached=null; }
+    if($resolved) return $cached;
+    $resolved=true;
+    if(empty($_SESSION['user_id'])) return $cached=null;
     $a=one('SELECT * FROM accounts WHERE id=?',[(int)$_SESSION['user_id']]);
     $expired=time()-(int)($_SESSION['last_seen']??0)>(int)config('session_idle_minutes')*60;
     if(!$a || $a['state']!=='active' || !$a['verified_at'] || (int)$a['auth_version']!==(int)($_SESSION['auth_version']??0) || $expired) {
-        unset($_SESSION['user_id'],$_SESSION['auth_version']); return null;
+        unset($_SESSION['user_id'],$_SESSION['auth_version']); return $cached=null;
     }
-    $_SESSION['last_seen']=time(); return $a;
+    $_SESSION['last_seen']=time(); return $cached=$a;
 }
 function is_staff(?array $a=null): bool { $a??=current_user(); return $a && in_array($a['role'],['admin','manager'],true); }
 function require_user(): array { $a=current_user(); if(!$a) go('login'); return $a; }
 function require_staff(): array { $a=require_user(); if(!is_staff($a)) throw new UserError(t('Kein Zugriff.','Access denied.')); return $a; }
 function require_admin(): array { $a=require_user(); if($a['role']!=='admin') throw new UserError(t('Nur für Administratoren.','Administrators only.')); return $a; }
-function sign_in(array $a): void { session_regenerate_id(true); $_SESSION['user_id']=(int)$a['id']; $_SESSION['auth_version']=(int)$a['auth_version']; $_SESSION['last_seen']=time(); $_SESSION['locale']=$a['locale']; $_SESSION['csrf']=bin2hex(random_bytes(32)); }
+function sign_in(array $a): void { session_regenerate_id(true); $_SESSION['user_id']=(int)$a['id']; $_SESSION['auth_version']=(int)$a['auth_version']; $_SESSION['last_seen']=time(); $_SESSION['locale']=$a['locale']; $_SESSION['csrf']=bin2hex(random_bytes(32)); current_user(true); }
 function strong_password(string $p): string {
     if(strlen($p)<12 || strlen($p)>72) throw new UserError(t('Das Passwort muss 12 bis 72 Byte lang sein. Umlaute zählen doppelt.','The password must be 12 to 72 bytes long. Accented characters count double.'));
     // A 12-character minimum alone still admits these; they are the passwords an

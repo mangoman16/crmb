@@ -33,7 +33,7 @@ function dispatch_action(string $action): array {
         if(password_needs_rehash($hash,PASSWORD_DEFAULT)) run('UPDATE accounts SET password_hash=? WHERE id=?',[password_hash(post('password'),PASSWORD_DEFAULT),$a['id']]);
         sign_in($a); return ['dashboard',[]];
     case 'logout':
-        $_SESSION=[]; session_regenerate_id(true); return ['login',[]];
+        $_SESSION=[]; session_regenerate_id(true); current_user(true); return ['login',[]];
     case 'forgot':
         $a=one("SELECT * FROM accounts WHERE email=? AND state='active' AND verified_at IS NOT NULL",[mb_strtolower(post('email'))]);
         if($a && setting('smtp',[]) && setting('privacy_ready',false)) send_account_token($a,'reset');

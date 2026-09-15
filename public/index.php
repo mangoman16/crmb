@@ -15,13 +15,20 @@ try {
         try {
             [$target,$params]=handle_post();
             if($target==='outbox' && isset($params['process'])) {
-                $count=process_mail();flash($count['sent'].' '.t('gesendet, ','sent, ').$count['failed'].' '.t('fehlgeschlagen.','failed.'));$params=[];
+                // Leave a margin below max_execution_time so the response still renders.
+                $limit=(int)ini_get('max_execution_time');
+                $count=process_mail(25,$limit>0?max(5.0,$limit-8.0):45.0);
+                $note=$count['sent'].' '.t('gesendet, ','sent, ').$count['failed'].' '.t('fehlgeschlagen.','failed.');
+                if($count['deferred'])$note.=' '.$count['deferred'].' '.t('warten noch und werden automatisch weiter versendet.','still waiting; they will be sent automatically.');
+                flash($note);$params=[];
             }
             go($target,$params);
         } catch(UserError $ex) {flash($ex->getMessage(),'error');}
         catch(PDOException $ex) {
             error_log('CRM database action: '.$ex->getCode());
-            flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: Adresse bereits vergeben oder verknüpfte Daten vorhanden.','Cannot save: email already used or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
+            if($ex->getCode()==='23000' && str_contains($ex->getMessage(),'form_requests'))
+                flash(t('Diese Eingabe wurde bereits verarbeitet.','This submission has already been processed.'),'error');
+            else flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: Adresse bereits vergeben oder verknüpfte Daten vorhanden.','Cannot save: email already used or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
         }
         $fallback=post('return_page',current_user()?'dashboard':'login');
         if(!in_array($fallback,$allowed,true))$fallback='dashboard';

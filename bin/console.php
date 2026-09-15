@@ -20,7 +20,9 @@ try{
         echo "Maintenance disabled.\n";exit;
     }
     if($command==='check'){
-        $result=['version'=>trim(file_get_contents(ROOT.'/VERSION')),'php'=>PHP_VERSION,'maintenance'=>is_file(maintenance_file()),'schema'=>scalar('SELECT MAX(version) FROM schema_migrations')];
+        $schema=null;
+        try{$schema=scalar('SELECT MAX(version) FROM schema_migrations');}catch(PDOException){$schema='not migrated';}
+        $result=['version'=>trim(file_get_contents(ROOT.'/VERSION')),'php'=>PHP_VERSION,'maintenance'=>is_file(maintenance_file()),'schema'=>$schema];
         foreach(['accounts','students','contacts','field_definitions','field_values','absences','charges','payments','threads','messages','news','mail_jobs'] as $table)$result['rows'][$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
         $result['totals_cents']=['charges'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM charges WHERE cancelled=0'),'confirmed_payments'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE voided=0 AND confirmed_at IS NOT NULL')];
         echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE).PHP_EOL;exit;
@@ -33,7 +35,7 @@ try{
                 $version=basename($file);$hash=hash_file('sha256',$file);$old=one('SELECT * FROM schema_migrations WHERE version=?',[$version]);
                 if($old){if(!hash_equals($old['checksum'],$hash))throw new RuntimeException('Applied migration changed: '.$version);continue;}
                 $sql=file_get_contents($file);
-                foreach(preg_split('/;\s*(?:\r?\n|$)/',$sql) as $statement)if(trim($statement)!=='')db()->exec(trim($statement));
+                foreach(split_sql($sql) as $statement)db()->exec($statement);
                 run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)',[$version,$hash,now()]);
                 echo 'Applied '.$version.PHP_EOL;
             }
@@ -56,7 +58,7 @@ try{
         run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,created_at) VALUES (?,?,?,'admin','active',?,?)",[$name,$email,password_hash($password,PASSWORD_DEFAULT),now(),now()]);
         echo "Administrator created. Sign in to configure SMTP and the privacy notice.\n";exit;
     }
-    if($command==='mail:work'){$result=process_mail((int)($argv[2]??25));echo json_encode($result).PHP_EOL;exit($result['failed']?1:0);}
+    if($command==='mail:work'){$result=process_mail((int)($argv[2]??25),(float)($argv[3]??0));echo json_encode($result).PHP_EOL;exit($result['failed']?1:0);}
     if($command==='maintenance'){
         run('DELETE FROM auth_tokens WHERE expires_at<?',[now()]);
         run('DELETE FROM rate_limits WHERE window_start<?',[time()-86400]);
