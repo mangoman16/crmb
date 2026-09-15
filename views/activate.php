@@ -2,7 +2,7 @@
 <div class="auth-card card">
 <?php if(!$r || $r['state']==='suspended'): ?><h1><?=e(t('Link nicht mehr gültig','Link no longer valid'))?></h1><p><?=e(t('Bitte eine neue Einladung oder einen neuen Passwortlink anfordern.','Please request a new invitation or password link.'))?></p><?=link_button(t('Zur Anmeldung','Sign in'),'login')?>
 <?php elseif($r['purpose']==='email' && (!$user || (int)$user['id']!==(int)$r['account_id'])): ?><h1><?=e(t('Bitte zuerst anmelden','Please sign in first'))?></h1><p><?=e(t('Melde dich mit deiner bisherigen Adresse an und öffne diesen Link erneut.','Sign in using your current address and reopen this link.'))?></p><?=link_button(t('Anmelden','Sign in'),'login')?>
-<?php else: ?><span class="eyebrow"><?=e($r['name'])?></span><h1><?=e($r['purpose']==='invite'?t('Dein Platz im Team.','Your place on the team.'):($r['purpose']==='email'?t('E-Mail bestätigen','Verify email'):t('Neues Passwort','New password')))?></h1>
+<?php else: ?><span class="eyebrow"><?=e($r['name'])?></span><h1><?=e($r['purpose']==='invite'?t('Konto einrichten','Set up your account'):($r['purpose']==='email'?t('E-Mail bestätigen','Verify email'):t('Neues Passwort','New password')))?></h1>
 <?php start_form('activate');if($r['purpose']!=='email'){input('password',t('Passwort','Password'),'','password',true,t('Mindestens 12 Zeichen.','At least 12 characters.'));input('password_confirm',t('Passwort wiederholen','Repeat password'),'','password',true);}else echo '<p>'.e($r['target_email']).'</p>';
 if($r['purpose']==='invite'): ?>
 <p><a href="<?=e(url('privacy'))?>" target="_blank" rel="noopener"><?=e(t('Datenschutzerklärung lesen','Read the privacy notice'))?></a></p>

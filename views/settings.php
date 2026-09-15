@@ -4,7 +4,7 @@ $items=['portal'=>t('Portal','Portal'),'students'=>t('Schüler','Students'),'fie
         'skills'=>t('Leistung','Performance'),'tariffs'=>t('Tarife','Tariffs'),'payments'=>t('Zahlungsempfänger','Payment profiles'),
         'templates'=>t('Vorlagen','Templates'),'smtp'=>'SMTP','privacy'=>t('Datenschutz','Privacy'),'system'=>t('System','System')];
 if(!isset($items[$tab]))$tab='portal';$edit=(int)($_GET['edit']??0);
-page_head(t('Einstellungen','Settings'),t('Dein Portal, deine Vorgaben.','Your portal, your defaults.'));tabs($items,$tab,'settings');
+page_head(t('Einstellungen','Settings'),t('Alles, was sich am Portal einstellen lässt.','Everything about the portal that can be changed.'));tabs($items,$tab,'settings');
 // Tabs added in 0.2 render from partials before the original chain, which is
 // left exactly as it was. They are plain statements rather than extra branches
 // because PHP will not parse a braced if as the last statement of an

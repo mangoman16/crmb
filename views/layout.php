@@ -16,7 +16,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="<?=e(setting('club_name','Badminton'))?>">
     <meta name="format-detection" content="telephone=no">
-    <meta name="description" content="<?=e(t('Dein Badminton-Portal: Schüler, Beiträge und Nachrichten.','Your badminton portal: students, payments and messages.'))?>">
+    <meta name="description" content="<?=e(setting('club_name').' – '.t('Schüler, Beiträge und Nachrichten.','students, payments and messages.'))?>">
     <title><?=e(setting('club_name','Badminton'))?></title>
     <link rel="icon" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.css?v=0.1.0">
@@ -42,7 +42,7 @@ if(is_admin($user))$nav['settings']=['settings',t('Einstellungen','Settings')];
     <div class="sidebar-bottom"><a class="account-link" href="<?=e(url('profile'))?>"><span class="avatar small"><?=e(mb_substr($user['name'],0,1))?></span><span><?=e($user['name'])?><small><?=e(role_label($user['role']))?></small></span></a><div class="sidebar-meta"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutz','Privacy'))?></a><span>v<?=e(trim(file_get_contents(ROOT.'/VERSION')))?></span></div></div>
 </aside>
 <div class="app-shell">
-<header class="topbar"><span class="topbar-context"><?=e(t('Dein Training. Gut organisiert.','Your training. Well organised.'))?></span><a class="mobile-brand" href="<?=e(url('dashboard'))?>"><?=e(setting('club_name','Badminton'))?></a><div class="topbar-actions"><a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['id','tab']))))?>"><?=locale()==='de'?'EN':'DE'?></a><a href="<?=e(url('profile'))?>" aria-label="<?=e(t('Mein Konto','My account'))?>"><span class="avatar tiny"><?=e(mb_substr($user['name'],0,1))?></span></a></div></header>
+<header class="topbar"><span class="topbar-context"><?=e((string)setting('portal_tagline'))?></span><a class="mobile-brand" href="<?=e(url('dashboard'))?>"><?=e(setting('club_name','Badminton'))?></a><div class="topbar-actions"><a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['id','tab']))))?>"><?=locale()==='de'?'EN':'DE'?></a><a href="<?=e(url('profile'))?>" aria-label="<?=e(t('Mein Konto','My account'))?>"><span class="avatar tiny"><?=e(mb_substr($user['name'],0,1))?></span></a></div></header>
 <?php else: ?>
 <header class="public-header"><a class="brand" href="<?=e(url($user?'dashboard':'login'))?>"><span class="brand-mark">B<span></span></span><?=e(setting('club_name','Badminton'))?></a><a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['account','category','signature']))))?>"><?=locale()==='de'?'EN':'DE'?></a></header>
 <?php endif ?>
