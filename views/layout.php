@@ -48,7 +48,7 @@ if(is_admin($user))$nav['settings']=['settings',t('Einstellungen','Settings')];
 <?php endif ?>
 <main id="main" class="<?=$public?'public-main':'main-content'?>">
 <?php if(!$public && is_admin($user) && is_file(maintenance_file())): ?>
-<div class="flash error" role="status"><?=e(t('Wartungsmodus ist aktiv – für alle anderen ist das Portal geschlossen.','Maintenance mode is on \u2013 the portal is closed for everyone else.'))?> <a href="<?=e(url('settings',['tab'=>'system']))?>"><?=e(t('Beenden','Switch off'))?></a></div>
+<div class="flash error" role="status"><?=e(t('Wartungsmodus ist aktiv – für alle anderen ist das Portal geschlossen.','Maintenance mode is on – the portal is closed for everyone else.'))?> <a href="<?=e(url('settings',['tab'=>'system']))?>"><?=e(t('Beenden','Switch off'))?></a></div>
 <?php endif ?>
 <?php if(isset($_SESSION['flash'])):$f=$_SESSION['flash'];unset($_SESSION['flash']);?><div class="flash <?=e($f['kind'])?>" role="status"><?=e($f['message'])?></div><?php endif ?>
 <?=$content?>

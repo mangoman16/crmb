@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0 — unreleased
+
+Monthly charges, attendance, and a mobile-first pass.
+
+- Monthly charges on the 1st of each month. The first time the calendar reaches
+  a 1st after a student joins, that month is free; billing starts the month
+  after. Being away changes nothing - absence and billing are deliberately
+  unlinked. The trainer can pause billing for one student without ending their
+  membership. Nothing is created until somebody runs it, from the payments
+  screen after a preview, or from cron; every generated charge carries a unique
+  key so a repeat run creates nothing.
+- `billing:plan` shows what would happen and changes nothing; `billing:run`
+  does it.
+- Attendance per class and session date, with configurable statuses. Built for
+  a phone held in one hand: the whole class on one screen, one tap per student,
+  one save, and a bulk "everyone present" to correct from. Summary and recent
+  sessions on each student's page.
+- Mobile-first pass: the attendance control was rebuilt after measuring that
+  five operator-defined labels truncated and overlapped at 390px. Choices now
+  wrap instead of clipping, "not recorded" moved next to the name so the
+  statuses fit one row, and the default status set is three so every label fits
+  on one line at a readable size. A student's row went from 370px to 132px.
+- Migration 005.
+
 ## 0.2.0 — unreleased
 
 Roles, classes, payment QR codes and skill assessment.

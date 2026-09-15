@@ -21,6 +21,8 @@ require __DIR__ . '/auth.php';
 require __DIR__ . '/domain.php';
 require __DIR__ . '/classes.php';
 require __DIR__ . '/skills.php';
+require __DIR__ . '/attendance.php';
+require __DIR__ . '/billing.php';
 require __DIR__ . '/mail.php';
 if (is_file(ROOT . '/vendor/autoload.php')) { require ROOT . '/vendor/autoload.php'; }
 require __DIR__ . '/qr.php';

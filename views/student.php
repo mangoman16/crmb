@@ -3,12 +3,12 @@ $id=(int)($_GET['id']??0);$staff=is_staff($user);if(!$id)require_staff();
 $defaultTariff=setting('default_tariff',null);
 $s=$id?student($id):['id'=>0,'first_name'=>'','last_name'=>'','birth_date'=>'','joined_on'=>today(),'ended_on'=>'','status'=>setting('default_status','active'),'account_id'=>null,'tariff_id'=>$defaultTariff,'price_cents'=>null,'price_note'=>'','internal_notes'=>''];
 $tab=(string)($_GET['tab']??'details');
-$tabsAllowed=$staff?['details','contacts','payments','absence','skills','classes']:['details','contacts','payments','absence'];
+$tabsAllowed=$staff?['details','contacts','payments','absence','skills','classes','attendance']:['details','contacts','payments','absence'];
 if(!in_array($tab,$tabsAllowed,true))$tab='details';
 page_head($id?$s['first_name'].' '.$s['last_name']:t('Neuen Schüler anlegen','Add a student'),$id?status_label($s['status']):'',link_button(t('Alle Schüler','All students'),'students',[],'secondary'));
 if($id){
     $tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),'absence'=>t('Abwesenheit','Absences')];
-    if($staff){$tabLabels['skills']=t('Leistung','Performance');$tabLabels['classes']=t('Kurse','Classes');}
+    if($staff){$tabLabels['skills']=t('Leistung','Performance');$tabLabels['attendance']=t('Anwesenheit','Attendance');$tabLabels['classes']=t('Kurse','Classes');}
     tabs($tabLabels,$tab,'student',['id'=>$id]);
 }
 if($tab==='details' || !$id): ?>
@@ -35,8 +35,26 @@ endforeach ?></div></section><?php endif ?>
 <section class="card"><h2><?=e(t('Abwesenheiten','Absences'))?></h2><?php $list=rows('SELECT * FROM absences WHERE student_id=? ORDER BY starts_on DESC',[$id]);if(!$list)echo '<p class="muted">'.e(t('Keine Abwesenheiten eingetragen.','No absences recorded.')).'</p>';foreach($list as $a):?><div class="record-row"><div><strong><?=e(reason_label($a['reason']))?></strong><p><?=e(fmt_date($a['starts_on']).' – '.fmt_date($a['ends_on']))?></p></div><?php start_form('absence_delete',['student_id'=>$id,'id'=>$a['id']],'inline-form');submit_button(t('Entfernen','Remove'),'subtle danger-text');?></form></div><?php endforeach ?></section>
 <section class="card"><h2><?=e(t('Abwesenheit melden','Report absence'))?></h2><?php start_form('absence_add',['student_id'=>$id]);?><div class="grid three"><?php select_field('reason',t('Grund','Reason'),array_combine(array_keys(reasons()),array_map('reason_label',array_keys(reasons()))),'',true);input('starts_on',t('Von','From'),today(),'date',true);input('ends_on',t('Bis einschließlich','Up to and including'),today(),'date',true);?></div><?php submit_button(t('Abwesenheit eintragen','Record absence'));?></form></section>
 <?php elseif($tab==='skills'): require ROOT.'/views/_student_skills.php'; ?>
+<?php elseif($tab==='attendance'): $sum=attendance_summary($id); $rate=attendance_rate($sum); ?>
+<?php if($rate!==null): ?>
+<div class="stats-grid compact">
+    <div class="stat"><span><?=e(t('Anwesend','Attended'))?></span><strong><?=e(number_format($rate,0).'%')?></strong><small><?=e(t('der letzten 6 Monate','of the last 6 months'))?></small></div>
+    <div class="stat"><span><?=e(t('Trainings erfasst','Sessions recorded'))?></span><strong><?=array_sum($sum)?></strong><small><?=e(implode(' · ',array_map(fn($k,$v)=>attendance_label($k).' '.$v,array_keys($sum),$sum)))?></small></div>
+</div>
+<?php endif ?>
+<section class="card">
+    <h2><?=e(t('Letzte Trainings','Recent sessions'))?></h2>
+    <?php $recent=attendance_recent($id);
+    if(!$recent)echo '<p class="muted">'.e(t('Noch nichts erfasst. Anwesenheit wird beim Kurs eingetragen.','Nothing recorded yet. Attendance is entered on the class page.')).'</p>';
+    foreach($recent as $r): ?>
+    <div class="record-row">
+        <div><strong><?=e(fmt_date($r['session_on']))?></strong><p><?=e($r['class_name'])?></p></div>
+        <?php badge(attendance_label($r['status']),attendance_tone($r['status'])); ?>
+    </div>
+    <?php endforeach ?>
+</section>
 <?php elseif($tab==='classes'): $mine=student_classes($id); ?>
-<section class="card"><h2><?=e(t('Kurse dieses Schülers','This student\u2019s classes'))?></h2>
+<section class="card"><h2><?=e(t('Kurse dieses Schülers','This student’s classes'))?></h2>
 <?php if(!$mine)echo '<p class="muted">'.e(t('Noch keinem Kurs zugeordnet.','Not in any class yet.')).'</p>';
 foreach($mine as $row):?><div class="record-row<?=$row['left_on']!==null?' is-past':''?>"><div><strong><a href="<?=e(url('classes',['id'=>$row['id']]))?>"><?=e($row['name'])?></a></strong><p><?=e(class_schedule($row))?></p><small><?=e($row['left_on']!==null?t('Ausgetreten am ','Left on ').fmt_date($row['left_on']):t('Dabei seit ','Member since ').fmt_date($row['joined_on']))?></small></div>
 <?php if($row['left_on']===null){start_form('class_member_remove',['class_id'=>$row['id'],'student_id'=>$id,'mode'=>'leave'],'inline-form');submit_button(t('Austritt eintragen','Record leaving'),'subtle');echo '</form>';}?></div><?php endforeach ?></section>
@@ -45,6 +63,25 @@ if($open):?><section class="card"><h2><?=e(t('Zu einem Kurs hinzufügen','Add to
 select_field('class_id',t('Kurs','Class'),array_column($open,'name','id'),'',true);
 input('joined_on',t('Dabei seit','Member since'),today(),'date');?></div><?php submit_button(t('Hinzufügen','Add'));?></form></section><?php endif ?>
 <?php elseif($tab==='payments'): ?>
+<?php if($staff): $free=billing_free_period($s); $firstBill=billing_first_charged_period($s); ?>
+<section class="card">
+    <div class="section-heading">
+        <div>
+            <h2><?=e(t('Monatsbeiträge','Monthly charges'))?></h2>
+            <p class="muted"><?php
+                if((int)($s['billing_paused']??0)===1) echo e(t('Pausiert – für diesen Schüler werden keine Monatsbeiträge angelegt.','Paused – no monthly charges are created for this student.'));
+                elseif(billing_amount($s)===null) echo e(t('Kein monatlicher Preis hinterlegt, daher entstehen keine automatischen Beiträge.','No monthly price is set, so no automatic charges are created.'));
+                elseif($firstBill) echo e(t('Erster Monat frei: ','First month free: ').billing_month_name((string)$free).'. '.t('Beiträge ab ','Charged from ').billing_month_name($firstBill).' '.substr($firstBill,0,4).'.');
+                else echo e(t('Kein Beitrittsdatum hinterlegt.','No join date set.'));
+            ?></p>
+        </div>
+    </div>
+    <?php if($s['billing_note']??'')echo '<p class="muted">'.e($s['billing_note']).'</p>'; ?>
+    <?php start_form('billing_pause',['id'=>$id,'mode'=>((int)($s['billing_paused']??0)===1?'resume':'pause')]);
+    if((int)($s['billing_paused']??0)!==1) input('billing_note',t('Grund (optional, nur intern)','Reason (optional, internal only)'),'','text');
+    submit_button((int)($s['billing_paused']??0)===1?t('Beiträge wieder starten','Resume billing'):t('Beiträge pausieren','Pause billing'),'secondary'); ?></form>
+</section>
+<?php endif ?>
 <div class="stats-grid compact"><div class="stat"><span><?=e(t('Offen','Outstanding'))?></span><strong><?=e(money(balance($id)))?></strong></div><div class="stat"><span><?=e(t('Überfällig','Overdue'))?></span><strong class="due"><?=e(money(balance($id,true)))?></strong></div></div>
 <?php $charges=student_charges($id);if(!$charges)echo '<div class="card"><p class="muted">'.e(t('Noch keine Beiträge erfasst.','No charges recorded yet.')).'</p></div>';foreach($charges as $c):$remaining=max(0,(int)$c['amount_cents']-(int)$c['paid']); ?>
 <section class="card charge-card"><div class="section-heading"><div><h2><?=e($c['label'])?></h2><p class="muted"><?=e(t('Fällig am ','Due ').fmt_date($c['due_on']))?></p></div><?php badge($c['cancelled']?t('Storniert','Cancelled'):($remaining===0?t('Bezahlt','Paid'):money($remaining).' '.t('offen','outstanding')),$c['cancelled']?'':($remaining===0?'green':($c['due_on']<today()?'red':'')));?></div>

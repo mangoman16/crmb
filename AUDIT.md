@@ -1,4 +1,4 @@
-# Review of v0.1.0, and what 0.2.0 added
+# Review of v0.1.0, and what 0.2.0 and 0.3.0 added
 
 Bug, security and design review of the v0.1.0 source, and what was changed in
 response. Every line of `app/`, `views/`, `public/`, `bin/` and
@@ -412,6 +412,33 @@ MySQL (see the section below):
   44px or more. Four regressions found this way and fixed, including 17px
   student-name links in the new class view.
 
+## Verified in 0.3.0
+
+- **The billing rule matches the specification, including the edges.** A student
+  joining on the 1st gets that month free and is charged from the next; joining
+  on any other day makes the following month the free one. Checked across a year
+  boundary (15 Dec 2026 -> free Jan 2027, first charge Feb 2027) and a leap year
+  (Feb 2028 coverage ends 29.02.2028). Invalid periods are rejected.
+- **Billing cannot double-charge.** Three consecutive runs of the same month
+  created 3, then 0, then 0. Every automatic charge carries a unique
+  `billing_key`; a race that gets past the preview is refused by the database
+  rather than duplicated.
+- **Skipped students say why.** The preview lists everyone, with a reason:
+  already created, billing paused, not a member yet, membership ended, the month
+  they joined, the free first month, or no monthly price. Silence about somebody
+  who should have been charged is the failure worth designing against.
+- **Attendance defaults to the right day.** A Monday class opened on a Tuesday
+  suggests the previous Monday, not today.
+- **The mobile attendance control was rebuilt from measurement.** At 390px the
+  five operator-defined labels truncated and overlapped. Text widths were
+  measured at three font sizes against the available 76px per button; 11px would
+  have fitted but is too small for the intended user. The fix was structural
+  instead: "not recorded" moved out of the choice grid to sit beside the name,
+  the default status set trimmed to three so each label fits one line at a
+  readable size, and the grid wraps rather than clipping if more are added. A
+  student's row went from about 370px tall to 132px, and the page for four
+  students from 3648px to 1564px.
+
 ## Not done, and why
 
 - **Nothing was run against MySQL or MariaDB.** No server could be installed
@@ -419,7 +446,7 @@ MySQL (see the section below):
   rendering required rewriting the upsert idioms, `FOR UPDATE`, `GET_LOCK`, the
   inline index syntax and `ALTER TABLE ... ADD CONSTRAINT`, so it proves the
   templates and PHP logic work — not that the SQL runs on the target engine.
-  **Migrations 002, 003 and 004 have never been executed against MySQL or
+  **Migrations 002 to 005 have never been executed against MySQL or
   MariaDB.** Run `php bin/console.php update` against a disposable copy before
   touching anything real. The two `ADD CONSTRAINT` statements in 004 are the
   ones SQLite could not exercise at all.

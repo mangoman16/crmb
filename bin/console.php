@@ -12,6 +12,8 @@ if($command==='help'){
         ."php bin/console.php migrate\n"
         ."php bin/console.php create-admin\n"
         ."php bin/console.php mail:work [limit]\n"
+        ."php bin/console.php billing:run [YYYY-MM]  Create the monthly charges (default: this month)\n"
+        ."php bin/console.php billing:plan [YYYY-MM] Show what billing:run would do, changing nothing\n"
         ."php bin/console.php maintenance       Prune expired tokens and temporary records\n"
         ."php bin/console.php maintenance:on\n"
         ."php bin/console.php maintenance:off\n"
@@ -120,6 +122,21 @@ try{
         // The first administrator is provisioned by the server owner; no web signup exists.
         run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,created_at) VALUES (?,?,?,'admin','active',?,?)",[$name,$email,password_hash($password,PASSWORD_DEFAULT),now(),now()]);
         echo "Administrator created. Sign in to configure SMTP and the privacy notice.\n";exit;
+    }
+    if($command==='billing:plan'){
+        $period=billing_valid_period($argv[2]??billing_current_period());
+        $plan=billing_plan($period);
+        $create=array_values(array_filter($plan,fn($r)=>$r['skip']===null));
+        printf("%s: %d to create, %d skipped\n\n",$period,count($create),count($plan)-count($create));
+        foreach($plan as $r) printf("  %-28s %10s  %s\n",mb_substr($r['name'],0,28),$r['skip']?'-':money((int)$r['amount']),$r['skip']??'will be created');
+        printf("\ntotal: %s\n",money(array_sum(array_column($create,'amount'))));
+        exit;
+    }
+    if($command==='billing:run'){
+        // Safe to run from cron on the 1st: the unique billing_key means a second
+        // run for the same month creates nothing.
+        $result=billing_run(billing_valid_period($argv[2]??billing_current_period()));
+        echo json_encode($result).PHP_EOL;exit;
     }
     if($command==='mail:work'){$result=process_mail((int)($argv[2]??25),(float)($argv[3]??0));echo json_encode($result).PHP_EOL;exit($result['failed']?1:0);}
     if($command==='maintenance'){

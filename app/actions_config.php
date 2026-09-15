@@ -191,6 +191,64 @@ function dispatch_config(string $action): array {
             $sent?'success':'error');
         return ['outbox',[]];
 
+    // ---- attendance ----------------------------------------------------
+
+    case 'attendance_save':
+        $u=require_staff(); $c=training_class((int)post('class_id'));
+        $on=date_value(post('session_on'),true);
+        if($on>today()) throw new UserError(t('Das Datum liegt in der Zukunft.','That date is in the future.'));
+        $marks=$_POST['present']??[]; if(!is_array($marks)) throw new UserError(t('Ungültige Eingabe.','Invalid input.'));
+        $allowed=array_keys(attendance_statuses());
+        $saved=0; $cleared=0;
+        foreach(class_members((int)$c['id']) as $m) {
+            $sid=(int)$m['id'];
+            if(!array_key_exists($sid,$marks)) continue;
+            $value=is_scalar($marks[$sid])?trim((string)$marks[$sid]):'';
+            // An empty value means "not recorded", which is different from being
+            // marked absent, so it removes the row rather than storing a status.
+            if($value==='') {
+                $cleared += run('DELETE FROM attendance WHERE class_id=? AND student_id=? AND session_on=?',[$c['id'],$sid,$on])->rowCount();
+                continue;
+            }
+            if(!in_array($value,$allowed,true)) throw new UserError(t('Ungültiger Eintrag.','Invalid entry.'));
+            run('INSERT INTO attendance (class_id,student_id,session_on,status,recorded_by,created_at) VALUES (?,?,?,?,?,?)'
+                .' ON DUPLICATE KEY UPDATE status=VALUES(status),recorded_by=VALUES(recorded_by)',
+                [$c['id'],$sid,$on,$value,$u['id'],now()]);
+            $saved++;
+        }
+        audit('attendance.saved','class',(int)$c['id']);
+        flash($saved.' '.t('Einträge gespeichert.','entries saved.').($cleared?' '.$cleared.' '.t('entfernt.','removed.'):''));
+        return ['classes',['id'=>$c['id'],'tab'=>'attendance','on'=>$on]];
+
+    case 'attendance_clear':
+        require_staff(); $c=training_class((int)post('class_id'));
+        $on=date_value(post('session_on'),true);
+        run('DELETE FROM attendance WHERE class_id=? AND session_on=?',[$c['id'],$on]);
+        audit('attendance.cleared','class',(int)$c['id']);
+        flash(t('Eintrag für diesen Tag entfernt.','The entry for that day was removed.'));
+        return ['classes',['id'=>$c['id'],'tab'=>'attendance']];
+
+    // ---- monthly billing -----------------------------------------------
+
+    case 'billing_generate':
+        require_staff();
+        $period=billing_valid_period(post('period',billing_current_period()));
+        $result=billing_run($period);
+        flash($result['created']
+            ? $result['created'].' '.t('Beiträge für ','charges created for ').billing_month_name($period).' '.substr($period,0,4).t(' angelegt.','.')
+            : t('Nichts zu tun: für diesen Monat gibt es bereits alle Beiträge.','Nothing to do: every charge for that month already exists.'),
+            $result['created']?'success':'error');
+        return ['payments',['period'=>$period]];
+
+    case 'billing_pause':
+        require_staff(); $s=student((int)post('id'));
+        $paused=post('mode')==='pause';
+        run('UPDATE students SET billing_paused=?, billing_note=? WHERE id=?',[$paused?1:0,text_limit('billing_note',255),$s['id']]);
+        audit('billing.'.($paused?'paused':'resumed'),'student',(int)$s['id']);
+        flash($paused?t('Beiträge für diesen Schüler pausiert. Bereits erzeugte Beiträge bleiben bestehen.','Billing paused for this student. Charges already created are unaffected.')
+                     :t('Beiträge laufen wieder.','Billing resumed.'));
+        return ['student',['id'=>$s['id'],'tab'=>'payments']];
+
     // ---- defaults registry and maintenance -----------------------------
 
     case 'defaults_registry_save':

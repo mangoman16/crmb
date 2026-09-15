@@ -107,7 +107,14 @@ Mit dem passenden PHP-CLI-Pfad, unter dem Anwendungsbenutzer:
 ```cron
 * * * * * /usr/bin/php /srv/badminton/current/bin/console.php mail:work 25 >> /srv/badminton/shared/mail-worker.log 2>&1
 15 3 * * * /usr/bin/php /srv/badminton/current/bin/console.php maintenance >> /srv/badminton/shared/maintenance.log 2>&1
+30 4 1 * * /usr/bin/php /srv/badminton/current/bin/console.php billing:run >> /srv/badminton/shared/billing.log 2>&1
 ```
+
+Die dritte Zeile legt am 1. jedes Monats die Monatsbeiträge an. Sie ist bewusst
+wiederholbar: ein zweiter Lauf im selben Monat erzeugt nichts. Wer lieber selbst
+kontrolliert, lässt diese Zeile weg und verwendet **Beiträge → Monatsbeiträge**,
+wo die Liste vor dem Anlegen angezeigt wird. `billing:plan` zeigt dasselbe auf
+der Kommandozeile, ohne etwas zu ändern.
 
 `current` zeigt auf den aktiven Releaseordner, siehe `UPDATING.md`. Alternativ zunächst den tatsächlichen Installationspfad verwenden. Cron muss dieselbe Konfiguration laden wie die Webseite. Pro Versandlauf werden höchstens 25 wartende Mails verarbeitet. Ein Datenbankschloss verhindert parallele Versandläufe. Fehlgeschlagene Mails werden im Postausgang angezeigt; normale Mails können dort erneut vorgemerkt werden. Für fehlgeschlagene Sicherheitsmails neue Links anfordern.
 

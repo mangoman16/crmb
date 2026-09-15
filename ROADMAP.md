@@ -65,6 +65,19 @@ fails partway.
 Also: online status, maintenance mode from the UI with an administrator bypass,
 payment reminder emails, plainer wording, and a simplified parent dashboard.
 
+### 0.3.0 — billing, attendance, mobile
+**Monthly charges** on the 1st, first month after joining free, absence
+irrelevant to billing, per-student pause. Preview before creating; idempotent,
+so cron and the button cannot double-charge.
+
+**Attendance** per class and session, with configurable statuses, built for a
+phone: whole class on one screen, one tap each, one save, bulk-set to correct
+from.
+
+**Mobile-first pass** on the densest screens, driven by measurement rather than
+taste: the attendance control was rebuilt after five labels were found
+truncating and overlapping at 390px.
+
 ---
 
 ## Next — before she uses it
@@ -99,41 +112,34 @@ safe in it". Nothing below is optional.
 
 Ordered by how likely I think each is to come up in her first month.
 
-7. **Charges that create themselves.** Still the single biggest time saver, and
-   now the largest remaining gap: every monthly charge is entered by hand for
-   every student. Classes carry a tariff and a payment term, so the data is all
-   there; only the generation is missing. **This needs two decisions from you
-   before it can be built:** on which day does a monthly charge appear, and what
-   happens to a student who is away for a month — no charge, a reduced one, or
-   charged as normal?
-8. **Export.** CSV of students, payments and assessments, so her data is never
+7. **Export.** CSV of students, payments and assessments, so her data is never
    hostage to this app and she can hand her accountant a file. Use a library
    rather than hand-rolled CSV escaping.
-9. **Undo, or at least a soft delete.** Deleting a student is permanent and
+8. **Undo, or at least a soft delete.** Deleting a student is permanent and
     guarded only by typing the full name. A `deleted_at` column and a
     restore window would suit a nervous user far better than a confirmation
     box. Charges already block deletion, which is good; this generalises it.
-10. **A calendar or term view.** "Who is at training on Thursday" is a question
+9. **A calendar or term view.** "Who is at training on Thursday" is a question
     the absence data can already answer but nothing asks.
-11. **Push notifications for a new message.** Web push works in standalone
+10. **Push notifications for a new message.** Web push works in standalone
     iOS web apps from iOS 16.4, so the manifest added in this review is the
     prerequisite. Email notification already exists and may well be enough —
     worth asking before building.
 
 ## Later — worth doing, not worth doing first
 
-12. **Search across messages and notes.** Fine without it at her scale.
-13. **Rename and edit saved filters.** Currently create and delete only (A22).
-14. **Two-factor authentication** for the admin account. Password plus
+11. **Search across messages and notes.** Fine without it at her scale.
+12. **Rename and edit saved filters.** Currently create and delete only (A22).
+13. **Two-factor authentication** for the admin account. Password plus
     invitation-only access is a reasonable posture for a family app; this is
     hardening, not a gap.
-15. **An audit-log viewer.** Everything is recorded in `audit_log` but nothing
+14. **An audit-log viewer.** Everything is recorded in `audit_log` but nothing
     displays it.
-16. **Prune `audit_log` and `consent_log`.** They grow without bound. Not a
+15. **Prune `audit_log` and `consent_log`.** They grow without bound. Not a
     problem for years at this scale, and both are records you may want to keep
     deliberately rather than expire — decide the retention period as part of
     item 4.
-17. **Batch attendance entry.** Only worth it if she starts tracking
+16. **Batch attendance entry.** Only worth it if she starts tracking
     per-session attendance, which today she does not.
 
 ## Explicitly not planned

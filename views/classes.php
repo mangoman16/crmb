@@ -37,7 +37,13 @@ if(!$id && !$edit):
     </div>
 <?php endif; endif ?>
 
-<?php if($id && !$edit): $members=class_members($id); ?>
+<?php
+$tab=(string)($_GET['tab']??'members');
+if(!in_array($tab,['members','attendance'],true))$tab='members';
+if($id && !$edit) tabs(['members'=>t('Teilnehmer','Members'),'attendance'=>t('Anwesenheit','Attendance')],$tab,'classes',['id'=>$id]);
+?>
+<?php if($id && !$edit && $tab==='attendance'): require ROOT.'/views/_class_attendance.php'; ?>
+<?php elseif($id && !$edit): $members=class_members($id); ?>
 <div class="card">
     <div class="section-heading">
         <h2><?=e(t('Teilnehmer','Members'))?></h2>

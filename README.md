@@ -1,12 +1,14 @@
 # Badminton CRM
 
-Version **0.2.0**. A self-hosted PHP/MySQL application for a badminton coach and her students, built for mobile use, with German and English interfaces.
+Version **0.3.0**. A self-hosted PHP/MySQL application for a badminton coach and her students, built for mobile use, with German and English interfaces.
 
 ## Included
 
 - Invitation-only email/password accounts; verified invitation links, password reset and verified email changes.
 - One account can manage multiple students. Administrator, trainer and student roles; account suspension and deletion. Administrators configure the portal; trainers run the day-to-day work.
 - Training classes with their own schedule, tariff and bank details. A student can be in several classes.
+- Attendance per training session, designed for one hand on a phone: the class on one screen, one tap each, one save.
+- Monthly charges on the 1st, with the first month after joining free, per-student pausing, and a preview before anything is created.
 - Skill assessment: configurable rating scales, skill areas, dated values per student, progress charts and automatic grouping by level. Visible to staff only.
 - Payment profiles with a transfer QR code for anything a parent still owes, generated on the server from an editable payload template.
 - Students, named contact people, membership dates, configurable statuses and dated absences.
@@ -32,7 +34,7 @@ The distribution ZIP includes PHPMailer and its Composer autoloader. A Git check
 
 ## Scope of this version
 
-Charges are entered manually because the billing rules are not yet fixed. Classes carry a tariff and payment details, but do not generate charges on a schedule. There is no online payment processor. SMTP sends email; replies belong in the app. No mailbox reader or backup system is included.
+Monthly charges are generated on the 1st from each student's agreed price or monthly tariff. One-time and fixed-period tariffs are still entered by hand, because they do not recur. There is no online payment processor. SMTP sends email; replies belong in the app. No mailbox reader or backup system is included.
 
 Custom content, tariff names and message templates are entered by the operator; switching the interface language does not translate their content. The privacy notice is an editable draft that still needs the actual operator and service-provider details. Invitations stay disabled until SMTP is configured and both privacy texts are completed in settings.
 

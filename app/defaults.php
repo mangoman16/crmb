@@ -70,6 +70,24 @@ function setting_schema(): array {
             'kind' => 'bool', 'default' => true, 'group' => 'payments',
             'label' => ['QR-Code für offene Beiträge anzeigen', 'Show a QR code for outstanding charges'],
         ],
+        'billing_due_days' => [
+            'kind' => 'int', 'default' => 14, 'min' => 0, 'max' => 90, 'group' => 'payments',
+            'label' => ['Zahlungsziel für Monatsbeiträge (Tage ab dem 1.)', 'Payment term for monthly charges (days from the 1st)'],
+        ],
+        'billing_label' => [
+            'kind' => 'text', 'default' => 'Beitrag {month}', 'max' => 120, 'group' => 'payments',
+            'label' => ['Bezeichnung der Monatsbeiträge', 'Label for monthly charges'],
+            'hint'  => ['Platzhalter: {month} {year}', 'Placeholders: {month} {year}'],
+        ],
+        'attendance_statuses' => [
+            'kind' => 'map', 'group' => 'students',
+            // Three by default so every label fits on one line on a phone at a
+            // readable size. More can be added here; the buttons wrap to a
+            // second row rather than truncating.
+            'default' => ['present' => 'Anwesend', 'absent' => 'Fehlt', 'excused' => 'Entschuldigt'],
+            'label' => ['Anwesenheit: mögliche Einträge', 'Attendance: possible entries'],
+            'hint'  => ['Weitere Einträge sind möglich, z. B. „Verspätet“.', 'You can add more, for example “Late”.'],
+        ],
         'skill_bands' => [
             'kind' => 'map', 'group' => 'skills',
             // Keys are the lower bound as a percentage of the scale; the label is

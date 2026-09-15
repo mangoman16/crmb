@@ -62,3 +62,18 @@ document.querySelectorAll('form[method="post"]').forEach(form => {
     window.setTimeout(() => { form.querySelectorAll('button[type="submit"]').forEach(button => { button.disabled = true; }); }, 0);
   });
 });
+
+// Reveal controls that only make sense with JavaScript available.
+document.querySelectorAll('[data-needs-js]').forEach(el => { el.hidden = false; });
+
+// Attendance: set every student's choice at once, then correct the exceptions.
+// Without JavaScript the radios still work one by one, so this is additive.
+document.querySelectorAll('[data-mark-all]').forEach(button => {
+  button.addEventListener('click', () => {
+    const value = button.dataset.markAll;
+    document.querySelectorAll('.attendance-list .segmented').forEach(group => {
+      const radio = group.querySelector('input[value="' + CSS.escape(value) + '"]');
+      if (radio) radio.checked = true;
+    });
+  });
+});
