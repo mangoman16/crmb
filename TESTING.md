@@ -13,7 +13,7 @@ German by default and searching for the English word will not find the button.
 
 ---
 
-## 1. The two commands, first
+## The two commands, first
 
 ```bash
 php tests/run.php                 # the whole suite, no database server needed
@@ -55,7 +55,7 @@ Run one on its own while working: `php tests/run.php billing invoices`.
 
 ---
 
-## 2. The five-minute sweep — after any code change
+## The five-minute sweep — after any code change
 
 If you changed one thing, these six are the ones that catch a broken deploy.
 
@@ -74,7 +74,7 @@ If you changed one thing, these six are the ones that catch a broken deploy.
 
 ---
 
-## 3. Preparation for the full sweep
+## Preparation for the full sweep
 
 - [ ] **2.1** **Einstellungen → System → „Beispieldaten anlegen"** on a portal
   with no real students. It creates three courses, fifteen children aged 7 to
@@ -90,7 +90,7 @@ If you changed one thing, these six are the ones that catch a broken deploy.
 
 ---
 
-## 4. Installation and update
+## Installation and update
 
 Skip on an ordinary code change; do all of it before a release.
 
@@ -119,7 +119,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 5. Sign in, roles and access
+## Sign in, roles and access
 
 - [ ] **4.1** Sign in as the trainer. **Verwaltung**, **Kurse**,
   **Anwesenheit**, **Beiträge**, **Rechnungen**, **Konten** and **Postausgang**
@@ -141,7 +141,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 6. The shell: the bar, notifications, feedback, impersonation
+## The shell: the bar, notifications, feedback, impersonation
 
 - [ ] **5.1** Scroll a long page. The top bar stays where it is.
 - [ ] **5.2** Your name and role appear **once**, in the top bar — not again at
@@ -167,7 +167,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 7. Appearance and personal preferences
+## Appearance and personal preferences
 
 - [ ] **6.1** **Einstellungen → Portal**: set the portal's default colour. A new
   account sees it.
@@ -185,7 +185,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 8. Students, contacts, levels and age groups
+## Students, contacts, levels and age groups
 
 - [ ] **7.1** Create a child with a name, a date of birth and a level. The level
   offered by default is **Anfänger** unless you changed which one is default.
@@ -217,7 +217,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 9. Courses, dates and tariffs
+## Courses, dates and tariffs
 
 - [ ] **8.1** Create a course with two training days in the same week — say
   Monday in one hall and Thursday in another. Both show, each with its own
@@ -241,7 +241,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 10. Enrolment, asked for and decided
+## Enrolment, asked for and decided
 
 - [ ] **9.1** As a family, open a child and look at **Kurse**. Courses with room
   in them are offered.
@@ -254,7 +254,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 11. Attendance
+## Attendance
 
 - [ ] **10.1** **Anwesenheit** in the menu opens one screen: pick a course, pick
   a date, see every child in it, one tap each, one save.
@@ -273,7 +273,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 12. Charges and billing
+## Charges and billing
 
 - [ ] **11.1** **Beiträge → Beiträge anlegen** previews what would be created:
   one line per enrolment, each naming the course, the tariff and the period,
@@ -298,24 +298,27 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 13. Payments and proof
+## Payments and proof
 
 - [ ] **12.1** Record a payment against a charge. The outstanding amount drops
   by exactly that much, in cents, with no rounding drift.
 - [ ] **12.2** A payment that is not confirmed does not reduce what is
   outstanding, and says it is still unconfirmed.
 - [ ] **12.3** Void a payment. The amount comes back.
-- [ ] **12.4** As a family, upload a proof of payment — a photo or a PDF — on
-  the child's page. It is optional: the page never blocks on it.
-- [ ] **12.5** The trainer sees the proof, can open it, and can remove it.
-- [ ] **12.6** A file larger than the limit is refused in words, naming the
+- [ ] **12.4** As a family with something outstanding, the overview offers
+  „Schon überwiesen? … Beleg hochladen" and says it is voluntary. With nothing
+  outstanding the offer is not there, and the trainer never sees it.
+- [ ] **12.5** Follow the offer and upload a proof — a photo or a PDF. It is
+  optional: no page ever blocks on it.
+- [ ] **12.6** The trainer sees the proof, can open it, and can remove it.
+- [ ] **12.7** A file larger than the limit is refused in words, naming the
   limit, and the limit shown is never higher than what PHP itself accepts.
-- [ ] **12.7** The transfer QR code on a family's page carries the right amount
+- [ ] **12.8** The transfer QR code on a family's page carries the right amount
   and reference.
 
 ---
 
-## 14. Invoices
+## Invoices
 
 - [ ] **13.1** With the business details empty, **Rechnungen** says which ones
   are missing and links straight to the form.
@@ -349,7 +352,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 15. Messages
+## Messages
 
 - [ ] **14.1** **Nachrichten** as a family: one box, a paper clip, a microphone,
   a send arrow. Write to the trainer without asking anybody's permission.
@@ -379,7 +382,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 16. News, email and the queue
+## News, email and the queue
 
 - [ ] **15.1** Publish a news item. Families see it under **Neuigkeiten**.
 - [ ] **15.2** With the newsletter ticked, an email is queued per subscriber.
@@ -394,7 +397,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 17. Email templates
+## Email templates
 
 - [ ] **16.1** **Verwaltung → E-Mail-Vorlagen**: create one. The list of values
   you may use, and what each one means, is on the same screen as the box you
@@ -405,7 +408,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 18. Saved views and filters
+## Saved views and filters
 
 - [ ] **17.1** **Schüler**: filter by level, age group, course and status. The
   page says in a sentence what you are currently looking at.
@@ -416,7 +419,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 19. Forms that do not lose what you typed
+## Forms that do not lose what you typed
 
 - [ ] **18.1** Type a euro sign into a number field and save. The form comes
   back with **everything else still in it**, the error beside the field that
@@ -430,7 +433,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 20. Change log
+## Change log
 
 - [ ] **19.1** **Änderungen** lists what changed in words: the field by the name
   she uses for it, the old value and the new one.
@@ -441,7 +444,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 21. Privacy
+## Privacy
 
 - [ ] **20.1** **Einstellungen → Datenschutz**: the German and English drafts
   are editable, and the operator's own details are filled into them from
@@ -452,7 +455,16 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 22. Data safety
+## What may be customised, and what may not
+
+- [ ] **21.5** **Einstellungen → Eigene Felder** says in words that custom
+  fields are for students only, and why the rest — courses, tariffs, invoices,
+  charges — has fixed fields.
+- [ ] **21.6** The things that *are* hers to change — levels, age groups,
+  membership statuses, payment methods, tariffs, email templates — are all under
+  **Verwaltung** and need no administrator.
+
+## Data safety
 
 - [ ] **21.1** Interrupt a save (close the tab mid-request). Nothing half-written
   is left behind.
@@ -464,7 +476,7 @@ Skip on an ordinary code change; do all of it before a release.
 
 ---
 
-## 23. On the phone, at the end
+## On the phone, at the end
 
 Do this last, on a real phone, not a resized desktop window.
 
@@ -478,7 +490,7 @@ Do this last, on a real phone, not a resized desktop window.
 
 ---
 
-## 24. Cleaning up
+## Cleaning up
 
 - [ ] **23.1** **Einstellungen → System → „Beispieldaten entfernen"**. Every
   example child, account, course, charge, payment, message and file is gone, and
@@ -498,7 +510,7 @@ Say what you ran, not what you hope is true.
   unverified** — it is one of the two supported engines, not both.
 - No automated check opens the generated PDF in Adobe Reader, sends real email
   through a real provider, or renders a page in Safari on a real iPhone. Checks
-  13.4, 15.3 and 23.x exist because nothing else covers them.
+  13.4, 15.3 and 22.x exist because nothing else covers them.
 - A green suite has never been proof that a file is intact. The `structure`
   suite exists because an automated edit once truncated a whole dispatcher and
   every behavioural test still passed.

@@ -138,3 +138,17 @@ $html = render_view('students');
 ok(str_contains($html, 'Montagsgruppe'), 'the view is offered');
 ok(str_contains($html, 'Timeline-Kurs'), 'and says which course it selects');
 ok(str_contains($html, (string)levels()[0]['name']), 'and which level');
+
+case_('The proof upload is offered where a family will see it, and only when something is open');
+$family = make_account(['role'=>'student', 'name'=>'Familie Berger']);
+$kid = make_student(['first_name'=>'Nina', 'last_name'=>'Berger', 'account_id'=>$family]);
+sign_in_as($family);
+$html = render_view('dashboard');
+ok(!str_contains($html, 'Schon überwiesen'), 'nothing owed, nothing to offer');
+fixture('charges', ['student_id'=>$kid, 'label'=>'Monatsbeitrag', 'amount_cents'=>4500,
+    'period_from'=>null, 'period_to'=>null, 'due_on'=>today(), 'cancelled'=>0, 'created_at'=>now()]);
+$html = render_view('dashboard');
+ok(str_contains($html, 'Schon überwiesen'), 'with an open charge the offer is on the page they land on');
+ok(str_contains($html, 'Freiwillig'), 'and says it is voluntary, because it is');
+sign_in_as($trainer);
+ok(!str_contains(render_view('dashboard'), 'Schon überwiesen'), 'the trainer is not the one uploading it');

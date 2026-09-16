@@ -83,6 +83,12 @@ after a round of testing that produced a list of about forty things.
   she uses, storing only what actually differed. The undo is gone: a page that
   can put a record back is a page that can put a record back by accident, and
   the cost of keeping it was a copy of every record on every save.
+- **The proof of payment is offered where it is easy.** A family with something
+  outstanding is asked on the page they land on — „Schon überwiesen?" — with the
+  upload one tap away, and told plainly that it is voluntary.
+- **What may be customised now says so.** Custom fields are for students only,
+  and the screen says why the rest — courses, tariffs, charges, invoices — has
+  fixed fields, and where the lists that *are* hers to change live instead.
 - **Every child has somebody to ring.** One contact is the standard one — the
   number you reach for and the address an invoice goes to — so it cannot be
   saved without an email, the last contact cannot be removed, and a child
@@ -90,7 +96,7 @@ after a round of testing that produced a list of about forty things.
   portal account is addressed to that contact.
 - **A feature list with steps to test it** — [TESTING.md](TESTING.md) — for the
   administrator to walk after a code change or a release, alongside the
-  automated suites, which now run 1617 assertions.
+  automated suites, which now run 1621 assertions.
 
 ## 0.5.0 — unreleased
 

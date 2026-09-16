@@ -4,7 +4,7 @@
 
 Executed against PHP **8.4.19** and MariaDB **10.11.14-MariaDB-0ubuntu0.24.04.1**.
 
-- The whole suite passes on both engines: **1617 assertions on SQLite, 1630
+- The whole suite passes on both engines: **1621 assertions on SQLite, 1634
   against MariaDB** (the extra ones being the foreign keys and the MySQL-dialect
   backup that the SQLite translation cannot express), with all thirteen
   migrations applying on MariaDB — including `013_standard_contact.sql`, whose

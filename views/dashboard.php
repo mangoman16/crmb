@@ -87,6 +87,18 @@ if($timeline): ?>
     </ol>
 </section>
 <?php endif ?>
+<?php /* Uploading the proof is voluntary and nobody will chase it, so it has to
+         be offered at the moment it is easy - next to the amount, on the page
+         the family lands on - rather than waiting on a tab they never open. */
+if(!$staff && $open): ?>
+<div class="setup-strip">
+    <div><strong><?=e(t('Schon überwiesen?','Already transferred?'))?></strong>
+        <p><?=e(t('Du kannst den Beleg hochladen, damit die Zahlung schneller zugeordnet wird. Freiwillig – die Trainerin sieht den Eingang auch so.','You can upload the proof so the payment is matched faster. Voluntary – your coach sees the money arrive either way.'))?></p></div>
+    <?php foreach($students as $s): if(empty($openBy[(int)$s['id']])) continue; ?>
+        <?=link_button(count($students)>1?t('Beleg: ','Proof: ').$s['first_name']:t('Beleg hochladen','Upload the proof'),'student',['id'=>$s['id'],'tab'=>'payments'],'secondary')?>
+    <?php endforeach ?>
+</div>
+<?php endif ?>
 <div class="dashboard-grid"><section class="card"><div class="section-heading"><h2><?=e($staff?t('Schüler','Students'):t('Meine Schüler','My students'))?></h2><a href="<?=e(url('students'))?>"><?=e(t('Alle ansehen','View all'))?> <?=icon('arrow')?></a></div>
 <?php if(!$students)empty_state(t('Noch keine Schüler','No students yet'),$staff?t('Lege zuerst einen Schüler an. Ein Konto kannst du auch später zuordnen.','Add your first student. You can link an account later.'):t('Deine Trainerin ordnet diesem Konto Schüler zu.','Your coach will link students to this account.'),$staff?link_button(t('Ersten Schüler anlegen','Add first student'),'student'):'');else foreach(array_slice($students,0,6) as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0]); ?>
 </section><section class="card news-panel"><div class="section-heading"><h2><?=e(t('Neuigkeiten','News'))?></h2><?=icon('news')?></div>
