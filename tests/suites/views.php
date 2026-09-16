@@ -87,3 +87,25 @@ foreach (array_merge($pages, ['classes','payments','accounts','compose','outbox'
     foreach (['Fatal error','Warning:','Deprecated:','Notice:','Undefined ','Uncaught','\u20','Array to string'] as $token)
         is_same(false, str_contains($out, $token), $page.' is free of "'.$token.'"');
 }
+
+case_('Verwaltung renders every tab for a trainer, without an administrator');
+$trainerView = make_account(['role'=>'trainer']); sign_in_as($trainerView);
+foreach (['levels','ages','members','tariffs','templates','payments'] as $tab) {
+    $html = render_view('manage', ['tab'=>$tab]);
+    ok(str_contains($html, 'Verwaltung'), 'manage/'.$tab.' renders');
+    ok(str_contains($html, 'Wer gehört wohin?'), 'manage/'.$tab.' explains which grouping is which');
+}
+
+case_('The placeholder list and the placeholders that actually work are the same list');
+$html = render_view('manage', ['tab'=>'templates']);
+foreach (array_keys(template_placeholders()) as $key)
+    ok(str_contains($html, '{{'.$key.'}}'), 'the editor offers {{'.$key.'}}');
+$student = one('SELECT s.*, NULL AS tariff_name FROM students s LIMIT 1') ?: ['id'=>make_student(), 'first_name'=>'Lena', 'last_name'=>'Hofer', 'tariff_name'=>'', 'level_id'=>null, 'birth_date'=>null, 'age_group_id'=>null];
+$filled = template_text(implode(' ', array_map(fn($k) => '{{'.$k.'}}', array_keys(template_placeholders()))), $student);
+ok(!str_contains($filled, '{{'), 'and every one of them is filled in when a message is sent');
+
+case_('Einstellungen keeps only what an administrator has to decide');
+sign_in_as(make_account(['role'=>'admin']));
+$html = render_view('settings', ['tab'=>'portal']);
+foreach (['tab=levels','tab=ages','tab=tariffs','tab=templates'] as $moved)
+    ok(!str_contains($html, $moved), 'Einstellungen no longer offers '.$moved);

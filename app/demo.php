@@ -116,6 +116,7 @@ function demo_fill(bool $force = false): array {
         }
 
         // --- students -------------------------------------------------------
+        $levelIds = array_column(levels(), 'id');
         $names = demo_names();
         $students = [];
         foreach ($names as $i => $n) {
@@ -130,13 +131,19 @@ function demo_fill(bool $force = false): array {
             // and one has none at all, which is what the billing preview has to
             // be able to explain rather than skip silently.
             $price = $i === 4 ? 4000 : ($i === 9 ? 5000 : null);
-            run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,tariff_id,'
+            run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,'
                 .'price_cents,price_note,billing_paused,billing_note,internal_notes,revision,created_at,updated_at,is_demo)'
-                .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,1)',
+                .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,1)',
                 [$i === 0 ? $accounts['familie.hofer@beispiel.test'] : ($i === 1 ? $accounts['familie.berger@beispiel.test'] : null),
                  $n[0], $n[1], $birth->format('Y-m-d'), $joined->format('Y-m-d'),
                  $status === 'ended' ? $today->modify('-30 days')->format('Y-m-d') : null,
-                 $status, $i === 7 ? null : ($courses ? (int)scalar('SELECT tariff_id FROM classes WHERE id=?', [$courses[$course]]) : null),
+                 $status,
+                 // Spread across the levels, so a list filtered by one is not empty.
+                 $levelIds ? (int)$levelIds[$i % count($levelIds)] : null,
+                 // One child has a pinned group that disagrees with their age,
+                 // because that exception is the reason pinning exists at all.
+                 $i === 6 ? (int)(age_groups()[count(age_groups()) - 1]['id'] ?? 0) : null,
+                 $i === 7 ? null : ($courses ? (int)scalar('SELECT tariff_id FROM classes WHERE id=?', [$courses[$course]]) : null),
                  $price, $price !== null ? 'Geschwisterermäßigung' : '',
                  $status === 'paused' ? 1 : 0, $status === 'paused' ? 'Verletzungspause' : '',
                  '', now(), now()]);

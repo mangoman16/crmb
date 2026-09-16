@@ -1,21 +1,38 @@
 <?php
 $id=(int)($_GET['id']??0);$staff=is_staff($user);if(!$id)require_staff();
 $defaultTariff=setting('default_tariff',null);
-$s=$id?student($id):['id'=>0,'first_name'=>'','last_name'=>'','birth_date'=>'','joined_on'=>today(),'ended_on'=>'','status'=>setting('default_status','active'),'account_id'=>null,'tariff_id'=>$defaultTariff,'price_cents'=>null,'price_note'=>'','internal_notes'=>''];
+$s=$id?student($id):['id'=>0,'first_name'=>'','last_name'=>'','birth_date'=>'','joined_on'=>today(),'ended_on'=>'','status'=>setting('default_status','active'),'account_id'=>null,'level_id'=>(int)(level_default()['id']??0),'age_group_id'=>null,'tariff_id'=>$defaultTariff,'price_cents'=>null,'price_note'=>'','internal_notes'=>''];
 $tab=(string)($_GET['tab']??'details');
-$tabsAllowed=$staff?['details','contacts','payments','absence','skills','classes','attendance']:['details','contacts','payments','absence'];
+$tabsAllowed=$staff?['details','contacts','payments','absence','classes','attendance']:['details','contacts','payments','absence'];
 if(!in_array($tab,$tabsAllowed,true))$tab='details';
 page_head($id?$s['first_name'].' '.$s['last_name']:t('Neuen Schüler anlegen','Add a student'),$id?status_label($s['status']):'',link_button(t('Alle Schüler','All students'),'students',[],'secondary'));
 if($id){
     $tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),'absence'=>t('Abwesenheit','Absences')];
-    if($staff){$tabLabels['skills']=t('Leistung','Performance');$tabLabels['attendance']=t('Anwesenheit','Attendance');$tabLabels['classes']=t('Kurse','Classes');}
+    if($staff){$tabLabels['attendance']=t('Anwesenheit','Attendance');$tabLabels['classes']=t('Kurse','Classes');}
     tabs($tabLabels,$tab,'student',['id'=>$id]);
 }
 if($tab==='details' || !$id): ?>
 <?php start_form('student_save',['id'=>$id,'revision'=>$s['revision']??0],'form'); ?>
-<section class="card"><h2><?=e(t('Persönliche Daten','Personal details'))?></h2><div class="grid two"><?php input('first_name',t('Vorname','First name'),$s['first_name'],'text',true);input('last_name',t('Nachname','Last name'),$s['last_name'],'text',true);input('birth_date',t('Geburtsdatum','Date of birth'),$s['birth_date'],'date');if($staff)select_field('account_id',t('Zugeordnetes Konto','Linked account'),array_column(rows("SELECT id,CONCAT(name,' · ',email) AS label FROM accounts WHERE role='student' ORDER BY name"),'label','id'),$s['account_id']);?></div></section>
-<?php if($staff):?><section class="card"><h2><?=e(t('Mitgliedschaft und Tarif','Membership and tariff'))?></h2><div class="grid two">
-<?php select_field('status',t('Status','Status'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$s['status'],true);select_field('tariff_id',t('Tarif','Tariff'),array_column(rows('SELECT id,name FROM tariffs WHERE archived=0 OR id=? ORDER BY name',[$s['tariff_id']??0]),'name','id'),$s['tariff_id']);$tariffPrice=$s['tariff_id']?(int)scalar('SELECT price_cents FROM tariffs WHERE id=?',[$s['tariff_id']]):null;
+<section class="card"><h2><?=e(t('Persönliche Daten','Personal details'))?></h2><div class="grid two"><?php
+input('first_name',t('Vorname','First name'),$s['first_name'],'text',true);
+input('last_name',t('Nachname','Last name'),$s['last_name'],'text',true);
+$age=student_age($s['birth_date']??null);
+input('birth_date',t('Geburtsdatum','Date of birth'),$s['birth_date'],'date',false,
+    $age!==null?plural($age,'Jahr alt','Jahre alt','year old','years old').' · '.t('Altersgruppe: ','Age group: ').age_group_name($s)
+               :t('Bestimmt die Altersgruppe.','Decides the age group.'));
+if($staff)select_field('account_id',t('Zugeordnetes Konto (Anmeldung per E-Mail)','Linked account (signs in by email)'),array_column(rows("SELECT id,CONCAT(name,' · ',email) AS label FROM accounts WHERE role='student' ORDER BY name"),'label','id'),$s['account_id']);?></div></section>
+<?php if($staff):?><section class="card"><h2><?=e(t('Einteilung','Grouping'))?></h2>
+<p class="muted"><?=e(t('Drei verschiedene Dinge, die leicht durcheinandergehen: wie weit das Kind ist, wie alt es ist, und ob es gerade dabei ist.','Three different things that are easy to confuse: how far along the child is, how old they are, and whether they are currently taking part.'))?></p>
+<div class="grid three"><?php
+select_field('level_id',t('Leistungsgruppe','Level'),array_column(rows('SELECT id,name FROM levels WHERE archived=0 OR id=? ORDER BY sort_order,name',[$s['level_id']??0]),'name','id'),$s['level_id']);
+echo '<div class="field-note">'.e(t('Du wählst sie. Neue Kinder starten in ','You choose it. New children start in ').(level_default()['name']??'–').'.').'</div>';
+select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),array_column(age_groups(),'name','id'),$s['age_group_id']);
+echo '<div class="field-note">'.e($s['age_group_id']?t('Fest eingestellt. Leer lassen, damit sie sich wieder aus dem Geburtsdatum ergibt.','Pinned. Clear it to let the date of birth decide again.'):t('Leer = ergibt sich aus dem Geburtsdatum: ','Empty = worked out from the date of birth: ').age_group_name($s)).'</div>';
+select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$s['status'],true);
+echo '<div class="field-note">'.e(t('Probetraining, aktiv, pausiert oder beendet.','On trial, active, paused or ended.')).'</div>';
+?></div></section>
+<section class="card"><h2><?=e(t('Tarif und Beitrag','Tariff and fee'))?></h2><div class="grid two">
+<?php select_field('tariff_id',t('Tarif','Tariff'),array_column(rows('SELECT id,name FROM tariffs WHERE archived=0 OR id=? ORDER BY name',[$s['tariff_id']??0]),'name','id'),$s['tariff_id']);$tariffPrice=$s['tariff_id']?(int)scalar('SELECT price_cents FROM tariffs WHERE id=?',[$s['tariff_id']]):null;
 default_field('price',t('Vereinbarter Preis (€)','Agreed price (€)'),amount_input($s['price_cents']===null?null:(int)$s['price_cents']),
     $tariffPrice!==null?amount_input($tariffPrice):'',
     $tariffPrice!==null?money($tariffPrice).' · '.($s['tariff_name']??''):t('kein Tarif gewählt','no tariff chosen'),
@@ -38,7 +55,6 @@ endforeach ?></div></section><?php endif ?>
 <?php elseif($tab==='absence'): ?>
 <section class="card"><h2><?=e(t('Abwesenheiten','Absences'))?></h2><?php $list=rows('SELECT * FROM absences WHERE student_id=? ORDER BY starts_on DESC',[$id]);if(!$list)echo '<p class="muted">'.e(t('Keine Abwesenheiten eingetragen.','No absences recorded.')).'</p>';foreach($list as $a):?><div class="record-row"><div><strong><?=e(reason_label($a['reason']))?></strong><p><?=e(fmt_date($a['starts_on']).' – '.fmt_date($a['ends_on']))?></p></div><?php start_form('absence_delete',['student_id'=>$id,'id'=>$a['id']],'inline-form');submit_button(t('Entfernen','Remove'),'subtle danger-text');?></form></div><?php endforeach ?></section>
 <section class="card"><h2><?=e(t('Abwesenheit melden','Report absence'))?></h2><?php start_form('absence_add',['student_id'=>$id]);?><div class="grid three"><?php select_field('reason',t('Grund','Reason'),array_combine(array_keys(reasons()),array_map('reason_label',array_keys(reasons()))),'',true);input('starts_on',t('Von','From'),today(),'date',true);input('ends_on',t('Bis einschließlich','Up to and including'),today(),'date',true);?></div><?php submit_button(t('Abwesenheit eintragen','Record absence'));?></form></section>
-<?php elseif($tab==='skills'): require ROOT.'/views/_student_skills.php'; ?>
 <?php elseif($tab==='attendance'): $sum=attendance_summary($id); $rate=attendance_rate($sum); ?>
 <?php if($rate!==null): ?>
 <div class="stats-grid compact">

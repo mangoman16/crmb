@@ -29,7 +29,7 @@ $nav=['dashboard'=>['home',t('Übersicht','Overview')],'students'=>['users',t('S
 if(is_staff($user)){$nav['classes']=['calendar',t('Kurse','Classes')];$nav['payments']=['wallet',t('Beiträge','Payments')];}
 $nav['messages']=['mail',t('Nachrichten','Messages')];$nav['news']=['news',t('Neuigkeiten','News')];
 $unreadTotal=unread_count($user);
-if(is_staff($user)){$nav['accounts']=['lock',t('Konten','Accounts')];$nav['outbox']=['mail',t('Postausgang','Outbox')];}
+if(is_staff($user)){$nav['manage']=['settings',t('Verwaltung','Management')];$nav['accounts']=['lock',t('Konten','Accounts')];$nav['outbox']=['mail',t('Postausgang','Outbox')];}
 if(is_admin($user)){$nav['history']=['calendar',t('Änderungen','Changes')];$nav['settings']=['settings',t('Einstellungen','Settings')];}
 ?>
 <aside class="sidebar" id="sidebar">

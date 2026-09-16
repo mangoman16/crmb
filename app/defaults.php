@@ -88,17 +88,6 @@ function setting_schema(): array {
             'label' => ['Anwesenheit: mögliche Einträge', 'Attendance: possible entries'],
             'hint'  => ['Weitere Einträge sind möglich, z. B. „Verspätet“.', 'You can add more, for example “Late”.'],
         ],
-        'skill_bands' => [
-            'kind' => 'map', 'group' => 'skills',
-            // Keys are the lower bound as a percentage of the scale; the label is
-            // what a trainer sees. Editing this re-bands everyone immediately.
-            'default' => ['0' => 'Einsteiger', '40' => 'Mittelstufe', '65' => 'Fortgeschritten', '85' => 'Wettkampf'],
-            'label' => ['Leistungsgruppen (Untergrenze in % der Skala)', 'Skill bands (lower bound as % of scale)'],
-        ],
-        'assessment_window_days' => [
-            'kind' => 'int', 'default' => 120, 'min' => 7, 'max' => 3650, 'group' => 'skills',
-            'label' => ['Bewertung gilt als aktuell für (Tage)', 'An assessment counts as current for (days)'],
-        ],
         'online_window_minutes' => [
             'kind' => 'int', 'default' => 5, 'min' => 1, 'max' => 120, 'group' => 'portal',
             'label' => ['Als „online“ gilt eine Aktivität innerhalb von (Minuten)', 'Count as “online” when active within (minutes)'],

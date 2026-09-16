@@ -102,10 +102,13 @@ function test_driver(): string { return getenv('CRM_TEST_DRIVER') ?: 'sqlite'; }
  */
 function sqlite_translate(string $sql): array {
     $sql = preg_replace('/ENGINE=InnoDB[^;]*/', '', $sql) ?? $sql;
-    $sql = str_replace(
-        ['BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY', 'LONGTEXT', 'DATETIME', 'TINYINT', 'DECIMAL(6,2)', 'TIME'],
-        ['INTEGER PRIMARY KEY AUTOINCREMENT', 'TEXT', 'TEXT', 'INTEGER', 'REAL', 'TEXT'],
-        $sql);
+    $sql = str_replace('BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY', 'INTEGER PRIMARY KEY AUTOINCREMENT', $sql);
+    // Whole words only. A plain str_replace of DATETIME turned UTC_TIMESTAMP()
+    // into UTC_TEXTSTAMP(), which failed at the one moment it mattered - inside a
+    // migration, where the error names a statement rather than a function.
+    $sql = preg_replace_callback('/\b(LONGTEXT|DATETIME|TINYINT|TIME)\b|DECIMAL\(6,2\)/',
+        fn($m) => ['LONGTEXT'=>'TEXT','DATETIME'=>'TEXT','TINYINT'=>'INTEGER','TIME'=>'TEXT'][$m[0]] ?? 'REAL',
+        $sql) ?? $sql;
     $out = ['statements' => [], 'unsupported' => []];
     foreach (split_sql($sql) as $statement) {
         $statement = preg_replace('/\s+AFTER\s+`?\w+`?/', '', $statement) ?? $statement;
@@ -175,6 +178,7 @@ function test_boot(): void {
             // Advisory locks are a MySQL concept; a single-connection test always
             // "holds" the lock, which is the behaviour the code expects.
             $pdo->sqliteCreateFunction('GET_LOCK', fn($n, $t) => 1, 2);
+            $pdo->sqliteCreateFunction('UTC_TIMESTAMP', fn() => gmdate('Y-m-d H:i:s'), 0);
             $pdo->sqliteCreateFunction('RELEASE_LOCK', fn($n) => 1, 1);
             $pdo->exec('PRAGMA journal_mode=WAL');
             $pdo->exec('PRAGMA busy_timeout=4000');
@@ -236,11 +240,11 @@ function test_tables(): array {
 
 /** Empty every data table, keeping the schema, then re-seed the defaults. */
 function test_reset(): void {
-    $tables = ['attendance','assessments','skills','skill_areas','rating_scales','class_students','classes',
+    $tables = ['attendance','class_students','classes',
                'payment_profiles','consent_log','audit_log','form_requests','thread_reads','messages','threads',
                'mail_jobs','saved_filters','message_templates','news','payments','charges','absences',
-               'field_values','field_definitions','contacts','students','tariffs','rate_limits','auth_tokens',
-               'accounts','settings'];
+               'field_values','field_definitions','contacts','students','levels','age_groups','tariffs',
+               'rate_limits','auth_tokens','accounts','settings'];
     if (test_has_table('record_versions')) array_unshift($tables, 'record_versions');
     // Emptying parents before children is a foreign-key violation on MySQL just
     // as it is on SQLite, so both engines get the constraints switched off here

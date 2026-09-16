@@ -95,7 +95,7 @@ function badge(string $text,string $style=''): void {echo '<span class="badge '.
  */
 function student_card(array $s): void {
     $due=array_key_exists('due_cents',$s)?(int)$s['due_cents']:balance((int)$s['id'],true);
-    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'"><span class="avatar">'.e(mb_substr($s['first_name'],0,1).mb_substr($s['last_name'],0,1)).'</span><div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e($s['tariff_name']?:t('Kein Tarif','No tariff')).($s['price_cents']!==null?' · '.e(money((int)$s['price_cents'])):'').'</p></div><div class="student-card-status">';
+    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'"><span class="avatar">'.e(mb_substr($s['first_name'],0,1).mb_substr($s['last_name'],0,1)).'</span><div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$s['level_name']??'',age_group_name($s),$s['tariff_name']?:t('Kein Tarif','No tariff')]))).'</p></div><div class="student-card-status">';
     badge(status_label($s['status']),$s['status']==='active'?'green':'');
     if($due)echo '<span class="due">'.e(money($due)).' '.e(t('überfällig','overdue')).'</span>';
     echo '</div>'.icon('arrow').'</a>';
@@ -109,9 +109,12 @@ function render_filters(array $f,string $target='students'): void {
     input('q',t('Suche','Search'),$f['q']??'','search');
     select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$f['status']??'');
     select_field('absence',t('Aktuell abwesend','Currently absent'),array_combine(array_keys(reasons()),array_map('reason_label',array_keys(reasons()))),$f['absence']??'');
+    select_field('level',t('Leistungsgruppe','Level'),array_column(levels(),'name','id'),$f['level']??'');
+    select_field('age_group',t('Altersgruppe','Age group'),array_column(age_groups(),'name','id'),$f['age_group']??'');
+    echo '<details class="filter-more" '.(!empty($f['tariff'])?'open':'').'><summary>'.e(t('Tarif und eigene Felder','Tariff and custom fields')).'</summary><div class="grid two">';
     select_field('tariff',t('Tarif','Tariff'),array_column(rows('SELECT id,name FROM tariffs ORDER BY name'),'name','id'),$f['tariff']??'');
-    echo '<details class="filter-more" '.(!empty($f['field'])?'open':'').'><summary>'.e(t('Weitere Filter','More filters')).'</summary><div class="grid two">';
-    select_field('field',t('Eigenes Feld','Custom field'),array_column(field_definitions(),'label','id'),$f['field']??'');input('value',t('Wert entspricht','Value equals'),$f['value']??'');echo '</div></details>';
+    select_field('field',t('Eigenes Feld','Custom field'),array_column(field_definitions(),'label','id'),$f['field']??'');
+    input('value',t('Wert entspricht','Value equals'),$f['value']??'');echo '</div></details>';
     check_field('overdue',t('Nur überfällige Beiträge','Overdue charges only'),!empty($f['overdue']));
     submit_button(t('Filtern','Filter'),'secondary');echo '</form>';
 }

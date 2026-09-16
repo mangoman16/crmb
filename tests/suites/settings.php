@@ -44,8 +44,10 @@ test_reset();
 ok(setting('club_name') !== '', 'the portal has a name');
 ok(count((array)setting('statuses')) > 0, 'membership statuses exist');
 ok(count((array)setting('attendance_statuses')) > 0, 'attendance statuses exist');
-ok((int)scalar('SELECT COUNT(*) FROM rating_scales') > 0, 'at least one rating scale');
-ok((int)scalar('SELECT COUNT(*) FROM skill_areas') > 0, 'at least one skill area');
+ok(count(levels()) > 0, 'levels to put children into');
+ok(level_default() !== null, 'and one of them is where a new child starts');
+ok(count(age_groups()) > 0, 'age groups covering the usual ages');
+is_same([], age_group_warnings(), 'the shipped age groups leave no gap and no overlap');
 ok((int)scalar('SELECT COUNT(*) FROM payment_profiles') > 0, 'a payment profile to fill in');
 is_same((int)scalar('SELECT id FROM payment_profiles LIMIT 1'), (int)setting('default_payment_profile'),
         'and it is the configured default');

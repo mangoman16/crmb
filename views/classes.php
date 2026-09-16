@@ -1,7 +1,9 @@
 <?php
-$admin=is_admin($user);
+// Courses are the trainer's to change: when they meet, where, and who is in them.
+// An administrator can do it too, because an administrator can do everything.
+$mayEdit=is_staff($user);
 $id=(int)($_GET['id']??0);
-$edit=$admin && (!empty($_GET['edit']) || !empty($_GET['new']));
+$edit=$mayEdit && (!empty($_GET['edit']) || !empty($_GET['new']));
 $c=$id?training_class($id):null;
 $blank=['id'=>0,'name'=>'','description'=>'','weekday'=>null,'starts_at'=>'','ends_at'=>'','location'=>'',
         'trainer_id'=>null,'tariff_id'=>setting('default_tariff')?:null,'payment_profile_id'=>setting('default_payment_profile')?:null,
@@ -12,7 +14,7 @@ page_head(
     $id?$form['name']:t('Kurse','Classes'),
     $id?class_schedule($form):t('Trainingsgruppen und ihre Teilnehmer.','Training groups and who is in them.'),
     $id?link_button(t('Alle Kurse','All classes'),'classes',[],'secondary')
-       :($admin?link_button(t('+ Kurs anlegen','+ Add class'),'classes',['new'=>1]):'')
+       :($mayEdit?link_button(t('+ Kurs anlegen','+ Add class'),'classes',['new'=>1]):'')
 );
 
 if(!$id && !$edit):
@@ -20,7 +22,7 @@ if(!$id && !$edit):
     if(!$list):
         empty_state(t('Noch keine Kurse.','No classes yet.'),
             t('Ein Kurs bündelt Schüler, einen Tarif und die Bankverbindung für die Beiträge.','A class groups students with a tariff and the bank details used for their charges.'),
-            $admin?link_button(t('Ersten Kurs anlegen','Add the first class'),'classes',['new'=>1]):'');
+            $mayEdit?link_button(t('Ersten Kurs anlegen','Add the first class'),'classes',['new'=>1]):'');
     else: ?>
     <div class="card">
     <?php foreach($list as $row): ?>
@@ -47,7 +49,7 @@ if($id && !$edit) tabs(['members'=>t('Teilnehmer','Members'),'attendance'=>t('An
 <div class="card">
     <div class="section-heading">
         <h2><?=e(t('Teilnehmer','Members'))?></h2>
-        <?php if($admin)echo link_button(t('Kurs bearbeiten','Edit class'),'classes',['id'=>$id,'edit'=>1],'secondary');?>
+        <?php if($mayEdit)echo link_button(t('Kurs bearbeiten','Edit class'),'classes',['id'=>$id,'edit'=>1],'secondary');?>
     </div>
     <dl class="facts">
         <div><dt><?=e(t('Termin','Schedule'))?></dt><dd><?=e(class_schedule($form))?></dd></div>

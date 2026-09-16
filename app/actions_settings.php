@@ -4,7 +4,7 @@ declare(strict_types=1);
 function dispatch_settings_or_messages(string $action): array {
     switch($action) {
     case 'tariff_save':
-        require_admin();$id=(int)post('id');$days=(int)post('due_days','14');
+        require_staff();$id=(int)post('id');$days=(int)post('due_days','14');
         if($days<0 || $days>365)throw new UserError(t('Zahlungsziel: 0 bis 365 Tage.','Payment term: 0 to 365 days.'));
         $args=[required_text('name',120),cents(post('price')),choose(post('period'),['monthly','fixed','once']),$days,post('archived')?1:0];
         if($id)run('UPDATE tariffs SET name=?,price_cents=?,period=?,due_days=?,archived=? WHERE id=?',[...$args,$id]);
@@ -58,12 +58,15 @@ function dispatch_settings_or_messages(string $action): array {
         set_setting('privacy_de',$de);set_setting('privacy_en',$en);set_setting('privacy_ready',(bool)post('privacy_ready'));
         audit('privacy.saved','settings');flash(t('Datenschutzerklärung gespeichert.','Privacy notice saved.'));return ['settings',['tab'=>'privacy']];
     case 'template_save':
-        require_admin();$id=(int)post('id');$subject=required_text('subject',180);$body=required_text('body',20000);
+        require_staff();$id=(int)post('id');$subject=required_text('subject',180);$body=required_text('body',20000);
         preg_match_all('/\{\{[^}]+\}\}/',$subject.$body,$matches);
-        foreach($matches[0] as $match)if(!in_array($match,['{{student_name}}','{{first_name}}','{{tariff}}','{{outstanding}}','{{paid_through}}','{{portal_url}}'],true))throw new UserError(t('Unbekannter Platzhalter: ','Unknown placeholder: ').$match);
+        $known=array_map(fn($k)=>'{{'.$k.'}}',array_keys(template_placeholders()));
+        foreach($matches[0] as $match)if(!in_array($match,$known,true))
+            throw new UserError(t('Unbekannter Platzhalter: ','Unknown placeholder: ').$match.'. '
+                .t('Möglich sind: ','Available: ').implode(' ',$known));
         $args=[required_text('name',120),$subject,$body];
         if($id)run('UPDATE message_templates SET name=?,subject=?,body=? WHERE id=?',[...$args,$id]);else run('INSERT INTO message_templates (name,subject,body) VALUES (?,?,?)',$args);
-        audit('template.saved','template',$id?:null);flash(t('Vorlage gespeichert.','Template saved.'));return ['settings',['tab'=>'templates']];
+        audit('template.saved','template',$id?:null);flash(t('Vorlage gespeichert.','Template saved.'));return ['manage',['tab'=>'templates']];
     case 'filter_save':
         require_staff();$criteria=filters_from($_POST);
         run('INSERT INTO saved_filters (name,criteria_json) VALUES (?,?)',[required_text('name',120),json_encode($criteria,JSON_UNESCAPED_UNICODE)]);flash(t('Filter gespeichert.','Filter saved.'));return ['students',$criteria];

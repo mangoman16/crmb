@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * Actions for the things an administrator configures and a trainer uses:
- * classes, payment profiles, rating scales, skill areas, skills, assessments,
+ * classes, payment profiles, levels, age groups,
  * the defaults registry and maintenance mode.
  *
  * Who may do what:
@@ -17,7 +17,7 @@ function dispatch_config(string $action): array {
     // ---- classes -------------------------------------------------------
 
     case 'class_save':
-        require_admin(); $id=(int)post('id');
+        require_staff(); $id=(int)post('id');
         if($id && !one('SELECT id FROM classes WHERE id=?',[$id])) throw new UserError(t('Kurs nicht gefunden.','Class not found.'));
         $weekday=post('weekday')===''?null:(int)choose(post('weekday'),array_map('strval',array_keys(weekdays())));
         $from=time_value(post('starts_at')); $to=time_value(post('ends_at'));
@@ -34,7 +34,7 @@ function dispatch_config(string $action): array {
         return ['classes',['id'=>$id]];
 
     case 'class_delete':
-        require_admin(); $c=training_class((int)post('id'));
+        require_staff(); $c=training_class((int)post('id'));
         if(post('confirmation')!==$c['name']) throw new UserError(t('Bitte den Kursnamen zur Bestätigung eingeben.','Please enter the class name to confirm.'));
         // Charges reference the class with ON DELETE SET NULL, so payment history
         // survives; only the grouping goes away.
@@ -64,7 +64,7 @@ function dispatch_config(string $action): array {
     // ---- payment profiles ----------------------------------------------
 
     case 'profile_save':
-        require_admin(); $id=(int)post('id');
+        require_staff(); $id=(int)post('id');
         if($id && !one('SELECT id FROM payment_profiles WHERE id=?',[$id])) throw new UserError(t('Zahlungsempfänger nicht gefunden.','Payment profile not found.'));
         $iban=strtoupper(preg_replace('/\s+/','',post('iban')) ?? '');
         if($iban!=='' && !valid_iban($iban)) throw new UserError(t('Diese IBAN ist nicht gültig. Bitte Ziffern und Prüfsumme kontrollieren.','This IBAN is not valid. Please check the digits and the checksum.'));
@@ -76,94 +76,51 @@ function dispatch_config(string $action): array {
         if($id) run('UPDATE payment_profiles SET name=?,recipient=?,iban=?,bic=?,currency=?,qr_template=?,note=?,archived=? WHERE id=?',[...$args,$id]);
         else { run('INSERT INTO payment_profiles (name,recipient,iban,bic,currency,qr_template,note,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
         audit('profile.saved','payment_profile',$id); flash(t('Zahlungsempfänger gespeichert.','Payment profile saved.'));
-        return ['settings',['tab'=>'payments','edit'=>$id]];
+        return ['manage',['tab'=>'payments','edit'=>$id]];
 
-    // ---- rating scales, areas and skills -------------------------------
+    // ---- levels and age groups -----------------------------------------
+    //
+    // Both are the trainer's own lists, so both are hers to edit: these are the
+    // words she uses about the children in front of her, not configuration of
+    // the software.
 
-    case 'scale_save':
-        require_admin(); $id=(int)post('id');
-        if($id && !one('SELECT id FROM rating_scales WHERE id=?',[$id])) throw new UserError(t('Skala nicht gefunden.','Scale not found.'));
-        $min=decimal_value(post('min_value','0')); $max=decimal_value(post('max_value','10')); $step=decimal_value(post('step','1'));
-        if($max<=$min) throw new UserError(t('Der Höchstwert muss über dem Mindestwert liegen.','The maximum must be above the minimum.'));
-        if($step<=0 || ($max-$min)/$step>200) throw new UserError(t('Die Schrittweite ergibt zu viele Stufen (höchstens 200).','That step size produces too many steps (200 at most).'));
-        // Labels are optional; one "value = label" per line names individual steps.
-        $labels=[];
-        foreach(explode("\n",post('labels')) as $line) {
-            $line=trim($line); if($line==='') continue;
-            if(!str_contains($line,'=')) throw new UserError(t('Bezeichnungen je Zeile als „Wert = Text“ angeben.','Write one label per line as “value = text”.'));
-            [$k,$v]=array_map('trim',explode('=',$line,2));
-            if($k===''||$v==='') continue;
-            $labels[$k]=mb_substr($v,0,80);
-        }
-        if(count($labels)>200) throw new UserError(t('Zu viele Bezeichnungen.','Too many labels.'));
-        $args=[required_text('name',120),$min,$max,$step,json_encode($labels,JSON_UNESCAPED_UNICODE),post('archived')?1:0];
-        if($id) run('UPDATE rating_scales SET name=?,min_value=?,max_value=?,step=?,labels_json=?,archived=? WHERE id=?',[...$args,$id]);
-        else { run('INSERT INTO rating_scales (name,min_value,max_value,step,labels_json,archived,created_at) VALUES (?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
-        audit('scale.saved','rating_scale',$id); flash(t('Skala gespeichert. Bereits erfasste Werte bleiben unverändert.','Scale saved. Values already recorded are unchanged.'));
-        return ['settings',['tab'=>'skills']];
+    case 'level_save':
+        require_staff(); $id=(int)post('id');
+        if($id && !one('SELECT id FROM levels WHERE id=?',[$id])) throw new UserError(t('Diese Gruppe gibt es nicht.','No such level.'));
+        $archived=post('archived')?1:0;
+        $isDefault=post('is_default')!=='';
+        if($archived && $isDefault) throw new UserError(t('Eine archivierte Gruppe kann nicht die Standardgruppe sein.','An archived level cannot be the default one.'));
+        // Archiving the last living level would leave a new student with nowhere
+        // to start, and the form that offers the choice with nothing to offer.
+        if($archived && $id && (int)scalar('SELECT COUNT(*) FROM levels WHERE archived=0 AND id<>?',[$id])===0)
+            throw new UserError(t('Es muss mindestens eine Gruppe übrig bleiben.','At least one level has to remain.'));
+        $args=[required_text('name',80),text_limit('description',300),(int)post('sort_order','0'),$archived];
+        $id=transactional(function() use ($id,$args,$isDefault): int {
+            if($id) run('UPDATE levels SET name=?,description=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
+            else { run('INSERT INTO levels (name,description,sort_order,archived,created_at) VALUES (?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
+            // Exactly one default, decided in the same transaction as the change
+            // that claims it, so two tabs cannot end up with none or two.
+            if($isDefault) { run('UPDATE levels SET is_default=0'); run('UPDATE levels SET is_default=1 WHERE id=?',[$id]); }
+            elseif(!scalar('SELECT COUNT(*) FROM levels WHERE is_default=1 AND archived=0'))
+                run('UPDATE levels SET is_default=1 WHERE archived=0 ORDER BY sort_order, id LIMIT 1');
+            return $id;
+        });
+        audit('level.saved','level',$id); flash(t('Gruppe gespeichert.','Level saved.'));
+        return ['manage',['tab'=>'levels','edit'=>$id]];
 
-    case 'area_save':
-        require_admin(); $id=(int)post('id');
-        if($id && !one('SELECT id FROM skill_areas WHERE id=?',[$id])) throw new UserError(t('Bereich nicht gefunden.','Area not found.'));
-        $args=[required_text('name',120),text_limit('description',500),(int)post('sort_order','0'),post('archived')?1:0];
-        if($id) run('UPDATE skill_areas SET name=?,description=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
-        else { run('INSERT INTO skill_areas (name,description,sort_order,archived,created_at) VALUES (?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
-        audit('area.saved','skill_area',$id); flash(t('Bereich gespeichert.','Area saved.'));
-        return ['settings',['tab'=>'skills']];
-
-    case 'skill_save':
-        require_admin(); $id=(int)post('id');
-        if($id && !one('SELECT id FROM skills WHERE id=?',[$id])) throw new UserError(t('Fähigkeit nicht gefunden.','Skill not found.'));
-        $areaId=(int)post('area_id'); if(!one('SELECT id FROM skill_areas WHERE id=?',[$areaId])) throw new UserError(t('Bitte einen Bereich auswählen.','Please choose an area.'));
-        $scaleId=(int)post('scale_id'); if(!one('SELECT id FROM rating_scales WHERE id=?',[$scaleId])) throw new UserError(t('Bitte eine Skala auswählen.','Please choose a scale.'));
-        // Changing the scale under existing values would silently reinterpret
-        // them, so it is refused the same way a custom field type change is.
-        if($id) {
-            $current=(int)scalar('SELECT scale_id FROM skills WHERE id=?',[$id]);
-            if($current!==$scaleId && scalar('SELECT COUNT(*) FROM assessments WHERE skill_id=?',[$id]))
-                throw new UserError(t('Für diese Fähigkeit sind Bewertungen erfasst. Für eine andere Skala bitte eine neue Fähigkeit anlegen und diese archivieren.','Assessments exist for this skill. Create a new skill for a different scale and archive this one.'));
-        }
-        $args=[$areaId,$scaleId,required_text('name',120),text_limit('description',500),(int)post('sort_order','0'),post('archived')?1:0];
-        if($id) run('UPDATE skills SET area_id=?,scale_id=?,name=?,description=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
-        else { run('INSERT INTO skills (area_id,scale_id,name,description,sort_order,archived,created_at) VALUES (?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
-        audit('skill.saved','skill',$id); flash(t('Fähigkeit gespeichert.','Skill saved.'));
-        return ['settings',['tab'=>'skills']];
-
-    // ---- assessments (trainer's day-to-day work) -----------------------
-
-    case 'assessment_save':
-        $u=require_staff(); $s=student((int)post('student_id'));
-        $on=date_value(post('assessed_on'),true);
-        if($on>today()) throw new UserError(t('Das Datum liegt in der Zukunft.','That date is in the future.'));
-        $input=$_POST['skill']??[]; if(!is_array($input)) throw new UserError(t('Ungültige Eingabe.','Invalid input.'));
-        $notes=$_POST['skill_note']??[]; if(!is_array($notes)) throw new UserError(t('Ungültige Eingabe.','Invalid input.'));
-        $saved=0; $cleared=0;
-        foreach(skills() as $skill) {
-            $sid=(int)$skill['id'];
-            if(!array_key_exists($sid,$input)) continue;
-            $raw=is_scalar($input[$sid])?trim((string)$input[$sid]):'';
-            // A blank value removes that day's entry rather than storing a zero,
-            // so "not assessed" and "assessed as zero" stay distinguishable.
-            if($raw==='') {
-                $cleared += run('DELETE FROM assessments WHERE student_id=? AND skill_id=? AND assessed_on=?',[$s['id'],$sid,$on])->rowCount();
-                continue;
-            }
-            if(!isset(scale_values($skill)[$raw])) throw new UserError(t('Ungültiger Wert für ','Invalid value for ').$skill['name'].'.');
-            $note=is_scalar($notes[$sid]??'')?mb_substr(trim((string)($notes[$sid]??'')),0,500):'';
-            run('INSERT INTO assessments (student_id,skill_id,value,note,assessed_on,assessed_by,created_at) VALUES (?,?,?,?,?,?,?)'
-                .' ON DUPLICATE KEY UPDATE value=VALUES(value),note=VALUES(note),assessed_by=VALUES(assessed_by)',
-                [$s['id'],$sid,$raw,$note,$on,$u['id'],now()]);
-            $saved++;
-        }
-        audit('assessment.saved','student',(int)$s['id']);
-        flash($saved.' '.t('Bewertungen gespeichert.','assessments saved.').($cleared?' '.$cleared.' '.t('entfernt.','removed.'):''));
-        return ['student',['id'=>$s['id'],'tab'=>'skills']];
-
-    case 'assessment_delete':
-        require_staff(); $s=student((int)post('student_id'));
-        run('DELETE FROM assessments WHERE student_id=? AND skill_id=? AND assessed_on=?',[$s['id'],(int)post('skill_id'),date_value(post('assessed_on'),true)]);
-        audit('assessment.deleted','student',(int)$s['id']);
-        return ['student',['id'=>$s['id'],'tab'=>'skills']];
+    case 'age_group_save':
+        require_staff(); $id=(int)post('id');
+        if($id && !one('SELECT id FROM age_groups WHERE id=?',[$id])) throw new UserError(t('Diese Altersgruppe gibt es nicht.','No such age group.'));
+        $min=(int)post('min_age','0');
+        // Empty means "and upwards", which is what the oldest band always is.
+        $max=post('max_age')===''?null:(int)post('max_age');
+        if($min<0 || $min>120 || ($max!==null && ($max<0 || $max>120))) throw new UserError(t('Bitte ein Alter zwischen 0 und 120 angeben.','Please give an age between 0 and 120.'));
+        if($max!==null && $max<$min) throw new UserError(t('Das Höchstalter liegt unter dem Mindestalter.','The upper age is below the lower one.'));
+        $args=[required_text('name',80),$min,$max,(int)post('sort_order','0'),post('archived')?1:0];
+        if($id) run('UPDATE age_groups SET name=?,min_age=?,max_age=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
+        else { run('INSERT INTO age_groups (name,min_age,max_age,sort_order,archived,created_at) VALUES (?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
+        audit('age_group.saved','age_group',$id); flash(t('Altersgruppe gespeichert.','Age group saved.'));
+        return ['manage',['tab'=>'ages','edit'=>$id]];
 
     case 'payment_remind':
         $u=require_staff(); throttle('payment-remind',(string)$u['id'],6,3600);
@@ -254,7 +211,11 @@ function dispatch_config(string $action): array {
     // ---- defaults registry and maintenance -----------------------------
 
     case 'defaults_registry_save':
-        require_admin(); $group=choose(post('group'),['portal','students','payments','skills','system']);
+        $group=choose(post('group'),['portal','students','payments','system']);
+        // Who may change what, rather than one rule for the whole registry:
+        // membership statuses and payment methods are the trainer's words for
+        // her own work; the portal's name and the background jobs are not.
+        if(in_array($group,['students','payments'],true)) require_staff(); else require_admin();
         foreach(settings_in_group($group) as $key=>$spec) {
             $raw = $spec['kind']==='bool' ? (post('set_'.$key)!=='') : ($_POST['set_'.$key] ?? '');
             if($spec['kind']==='map') { set_setting($key,map_from_post($key,$spec)); continue; }
@@ -262,7 +223,7 @@ function dispatch_config(string $action): array {
             set_setting($key,setting_validate($key,$spec,$raw));
         }
         audit('settings.saved','settings'); flash(t('Vorgaben gespeichert.','Defaults saved.'));
-        return ['settings',['tab'=>$group]];
+        return [choose(post('to_page','settings'),['settings','manage']),['tab'=>post('to_tab')?:$group]];
 
     case 'version_revert':
         require_admin();

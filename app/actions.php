@@ -109,16 +109,22 @@ function dispatch_action(string $action): array {
             if($tariffId && (!$tariff || ($tariff['archived'] && $tariffId!==(int)($existing['tariff_id']??0)))) throw new UserError(t('Tarif ist nicht verfügbar.','Tariff is not available.'));
             $price=post('price')!==''?cents(post('price')):($tariff?(int)$tariff['price_cents']:null);
             $status=post('status');if(!isset(statuses()[$status]) && !($existing && $status===$existing['status'])) throw new UserError(t('Bitte einen Status auswählen.','Please choose a status.'));
+            // A child is always in a level, so an unanswered field means the
+            // default rather than nothing. An age group is the opposite: blank is
+            // the normal answer and means "work it out from the date of birth",
+            // which keeps being right as they have birthdays.
+            $levelId=reference_or_null('levels','level_id') ?? (int)(level_default()['id'] ?? 0) ?: null;
+            $ageGroupId=reference_or_null('age_groups','age_group_id');
             $join=date_value(post('joined_on'));$end=date_value(post('ended_on'));date_range($join,$end);
-            $args=[$accountId,$first,$last,$birth,$join,$end,$status,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
+            $args=[$accountId,$first,$last,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
             if($id) {
                 tracked('students',$id,$first.' '.$last,function() use ($args,$id) {
-                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,birth_date=?,joined_on=?,ended_on=?,status=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
+                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
                     if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
                 });
             }
             else {$id=tracked_insert('students',$first.' '.$last,function() use ($args) {
-                run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+                run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
                 return (int)db()->lastInsertId();
             });}
         } else {

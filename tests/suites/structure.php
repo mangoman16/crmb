@@ -15,7 +15,7 @@ $expected = [
     'app/billing.php' => 60, 'app/bootstrap.php' => 20, 'app/classes.php' => 40,
     'app/core.php' => 60, 'app/defaults.php' => 80, 'app/domain.php' => 50,
     'app/history.php' => 80, 'app/mail.php' => 50, 'app/qr.php' => 20,
-    'app/skills.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
+    'app/groups.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
     'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
     'app/backup.php' => 100, 'public/setup.php' => 180,

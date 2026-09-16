@@ -1,16 +1,21 @@
 <?php
+/**
+ * Einstellungen: the technical administration of the portal itself.
+ *
+ * What is not here on purpose: levels, age groups, membership statuses, tariffs,
+ * email templates and bank details. Those are the trainer's daily business and
+ * live under Verwaltung, where she can reach them without an administrator.
+ */
 $tab=(string)($_GET['tab']??'portal');
-$items=['portal'=>t('Portal','Portal'),'students'=>t('Schüler','Students'),'fields'=>t('Eigene Felder','Custom fields'),
-        'skills'=>t('Leistung','Performance'),'tariffs'=>t('Tarife','Tariffs'),'payments'=>t('Zahlungsempfänger','Payment profiles'),
-        'templates'=>t('Vorlagen','Templates'),'smtp'=>'SMTP','privacy'=>t('Datenschutz','Privacy'),'system'=>t('System','System')];
+$items=['portal'=>t('Portal','Portal'),'fields'=>t('Eigene Felder','Custom fields'),
+        'smtp'=>'SMTP','privacy'=>t('Datenschutz','Privacy'),'system'=>t('System','System')];
 if(!isset($items[$tab]))$tab='portal';$edit=(int)($_GET['edit']??0);
-page_head(t('Einstellungen','Settings'),t('Alles, was sich am Portal einstellen lässt.','Everything about the portal that can be changed.'));tabs($items,$tab,'settings');
-// Tabs added in 0.2 render from partials before the original chain, which is
-// left exactly as it was. They are plain statements rather than extra branches
-// because PHP will not parse a braced if as the last statement of an
-// alternative-syntax elseif branch.
-if(in_array($tab,['skills','payments','system'],true)) require ROOT.'/views/_settings_extra.php';
-if(in_array($tab,['portal','students','skills','payments','system'],true)) require ROOT.'/views/_settings_registry.php';
+page_head(t('Einstellungen','Settings'),t('Technische Verwaltung des Portals. Die Listen für den Trainingsalltag stehen unter „Verwaltung“.','Technical administration of the portal. The lists for day-to-day training are under “Verwaltung”.'));
+tabs($items,$tab,'settings');
+// Plain statements rather than extra branches, because PHP will not parse a
+// braced if as the last statement of an alternative-syntax elseif branch.
+if($tab==='system') require ROOT.'/views/_settings_system.php';
+if(in_array($tab,['portal','system'],true)) require ROOT.'/views/_settings_registry.php';
 if($tab==='fields'):
 $f=$edit?one('SELECT * FROM field_definitions WHERE id=?',[$edit]):null;
 ?>
@@ -26,12 +31,6 @@ select_field('visibility',t('Berechtigung für Schüler','Student permission'),[
 <div data-field-default><?php $def=json_decode($f['default_json']??'""',true);input('default_value',t('Vorgabewert (optional)','Default value (optional)'),is_array($def)?implode("\n",$def):(is_bool($def)?'':$def),($f['field_type']??'')==='multiselect'?'textarea':'text',false,t('Mehrfachauswahl: eine Option je Zeile.','Multiple choices: one option per line.'));?></div>
 <div data-field-checkbox><?php check_field('default_checked',t('Standardmäßig angekreuzt','Checked by default'),$def===true);?></div>
 <?php check_field('required',t('Pflichtfeld','Required field'),(bool)($f['required']??false));check_field('archived',t('Archivieren (Werte behalten)','Archive (keep values)'),(bool)($f['archived']??false));submit_button();?></form></section></div>
-<?php elseif($tab==='tariffs'):$tariff=$edit?one('SELECT * FROM tariffs WHERE id=?',[$edit]):null; ?>
-<div class="settings-grid"><section class="card"><div class="section-heading"><h2><?=e(t('Tarife','Tariffs'))?></h2><?=link_button(t('+ Neu','+ New'),'settings',['tab'=>'tariffs'],'secondary')?></div><?php foreach(rows('SELECT * FROM tariffs ORDER BY archived,name') as $tar):?><a class="editor-list-item" href="<?=e(url('settings',['tab'=>'tariffs','edit'=>$tar['id']]))?>"><span><strong><?=e($tar['name'])?></strong><small><?=e(['monthly'=>t('Monatlich','Monthly'),'fixed'=>t('Fester Zeitraum','Fixed period'),'once'=>t('Einmalig','One-time')][$tar['period']])?></small></span><span><?=e(money((int)$tar['price_cents']))?><?php if($tar['archived'])badge(t('Archiviert','Archived'));?></span></a><?php endforeach ?><p class="muted"><?=e(t('Preisänderungen gelten für neue Zuordnungen. Bereits vereinbarte Schülerpreise werden nicht überschrieben.','Price changes apply to new assignments. Existing agreed student prices are preserved.'))?></p></section>
-<section class="card"><h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2><?php start_form('tariff_save',['id'=>$edit]);input('name',t('Tarifname','Tariff name'),$tariff['name']??'','text',true);input('price',t('Standardpreis (€)','Default price (€)'),isset($tariff['price_cents'])?amount_input((int)$tariff['price_cents']):'','text',true);select_field('period',t('Zeitraum','Billing period'),['monthly'=>t('Monatlich','Monthly'),'fixed'=>t('Fester Zeitraum (z. B. Semester)','Fixed period (e.g. semester)'),'once'=>t('Einmalig / einzelne Einheit','One-time / individual session')],$tariff['period']??'monthly',true);input('due_days',t('Zahlungsziel in Tagen','Payment due in days'),$tariff['due_days']??14,'number',true);check_field('archived',t('Tarif archivieren','Archive tariff'),(bool)($tariff['archived']??false));submit_button();?></form></section></div>
-<?php elseif($tab==='templates'):$template=$edit?one('SELECT * FROM message_templates WHERE id=?',[$edit]):null; ?>
-<div class="settings-grid"><section class="card"><div class="section-heading"><h2><?=e(t('Vorlagen','Templates'))?></h2><?=link_button(t('+ Neu','+ New'),'settings',['tab'=>'templates'],'secondary')?></div><?php foreach(rows('SELECT * FROM message_templates ORDER BY name') as $tmp):?><a class="editor-list-item" href="<?=e(url('settings',['tab'=>'templates','edit'=>$tmp['id']]))?>"><strong><?=e($tmp['name'])?></strong><?=icon('arrow')?></a><?php endforeach ?><h3><?=e(t('Platzhalter einfügen','Insert a placeholder'))?></h3><div class="placeholder-list"><?php foreach(['student_name'=>t('Vollständiger Name','Full name'),'first_name'=>t('Vorname','First name'),'tariff'=>t('Tarif','Tariff'),'outstanding'=>t('Offener Gesamtbetrag','Total outstanding'),'paid_through'=>t('Ende des letzten bezahlten Zeitraums','End of latest paid period'),'portal_url'=>t('Link zum Portal','Portal link')] as $key=>$label):?><button type="button" class="chip" data-insert="{{<?=e($key)?>}}" title="{{<?=e($key)?>}}"><?=e($label)?></button><?php endforeach ?></div></section>
-<section class="card"><h2><?=e($template?t('Vorlage bearbeiten','Edit template'):t('Vorlage anlegen','Create template'))?></h2><?php start_form('template_save',['id'=>$edit]);input('name',t('Name der Vorlage','Template name'),$template['name']??'','text',true);input('subject',t('Betreff','Subject'),$template['subject']??'','text',true);input('body',t('Nachricht','Message'),$template['body']??'','textarea',true);submit_button();?></form></section></div>
 <?php elseif($tab==='smtp'):$smtp=setting('smtp',[]); ?>
 <section class="card"><h2><?=e(t('Ausgehende E-Mails','Outgoing email'))?></h2><?php start_form('smtp_save');?><div class="grid two"><?php input('host',t('SMTP-Server','SMTP server'),$smtp['host']??'','text',true);input('port',t('Port','Port'),$smtp['port']??587,'number',true);select_field('encryption',t('Verschlüsselung','Encryption'),['tls'=>'STARTTLS','ssl'=>'TLS / SSL'],$smtp['encryption']??'tls',true);input('username',t('SMTP-Benutzername','SMTP username'),$smtp['username']??'');?><div class="field"><label for="smtp_password"><?=e(t('SMTP-Passwort','SMTP password'))?></label><input id="smtp_password" name="smtp_password" type="password" autocomplete="new-password"><small><?=e(!empty($smtp['password'])?t('Gespeichert. Leer lassen, um es beizubehalten.','Saved. Leave blank to keep it.'):t('Noch kein Passwort gespeichert.','No password saved.'))?></small></div><?php input('from_email',t('Absenderadresse (No-Reply)','Sender address (no-reply)'),$smtp['from_email']??'','email',true);input('from_name',t('Absendername','Sender name'),$smtp['from_name']??setting('club_name','Badminton'),'text',true);?></div><?php check_field('clear_password',t('Gespeichertes SMTP-Passwort entfernen','Remove saved SMTP password'));submit_button();?></form></section>
 <section class="card"><h2><?=e(t('Verbindung testen','Test connection'))?></h2><p class="muted"><?=e(t('Die Testmail geht an deine bestätigte Konto-Adresse. Versandstatus im Postausgang prüfen.','The test email goes to your verified account address. Check its status in the outbox.'))?></p><?php start_form('smtp_test');submit_button(t('Testmail vormerken','Queue test email'),'secondary');?></form></section>
