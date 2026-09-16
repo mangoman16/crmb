@@ -1,8 +1,41 @@
 # Updates with minimal risk to existing data
 
-This application does not manage backups; that stays with the operator. `php bin/console.php update` runs the whole sequence below for you, and the rest of this document explains what it does and how to recover when something goes wrong. The update procedure below keeps application releases separate from the database and configuration, blocks new writes during a change, and provides checks before reopening the portal.
+**The short version: upload the new files over the old ones and open the portal.**
+The database applies any new migrations on the first page view. There is no
+second step, and nothing to remember.
+
+This application does not manage backups; that stays with the operator. The rest
+of this document explains what that first page view actually does, what happens
+when it fails, and how to run the same thing deliberately on a server that has a
+shell.
+
+## What the first page view after an upload does
+
+Each request compares the migration files on disk against what the database
+records as applied. On the common path that is one file read and nothing else.
+When they differ:
+
+1. An advisory database lock is taken, so two visitors arriving together cannot
+   both migrate. The second one waits, then finds nothing left to do.
+2. Each unrecorded migration is applied in name order and recorded with the
+   checksum of the file it came from.
+3. A migration that was edited after being applied is refused **by name**,
+   because the checksum no longer matches.
+4. The seeded defaults are refreshed for anything new, and the page is served.
+
+If any of that fails the portal answers 503 and stays closed, naming the
+migration and which statement of it stopped. The full database error goes to the
+hosting error log. Nobody sees a half-migrated portal.
+
+While maintenance mode is on this is skipped entirely, so an operator applying a
+migration by hand from a shell cannot race the web request.
 
 ## Keep these three things separate
+
+On shared hosting this happens by itself: `config/config.php` is not in the
+distribution package, so unpacking over the old files cannot touch it, and the
+database is untouched apart from the migrations. The table below is the layout
+for a server where you keep each release in its own directory.
 
 | Component | Location in the suggested layout | Update behavior |
 |---|---|---|
@@ -22,18 +55,20 @@ Each release can contain a symlink `config/config.php` to the shared configurati
 - Future schema changes should first add compatible structures, then migrate values and verify them. Remove obsolete structures only in a separate later release after checking that no current code needs them.
 - Renaming a custom field keeps its numeric ID. Archiving retains its values. A field type with stored data cannot be changed silently.
 
-## The short version
+## The same thing from a shell
 
-Once the release directory is in place and `current` points at it:
+On a server with a command line, where you want the record counts compared
+before and after:
 
 ```bash
 php bin/console.php update
 ```
 
-That is the whole upgrade. It switches maintenance mode on, applies any new
-migrations, compares record counts before and after, and only then switches
-maintenance off. If anything fails it stops and **leaves the portal closed**,
-so nobody sees a half-migrated portal.
+It switches maintenance mode on, applies any new migrations, compares record
+counts before and after, and only then switches maintenance off. If anything
+fails it stops and **leaves the portal closed**. It runs exactly the same
+migration code the web request does, so the two cannot disagree about what has
+been applied.
 
 An administrator can still sign in while maintenance mode is on, and a banner
 at the top of every page offers to switch it off. That is deliberate: switching
@@ -46,6 +81,7 @@ is safe to run repeatedly. Verified behaviour:
 
 | Situation | What happens |
 |---|---|
+| Opening the portal with nothing new uploaded | One file read, no database work |
 | Running `update` again with nothing new | Applies nothing, reopens the portal |
 | A new migration added in a later version | Applies only that one |
 | A column added later to an existing table | Existing rows get the column's default, never NULL |
@@ -71,7 +107,11 @@ Schema changes do need a migration. Add a new numbered file in
 `DEFAULT` where the type allows, so rows written by the previous version cannot
 leave a NULL the new code has to guess about.
 
-## Before the maintenance window
+## With release directories: before the maintenance window
+
+Everything from here on describes a server with a shell where releases live in
+separate directories and `current` is a symlink. On hosting where you upload
+into one folder, the two sections above are the whole procedure.
 
 1. Read the new release’s change notes, including the schema versions it supports.
 2. Put the new release in its own directory. Do not unzip it over the running application.
@@ -79,7 +119,7 @@ leave a NULL the new code has to guess about.
 4. Test the release using a separate database and separate configuration. Do not point the test mail worker at real recipients. The integration suite deliberately creates and deletes test records and must never use the live database.
 5. Check the existing hosting recovery arrangement and who can restore it. No database export, restore or automatic backup is performed by this application.
 
-## Apply an update
+## With release directories: apply an update
 
 Example paths below are a layout template; `0.2.0` is an example of a future release, not an existing version.
 
@@ -144,4 +184,7 @@ Example paths below are a layout template; `0.2.0` is an example of a future rel
 3. **Before any data conversion:** define the mapping, test on a separate copy, report affected rows, preserve source values and verify totals before activation.
 4. **Before removing old fields or tables:** use a separate cleanup release with a documented compatibility boundary and an explicit migration review.
 
-No scheduled billing or destructive automatic schema updater is enabled in 0.1.0.
+The schema updater only ever moves forward: it applies migration files that the
+ledger has not recorded, and refuses one whose contents changed after it ran. It
+never drops a table, never reverses a migration, and never runs while maintenance
+mode is on.

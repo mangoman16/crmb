@@ -1,12 +1,13 @@
 <?php
 declare(strict_types=1);
 
-const ROOT = __DIR__ . '/..';
-$configPath = getenv('CRM_CONFIG') ?: ROOT . '/config/config.php';
-if (!is_file($configPath)) {
-    if (PHP_SAPI !== 'cli') { http_response_code(503); header('Content-Type: text/plain; charset=utf-8'); }
-    exit("Konfiguration fehlt. Bitte INSTALL.md befolgen. / Configuration missing; see INSTALL.md.\n");
-}
+// install.php defines ROOT and knows where the configuration lives, because it
+// is also the one file that runs when there is no configuration at all.
+require_once __DIR__ . '/install.php';
+$configPath = config_path();
+// A fresh upload is not an error, it is an installation waiting to happen, so a
+// browser goes to the setup page instead of a dead end.
+if (!is_file($configPath)) install_redirect();
 $config = require $configPath;
 // config() reads the global, so publish it explicitly rather than relying on
 // this file happening to be required at global scope. Required from inside a
@@ -25,6 +26,7 @@ require __DIR__ . '/tx.php';
 require __DIR__ . '/validate.php';
 require __DIR__ . '/history.php';
 require __DIR__ . '/defaults.php';
+require __DIR__ . '/schema.php';
 require __DIR__ . '/auth.php';
 require __DIR__ . '/domain.php';
 require __DIR__ . '/classes.php';
@@ -32,9 +34,20 @@ require __DIR__ . '/skills.php';
 require __DIR__ . '/attendance.php';
 require __DIR__ . '/billing.php';
 require __DIR__ . '/mail.php';
+require __DIR__ . '/tick.php';
 if (is_file(ROOT . '/vendor/autoload.php')) { require ROOT . '/vendor/autoload.php'; }
 require __DIR__ . '/qr.php';
-if (PHP_SAPI !== 'cli') {
+
+/**
+ * Everything a web request needs that a command-line run does not: the session,
+ * the response headers, an up-to-date schema and the maintenance gate.
+ *
+ * Kept out of the file body so the installer can load the application in order
+ * to migrate and create the first administrator, without a session being
+ * started or headers being sent from underneath its own page.
+ */
+function boot_http(): void {
+    $config = $GLOBALS['config'];
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');
     session_name('badminton_session');
@@ -51,6 +64,10 @@ if (PHP_SAPI !== 'cli') {
     header('X-Permitted-Cross-Domain-Policies: none');
     if ($config['secure_cookies']) { header('Strict-Transport-Security: max-age=31536000'); }
     if (isset($_GET['lang']) && in_array($_GET['lang'], ['de','en'], true)) { $_SESSION['locale'] = $_GET['lang']; }
+    // Newly uploaded files may bring migrations the database has not seen. This
+    // is what lets an update be "replace the files"; it costs one file read on
+    // the common path, where the schema is already current.
+    schema_ensure_current();
     // Maintenance mode holds everyone except an administrator, who needs a way
     // back in to switch it off without shell access. The flag file is checked
     // first and the admin lookup is guarded, because maintenance mode is exactly

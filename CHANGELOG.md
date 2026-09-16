@@ -1,6 +1,60 @@
 # Changelog
 
-## 0.4.0 — unreleased
+## 0.5.0 — unreleased
+
+Installing and updating without a shell.
+
+- **A browser installer.** `public/setup.php` checks what the server offers,
+  takes the four database details the hosting panel handed out, writes
+  `config/config.php` with a freshly generated encryption key, creates the
+  schema, seeds the defaults and creates the first administrator. One page, one
+  button. It refuses to run once an administrator exists, which is what closes
+  it afterwards, and a request that arrives before there is a configuration is
+  sent to it rather than to a dead end.
+  Every failure is reported as an instruction: "the database user name or
+  password is not correct", not `SQLSTATE[HY000] [1045]`. Where the server
+  answers 1044 for both a missing database and an unassigned user, the message
+  says both, because the server deliberately does not distinguish them.
+  Re-running it never mints a new `app_key` while a usable one exists, and when
+  `config/` is read-only it shows the exact file to create in the file manager
+  instead of stopping.
+- **Updates are: upload the new files.** The first page view afterwards compares
+  the migration files against the ledger and applies anything outstanding, under
+  an advisory lock so two visitors arriving together cannot both run them. On the
+  common path it costs one file read and no database work. A failure leaves the
+  portal closed and names the migration and the statement that stopped; the full
+  database error goes to the error log rather than to whoever was looking.
+  The migration runner now lives in `app/schema.php` and is the same code the
+  console runs, so the two cannot disagree about what has been applied.
+- **The web root may point at the project folder.** Shared hosting usually fixes
+  it at `public_html` with no way to move it, so the `.htaccess` at the top
+  rewrites every request into `public/`, and each folder beside it denies itself
+  for hosting without `mod_rewrite`. A root `index.php` redirects when rewriting
+  is unavailable entirely. The test suite checks that every directory beside
+  `public/` is covered, including one added later.
+- **No cron job is required.** Queued email, the nightly cleanup and — when
+  switched on — the monthly charges run just after a page has been delivered, at
+  most once a minute, behind a lock shared with any real cron job that is also
+  configured. Off-switch and status under **Einstellungen → System**, which also
+  reports the last background run and any migration still waiting.
+- `bin/release.sh` builds the distribution ZIP with the dependencies bundled and
+  the repositories composer leaves behind stripped out, so the upload is around
+  half a megabyte instead of thirty-four, and proves the packaged autoloader
+  still resolves PHPMailer and BaconQrCode before it writes the file.
+- Creating the first administrator is one function used by both the installer
+  and the console, and it checks that no administrator exists inside the
+  transaction that writes the row.
+- The escaping rule in the `structure` suite now covers `public/setup.php`, which
+  prints before `core.php` exists and therefore carries its own escape function.
+  It caught a nested ternary on the first run. A call guarded by its own
+  `function_exists()` no longer counts as undefined, which is how a SAPI-only
+  function like `fastcgi_finish_request()` can be used honestly.
+- The installer's `app_url` is derived from the request that asks for it, and the
+  `Host` header is checked against the shape of a host name first: it ends up in
+  every invitation and password-reset link, so a visitor-chosen value would send
+  those wherever they liked.
+
+## 0.4.0
 
 Transactions, undo, and a test suite that runs anywhere.
 

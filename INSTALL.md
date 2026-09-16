@@ -1,125 +1,171 @@
-# Installation – v0.1.0
+# Installation
 
-## Voraussetzungen
+Auf einem normalen Webhosting-Paket, ohne Kommandozeile, in drei Schritten.
 
-- PHP ab 8.2 mit `pdo_mysql`, `mbstring`, `openssl` und Sitzungsunterstützung. Für einen neuen Server eine aktuell unterstützte PHP-Version verwenden; PHP 8.4 oder 8.5 bietet mehr verbleibende Laufzeit als 8.2.
-- MySQL 8.0+ oder MariaDB 10.11+, InnoDB, `utf8mb4`.
-- Apache/LiteSpeed mit PHP oder Nginx mit PHP-FPM; HTTPS.
-- PHP-CLI für Einrichtung und Cronjobs.
-- Ein SMTP-Zugang mit STARTTLS oder TLS sowie eine dazu passende Absenderadresse.
+## Was das Hosting können muss
 
-Getestete Versionen stehen in `VALIDATION.md`. Die offiziellen [PHP-Supportzeiträume](https://www.php.net/supported-versions.php) helfen bei der Versionswahl.
+- PHP ab 8.2 mit `pdo_mysql`, `mbstring`, `openssl` und Sitzungen.
+- MySQL ab 5.7 oder MariaDB ab 10.4, InnoDB, `utf8mb4`.
+- Apache oder LiteSpeed mit `.htaccess`, oder Nginx (Beispiel in `docs/nginx.conf.example`).
+- HTTPS. Bei den meisten Anbietern ist ein Let's-Encrypt-Zertifikat im Panel enthalten.
 
-## 1. Dateien ablegen
+Die Einrichtungsseite prüft jeden dieser Punkte und sagt, was fehlt. Wenn PHP
+zu alt ist, lässt sich die Version im Hosting-Panel meist selbst umstellen.
 
-Das Paket beispielsweise nach `/srv/badminton/releases/0.1.0/` entpacken. Der **DocumentRoot muss auf dessen `public/` zeigen**. Niemals den gesamten Projektordner veröffentlichen. `app/`, `config/`, `database/`, `tests/` und `vendor/` liegen außerhalb des DocumentRoot.
+Ein Cronjob wird **nicht** benötigt. Das Portal erledigt Versand und
+Aufräumarbeiten selbst; siehe [Cronjob statt Seitenaufruf](#optional-cronjob-statt-seitenaufruf).
 
-Bei dieser ersten Installation den aktiven Versionspfad anlegen:
+## 1. Datenbank anlegen
+
+Im Hosting-Panel unter **MySQL-Verwaltung** (bei manchen Anbietern
+„Datenbanken“) eine neue, leere Datenbank anlegen und ihr einen Benutzer mit
+einem eigenen Passwort zuordnen. Die Tabellen legt die Einrichtung selbst an.
+
+Vier Angaben aus dieser Maske werden gleich gebraucht:
+
+| Angabe | Üblicher Wert |
+|---|---|
+| Datenbankserver | `localhost` |
+| Name der Datenbank | vom Panel vergeben, oft mit Präfix |
+| Benutzername | vom Panel vergeben |
+| Passwort | selbst gewählt |
+
+## 2. Dateien hochladen
+
+Die ZIP-Datei im **Dateimanager** in das Verzeichnis der Domain hochladen
+(meist `public_html` oder `domains/<domain>/public_html`) und dort entpacken.
+Der Inhalt des entpackten Ordners kommt direkt in dieses Verzeichnis, nicht in
+einen Unterordner – es sei denn, das Portal soll bewusst unter
+`https://deine-domain.at/verein/` laufen, dann eben in `verein/`.
+
+Danach muss es so aussehen:
+
+```
+public_html/
+├── .htaccess
+├── index.php
+├── public/
+├── app/
+├── config/
+├── storage/
+└── …
+```
+
+Die `.htaccess` ganz oben leitet jede Anfrage nach `public/` weiter, und jeder
+andere Ordner sperrt sich selbst. `app/`, `config/` und `storage/` sind dadurch
+von außen nicht erreichbar, obwohl sie im Webverzeichnis liegen.
+
+`config/` und `storage/` müssen beschreibbar sein (Rechte `755`). Bei den
+meisten Anbietern sind sie das nach dem Entpacken bereits. Falls nicht, sagt es
+die Einrichtungsseite.
+
+## 3. Die Adresse im Browser öffnen
+
+`https://deine-domain.at` aufrufen. Es erscheint die Einrichtungsseite.
+
+Dort werden abgefragt:
+
+- die vier Datenbank-Angaben aus Schritt 1,
+- Name, E-Mail-Adresse und Passwort für das erste Konto (mindestens 12 Zeichen),
+- Adresse und Zeitzone, beide bereits ausgefüllt.
+
+**Installieren** drücken. Das war die Installation. Danach führt ein Link direkt
+zur Anmeldung.
+
+Die Einrichtungsseite lässt sich anschließend nicht noch einmal starten: sobald
+ein Administrator existiert, antwortet sie nur noch mit einem Hinweis. Die Datei
+muss also nicht gelöscht werden – schaden kann es aber auch nicht.
+
+> Zwischen dem Hochladen und dem Drücken von **Installieren** ist die
+> Einrichtungsseite öffentlich erreichbar. Wer sie in diesem Zeitfenster findet,
+> könnte das Portal auf eine eigene Datenbank installieren. Deshalb: hochladen
+> und gleich einrichten, nicht über Nacht liegen lassen.
+
+## Danach: zwei Dinge in den Einstellungen
+
+Einladungen bleiben gesperrt, bis beides erledigt ist.
+
+1. **Einstellungen → SMTP**: Server, Port, Verschlüsselung, Benutzer, Passwort
+   und Absenderadresse eintragen, dann **Testmail vormerken**. Die Mail geht an
+   die eigene Adresse und wird innerhalb einer Minute verschickt; der Stand steht
+   im **Postausgang**.
+2. **Einstellungen → Datenschutz**: beide Entwürfe an den tatsächlichen
+   Betreiber, das Hosting und den E-Mail-Anbieter anpassen und freigeben. Die
+   Einordnung von Krankmeldungen und Minderjährigen ist im Entwurf ausdrücklich
+   als offener Punkt markiert.
+
+Beim E-Mail-Anbieter noch SPF und DKIM für die Absenderadresse einrichten,
+sonst landen die Einladungen im Spam.
+
+## Updates
+
+Die neuen Dateien über die alten hochladen und das Portal öffnen. Die Datenbank
+passt sich beim ersten Aufruf selbst an. Kein weiterer Schritt.
+
+`config/config.php` wird dabei nicht überschrieben, weil sie in der ZIP-Datei
+nicht enthalten ist. Sie enthält den Schlüssel, mit dem das gespeicherte
+SMTP-Passwort entschlüsselt wird – **niemals löschen oder ersetzen**.
+
+Geht eine Datenbankänderung schief, bleibt das Portal geschlossen und zeigt,
+welche Migration wo stehen geblieben ist, statt halb aktualisiert zu öffnen.
+Details in [UPDATING.md](UPDATING.md).
+
+Sicherungen macht dieses Programm nicht. Vor einem Update die Datenbanksicherung
+des Hostings prüfen.
+
+## Optional: Cronjob statt Seitenaufruf
+
+Ohne Cronjob erledigt das Portal wartende Aufgaben selbst, kurz nachdem eine
+Seite ausgeliefert wurde: E-Mails verschicken, abgelaufene Links entfernen und –
+wenn eingeschaltet – am 1. die Monatsbeiträge anlegen. Höchstens einmal pro
+Minute, und nach dem Absenden der Seite, sodass niemand darauf wartet. Der Stand
+steht unter **Einstellungen → System**.
+
+Wer viele wartende E-Mails hat oder lieber einen echten Cronjob möchte, legt im
+Panel diese Zeile an und schaltet unter **Einstellungen → System** die Option
+„Wartende Aufgaben beim Seitenaufruf erledigen“ aus:
+
+```cron
+* * * * * /usr/bin/php /pfad/zum/portal/bin/console.php mail:work 25
+```
+
+Beides gleichzeitig ist nicht schädlich – ein Datenbankschloss verhindert, dass
+zwei Läufe dieselbe E-Mail verschicken.
+
+## Mit Shell-Zugang
+
+Wer eine Kommandozeile hat, braucht die Einrichtungsseite nicht:
 
 ```bash
-ln -s /srv/badminton/releases/0.1.0 /srv/badminton/current
-cd /srv/badminton/current
-```
-
-Die folgenden Befehle werden in diesem Projektverzeichnis ausgeführt. Einen bereits vorhandenen `current`-Pfad nicht als Teil einer Neuinstallation überschreiben.
-
-Das ZIP enthält die PHP-Abhängigkeit bereits. Nach einem Git-Clone:
-
-```bash
-composer install --no-dev --prefer-dist --optimize-autoloader
-```
-
-Kein Node.js-Build ist erforderlich.
-
-## 2. Datenbank erstellen
-
-Im Hosting-Panel eine leere Datenbank und einen eigenen Benutzer erstellen. Alternativ als Datenbankadministrator:
-
-```sql
-CREATE DATABASE badminton_crm CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'badminton_crm'@'127.0.0.1' IDENTIFIED BY 'HIER_EIN_EIGENES_STARKES_PASSWORT';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
-ON badminton_crm.* TO 'badminton_crm'@'127.0.0.1';
-```
-
-Hostnamen und Benutzerformat an das Hosting anpassen. Für getrennte Migrationen können `CREATE`, `ALTER`, `INDEX` und `REFERENCES` einem eigenen Migrationsbenutzer vorbehalten bleiben. Die erste Migration benötigt `CREATE`.
-
-## 3. Konfiguration außerhalb der Releases speichern
-
-Für spätere Updates ist eine gemeinsame Konfiguration sinnvoll:
-
-```bash
-mkdir -p /srv/badminton/shared
-cp config/config.example.php /srv/badminton/shared/config.php
-php bin/console.php key
-```
-
-Die erzeugte Zeichenfolge als `app_key` in der Konfiguration eintragen. Außerdem `app_url`, Datenbankzugang und folgenden gemeinsamen Wartungspfad eintragen:
-
-```php
-'maintenance_file' => '/srv/badminton/shared/maintenance.flag',
-```
-
-Die vorhandene `app_key` bei Updates beibehalten. Sie wird zum Entschlüsseln des SMTP-Passworts und der wartenden E-Mails verwendet. Den Schlüssel niemals ins Repository aufnehmen.
-
-Zwei Möglichkeiten, die Konfiguration einzubinden:
-
-```bash
-ln -s /srv/badminton/shared/config.php config/config.php
-```
-
-Oder die Umgebungsvariable `CRM_CONFIG=/srv/badminton/shared/config.php` sowohl für PHP-FPM als auch für die CLI setzen. Keine echte Konfiguration in Git speichern. Der PHP-Benutzer benötigt Leserechte auf die Konfiguration; nur der Betreiber sollte sie ändern können. Das Verzeichnis des Wartungsflags muss für den ausführenden CLI-Benutzer beschreibbar sein. Die normale PHP-Sitzungsablage muss funktionieren.
-
-## 4. Schema und erstes Administratorkonto
-
-```bash
+composer install --no-dev --prefer-dist --optimize-autoloader   # nur nach git clone
+cp config/config.example.php config/config.php
+php bin/console.php key                    # Ergebnis als app_key eintragen
 php bin/console.php migrate
 php bin/console.php create-admin
 php bin/console.php check
 ```
 
-`create-admin` fragt Name, E-Mail-Adresse und Passwort interaktiv ab. Es funktioniert nur, solange kein Administrator existiert. Dieses erste Konto wird vom Serverbetreiber eingerichtet und gilt als vertrauenswürdig; alle Einladungen über die Webseite müssen anschließend per E-Mail bestätigt werden.
+Der Webserver kann dabei wie gewohnt direkt auf `public/` zeigen; die
+Weiterleitung aus dem Projektverzeichnis ist dann unbenutzt. Für getrennte
+Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md).
 
-Es gibt keine vorgegebenen Produktivzugänge. Weitere Administratoren oder Manager können über **Konten** eingeladen werden. Manager verwalten Schüler und Nachrichten; SMTP, Tarife und Formulare bearbeitet der Administrator.
+## Wenn etwas nicht klappt
 
-## 5. Domain und HTTPS
+| Was zu sehen ist | Was zu tun ist |
+|---|---|
+| „Diese Datenbank gibt es nicht, oder dieser Benutzer ist ihr nicht zugeordnet“ | Im Panel prüfen, ob der Benutzer der Datenbank zugeordnet ist. Viele Panels stellen dem Namen ein Präfix voran. |
+| „Benutzername oder Passwort der Datenbank stimmt nicht“ | Im Panel ein neues Datenbankpasswort setzen und hier eintragen. |
+| „Der Ordner config/ ist nicht beschreibbar“ | Rechte auf `755` setzen, oder die angezeigte Datei im Dateimanager als `config/config.php` anlegen und erneut auf **Installieren** tippen. |
+| Beim Aufruf erscheint eine Dateiliste statt des Portals | Die `.htaccess`-Dateien wurden nicht mit entpackt. Der Dateimanager zeigt versteckte Dateien oft erst auf Wunsch an. |
+| Alles wirkt unformatiert | `mod_rewrite` fehlt. `https://deine-domain.at/public/` aufrufen – das funktioniert auch. |
+| „Das Portal wird gerade aktualisiert“ bleibt stehen | `storage/maintenance.flag` im Dateimanager löschen. |
+| E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang**, dort steht der Fehler der letzten Zustellung. |
 
-`app_url` muss exakt zur aufgerufenen Adresse passen, beispielsweise `https://badminton.example.at`, ohne abschließenden Schrägstrich. Unterverzeichnisse sind möglich. `secure_cookies` bleibt für den öffentlichen Betrieb `true`.
+## Was geprüft wurde
 
-Apache/LiteSpeed: DocumentRoot auf `public/`, `DirectoryIndex index.php`, keine Verzeichnisauflistung. Die `.htaccess` im Projektwurzelverzeichnis ist eine zusätzliche Sperre. Keine statische Ganzseiten-Zwischenspeicherung durch LiteSpeed, CDN oder Hosting-Panel für das Portal einschalten.
-
-Ein Nginx-Beispiel befindet sich in `docs/nginx.conf.example`. TLS-Zertifikat, PHP-Socket und Servernamen anpassen. Ohne URL-Rewrite funktionieren die Routen über `index.php?page=...`.
-
-## 6. SMTP und Datenschutzerklärung
-
-1. Anmelden → **Einstellungen → SMTP**.
-2. Server, Port, STARTTLS/TLS, Benutzer, Passwort und Absender speichern.
-3. **Testmail vormerken** → **Postausgang → Warteschlange senden**. Die Mail geht an die Adresse des angemeldeten Administrators.
-4. Unter **Datenschutz** beide Entwürfe vervollständigen. Betreiber, Hosting, SMTP-Anbieter, Zwecke und Aufbewahrungsfristen an die tatsächliche Nutzung anpassen. Die Einordnung von Krankmeldungen und Minderjährigen ist im Entwurf ausdrücklich als offener Punkt markiert.
-5. Nach Fertigstellung die beiden Fassungen in den Einstellungen freigeben.
-
-SPF/DKIM und die zulässige Absenderadresse beim E-Mail-Anbieter einrichten. PHPMailer prüft TLS-Zertifikate; unsichere Verbindungen werden nicht als Ausweichlösung verwendet. E-Mails tragen einen Hinweis, dass Antworten im Portal erfolgen.
-
-## 7. Cronjobs
-
-Mit dem passenden PHP-CLI-Pfad, unter dem Anwendungsbenutzer:
-
-```cron
-* * * * * /usr/bin/php /srv/badminton/current/bin/console.php mail:work 25 >> /srv/badminton/shared/mail-worker.log 2>&1
-15 3 * * * /usr/bin/php /srv/badminton/current/bin/console.php maintenance >> /srv/badminton/shared/maintenance.log 2>&1
-30 4 1 * * /usr/bin/php /srv/badminton/current/bin/console.php billing:run >> /srv/badminton/shared/billing.log 2>&1
-```
-
-Die dritte Zeile legt am 1. jedes Monats die Monatsbeiträge an. Sie ist bewusst
-wiederholbar: ein zweiter Lauf im selben Monat erzeugt nichts. Wer lieber selbst
-kontrolliert, lässt diese Zeile weg und verwendet **Beiträge → Monatsbeiträge**,
-wo die Liste vor dem Anlegen angezeigt wird. `billing:plan` zeigt dasselbe auf
-der Kommandozeile, ohne etwas zu ändern.
-
-`current` zeigt auf den aktiven Releaseordner, siehe `UPDATING.md`. Alternativ zunächst den tatsächlichen Installationspfad verwenden. Cron muss dieselbe Konfiguration laden wie die Webseite. Pro Versandlauf werden höchstens 25 wartende Mails verarbeitet. Ein Datenbankschloss verhindert parallele Versandläufe. Fehlgeschlagene Mails werden im Postausgang angezeigt; normale Mails können dort erneut vorgemerkt werden. Für fehlgeschlagene Sicherheitsmails neue Links anfordern.
-
-`maintenance` entfernt nur abgelaufene Zugangstokens, alte Ratenbegrenzungen und vorübergehende Formularkennungen. Es löscht keine Schüler, Zahlungen oder Nachrichten. Logrotation wird vom Hosting verwaltet.
-
-## 8. Erste Einrichtung
-
-Tarife und Felder in den Einstellungen anpassen. Schüler können vor dem Einladen eines Kontos angelegt werden. Anschließend das Konto einladen und bei einem oder mehreren Schülern zuordnen. Beiträge werden bewusst einzeln angelegt; der Zeitraum und die Fälligkeit sind frei wählbar.
+Die Einrichtung über den Browser, das Anwenden neuer Migrationen beim
+Seitenaufruf und das Verhalten bei einer fehlerhaften Migration sind gegen
+**MariaDB 10.11.14** mit echten HTTP-Anfragen durchgespielt worden. Die gesamte
+Testsuite läuft dort ebenfalls durch. **MySQL 8.0 selbst ist nicht geprüft**, und
+auf einem konkreten Hosting-Paket ist das Ganze noch nicht gelaufen. Stand und
+offene Punkte: [VALIDATION.md](VALIDATION.md).

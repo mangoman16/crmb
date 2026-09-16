@@ -17,6 +17,8 @@ $expected = [
     'app/history.php' => 80, 'app/mail.php' => 50, 'app/qr.php' => 20,
     'app/skills.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
+    'app/install.php' => 150, 'app/schema.php' => 100, 'app/tick.php' => 80,
+    'public/setup.php' => 180,
 ];
 foreach ($expected as $file => $minLines) {
     $path = APP_ROOT.'/'.$file;
@@ -57,10 +59,15 @@ foreach (glob(APP_ROOT.'/database/migrations/*.sql') as $file)
     ok(count(split_sql((string)file_get_contents($file))) > 0, basename($file).' contains statements');
 
 case_('Every function called in the application is defined');
-$defined = []; $called = [];
+$defined = []; $called = []; $guarded = [];
 $files = array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'),
                      glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/database/*.php'));
 foreach ($files as $file) {
+    // Some functions exist only in one PHP SAPI. Calling one behind its own
+    // function_exists() check is correct, and this process is not necessarily
+    // running the SAPI that has it, so the guard is what makes it defined here.
+    if (preg_match_all("/function_exists\(\s*'([a-z_][a-z0-9_]*)'/i", (string)file_get_contents($file), $m))
+        foreach ($m[1] as $name) $guarded[strtolower($name)] = true;
     $tokens = array_values(array_filter(token_get_all((string)file_get_contents($file)),
         fn($x) => !is_array($x) || !in_array($x[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
     foreach ($tokens as $i => $token) {
@@ -81,7 +88,7 @@ $keywords = ['array','isset','unset','list','echo','print','exit','die','include
              'require_once','eval','match','fn','static','int','float','string','bool','void','catch','if',
              'for','foreach','while','switch','elseif','and','or','xor','empty'];
 foreach ($called as $name => $where) {
-    if (isset($defined[$name]) || function_exists($name) || in_array($name, $keywords, true)) continue;
+    if (isset($defined[$name]) || isset($guarded[$name]) || function_exists($name) || in_array($name, $keywords, true)) continue;
     ok(false, 'undefined function '.$name.'() called in '.basename($where));
 }
 ok(true, count($defined).' functions defined, '.count($called).' distinct call targets, all resolved');
@@ -181,7 +188,12 @@ function printed_expressions(string $src): array {
 }
 
 $offenders = []; $checked = 0;
-foreach (glob(APP_ROOT.'/views/*.php') as $view) {
+// The installer prints before core.php exists, so it carries its own escape
+// function. It is scanned by exactly the same rule, because "the page that runs
+// before the application" is not a reason to be the one page that forgets.
+$escaping[] = 'install_e';
+$printing = array_merge(glob(APP_ROOT.'/views/*.php'), [APP_ROOT.'/public/setup.php']);
+foreach ($printing as $view) {
     foreach (printed_expressions((string)file_get_contents($view)) as $expr) {
         $checked++;
         foreach (printable_parts($expr) as $part) {
@@ -197,7 +209,34 @@ foreach (glob(APP_ROOT.'/views/*.php') as $view) {
     }
 }
 foreach (array_unique($offenders) as $o) ok(false, 'unescaped output — '.$o);
-ok(true, 'checked '.$checked.' printed expressions across '.count(glob(APP_ROOT.'/views/*.php')).' views');
+ok(true, 'checked '.$checked.' printed expressions across '.count($printing).' pages');
+
+case_('Nothing outside public/ is reachable if the web root points at the project');
+/* Shared hosting usually fixes the web root at the account's public_html with no
+   way to move it, so the root .htaccess rewrites everything into public/. That
+   is one layer; each directory denying itself is the layer that still holds
+   when mod_rewrite is off, which is why both are checked. */
+$rootAccess = (string)file_get_contents(APP_ROOT.'/.htaccess');
+ok(str_contains($rootAccess, 'RewriteRule ^public/ - [L]'), 'a request already inside public/ is left alone, so this cannot loop');
+ok(preg_match('/RewriteRule \^\(\.\*\)\$ public\/\$1/', $rootAccess) === 1, 'everything else is rewritten into public/');
+ok(str_contains($rootAccess, 'Options -Indexes'), 'and the project root is not browsable');
+foreach (['app', 'bin', 'config', 'database', 'docs', 'storage', 'tests', 'views'] as $directory) {
+    $guard = APP_ROOT.'/'.$directory.'/.htaccess';
+    ok(is_file($guard), $directory.'/.htaccess exists');
+    ok(str_contains((string)@file_get_contents($guard), 'Require all denied'), $directory.'/ denies itself');
+}
+ok(!is_file(APP_ROOT.'/public/.htaccess') || !str_contains((string)file_get_contents(APP_ROOT.'/public/.htaccess'), 'Require all denied'),
+   'public/ is the one directory that does not, because it is the portal');
+
+case_('Every directory beside public/ is covered by that rule');
+/* A directory added later with no .htaccess would be served in full on hosting
+   without mod_rewrite. The list above is checked against what is actually there
+   rather than trusted to have been kept up to date. */
+foreach (glob(APP_ROOT.'/*', GLOB_ONLYDIR) as $directory) {
+    $name = basename($directory);
+    if (in_array($name, ['public', 'vendor'], true)) continue;   // the portal, and a build artefact
+    ok(is_file($directory.'/.htaccess'), $name.'/ has a deny file');
+}
 
 case_('The commands that identify a release work before it is configured');
 /* During an update you unpack a release and want to know which one it is

@@ -254,7 +254,7 @@ function dispatch_config(string $action): array {
     // ---- defaults registry and maintenance -----------------------------
 
     case 'defaults_registry_save':
-        require_admin(); $group=choose(post('group'),['portal','students','payments','skills']);
+        require_admin(); $group=choose(post('group'),['portal','students','payments','skills','system']);
         foreach(settings_in_group($group) as $key=>$spec) {
             $raw = $spec['kind']==='bool' ? (post('set_'.$key)!=='') : ($_POST['set_'.$key] ?? '');
             if($spec['kind']==='map') { set_setting($key,map_from_post($key,$spec)); continue; }

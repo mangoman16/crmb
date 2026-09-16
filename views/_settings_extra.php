@@ -130,13 +130,26 @@ if($tab==='skills'):
         <div><dt>PHP</dt><dd><?=e(PHP_VERSION)?></dd></div>
         <?php // schema_migrations does not exist before the first migrate, which is
               // exactly when an operator is most likely to open this page.
-              try { $schemaVersion=(string)(scalar('SELECT MAX(version) FROM schema_migrations')?:''); }
-              catch (PDOException) { $schemaVersion=''; } ?>
+              try { $schemaVersion=(string)(scalar('SELECT MAX(version) FROM schema_migrations')?:''); $pending=schema_pending(); }
+              catch (PDOException) { $schemaVersion=''; $pending=[]; } ?>
         <div><dt><?=e(t('Datenbankstand','Database version'))?></dt><dd><?=e($schemaVersion!==''?$schemaVersion:t('noch nicht migriert','not migrated yet'))?></dd></div>
         <div><dt><?=e(t('Letzter Versandlauf','Last mail run'))?></dt><dd><?=e(setting('mail_last_run')?fmt_datetime((string)setting('mail_last_run')):t('noch keiner','none yet'))?></dd></div>
         <div><dt><?=e(t('Wartende E-Mails','Queued email'))?></dt><dd><?=(int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE status='queued'")?></dd></div>
         <div><dt><?=e(t('Fehlgeschlagene E-Mails','Failed email'))?></dt><dd><?=(int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE status='failed'")?></dd></div>
     </dl>
-    <p class="muted"><?=e(t('Updates: Dateien austauschen, dann „php bin/console.php update“ ausführen. Details in UPDATING.md.','Updates: replace the files, then run “php bin/console.php update”. See UPDATING.md.'))?></p>
+    <?php if($pending): ?>
+    <div class="notice"><?=e(plural(count($pending),'Datenbankänderung wartet noch','Datenbankänderungen warten noch','database change is still waiting','database changes are still waiting'))?>: <?=e(implode(', ',$pending))?>.
+    <?=e(t('Sie werden beim nächsten Seitenaufruf angewendet, sobald der Wartungsmodus aus ist.','They are applied on the next page view once maintenance mode is off.'))?></div>
+    <?php endif ?>
+    <p class="muted"><?=e(t('Update: die neuen Dateien hochladen. Die Datenbank wird beim nächsten Aufruf des Portals selbst angepasst – es ist kein weiterer Schritt nötig.','Update: upload the new files. The database updates itself on the next page view; there is no further step.'))?></p>
+</section>
+<section class="card">
+    <h2><?=e(t('Wartende Aufgaben','Waiting work'))?></h2>
+    <p class="muted"><?=e(t('E-Mails verschicken, abgelaufene Links entfernen und – falls eingeschaltet – die Monatsbeiträge anlegen. Ohne Cronjob erledigt das Portal das selbst, kurz nachdem eine Seite geladen wurde.','Sending email, removing expired links and – if switched on – creating the monthly charges. Without a cron job the portal does this itself, just after a page has been served.'))?></p>
+    <dl class="facts">
+        <div><dt><?=e(t('Letzter Hintergrundlauf','Last background run'))?></dt><dd><?=e(setting('tick_last_run')?fmt_datetime((string)setting('tick_last_run')):t('noch keiner','none yet'))?></dd></div>
+        <div><dt><?=e(t('Letztes Aufräumen','Last cleanup'))?></dt><dd><?=e(setting('prune_last_run')?fmt_datetime((string)setting('prune_last_run')):t('noch keins','none yet'))?></dd></div>
+        <div><dt><?=e(t('Automatische Beiträge','Automatic charges'))?></dt><dd><?=e(setting('auto_billing')?(setting('billing_last_period')?:t('noch keine','none yet')):t('aus','off'))?></dd></div>
+    </dl>
 </section>
 <?php endif ?>

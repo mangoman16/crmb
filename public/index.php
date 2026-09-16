@@ -4,6 +4,11 @@ declare(strict_types=1);
 ini_set('display_errors','0');
 try {
     require __DIR__.'/../app/bootstrap.php';
+    boot_http();
+    // Registered rather than called at the end of the file: most requests leave
+    // through go(), which redirects and exits, and the mail queue has to be
+    // worked on those too.
+    register_shutdown_function(run_background_tasks(...));
     require ROOT.'/app/actions.php';
     require ROOT.'/app/actions_settings.php';
     require ROOT.'/app/actions_messages.php';

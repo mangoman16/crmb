@@ -58,6 +58,11 @@ Match them; do not introduce a second style alongside one that works.
   edit one that has shipped — the ledger stores checksums and will refuse it.
   Give every new column a `DEFAULT` so rows written by the previous version
   cannot leave a NULL the new code has to guess about.
+- **The operator has no shell.** She installs by opening `setup.php` and updates
+  by uploading files, so a change that needs a command run afterwards is not
+  finished. The migration runner in `app/schema.php` is the one copy the
+  installer, the console and the first request after an upload all use; adding a
+  second path for any of them is how they start disagreeing.
 
 ## Before you say something works
 

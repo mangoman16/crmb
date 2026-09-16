@@ -54,6 +54,29 @@ function strong_password(string $p): string {
     if(in_array($normalised,$weak,true) || preg_match('/^(.{1,4})\\1+$/D',$normalised??'')) throw new UserError(t('Dieses Passwort ist zu leicht zu erraten. Bitte ein anderes wählen.','This password is too easy to guess. Please choose another one.'));
     return $p;
 }
+/**
+ * Create the first administrator.
+ *
+ * There is no web signup: this account is provisioned by whoever set the server
+ * up and is trusted from the start, while every invitation it later sends is
+ * confirmed by email. The guard is checked inside the transaction that writes
+ * the row, so a second browser tab on the setup page cannot slip one past it.
+ *
+ * $force exists for the console, where deliberately adding another
+ * administrator is sometimes the only way back into a portal.
+ */
+function create_admin_account(string $name,string $email,string $password,bool $force=false): int {
+    $name=trim($name);
+    if($name===''||mb_strlen($name)>160) throw new UserError(t('Bitte einen Namen eingeben (höchstens 160 Zeichen).','Please enter a name of at most 160 characters.'));
+    $email=email_value($email); strong_password($password);
+    return transactional(function() use ($name,$email,$password,$force): int {
+        if(!$force && (int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'")>0)
+            throw new UserError(t('Es gibt bereits einen Administrator. Weitere Konten werden im Portal unter „Konten“ eingeladen.','An administrator already exists. Invite further accounts under “Konten” in the portal.'));
+        run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,created_at) VALUES (?,?,?,'admin','active',?,?)",
+            [$name,$email,password_hash($password,PASSWORD_DEFAULT),now(),now()]);
+        return (int)db()->lastInsertId();
+    });
+}
 function throttle(string $name,string $identity,int $limit,int $seconds=900): void {
     $key=hash('sha256',$name.'|'.$identity); $time=time();
     run_counter('INSERT INTO rate_limits (bucket,hits,window_start) VALUES (?,1,?) ON DUPLICATE KEY UPDATE hits=IF(window_start < ?,1,hits+1),window_start=IF(window_start < ?,?,window_start)',[$key,$time,$time-$seconds,$time-$seconds,$time]);

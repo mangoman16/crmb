@@ -1,8 +1,42 @@
-# Validation — 0.1.0
+# Validation
+
+## 0.5.0 — installing and updating
+
+Executed against PHP **8.4.19** and MariaDB **10.11.14**.
+
+- The whole test suite — **947 assertions across eleven suites** — passes on the
+  SQLite translation and against MariaDB 10.11.14, where all six migrations
+  apply.
+- The browser installer was driven with real HTTP requests against a real,
+  empty MariaDB database created the way a hosting panel creates one:
+  a fresh upload redirects to setup; a wrong database password, an unassigned
+  database and mismatched account passwords are each reported in words and write
+  nothing; the correct details write `config/config.php`, record all six
+  migrations, seed the example defaults and create exactly one administrator;
+  the portal then serves its sign-in page; and setup afterwards answers 403 to
+  both GET and POST, creating no second account and leaving `app_url` untouched.
+- A migration file added after installation applied itself on the next page view
+  and was recorded, with the encryption key unchanged.
+- A migration edited after it ran, and a migration containing a broken statement,
+  each left the portal closed with 503. The failing one was not recorded as done,
+  and the page named the file and statement without printing the SQL. Removing
+  the file reopened the portal.
+- Maintenance mode still holds the portal closed, and suppresses the automatic
+  migration rather than racing it.
+- Each new structural rule was verified by breaking what it guards: a directory
+  losing its deny file, a new unguarded top-level directory, the rewrite loop
+  guard being dropped, an unescaped value on the setup page, a truncated module,
+  a trusted `Host` header, a replaced `app_key`, and a second administrator.
+
+Not covered: a real hosting account. The layouts, the `.htaccess` rewrite and the
+LiteSpeed-specific `litespeed_finish_request()` path have not been exercised on
+ecomDATA or any other shared host. **MySQL 8.0 itself remains unverified.**
+
+## 0.1.0
 
 Executed against PHP **8.2.32**, MariaDB **10.11.18**, and PHPMailer **7.1.1** with a disposable database and synthetic test accounts.
 
-## Completed
+### Completed
 
 - All application PHP files passed syntax checks.
 - The initial migration ran successfully and a second run left it unchanged.
@@ -13,7 +47,7 @@ Executed against PHP **8.2.32**, MariaDB **10.11.18**, and PHPMailer **7.1.1** w
 
 The SMTP test used a local capture server and a dedicated temporary trusted certificate. It checked actual SMTP/TLS interaction without sending messages to real people.
 
-## Still to check on the target hosting
+### Still to check on the target hosting
 
 - The browser security policy blocked local visual previews in the build environment. Responsive CSS is implemented, but visual inspection on an actual phone and desktop remains outstanding.
 - PHP-FPM/Apache/LiteSpeed/Nginx configuration, HTTPS redirects, session storage, actual document root, and any proxy or caching rules.

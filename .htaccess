@@ -1,1 +1,29 @@
-Require all denied
+# The web root may point at this folder or at public/. Both work.
+#
+# Shared hosting usually fixes the web root at the account's public_html and
+# offers no way to move it, so a request that lands here is rewritten into
+# public/ instead of being refused. Nothing outside public/ becomes reachable by
+# doing that: /config/config.php is rewritten to /public/config/config.php,
+# which does not exist.
+#
+# The folders outside public/ each deny themselves as well, so that protection
+# does not depend on mod_rewrite being enabled at all.
+
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Already inside public/ - leave it alone, or this would loop.
+    RewriteRule ^public/ - [L]
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Without mod_rewrite these are the only files at this level a request could
+# otherwise read.
+<FilesMatch "\.(md|json|lock|sql|sh|ya?ml|bundle|example|log|txt|dist)$">
+    Require all denied
+</FilesMatch>
+<Files "VERSION">
+    Require all denied
+</Files>

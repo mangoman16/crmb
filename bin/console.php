@@ -10,7 +10,9 @@ if($command==='key'){echo base64_encode(random_bytes(32)).PHP_EOL;exit;}
 if($command==='version'){echo trim((string)file_get_contents(__DIR__.'/../VERSION')).PHP_EOL;exit;}
 if($command==='help'){
     echo "Badminton CRM\n\n"
-        ."php bin/console.php update            One-step upgrade: maintenance on, migrate, maintenance off\n"
+        ."Updates need none of this: replace the files and open the portal. The commands\n"
+        ."below exist for a server with shell access.\n\n"
+        ."php bin/console.php update            Maintenance on, migrate, compare counts, maintenance off\n"
         ."php bin/console.php key\n"
         ."php bin/console.php migrate\n"
         ."php bin/console.php create-admin\n"
@@ -36,44 +38,16 @@ try{
     if($command==='check'){
         $schema=null;
         try{$schema=scalar('SELECT MAX(version) FROM schema_migrations');}catch(PDOException){$schema='not migrated';}
-        $result=['version'=>trim(file_get_contents(ROOT.'/VERSION')),'php'=>PHP_VERSION,'maintenance'=>is_file(maintenance_file()),'schema'=>$schema];
+        try{$pending=schema_pending();}catch(PDOException){$pending=array_map('basename',migration_files());}
+        $result=['version'=>trim(file_get_contents(ROOT.'/VERSION')),'php'=>PHP_VERSION,'maintenance'=>is_file(maintenance_file()),'schema'=>$schema,'pending'=>$pending];
         foreach(['accounts','students','contacts','field_definitions','field_values','absences','charges','payments','threads','messages','news','mail_jobs'] as $table)$result['rows'][$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
         $result['totals_cents']=['charges'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM charges WHERE cancelled=0'),'confirmed_payments'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE voided=0 AND confirmed_at IS NOT NULL')];
         echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE).PHP_EOL;exit;
     }
     if($command==='migrate'){
-        run('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
-        if((int)scalar("SELECT GET_LOCK('badminton_crm_migrate',0)")!==1)throw new RuntimeException('Another migration is running.');
-        try{
-            foreach(glob(ROOT.'/database/migrations/*.sql') as $file){
-                $version=basename($file);$hash=hash_file('sha256',$file);$old=one('SELECT * FROM schema_migrations WHERE version=?',[$version]);
-                if($old){
-                    if(!hash_equals($old['checksum'],$hash))
-                        throw new RuntimeException('Migration '.$version.' has changed since it was applied. Never edit an applied migration; add a new one instead. To accept a deliberate change, update its checksum in schema_migrations.');
-                    continue;
-                }
-                $statements=split_sql(file_get_contents($file));
-                foreach($statements as $i=>$statement){
-                    try{ db()->exec($statement); }
-                    catch(Throwable $e){
-                        // MySQL DDL is not transactional, so a failure here leaves the
-                        // migration half applied and unrecorded. Say exactly which
-                        // statement stopped, because the operator has to decide between
-                        // finishing it by hand and restoring a backup.
-                        throw new RuntimeException(
-                            $version.' failed at statement '.($i+1).' of '.count($statements).":\n\n"
-                            .substr(preg_replace('/\s+/',' ',$statement),0,300)."\n\n"
-                            .$e->getMessage()."\n\n"
-                            ."Statements 1 to ".$i." were applied and this migration is NOT recorded as done,\n"
-                            ."so re-running would start it again from the beginning. Restore your backup, or\n"
-                            ."finish this migration by hand and add the row to schema_migrations yourself.");
-                    }
-                }
-                run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)',[$version,$hash,now()]);
-                echo 'Applied '.$version.' ('.count($statements).' statements)'.PHP_EOL;
-            }
-            require ROOT.'/database/defaults.php';
-        }finally{run("SELECT RELEASE_LOCK('badminton_crm_migrate')");}
+        // The engine lives in app/schema.php, because the browser installer and
+        // the first request after an upload run exactly the same code.
+        schema_apply(function(string $line){echo $line.PHP_EOL;});
         echo "Database is up to date.\n";exit;
     }
     if($command==='update'){
@@ -108,21 +82,17 @@ try{
         echo "Update complete.\n";exit;
     }
     if($command==='create-admin'){
-        // A second administrator can be created deliberately with --force; without
-        // it the guard stays, so a stray run cannot quietly add one.
-        if((int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'")>0 && ($argv[2]??'')!=='--force')
-            throw new RuntimeException("An administrator already exists. Invite further accounts in the app, or pass --force to create another from the command line.");
         function ask(string $label,bool $secret=false):string{
             static $tty=null;$tty??=stream_isatty(STDIN);fwrite(STDOUT,$label.': ');
             if($secret&&$tty)shell_exec('stty -echo');
             try{$value=trim((string)fgets(STDIN));}finally{if($secret&&$tty){shell_exec('stty echo');fwrite(STDOUT,PHP_EOL);}}
             return $value;
         }
-        $name=ask('Name');$email=email_value(ask('Email'));$password=strong_password(ask('Password (12+ characters)',true));
+        $name=ask('Name');$email=ask('Email');$password=ask('Password (12+ characters)',true);
         if($password!==ask('Repeat password',true))throw new RuntimeException('Passwords do not match.');
-        if($name===''||mb_strlen($name)>160)throw new RuntimeException('Invalid name.');
-        // The first administrator is provisioned by the server owner; no web signup exists.
-        run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,created_at) VALUES (?,?,?,'admin','active',?,?)",[$name,$email,password_hash($password,PASSWORD_DEFAULT),now(),now()]);
+        // A second administrator can be created deliberately with --force; without
+        // it the guard stays, so a stray run cannot quietly add one.
+        create_admin_account($name,$email,$password,($argv[2]??'')==='--force');
         echo "Administrator created. Sign in to configure SMTP and the privacy notice.\n";exit;
     }
     if($command==='billing:plan'){
@@ -142,9 +112,8 @@ try{
     }
     if($command==='mail:work'){$result=process_mail((int)($argv[2]??25),(float)($argv[3]??0));echo json_encode($result).PHP_EOL;exit($result['failed']?1:0);}
     if($command==='maintenance'){
-        run('DELETE FROM auth_tokens WHERE expires_at<?',[now()]);
-        run('DELETE FROM rate_limits WHERE window_start<?',[time()-86400]);
-        run('DELETE FROM form_requests WHERE created_at<?',[gmdate('Y-m-d H:i:s',time()-604800)]);
+        prune_expired();
+        set_setting('prune_last_run',now());
         echo "Expired tokens and temporary request records removed.\n";exit;
     }
     throw new RuntimeException('Unknown command. Run: php bin/console.php help');
