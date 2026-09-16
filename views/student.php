@@ -65,9 +65,41 @@ endforeach ?></div></section><?php endif ?>
 <?php if($staff):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>
 <div class="form-footer"><?php submit_button(t('Schüler speichern','Save student'));?></div></form>
 <?php if($id && $staff):?><details class="danger-zone"><summary><?=e(t('Schüler löschen','Delete student'))?></summary><p><?=e(t('Nur möglich, wenn keine Beiträge vorhanden sind. Sonst die Mitgliedschaft beenden.','Only possible when no charges exist. Otherwise, end the membership.'))?></p><?php start_form('student_delete',['id'=>$id]);input('confirmation',t('Vollständigen Namen zur Bestätigung eingeben','Enter the full name to confirm'),'','text',true);submit_button(t('Schüler endgültig löschen','Permanently delete student'),'danger');?></form></details><?php endif ?>
-<?php elseif($tab==='contacts'): ?>
-<section class="card"><h2><?=e(t('Kontaktpersonen','Contact people'))?></h2><?php $contacts=rows('SELECT * FROM contacts WHERE student_id=? ORDER BY id',[$id]);if(!$contacts)echo '<p class="muted">'.e(t('Noch keine Kontakte.','No contacts yet.')).'</p>';foreach($contacts as $c):?><div class="record-row"><div><strong><?=e($c['owner_name'])?></strong><p><?=e($c['relation_label'])?></p><?php if($c['phone']):?><a href="tel:<?=e(preg_replace('/[^0-9+]/','',$c['phone']))?>"><?=e($c['phone'])?></a><?php endif ?><p><?=e($c['email'])?></p></div><?php start_form('contact_delete',['student_id'=>$id,'id'=>$c['id']],'inline-form');submit_button(t('Entfernen','Remove'),'subtle danger-text');?></form></div><details><summary><?=e(t('Kontakt bearbeiten','Edit contact'))?></summary><?php start_form('contact_save',['student_id'=>$id,'id'=>$c['id']]);?><div class="grid two"><?php input('owner_name',t('Name','Name'),$c['owner_name'],'text',true);input('relation_label',t('Beziehung','Relationship'),$c['relation_label'],'text',true);input('phone',t('Telefonnummer','Phone number'),$c['phone'],'tel');input('email',t('E-Mail-Adresse','Email address'),$c['email'],'email');?></div><?php submit_button();?></form></details><?php endforeach ?></section>
-<section class="card"><h2><?=e(t('Kontakt hinzufügen','Add contact'))?></h2><?php start_form('contact_add',['student_id'=>$id]);?><div class="grid two"><?php input('owner_name',t('Wem gehört der Kontakt?','Whose contact is this?'),'','text',true);input('relation_label',t('Beziehung, z. B. Mutter','Relationship, e.g. mother'),'','text',true);input('phone',t('Telefonnummer','Phone number'),'','tel');input('email',t('E-Mail-Adresse','Email address'),'','email');?></div><?php submit_button(t('Kontakt hinzufügen','Add contact'));?></form></section>
+<?php elseif($tab==='contacts'): $contacts=student_contacts($id); ?>
+<section class="card">
+    <div class="section-heading"><h2><?=e(t('Kontaktpersonen','Contact people'))?></h2></div>
+    <p class="muted"><?=e(t('Jedes Kind braucht mindestens eine Kontaktperson. Der Standardkontakt ist der, den du zuerst anrufst – und die Adresse, an die Rechnungen und Erinnerungen gehen.','Every child needs at least one contact person. The standard contact is the one you ring first – and the address invoices and reminders go to.'))?></p>
+    <?php if($gap=contact_gap($id)): ?><div class="notice warn"><?=e($gap)?></div><?php endif ?>
+    <?php if(!$contacts)echo '<p class="muted">'.e(t('Noch keine Kontakte.','No contacts yet.')).'</p>';
+    foreach($contacts as $c): ?>
+    <div class="record-row">
+        <div><strong><?=e($c['owner_name'])?></strong><?php if((int)$c['is_primary'])badge(t('Standardkontakt','Standard contact'),'green');?>
+            <p><?=e($c['relation_label'])?></p>
+            <?php if($c['phone']):?><a href="tel:<?=e(preg_replace('/[^0-9+]/','',$c['phone']))?>"><?=e($c['phone'])?></a><?php endif ?>
+            <p><?=e($c['email']?:t('Keine E-Mail-Adresse','No email address'))?></p></div>
+        <?php if(count($contacts)>1): start_form('contact_delete',['student_id'=>$id,'id'=>$c['id']],'inline-form');submit_button(t('Entfernen','Remove'),'subtle danger-text');?></form><?php endif ?>
+    </div>
+    <details><summary><?=e(t('Kontakt bearbeiten','Edit contact'))?></summary>
+        <?php start_form('contact_save',['student_id'=>$id,'id'=>$c['id']]);?><div class="grid two"><?php
+        input('owner_name',t('Name','Name'),$c['owner_name'],'text',true);
+        input('relation_label',t('Beziehung','Relationship'),$c['relation_label'],'text',true);
+        input('phone',t('Telefonnummer','Phone number'),$c['phone'],'tel');
+        input('email',t('E-Mail-Adresse','Email address'),$c['email'],'email',(bool)$c['is_primary']);?></div>
+        <?php if((int)$c['is_primary'])echo '<p class="muted">'.e(t('Das ist der Standardkontakt. Um das zu ändern, setze bei einem anderen Kontakt das Häkchen.','This is the standard contact. To change that, tick the box on another contact.')).'</p>';
+        else check_field('is_primary',t('Als Standardkontakt verwenden','Use as the standard contact'),false);
+        submit_button();?></form>
+    </details>
+    <?php endforeach ?>
+</section>
+<section class="card"><h2><?=e(t('Kontakt hinzufügen','Add contact'))?></h2>
+    <?php start_form('contact_add',['student_id'=>$id]);?><div class="grid two"><?php
+    input('owner_name',t('Wem gehört der Kontakt?','Whose contact is this?'),'','text',true);
+    input('relation_label',t('Beziehung, z. B. Mutter','Relationship, e.g. mother'),'','text',true);
+    input('phone',t('Telefonnummer','Phone number'),'','tel');
+    input('email',t('E-Mail-Adresse','Email address'),'','email',!$contacts);?></div>
+    <?php if($contacts)check_field('is_primary',t('Als Standardkontakt verwenden','Use as the standard contact'),false);
+    submit_button(t('Kontakt hinzufügen','Add contact'));?></form>
+</section>
 <?php elseif($tab==='absence'): ?>
 <section class="card"><h2><?=e(t('Abwesenheiten','Absences'))?></h2><?php $list=rows('SELECT * FROM absences WHERE student_id=? ORDER BY starts_on DESC',[$id]);if(!$list)echo '<p class="muted">'.e(t('Keine Abwesenheiten eingetragen.','No absences recorded.')).'</p>';foreach($list as $a):?><div class="record-row"><div><strong><?=e(reason_label($a['reason']))?></strong><p><?=e(fmt_date($a['starts_on']).' – '.fmt_date($a['ends_on']))?></p></div><?php start_form('absence_delete',['student_id'=>$id,'id'=>$a['id']],'inline-form');submit_button(t('Entfernen','Remove'),'subtle danger-text');?></form></div><?php endforeach ?></section>
 <section class="card"><h2><?=e(t('Abwesenheit melden','Report absence'))?></h2><?php start_form('absence_add',['student_id'=>$id]);?><div class="grid three"><?php select_field('reason',t('Grund','Reason'),array_combine(array_keys(reasons()),array_map('reason_label',array_keys(reasons()))),'',true);input('starts_on',t('Von','From'),today(),'date',true);input('ends_on',t('Bis einschließlich','Up to and including'),today(),'date',true);?></div><?php submit_button(t('Abwesenheit eintragen','Record absence'));?></form></section>

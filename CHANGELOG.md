@@ -1,5 +1,97 @@
 # Changelog
 
+## 0.6.0 — unreleased
+
+Her half of the portal: what she runs day to day, in the words she uses for it,
+after a round of testing that produced a list of about forty things.
+
+- **Install by `git clone`, update with one command.** `bin/update.sh` pulls,
+  installs the dependencies, applies the migrations and prints the status; it
+  refuses on an uncommitted change rather than discarding work, and does the
+  database half by calling the same console command the browser does. The
+  version is now written into the database as well as the files, so
+  **Einstellungen → System** can say whether the two agree, and
+  `bin/update.sh --check` answers the same question from a shell.
+  README says plainly that no ZIP is published anywhere yet, because there is no
+  release: somebody with a shell builds it with `bin/release.sh`.
+- **Example data, one button.** **Einstellungen → System → „Beispieldaten
+  anlegen"** fills a portal with three courses, fifteen children aged 7 to 41,
+  contacts, enrolments, charges, payments, attendance, absences, news and a
+  conversation, so the app can be tried before it holds anybody real. It refuses
+  to run twice, and refuses to mix into real students. „Beispieldaten entfernen"
+  takes all of it out again.
+- **A rejected form no longer empties itself.** A euro sign in a number field
+  used to cost the whole page of typing. What was entered comes back, the error
+  sits beside the field that caused it, and passwords are deliberately not
+  refilled. A field left blank to inherit a price now shows the price it would
+  inherit, marked as a default, with a button that puts the default back and
+  names the value it is putting back.
+- **Two groupings instead of one detailed one.** Skill assessment with scales
+  and dated values is replaced by **Leistungsgruppen** — Anfänger,
+  Fortgeschritten, Könner, renameable and extendable, one of them the default a
+  new child starts in — and **Altersgruppen** (Unter 12, Jugend, Erwachsene),
+  worked out from the date of birth, overridable per child, and warned about
+  when the bands leave a gap. Both live under **Verwaltung**, which is the
+  trainer's own screen: settings stayed the administrator's.
+- **The course is the one place a price lives.** A tariff belongs to exactly one
+  course, a course has a timetable rather than a single weekday — several days a
+  week, each with its own time and place — and a child can be in several
+  courses, billed for each at the tariff their enrolment names.
+- **Families can ask, and the trainer decides.** A child's page offers the
+  courses with room in them; joining, leaving and changing tariff are requests
+  that wait for the trainer's yes, counted beside **Kurse** in the menu.
+- **Billing as she bills.** Monthly, every two, three or six months, or yearly;
+  a first period prorated, charged whole, or skipped; a discount for a number of
+  months (or unlimited) as a percentage or a fixed amount; a due day on the
+  tariff that a child can override; and overdue a set number of days after that.
+  The preview says what will be created, one line per enrolment, with a reason
+  beside anybody skipped.
+- **Invoices that hold up in Austria.** The operator's own details are entered
+  once under **Einstellungen → Betrieb** and feed both the invoice and the
+  privacy notice. An invoice carries what § 11 Abs 1 UStG asks for, numbers
+  itself consecutively per year, states the § 6 Abs 1 Z 27 exemption for a
+  Kleinunternehmer or shows net, rate and tax when VAT applies, and is generated
+  as a PDF on request rather than stored. Open becomes overdue on its own; paid
+  is the trainer's word and writes real payments behind it; cancelled keeps its
+  number.
+- **Attendance where she needs it.** One screen: pick the course, pick the day,
+  every child in it, one tap each, one save — reachable from the menu and not
+  only from inside a course. A child reported absent for that day carries the
+  reason beside their name, as a note rather than a mark. The start page grew a
+  timeline of what was, what is on today and what is next.
+- **Named views.** A filtered list of children can be saved under a name and
+  opened again as a chip, each one saying underneath what it selects.
+- **A shell that stays where you put it.** The top bar is pinned, and carries
+  the language switch, a notification pane, and who you are — once, instead of
+  once at the top and once at the bottom. Profile pictures for accounts and
+  children. A default colour set by the administrator that each person can
+  override for themselves. Any page can report that something is wrong on it,
+  with a screenshot, and the report arrives with the page, the device, the
+  address and the version attached. An administrator or trainer can view the
+  portal as somebody else to see what they see, with a bar saying so and a way
+  back that works from inside the borrowed session; what they change is recorded
+  against them, not against the person they were viewing as.
+- **Messages in the shape people already know one.** Conversations down one
+  side, bubbles down the other, one box with a paper clip and a microphone.
+  Pictures, PDFs and voice notes, within a size limit that is never higher than
+  what PHP itself accepts. Writing to the trainer needs nobody's permission;
+  writing to another family needs theirs, asked for and agreed to. **A
+  conversation between two families is private: neither the trainer nor the
+  administrator can read it**, which the screen says in words. The bulk tool —
+  filters, templates, a review step — is still there, on its own page.
+- **The change log informs.** It says what changed, field by field, in the words
+  she uses, storing only what actually differed. The undo is gone: a page that
+  can put a record back is a page that can put a record back by accident, and
+  the cost of keeping it was a copy of every record on every save.
+- **Every child has somebody to ring.** One contact is the standard one — the
+  number you reach for and the address an invoice goes to — so it cannot be
+  saved without an email, the last contact cannot be removed, and a child
+  without one is named on the student list. An invoice for a family with no
+  portal account is addressed to that contact.
+- **A feature list with steps to test it** — [TESTING.md](TESTING.md) — for the
+  administrator to walk after a code change or a release, alongside the
+  automated suites, which now run 1617 assertions.
+
 ## 0.5.0 — unreleased
 
 Installing and updating without a shell.

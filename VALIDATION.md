@@ -1,5 +1,34 @@
 # Validation
 
+## 0.6.0 — the trainer's half of the portal
+
+Executed against PHP **8.4.19** and MariaDB **10.11.14-MariaDB-0ubuntu0.24.04.1**.
+
+- The whole suite passes on both engines: **1617 assertions on SQLite, 1630
+  against MariaDB** (the extra ones being the foreign keys and the MySQL-dialect
+  backup that the SQLite translation cannot express), with all thirteen
+  migrations applying on MariaDB — including `013_standard_contact.sql`, whose
+  back-fill updates `contacts` from a derived table because MySQL will not read
+  from the table it is updating.
+- Each new rule was verified by breaking what it guards and watching the test
+  fail: the first contact no longer becoming the standard one, the standard
+  contact no longer needing an email address, the last contact becoming
+  removable, and the reported-absence note disappearing from the attendance
+  screen. Each was restored and re-run green.
+- The invoice PDF was parsed with an **independent** library (pypdf) rather than
+  with the code that wrote it: one page, readable metadata, and the text
+  extracted with umlauts and the euro sign intact.
+- A conversation between two families was checked from five sides — both
+  participants, the trainer, the administrator and an unrelated family — through
+  the thread, the conversation list, the unread count and the attachment
+  download route. Only the participants can reach any of them.
+
+**Not covered here.** No PDF was opened in Adobe Reader, no mail was sent
+through a real provider, and nothing was rendered on a real iPhone;
+[TESTING.md](TESTING.md) is the list of checks that exist for exactly that
+reason. **MySQL 8.0 itself remains unverified** — MariaDB is one of the two
+supported engines, not both. No real hosting account has been used.
+
 ## 0.5.0 — installing and updating
 
 Executed against PHP **8.4.19** and MariaDB **10.11.14**.

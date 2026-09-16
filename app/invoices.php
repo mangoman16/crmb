@@ -74,9 +74,13 @@ function invoice_issuer(): array {
  */
 function invoice_recipient(array $student): array {
     $account = $student['account_id'] ? one('SELECT * FROM accounts WHERE id=?', [(int)$student['account_id']]) : null;
+    // A child whose family has no portal account still has somebody to send the
+    // invoice to: the standard contact is that somebody, and is the reason it
+    // is required to have an email address.
+    $contact = $account ? null : primary_contact((int)$student['id']);
     return [
-        'name'    => $account ? (string)$account['name'] : $student['first_name'] . ' ' . $student['last_name'],
-        'email'   => $account ? (string)$account['email'] : '',
+        'name'    => $account ? (string)$account['name'] : ($contact ? (string)$contact['owner_name'] : $student['first_name'] . ' ' . $student['last_name']),
+        'email'   => $account ? (string)$account['email'] : ($contact ? (string)$contact['email'] : ''),
         'student' => $student['first_name'] . ' ' . $student['last_name'],
         'account_id' => $account ? (int)$account['id'] : null,
     ];

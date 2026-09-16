@@ -58,3 +58,16 @@ foreach (['2026-09-07','2026-08-31'] as $d)
     fixture('attendance', ['class_id'=>$class,'student_id'=>$a,'session_on'=>$d,'status'=>'present',
                            'note'=>'','recorded_by'=>$trainer,'created_at'=>now()]);
 is_same(['2026-09-14','2026-09-07','2026-08-31'], attendance_session_dates($class), 'newest first');
+
+case_('A reported absence is shown beside the name, and is not a mark');
+fixture('absences', ['student_id'=>$b, 'reason'=>'sick', 'starts_on'=>'2026-09-21', 'ends_on'=>'2026-09-23',
+                     'created_by'=>$trainer]);
+is_same(['sick'], array_values(absences_on([$a,$b,$c], '2026-09-22')), 'the day inside the range');
+is_same([$b], array_keys(absences_on([$a,$b,$c], '2026-09-21')), 'the first day counts');
+is_same([$b], array_keys(absences_on([$a,$b,$c], '2026-09-23')), 'and so does the last');
+is_same([], absences_on([$a,$b,$c], '2026-09-24'), 'the day after does not');
+is_same([], absences_on([], '2026-09-22'), 'nobody to ask about is not a query');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM attendance WHERE student_id=? AND session_on=?', [$b,'2026-09-22']),
+        'and nothing was recorded on their behalf: what is recorded is what she taps');
+$html = render_view('attendance', ['id'=>(string)$class, 'on'=>'2026-09-22']);
+ok(str_contains($html, 'gemeldet'), 'the screen says the child was reported absent');

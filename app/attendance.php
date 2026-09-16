@@ -40,6 +40,25 @@ function attendance_for_session(int $classId, string $date): array {
     return $out;
 }
 
+/**
+ * Who has been reported absent on one day, and why.
+ *
+ * She writes an absence down when the parent tells her, often days ahead, and
+ * then stands in the hall wondering who the missing child was. So the reason is
+ * on the attendance screen beside the name - as a note, not as a mark: what is
+ * recorded is still what she taps, because a reported absence is a message and
+ * attendance is a fact.
+ */
+function absences_on(array $studentIds, string $date): array {
+    if(!$studentIds) return [];
+    $in=implode(',',array_fill(0,count($studentIds),'?'));
+    $out=[];
+    foreach(rows('SELECT student_id,reason FROM absences WHERE starts_on<=? AND ends_on>=? AND student_id IN ('.$in.')',
+                 array_merge([$date,$date],$studentIds)) as $row)
+        $out[(int)$row['student_id']]=(string)$row['reason'];
+    return $out;
+}
+
 /** Dates that already have attendance for a class, newest first. */
 function attendance_session_dates(int $classId, int $limit=30): array {
     return array_column(rows('SELECT session_on, COUNT(*) AS n FROM attendance WHERE class_id=?'

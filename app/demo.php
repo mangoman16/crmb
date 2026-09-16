@@ -166,7 +166,7 @@ function demo_fill(bool $force = false): array {
             $counts['students']++;
 
             // Every child has somebody to ring. That is the point of the list.
-            run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email) VALUES (?,?,?,?,?)',
+            run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email,is_primary) VALUES (?,?,?,?,?,1)',
                 [$id, ($age < 18 ? 'Elternteil ' : '') . $n[1],
                  $age < 18 ? 'Erziehungsberechtigt' : 'Selbst',
                  '+43 660 ' . (1000000 + $i * 13), mb_strtolower($n[1]) . '@beispiel.test']);

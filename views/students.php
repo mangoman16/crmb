@@ -5,6 +5,15 @@ $all=filtered_students($f,$staff?null:(int)$user['id']);$pageNum=max(1,(int)($_G
 $overdueBy=balances(true);
 page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in this selection'),$staff?link_button(t('+ Schüler anlegen','+ Add student'),'student'):'');
 if($staff): ?>
+<?php /* Somebody to ring is the one thing a record about a child has to have,
+         so a missing one is said on the list rather than found on the day it
+         matters. */
+$missing=students_missing_contact(); if($missing): ?>
+<div class="notice warn">
+    <strong><?=e(plural(count($missing),'Kind ohne Standardkontakt','Kinder ohne Standardkontakt','child without a standard contact','children without a standard contact'))?></strong>
+    <p><?php foreach(array_slice($missing,0,6) as $i=>$m): ?><?=$i?', ':''?><a href="<?=e(url('student',['id'=>$m['id'],'tab'=>'contacts']))?>"><?=e($m['first_name'].' '.$m['last_name'])?></a><?php endforeach ?><?php if(count($missing)>6):?> <?=e(t('und weitere','and more'))?><?php endif ?></p>
+</div>
+<?php endif ?>
 <?php /* Saved filters are the "views" she asked for: a named selection she opens
          instead of rebuilding. Each chip carries what it selects underneath its
          name, because a chip called "Montag" says nothing a month later. */

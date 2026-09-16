@@ -4,6 +4,7 @@
 $on=date_value((string)($_GET['on']??''))??attendance_suggested_date($form);
 $members=array_filter(class_members($id),fn($m)=>$m['left_on']===null||$m['left_on']>=$on);
 $recorded=attendance_for_session($id,$on);
+$reported=absences_on(array_map(fn($m)=>(int)$m['id'],$members),$on);
 $statuses=attendance_statuses();
 $dates=attendance_session_dates($id);
 ?>
@@ -46,7 +47,7 @@ $dates=attendance_session_dates($id);
         <div class="attendance-row">
             <div class="attendance-name">
                 <span class="avatar small"><?=e(mb_substr($m['first_name'],0,1).mb_substr($m['last_name'],0,1))?></span>
-                <span><strong><?=e($m['first_name'])?></strong><small><?=e($m['last_name'])?></small></span>
+                <span><strong><?=e($m['first_name'])?></strong><small><?=e(isset($reported[$sid])?$m['last_name'].' · '.reason_label($reported[$sid]).t(' gemeldet',' reported'):$m['last_name'])?></small></span>
                 <?php $rid='att_'.$sid.'_none'; ?>
                 <input class="clear-radio" type="radio" id="<?=e($rid)?>" name="present[<?=$sid?>]" value="" <?=$current===''?'checked':''?>>
                 <label class="clear-mark" for="<?=e($rid)?>" title="<?=e(t('Nicht erfasst','Not recorded'))?>">
