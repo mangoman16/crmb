@@ -1,6 +1,6 @@
 # Badminton CRM
 
-Version **0.4.0**. A self-hosted PHP/MySQL application for a badminton coach and her students, built for mobile use, with German and English interfaces.
+Version **0.5.0**. A self-hosted PHP/MySQL application for a badminton coach and her students, built for mobile use, with German and English interfaces.
 
 ## Included
 
@@ -19,107 +19,93 @@ Version **0.4.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - SMTP settings, encrypted SMTP password, a mail queue with automatic retry and an outgoing-mail overview.
 - Editable German/English privacy drafts, acknowledgement and subscription records.
 - Light and dark appearance following the device, adjustable text size, and installable to a phone home screen.
-- Versioned database migrations, a maintenance switch with an administrator bypass, and `console.php update` as a single, repeatable upgrade step.
+- A browser installer for hosting without a shell, versioned migrations that apply themselves when new files are uploaded, and a maintenance switch with an administrator bypass.
+- An update that refuses to run against an older package, an incomplete upload, a database it could not back up first, or a result with fewer rows than it started with.
+- Queued email, cleanup and optional monthly charges run without a cron job, just after a page has been served.
 - Every operator setting declared once with a type and a default, editable from the settings screen, so no value is ever undefined.
 - Online status for accounts, and email reminders for outstanding payments.
 - Undo: changes to the main records are versioned, listed under **Änderungen**, and can be put back — including restoring a deleted student under their original number.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs the whole suite in a few seconds.
+- A test suite that needs no database server: `php tests/run.php` runs 1003 assertions in a few seconds.
 
 ## Install
 
-Full guide with hosting specifics: [INSTALL.md](INSTALL.md). The short version,
-run from the project directory, with `public/` as the web root:
+On ordinary web hosting, with no shell: create an empty database in the hosting
+panel, upload the distribution ZIP into the domain's folder, unpack it, and open
+the address in a browser. The setup page asks for the four database details the
+panel gave you and for the first account, then installs everything itself.
+
+Full guide, including what to do when a step fails: [INSTALL.md](INSTALL.md).
+
+The web root may point at the project folder or at `public/`; both work. The
+`.htaccess` at the top rewrites every request into `public/`, and each other
+folder denies itself, so `app/`, `config/` and `storage/` stay unreachable even
+when they sit inside the published directory.
+
+No cron job is required. Waiting work — sending queued email, removing expired
+links, and optionally creating the monthly charges on the 1st — runs just after
+a page has been delivered, at most once a minute. A real cron job can take over
+instead; see INSTALL.md.
+
+With shell access the browser installer is unnecessary:
 
 ```bash
-# 1. Dependencies (the distribution ZIP already includes them; a Git checkout does not)
-composer install --no-dev --prefer-dist --optimize-autoloader
-
-# 2. Configuration, kept outside the release directory so updates preserve it
-mkdir -p /srv/badminton/shared
-cp config/config.example.php /srv/badminton/shared/config.php
-ln -s /srv/badminton/shared/config.php config/config.php
-
-# 3. Generate the encryption key, then paste it into config.php as app_key
-php bin/console.php key
-```
-
-Edit `/srv/badminton/shared/config.php`: set `app_key` to the key just
-generated, `app_url` to the exact address without a trailing slash, the database
-credentials, and `maintenance_file` to a path outside the release directory.
-Keep that `app_key` forever — it decrypts the stored SMTP password and any
-queued mail, and a database backup without it will not restore them.
-
-Create the database first (see INSTALL.md for grants), then:
-
-```bash
-# 4. Create the schema, the first administrator, and verify the result
+composer install --no-dev --prefer-dist --optimize-autoloader   # only after a git clone
+cp config/config.example.php config/config.php
+php bin/console.php key            # paste the result into config.php as app_key
 php bin/console.php migrate
 php bin/console.php create-admin
 php bin/console.php check
 ```
 
-`create-admin` asks for a name, email address and password, and only works while
-no administrator exists.
-
-```bash
-# 5. Cron: mail delivery, nightly cleanup, and monthly charges on the 1st
-* * * * * /usr/bin/php /srv/badminton/current/bin/console.php mail:work 25 >> /srv/badminton/shared/mail-worker.log 2>&1
-15 3 * * * /usr/bin/php /srv/badminton/current/bin/console.php maintenance >> /srv/badminton/shared/maintenance.log 2>&1
-30 4 1 * * /usr/bin/php /srv/badminton/current/bin/console.php billing:run >> /srv/badminton/shared/billing.log 2>&1
-```
-
-Without the first line no email is ever sent. The third line is optional — leave
-it out to create the monthly charges by hand from **Beiträge → Monatsbeiträge**,
-which shows the full list before creating anything. It is safe on cron either
-way: a second run in the same month creates nothing.
-
-Finally, sign in and configure **Einstellungen → SMTP**, then complete both
-privacy drafts under **Datenschutz**. Invitations stay disabled until both are
-done.
+Then sign in and complete **Einstellungen → SMTP** and **Einstellungen →
+Datenschutz**. Invitations stay disabled until both are done.
 
 ## Update
 
-Full guide, including how to recover from a failed migration:
-[UPDATING.md](UPDATING.md). Releases live in their own directories and `current`
-is a symlink, so a switch is atomic and reversible.
+Upload the new files over the old ones and open the portal. The database applies
+any new migrations on the first page view, guarded by a lock so two visitors
+arriving together cannot run them twice.
+
+Before the database is touched at all, four things have to hold, and each one
+stops the update rather than proceeding on a guess:
+
+1. **The files are newer than the database.** An older package is a downgrade,
+   which would otherwise pass silently — nothing is pending, so the update would
+   look like a success while the portal ran old code against a newer schema.
+2. **The upload is complete.** The package ships a `MANIFEST` of every PHP and
+   SQL file with its checksum, so an extract that stopped halfway, or an FTP
+   client in text mode, is caught rather than migrated against.
+3. **A backup was written.** A full SQL dump goes to `storage/backups` first. No
+   backup, no migration. The last five are kept and older ones pruned.
+4. **No rows disappeared.** Counts across ten tables are compared before and
+   after; a count that fell keeps the portal closed.
+
+If anything fails the portal answers 503 and says in German and English what went
+wrong and what to do — never SQL, because that address is public and a parent may
+be the one reading it.
+
+`config/config.php` is not in the distribution package, so an upload cannot
+overwrite it. Keep its `app_key` forever: it decrypts the stored SMTP password
+and anything still in the mail queue.
+
+Full guide, including separate release directories and how to recover from a
+failed migration: [UPDATING.md](UPDATING.md).
 
 ```bash
-# 1. Unpack the new release into its own directory — never over the running one
-unzip badminton-crm-v0.5.0.zip -d /srv/badminton/releases/
-NEW=/srv/badminton/releases/badminton-crm-v0.5.0     # adjust to the directory just created
-
-# 2. Reuse the shared configuration, and install dependencies if the package omits them
-ln -s /srv/badminton/shared/config.php "$NEW/config/config.php"
-cd "$NEW" && composer install --no-dev --prefer-dist --optimize-autoloader
-
-# 3. Record the current state for comparison. This is a check, not a backup
-php /srv/badminton/current/bin/console.php check > /srv/badminton/shared/before-update.json
-
-# 4. Run the update: maintenance on, migrations, verification, maintenance off
-php "$NEW/bin/console.php" update
-
-# 5. Switch the active release atomically, then reload PHP-FPM
-ln -s "$NEW" /srv/badminton/current-next
-mv -Tf /srv/badminton/current-next /srv/badminton/current
-```
-
-Step 4 is the whole upgrade. It switches maintenance mode on, applies only the
-new migrations, compares record counts before and after, and switches
-maintenance off only if everything passed. **If anything fails it stops and
-leaves the portal closed**, so nobody sees a half-migrated portal. An
-administrator can still sign in while maintenance is on, and a banner offers to
-switch it off.
-
-Re-running `update` with nothing new applies nothing and reopens the portal. A
-migration edited after being applied is refused by name. Keep the previous
-release directory until the new one is accepted.
-
-```bash
+php bin/console.php update            # the same thing from a shell, with before/after counts
 php bin/console.php maintenance:on    # close the portal by hand
 php bin/console.php maintenance:off   # reopen it
-php bin/console.php check             # counts and totals, as JSON
+php bin/console.php backup            # a full SQL copy into storage/backups, on demand
+php bin/console.php check             # counts, totals and pending migrations, as JSON
 php bin/console.php version           # which release this directory is
+```
+
+Building the distribution ZIP, which bundles the dependencies so the upload is
+self-contained:
+
+```bash
+bin/release.sh
 ```
 
 ## For developers
@@ -150,12 +136,12 @@ project is going, and what has to be true before it holds real data, is in
 
 ## Start here
 
-1. Follow the install steps above, or [INSTALL.md](INSTALL.md) for the detail.
+1. Follow [INSTALL.md](INSTALL.md): empty database, upload, open the address.
 2. Configure the portal under **Einstellungen**. Create tariffs and edit student fields.
 3. Add students, invite the account holders, and link each student to the appropriate account.
-4. Before future updates, follow the update steps above or [UPDATING.md](UPDATING.md).
+4. To update, upload the new files. Nothing else.
 
-The distribution ZIP includes PHPMailer and its Composer autoloader. A Git checkout uses `composer install --no-dev --prefer-dist --optimize-autoloader` to install the exact dependency in `composer.lock`.
+The distribution ZIP includes PHPMailer, BaconQrCode and the Composer autoloader, so an upload needs nothing else. A Git checkout uses `composer install --no-dev --prefer-dist --optimize-autoloader` to install the exact versions in `composer.lock`.
 
 ## Scope of this version
 
@@ -175,12 +161,13 @@ copy of the database before touching anything real.
 
 | Directory | Purpose |
 |---|---|
-| `public/` | The only web-accessible directory |
+| `public/` | The only web-accessible directory, including the browser installer |
 | `app/` | Database, authorization, actions and email handling |
 | `views/` | Server-rendered HTML |
 | `config/` | Configuration example; actual configuration is excluded from Git |
 | `database/migrations/` | Ordered, checksummed schema changes |
-| `bin/console.php` | Installation, mail processing and maintenance commands |
+| `bin/console.php` | Migrations, mail processing and maintenance, for a server with a shell |
+| `bin/release.sh` | Builds the distribution ZIP, dependencies included |
 | `docs/` | Editable privacy drafts and hosting examples |
 | `tests/` | `php tests/run.php` — runs against a disposable database |
 

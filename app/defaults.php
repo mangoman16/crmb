@@ -127,6 +127,44 @@ function setting_schema(): array {
             'kind' => 'raw', 'default' => false, 'group' => 'smtp', 'internal' => true,
             'label' => ['Vorgaben angelegt', 'Defaults created'],
         ],
+        'auto_background' => [
+            'kind' => 'bool', 'default' => true, 'group' => 'system',
+            'label' => ['Wartende Aufgaben beim Seitenaufruf erledigen', 'Do waiting work while pages are served'],
+            'hint'  => ['E-Mails werden dann auch ohne Cronjob verschickt. Nur ausschalten, wenn ein Cronjob eingerichtet ist.',
+                        'Email is then sent without a cron job. Switch this off only if a cron job is set up.'],
+        ],
+        'auto_billing' => [
+            'kind' => 'bool', 'default' => false, 'group' => 'system',
+            'label' => ['Monatsbeiträge am 1. automatisch anlegen', 'Create the monthly charges automatically on the 1st'],
+            'hint'  => ['Aus: die Beiträge werden unter „Beiträge → Monatsbeiträge“ angelegt, mit Vorschau.',
+                        'Off: the charges are created under “Beiträge → Monatsbeiträge”, with a preview first.'],
+        ],
+        'tick_last_run' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Letzter Hintergrundlauf', 'Last background run'],
+        ],
+        'prune_last_run' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Letztes Aufräumen', 'Last cleanup'],
+        ],
+        'billing_last_period' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Zuletzt automatisch abgerechneter Monat', 'Last month billed automatically'],
+        ],
+        // Written by schema_apply(); storage/schema.stamp is only a cache of it,
+        // so a hosting account that cannot write there still skips the check.
+        'schema_written_by' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Datenbank zuletzt geschrieben von Version', 'Database last written by version'],
+        ],
+        'schema_last_update' => [
+            'kind' => 'raw', 'default' => [], 'group' => 'system', 'internal' => true,
+            'label' => ['Letzte Datenbankaktualisierung', 'Last database update'],
+        ],
+        'schema_fingerprint' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Stand der Migrationen', 'Applied migration set'],
+        ],
     ];
 }
 

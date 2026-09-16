@@ -10,7 +10,7 @@ page_head(t('Einstellungen','Settings'),t('Alles, was sich am Portal einstellen 
 // because PHP will not parse a braced if as the last statement of an
 // alternative-syntax elseif branch.
 if(in_array($tab,['skills','payments','system'],true)) require ROOT.'/views/_settings_extra.php';
-if(in_array($tab,['portal','students','skills','payments'],true)) require ROOT.'/views/_settings_registry.php';
+if(in_array($tab,['portal','students','skills','payments','system'],true)) require ROOT.'/views/_settings_registry.php';
 if($tab==='fields'):
 $f=$edit?one('SELECT * FROM field_definitions WHERE id=?',[$edit]):null;
 ?>

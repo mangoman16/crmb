@@ -1,8 +1,62 @@
-# Validation — 0.1.0
+# Validation
+
+## 0.5.0 — installing and updating
+
+Executed against PHP **8.4.19** and MariaDB **10.11.14**.
+
+- The whole test suite — **1003 assertions on SQLite, 1016 against MariaDB
+  10.11.14** (the extra ones being the dump, whose dialect SQLite cannot run) —
+  passes on both, with all six migrations applying on MariaDB.
+- The browser installer was driven with real HTTP requests against a real,
+  empty MariaDB database created the way a hosting panel creates one:
+  a fresh upload redirects to setup; a wrong database password, an unassigned
+  database and mismatched account passwords are each reported in words and write
+  nothing; the correct details write `config/config.php`, record all six
+  migrations, seed the example defaults and create exactly one administrator;
+  the portal then serves its sign-in page; and setup afterwards answers 403 to
+  both GET and POST, creating no second account and leaving `app_url` untouched.
+- A migration file added after installation applied itself on the next page view
+  and was recorded, with the encryption key unchanged.
+- A migration edited after it ran, and a migration containing a broken statement,
+  each left the portal closed with 503. The failing one was not recorded as done,
+  and the page named the file and statement without printing the SQL. Removing
+  the file reopened the portal.
+- Maintenance mode still holds the portal closed, and suppresses the automatic
+  migration rather than racing it.
+- The distribution ZIP built by `bin/release.sh` (about 540 KB, 306 files) was
+  unpacked into a web directory and installed from there, using nothing from the
+  source tree: the bundled PHPMailer and BaconQrCode were found, the install
+  completed, the administrator signed in through the real form with cookies and
+  a CSRF token, the settings screen reported the database version with nothing
+  pending, and an expired token was cleaned up by the background worker with no
+  cron job configured.
+- Every safeguard on the update path was exercised against MariaDB over real
+  HTTP: a new migration wrote exactly one backup before it applied; that backup
+  imported into a second, empty database **with no errors and every table, row,
+  setting, apostrophe, umlaut and backslash intact**; an older release was
+  refused and did not mark itself current; a single altered byte in `app/domain.php`
+  against the shipped manifest was refused and named; a backup that could not be
+  written left the migration unapplied; `storage/skip-backup` let it through once
+  and was consumed; and a seventh copy pruned the folder back to five without
+  removing the one just written.
+- Each new structural rule was verified by breaking what it guards: a directory
+  losing its deny file, a new unguarded top-level directory, the rewrite loop
+  guard being dropped, an unescaped value on the setup page, a truncated module,
+  a trusted `Host` header, a replaced `app_key`, a second administrator, the
+  downgrade guard, the row-count check, a manifest that stopped comparing
+  contents, a manifest path allowed to leave the release, a `skip-backup` file
+  that was not consumed, guessable backup file names, a backup folder moved into
+  the web directory, and pruning by name instead of by age.
+
+Not covered: a real hosting account. The layouts, the `.htaccess` rewrite and the
+LiteSpeed-specific `litespeed_finish_request()` path have not been exercised on
+ecomDATA or any other shared host. **MySQL 8.0 itself remains unverified.**
+
+## 0.1.0
 
 Executed against PHP **8.2.32**, MariaDB **10.11.18**, and PHPMailer **7.1.1** with a disposable database and synthetic test accounts.
 
-## Completed
+### Completed
 
 - All application PHP files passed syntax checks.
 - The initial migration ran successfully and a second run left it unchanged.
@@ -13,7 +67,7 @@ Executed against PHP **8.2.32**, MariaDB **10.11.18**, and PHPMailer **7.1.1** w
 
 The SMTP test used a local capture server and a dedicated temporary trusted certificate. It checked actual SMTP/TLS interaction without sending messages to real people.
 
-## Still to check on the target hosting
+### Still to check on the target hosting
 
 - The browser security policy blocked local visual previews in the build environment. Responsive CSS is implemented, but visual inspection on an actual phone and desktop remains outstanding.
 - PHP-FPM/Apache/LiteSpeed/Nginx configuration, HTTPS redirects, session storage, actual document root, and any proxy or caching rules.
