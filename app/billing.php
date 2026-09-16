@@ -128,22 +128,32 @@ function billing_amount_for(array $enrolment, array $tariff, array $period): arr
 
     $coverFrom = $start !== null && $start > $period['from'] ? $start : $period['from'];
     $coverTo   = $end !== null && $end < $period['to'] ? $end : $period['to'];
-    $partial = $coverFrom > $period['from'] || $coverTo < $period['to'];
+    $joinedLate = $coverFrom > $period['from'];
+    $leftEarly  = $coverTo < $period['to'];
 
     $rule = in_array($tariff['first_period'] ?? 'prorate', ['prorate', 'full', 'skip'], true) ? $tariff['first_period'] : 'prorate';
-    if ($partial && $rule === 'skip')
+    // The rule answers one question - what happens to somebody who starts in the
+    // middle of a period - and the form says so. Leaving is not a choice the
+    // tariff gets to make: they were there for part of the period, so that part
+    // is what is charged. Read as "any partial period", the same setting gave a
+    // child who left on the 15th a free month under 'skip' and charged a whole
+    // one under 'full', and nothing in the interface said it would.
+    if ($joinedLate && $rule === 'skip')
         return ['gross' => 0, 'discount' => 0, 'amount' => 0, 'note' => '',
                 'skip' => t('Erst ab dem nächsten vollen Zeitraum', 'Not until the next whole period')];
 
-    $gross = $partial && $rule === 'prorate'
-        ? (int)round($price * billing_days($coverFrom, $coverTo) / billing_days($period['from'], $period['to']))
+    $billFrom = $joinedLate && $rule === 'prorate' ? $coverFrom : $period['from'];
+    $billTo   = $coverTo;
+    $partial  = $billFrom > $period['from'] || $leftEarly;
+    $gross = $partial
+        ? (int)round($price * billing_days($billFrom, $billTo) / billing_days($period['from'], $period['to']))
         : $price;
 
     [$discount, $note] = billing_discount($tariff, $period, $start, $gross, $months);
     return ['gross' => $gross, 'discount' => $discount, 'amount' => max(0, $gross - $discount),
             'note' => $note, 'skip' => null,
-            'prorated' => $partial && $rule === 'prorate',
-            'covered_from' => $coverFrom, 'covered_to' => $coverTo];
+            'prorated' => $partial,
+            'covered_from' => $billFrom, 'covered_to' => $billTo];
 }
 
 /**
@@ -292,12 +302,18 @@ function billing_plan(string $period): array {
         if ($money['amount'] <= 0 && $money['gross'] <= 0) { $entry['skip'] = t('Kein Preis hinterlegt', 'No price set'); $rows[] = $entry; continue; }
 
         $dueDay = billing_due_day($enrolment, $tariff);
+        // A charge must never be created already late. The due day belongs to the
+        // period, but a child who joins in the second month of a quarter has their
+        // first charge written in that month - and anchoring it to the period
+        // start meant it was due weeks before it existed, and the automatic
+        // reminder went out the same evening.
+        $dueFrom = max($bounds['from'], $monthStart);
         $entry['amount'] = $money['amount'];
         $entry['gross'] = $money['gross'];
         $entry['discount'] = $money['discount'];
         $entry['note'] = $money['note'];
         $entry['prorated'] = $money['prorated'] ?? false;
-        $entry['due'] = billing_due_date($bounds['from'], $dueDay);
+        $entry['due'] = billing_due_date($dueFrom, $dueDay);
         $entry['overdue'] = billing_overdue_date($entry['due'], (int)$tariff['grace_days']);
         $rows[] = $entry;
     }

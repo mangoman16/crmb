@@ -28,9 +28,13 @@ const TICK_INTERVAL = 60;
 const PRUNE_INTERVAL = 86400;
 
 /**
- * Remove expired tokens, old rate-limit counters and spent form identifiers.
+ * Remove expired tokens, old rate-limit counters, spent form identifiers and
+ * uploaded files nothing points at any more.
  *
- * Deliberately narrow: nothing here touches a student, a payment or a message.
+ * Deliberately narrow: nothing here removes a student, a payment or a message.
+ * The files it does remove are the ones whose record has already gone - a photo
+ * belonging to a deleted account, an attachment from a conversation that was
+ * deleted with it - which would otherwise stay in storage for ever.
  */
 function prune_expired(): void {
     run('DELETE FROM auth_tokens WHERE expires_at<?', [now()]);
@@ -39,6 +43,7 @@ function prune_expired(): void {
     // The change log is informative, not evidence, so it has a horizon. The
     // audit log next to it does not, because that one is evidence.
     history_prune((int)setting('history_months'));
+    prune_uploads();
 }
 
 /** Whether enough time has passed since the last background run. */

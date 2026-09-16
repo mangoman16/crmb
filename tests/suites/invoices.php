@@ -168,3 +168,15 @@ ok(str_contains(privacy_text('de'), 'Andere Gasse 9'), 'and the address filled i
 $before = notice_version();
 set_setting('org_name', 'Wieder Anders');
 ok(notice_version() !== $before, 'changing who the controller is changes the version people agreed to');
+
+case_('An invoice for nothing is not something to chase');
+// A welcome discount can take a charge to zero. The document still exists -
+// it is what says the month was free - but it is settled the day it is issued.
+$freeStudent = make_student(['first_name'=>'Gratis', 'last_name'=>'Monat']);
+$freeCharge = fixture('charges', ['student_id'=>$freeStudent, 'label'=>'Willkommensmonat', 'amount_cents'=>0,
+    'gross_cents'=>4500, 'discount_cents'=>4500, 'discount_note'=>'Willkommensrabatt: 100 %',
+    'period_from'=>'2026-09-01', 'period_to'=>'2026-09-30', 'due_on'=>'2026-09-01',
+    'overdue_on'=>'2026-09-08', 'cancelled'=>0, 'created_at'=>now()]);
+$freeInvoice = invoice(create_invoice($freeStudent, [$freeCharge], '2026-09-01'));
+is_same(0, (int)$freeInvoice['gross_cents'], 'nothing is owed');
+is_same('paid', invoice_status($freeInvoice), 'so it is settled, not open and later overdue');

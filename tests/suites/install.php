@@ -230,6 +230,18 @@ ok(str_contains($dropped?->de ?? '', 'storage/backups'), 'and says where the cop
 does_not_throw(fn() => schema_verify_counts(['no_such_table' => 5], fn(string $l) => null),
                'a table the release has not created yet is skipped rather than reported as lost');
 
+case_('A migration statement that returns rows does not poison the rest of the run');
+// PDO::exec() leaves an open result set behind for anything that returns rows -
+// a SELECT that checks something before altering it, a SHOW - and every query
+// after it on the same connection then fails with "unbuffered queries are
+// active", blaming a statement two lines further down. Only MySQL raises that;
+// the SQLite translation cannot, so this is the engine-specific half of the run.
+run_migration_statement('SELECT 1');
+does_not_throw(fn() => scalar('SELECT COUNT(*) FROM accounts'),
+               'the connection is still usable afterwards');
+run_migration_statement('SELECT 1');
+does_not_throw(fn() => run_migration_statement('SELECT 2'), 'and so is the next statement of the migration');
+
 case_('The guarded tables are the ones a family would notice');
 foreach (['accounts', 'students', 'charges', 'payments', 'messages'] as $table)
     ok(in_array($table, schema_guarded_tables(), true), $table.' is guarded');

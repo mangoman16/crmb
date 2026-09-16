@@ -166,3 +166,17 @@ $foreign = make_tariff(['class_id'=>$otherCourse, 'name'=>'Fremd']);
 sign_in_as($account);
 throws(fn() => act('enrolment_request', ['student_id'=>$student, 'class_id'=>$course, 'kind'=>'tariff', 'tariff_id'=>(string)$foreign]),
        'a tariff from another course is refused', 'gehört nicht');
+
+case_('The last place cannot be given away twice');
+$small = make_class(['name'=>'Kleine Gruppe', 'capacity'=>1, 'days'=>[]]);
+$first = make_student(['first_name'=>'Erste']);
+$second = make_student(['first_name'=>'Zweite']);
+$askFirst = request_enrolment($first, $small, 'join', null, '');
+$askSecond = request_enrolment($second, $small, 'join', null, '');   // asked while there was still room
+decide_request($askFirst, true, '');
+throws(fn() => decide_request($askSecond, true, ''),
+       'the second yes is refused rather than overfilling the hall', 'voll');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND left_on IS NULL', [$small]),
+        'and the course still holds one child');
+does_not_throw(fn() => decide_request($askSecond, false, 'Leider voll.'),
+               'declining it is still possible, which is how the trainer answers');

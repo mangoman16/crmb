@@ -233,7 +233,10 @@ function invoice_paid_cents(int $invoiceId): int {
 function invoice_status(array $invoice, ?int $paid = null): string {
     if ($invoice['cancelled_at'] !== null) return 'cancelled';
     $paid ??= invoice_paid_cents((int)$invoice['id']);
-    if ($paid >= (int)$invoice['gross_cents'] && (int)$invoice['gross_cents'] > 0) return 'paid';
+    // An invoice for nothing - a charge that a discount took to zero - is paid
+    // the moment it is issued. Without this it stayed open for ever and then
+    // turned overdue, and the family was asked to transfer 0,00 €.
+    if ($paid >= (int)$invoice['gross_cents']) return 'paid';
     return $invoice['overdue_on'] < today() ? 'overdue' : 'open';
 }
 

@@ -103,7 +103,13 @@ function schema_extra(): array {
  */
 function schema_guarded_tables(): array {
     return ['accounts', 'students', 'contacts', 'field_values', 'absences',
-            'charges', 'payments', 'threads', 'messages', 'news'];
+            'charges', 'payments', 'threads', 'messages', 'message_files', 'news',
+            // Added as the portal grew. A table left off this list is a table an
+            // update may quietly empty, so anything a family, the tax office or a
+            // consent record would miss belongs here. schema_counts() skips a
+            // table that does not exist yet, so naming one early is free.
+            'class_students', 'attendance', 'invoices', 'invoice_charges',
+            'payment_proofs', 'consent_log'];
 }
 
 /**
@@ -205,7 +211,7 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
             }
             $statements = split_sql((string)file_get_contents($file));
             foreach ($statements as $i => $statement) {
-                try { db()->exec($statement); }
+                try { run_migration_statement($statement); }
                 catch (Throwable $e) { throw new SchemaError($version, $i + 1, count($statements), $statement, $e->getMessage()); }
             }
             run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)', [$version, $hash, now()]);
@@ -227,6 +233,29 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
     }
     schema_write_stamp();
     return $applied;
+}
+
+/**
+ * Run one statement from a migration file.
+ *
+ * Not db()->exec(): a statement that returns rows - a SELECT to check something
+ * before altering it, a SHOW, a stored-routine call - leaves its result set open
+ * on the connection, and every query after it in the same run fails with
+ * "Cannot execute queries while other unbuffered queries are active". The
+ * migration that did it is then blamed for a failure two statements later, and
+ * the recorded state of the update becomes hard to reason about. So the rows are
+ * drained and the cursor closed, whatever kind of statement it was.
+ */
+function run_migration_statement(string $statement): void {
+    $result = db()->query($statement);
+    if (!$result instanceof PDOStatement) return;
+    $result->fetchAll();
+    // nextRowset() is how a CALL that returns several result sets is drained.
+    // SQLite has no such thing and says so rather than returning false, which is
+    // not a failure of the migration.
+    try { while ($result->nextRowset()) $result->fetchAll(); }
+    catch (PDOException) { /* one rowset is all this driver has */ }
+    $result->closeCursor();
 }
 
 /**

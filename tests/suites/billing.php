@@ -228,3 +228,52 @@ ok(str_contains($summary, '45,00'), 'the price');
 ok(str_contains($summary, 'monatlich'), 'how often');
 ok(str_contains($summary, 'gratis'), 'and that the first month is free');
 ok(str_contains(tariff_summary(['period'=>'once','price_cents'=>2000]), 'einmalig'), 'a one-off tariff says so');
+
+// ---------------------------------------------------------------------------
+// Two things this got wrong until they were looked for.
+// ---------------------------------------------------------------------------
+
+case_('A charge is never created already overdue');
+$quarterCourse = make_class(['name'=>'Quartalskurs']);
+$quarterTariff = make_tariff(['class_id'=>$quarterCourse, 'price_cents'=>9000, 'interval_months'=>3,
+                              'due_day'=>1, 'grace_days'=>7]);
+$mayJoiner = make_student(['first_name'=>'Mai', 'joined_on'=>'2026-05-10']);
+make_enrolment($quarterCourse, $mayJoiner, ['joined_on'=>'2026-05-10', 'tariff_id'=>$quarterTariff]);
+$row = null;
+foreach (billing_plan('2026-05') as $r) if ((int)$r['student_id'] === $mayJoiner) $row = $r;
+is_same(null, $row['skip'], 'the child who joined in the second month of the quarter is billed');
+is_same('2026-04-01', $row['from'], 'for the quarter the join falls into');
+is_same('2026-05-01', $row['due'], 'but the money is due in the month the charge is written, not before it existed');
+ok($row['overdue'] >= '2026-05-01', 'so it cannot be overdue on the day it is created');
+
+case_('Joining in the first month of a period still uses the period’s own day');
+$aprilJoiner = make_student(['first_name'=>'April', 'joined_on'=>'2026-04-20']);
+make_enrolment($quarterCourse, $aprilJoiner, ['joined_on'=>'2026-04-20', 'tariff_id'=>$quarterTariff]);
+foreach (billing_plan('2026-04') as $r) if ((int)$r['student_id'] === $aprilJoiner)
+    is_same('2026-04-01', $r['due'], 'the normal case is unchanged');
+
+case_('Leaving part-way through is charged by the days, whatever the joining rule says');
+// The rule on a tariff answers "what happens to somebody who joins mid-period".
+// It used to decide the leaving case as well, silently: a child who left on the
+// 15th cost nothing under 'skip' and a whole period under 'full'.
+foreach (['prorate' => 1500, 'full' => 1500, 'skip' => 1500] as $rule => $expected) {
+    $course = make_class(['name'=>'Kurs '.$rule]);
+    $tariff = make_tariff(['class_id'=>$course, 'price_cents'=>3000, 'interval_months'=>1, 'first_period'=>$rule]);
+    $leaver = make_student(['first_name'=>'Geht'.$rule, 'joined_on'=>'2025-01-01']);
+    make_enrolment($course, $leaver, ['joined_on'=>'2025-01-01', 'left_on'=>'2026-06-15', 'tariff_id'=>$tariff]);
+    foreach (billing_plan('2026-06') as $r) if ((int)$r['student_id'] === $leaver) {
+        is_same(null, $r['skip'], $rule.': the half month they were there is still billed');
+        is_same($expected, $r['amount'], $rule.': fifteen of thirty days of 30,00 €');
+        is_same(true, $r['prorated'], $rule.': and it says it was prorated');
+    }
+}
+
+case_('The joining rule itself is unchanged');
+foreach (['prorate' => 1100, 'full' => 3000, 'skip' => null] as $rule => $expected) {
+    $course = make_class(['name'=>'Beitritt '.$rule]);
+    $tariff = make_tariff(['class_id'=>$course, 'price_cents'=>3000, 'interval_months'=>1, 'first_period'=>$rule]);
+    $joiner = make_student(['first_name'=>'Kommt'.$rule, 'joined_on'=>'2026-06-20']);
+    make_enrolment($course, $joiner, ['joined_on'=>'2026-06-20', 'tariff_id'=>$tariff]);
+    foreach (billing_plan('2026-06') as $r) if ((int)$r['student_id'] === $joiner)
+        is_same($expected, $r['amount'], $rule.': joining on the 20th');
+}

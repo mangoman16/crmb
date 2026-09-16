@@ -424,7 +424,12 @@ function dispatch_config(string $action): array {
         return ['dashboard',[]];
 
     case 'feedback_send':
-        $u=current_user();
+        // The form is only ever drawn for somebody signed in, so a report from
+        // nobody is not a feature - it is an unauthenticated file upload. The
+        // limit is per account and generous: a page that really is broken is
+        // worth reporting twice, and a thousand times is a full disk.
+        $u=require_user();
+        throttle('feedback',(string)$u['id'],20,3600);
         $message=required_text('message',4000);
         $page=mb_substr(post('page','dashboard'),0,60);
         $screenshot='';
@@ -434,7 +439,7 @@ function dispatch_config(string $action): array {
         if(isset($_FILES['screenshot']) && (int)($_FILES['screenshot']['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE)
             $screenshot=store_upload('screenshot','avatar')['stored_name'];
         run('INSERT INTO feedback (account_id,page,message,context_json,screenshot_name,created_at) VALUES (?,?,?,?,?,?)',
-            [$u['id']??null,$page,$message,json_encode(feedback_context($page),JSON_UNESCAPED_UNICODE),$screenshot,now()]);
+            [(int)$u['id'],$page,$message,json_encode(feedback_context($page),JSON_UNESCAPED_UNICODE),$screenshot,now()]);
         $id=(int)db()->lastInsertId();
         foreach(rows("SELECT id FROM accounts WHERE role='admin' AND state='active'") as $admin)
             notify((int)$admin['id'],'problem',t('Jemand meldet ein Problem','Somebody reported a problem'),

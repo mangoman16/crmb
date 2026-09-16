@@ -76,6 +76,10 @@ function backup_database(string $reason = 'update'): string {
         @unlink($path . '.part');
         throw new BackupError('The backup could not be completed: ' . $e->getMessage(), 0, $e);
     }
+    // fflush before fclose: PHP buffers writes, so the last block of the dump is
+    // still in memory here and a full disk would otherwise be reported - if at
+    // all - by fclose, after the file has already been named as complete.
+    if (!fflush($handle)) { fclose($handle); @unlink($path . '.part'); throw new BackupError('The backup could not be written to disk; it may be full.'); }
     if (!fclose($handle)) throw new BackupError('The backup could not be closed; the disk may be full.');
     // Named only once it is complete, so a half-written file can never be
     // mistaken for something restorable.
@@ -87,8 +91,14 @@ function backup_database(string $reason = 'update'): string {
 
 /** The dump itself. Split out so the failure path above has one place to clean up. */
 function backup_write($handle, PDO $reader, string $reason): void {
+    // fwrite reports a short write by returning fewer bytes than it was given,
+    // not by returning false, and a disk that fills up mid-dump does exactly
+    // that. Counting the bytes is the difference between a backup that refuses
+    // and a truncated file that looks restorable until the day it is needed.
     $put = function (string $text) use ($handle): void {
-        if (fwrite($handle, $text) === false) throw new RuntimeException('Writing the backup failed; the disk may be full.');
+        $written = fwrite($handle, $text);
+        if ($written === false || $written !== strlen($text))
+            throw new RuntimeException('Writing the backup failed; the disk may be full.');
     };
     $put("-- Badminton CRM " . trim((string)file_get_contents(ROOT . '/VERSION')) . " — " . $reason . "\n"
        . "-- " . gmdate('Y-m-d H:i:s') . " UTC\n"

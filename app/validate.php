@@ -37,7 +37,7 @@ function decimal_value(string $value): float {
 function reference_or_null(string $table, string $field, string $extra=''): ?int {
     $id=(int)post($field);
     if($id<=0) return null;
-    if(!one('SELECT id FROM '.$table.' WHERE id=?'.($extra?' AND '.$extra:''),[$id]))
+    if(!one('SELECT id FROM '.sql_name($table,'table').' WHERE id=?'.($extra?' AND '.$extra:''),[$id]))
         throw new UserError(t('Die Auswahl ist nicht verfügbar.','That selection is not available.'));
     return $id;
 }

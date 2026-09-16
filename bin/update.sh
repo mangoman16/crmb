@@ -81,8 +81,16 @@ if [ "$CLONE" -eq 0 ]; then
 
     if [ -n "$REF" ]; then
         TARGET_REF="$REF"
+    elif BRANCH="$(git symbolic-ref --quiet --short HEAD)"; then
+        TARGET_REF="origin/$BRANCH"
     else
-        TARGET_REF="origin/$(git rev-parse --abbrev-ref HEAD)"
+        # A checkout pinned with --ref sits on a detached HEAD. Following
+        # "origin/HEAD" from there would quietly move the server onto whatever
+        # the default branch happens to be today, which is the opposite of what
+        # pinning to a tag was for.
+        die "This checkout is pinned to $(git describe --tags --always HEAD) and is not on a branch.
+Say which release you want:  bin/update.sh --ref <tag>
+or put it back on a branch:  git checkout main"
     fi
     if [ "$(git rev-parse HEAD)" = "$(git rev-parse "$TARGET_REF^{commit}")" ]; then
         say "Already at $TARGET_REF."
@@ -132,7 +140,15 @@ fi
 
 if [ "$CHECK" -eq 1 ]; then
     step "Database status"
-    php bin/console.php status
+    # status exits non-zero when the files and the database disagree, which is
+    # the answer --check exists to give rather than a failure of this script.
+    if php bin/console.php status; then
+        say ""
+        say "Nothing to do."
+    else
+        say ""
+        say "An update is outstanding. Run bin/update.sh without --check."
+    fi
     exit 0
 fi
 
@@ -144,7 +160,9 @@ step "Updating the database"
 php bin/console.php update
 
 step "Status"
-php bin/console.php status
+# Same here: a disagreement after an update is worth reporting, not worth
+# swallowing the summary below for.
+php bin/console.php status || say "The files and the database do not agree. Read the lines above."
 say ""
 if [ "$FROM_VERSION" != "$TO_VERSION" ]; then
     say "Updated from $FROM_VERSION to $TO_VERSION."

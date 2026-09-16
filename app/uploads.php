@@ -140,6 +140,57 @@ function delete_upload(string $kind, string $storedName): void {
 }
 
 /**
+ * Where each kind of upload is pointed at from.
+ *
+ * One list, used by the sweep below. A new kind of upload that is not named
+ * here keeps its files for ever; a new kind named here but queried wrongly
+ * would delete files that are still in use, which is why each query is the
+ * plain "every name this table still holds" and nothing cleverer.
+ */
+function upload_references(): array {
+    return [
+        // Screenshots from a problem report are stored beside the pictures,
+        // because they are pictures and the same types are allowed.
+        'avatar'  => ["SELECT avatar_name AS name FROM accounts WHERE avatar_name<>''",
+                      "SELECT avatar_name AS name FROM students WHERE avatar_name<>''",
+                      "SELECT screenshot_name AS name FROM feedback WHERE screenshot_name<>''"],
+        'proof'   => ['SELECT stored_name AS name FROM payment_proofs'],
+        'message' => ['SELECT stored_name AS name FROM message_files'],
+    ];
+}
+
+/**
+ * Remove uploaded files that no record points at any more.
+ *
+ * A deleted account takes its conversations with it, a deleted child takes
+ * their photo, and a database row can go without anything touching the disk -
+ * so without this, a family who asked to be forgotten leaves their voice notes
+ * and photographs behind in storage, and the folder only ever grows.
+ *
+ * Deliberately conservative: a file younger than the grace period is left
+ * alone, because it may belong to a row being written in another request right
+ * now, and deleting somebody's photograph a second after they uploaded it is a
+ * worse failure than keeping one too long.
+ */
+function prune_uploads(int $graceSeconds = 3600): int {
+    $removed = 0;
+    $cutoff = time() - max(60, $graceSeconds);
+    foreach (upload_references() as $kind => $queries) {
+        $files = glob(upload_dir($kind) . '/*') ?: [];
+        if (!$files) continue;
+        $kept = [];
+        foreach ($queries as $sql)
+            foreach (rows($sql) as $row) $kept[(string)$row['name']] = true;
+        foreach ($files as $path) {
+            if (!is_file($path) || isset($kept[basename($path)])) continue;
+            if ((int)@filemtime($path) > $cutoff) continue;
+            if (@unlink($path)) $removed++;
+        }
+    }
+    return $removed;
+}
+
+/**
  * Send a stored file to the browser, having decided the caller may have it.
  *
  * Content-Disposition is attachment for everything except images, and the type
@@ -153,22 +204,33 @@ function send_upload(string $kind, string $storedName, string $mime, string $dow
         header('Content-Type: text/plain; charset=utf-8');
         exit(t('Diese Datei gibt es nicht mehr.', 'That file is no longer here.') . "\n");
     }
-    send_bytes((string)file_get_contents($path), $mime,
-        $downloadName !== '' ? $downloadName : $storedName, !str_starts_with($mime, 'image/'));
+    // Streamed rather than read into a string first: shared hosting sets
+    // memory_limit as low as 64 MB, and a voice note plus whatever else the
+    // request is holding should not be what decides whether a file can be
+    // downloaded at all.
+    send_download_headers($mime, $downloadName !== '' ? $downloadName : $storedName,
+                          !str_starts_with($mime, 'image/'), (int)filesize($path));
+    readfile($path);
+    exit;
 }
 
 /** Send bytes we hold in memory, such as a freshly built PDF. */
 function send_bytes(string $body, string $mime, string $name, bool $asAttachment = true): never {
+    send_download_headers($mime, $name, $asAttachment, strlen($body));
+    echo $body;
+    exit;
+}
+
+/** The headers both of those need, written once so they cannot drift apart. */
+function send_download_headers(string $mime, string $name, bool $asAttachment, int $length): void {
     // The name goes into a header, so anything that could end the header or
     // start a second one is removed rather than escaped.
     $safe = preg_replace('/[^\w .()\-]+/u', '_', $name) ?: 'download';
     header('Content-Type: ' . (preg_match('#^[\w.+-]+/[\w.+-]+$#D', $mime) ? $mime : 'application/octet-stream'));
     header('Content-Disposition: ' . ($asAttachment ? 'attachment' : 'inline') . '; filename="' . $safe . '"');
-    header('Content-Length: ' . strlen($body));
+    header('Content-Length: ' . $length);
     header('X-Content-Type-Options: nosniff');
     header('Cache-Control: private, no-store');
-    echo $body;
-    exit;
 }
 
 /**

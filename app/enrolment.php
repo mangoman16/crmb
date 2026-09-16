@@ -150,6 +150,15 @@ function decide_request(int $requestId, bool $approve, string $note): array {
 
         if ($approve) {
             if ($r['kind'] === 'join') {
+                // Checked again here, not only when the request was made: two
+                // families can ask for the last place on the same evening, and
+                // the second yes would otherwise put a ninth child into an
+                // eight-place hall without anybody being told.
+                $class = one('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL)'
+                    .' AS member_count FROM classes c WHERE c.id=? FOR UPDATE', [$classId]);
+                if ($class && course_is_full($class))
+                    throw new UserError(t('Dieser Kurs ist inzwischen voll. Erst einen Platz frei machen oder die Plätze erhöhen.',
+                                          'This course has filled up in the meantime. Free a place first, or raise the number of places.'));
                 // A child who left this course before comes back on the same row
                 // rather than a second one, so their history stays in one place.
                 run('INSERT INTO class_students (class_id,student_id,joined_on,left_on,tariff_id)'
