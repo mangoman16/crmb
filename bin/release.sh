@@ -37,9 +37,13 @@ php -r 'require $argv[1];
         if (!class_exists($class)) { fwrite(STDERR, "Missing after packaging: $class\n"); exit(1); }' \
     "$STAGE/$NAME/vendor/autoload.php"
 
-# Development-only, and a config nobody should receive pre-filled.
+# Development-only, and a config nobody should receive pre-filled. The notes
+# that stay are the ones the operator has a use for: what this is, how to install
+# it, how to update it, what changed and what has actually been verified.
 rm -rf "$STAGE/$NAME/tests" "$STAGE/$NAME/.github" "$STAGE/$NAME/.gitignore" "$STAGE/$NAME/.gitattributes"
 rm -f  "$STAGE/$NAME/config/config.php" "$STAGE/$NAME/composer.json" "$STAGE/$NAME/composer.lock"
+rm -f  "$STAGE/$NAME/AUDIT.md" "$STAGE/$NAME/CLAUDE.md" "$STAGE/$NAME/PROJECT.md" \
+       "$STAGE/$NAME/ROADMAP.md" "$STAGE/$NAME/GITHUB.md"
 
 # The upload has to arrive with these writable, or the installer cannot finish.
 chmod 755 "$STAGE/$NAME/config" "$STAGE/$NAME/storage"

@@ -23,6 +23,13 @@ Executed against PHP **8.4.19** and MariaDB **10.11.14**.
   the file reopened the portal.
 - Maintenance mode still holds the portal closed, and suppresses the automatic
   migration rather than racing it.
+- The distribution ZIP built by `bin/release.sh` (about 540 KB, 306 files) was
+  unpacked into a web directory and installed from there, using nothing from the
+  source tree: the bundled PHPMailer and BaconQrCode were found, the install
+  completed, the administrator signed in through the real form with cookies and
+  a CSRF token, the settings screen reported the database version with nothing
+  pending, and an expired token was cleaned up by the background worker with no
+  cron job configured.
 - Each new structural rule was verified by breaking what it guards: a directory
   losing its deny file, a new unguarded top-level directory, the rewrite loop
   guard being dropped, an unescaped value on the setup page, a truncated module,
