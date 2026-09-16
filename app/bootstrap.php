@@ -41,6 +41,7 @@ require __DIR__ . '/uploads.php';
 require __DIR__ . '/pdf.php';
 require __DIR__ . '/invoices.php';
 require __DIR__ . '/demo.php';
+require __DIR__ . '/messaging.php';
 require __DIR__ . '/mail.php';
 require __DIR__ . '/tick.php';
 if (is_file(ROOT . '/vendor/autoload.php')) { require ROOT . '/vendor/autoload.php'; }
@@ -66,7 +67,10 @@ function boot_http(): void {
     header('X-Frame-Options: DENY');
     header('Referrer-Policy: no-referrer');
     header('Cache-Control: no-store');
-    header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+    // The microphone is allowed for this origin only, and only because a voice
+    // note is recorded in the browser. Camera and location stay off: nothing
+    // here asks for either, and a policy is worth more than an intention.
+    header('Permissions-Policy: camera=(), microphone=(self), geolocation=()');
     header('Cross-Origin-Opener-Policy: same-origin');
     header('Cross-Origin-Resource-Policy: same-origin');
     header('X-Permitted-Cross-Domain-Policies: none');

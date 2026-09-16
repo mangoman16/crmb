@@ -105,3 +105,71 @@ document.querySelectorAll('.with-default').forEach(wrapper => {
   }
   sync();
 });
+
+// A voice message, recorded in the browser and handed to the file input the
+// paper clip already uses. One way in rather than two: without this the clip
+// still works, and a browser that cannot record simply never shows the button.
+document.querySelectorAll('[data-record]').forEach(button => {
+  const form = button.closest('form');
+  const field = form?.querySelector('input[type="file"]');
+  const seconds = form?.querySelector('[data-record-seconds]');
+  const status = form?.querySelector('[data-record-status]');
+  const canRecord = window.MediaRecorder && navigator.mediaDevices?.getUserMedia
+    && window.DataTransfer && window.File;
+  if (!field || !canRecord) return;
+  button.hidden = false;
+
+  let recorder = null, chunks = [], startedAt = 0, ticker = 0;
+  const say = text => { if (!status) return; status.hidden = text === ''; status.textContent = text; };
+
+  const stop = () => {
+    window.clearInterval(ticker);
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    recorder?.stream?.getTracks().forEach(track => track.stop());
+    recorder = null;
+    button.classList.remove('is-recording');
+  };
+
+  button.addEventListener('click', async () => {
+    if (recorder) { stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorder = new MediaRecorder(stream);
+      chunks = [];
+      startedAt = Date.now();
+      recorder.addEventListener('dataavailable', event => { if (event.data.size) chunks.push(event.data); });
+      recorder.addEventListener('stop', () => {
+        const length = Math.round((Date.now() - startedAt) / 1000);
+        const blob = new Blob(chunks, { type: recorder?.mimeType || chunks[0]?.type || 'audio/webm' });
+        // Named for the type the recorder actually produced: the server reads
+        // the bytes rather than the name, but a sensible name is what the
+        // person sees again in their downloads.
+        const extension = blob.type.includes('mp4') ? 'm4a' : 'webm';
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([blob], 'sprachnachricht.' + extension, { type: blob.type }));
+        field.files = transfer.files;
+        if (seconds) seconds.value = String(length);
+        say(button.dataset.recorded || ('Aufnahme bereit (' + length + 's). Zum Senden auf den Pfeil tippen.'));
+      });
+      recorder.start();
+      button.classList.add('is-recording');
+      ticker = window.setInterval(() => {
+        say('Aufnahme läuft … ' + Math.round((Date.now() - startedAt) / 1000) + 's');
+      }, 500);
+    } catch (error) {
+      recorder = null;
+      say(button.dataset.denied || 'Kein Zugriff auf das Mikrofon. Du kannst stattdessen eine Datei anhängen.');
+    }
+  });
+
+  // A recording that is still running when the form is submitted would arrive
+  // empty, so stopping first is not optional.
+  form?.addEventListener('submit', () => { if (recorder) stop(); });
+});
+
+// The composer grows with what is typed, up to a point, the way a messenger does.
+document.querySelectorAll('.composer textarea').forEach(box => {
+  const grow = () => { box.style.height = 'auto'; box.style.height = Math.min(box.scrollHeight, 180) + 'px'; };
+  box.addEventListener('input', grow);
+  grow();
+});

@@ -70,9 +70,12 @@ function upload_types(string $kind): array {
     return match ($kind) {
         'avatar' => $images,
         'proof'  => $images + ['application/pdf' => 'pdf'],
+        // A message may carry a picture, a document or a voice note. webm and
+        // mp4 are what a browser's own recorder produces; the rest are what
+        // somebody's phone hands over when they pick an existing file.
         default  => $images + ['application/pdf' => 'pdf', 'audio/webm' => 'webm', 'audio/mp4' => 'm4a',
-                               'audio/mpeg' => 'mp3', 'audio/ogg' => 'ogg',
-                               'text/plain' => 'txt'],
+                               'audio/mpeg' => 'mp3', 'audio/ogg' => 'ogg', 'audio/wav' => 'wav',
+                               'video/webm' => 'webm', 'text/plain' => 'txt'],
     };
 }
 
@@ -202,6 +205,16 @@ function serve_download(): void {
         if ($report && $report['screenshot_name'] !== '') {
             $mime = array_search(pathinfo((string)$report['screenshot_name'], PATHINFO_EXTENSION), upload_types('avatar'), true);
             if ($mime !== false) send_upload('avatar', (string)$report['screenshot_name'], (string)$mime);
+        }
+    }
+    if ($what === 'attachment') {
+        $file = one('SELECT f.*, m.thread_id FROM message_files f JOIN messages m ON m.id=f.message_id WHERE f.id=?', [$id]);
+        // thread_record() refuses a conversation this account may not read, so
+        // an attachment cannot be the way round the rule about who reads what.
+        if ($file) {
+            thread_record((int)$file['thread_id']);
+            send_upload('message', (string)$file['stored_name'], (string)$file['mime'],
+                        (string)($file['original_name'] ?: $file['stored_name']));
         }
     }
     if ($what === 'proof') {

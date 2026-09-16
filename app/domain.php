@@ -11,17 +11,6 @@ function student(int $id): array {
     if(!$s) throw new UserError(t('Schüler nicht gefunden.','Student not found.')); return $s;
 }
 /**
- * A conversation the signed-in account is allowed to see.
- *
- * Staff see every thread; anyone else only their own. Same shape as student():
- * the scoping is part of the lookup, so no caller can forget it.
- */
-function thread_record(int $id): array {
-    $u=require_user();
-    $r=one('SELECT t.*,a.name AS account_name FROM threads t JOIN accounts a ON a.id=t.account_id WHERE t.id=?'.(is_staff($u)?'':' AND t.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
-    if(!$r)throw new UserError(t('Unterhaltung nicht gefunden.','Conversation not found.'));return $r;
-}
-/**
  * What counts as money actually received.
  *
  * A payment counts once it has been confirmed and has not been voided. This one

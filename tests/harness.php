@@ -238,21 +238,27 @@ function test_tables(): array {
     return array_column(rows('SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()'), 'name');
 }
 
-/** Empty every data table, keeping the schema, then re-seed the defaults. */
+/**
+ * Empty every data table, keeping the schema, then re-seed the defaults.
+ *
+ * The list of tables is read from the database rather than kept here. A
+ * hand-kept list stops matching the schema the first time a migration adds a
+ * table, and it does so silently: rows from one suite survive into the next, and
+ * the failure turns up somewhere unrelated as a count that is one too high.
+ */
 function test_reset(): void {
-    $tables = ['attendance','enrolment_requests','class_sessions','class_days','class_students','classes',
-               'payment_profiles','consent_log','audit_log','form_requests','thread_reads','messages','threads',
-               'mail_jobs','saved_filters','message_templates','news','payments','charges','absences',
-               'field_values','field_definitions','contacts','students','levels','age_groups','tariffs',
-               'rate_limits','auth_tokens','accounts','settings'];
-    if (test_has_table('record_versions')) array_unshift($tables, 'record_versions');
     // Emptying parents before children is a foreign-key violation on MySQL just
     // as it is on SQLite, so both engines get the constraints switched off here
     // rather than only the one the suite usually runs on.
     $sqlite = test_driver() === 'sqlite';
     db()->exec($sqlite ? 'PRAGMA foreign_keys = OFF' : 'SET FOREIGN_KEY_CHECKS=0');
     try {
-        foreach ($tables as $table) db()->exec('DELETE FROM '.sql_name($table, 'table'));
+        foreach (test_tables() as $table) {
+            // schema_migrations is the record of what this database is, not data
+            // a suite put there.
+            if ($table === 'schema_migrations') continue;
+            db()->exec('DELETE FROM ' . sql_name($table, 'table'));
+        }
         if ($sqlite) db()->exec('DELETE FROM sqlite_sequence');
     } finally {
         db()->exec($sqlite ? 'PRAGMA foreign_keys = ON' : 'SET FOREIGN_KEY_CHECKS=1');
@@ -261,7 +267,7 @@ function test_reset(): void {
     run_counter('DELETE FROM rate_limits');
     setting_cache_clear();
     $_SESSION = ['locale' => 'de'];
-    require APP_ROOT.'/database/defaults.php';
+    require APP_ROOT . '/database/defaults.php';
     setting_cache_clear();
     // Request-scoped memos outlive a request here, because a test run is one
     // process. Emptying them keeps every suite measuring a cold page, the way
@@ -338,6 +344,23 @@ function make_class(array $over=[]): int {
     foreach ($days as $order => $day)
         fixture('class_days', array_merge(['class_id'=>$id, 'weekday'=>1, 'starts_at'=>null,
                                            'ends_at'=>null, 'location'=>'', 'sort_order'=>$order*10], $day));
+    return $id;
+}
+
+/**
+ * A conversation, with its participants.
+ *
+ * Who is in a thread decides who may read it, so a fixture that wrote the thread
+ * and not its participants would be a conversation nobody can open - including
+ * the person it belongs to.
+ */
+function make_thread(array $accountIds, array $over=[]): int {
+    $id = fixture('threads', array_merge([
+        'account_id' => $accountIds[0] ?? null, 'kind' => 'staff',
+        'subject' => 'Unterhaltung', 'updated_at' => now(),
+    ], $over));
+    foreach ($accountIds as $accountId)
+        fixture('thread_participants', ['thread_id'=>$id, 'account_id'=>$accountId, 'joined_at'=>now()]);
     return $id;
 }
 
