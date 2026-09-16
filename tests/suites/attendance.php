@@ -1,17 +1,24 @@
 <?php
 /** Attendance: statuses, the suggested day, and the summary figures. */
 $trainer = make_account(['role'=>'trainer']); sign_in_as($trainer);
-$class = make_class(['weekday'=>1]);              // Mondays
+$class = make_class(['days'=>[['weekday'=>1]]]);   // Mondays
 $a = make_student(); $b = make_student(); $c = make_student();
 foreach ([$a,$b,$c] as $s) fixture('class_students', ['class_id'=>$class,'student_id'=>$s,'joined_on'=>'2025-01-01']);
 
 case_('The suggested day is the class day, not simply today');
-$cls = fn(?int $weekday) => ['weekday'=>$weekday];
-$monday = attendance_suggested_date($cls(1));
+$mondayClass = make_class(['days'=>[['weekday'=>1]]]);
+$noDayClass  = make_class(['days'=>[]]);
+$monday = attendance_suggested_date(['id'=>$mondayClass]);
 is_same('Monday', date('l', strtotime($monday)), 'a Monday class suggests a Monday');
 ok($monday <= today(), 'and never a day in the future');
 ok(strtotime(today()) - strtotime($monday) < 7*86400, 'within the last week');
-is_same(today(), attendance_suggested_date($cls(null)), 'a class with no fixed day suggests today');
+is_same(today(), attendance_suggested_date(['id'=>$noDayClass]), 'a course with no fixed day suggests today');
+// A course meeting twice a week should open on whichever day came last, not on
+// whichever happens to be listed first.
+$twice = make_class(['days'=>[['weekday'=>1],['weekday'=>4]]]);
+$suggested = attendance_suggested_date(['id'=>$twice]);
+ok(in_array((int)date('N', strtotime($suggested)), [1,4], true), 'a twice-weekly course suggests one of its days');
+ok($suggested >= attendance_suggested_date(['id'=>$mondayClass]), 'and the later of the two');
 
 case_('Statuses come from settings and have a preselection');
 $statuses = attendance_statuses();

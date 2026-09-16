@@ -26,7 +26,8 @@
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
 <?php if(!$public):
 $nav=['dashboard'=>['home',t('Übersicht','Overview')],'students'=>['users',t('Schüler','Students')]];
-if(is_staff($user)){$nav['classes']=['calendar',t('Kurse','Classes')];$nav['payments']=['wallet',t('Beiträge','Payments')];}
+$waitingRequests=is_staff($user)?pending_request_count():0;
+if(is_staff($user)){$nav['classes']=['calendar',t('Kurse','Courses')];$nav['payments']=['wallet',t('Beiträge','Payments')];}
 $nav['messages']=['mail',t('Nachrichten','Messages')];$nav['news']=['news',t('Neuigkeiten','News')];
 $unreadTotal=unread_count($user);
 if(is_staff($user)){$nav['manage']=['settings',t('Verwaltung','Management')];$nav['accounts']=['lock',t('Konten','Accounts')];$nav['outbox']=['mail',t('Postausgang','Outbox')];}
@@ -36,7 +37,7 @@ if(is_admin($user)){$nav['history']=['calendar',t('Änderungen','Changes')];$nav
     <a class="brand" href="<?=e(url('dashboard'))?>"><span class="brand-mark">B<span></span></span><span><?=e(setting('club_name','Badminton'))?><small><?=e(is_staff($user)?t('Verwaltung','Management'):t('Mein Portal','My portal'))?></small></span></a>
     <nav aria-label="<?=e(t('Hauptmenü','Main menu'))?>">
     <?php foreach($nav as $route=>[$symbol,$label]):$active=$route===$page || ($route==='students'&&$page==='student') || ($route==='messages'&&$page==='compose'); ?>
-        <a href="<?=e(url($route))?>" <?=$active?'aria-current="page"':''?>><?=icon($symbol)?><span><?=e($label)?></span><?php if($route==='messages'&&$unreadTotal):?><span class="count" aria-label="<?=e($unreadTotal.' '.t('ungelesen','unread'))?>"><?=$unreadTotal?></span><?php endif ?></a>
+        <a href="<?=e(url($route))?>" <?=$active?'aria-current="page"':''?>><?=icon($symbol)?><span><?=e($label)?></span><?php if($route==='messages'&&$unreadTotal):?><span class="count" aria-label="<?=e($unreadTotal.' '.t('ungelesen','unread'))?>"><?=$unreadTotal?></span><?php endif ?><?php if($route==='classes'&&$waitingRequests):?><span class="count" aria-label="<?=e($waitingRequests.' '.t('Anfragen','requests'))?>"><?=e($waitingRequests)?></span><?php endif ?></a>
     <?php endforeach ?>
     </nav>
     <div class="sidebar-bottom"><a class="account-link" href="<?=e(url('profile'))?>"><span class="avatar small"><?=e(mb_substr($user['name'],0,1))?></span><span><?=e($user['name'])?><small><?=e(role_label($user['role']))?></small></span></a><div class="sidebar-meta"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutz','Privacy'))?></a><span>v<?=e(app_version())?></span></div></div>

@@ -73,26 +73,117 @@ endforeach ?></div></section><?php endif ?>
     </div>
     <?php endforeach ?>
 </section>
-<?php elseif($tab==='classes'): $mine=student_classes($id); ?>
-<section class="card"><h2><?=e(t('Kurse dieses Schülers','This student’s classes'))?></h2>
-<?php if(!$mine)echo '<p class="muted">'.e(t('Noch keinem Kurs zugeordnet.','Not in any class yet.')).'</p>';
-foreach($mine as $row):?><div class="record-row<?=$row['left_on']!==null?' is-past':''?>"><div><strong><a href="<?=e(url('classes',['id'=>$row['id']]))?>"><?=e($row['name'])?></a></strong><p><?=e(class_schedule($row))?></p><small><?=e($row['left_on']!==null?t('Ausgetreten am ','Left on ').fmt_date($row['left_on']):t('Dabei seit ','Member since ').fmt_date($row['joined_on']))?></small></div>
-<?php if($row['left_on']===null){start_form('class_member_remove',['class_id'=>$row['id'],'student_id'=>$id,'mode'=>'leave'],'inline-form');submit_button(t('Austritt eintragen','Record leaving'),'subtle');echo '</form>';}?></div><?php endforeach ?></section>
-<?php $joined=array_column(array_filter($mine,fn($r)=>$r['left_on']===null),'id');$open=array_filter(training_classes(),fn($c)=>!in_array($c['id'],$joined));
-if($open):?><section class="card"><h2><?=e(t('Zu einem Kurs hinzufügen','Add to a class'))?></h2><?php start_form('class_member_add',['student_id'=>$id]);?><div class="grid two"><?php
-select_field('class_id',t('Kurs','Class'),array_column($open,'name','id'),'',true);
-input('joined_on',t('Dabei seit','Member since'),today(),'date');?></div><?php submit_button(t('Hinzufügen','Add'));?></form></section><?php endif ?>
+<?php elseif($tab==='classes'): $mine=student_enrolments($id); $requests=student_requests($id); ?>
+<section class="card">
+    <h2><?=e(t('Kurse','Courses'))?></h2>
+    <p class="muted"><?=e(t('Jede Kursteilnahme hat ihren eigenen Tarif. Ein Kind kann in mehreren Kursen sein und in jedem etwas anderes zahlen.','Each enrolment has its own tariff. A child can be in several courses and pay something different for each.'))?></p>
+    <?php if(!$mine)echo '<p class="muted">'.e(t('Noch in keinem Kurs.','Not in any course yet.')).'</p>';
+    foreach($mine as $row): $price=enrolment_price($row); $past=$row['left_on']!==null; ?>
+    <div class="record-row<?=$past?' is-past':''?>">
+        <div>
+            <strong><a href="<?=e(url('classes',['id'=>$row['class_id']]))?>"><?=e($row['class_name'])?></a></strong>
+            <p><?=e($row['tariff_name']?:t('Kein Tarif gewählt','No tariff chosen'))?><?php
+                if($price['cents']!==null) echo ' · '.e(money($price['cents']));
+                if($price['own']) badge(t('Eigener Preis','Own price'),'amber');
+            ?></p>
+            <small><?=e($past?t('Ausgetreten am ','Left on ').fmt_date($row['left_on']):t('Dabei seit ','Member since ').fmt_date($row['joined_on']))?><?php
+                if($price['note'])echo ' · '.e($price['note']);?></small>
+        </div>
+        <?php if($staff && !$past): ?>
+        <div class="row-actions">
+            <?php start_form('class_member_remove',['class_id'=>$row['class_id'],'student_id'=>$id,'mode'=>'leave'],'inline-form');
+                  submit_button(t('Austritt eintragen','Record leaving'),'subtle');?></form>
+        </div>
+        <?php elseif(!$past): ?>
+        <div class="row-actions">
+            <?php start_form('enrolment_request',['student_id'=>$id,'class_id'=>$row['class_id'],'kind'=>'leave'],'inline-form');
+                  submit_button(t('Abmeldung anfragen','Ask to leave'),'subtle');?></form>
+        </div>
+        <?php endif ?>
+    </div>
+    <?php if($staff && !$past): ?>
+    <details><summary><?=e(t('Tarif und Preis für diesen Kurs','Tariff and price for this course'))?></summary>
+        <?php start_form('enrolment_save',['class_id'=>$row['class_id'],'student_id'=>$id]); ?>
+        <div class="grid two"><?php
+        $offered=class_tariffs((int)$row['class_id']);
+        select_field('tariff_id',t('Tarif','Tariff'),array_column($offered,'name','id'),$row['tariff_id']);
+        $tariffPrice=$row['tariff_price']!==null?(int)$row['tariff_price']:null;
+        default_field('price',t('Vereinbarter Preis (€)','Agreed price (€)'),amount_input($row['price_cents']===null?null:(int)$row['price_cents']),
+            $tariffPrice!==null?amount_input($tariffPrice):'',
+            $tariffPrice!==null?money($tariffPrice):t('kein Tarif gewählt','no tariff chosen'),'text',
+            t('Leer lassen, um den Preis des Tarifs zu übernehmen.','Leave blank to follow the tariff’s price.'));
+        input('price_note',t('Grund für den eigenen Preis','Why the different price'),$row['price_note']);
+        input('due_day',t('Zahltag (0 = wie im Tarif)','Payment day (0 = as the tariff says)'),(int)$row['due_day'],'number',false,
+              t('Der Tarif sagt: ','The tariff says: ').(int)($row['tariff_due_day']??1).'.');
+        input('joined_on',t('Dabei seit','Member since'),$row['joined_on'],'date');
+        input('left_on',t('Ausgetreten am','Left on'),$row['left_on'],'date');
+        ?></div>
+        <?php submit_button();?></form>
+    </details>
+    <?php endif ?>
+    <?php endforeach ?>
+</section>
+
+<?php $open=courses_open_to($id); if($open): ?>
+<section class="card">
+    <h2><?=e($staff?t('In einen Kurs eintragen','Add to a course'):t('Freie Kurse','Courses you could join'))?></h2>
+    <?php if(!$staff): ?><p class="muted"><?=e(t('Deine Anfrage geht an die Trainerin. Erst wenn sie zustimmt, bist du angemeldet.','Your request goes to the trainer. You are enrolled once she agrees.'))?></p><?php endif ?>
+    <?php $pattern=class_days_for(array_column($open,'id'));
+    foreach($open as $row): $full=course_is_full($row); $offered=class_tariffs((int)$row['id']); ?>
+    <div class="record-row">
+        <div>
+            <strong><?=e($row['name'])?></strong>
+            <p><?=e(class_schedule($row,$pattern[(int)$row['id']]??[]))?></p>
+            <small><?=e($offered?implode(' · ',array_map(fn($x)=>$x['name'].' '.money((int)$x['price_cents']),$offered)):t('Noch kein Tarif hinterlegt','No tariff set yet'))?></small>
+            <?php if($full)badge(t('Voll','Full'),'red');?>
+        </div>
+        <?php if(!$full): ?>
+        <div class="row-actions">
+            <?php start_form('enrolment_request',['student_id'=>$id,'class_id'=>$row['id'],'kind'=>'join'],'inline-form');
+            if($offered) select_field('tariff_id',t('Tarif','Tariff'),array_column($offered,'name','id'),(int)$offered[0]['id']);
+            submit_button($staff?t('Eintragen','Enrol'):t('Anmeldung anfragen','Ask to join'),'secondary');?></form>
+        </div>
+        <?php endif ?>
+    </div>
+    <?php endforeach ?>
+</section>
+<?php endif ?>
+
+<?php if($requests): ?>
+<section class="card">
+    <h2><?=e(t('Anfragen','Requests'))?></h2>
+    <?php foreach($requests as $r): ?>
+    <div class="record-row">
+        <div>
+            <strong><?=e(request_kind_label((string)$r['kind']).' · '.$r['class_name'])?></strong>
+            <p><?=e(request_state_label((string)$r['state']))?><?php if($r['tariff_name'])echo ' · '.e($r['tariff_name']);?></p>
+            <?php if($r['decision_note']):?><p class="prewrap"><?=e($r['decision_note'])?></p><?php endif ?>
+            <small><?=e(fmt_datetime((string)$r['created_at']))?></small>
+        </div>
+        <?php if($r['state']==='pending' && $staff): ?>
+        <div class="row-actions">
+            <?php start_form('enrolment_decide',['id'=>$r['id'],'decision'=>'approve'],'inline-form');submit_button(t('Annehmen','Approve'),'secondary');?></form>
+            <?php start_form('enrolment_decide',['id'=>$r['id'],'decision'=>'decline'],'inline-form');submit_button(t('Ablehnen','Decline'),'subtle danger-text');?></form>
+        </div>
+        <?php endif ?>
+    </div>
+    <?php endforeach ?>
+</section>
+<?php endif ?>
 <?php elseif($tab==='payments'): ?>
-<?php if($staff): $free=billing_free_period($s); $firstBill=billing_first_charged_period($s); ?>
+<?php if($staff): $enrolments=student_enrolments($id); $paying=array_filter($enrolments,fn($r)=>$r['left_on']===null && $r['tariff_id']!==null); ?>
 <section class="card">
     <div class="section-heading">
         <div>
-            <h2><?=e(t('Monatsbeiträge','Monthly charges'))?></h2>
+            <h2><?=e(t('Automatische Beiträge','Automatic charges'))?></h2>
             <p class="muted"><?php
-                if((int)($s['billing_paused']??0)===1) echo e(t('Pausiert – für diesen Schüler werden keine Monatsbeiträge angelegt.','Paused – no monthly charges are created for this student.'));
-                elseif(billing_amount($s)===null) echo e(t('Kein monatlicher Preis hinterlegt, daher entstehen keine automatischen Beiträge.','No monthly price is set, so no automatic charges are created.'));
-                elseif($firstBill) echo e(t('Erster Monat frei: ','First month free: ').billing_month_name((string)$free).'. '.t('Beiträge ab ','Charged from ').billing_month_name($firstBill).' '.substr($firstBill,0,4).'.');
-                else echo e(t('Kein Beitrittsdatum hinterlegt.','No join date set.'));
+                if((int)($s['billing_paused']??0)===1) echo e(t('Pausiert – für dieses Kind werden keine Beiträge angelegt.','Paused – no charges are created for this child.'));
+                elseif(!$paying) echo e(t('Beiträge entstehen aus den Kursen. Dieses Kind ist in keinem Kurs mit Tarif.','Charges come from courses. This child is in no course with a tariff.'));
+                else echo e(t('Aus ','From ').plural(count($paying),'Kurs','Kursen','course','courses').': '
+                    .implode(' · ',array_map(fn($r)=>$r['class_name'].' – '.tariff_summary([
+                        'period'=>$r['period'],'price_cents'=>$r['price_cents']??$r['tariff_price'],
+                        'interval_months'=>$r['interval_months'],'due_day'=>$r['due_day']?:$r['tariff_due_day'],
+                    ]),$paying)));
             ?></p>
         </div>
     </div>
@@ -136,5 +227,14 @@ if($remaining>0 && !$c['cancelled'] && setting('show_payment_qr')):
 <?php if((int)$c['amount_cents']>$allocated):?><details><summary><?=e(t('+ Zahlung erfassen','+ Record payment'))?></summary><?php start_form('payment_add',['charge_id'=>$c['id']]);?><div class="grid three"><?php input('amount',t('Betrag (€)','Amount (€)'),amount_input((int)$c['amount_cents']-$allocated),'text',true);input('paid_on',t('Zahlungsdatum','Payment date'),today(),'date',true);$methods=setting('payment_methods',['Überweisung','Bar']);select_field('method',t('Zahlungsart','Payment method'),array_combine($methods,$methods),$methods[0],true);?></div><?php input('note',t('Notiz / Buchungsreferenz','Note / payment reference'));check_field('confirmed',t('Zahlungseingang bestätigen','Confirm receipt of payment'));submit_button(t('Zahlung erfassen','Record payment'));?></form></details><?php endif ?>
 <?php if(!$allocated){start_form('charge_cancel',['id'=>$c['id']],'inline-form');submit_button(t('Beitrag stornieren','Cancel charge'),'subtle danger-text');echo '</form>';}endif ?></section>
 <?php endforeach ?>
-<?php if($staff):$tariff=$s['tariff_id']?one('SELECT * FROM tariffs WHERE id=?',[$s['tariff_id']]):null;?><section class="card"><h2><?=e(t('Beitrag anlegen','Create charge'))?></h2><p class="muted"><?=e(t('Betrag und Zeitraum werden hier festgelegt. Beiträge entstehen nicht automatisch.','Set the amount and coverage here. Charges are not created automatically.'))?></p><?php start_form('charge_add',['student_id'=>$id]);?><div class="grid two"><?php input('label',t('Bezeichnung','Description'),$tariff['name']??'','text',true);input('amount',t('Betrag (€)','Amount (€)'),amount_input($s['price_cents']===null?null:(int)$s['price_cents']),'text',true);input('period_from',t('Bezahlt für Zeitraum ab','Covers from'),'','date');input('period_to',t('Bis einschließlich','Covers through'),'','date');input('due_on',t('Fällig am','Due on'),date('Y-m-d',strtotime('+'.($tariff['due_days']??14).' days')),'date',true);?></div><?php submit_button(t('Beitrag anlegen','Create charge'));?></form></section><?php endif ?>
+<?php if($staff): $first=array_values($paying)[0]??null; ?>
+<section class="card"><h2><?=e(t('Beitrag von Hand anlegen','Create a charge by hand'))?></h2>
+<p class="muted"><?=e(t('Für alles, was kein regelmäßiger Kursbeitrag ist – Turniergebühr, Schläger, Hallenmiete.','For anything that is not a recurring course fee – a tournament entry, a racket, hall hire.'))?></p>
+<?php start_form('charge_add',['student_id'=>$id]);?><div class="grid two"><?php
+input('label',t('Bezeichnung','Description'),'','text',true);
+input('amount',t('Betrag (€)','Amount (€)'),$first?amount_input((int)($first['price_cents']??$first['tariff_price'])):'','text',true);
+input('period_from',t('Bezahlt für Zeitraum ab','Covers from'),'','date');
+input('period_to',t('Bis einschließlich','Covers through'),'','date');
+input('due_on',t('Fällig am','Due on'),date('Y-m-d',strtotime('+14 days')),'date',true);
+?></div><?php submit_button(t('Beitrag anlegen','Create charge'));?></form></section><?php endif ?>
 <?php endif ?>

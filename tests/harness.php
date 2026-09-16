@@ -240,7 +240,7 @@ function test_tables(): array {
 
 /** Empty every data table, keeping the schema, then re-seed the defaults. */
 function test_reset(): void {
-    $tables = ['attendance','class_students','classes',
+    $tables = ['attendance','enrolment_requests','class_sessions','class_days','class_students','classes',
                'payment_profiles','consent_log','audit_log','form_requests','thread_reads','messages','threads',
                'mail_jobs','saved_filters','message_templates','news','payments','charges','absences',
                'field_values','field_definitions','contacts','students','levels','age_groups','tariffs',
@@ -312,18 +312,42 @@ function make_student(array $over=[]): int {
 function make_tariff(array $over=[]): int {
     static $n = 0; $n++;
     return fixture('tariffs', array_merge([
-        'name' => 'Tarif '.$n, 'price_cents' => 4500, 'period' => 'monthly',
-        'due_days' => 14, 'archived' => 0,
+        'name' => 'Tarif '.$n, 'description' => '', 'class_id' => null,
+        'price_cents' => 4500, 'period' => 'recurring', 'interval_months' => 1,
+        'due_day' => 1, 'grace_days' => 7, 'first_period' => 'prorate',
+        'discount_months' => 0, 'discount_kind' => 'percent', 'discount_value' => 0,
+        'due_days' => 14, 'sort_order' => 0, 'archived' => 0, 'is_demo' => 0,
     ], $over));
 }
 
+/**
+ * A course, and by default the one meeting day most tests assume.
+ *
+ * 'days' is lifted out before the row is written: a course's pattern lives in
+ * class_days now, and a fixture that still passed weekday would fail in a way
+ * that says "no such column" rather than "this test is out of date".
+ */
 function make_class(array $over=[]): int {
     static $n = 0; $n++;
-    return fixture('classes', array_merge([
-        'name' => 'Kurs '.$n, 'description' => '', 'weekday' => 1,
-        'starts_at' => '16:00:00', 'ends_at' => '17:30:00', 'location' => '',
-        'capacity' => 0, 'sort_order' => 0, 'archived' => 0, 'created_at' => now(),
+    $days = $over['days'] ?? [['weekday'=>1, 'starts_at'=>'16:00:00', 'ends_at'=>'17:30:00']];
+    unset($over['days']);
+    $id = fixture('classes', array_merge([
+        'name' => 'Kurs '.$n, 'description' => '', 'location' => '',
+        'capacity' => 0, 'sort_order' => 0, 'archived' => 0, 'created_at' => now(), 'is_demo' => 0,
     ], $over));
+    foreach ($days as $order => $day)
+        fixture('class_days', array_merge(['class_id'=>$id, 'weekday'=>1, 'starts_at'=>null,
+                                           'ends_at'=>null, 'location'=>'', 'sort_order'=>$order*10], $day));
+    return $id;
+}
+
+/** A student in a course, on a tariff. Returns the course id for chaining. */
+function make_enrolment(int $classId, int $studentId, array $over=[]): int {
+    fixture('class_students', array_merge([
+        'class_id' => $classId, 'student_id' => $studentId, 'joined_on' => '2025-01-01',
+        'left_on' => null, 'tariff_id' => null, 'price_cents' => null, 'price_note' => '', 'due_day' => 0,
+    ], $over));
+    return $classId;
 }
 
 /** Pretend a given account is signed in, for code that calls current_user(). */

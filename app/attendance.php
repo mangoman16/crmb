@@ -49,16 +49,25 @@ function attendance_session_dates(int $classId, int $limit=30): array {
 /**
  * The next sensible date to record for a class.
  *
- * A class that meets on Mondays should open on the most recent Monday, not on
+ * A course that meets on Mondays should open on the most recent Monday, not on
  * today, because attendance is usually entered during or just after training.
+ * A course that meets twice a week opens on whichever of its days came last.
  */
 function attendance_suggested_date(array $class): string {
     $today=new DateTimeImmutable(today());
-    if($class['weekday']===null) return $today->format('Y-m-d');
-    $weekday=(int)$class['weekday'];
-    // ISO-8601: 1 = Monday .. 7 = Sunday, matching the stored value.
-    $diff=((int)$today->format('N')-$weekday+7)%7;
-    return $today->modify('-'.$diff.' days')->format('Y-m-d');
+    $days=class_days((int)($class['id']??0));
+    if(!$days) return $today->format('Y-m-d');
+    // The most recent day the course met, across all of its meeting days: a
+    // course that runs on Monday and Thursday should open on Thursday when it is
+    // Friday, not on Monday because Monday is listed first.
+    $best=null;
+    foreach($days as $day) {
+        // ISO-8601: 1 = Monday .. 7 = Sunday, matching the stored value.
+        $back=((int)$today->format('N')-(int)$day['weekday']+7)%7;
+        $date=$today->modify('-'.$back.' days')->format('Y-m-d');
+        if($best===null || $date>$best) $best=$date;
+    }
+    return $best ?? $today->format('Y-m-d');
 }
 
 /** Counts per status for one student, for the summary on their page. */

@@ -51,7 +51,12 @@ document.querySelectorAll('[data-add-option]').forEach(button => {
     if (!container) return;
     const row = container.lastElementChild.cloneNode(true);
     row.querySelectorAll('input').forEach(input => { input.value = ''; });
-    container.appendChild(row); row.querySelector('input:not([type="hidden"])').focus();
+    // A cloned <select> keeps whatever was chosen in the row above it, which on
+    // the course form silently added a second Monday every time the button was
+    // pressed.
+    row.querySelectorAll('select').forEach(select => { select.selectedIndex = 0; });
+    container.appendChild(row);
+    row.querySelector('select, input:not([type="hidden"])')?.focus();
   });
 });
 // The database request id also prevents duplicate records after a repeated POST.

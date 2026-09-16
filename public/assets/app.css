@@ -219,3 +219,13 @@ html[data-text=largest]{font-size:21px}
 .placeholder-chip strong{color:var(--ink-2);font-size:.875rem}
 .placeholder-chip code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.75rem;color:var(--teal-ink)}
 .placeholder-chip small{font-size:.75rem}
+
+/* A course's weekly pattern: weekday, two times and an optional place, on one
+   row that still works at 320px by wrapping rather than shrinking. */
+.day-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.4fr);gap:8px;align-items:center}
+.day-row select,.day-row input{min-height:44px}
+@media(max-width:700px){.day-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.day-row select,.day-row input:last-child{grid-column:1/-1}}
+
+/* A date that is not happening reads as struck through rather than merely grey. */
+.editor-list-item.is-off strong{text-decoration:line-through;text-decoration-thickness:1px}
+.editor-list-item.is-off{opacity:.75}

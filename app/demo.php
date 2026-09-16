@@ -94,25 +94,38 @@ function demo_fill(bool $force = false): array {
         }
         $trainerId = $accounts['trainerin@beispiel.test'];
 
-        // --- tariffs --------------------------------------------------------
-        $tariffs = [];
-        foreach ([['Monatsbeitrag Kinder', 4500], ['Monatsbeitrag Jugend', 5500], ['Erwachsene', 6500]] as [$name,$price]) {
-            run('INSERT INTO tariffs (name,price_cents,period,due_days,archived,is_demo) VALUES (?,?,?,?,0,1)',
-                [$name, $price, 'monthly', 7]);
-            $tariffs[] = (int)db()->lastInsertId();
-        }
-
-        // --- courses --------------------------------------------------------
-        $courses = [];
-        foreach ([['Kindertraining Montag', 1, '16:00:00', '17:30:00', 'Sporthalle Nord', $tariffs[0]],
-                  ['Jugendtraining Mittwoch', 3, '17:00:00', '18:30:00', 'Sporthalle Nord', $tariffs[1]],
-                  ['Erwachsene Freitag', 5, '19:00:00', '21:00:00', 'Sporthalle Süd', $tariffs[2]]] as $i => $c) {
-            [$name,$weekday,$from,$to,$where,$tariff] = $c;
-            run('INSERT INTO classes (name,description,weekday,starts_at,ends_at,location,trainer_id,tariff_id,capacity,sort_order,archived,created_at,is_demo)'
-                .' VALUES (?,?,?,?,?,?,?,?,?,?,0,?,1)',
-                [$name, '', $weekday, $from, $to, $where, $trainerId, $tariff, 16, ($i + 1) * 10, now()]);
-            $courses[] = (int)db()->lastInsertId();
+        // --- courses, and the tariffs that belong to them --------------------
+        // Three courses with different shapes on purpose: one meeting twice a
+        // week, one with a cheaper half-year tariff beside the monthly one, one
+        // with a free first month. The cases that are worth looking at are the
+        // ones that are not all the same.
+        $courses = []; $tariffs = [];
+        $plan = [
+            ['Kindertraining', 'Sporthalle Nord', [[1,'16:00:00','17:30:00',''],[4,'16:00:00','17:30:00','']],
+             [['Monatsbeitrag', 4500, 1, 1, 'prorate', 1, 'percent', 100],
+              ['Halbjahr im Voraus', 24000, 6, 1, 'prorate', 0, 'percent', 0]]],
+            ['Jugendtraining', 'Sporthalle Nord', [[3,'17:00:00','18:30:00','']],
+             [['Monatsbeitrag', 5500, 1, 15, 'prorate', 3, 'percent', 30]]],
+            ['Erwachsene', 'Sporthalle Süd', [[5,'19:00:00','21:00:00','']],
+             [['Quartalsbeitrag', 18000, 3, 1, 'full', 0, 'percent', 0]]],
+        ];
+        foreach ($plan as $i => [$name,$where,$days,$prices]) {
+            run('INSERT INTO classes (name,description,location,trainer_id,capacity,sort_order,archived,created_at,is_demo)'
+                .' VALUES (?,?,?,?,?,?,0,?,1)', [$name, '', $where, $trainerId, 16, ($i + 1) * 10, now()]);
+            $classId = (int)db()->lastInsertId();
+            $courses[] = $classId;
             $counts['courses']++;
+            foreach ($days as $order => [$weekday,$from,$to,$place])
+                run('INSERT INTO class_days (class_id,weekday,starts_at,ends_at,location,sort_order) VALUES (?,?,?,?,?,?)',
+                    [$classId, $weekday, $from, $to, $place, $order * 10]);
+            $tariffs[$classId] = [];
+            foreach ($prices as $order => [$tName,$price,$interval,$dueDay,$firstPeriod,$giftMonths,$giftKind,$giftValue]) {
+                run('INSERT INTO tariffs (class_id,name,description,price_cents,period,interval_months,due_day,grace_days,'
+                    .'first_period,discount_months,discount_kind,discount_value,due_days,sort_order,archived,is_demo)'
+                    ." VALUES (?,?,'',?,'recurring',?,?,7,?,?,?,?,7,?,0,1)",
+                    [$classId, $tName, $price, $interval, $dueDay, $firstPeriod, $giftMonths, $giftKind, $giftValue, $order * 10]);
+                $tariffs[$classId][] = (int)db()->lastInsertId();
+            }
         }
 
         // --- students -------------------------------------------------------
@@ -127,9 +140,9 @@ function demo_fill(bool $force = false): array {
             $joined = $today->modify('-' . ($i * 47 + 20) . ' days');
             $status = match (true) { $i === 13 => 'ended', $i === 12 => 'paused', $i < 2 => 'trial', default => 'active' };
             $course = $age < 12 ? 0 : ($age < 18 ? 1 : 2);
-            // Most follow their tariff; two have an agreed price of their own,
-            // and one has none at all, which is what the billing preview has to
-            // be able to explain rather than skip silently.
+            // Two have an agreed price of their own, and one is enrolled with no
+            // tariff at all, which is what the billing preview has to be able to
+            // explain rather than skip silently.
             $price = $i === 4 ? 4000 : ($i === 9 ? 5000 : null);
             run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,'
                 .'price_cents,price_note,billing_paused,billing_note,internal_notes,revision,created_at,updated_at,is_demo)'
@@ -143,8 +156,9 @@ function demo_fill(bool $force = false): array {
                  // One child has a pinned group that disagrees with their age,
                  // because that exception is the reason pinning exists at all.
                  $i === 6 ? (int)(age_groups()[count(age_groups()) - 1]['id'] ?? 0) : null,
-                 $i === 7 ? null : ($courses ? (int)scalar('SELECT tariff_id FROM classes WHERE id=?', [$courses[$course]]) : null),
-                 $price, $price !== null ? 'Geschwisterermäßigung' : '',
+                 // The tariff and the agreed price live on the enrolment now, so
+                 // the student row carries neither.
+                 null, null, '',
                  $status === 'paused' ? 1 : 0, $status === 'paused' ? 'Verletzungspause' : '',
                  '', now(), now()]);
             $id = (int)db()->lastInsertId();
@@ -157,30 +171,40 @@ function demo_fill(bool $force = false): array {
                  $age < 18 ? 'Erziehungsberechtigt' : 'Selbst',
                  '+43 660 ' . (1000000 + $i * 13), mb_strtolower($n[1]) . '@beispiel.test']);
 
-            run('INSERT INTO class_students (class_id,student_id,joined_on,left_on) VALUES (?,?,?,?)',
-                [$courses[$course], $id, $joined->format('Y-m-d'), $status === 'ended' ? $today->modify('-30 days')->format('Y-m-d') : null]);
-            // Two of them train twice a week, because a student in more than one
-            // course is the case the attendance and billing screens get wrong.
+            // Most take the first tariff their course offers; one takes the
+            // half-year one, so a longer billing period is there to look at.
+            $offered = $tariffs[$courses[$course]];
+            $chosen = $i === 7 ? null : $offered[$i === 3 && count($offered) > 1 ? 1 : 0];
+            run('INSERT INTO class_students (class_id,student_id,joined_on,left_on,tariff_id,price_cents,price_note,due_day)'
+                .' VALUES (?,?,?,?,?,?,?,0)',
+                [$courses[$course], $id, $joined->format('Y-m-d'),
+                 $status === 'ended' ? $today->modify('-30 days')->format('Y-m-d') : null, $chosen,
+                 $price, $price !== null ? 'Geschwisterermäßigung' : '']);
+            // Two of them train in two courses, because a child in more than one
+            // is the case the attendance and billing screens get wrong.
             if ($i === 2 || $i === 6)
-                run('INSERT INTO class_students (class_id,student_id,joined_on,left_on) VALUES (?,?,?,NULL)',
-                    [$courses[2], $id, $joined->format('Y-m-d')]);
+                run('INSERT INTO class_students (class_id,student_id,joined_on,left_on,tariff_id,price_cents,price_note,due_day)'
+                    .' VALUES (?,?,?,NULL,?,NULL,?,0)',
+                    [$courses[2], $id, $joined->format('Y-m-d'), $tariffs[$courses[2]][0], '']);
         }
 
         // --- charges and payments -------------------------------------------
         foreach ($students as $s) {
             if ($s['index'] === 7) continue;                       // no tariff, no charges
-            $amount = (int)(scalar('SELECT COALESCE(price_cents,(SELECT price_cents FROM tariffs WHERE id=students.tariff_id))'
-                .' FROM students WHERE id=?', [$s['id']]) ?: 0);
+            $amount = (int)(scalar('SELECT COALESCE(cs.price_cents, t.price_cents) FROM class_students cs'
+                .' LEFT JOIN tariffs t ON t.id=cs.tariff_id WHERE cs.student_id=? AND cs.class_id=?',
+                [$s['id'], $s['course']]) ?: 0);
             if ($amount <= 0) continue;
             for ($back = 2; $back >= 0; $back--) {
                 $month = $today->modify('first day of this month')->modify('-' . $back . ' months');
                 $due = $month->modify('+6 days');
-                run('INSERT INTO charges (student_id,class_id,label,origin,billing_key,amount_cents,period_from,period_to,due_on,cancelled,created_at)'
-                    .' VALUES (?,?,?,?,?,?,?,?,?,0,?)',
+                run('INSERT INTO charges (student_id,class_id,label,origin,billing_key,amount_cents,gross_cents,'
+                    .'period_from,period_to,due_on,overdue_on,cancelled,created_at)'
+                    .' VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?)',
                     [$s['id'], $s['course'], 'Beitrag ' . billing_month_name($month->format('Y-m')), 'auto',
-                     'demo:' . $month->format('Y-m') . ':s' . $s['id'], $amount,
+                     'demo:' . $month->format('Y-m') . ':s' . $s['id'], $amount, $amount,
                      $month->format('Y-m-d'), $month->modify('last day of this month')->format('Y-m-d'),
-                     $due->format('Y-m-d'), now()]);
+                     $due->format('Y-m-d'), $due->modify('+7 days')->format('Y-m-d'), now()]);
                 $chargeId = (int)db()->lastInsertId();
                 $counts['charges']++;
                 // Two months back everyone has paid; the month before last one

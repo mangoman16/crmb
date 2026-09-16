@@ -32,6 +32,7 @@ require __DIR__ . '/schema.php';
 require __DIR__ . '/auth.php';
 require __DIR__ . '/domain.php';
 require __DIR__ . '/classes.php';
+require __DIR__ . '/enrolment.php';
 require __DIR__ . '/groups.php';
 require __DIR__ . '/attendance.php';
 require __DIR__ . '/billing.php';

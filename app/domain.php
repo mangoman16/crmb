@@ -44,8 +44,21 @@ function charge_paid_sql(string $charge='c'): string {
         .' WHERE p.charge_id='.sql_name($charge,'alias').'.id AND '.payment_counts_sql().'),0)';
 }
 
+/**
+ * SQL for the day a charge stops being merely open and starts being late.
+ *
+ * A charge written before grace days existed has no overdue_on, and for it the
+ * due date is the answer - which is exactly how it behaved before. Written once
+ * here for the same reason payment_counts_sql() is: a second copy is the one
+ * that gets forgotten, and the two then disagree about who owes money.
+ */
+function charge_overdue_sql(string $charge='c'): string {
+    $a=sql_name($charge,'alias');
+    return 'COALESCE('.$a.'.overdue_on, '.$a.'.due_on)';
+}
+
 function balance(int $studentId, bool $overdue=false): int {
-    $charges=rows('SELECT c.amount_cents,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? AND c.cancelled=0'.($overdue?' AND c.due_on<?':''),$overdue?[$studentId,today()]:[$studentId]);
+    $charges=rows('SELECT c.amount_cents,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? AND c.cancelled=0'.($overdue?' AND '.charge_overdue_sql().'<?':''),$overdue?[$studentId,today()]:[$studentId]);
     return array_sum(array_map(fn($c)=>max(0,(int)$c['amount_cents']-(int)$c['paid']),$charges));
 }
 /**
@@ -60,7 +73,7 @@ function balances(bool $overdue=false): array {
     foreach(rows('SELECT c.student_id, SUM(GREATEST(0, c.amount_cents - COALESCE(p.paid,0))) AS due'
         .' FROM charges c LEFT JOIN (SELECT charge_id, SUM(amount_cents) AS paid FROM payments'
         .'   WHERE '.payment_counts_sql('payments').' GROUP BY charge_id) p ON p.charge_id=c.id'
-        .' WHERE c.cancelled=0'.($overdue?' AND c.due_on<?':'').' GROUP BY c.student_id',
+        .' WHERE c.cancelled=0'.($overdue?' AND '.charge_overdue_sql().'<?':'').' GROUP BY c.student_id',
         $overdue?[today()]:[]) as $r) $out[(int)$r['student_id']]=(int)$r['due'];
     return $out;
 }
@@ -145,7 +158,7 @@ function filtered_students(array $f,?int $accountId=null): array {
         }
     }
     if(!empty($f['absence'])){$where[]='EXISTS (SELECT 1 FROM absences a WHERE a.student_id=s.id AND a.reason=? AND a.starts_on<=? AND a.ends_on>=?)';array_push($p,$f['absence'],today(),today());}
-    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND c.cancelled=0 AND c.due_on<? AND c.amount_cents>'.charge_paid_sql().')';$p[]=today();}
+    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND c.cancelled=0 AND '.charge_overdue_sql().'<? AND c.amount_cents>'.charge_paid_sql().')';$p[]=today();}
     if(!empty($f['field']) && isset($f['value'])){
         $def=one('SELECT * FROM field_definitions WHERE id=? AND archived=0',[(int)$f['field']]);
         if($def && (is_staff() || $def['visibility']!=='internal')) {

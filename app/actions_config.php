@@ -18,20 +18,57 @@ function dispatch_config(string $action): array {
 
     case 'class_save':
         require_staff(); $id=(int)post('id');
-        if($id && !one('SELECT id FROM classes WHERE id=?',[$id])) throw new UserError(t('Kurs nicht gefunden.','Class not found.'));
-        $weekday=post('weekday')===''?null:(int)choose(post('weekday'),array_map('strval',array_keys(weekdays())));
-        $from=time_value(post('starts_at')); $to=time_value(post('ends_at'));
-        if($from && $to && $from>=$to) throw new UserError(t('Das Ende muss nach dem Beginn liegen.','The end time must be after the start time.'));
+        if($id && !one('SELECT id FROM classes WHERE id=?',[$id])) throw new UserError(t('Kurs nicht gefunden.','Course not found.'));
         $capacity=(int)post('capacity','0');
         if($capacity<0 || $capacity>500) throw new UserError(t('Plätze: 0 bis 500 (0 = unbegrenzt).','Places: 0 to 500 (0 = unlimited).'));
-        $args=[required_text('name',120),text_limit('description',500),$weekday,$from,$to,text_limit('location',160),
+        $days=class_days_from_post();
+        $args=[required_text('name',120),text_limit('description',500),text_limit('location',160),
                reference_or_null('accounts','trainer_id',"role IN ('admin','trainer','manager')"),
-               reference_or_null('tariffs','tariff_id'),reference_or_null('payment_profiles','payment_profile_id'),
+               reference_or_null('payment_profiles','payment_profile_id'),
                $capacity,(int)post('sort_order','0'),post('archived')?1:0];
-        if($id) run('UPDATE classes SET name=?,description=?,weekday=?,starts_at=?,ends_at=?,location=?,trainer_id=?,tariff_id=?,payment_profile_id=?,capacity=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
-        else { run('INSERT INTO classes (name,description,weekday,starts_at,ends_at,location,trainer_id,tariff_id,payment_profile_id,capacity,sort_order,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
-        audit('class.saved','class',$id); flash(t('Kurs gespeichert.','Class saved.'));
+        $id=transactional(function() use ($id,$args,$days): int {
+            if($id) run('UPDATE classes SET name=?,description=?,location=?,trainer_id=?,payment_profile_id=?,capacity=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
+            else { run('INSERT INTO classes (name,description,location,trainer_id,payment_profile_id,capacity,sort_order,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
+            // Replaced rather than reconciled: the form shows the whole pattern,
+            // so what it posts is the whole pattern. Nothing points at a
+            // class_days row, so there is no identity worth preserving.
+            run('DELETE FROM class_days WHERE class_id=?',[$id]);
+            foreach($days as $order=>$day)
+                run('INSERT INTO class_days (class_id,weekday,starts_at,ends_at,location,sort_order) VALUES (?,?,?,?,?,?)',
+                    [$id,$day['weekday'],$day['starts_at'],$day['ends_at'],$day['location'],$order*10]);
+            return $id;
+        });
+        audit('class.saved','class',$id); flash(t('Kurs gespeichert.','Course saved.'));
         return ['classes',['id'=>$id]];
+
+    case 'class_session_save':
+        require_staff(); $c=training_class((int)post('class_id'));
+        $on=date_value(post('session_on'),true);
+        $status=choose(post('status','planned'),array_keys(session_statuses()));
+        $from=time_value(post('starts_at')); $to=time_value(post('ends_at'));
+        if($from && $to && $from>=$to) throw new UserError(t('Das Ende muss nach dem Beginn liegen.','The end time must be after the start time.'));
+        // "Findet statt" with nothing else changed is the weekly pattern, so the
+        // row is removed rather than stored: a table of rows that say "as usual"
+        // is a table that grows for no reason.
+        if($status==='planned' && !$from && !$to && post('location')==='' && post('note')==='') {
+            run('DELETE FROM class_sessions WHERE class_id=? AND session_on=?',[$c['id'],$on]);
+            flash(t('Termin folgt wieder dem normalen Plan.','That date follows the usual pattern again.'));
+        } else {
+            run('INSERT INTO class_sessions (class_id,session_on,starts_at,ends_at,location,status,note,created_by,created_at)'
+                .' VALUES (?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE starts_at=VALUES(starts_at),ends_at=VALUES(ends_at),'
+                .'location=VALUES(location),status=VALUES(status),note=VALUES(note),created_by=VALUES(created_by)',
+                [$c['id'],$on,$from,$to,text_limit('location',160),$status,text_limit('note',500),current_user()['id']??null,now()]);
+            flash(t('Termin gespeichert.','Date saved.'));
+        }
+        audit('class.session_saved','class',(int)$c['id']);
+        // Telling the families is a separate, deliberate step, because a change
+        // made to correct a typo should not send fifteen emails.
+        if(post('notify')) {
+            $entry=class_session((int)$c['id'],$on);
+            $sent=notify_class_change($c,$on,$entry,text_limit('note',500));
+            flash(plural($sent,'Familie informiert','Familien informiert','family notified','families notified').'.');
+        }
+        return ['classes',['id'=>$c['id'],'tab'=>'dates']];
 
     case 'class_delete':
         require_staff(); $c=training_class((int)post('id'));
@@ -48,10 +85,58 @@ function dispatch_config(string $action): array {
             $current=(int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND left_on IS NULL',[$c['id']]);
             if($current>=(int)$c['capacity']) throw new UserError(t('Dieser Kurs ist voll. Plätze in den Kurseinstellungen erhöhen.','This class is full. Raise the number of places in the class settings.'));
         }
-        run('INSERT INTO class_students (class_id,student_id,joined_on) VALUES (?,?,?) ON DUPLICATE KEY UPDATE joined_on=VALUES(joined_on),left_on=NULL',
-            [$c['id'],$s['id'],date_value(post('joined_on'))??today()]);
+        $tariffId=reference_or_null('tariffs','tariff_id','class_id='.(int)$c['id']);
+        run('INSERT INTO class_students (class_id,student_id,joined_on,tariff_id) VALUES (?,?,?,?)'
+            .' ON DUPLICATE KEY UPDATE joined_on=VALUES(joined_on),left_on=NULL,tariff_id=VALUES(tariff_id)',
+            [$c['id'],$s['id'],date_value(post('joined_on'))??today(),$tariffId]);
         audit('class.member_added','class',(int)$c['id']);
         return ['classes',['id'=>$c['id']]];
+
+    case 'enrolment_save':
+        require_staff(); $c=training_class((int)post('class_id')); $s=student((int)post('student_id'));
+        if(!enrolment((int)$c['id'],(int)$s['id'])) throw new UserError(t('Dieses Kind ist nicht in diesem Kurs.','This child is not in this course.'));
+        $dueDay=(int)post('due_day','0');
+        if($dueDay<0 || $dueDay>28) throw new UserError(t('Zahltag: 1 bis 28, oder 0 für „wie im Tarif“.','Payment day: 1 to 28, or 0 for “as the tariff says”.'));
+        run('UPDATE class_students SET tariff_id=?,price_cents=?,price_note=?,due_day=?,joined_on=?,left_on=? WHERE class_id=? AND student_id=?',
+            [reference_or_null('tariffs','tariff_id','class_id='.(int)$c['id']),
+             post('price')!==''?cents(post('price')):null, text_limit('price_note'), $dueDay,
+             date_value(post('joined_on')), date_value(post('left_on')), $c['id'], $s['id']]);
+        audit('enrolment.saved','student',(int)$s['id']);
+        flash(t('Kursteilnahme gespeichert.','Enrolment saved.'));
+        return ['student',['id'=>$s['id'],'tab'=>'classes']];
+
+    // ---- asking to join, leave or change tariff -------------------------
+
+    case 'enrolment_request':
+        $u=require_user(); $s=student((int)post('student_id'));
+        $classId=(int)post('class_id');
+        if(!one('SELECT id FROM classes WHERE id=? AND archived=0',[$classId])) throw new UserError(t('Diesen Kurs gibt es nicht.','No such course.'));
+        $kind=choose(post('kind'),array_keys(request_kinds()));
+        $tariffId=post('tariff_id')!==''?(int)post('tariff_id'):null;
+        if($kind==='join') {
+            $class=one('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL) AS member_count FROM classes c WHERE c.id=?',[$classId]);
+            if(course_is_full($class)) throw new UserError(t('Dieser Kurs ist voll.','This course is full.'));
+        }
+        // The trainer is the person being asked, so she does not ask: her own
+        // change happens now and the record says she made it.
+        if(is_staff($u)) {
+            $id=request_enrolment((int)$s['id'],$classId,$kind,$tariffId,text_limit('message',500));
+            decide_request($id,true,t('Von der Trainerin selbst eingetragen.','Entered by the trainer.'));
+            flash(t('Erledigt.','Done.'));
+        } else {
+            request_enrolment((int)$s['id'],$classId,$kind,$tariffId,text_limit('message',500));
+            flash(t('Deine Anfrage ist unterwegs. Die Trainerin entscheidet darüber.','Your request has been sent. The trainer will decide.'));
+        }
+        return ['student',['id'=>$s['id'],'tab'=>'classes']];
+
+    case 'enrolment_decide':
+        require_staff();
+        $approve=post('decision')==='approve';
+        $r=decide_request((int)post('id'),$approve,text_limit('note',500));
+        notify_enrolment_decision($r,$approve,text_limit('note',500));
+        flash($approve?t('Angenommen. Das Kind ist eingetragen.','Approved. The child is enrolled.')
+                      :t('Abgelehnt. Die Familie wird benachrichtigt.','Declined. The family is told.'));
+        return ['classes',['tab'=>'requests']];
 
     case 'class_member_remove':
         require_staff(); $c=training_class((int)post('class_id')); $s=student((int)post('student_id'));
@@ -132,7 +217,7 @@ function dispatch_config(string $action): array {
         foreach(rows('SELECT c.*, s.first_name, s.last_name, s.account_id,'
             .' '.charge_paid_sql().' AS paid'
             .' FROM charges c JOIN students s ON s.id=c.student_id'
-            .' WHERE c.cancelled=0 AND c.due_on<?'.($only?' AND s.id=?':'')
+            .' WHERE c.cancelled=0 AND '.charge_overdue_sql().'<?'.($only?' AND s.id=?':'')
             .' ORDER BY s.account_id, c.due_on', $only?[today(),$only]:[today()]) as $c) {
             $due=(int)$c['amount_cents']-(int)$c['paid'];
             if($due<=0 || !$c['account_id']) { $skipped++; continue; }

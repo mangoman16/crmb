@@ -23,10 +23,18 @@ is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE is_demo=0'), 'only t
 
 case_('The data exercises the cases that go wrong');
 ok((int)scalar('SELECT COUNT(DISTINCT status) FROM students') >= 3, 'several membership statuses');
-ok((int)scalar('SELECT COUNT(*) FROM students WHERE tariff_id IS NULL AND price_cents IS NULL') >= 1,
-   'somebody with no price at all, which billing has to explain rather than skip silently');
+ok((int)scalar('SELECT COUNT(*) FROM class_students WHERE tariff_id IS NULL') >= 1,
+   'somebody enrolled with no tariff, which billing has to explain rather than skip silently');
+ok((int)scalar('SELECT COUNT(*) FROM class_students WHERE price_cents IS NOT NULL') >= 1,
+   'and somebody on a price of their own');
 ok((int)scalar('SELECT COUNT(*) FROM (SELECT student_id FROM class_students GROUP BY student_id HAVING COUNT(*)>1) x') >= 1,
    'somebody in more than one course');
+ok((int)scalar('SELECT COUNT(*) FROM (SELECT class_id FROM class_days GROUP BY class_id HAVING COUNT(*)>1) x') >= 1,
+   'a course that meets more than once a week');
+ok((int)scalar('SELECT COUNT(*) FROM (SELECT class_id FROM tariffs GROUP BY class_id HAVING COUNT(*)>1) x') >= 1,
+   'a course offering more than one tariff');
+ok((int)scalar('SELECT COUNT(*) FROM tariffs WHERE interval_months>1') >= 1, 'a tariff that is not monthly');
+ok((int)scalar('SELECT COUNT(*) FROM tariffs WHERE discount_months<>0') >= 1, 'and one with a welcome discount');
 ok((int)scalar('SELECT COUNT(*) FROM students WHERE birth_date < ?', [date('Y-m-d', strtotime('-18 years'))]) >= 1, 'an adult');
 ok((int)scalar('SELECT COUNT(*) FROM students WHERE birth_date > ?', [date('Y-m-d', strtotime('-12 years'))]) >= 1, 'a child under twelve');
 ok((int)scalar('SELECT COUNT(*) FROM contacts') >= $result['students'], 'every child has somebody to ring');

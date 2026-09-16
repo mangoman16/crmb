@@ -87,29 +87,20 @@ tabs($items,$tab,'manage');
 
 <?php elseif($tab==='members'): $registryGroup='students'; require ROOT.'/views/_settings_registry.php';
 
-elseif($tab==='tariffs'): $tariff=$edit?one('SELECT * FROM tariffs WHERE id=?',[$edit]):null; ?>
-<div class="settings-grid">
-    <section class="card">
-        <div class="section-heading"><h2><?=e(t('Tarife','Tariffs'))?></h2><?=link_button(t('+ Neu','+ New'),'manage',['tab'=>'tariffs'],'secondary')?></div>
-        <?php foreach(rows('SELECT * FROM tariffs ORDER BY archived,name') as $tar): ?>
-        <a class="editor-list-item <?=$edit===(int)$tar['id']?'selected':''?>" href="<?=e(url('manage',['tab'=>'tariffs','edit'=>$tar['id']]))?>">
-            <span><strong><?=e($tar['name'])?></strong><small><?=e(['monthly'=>t('Monatlich','Monthly'),'fixed'=>t('Fester Zeitraum','Fixed period'),'once'=>t('Einmalig','One-time')][$tar['period']]??$tar['period'])?></small></span>
-            <span><?=e(money((int)$tar['price_cents']))?><?php if($tar['archived'])badge(t('Archiviert','Archived'),'amber');?></span>
-        </a>
-        <?php endforeach ?>
-        <p class="muted"><?=e(t('Preisänderungen gelten für neue Zuordnungen. Bereits vereinbarte Schülerpreise werden nicht überschrieben.','Price changes apply to new assignments. Existing agreed student prices are preserved.'))?></p>
-    </section>
-    <section class="card">
-        <h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2>
-        <?php start_form('tariff_save',['id'=>$edit]);
-        input('name',t('Tarifname','Tariff name'),$tariff['name']??'','text',true);
-        input('price',t('Standardpreis (€)','Default price (€)'),isset($tariff['price_cents'])?amount_input((int)$tariff['price_cents']):'','text',true);
-        select_field('period',t('Zeitraum','Billing period'),['monthly'=>t('Monatlich','Monthly'),'fixed'=>t('Fester Zeitraum (z. B. Semester)','Fixed period (e.g. semester)'),'once'=>t('Einmalig / einzelne Einheit','One-time / individual session')],$tariff['period']??'monthly',true);
-        input('due_days',t('Zahlungsziel in Tagen','Payment due in days'),$tariff['due_days']??14,'number',true);
-        check_field('archived',t('Tarif archivieren','Archive tariff'),(bool)($tariff['archived']??false));
-        submit_button();?></form>
-    </section>
-</div>
+elseif($tab==='tariffs'): ?>
+<section class="card">
+    <h2><?=e(t('Tarife stehen jetzt beim Kurs','Tariffs now live with the course'))?></h2>
+    <p class="muted"><?=e(t('Ein Tarif gehört zu genau einem Kurs, weil sonst nie ganz klar ist, welcher Preis für welches Training gilt. Du findest sie unter „Kurse“ beim jeweiligen Kurs im Reiter „Tarife“.','A tariff belongs to exactly one course, because otherwise it is never quite clear which price applies to which training. You will find them under “Kurse”, on each course’s “Tarife” tab.'))?></p>
+    <?php $orphans=unattached_tariffs(); if($orphans): ?>
+    <div class="notice warn"><?=e(t('Diese Tarife gehören noch zu keinem Kurs und werden deshalb nicht abgerechnet:','These tariffs belong to no course yet and are therefore not billed:'))?>
+        <?=e(implode(', ',array_column($orphans,'name')))?>.</div>
+    <?php endif ?>
+    <?php foreach(training_classes() as $row): ?>
+    <a class="editor-list-item" href="<?=e(url('classes',['id'=>$row['id'],'tab'=>'tariffs']))?>">
+        <span><strong><?=e($row['name'])?></strong><small><?=e(plural((int)$row['tariff_count'],'Tarif','Tarife','tariff','tariffs'))?></small></span><?=icon('arrow')?>
+    </a>
+    <?php endforeach ?>
+</section>
 
 <?php elseif($tab==='templates'): $template=$edit?one('SELECT * FROM message_templates WHERE id=?',[$edit]):null; ?>
 <div class="settings-grid">

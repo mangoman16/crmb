@@ -37,6 +37,59 @@ function notify_payment(array $account, array $student, int $amountCents, string
         $en?'Outstanding badminton payment':'Offener Badminton-Beitrag',$body,'payments');
     return true;
 }
+/**
+ * Tell the families in a course that one date has changed.
+ *
+ * Sent to the account behind each current member, once, with the change spelled
+ * out rather than a link saying something changed. A family reading this on a
+ * phone at eight in the morning should not have to open anything.
+ *
+ * Deliberately a separate step from saving: correcting a typo in a note should
+ * not send fifteen emails.
+ */
+function notify_class_change(array $class, string $date, ?array $entry, string $note): int {
+    $sent=0;
+    foreach(rows('SELECT DISTINCT a.* FROM class_students cs'
+        .' JOIN students s ON s.id=cs.student_id JOIN accounts a ON a.id=s.account_id'
+        .' WHERE cs.class_id=? AND cs.left_on IS NULL', [(int)$class['id']]) as $account) {
+        if($account['state']!=='active' || !$account['verified_at'] || empty($account['notifications'])) continue;
+        $en=$account['locale']==='en';
+        $what=match($entry['status']??'planned') {
+            'cancelled' => $en?'is cancelled':'entfällt',
+            'extra'     => $en?'is an extra session':'ist ein Zusatztermin',
+            'changed'   => $en?'has changed':'hat sich geändert',
+            default     => $en?'is going ahead':'findet statt',
+        };
+        $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+            .$class['name'].' '.($en?'on ':'am ').fmt_date($date).' '.$what.".\n"
+            .($entry?session_label($entry)."\n":'')
+            .($note!==''?"\n".$note."\n":'')
+            ."\n".($en?'All dates are in the portal:':'Alle Termine stehen im Portal:')."\n".url('classes',['id'=>$class['id']]);
+        queue_mail((int)$account['id'],$account['email'],
+            ($en?'Change to ':'Änderung: ').$class['name'].' – '.fmt_date($date),$body,'notifications');
+        $sent++;
+    }
+    return $sent;
+}
+
+/** Tell one family what the trainer decided about their request. */
+function notify_enrolment_decision(array $request, bool $approved, string $note): bool {
+    $account=one('SELECT a.* FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.id=?', [(int)$request['student_id']]);
+    if(!$account || $account['state']!=='active' || !$account['verified_at'] || empty($account['notifications'])) return false;
+    $student=one('SELECT first_name,last_name FROM students WHERE id=?',[(int)$request['student_id']]);
+    $class=one('SELECT name FROM classes WHERE id=?',[(int)$request['class_id']]);
+    $en=$account['locale']==='en';
+    $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+        .request_kind_label((string)$request['kind']).' – '.$student['first_name'].' '.$student['last_name']
+        .' · '.$class['name'].":\n"
+        .($approved?($en?'Approved.':'Angenommen.'):($en?'Not approved.':'Leider nicht angenommen.'))."\n"
+        .($note!==''?"\n".$note."\n":'')
+        ."\n".($en?'Details are in the portal:':'Die Einzelheiten stehen im Portal:')."\n".url('student',['id'=>$request['student_id'],'tab'=>'classes']);
+    queue_mail((int)$account['id'],$account['email'],
+        ($en?'Your request: ':'Deine Anfrage: ').$class['name'],$body,'notifications');
+    return true;
+}
+
 function process_mail(int $limit=25, float $budget=0.0): array {
     if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
     if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');
