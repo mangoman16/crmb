@@ -130,9 +130,15 @@ php tests/run.php billing      # one suite
 ```
 
 The suite builds a disposable SQLite database from the real migrations and boots
-the real application against it. That proves the PHP logic, **not** the MySQL
-dialect — see [tests/README.md](tests/README.md). To prove the SQL, point it at
-a database whose name ends in `_test`:
+the real application against it. That proves the PHP logic, **not** the SQL
+dialect — see [tests/README.md](tests/README.md). To prove the SQL:
+
+```bash
+tests/mariadb-local.sh          # starts a throwaway MariaDB, runs the suite, stops it
+```
+
+It has been run against MariaDB 10.11.14 with everything passing. Against a
+database you manage yourself, whose name must end in `_test`:
 
 ```bash
 CRM_TEST_DRIVER=mysql CRM_CONFIG=/path/to/test-config.php php tests/run.php
@@ -160,9 +166,10 @@ Custom content, tariff names and message templates are entered by the operator; 
 This release has not been deployed. Validation results and remaining hosting
 checks are in [VALIDATION.md](VALIDATION.md). A full bug, security and design
 review is in [AUDIT.md](AUDIT.md), and what is done versus outstanding is in
-[ROADMAP.md](ROADMAP.md) — start there. **Migrations 002 to 006 have not yet
-been run against MySQL or MariaDB**, so run `php bin/console.php update` against
-a disposable copy of the database before touching anything real.
+[ROADMAP.md](ROADMAP.md) — start there. All six migrations and the whole test
+suite have been run against **MariaDB 10.11.14**; **MySQL 8.0 itself has not
+been tried**. Either way, run `php bin/console.php update` against a disposable
+copy of the database before touching anything real.
 
 ## Layout
 

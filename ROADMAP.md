@@ -92,7 +92,9 @@ their original number. This closes the old item 8 below.
 application against a disposable database built from the real migrations,
 covering dates, transactions, billing, security, attendance, settings, history,
 query counts, the rendered pages, and the shape of the source. It proves the PHP
-logic, not the MySQL dialect — item 1 below still stands.
+logic rather than the SQL dialect, so the same suite was then run against
+MariaDB 10.11.14, where it also passes — `tests/mariadb-local.sh` repeats that
+from nothing. MySQL 8.0 itself remains untried; see item 1 below.
 
 **Query counts held down where they grow with the roll**: the student list went
 from 56 queries at sixty students to 6, and the suite fails if that comes back.
@@ -104,13 +106,14 @@ from 56 queries at sixty students to 6, and the suite fails if that comes back.
 These are the things that stand between "the code is good" and "her data is
 safe in it". Nothing below is optional.
 
-1. **Run the migrations and the test suites against MariaDB or MySQL.**
-   Migrations 002 to 006 have never executed against MySQL or MariaDB anywhere.
-   Use a disposable database, then `CRM_TEST_DRIVER=mysql php tests/run.php`,
-   which runs the same checks against the real engine and reports what the
-   SQLite driver could not cover. Then `tests/integration.py` and
-   `tests/smtp_integration.py` per `tests/README.md`. The update runner is
-   verified idempotent, but only against SQLite.
+1. **Done for MariaDB; repeat on MySQL 8 if that is your target.**
+   All six migrations, the upgrade path and the whole suite have now run against
+   MariaDB 10.11.14 — see [AUDIT.md](AUDIT.md). Repeat any time with
+   `tests/mariadb-local.sh`, which starts a throwaway server and stops it again.
+   MySQL 8.0 itself has not been tried: point
+   `CRM_TEST_DRIVER=mysql CRM_CONFIG=…` at one to close that. Still outstanding
+   here: `tests/integration.py` and `tests/smtp_integration.py`, which need a
+   live SMTP capture server.
 2. **Backups.** You said you will handle these yourself, so this is not on my
    list — one thing to know: the config file holds `app_key`, which is what
    decrypts the stored SMTP password and any queued mail. A database dump

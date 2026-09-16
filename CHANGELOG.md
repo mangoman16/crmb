@@ -42,6 +42,22 @@ Transactions, undo, and a test suite that runs anywhere.
   it, which is exactly when the old version refused to answer.
 - README gained install and update guides as runnable bash, and CLAUDE.md
   records the conventions for changing this code.
+- **The migrations and the whole test suite now run against a real database
+  engine — MariaDB 10.11.14 — for the first time.** All six migrations apply,
+  including the two `ADD CONSTRAINT` statements the SQLite translation had to
+  skip; the upgrade path, undo with real row locks, and billing idempotency all
+  behave on the real engine. `tests/mariadb-local.sh` repeats it from nothing on
+  a machine with no database server. MySQL 8.0 itself is still untried.
+- Fixed a defect this uncovered: the test harness could only run against a
+  database with no tables. It dropped tables in a hand-kept order, which MySQL
+  refuses when a child still references a parent — invisible on a fresh database,
+  where every drop is a no-op. It now reads the table list from the database and
+  switches the constraints off around the operation, on either engine.
+- Two pages no longer grow a query per row: the student payments tab went from
+  forty-three queries at thirty-six charges to six, and the skills tab from
+  thirty-six at twenty skills to six. `charge_payment_profile()` also had a
+  fallback chain that looked lazy but evaluated every candidate first, costing a
+  lookup of class 0 on every charge.
 - Migration 006.
 
 ## 0.3.0 — unreleased

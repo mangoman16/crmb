@@ -206,14 +206,32 @@ function test_boot(): void {
             }
         }
     } else {
-        foreach (['attendance','assessments','skills','skill_areas','rating_scales','class_students','classes',
-                  'payment_profiles','consent_log','audit_log','form_requests','thread_reads','messages','threads',
-                  'mail_jobs','saved_filters','message_templates','news','payments','charges','absences',
-                  'field_values','field_definitions','contacts','students','tariffs','rate_limits','auth_tokens',
-                  'record_versions','accounts','settings','schema_migrations'] as $table)
-            db()->exec('DROP TABLE IF EXISTS `'.$table.'`');
+        /* Dropping in a hand-kept order means getting the foreign keys right by
+           hand, and MySQL refuses to drop a parent while a child still points at
+           it (error 1451). The list is therefore read from the database, and the
+           constraints are switched off for the duration: on a fresh database the
+           drops are all no-ops and any order looks correct, so this only shows up
+           on the second run. */
+        db()->exec('SET FOREIGN_KEY_CHECKS=0');
+        try {
+            foreach (test_tables() as $table) db()->exec('DROP TABLE IF EXISTS `'.sql_name($table, 'table').'`');
+        } finally {
+            db()->exec('SET FOREIGN_KEY_CHECKS=1');
+        }
         foreach (split_sql($sql) as $statement) db()->exec($statement);
     }
+}
+
+/**
+ * Every table in the test database.
+ *
+ * Read from the database rather than kept as a list here, because a list here
+ * silently stops matching the schema the first time a migration adds a table.
+ */
+function test_tables(): array {
+    if (test_driver() === 'sqlite')
+        return array_column(rows("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"), 'name');
+    return array_column(rows('SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()'), 'name');
 }
 
 /** Empty every data table, keeping the schema, then re-seed the defaults. */
@@ -224,11 +242,16 @@ function test_reset(): void {
                'field_values','field_definitions','contacts','students','tariffs','rate_limits','auth_tokens',
                'accounts','settings'];
     if (test_has_table('record_versions')) array_unshift($tables, 'record_versions');
-    if (test_driver() === 'sqlite') db()->exec('PRAGMA foreign_keys = OFF');
-    foreach ($tables as $table) db()->exec('DELETE FROM '.$table);
-    if (test_driver() === 'sqlite') {
-        db()->exec("DELETE FROM sqlite_sequence");
-        db()->exec('PRAGMA foreign_keys = ON');
+    // Emptying parents before children is a foreign-key violation on MySQL just
+    // as it is on SQLite, so both engines get the constraints switched off here
+    // rather than only the one the suite usually runs on.
+    $sqlite = test_driver() === 'sqlite';
+    db()->exec($sqlite ? 'PRAGMA foreign_keys = OFF' : 'SET FOREIGN_KEY_CHECKS=0');
+    try {
+        foreach ($tables as $table) db()->exec('DELETE FROM '.sql_name($table, 'table'));
+        if ($sqlite) db()->exec('DELETE FROM sqlite_sequence');
+    } finally {
+        db()->exec($sqlite ? 'PRAGMA foreign_keys = ON' : 'SET FOREIGN_KEY_CHECKS=1');
     }
     // The counter connection is separate by design, so clear it through itself.
     run_counter('DELETE FROM rate_limits');

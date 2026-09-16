@@ -82,14 +82,23 @@ test that has never failed has not been tested.
 
 ## Honesty about what has been verified
 
-The test suite runs against a SQLite translation of the schema
-(`tests/sqlite-driver.php`). **This proves the PHP logic, not the MySQL
-dialect.** Migrations 002–006 have never executed against MySQL or MariaDB.
-Say so rather than implying coverage that does not exist — the operator is
-making decisions about her family's data based on what you claim.
+The default suite runs against a SQLite translation of the schema
+(`tests/sqlite-driver.php`). **That proves the PHP logic, not the SQL dialect.**
+It also prints, at the end of a run, whatever it could not cover.
 
-`CRM_TEST_DRIVER=mysql php tests/run.php` runs the same assertions against a
-real engine and reports what the SQLite driver could not cover.
+The whole suite has been run against **MariaDB 10.11.14**, where all six
+migrations apply and all assertions pass. Before claiming a change works on the
+real engine, run it there yourself:
+
+```bash
+tests/mariadb-local.sh            # throwaway server, whole suite, then shuts down
+tests/mariadb-local.sh billing    # one suite
+```
+
+**MySQL 8.0 itself is still unverified** — MariaDB is one of the two supported
+engines, not both. Say which engine you actually ran on rather than implying
+coverage that does not exist: the operator is making decisions about her
+family's data based on what you claim.
 
 ## The person using this
 

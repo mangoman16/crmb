@@ -19,13 +19,26 @@ PHP logic and the shape of the data. It does **not** prove the SQL runs on MySQL
 Anything the translation cannot represent is printed at the end of a run rather
 than skipped quietly, so coverage cannot silently shrink.
 
-To prove the SQL, run against a real database whose name ends in `_test`:
+To prove the SQL, run against a real engine. On a machine with no database
+server, this starts a throwaway one, runs the suite and stops it again:
+
+```bash
+tests/mariadb-local.sh            # the whole suite
+tests/mariadb-local.sh billing    # one suite
+```
+
+It keeps its data in a temporary directory and never touches an existing
+installation. Against a database you manage yourself:
 
 ```bash
 CRM_TEST_DRIVER=mysql CRM_CONFIG=/path/to/test-config.php php tests/run.php
 ```
 
-The harness refuses to run if that database name does not end in `_test`.
+The harness drops and recreates every table in that database on each run, and
+refuses to start if its name does not end in `_test`.
+
+The suite has been run against **MariaDB 10.11.14** with everything passing.
+**MySQL 8.0 has not been tried**, so do not claim it.
 
 ## Writing a test
 

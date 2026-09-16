@@ -5,12 +5,17 @@ response. Every line of `app/`, `views/`, `public/`, `bin/` and
 `database/` was read. Findings are grouped by what they mean for the operator,
 not by file.
 
-Verification available in this environment is stated honestly per finding. No
-MySQL or MariaDB server could be installed here, so nothing was exercised
-against the real database engine. What *was* exercised: the pure helper
-functions directly, and the real templates rendered by the real PHP against a
-SQLite translation of the schema, driven in Chromium at six viewport widths in
-both colour schemes.
+Verification available in this environment is stated honestly per finding. For
+most of this review no database server could be installed, so the work was done
+against a SQLite translation of the schema — the pure helpers called directly,
+and the real templates rendered by the real PHP, driven in Chromium at six
+viewport widths in both colour schemes.
+
+**That gap has since been closed against MariaDB 10.11.14**: the migrations, the
+upgrade path and the whole test suite now run on a real engine. See *Verified on
+a real database engine* below for what that established, and *Not done* for what
+it did not (MySQL 8.0 itself, and live SMTP). Findings written before that point
+still describe the evidence available when they were written.
 
 ## Summary
 
@@ -491,21 +496,61 @@ and runs the whole suite in a few seconds. What that established:
   run was found to have been measuring unstyled pages because the preview
   server handed static files to the front controller.
 
+## Verified on a real database engine
+
+Earlier rounds could not install a database server, so every claim was qualified
+by the SQLite translation the suite runs on. That gap is now closed against
+**MariaDB 10.11.14**.
+
+- **All six migrations apply** — 57 statements. That includes the two
+  `ALTER TABLE ... ADD CONSTRAINT` statements in migration 004 which the SQLite
+  driver could not represent and had skipped entirely; both foreign keys
+  (`charge_class`, `charge_profile`) exist in the resulting schema, alongside
+  `charges_ibfk_1`. All 31 tables came out InnoDB / `utf8mb4_unicode_ci`.
+- **The upgrade path works.** Re-running `migrate` applies nothing. `update`
+  runs maintenance-on → migrate → count verification → maintenance-off. A
+  migration edited after being applied is refused by name. `check` returns its
+  report.
+- **The whole suite passes**, three consecutive runs, with the SQLite driver's
+  one uncovered item — the foreign key on `charges` — now genuinely exercised.
+- **Every page renders.** Twenty-three admin pages returned HTTP 200 with no
+  PHP notice, warning or `SQLSTATE` in the output.
+- **Writes behave.** Creating and editing a student through the real forms
+  recorded versions as intended, and **undo ran with real `SELECT … FOR UPDATE`
+  row locks** — a statement the SQLite driver strips, so that code had never
+  before executed as written.
+- **Billing is idempotent on the real engine.** Three consecutive `billing:run`
+  invocations created one charge, then none, then none, enforced by the unique
+  index `charge_billing_key`, which was confirmed present.
+- **Umlauts survive the round trip.** "Änderung zurückgenommen" stores as
+  `C384…C3BC…` — correct UTF-8 — and renders correctly in the browser. The
+  connection sets `charset=utf8mb4`, so the classic latin1 mangling does not
+  occur. Worth stating because a terminal rendered it as `?nderung` and that
+  looked like a defect until the bytes were read.
+
+### One defect this found
+
+The test harness could only ever run against a database with **no tables**.
+`test_boot()` dropped tables in a hand-maintained order, and MySQL refuses to
+drop a parent while a child still references it (error 1451). On an empty
+database every `DROP TABLE IF EXISTS` is a no-op and any order looks correct, so
+the first run passed and the second failed outright. `test_reset()` had the same
+latent hazard, disabling foreign-key checks for SQLite only.
+
+Both now read the table list from the database rather than a list that drifts
+from the schema, and switch the constraints off around the operation on either
+engine. Three consecutive runs now pass.
+
 ## Not done, and why
 
-- **Nothing was run against MySQL or MariaDB.** No server could be installed
-  here and there is no container runtime. The SQLite translation used for
-  rendering and for the test suite required rewriting the upsert idioms,
-  `FOR UPDATE`, `GET_LOCK`, `IF()`, `GREATEST`/`LEAST`, the inline index syntax
-  and `ALTER TABLE ... ADD CONSTRAINT`, so it proves the templates and PHP logic
-  work — not that the SQL runs on the target engine. Run
-  `CRM_TEST_DRIVER=mysql php tests/run.php` against a disposable database to
-  close that gap; the runner lists what the SQLite driver could not cover, which
-  today is the foreign key on `charges`.
-  **Migrations 002 to 006 have never been executed against MySQL or
-  MariaDB.** Run `php bin/console.php update` against a disposable copy before
-  touching anything real. The two `ADD CONSTRAINT` statements in 004 are the
-  ones SQLite could not exercise at all.
+- **MySQL 8.0 itself has not been tried.** The application targets MySQL 8.0+
+  *or* MariaDB 10.11+; the verification below was done on MariaDB 10.11.14. The
+  two engines are close but not identical, so the honest claim is "verified on
+  MariaDB". `tests/mariadb-local.sh` repeats that run from nothing; pointing
+  `CRM_TEST_DRIVER=mysql CRM_CONFIG=…` at a MySQL 8 instance would close the
+  rest. Whichever engine the host actually runs, do what you would do anyway:
+  `php bin/console.php update` against a disposable copy before touching
+  anything real.
 - **`tests/integration.py` and `tests/smtp_integration.py` were not run**, for
   the same reason. They need a live database and a local SMTP capture server.
   They are the right next step on a machine that has both.

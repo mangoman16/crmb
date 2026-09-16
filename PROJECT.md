@@ -66,25 +66,41 @@ to change, and there is no migration debt.
 | Students, contacts, custom fields | Built, tested | High |
 | Classes and membership | Built, tested | High |
 | Attendance | Built, tested, mobile-measured | High |
-| Monthly billing | Built, edges tested, idempotent | High on logic, **untested against MySQL** |
+| Monthly billing | Built, edges tested, idempotent on MariaDB | High |
 | Payment QR (SEPA) | Built, decoded end-to-end from the rendered page | High |
 | Skill assessment | Built, tested, invisible to parents | High |
 | Messages, news, email queue | Built | Medium — **no live SMTP has ever run** |
-| Transactions and undo | Built, tested | High on logic, **untested against MySQL** |
+| Transactions and undo | Built, tested, undo exercised with real row locks | High |
 | Privacy notice | **Placeholder drafts** | Not started in substance |
 | Backups | **Explicitly the operator's job** | Out of scope by agreement |
 
-### The one risk that dominates all others
+### The risk that dominated everything else — now closed
 
-**Migrations 002–006 have never run against MySQL or MariaDB.** The test suite
-runs on a SQLite translation, which proves the PHP logic and nothing about the
-SQL dialect. Two `ALTER TABLE ... ADD CONSTRAINT` statements in migration 004
-could not be exercised at all.
+This document previously led with the fact that no migration had ever run
+against a real database engine. **That has now been done, against MariaDB
+10.11.14.** What was verified:
 
-Everything in Phase 1 is downstream of closing this. It is not a big job — it
-needs a disposable database and an afternoon — but until it is done, every
-confidence rating above carries an asterisk, and this document will keep saying
-so.
+- All six migrations apply — 57 statements, including the two
+  `ALTER TABLE ... ADD CONSTRAINT` in migration 004 that the SQLite translation
+  could not represent at all. Both foreign keys exist in the resulting schema.
+- Re-running `migrate` applies nothing; the checksum guard refuses a migration
+  edited after it shipped; `update` and `check` both work end to end.
+- The whole test suite passes on the real engine, three runs in a row, with
+  nothing left uncovered.
+- Every page loads with no PHP error, and writes work: creating and editing a
+  student, the version history, and **undo using real `SELECT … FOR UPDATE` row
+  locks** — which the SQLite driver had been dropping silently, so that path had
+  never actually executed as written.
+- `billing:run` three times in a row created one charge, then none, then none,
+  enforced by a unique index that genuinely exists on the real engine.
+
+`tests/mariadb-local.sh` does all of this from nothing on a machine with no
+database server, so it is repeatable rather than a thing that happened once.
+
+**What is still not proven: MySQL 8.0 itself.** INSTALL.md names MySQL 8.0+ *or*
+MariaDB 10.11+; only the second has been tried. The dialect risk is now small
+rather than open, but it is not zero, and the honest sentence is "verified on
+MariaDB" rather than "verified on the real engine".
 
 ---
 
@@ -95,15 +111,15 @@ Phase 2 starts first.
 
 | # | Work | Why it blocks | Done when |
 |---|---|---|---|
-| 1.1 | Run migrations + `CRM_TEST_DRIVER=mysql php tests/run.php` against a disposable MySQL/MariaDB | The dialect is unproven | The suite passes on the real engine, and the runner reports nothing uncovered |
+| 1.1 | ~~Run migrations and the suite against a real engine~~ **Done on MariaDB 10.11.14** | The dialect was unproven | ✅ Six migrations apply, suite passes, nothing left uncovered. Repeat with `tests/mariadb-local.sh`. Remaining: the same on MySQL 8.0, if that is the target |
 | 1.2 | Send one real email end to end | The queue has never talked to a real server | An invitation arrives, is accepted, and a password is set |
 | 1.3 | Complete both privacy drafts | Invitations stay disabled until they are done, by design | Both languages released in settings |
 | 1.4 | Set up and verify the three cron jobs | Without `mail:work`, no email is ever sent | Each has run on schedule and left a log |
 | 1.5 | Confirm the backup arrangement, including `app_key` | A dump without that key does not restore the SMTP password or queued mail | The operator has restored a copy somewhere safe |
 | 1.6 | One real week of her data, entered by her, watched | Everything above is theory until she touches it | She has added a student, taken a register and sent a message unaided |
 
-**1.6 is the real gate.** The first five are checkable; only the sixth tells us
-whether this works for the person it was built for. Expect it to generate more
+With 1.1 closed, **1.6 is the real gate.** The rest are checkable; only the
+sixth tells us whether this works for the person it was built for. Expect it to generate more
 work than the five above combined, and treat whatever it surfaces as Phase 1,
 not Phase 2.
 
