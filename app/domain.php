@@ -132,7 +132,7 @@ function save_custom_fields(int $id,bool $new): void {
     }
 }
 function filters_from(array $data): array {
-    $keys=['q','status','absence','overdue','tariff','level','age_group','field','value']; $out=[];
+    $keys=['q','status','absence','overdue','tariff','level','age_group','course','field','value']; $out=[];
     foreach($keys as $key) if(isset($data[$key]) && is_scalar($data[$key])) $out[$key]=mb_substr(trim((string)$data[$key]),0,200);
     return $out;
 }
@@ -143,6 +143,9 @@ function filtered_students(array $f,?int $accountId=null): array {
     if(!empty($f['status'])){$where[]='s.status=?';$p[]=$f['status'];}
     if(!empty($f['tariff'])){$where[]='s.tariff_id=?';$p[]=(int)$f['tariff'];}
     if(!empty($f['level'])){$where[]='s.level_id=?';$p[]=(int)$f['level'];}
+    // "Who is in Monday's group" is the view she builds most often, so a course
+    // is a filter in its own right rather than something to be read off a card.
+    if(!empty($f['course'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.class_id=? AND cs.left_on IS NULL)';$p[]=(int)$f['course'];}
     // An age group is usually not stored on the student, so filtering by one has
     // to cover both the pinned case and the dates that fall into the band. The
     // bounds become dates once here rather than a function call per row.

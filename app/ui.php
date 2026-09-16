@@ -37,6 +37,26 @@ function file_field(string $name,string $label,string $kind='proof',string $hint
     echo '<small>'.e(($hint?$hint.' ':'').t('Höchstens ','At most ').upload_limit_label().'.').'</small></div>';
 }
 /**
+ * A saved filter, in the words that made it.
+ *
+ * A chip called "Montag" tells her nothing a month later. This says what the
+ * view actually selects, which is also how she notices that two of them are the
+ * same view under different names.
+ */
+function filter_summary(array $f): string {
+    $parts=[];
+    if(!empty($f['q']))        $parts[]=t('Suche: ','Search: ').$f['q'];
+    if(!empty($f['course']))   $parts[]=(string)(scalar('SELECT name FROM classes WHERE id=?',[(int)$f['course']])?:t('Kurs','Course'));
+    if(!empty($f['level']))    $parts[]=level_name((int)$f['level']);
+    if(!empty($f['age_group']))$parts[]=(string)(scalar('SELECT name FROM age_groups WHERE id=?',[(int)$f['age_group']])?:'');
+    if(!empty($f['status']))   $parts[]=status_label((string)$f['status']);
+    if(!empty($f['absence']))  $parts[]=t('abwesend: ','away: ').reason_label((string)$f['absence']);
+    if(!empty($f['tariff']))   $parts[]=(string)(scalar('SELECT name FROM tariffs WHERE id=?',[(int)$f['tariff']])?:'');
+    if(!empty($f['overdue']))  $parts[]=t('überfällig','overdue');
+    return $parts?implode(' · ',array_filter($parts)):t('alle Schüler','all students');
+}
+
+/**
  * A labelled form field.
  *
  * $placeholder is for compact rows where a visible label would crowd the
@@ -123,6 +143,7 @@ function render_filters(array $f,string $target='students'): void {
     input('q',t('Suche','Search'),$f['q']??'','search');
     select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$f['status']??'');
     select_field('absence',t('Aktuell abwesend','Currently absent'),array_combine(array_keys(reasons()),array_map('reason_label',array_keys(reasons()))),$f['absence']??'');
+    select_field('course',t('Kurs','Course'),array_column(training_classes(),'name','id'),$f['course']??'');
     select_field('level',t('Leistungsgruppe','Level'),array_column(levels(),'name','id'),$f['level']??'');
     select_field('age_group',t('Altersgruppe','Age group'),array_column(age_groups(),'name','id'),$f['age_group']??'');
     echo '<details class="filter-more" '.(!empty($f['tariff'])?'open':'').'><summary>'.e(t('Tarif und eigene Felder','Tariff and custom fields')).'</summary><div class="grid two">';

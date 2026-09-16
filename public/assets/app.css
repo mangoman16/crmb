@@ -239,3 +239,23 @@ html[data-text=largest]{font-size:21px}
 
 /* A filter chip that is the one currently showing. */
 .chip.is-on{border-color:var(--teal);color:var(--teal);background:var(--teal-soft)}
+
+/* A saved view: its name, and underneath it what it actually selects. */
+.view-chip{flex-direction:column;align-items:flex-start;gap:1px;min-height:44px;padding:6px 12px;text-align:left}
+.view-chip strong{font-size:.875rem;color:inherit}
+.view-chip small{font-size:.75rem;opacity:.8}
+
+/* The timeline on the start page: past above, today marked, then what is next.
+   A list rather than a calendar grid, because the question is "when next" and a
+   month grid on a phone is 35 cells of which 4 matter. */
+.timeline{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.timeline-item{display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid var(--border);min-height:56px}
+.timeline-item:first-child{border-top:0}
+.timeline-when{flex:0 0 108px;font-size:.875rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.timeline-what{flex:1;min-width:0;display:grid;gap:2px}
+.timeline-what small{color:var(--muted)}
+.timeline-item.is-past{opacity:.6}
+.timeline-item.is-today{background:var(--teal-soft);border-radius:10px;padding-left:14px;padding-right:14px;border-top-color:transparent}
+.timeline-item.is-today .timeline-when{color:var(--teal-ink);font-weight:650}
+.timeline-item.is-empty .timeline-what small{font-style:italic}
+@media(max-width:560px){.timeline-item{flex-wrap:wrap;gap:6px 12px}.timeline-when{flex-basis:100%}}
