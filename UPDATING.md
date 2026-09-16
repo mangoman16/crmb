@@ -155,6 +155,13 @@ Schema changes do need a migration. Add a new numbered file in
 `DEFAULT` where the type allows, so rows written by the previous version cannot
 leave a NULL the new code has to guess about.
 
+A migration must not reduce the row count of any table in
+`schema_guarded_tables()`. The update refuses one that does, on purpose: every
+migration in this project so far only adds, so a count going down means something
+went wrong rather than something being cleaned up. A future release that
+genuinely has to remove rows — merging duplicates, say — needs that guard
+widened deliberately, in the same commit, with the reason written down.
+
 ## With release directories: before the maintenance window
 
 Everything from here on describes a server with a shell where releases live in
