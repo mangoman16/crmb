@@ -191,3 +191,14 @@ html[data-text=largest]{font-size:21px}
 .notice.warn{background:var(--amber-bg);color:var(--amber-ink);border-left-color:var(--amber-border)}
 .notice strong{display:block;margin-bottom:4px}
 .badge.amber{background:var(--amber-bg);color:var(--amber-ink)}
+
+/* A field whose default is printed beside it. The note sits under the box, so it
+   reads as part of the field rather than as a separate paragraph. */
+.with-default{margin-bottom:17px}
+.with-default .field{margin-bottom:0}
+.default-note{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:.8125rem;color:var(--muted);margin-top:7px}
+.default-note strong{color:var(--ink-2);font-weight:620}
+.default-note .chip{min-height:32px;padding:4px 10px;font-size:.8125rem}
+.with-default.is-default .default-note{color:var(--teal-ink)}
+.with-default.is-default .default-note strong{color:var(--teal-ink)}
+.with-default:not(.is-default) input{border-color:var(--teal);box-shadow:inset 3px 0 var(--teal)}

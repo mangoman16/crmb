@@ -29,8 +29,9 @@ try {
                 flash($note);$params=[];
             }
             go($target,$params);
-        } catch(UserError $ex) {flash($ex->getMessage(),'error');}
+        } catch(UserError $ex) {flash($ex->getMessage(),'error');remember_input(post('action'));}
         catch(PDOException $ex) {
+            remember_input(post('action'));
             error_log('CRM database action: '.$ex->getCode());
             if($ex->getCode()==='23000' && str_contains($ex->getMessage(),'form_requests'))
                 flash(t('Diese Eingabe wurde bereits verarbeitet.','This submission has already been processed.'),'error');
@@ -52,6 +53,10 @@ try {
     if($user)touch_last_seen($user);
     if(in_array($page,['accounts','payments','compose','outbox','classes'],true))require_staff();
     if(in_array($page,['settings','history'],true))require_admin();
+    // Read once, like the flash message: a submission that was rejected is offered
+    // back to the form that follows and then forgotten, so it cannot reappear on a
+    // page she opens tomorrow.
+    take_held_input();
     ob_start();
     if($page==='not_found')echo '<h1>404</h1><p>'.e(t('Seite nicht gefunden.','Page not found.')).'</p>';
     else require ROOT.'/views/'.$page.'.php';

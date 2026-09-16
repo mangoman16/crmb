@@ -20,8 +20,7 @@ function icon(string $name): string {
     return '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'.($paths[$name]??$paths['arrow']).'</svg>';
 }
 function start_form(string $action,array $hidden=[],string $class='form'): void {
-    global $page;
-    form_open($action,$hidden+['return_page'=>$page??'dashboard','return_id'=>(int)($_GET['id']??0),'return_tab'=>(string)($_GET['tab']??'')],$class);
+    form_open($action,$hidden+['return_page'=>current_page(),'return_id'=>(int)($_GET['id']??0),'return_tab'=>(string)($_GET['tab']??'')],$class);
 }
 /**
  * A labelled form field.
@@ -31,6 +30,9 @@ function start_form(string $action,array $hidden=[],string $class='form'): void 
  * because a bare box tells a sighted user nothing either.
  */
 function input(string $name,string $label,mixed $value='',string $type='text',bool $required=false,string $hint='',string $placeholder=''): void {
+    // What she typed wins over what the record holds, so a form rejected for one
+    // bad character comes back filled in rather than blank.
+    $held=held_input($name,$value); if(!is_array($held)) $value=$held;
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
     $labelClass=$label===''?' class="visually-hidden"':'';
     echo '<div class="field"><label'.$labelClass.' for="'.e($id).'">'.e($label!==''?$label:($placeholder!==''?$placeholder:$name)).($required?' <span aria-hidden="true">*</span>':'').'</label>';
@@ -40,13 +42,44 @@ function input(string $name,string $label,mixed $value='',string $type='text',bo
     if($hint)echo '<small>'.e($hint).'</small>';echo '</div>';
 }
 function select_field(string $name,string $label,array $options,mixed $value='',bool $required=false,bool $multiple=false): void {
+    $value=held_input($name,$value);
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
     echo '<div class="field"><label for="'.e($id).'">'.e($label).($required?' *':'').'</label><select id="'.e($id).'" name="'.e($name).($multiple?'[]':'').'" '.($required?'required ':'').($multiple?'multiple size="4"':'').'>';
     if(!$multiple)echo '<option value="">'.e(t('Auswählen','Select')).'</option>';
     foreach($options as $k=>$v)echo '<option value="'.e($k).'" '.(($multiple?in_array((string)$k,array_map('strval',is_array($value)?$value:[]),true):(string)$k===(string)$value)?'selected':'').'>'.e($v).'</option>';
     echo '</select></div>';
 }
-function check_field(string $name,string $label,bool $value=false): void { echo '<label class="check"><input type="checkbox" name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label).'</span></label>'; }
+function check_field(string $name,string $label,bool $value=false): void {
+    // An unticked box sends nothing at all, so "held, and absent" means unticked
+    // rather than "no opinion" - checking holding_input() first is what tells the
+    // two apart.
+    if(holding_input()) $value=held_input($name,null)!==null;
+    echo '<label class="check"><input type="checkbox" name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label).'</span></label>';
+}
+
+/**
+ * A field that falls back to a default when it is left empty.
+ *
+ * "Leer lassen, um den Standardpreis des Tarifs zu übernehmen" told her there was
+ * a default without ever telling her what it was, so the only way to find out was
+ * to save and look. The default is now printed next to the field, a value that
+ * differs from it is marked as her own, and one button puts it back.
+ *
+ * $defaultValue is what goes into the box when she presses that button;
+ * $defaultLabel is how the default reads to a person - money, a date, a name.
+ */
+function default_field(string $name,string $label,mixed $value,string $defaultValue,string $defaultLabel,string $type='text',string $hint=''): void {
+    $shown=(string)held_input($name,$value);
+    $isDefault=$shown==='';
+    echo '<div class="with-default'.($isDefault?' is-default':'').'" data-default="'.e($defaultValue).'">';
+    input($name,$label,$shown,$type,false,$hint,$defaultLabel);
+    echo '<p class="default-note">'
+        .'<span>'.e($isDefault?t('Standard wird übernommen: ','Using the default: '):t('Standard: ','Default: ')).'<strong>'.e($defaultLabel!==''?$defaultLabel:t('keiner','none')).'</strong></span>';
+    // Without JavaScript the default is still readable, which is the part that
+    // was missing; the button is the convenience on top of it.
+    if($defaultValue!=='') echo '<button type="button" class="chip default-reset" hidden>'.e(t('Standard übernehmen','Use the default')).'</button>';
+    echo '</p></div>';
+}
 function submit_button(string $label='',string $class='primary'): void { echo '<button class="button '.e($class).'" type="submit">'.e($label?:t('Speichern','Save')).'</button>'; }
 function page_head(string $title,string $description='',string $action=''): void { echo '<div class="page-heading"><div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>'; }
 function link_button(string $label,string $page,array $params=[],string $class='primary'): string { return '<a class="button '.e($class).'" href="'.e(url($page,$params)).'">'.e($label).'</a>'; }
@@ -68,6 +101,10 @@ function student_card(array $s): void {
     echo '</div>'.icon('arrow').'</a>';
 }
 function render_filters(array $f,string $target='students'): void {
+    // A GET form is never rejected, so it has no held submission to offer back.
+    // Saying so explicitly keeps the fields below from picking up the context of
+    // whichever form was written out before them.
+    form_context('');
     echo '<form method="get" class="filters"><input type="hidden" name="page" value="'.e($target).'">';
     input('q',t('Suche','Search'),$f['q']??'','search');
     select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$f['status']??'');

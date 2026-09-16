@@ -77,3 +77,26 @@ document.querySelectorAll('[data-mark-all]').forEach(button => {
     });
   });
 });
+
+// A field that takes a default when it is left empty: the default is printed
+// next to it either way, and this adds the button that fills it in. The class on
+// the wrapper is what the styling uses to show "this is the default" rather than
+// "this is your own value", and it has to follow the box as it is typed in.
+document.querySelectorAll('.with-default').forEach(wrapper => {
+  const field = wrapper.querySelector('input, textarea');
+  const button = wrapper.querySelector('.default-reset');
+  if (!field) return;
+  const sync = () => { wrapper.classList.toggle('is-default', field.value.trim() === ''); };
+  field.addEventListener('input', sync);
+  if (button) {
+    button.hidden = false;
+    button.addEventListener('click', () => {
+      // Empty means "follow the default", which is what the field already does;
+      // writing the number in would freeze today's value into the record.
+      field.value = '';
+      sync();
+      field.focus();
+    });
+  }
+  sync();
+});

@@ -369,10 +369,14 @@ function render_view(string $page, array $query = []): string {
     $user = current_user();
     if (!$public && !$user) throw new RuntimeException('View ' . $page . ' needs a signed-in account.');
 
-    // The query string belongs to this render only; anything checked afterwards
-    // should see what it set up, not the leftovers of a page.
+    // The query string and the current page belong to this render only; anything
+    // checked afterwards should see what it set up, not the leftovers of a page.
+    // public/index.php holds $page in a global, and start_form() reads it from
+    // there, so the harness has to publish it the same way.
     $restore = $_GET;
+    $restorePage = $GLOBALS['page'] ?? null;
     $_GET = $query;
+    $GLOBALS['page'] = $page;
     $level = ob_get_level();
     ob_start();
     try {
@@ -383,6 +387,7 @@ function render_view(string $page, array $query = []): string {
         throw $e;
     } finally {
         $_GET = $restore;
+        if ($restorePage === null) unset($GLOBALS['page']); else $GLOBALS['page'] = $restorePage;
     }
 }
 
