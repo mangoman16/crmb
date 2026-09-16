@@ -13,22 +13,66 @@ shell.
 
 Each request compares the migration files on disk against what the database
 records as applied. On the common path that is one file read and nothing else.
-When they differ:
+When they differ, an advisory database lock is taken first, so two visitors
+arriving together cannot both migrate — the second one waits, then finds nothing
+left to do. Then, inside that lock and **before the database is touched at all**:
 
-1. An advisory database lock is taken, so two visitors arriving together cannot
-   both migrate. The second one waits, then finds nothing left to do.
-2. Each unrecorded migration is applied in name order and recorded with the
-   checksum of the file it came from.
-3. A migration that was edited after being applied is refused **by name**,
-   because the checksum no longer matches.
-4. The seeded defaults are refreshed for anything new, and the page is served.
+1. **Are these files newer than the database?** If the database records
+   migrations these files do not contain, this is a downgrade: the wrong package,
+   or an older one put back. It stops. Without this check nothing would be
+   pending, the update would look like a success, and the portal would serve old
+   code against a newer schema — the shape of problem that loses data quietly
+   rather than failing loudly.
+2. **Did the whole upload arrive?** The package ships a `MANIFEST` of every PHP
+   and SQL file with its checksum. A file manager extracts a ZIP one file at a
+   time and an FTP client in text mode rewrites the line endings of everything it
+   copies; both leave a directory that lists perfectly. A mismatch stops the
+   update and names the files. A git checkout ships no manifest and is skipped.
+3. **Can a backup be written?** A full SQL dump goes to `storage/backups` before
+   anything is migrated. If it cannot be written, nothing is migrated. See
+   [Backups](#backups) for the way past this when you have taken your own.
+4. Each unrecorded migration is then applied in name order and recorded with the
+   checksum of the file it came from. A migration that was edited after being
+   applied is refused **by name**, because the checksum no longer matches.
+5. **Is everything still there?** Rows in `accounts`, `students`, `contacts`,
+   `field_values`, `absences`, `charges`, `payments`, `threads`, `messages` and
+   `news` are counted before and after. A count that fell stops the update. Counts
+   do not prove an update was correct, but a count that fell proves it was not —
+   and this catches it while the backup is still the newest thing that happened.
+6. The seeded defaults are refreshed for anything new, and the page is served.
 
-If any of that fails the portal answers 503 and stays closed, naming the
-migration and which statement of it stopped. The full database error goes to the
-hosting error log. Nobody sees a half-migrated portal.
+If any step fails the portal answers 503 and stays closed, saying in German and
+English what went wrong and what to do. It never prints SQL: that address is
+public and a parent may be the one looking at it. The full database error goes to
+the hosting error log.
 
-While maintenance mode is on this is skipped entirely, so an operator applying a
+While maintenance mode is on all of this is skipped, so an operator applying a
 migration by hand from a shell cannot race the web request.
+
+## Backups
+
+A full SQL dump of every table, written before any migration runs. Plain SQL
+because that is what the import screen in every hosting panel accepts.
+
+- **Where:** `storage/backups`, beside the maintenance flag, so a deployment with
+  separate release folders keeps them across a switch. The folder denies itself
+  over HTTP twice — `storage/.htaccess` and a second deny file written into the
+  folder itself — and each name carries four random bytes, so a server that ever
+  failed to deny it still could not be walked.
+- **How many:** the last five. Older ones are removed as new ones arrive, because
+  a portal nobody prunes eventually fills the disk quota, which is its own outage.
+- **On demand:** `php bin/console.php backup [reason]`, or look at
+  **Einstellungen → System**, which lists every copy with its date and size.
+- **Restoring** is deliberately not automated. Putting several megabytes of a
+  family's data back over a live database is a decision, and phpMyAdmin already
+  does it better than anything written here would. The procedure is in
+  [INSTALL.md](INSTALL.md#wiederherstellen).
+- **When it cannot be written** the update stops. If you have exported the
+  database from the panel yourself, create an empty file named `skip-backup` in
+  the `storage` folder; the next update proceeds without one and consumes the
+  file, so it cannot quietly disable the safeguard for every future update.
+
+A first install writes no backup: an empty database has nothing worth copying.
 
 ## Keep these three things separate
 
@@ -83,6 +127,10 @@ is safe to run repeatedly. Verified behaviour:
 |---|---|
 | Opening the portal with nothing new uploaded | One file read, no database work |
 | Running `update` again with nothing new | Applies nothing, reopens the portal |
+| Uploading an older package over a newer one | Refused by name; the database is not touched |
+| An extract that stopped halfway | Refused, naming the files that do not match |
+| `storage/` not writable when a migration is pending | Refused; no backup, no migration |
+| A migration that removes rows from a guarded table | Refused after the fact; the portal stays closed |
 | A new migration added in a later version | Applies only that one |
 | A column added later to an existing table | Existing rows get the column's default, never NULL |
 | A migration file edited after being applied | Refused by name, with the reason |

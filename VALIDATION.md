@@ -4,9 +4,9 @@
 
 Executed against PHP **8.4.19** and MariaDB **10.11.14**.
 
-- The whole test suite — **947 assertions across eleven suites** — passes on the
-  SQLite translation and against MariaDB 10.11.14, where all six migrations
-  apply.
+- The whole test suite — **1003 assertions on SQLite, 1016 against MariaDB
+  10.11.14** (the extra ones being the dump, whose dialect SQLite cannot run) —
+  passes on both, with all six migrations applying on MariaDB.
 - The browser installer was driven with real HTTP requests against a real,
   empty MariaDB database created the way a hosting panel creates one:
   a fresh upload redirects to setup; a wrong database password, an unassigned
@@ -30,10 +30,23 @@ Executed against PHP **8.4.19** and MariaDB **10.11.14**.
   a CSRF token, the settings screen reported the database version with nothing
   pending, and an expired token was cleaned up by the background worker with no
   cron job configured.
+- Every safeguard on the update path was exercised against MariaDB over real
+  HTTP: a new migration wrote exactly one backup before it applied; that backup
+  imported into a second, empty database **with no errors and every table, row,
+  setting, apostrophe, umlaut and backslash intact**; an older release was
+  refused and did not mark itself current; a single altered byte in `app/domain.php`
+  against the shipped manifest was refused and named; a backup that could not be
+  written left the migration unapplied; `storage/skip-backup` let it through once
+  and was consumed; and a seventh copy pruned the folder back to five without
+  removing the one just written.
 - Each new structural rule was verified by breaking what it guards: a directory
   losing its deny file, a new unguarded top-level directory, the rewrite loop
   guard being dropped, an unescaped value on the setup page, a truncated module,
-  a trusted `Host` header, a replaced `app_key`, and a second administrator.
+  a trusted `Host` header, a replaced `app_key`, a second administrator, the
+  downgrade guard, the row-count check, a manifest that stopped comparing
+  contents, a manifest path allowed to leave the release, a `skip-backup` file
+  that was not consumed, guessable backup file names, a backup folder moved into
+  the web directory, and pruning by name instead of by age.
 
 Not covered: a real hosting account. The layouts, the `.htaccess` rewrite and the
 LiteSpeed-specific `litespeed_finish_request()` path have not been exercised on

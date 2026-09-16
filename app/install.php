@@ -82,6 +82,36 @@ function install_setup_url(array $server): string { return install_base_url($ser
 // Does this server have what the application needs
 // ---------------------------------------------------------------------------
 
+/**
+ * Files in this release that do not match the manifest it shipped with.
+ *
+ * A file manager extracts a ZIP one file at a time, so an upload interrupted
+ * halfway leaves a release that is half old and half new, and an FTP client in
+ * text mode rewrites the line endings of every PHP file it touches. Both look
+ * like a working directory listing. The manifest is what tells them apart, and
+ * it is checked before a migration runs rather than on every page view.
+ *
+ * A git checkout ships no manifest and is skipped entirely: there, the files
+ * being different from a release is the normal state of affairs.
+ */
+function release_mismatches(?string $manifest = null, ?string $root = null): array {
+    $manifest ??= ROOT . '/MANIFEST';
+    $root ??= ROOT;
+    if (!is_file($manifest)) return [];
+    $mismatched = [];
+    foreach (file($manifest, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        // The manifest is ours, but it is also just a file on disk in the same
+        // upload; a line that is not the expected shape is itself a mismatch.
+        if (!preg_match('#^([a-f0-9]{64})  ([a-zA-Z0-9_./-]+)$#D', $line, $m) || str_contains($m[2], '..')) {
+            $mismatched[] = 'MANIFEST';
+            continue;
+        }
+        $path = $root . '/' . $m[2];
+        if (!is_file($path) || !hash_equals($m[1], hash_file('sha256', $path))) $mismatched[] = $m[2];
+    }
+    return $mismatched;
+}
+
 /** Writable means: the file if it is already there, otherwise the directory. */
 function install_writable(string $path): bool {
     return is_file($path) ? is_writable($path) : is_writable(dirname($path));

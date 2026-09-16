@@ -54,6 +54,39 @@ Installing and updating without a shell.
   every invitation and password-reset link, so a visitor-chosen value would send
   those wherever they liked.
 
+### What an update now refuses to do
+
+- **Run against an older package.** A downgrade used to pass in silence: nothing
+  is pending, so the update looked like a success and the portal then served old
+  code against a newer schema. It is now refused by name, and the release does
+  not mark itself as current.
+- **Run against a half-finished upload.** The package ships a `MANIFEST` of every
+  PHP and SQL file with its checksum. A file manager extracts a ZIP one file at a
+  time and an FTP client in text mode rewrites the line endings of everything it
+  copies; both leave a directory that lists perfectly. Checked only when a
+  migration is pending, so it costs nothing on an ordinary page view, and skipped
+  entirely for a git checkout, which ships no manifest.
+- **Run without a backup.** A full SQL dump of every table goes to
+  `storage/backups` before anything is migrated, written to a `.part` file and
+  renamed only once complete so a truncated copy can never look restorable. If it
+  cannot be written, nothing is migrated. The last five are kept. The folder
+  denies itself over HTTP twice and each name carries four random bytes. An
+  operator who has exported the database herself creates `storage/skip-backup`,
+  which is consumed on use so it cannot disable the safeguard permanently.
+- **Leave with fewer rows than it started with.** Counts across the ten tables a
+  family would notice are compared before and after; a drop keeps the portal
+  closed. This used to exist only in `console.php update`, so a portal updated by
+  page view had no such check at all.
+
+A failure now says what went wrong and what to do, in German and English, and
+never prints SQL: that address is public and a parent may be the one looking at
+it. `console.php update` runs the same code rather than its own copy.
+
+Found by the MariaDB run and fixed: `backup_prune()` sorted by file name, so
+several copies written in the same minute were ordered by their random suffix —
+it could have deleted the copy just taken before a migration. Ordering is by age
+now, and the names carry seconds rather than minutes.
+
 ## 0.4.0
 
 Transactions, undo, and a test suite that runs anywhere.

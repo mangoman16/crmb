@@ -16,6 +16,7 @@ if($command==='help'){
         ."php bin/console.php key\n"
         ."php bin/console.php migrate\n"
         ."php bin/console.php create-admin\n"
+        ."php bin/console.php backup [reason]   Write a full SQL copy into storage/backups\n"
         ."php bin/console.php mail:work [limit]\n"
         ."php bin/console.php billing:run [YYYY-MM]  Create the monthly charges (default: this month)\n"
         ."php bin/console.php billing:plan [YYYY-MM] Show what billing:run would do, changing nothing\n"
@@ -52,34 +53,30 @@ try{
     }
     if($command==='update'){
         // Deliberately sequential and loud: each step prints before it runs, so a
-        // failure says exactly how far the upgrade got.
+        // failure says exactly how far the upgrade got. The checks themselves -
+        // refusing older files, refusing an incomplete upload, the backup and the
+        // row-count comparison - all live in schema_apply(), so this and a page
+        // view cannot protect the operator differently.
         $already=is_file(maintenance_file());
-        echo $already?"Maintenance mode was already on; leaving it on at the end.\n":"1/4 Switching maintenance mode on\n";
+        echo $already?"Maintenance mode was already on; leaving it on at the end.\n":"1/3 Switching maintenance mode on\n";
         if(!$already && file_put_contents(maintenance_file(),now().PHP_EOL)===false)
             throw new RuntimeException('Cannot write '.maintenance_file().'. Check that the directory is writable.');
         try{
-            echo "2/4 Applying migrations\n";
-            $before=[]; $after=[];
-            foreach(['accounts','students','charges','payments','messages'] as $table)
-                $before[$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
-            passthru(escapeshellarg(PHP_BINARY).' '.escapeshellarg(__FILE__).' migrate',$code);
-            if($code!==0) throw new RuntimeException('Migration failed; maintenance mode stays on so nobody sees a half-migrated portal.');
-            echo "3/4 Verifying record counts\n";
-            foreach($before as $table=>$n) {
-                $after[$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
-                printf("    %-10s %d -> %d%s\n",$table,$n,$after[$table],$after[$table]<$n?'  *** ROWS LOST ***':'');
-            }
-            $lost=array_filter($after,fn($n,$t)=>$n<$before[$t],ARRAY_FILTER_USE_BOTH);
-            if($lost) throw new RuntimeException('Row counts dropped; maintenance mode stays on. Restore a backup before continuing.');
+            echo "2/3 Checking the release, backing up and migrating\n";
+            schema_apply(function(string $line){echo '    '.$line.PHP_EOL;});
         }catch(Throwable $e){
             fwrite(STDERR,"\nUpgrade stopped: ".$e->getMessage()."\n");
             fwrite(STDERR,"The portal stays in maintenance mode. Fix the cause, then run this again.\n");
             exit(1);
         }
-        if($already) { echo "4/4 Done. Maintenance mode left on, as it was before.\n"; exit; }
-        echo "4/4 Switching maintenance mode off\n";
+        if($already) { echo "3/3 Done. Maintenance mode left on, as it was before.\n"; exit; }
+        echo "3/3 Switching maintenance mode off\n";
         if(is_file(maintenance_file())&&!unlink(maintenance_file()))throw new RuntimeException('Cannot remove '.maintenance_file().'; the portal is still closed.');
         echo "Update complete.\n";exit;
+    }
+    if($command==='backup'){
+        echo backup_database($argv[2]??'manuell').PHP_EOL;
+        echo "Restore by importing that file into an empty database.\n";exit;
     }
     if($command==='create-admin'){
         function ask(string $label,bool $secret=false):string{

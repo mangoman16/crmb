@@ -17,8 +17,8 @@ $expected = [
     'app/history.php' => 80, 'app/mail.php' => 50, 'app/qr.php' => 20,
     'app/skills.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
-    'app/install.php' => 150, 'app/schema.php' => 100, 'app/tick.php' => 80,
-    'public/setup.php' => 180,
+    'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
+    'app/backup.php' => 100, 'public/setup.php' => 180,
 ];
 foreach ($expected as $file => $minLines) {
     $path = APP_ROOT.'/'.$file;
@@ -227,6 +227,21 @@ foreach (['app', 'bin', 'config', 'database', 'docs', 'storage', 'tests', 'views
 }
 ok(!is_file(APP_ROOT.'/public/.htaccess') || !str_contains((string)file_get_contents(APP_ROOT.'/public/.htaccess'), 'Require all denied'),
    'public/ is the one directory that does not, because it is the portal');
+
+case_('A database backup can never be served over the web');
+/* Each file holds every family's data in the clear, plus the encrypted SMTP
+   password. Three things have to be true at once, because this is the one folder
+   where a single mistake is a full disclosure. */
+ok(str_starts_with(backup_dir(), dirname(maintenance_file())),
+   'backups live beside the maintenance flag, under storage/, not in public/');
+ok(!str_contains(backup_dir(), APP_ROOT.'/public'), 'and never inside the web directory');
+ok(str_contains((string)@file_get_contents(APP_ROOT.'/storage/.htaccess'), 'Require all denied'),
+   'storage/ denies itself');
+$source = (string)file_get_contents(APP_ROOT.'/app/backup.php');
+ok(str_contains($source, "'/.htaccess'") && str_contains($source, 'Require all denied'),
+   'and backup_database() writes a second deny file into the folder it creates');
+ok(preg_match('/random_bytes\(\d+\)/', $source) === 1,
+   'the file name carries random bytes, so a server that ever fails to deny the folder still cannot be walked');
 
 case_('Every directory beside public/ is covered by that rule');
 /* A directory added later with no .htaccess would be served in full on hosting

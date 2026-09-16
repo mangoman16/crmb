@@ -45,6 +45,12 @@ rm -f  "$STAGE/$NAME/config/config.php" "$STAGE/$NAME/composer.json" "$STAGE/$NA
 rm -f  "$STAGE/$NAME/AUDIT.md" "$STAGE/$NAME/CLAUDE.md" "$STAGE/$NAME/PROJECT.md" \
        "$STAGE/$NAME/ROADMAP.md" "$STAGE/$NAME/GITHUB.md"
 
+# The list the running portal checks itself against before it migrates, so a
+# half-finished extract or an FTP client in text mode is caught before it can
+# touch the database. Written last, so it covers the tree as it ships.
+( cd "$STAGE/$NAME" && find app views public bin database -type f \( -name '*.php' -o -name '*.sql' \) \
+    | LC_ALL=C sort | xargs sha256sum > MANIFEST )
+
 # The upload has to arrive with these writable, or the installer cannot finish.
 chmod 755 "$STAGE/$NAME/config" "$STAGE/$NAME/storage"
 

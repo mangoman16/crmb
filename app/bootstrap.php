@@ -26,6 +26,7 @@ require __DIR__ . '/tx.php';
 require __DIR__ . '/validate.php';
 require __DIR__ . '/history.php';
 require __DIR__ . '/defaults.php';
+require __DIR__ . '/backup.php';
 require __DIR__ . '/schema.php';
 require __DIR__ . '/auth.php';
 require __DIR__ . '/domain.php';

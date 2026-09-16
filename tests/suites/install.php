@@ -161,6 +161,139 @@ foreach (array_slice($names, 3) as $done)
 is_same([], schema_pending(), 'and a full one leaves nothing, which is the state a running portal is in');
 db()->exec('DROP TABLE schema_migrations');
 
+case_('Older files than the database are refused, not silently accepted');
+/* The wrong ZIP, or an older one put back to undo something. Nothing is pending
+   so there is nothing to apply, and without this check the update looks like a
+   success while the portal serves old code against a newer schema - the shape of
+   problem that loses data quietly instead of failing. */
+db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at TEXT NOT NULL)');
+db()->exec('DELETE FROM schema_migrations');
+foreach ($names as $done)
+    run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)', [$done, hash_file('sha256', APP_ROOT.'/database/migrations/'.$done), now()]);
+is_same([], schema_extra(), 'a matching release has nothing extra');
+run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)',
+    ['099_from_a_newer_release.sql', str_repeat('0', 64), now()]);
+is_same(['099_from_a_newer_release.sql'], schema_extra(), 'a migration the files do not contain is reported');
+$refused = null;
+try { schema_refuse_unsafe(fn(string $l) => null); } catch (Throwable $e) { $refused = $e; }
+ok($refused instanceof UpdateBlocked, 'and the update is refused');
+ok(str_contains($refused?->de ?? '', 'älter'), 'in German, saying the files are older');
+ok(str_contains($refused?->en ?? '', 'older'), 'and in English');
+ok(!str_contains($refused?->de ?? '', '099_'), 'without a file name a parent reading the page cannot act on');
+ok(str_contains($refused?->getMessage() ?? '', '099_from_a_newer_release.sql'), 'the log line does name it');
+run("DELETE FROM schema_migrations WHERE version='099_from_a_newer_release.sql'");
+db()->exec('DROP TABLE schema_migrations');
+
+case_('An incomplete upload is refused before the database is touched');
+/* A file manager extracts one file at a time and an FTP client in text mode
+   rewrites every PHP file it copies. Both leave a directory that lists fine. */
+$tree = sys_get_temp_dir().'/crm-manifest-'.getmypid();
+@mkdir($tree.'/app', 0777, true);
+file_put_contents($tree.'/app/one.php', "<?php // one\n");
+file_put_contents($tree.'/app/two.php', "<?php // two\n");
+$manifest = $tree.'/MANIFEST';
+$write = function (array $files) use ($manifest, $tree): void {
+    $lines = [];
+    foreach ($files as $relative) $lines[] = hash_file('sha256', $tree.'/'.$relative).'  '.$relative;
+    file_put_contents($manifest, implode("\n", $lines)."\n");
+};
+$write(['app/one.php', 'app/two.php']);
+is_same([], release_mismatches($manifest, $tree), 'an intact upload matches');
+file_put_contents($tree.'/app/two.php', "<?php // two\r\n");          // FTP in text mode
+is_same(['app/two.php'], release_mismatches($manifest, $tree), 'a rewritten line ending is caught');
+file_put_contents($tree.'/app/two.php', "<?php // two\n");
+@unlink($tree.'/app/one.php');                                        // extract stopped partway
+is_same(['app/one.php'], release_mismatches($manifest, $tree), 'a file that never arrived is caught');
+file_put_contents($tree.'/app/one.php', "<?php // one\n");
+is_same([], release_mismatches($manifest, $tree), 'and it passes again once complete');
+file_put_contents($manifest, "not a manifest line\n");
+is_same(['MANIFEST'], release_mismatches($manifest, $tree), 'a mangled manifest is itself a mismatch');
+file_put_contents($manifest, str_repeat('a', 64)."  ../../etc/passwd\n");
+is_same(['MANIFEST'], release_mismatches($manifest, $tree), 'and a path trying to leave the release is refused, not hashed');
+is_same([], release_mismatches($tree.'/no-such-manifest', $tree),
+        'a git checkout ships no manifest and is skipped, rather than failing every update');
+@unlink($manifest); @unlink($tree.'/app/one.php'); @unlink($tree.'/app/two.php');
+@rmdir($tree.'/app'); @rmdir($tree);
+
+case_('An update that loses records keeps the portal closed');
+/* Counts do not prove an update was right, but a count that fell proves it was
+   not, and that is worth catching while the backup is still the newest thing
+   that happened. */
+$before = ['students' => 12, 'payments' => 40];
+does_not_throw(fn() => schema_verify_counts(['students' => 0], fn(string $l) => null),
+               'a table that only grew is fine');
+$dropped = null;
+try { schema_verify_counts($before, fn(string $l) => null); } catch (Throwable $e) { $dropped = $e; }
+ok($dropped instanceof UpdateBlocked, 'a table that shrank stops the update');
+ok(str_contains($dropped?->de ?? '', 'students'), 'and names the table');
+ok(str_contains($dropped?->de ?? '', 'storage/backups'), 'and says where the copy from beforehand is');
+does_not_throw(fn() => schema_verify_counts(['no_such_table' => 5], fn(string $l) => null),
+               'a table the release has not created yet is skipped rather than reported as lost');
+
+case_('The guarded tables are the ones a family would notice');
+foreach (['accounts', 'students', 'charges', 'payments', 'messages'] as $table)
+    ok(in_array($table, schema_guarded_tables(), true), $table.' is guarded');
+foreach (schema_guarded_tables() as $table)
+    ok(test_has_table($table), 'the guarded table '.$table.' exists in the schema');
+ok(array_key_exists('students', schema_counts()), 'counts are taken for it');
+
+case_('A backup is required before migrating, and the way past it is deliberate');
+is_same(test_driver() === 'mysql', backup_supported(),
+        'a dump is offered exactly where its dialect is understood');
+if (!backup_supported()) {
+    // Said out loud in the run's footer rather than left as a silent gap: the
+    // dump itself is only proven by tests/mariadb-local.sh.
+    test_unsupported(array_merge(test_unsupported(), ['the pre-update database backup (MySQL dialect)']));
+    throws(fn() => backup_database('test'), 'and elsewhere it throws rather than writing an unusable file', 'MySQL');
+}
+@unlink(backup_override_file());
+ok(!backup_override_claimed(), 'without the override file there is no way past the backup');
+file_put_contents(backup_override_file(), '');
+ok(backup_override_claimed(), 'the file in storage/ lets an operator who backed up herself proceed');
+ok(!is_file(backup_override_file()), 'and it is consumed, so it cannot quietly disable the next update too');
+ok(!backup_override_claimed(), 'a second update needs a fresh one');
+
+if (test_driver() === 'mysql') {
+    case_('The backup is real SQL carrying the real data');
+    /* Only reachable on the engine whose dialect it is written in. The proof
+       that it imports again lives outside this suite, because importing needs a
+       second database; see VALIDATION.md. */
+    foreach (glob(backup_dir().'/*.sql') ?: [] as $stale) @unlink($stale);
+    make_student(['first_name' => 'Sofía', 'last_name' => "O'Brien-Müller", 'internal_notes' => "a\\b \"c\"\nzweite Zeile"]);
+    make_student(['first_name' => 'Jonas', 'last_name' => 'Groß']);
+    $path = backup_database('suite');
+    ok(is_file($path), 'a file was written');
+    ok(str_ends_with($path, '.sql'), 'named .sql, which is what the panel import expects');
+    ok(!glob(backup_dir().'/*.part'), 'and no half-written file is left beside it');
+    $dump = (string)file_get_contents($path);
+    ok(str_contains($dump, 'SET FOREIGN_KEY_CHECKS=0'), 'constraints are relaxed so table order cannot break the import');
+    ok(str_contains($dump, 'SET NAMES utf8mb4'), 'and the charset is declared, or every umlaut comes back wrong');
+    ok(str_contains($dump, 'CREATE TABLE `students`'), 'the structure is in it');
+    ok(str_contains($dump, 'DROP TABLE IF EXISTS `students`'), 'and it is safe to import twice');
+    is_same(2, substr_count($dump, 'INSERT INTO `students` VALUES'), 'one statement per row, so a failed import names the row');
+    ok(str_contains($dump, 'Sofía') && str_contains($dump, 'Groß'), 'the data is there, umlauts intact');
+    ok(str_contains($dump, 'Restore by importing'), 'and it opens with what to do with it');
+
+    case_('Only the most recent copies are kept, and never the newest one');
+    /* The decoys are older than the copy that follows them but carry names that
+       sort above anything it can produce. Sorting by name rather than by age
+       would therefore prune the one file that must not be pruned: the copy taken
+       moments before a migration. */
+    foreach (backups() as $copy) @unlink($copy['path']);
+    for ($i = 0; $i <= BACKUP_KEEP; $i++) {
+        $decoy = backup_dir() . '/9999-12-31-235959-decoy' . $i . '-ffffffff.sql';
+        file_put_contents($decoy, '-- older, but named as though it were newer');
+        touch($decoy, time() - 3600);
+    }
+    $newest = backup_database('vor-update');
+    is_same(BACKUP_KEEP, count(backups()), 'a portal nobody prunes would eventually fill the disk quota');
+    ok(is_file($newest), 'and the copy just written survived its own pruning');
+    is_same(basename($newest), backups()[0]['name'], 'it is listed first, because the list is by age and not by name');
+    ok(backups()[0]['bytes'] > 0, 'with something in it');
+    foreach (backups() as $copy) @unlink($copy['path']);
+    run('DELETE FROM students');
+}
+
 case_('A migration that stops partway says which one and where');
 $stopped = new SchemaError('007_example.sql', 4, 12, 'ALTER TABLE students ADD COLUMN x INT', 'Duplicate column name');
 is_same('007_example.sql: 4/12', $stopped->summary(), 'the short form names the file and the statement');

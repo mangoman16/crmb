@@ -107,7 +107,9 @@ if ($post && $state !== 'installed' && !$blockers) {
             // which is why this is here rather than at the top of the file.
             $_SESSION = ['locale' => install_locale()];   // read by t(); no session is started here
             require __DIR__ . '/../app/bootstrap.php';
-            schema_apply();
+            // No safeguards on a first install: there is no earlier release to be
+            // older than, and an empty database has nothing worth copying.
+            schema_apply(null, safeguards: false);
             create_admin_account($form['admin_name'], $form['admin_email'], $password);
             $done = true;
         } catch (Throwable $e) {

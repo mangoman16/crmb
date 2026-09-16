@@ -153,6 +153,14 @@ function setting_schema(): array {
         ],
         // Written by schema_apply(); storage/schema.stamp is only a cache of it,
         // so a hosting account that cannot write there still skips the check.
+        'schema_written_by' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Datenbank zuletzt geschrieben von Version', 'Database last written by version'],
+        ],
+        'schema_last_update' => [
+            'kind' => 'raw', 'default' => [], 'group' => 'system', 'internal' => true,
+            'label' => ['Letzte Datenbankaktualisierung', 'Last database update'],
+        ],
         'schema_fingerprint' => [
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
             'label' => ['Stand der Migrationen', 'Applied migration set'],

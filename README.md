@@ -20,12 +20,13 @@ Version **0.5.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Editable German/English privacy drafts, acknowledgement and subscription records.
 - Light and dark appearance following the device, adjustable text size, and installable to a phone home screen.
 - A browser installer for hosting without a shell, versioned migrations that apply themselves when new files are uploaded, and a maintenance switch with an administrator bypass.
+- An update that refuses to run against an older package, an incomplete upload, a database it could not back up first, or a result with fewer rows than it started with.
 - Queued email, cleanup and optional monthly charges run without a cron job, just after a page has been served.
 - Every operator setting declared once with a type and a default, editable from the settings screen, so no value is ever undefined.
 - Online status for accounts, and email reminders for outstanding payments.
 - Undo: changes to the main records are versioned, listed under **Änderungen**, and can be put back — including restoring a deleted student under their original number.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs 947 assertions in a few seconds.
+- A test suite that needs no database server: `php tests/run.php` runs 1003 assertions in a few seconds.
 
 ## Install
 
@@ -64,9 +65,25 @@ Datenschutz**. Invitations stay disabled until both are done.
 
 Upload the new files over the old ones and open the portal. The database applies
 any new migrations on the first page view, guarded by a lock so two visitors
-arriving together cannot run them twice. If a migration fails the portal stays
-closed and names the file and statement that stopped, rather than opening half
-migrated.
+arriving together cannot run them twice.
+
+Before the database is touched at all, four things have to hold, and each one
+stops the update rather than proceeding on a guess:
+
+1. **The files are newer than the database.** An older package is a downgrade,
+   which would otherwise pass silently — nothing is pending, so the update would
+   look like a success while the portal ran old code against a newer schema.
+2. **The upload is complete.** The package ships a `MANIFEST` of every PHP and
+   SQL file with its checksum, so an extract that stopped halfway, or an FTP
+   client in text mode, is caught rather than migrated against.
+3. **A backup was written.** A full SQL dump goes to `storage/backups` first. No
+   backup, no migration. The last five are kept and older ones pruned.
+4. **No rows disappeared.** Counts across ten tables are compared before and
+   after; a count that fell keeps the portal closed.
+
+If anything fails the portal answers 503 and says in German and English what went
+wrong and what to do — never SQL, because that address is public and a parent may
+be the one reading it.
 
 `config/config.php` is not in the distribution package, so an upload cannot
 overwrite it. Keep its `app_key` forever: it decrypts the stored SMTP password
@@ -79,6 +96,7 @@ failed migration: [UPDATING.md](UPDATING.md).
 php bin/console.php update            # the same thing from a shell, with before/after counts
 php bin/console.php maintenance:on    # close the portal by hand
 php bin/console.php maintenance:off   # reopen it
+php bin/console.php backup            # a full SQL copy into storage/backups, on demand
 php bin/console.php check             # counts, totals and pending migrations, as JSON
 php bin/console.php version           # which release this directory is
 ```

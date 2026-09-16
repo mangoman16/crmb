@@ -102,16 +102,39 @@ sonst landen die Einladungen im Spam.
 Die neuen Dateien über die alten hochladen und das Portal öffnen. Die Datenbank
 passt sich beim ersten Aufruf selbst an. Kein weiterer Schritt.
 
-`config/config.php` wird dabei nicht überschrieben, weil sie in der ZIP-Datei
-nicht enthalten ist. Sie enthält den Schlüssel, mit dem das gespeicherte
-SMTP-Passwort entschlüsselt wird – **niemals löschen oder ersetzen**.
+Vorher prüft das Portal selbst vier Dinge, und bei jedem einzelnen bricht es ab,
+**bevor** es die Datenbank anfasst:
 
-Geht eine Datenbankänderung schief, bleibt das Portal geschlossen und zeigt,
-welche Migration wo stehen geblieben ist, statt halb aktualisiert zu öffnen.
-Details in [UPDATING.md](UPDATING.md).
+| Prüfung | Wenn sie nicht stimmt |
+|---|---|
+| Sind die Dateien neuer als die Datenbank? | Bei älteren Dateien (falsches Paket) bleibt das Portal geschlossen. Sonst würde alter Code die vorhandenen Daten falsch lesen. |
+| Ist der Upload vollständig? | Bei abgebrochenem Entpacken oder FTP im Textmodus bleibt das Portal geschlossen und nennt die betroffenen Dateien. |
+| Lässt sich eine Sicherung anlegen? | Ohne Sicherung wird nichts geändert. |
+| Sind danach noch alle Datensätze da? | Fehlen Schüler, Beiträge, Zahlungen oder Nachrichten, bleibt das Portal geschlossen. |
 
-Sicherungen macht dieses Programm nicht. Vor einem Update die Datenbanksicherung
-des Hostings prüfen.
+Die Sicherung ist eine vollständige SQL-Kopie der Datenbank und landet in
+`storage/backups`. Die letzten fünf werden behalten, ältere selbst gelöscht. Der
+Ordner ist über das Internet nicht erreichbar. Unter **Einstellungen → System**
+stehen alle vorhandenen Sicherungen mit Datum.
+
+`config/config.php` wird nicht überschrieben, weil sie in der ZIP-Datei nicht
+enthalten ist. Sie enthält den Schlüssel, mit dem das gespeicherte SMTP-Passwort
+entschlüsselt wird – **niemals löschen oder ersetzen**.
+
+Geht trotzdem eine Datenbankänderung schief, bleibt das Portal geschlossen und
+zeigt, welche Migration wo stehen geblieben ist, statt halb aktualisiert zu
+öffnen. Details und der Weg zurück: [UPDATING.md](UPDATING.md).
+
+### Wiederherstellen
+
+Im Hosting-Panel **phpMyAdmin** öffnen, die Datenbank auswählen, unter
+**Exportieren** zur Sicherheit den aktuellen Stand herunterladen, dann alle
+Tabellen löschen und unter **Importieren** die gewünschte Datei aus
+`storage/backups` einspielen. Die Datei bringt ihre eigenen Tabellen mit und
+lässt sich auch zweimal einspielen.
+
+Danach die passenden Programmdateien wiederherstellen: eine Sicherung von vor
+dem Update gehört zur vorherigen Version, also auch deren ZIP wieder hochladen.
 
 ## Optional: Cronjob statt Seitenaufruf
 
@@ -159,13 +182,17 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 | Beim Aufruf erscheint eine Dateiliste statt des Portals | Die `.htaccess`-Dateien wurden nicht mit entpackt. Der Dateimanager zeigt versteckte Dateien oft erst auf Wunsch an. |
 | Alles wirkt unformatiert | `mod_rewrite` fehlt. `https://deine-domain.at/public/` aufrufen – das funktioniert auch. |
 | „Das Portal wird gerade aktualisiert“ bleibt stehen | `storage/maintenance.flag` im Dateimanager löschen. |
+| „Vor der Aktualisierung konnte keine Sicherung angelegt werden“ | Rechte für `storage` auf `755` setzen. Oder im Panel selbst eine Sicherung anlegen und danach im Ordner `storage` eine leere Datei `skip-backup` erstellen; sie gilt für genau ein Update. |
+| „Die hochgeladenen Dateien sind älter als die Datenbank“ | Das falsche Paket hochgeladen. Die neueste Version holen und noch einmal entpacken. |
+| „Die hochgeladenen Dateien sind unvollständig“ | Das Entpacken ist abgebrochen, oder der Upload lief über FTP im Textmodus. Noch einmal hochladen, FTP auf Binärmodus stellen. |
 | E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang**, dort steht der Fehler der letzten Zustellung. |
 
 ## Was geprüft wurde
 
 Die Einrichtung über den Browser, das Anwenden neuer Migrationen beim
-Seitenaufruf und das Verhalten bei einer fehlerhaften Migration sind gegen
-**MariaDB 10.11.14** mit echten HTTP-Anfragen durchgespielt worden. Die gesamte
-Testsuite läuft dort ebenfalls durch. **MySQL 8.0 selbst ist nicht geprüft**, und
+Seitenaufruf und jede der vier Prüfungen vor einem Update sind gegen
+**MariaDB 10.11.14** mit echten HTTP-Anfragen durchgespielt worden – samt einer
+Sicherung, die anschließend in eine zweite Datenbank zurückgespielt wurde und
+dort vollständig ankam. Die gesamte Testsuite läuft dort ebenfalls durch. **MySQL 8.0 selbst ist nicht geprüft**, und
 auf einem konkreten Hosting-Paket ist das Ganze noch nicht gelaufen. Stand und
 offene Punkte: [VALIDATION.md](VALIDATION.md).

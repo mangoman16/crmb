@@ -144,6 +144,24 @@ if($tab==='skills'):
     <p class="muted"><?=e(t('Update: die neuen Dateien hochladen. Die Datenbank wird beim nächsten Aufruf des Portals selbst angepasst – es ist kein weiterer Schritt nötig.','Update: upload the new files. The database updates itself on the next page view; there is no further step.'))?></p>
 </section>
 <section class="card">
+    <h2><?=e(t('Sicherungen','Backups'))?></h2>
+    <p class="muted"><?=e(t('Vor jeder Datenbankänderung legt das Portal eine vollständige Kopie an. Schlägt das fehl, wird nichts geändert. Die letzten fünf werden behalten, ältere selbst gelöscht.','Before any database change the portal writes a full copy. If that fails, nothing is changed. The last five are kept and older ones removed automatically.'))?></p>
+    <?php $copies=backups(); $update=(array)setting('schema_last_update',[]); ?>
+    <dl class="facts">
+        <div><dt><?=e(t('Letzte Sicherung','Last backup'))?></dt><dd><?=e($copies?fmt_datetime($copies[0]['made_at']):t('noch keine','none yet'))?></dd></div>
+        <div><dt><?=e(t('Vorhandene Sicherungen','Copies kept'))?></dt><dd><?=count($copies)?></dd></div>
+        <div><dt><?=e(t('Datenbank geschrieben von','Database written by'))?></dt><dd><?=e(setting('schema_written_by')?:t('unbekannt','unknown'))?></dd></div>
+        <div><dt><?=e(t('Letzte Aktualisierung','Last update'))?></dt><dd><?=e(isset($update['at'])?fmt_datetime((string)$update['at']):t('noch keine','none yet'))?></dd></div>
+    </dl>
+    <?php if($copies): ?>
+    <p class="muted"><?=e(t('Die Dateien liegen im Ordner storage/backups und sind über das Internet nicht erreichbar. Zum Wiederherstellen die gewünschte Datei im Hosting-Panel unter „phpMyAdmin → Importieren“ in eine leere Datenbank einspielen.','The files are in storage/backups and are not reachable over the internet. To restore, import the file you want into an empty database under “phpMyAdmin → Import” in the hosting panel.'))?></p>
+    <?php foreach($copies as $copy): ?>
+    <div class="record-row"><div><strong class="mono"><?=e($copy['name'])?></strong><p><?=e(fmt_datetime($copy['made_at']))?></p></div>
+        <span><?=e(number_format($copy['bytes']/1024,0,',','.'))?> kB</span></div>
+    <?php endforeach ?>
+    <?php endif ?>
+</section>
+<section class="card">
     <h2><?=e(t('Wartende Aufgaben','Waiting work'))?></h2>
     <p class="muted"><?=e(t('E-Mails verschicken, abgelaufene Links entfernen und – falls eingeschaltet – die Monatsbeiträge anlegen. Ohne Cronjob erledigt das Portal das selbst, kurz nachdem eine Seite geladen wurde.','Sending email, removing expired links and – if switched on – creating the monthly charges. Without a cron job the portal does this itself, just after a page has been served.'))?></p>
     <dl class="facts">
