@@ -26,14 +26,36 @@ Version **0.5.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Online status for accounts, and email reminders for outstanding payments.
 - Undo: changes to the main records are versioned, listed under **Änderungen**, and can be put back — including restoring a deleted student under their original number.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs 1003 assertions in a few seconds.
+- A test suite that needs no database server: `php tests/run.php` runs over a thousand assertions in a few seconds.
 
 ## Install
 
-On ordinary web hosting, with no shell: create an empty database in the hosting
-panel, upload the distribution ZIP into the domain's folder, unpack it, and open
-the address in a browser. The setup page asks for the four database details the
-panel gave you and for the first account, then installs everything itself.
+There are two ways in, and which one you want depends on whether the server has
+a shell.
+
+**With a shell (Git).** This is the supported route for a server you can log
+into, and the one `bin/update.sh` keeps up to date afterwards:
+
+```bash
+git clone https://github.com/mangoman16/crmb.git /path/to/webroot
+cd /path/to/webroot
+composer install --no-dev --prefer-dist --optimize-autoloader
+# then open the address in a browser and finish the setup page
+```
+
+`bin/update.sh --clone /path/to/webroot` does the same in one command.
+
+**Without a shell (ZIP).** On ordinary web hosting: create an empty database in
+the hosting panel, upload the distribution ZIP into the domain's folder, unpack
+it, and open the address in a browser. The setup page asks for the four database
+details the panel gave you and for the first account, then installs everything
+itself.
+
+> **Where is that ZIP?** It is not published anywhere yet — this repository has
+> no GitHub release. The ZIP is built from a checkout with `bin/release.sh`,
+> which bundles the dependencies so the upload needs nothing else. Until a
+> release is published, somebody with a shell has to build it and hand over the
+> file.
 
 Full guide, including what to do when a step fails: [INSTALL.md](INSTALL.md).
 
@@ -108,6 +130,15 @@ self-contained:
 bin/release.sh
 ```
 
+Updating a checkout, files and database together:
+
+```bash
+bin/update.sh                  # pull, install dependencies, migrate, report
+bin/update.sh --check          # say what would happen, change nothing
+bin/update.sh --ref v0.6.0     # pin to a tag
+php bin/console.php status     # do the files and the database agree?
+```
+
 ## For developers
 
 ```bash
@@ -136,10 +167,11 @@ project is going, and what has to be true before it holds real data, is in
 
 ## Start here
 
-1. Follow [INSTALL.md](INSTALL.md): empty database, upload, open the address.
+1. Follow [INSTALL.md](INSTALL.md): empty database, files in place, open the address.
 2. Configure the portal under **Einstellungen**. Create tariffs and edit student fields.
 3. Add students, invite the account holders, and link each student to the appropriate account.
-4. To update, upload the new files. Nothing else.
+4. To try it before real families are in it: **Einstellungen → System → Beispieldaten anlegen**.
+5. To update, upload the new files — or run `bin/update.sh` on a checkout. Nothing else.
 
 The distribution ZIP includes PHPMailer, BaconQrCode and the Composer autoloader, so an upload needs nothing else. A Git checkout uses `composer install --no-dev --prefer-dist --optimize-autoloader` to install the exact versions in `composer.lock`.
 

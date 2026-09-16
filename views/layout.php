@@ -19,8 +19,8 @@
     <meta name="description" content="<?=e(setting('club_name').' – '.t('Schüler, Beiträge und Nachrichten.','students, payments and messages.'))?>">
     <title><?=e(setting('club_name','Badminton'))?></title>
     <link rel="icon" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.css?v=<?=e(trim(file_get_contents(ROOT.'/VERSION')))?>">
-    <script defer src="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.js?v=<?=e(trim(file_get_contents(ROOT.'/VERSION')))?>"></script>
+    <link rel="stylesheet" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.css?v=<?=e(app_version())?>">
+    <script defer src="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.js?v=<?=e(app_version())?>"></script>
 </head>
 <body class="<?=$public?'public-page':'app-page'?>">
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
@@ -39,7 +39,7 @@ if(is_admin($user)){$nav['history']=['calendar',t('Änderungen','Changes')];$nav
         <a href="<?=e(url($route))?>" <?=$active?'aria-current="page"':''?>><?=icon($symbol)?><span><?=e($label)?></span><?php if($route==='messages'&&$unreadTotal):?><span class="count" aria-label="<?=e($unreadTotal.' '.t('ungelesen','unread'))?>"><?=$unreadTotal?></span><?php endif ?></a>
     <?php endforeach ?>
     </nav>
-    <div class="sidebar-bottom"><a class="account-link" href="<?=e(url('profile'))?>"><span class="avatar small"><?=e(mb_substr($user['name'],0,1))?></span><span><?=e($user['name'])?><small><?=e(role_label($user['role']))?></small></span></a><div class="sidebar-meta"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutz','Privacy'))?></a><span>v<?=e(trim(file_get_contents(ROOT.'/VERSION')))?></span></div></div>
+    <div class="sidebar-bottom"><a class="account-link" href="<?=e(url('profile'))?>"><span class="avatar small"><?=e(mb_substr($user['name'],0,1))?></span><span><?=e($user['name'])?><small><?=e(role_label($user['role']))?></small></span></a><div class="sidebar-meta"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutz','Privacy'))?></a><span>v<?=e(app_version())?></span></div></div>
 </aside>
 <div class="app-shell">
 <header class="topbar"><span class="topbar-context"><?=e((string)setting('portal_tagline'))?></span><a class="mobile-brand" href="<?=e(url('dashboard'))?>"><?=e(setting('club_name','Badminton'))?></a><div class="topbar-actions"><a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['id','tab']))))?>"><?=locale()==='de'?'EN':'DE'?></a><a href="<?=e(url('profile'))?>" aria-label="<?=e(t('Mein Konto','My account'))?>"><span class="avatar tiny"><?=e(mb_substr($user['name'],0,1))?></span></a></div></header>
@@ -60,6 +60,6 @@ if(is_admin($user)){$nav['history']=['calendar',t('Änderungen','Changes')];$nav
 <button type="button" id="menu-toggle" aria-controls="sidebar" aria-expanded="false"><?=icon('more')?><span><?=e(t('Mehr','More'))?></span></button>
 </nav>
 <button type="button" class="menu-backdrop" id="menu-backdrop" aria-label="<?=e(t('Menü schließen','Close menu'))?>" hidden></button>
-<?php else: ?><footer class="public-footer"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><span>v<?=e(trim(file_get_contents(ROOT.'/VERSION')))?></span></footer><?php endif ?>
+<?php else: ?><footer class="public-footer"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><span>v<?=e(app_version())?></span></footer><?php endif ?>
 </body>
 </html>

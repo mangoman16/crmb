@@ -361,12 +361,7 @@ function query_count(callable $fn): int {
  * variables are in scope: $page, $public and $user.
  */
 function render_view(string $page, array $query = []): string {
-    static $loaded = false;
-    if (!$loaded) {
-        foreach (['actions', 'actions_settings', 'actions_messages', 'actions_config', 'ui'] as $unit)
-            require_once APP_ROOT . '/app/' . $unit . '.php';
-        $loaded = true;
-    }
+    test_load_actions();
     $file = APP_ROOT . '/views/' . $page . '.php';
     if (!is_file($file)) throw new RuntimeException('No such view: ' . $page);
 
@@ -394,4 +389,27 @@ function render_view(string $page, array $query = []): string {
 /** Populate $_POST for an action, including the fields handle_post() requires. */
 function post_data(array $fields): void {
     $_POST = $fields;
+}
+
+/** Load the action and interface units the way public/index.php loads them. */
+function test_load_actions(): void {
+    static $loaded = false;
+    if ($loaded) return;
+    foreach (['actions', 'actions_settings', 'actions_messages', 'actions_config', 'ui'] as $unit)
+        require_once APP_ROOT . '/app/' . $unit . '.php';
+    $loaded = true;
+}
+
+/**
+ * Run one action the way a form submission would, and return where it goes next.
+ *
+ * The real dispatcher, so a suite exercises what ships rather than a description
+ * of it. The CSRF token, the throttles and the duplicate-submission claim belong
+ * to handle_post() and are left out on purpose: they are the request's business,
+ * not the action's, and they have their own checks in the security suite.
+ */
+function act(string $action, array $fields = []): array {
+    test_load_actions();
+    $_POST = $fields;
+    return dispatch_action($action);
 }

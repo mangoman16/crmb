@@ -30,7 +30,31 @@ Vier Angaben aus dieser Maske werden gleich gebraucht:
 | Benutzername | vom Panel vergeben |
 | Passwort | selbst gewählt |
 
-## 2. Dateien hochladen
+## 2. Dateien einspielen
+
+Es gibt zwei Wege. Welcher passt, hängt davon ab, ob der Server eine
+Kommandozeile hat.
+
+### Mit Shell-Zugang: git clone
+
+```bash
+git clone https://github.com/mangoman16/crmb.git /pfad/zum/webverzeichnis
+cd /pfad/zum/webverzeichnis
+composer install --no-dev --prefer-dist --optimize-autoloader
+```
+
+`bin/update.sh --clone /pfad/zum/webverzeichnis` erledigt beides in einem
+Schritt. Ohne `composer install` läuft das Portal zwar, kann aber keine E-Mails
+verschicken und keinen Zahlungs-QR-Code zeichnen.
+
+### Ohne Shell-Zugang: ZIP-Datei
+
+> **Woher kommt die ZIP-Datei?** Sie liegt nirgends zum Herunterladen bereit –
+> für dieses Repository gibt es noch kein veröffentlichtes Release. Die Datei
+> wird aus einer Arbeitskopie mit `bin/release.sh` gebaut; sie enthält dann auch
+> die Abhängigkeiten, damit der Upload für sich allein funktioniert. Bis ein
+> Release veröffentlicht ist, muss jemand mit Shell-Zugang sie einmal bauen und
+> weitergeben.
 
 Die ZIP-Datei im **Dateimanager** in das Verzeichnis der Domain hochladen
 (meist `public_html` oder `domains/<domain>/public_html`) und dort entpacken.
@@ -81,6 +105,18 @@ muss also nicht gelöscht werden – schaden kann es aber auch nicht.
 > könnte das Portal auf eine eigene Datenbank installieren. Deshalb: hochladen
 > und gleich einrichten, nicht über Nacht liegen lassen.
 
+## Zum Ausprobieren: Beispieldaten
+
+Unter **Einstellungen → System → Beispieldaten anlegen** füllt sich das Portal
+mit erfundenen Kindern, Kursen, Beiträgen und Nachrichten. Damit lässt sich
+alles durchklicken, bevor echte Familien darin stehen – SMTP und
+Datenschutzerklärung sind dafür nicht nötig, weil die Beispielkonten fertig
+angelegt werden und keine Einladung per E-Mail brauchen. Das Passwort wird
+einmalig auf derselben Seite angezeigt.
+
+Beispieldaten sind in der Datenbank gekennzeichnet und lassen sich mit einem
+Klick vollständig wieder entfernen. Echte Daten bleiben dabei unberührt.
+
 ## Danach: zwei Dinge in den Einstellungen
 
 Einladungen bleiben gesperrt, bis beides erledigt ist.
@@ -101,6 +137,20 @@ sonst landen die Einladungen im Spam.
 
 Die neuen Dateien über die alten hochladen und das Portal öffnen. Die Datenbank
 passt sich beim ersten Aufruf selbst an. Kein weiterer Schritt.
+
+Mit Shell-Zugang macht `bin/update.sh` dasselbe in einem Befehl: es holt die
+neuen Dateien per Git, installiert die Abhängigkeiten, schaltet den
+Wartungsmodus ein, sichert, migriert und schaltet ihn wieder aus.
+
+```bash
+bin/update.sh            # aktualisieren
+bin/update.sh --check    # nur anzeigen, was passieren würde
+bin/update.sh --ref v0.6.0   # auf eine bestimmte Version festlegen
+```
+
+Die Version steht an zwei Stellen: in der Datei `VERSION` und in der Datenbank.
+`php bin/console.php status` – oder **Einstellungen → System** – vergleicht
+beide. Stimmen sie nicht überein, ist der Upload nicht vollständig angekommen.
 
 Vorher prüft das Portal selbst vier Dinge, und bei jedem einzelnen bricht es ab,
 **bevor** es die Datenbank anfasst:

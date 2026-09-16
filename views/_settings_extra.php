@@ -123,16 +123,17 @@ if($tab==='skills'):
         <?php start_form('maintenance_toggle',['mode'=>'on']);submit_button(t('Wartungsmodus starten','Switch maintenance on'),'secondary');?></form>
     <?php endif ?>
 </section>
+<?php $status=version_status(); $pending=$status['pending']; ?>
 <section class="card">
     <h2><?=e(t('Installation','Installation'))?></h2>
+    <?php // Both halves of the version marker, side by side. One number alone
+          // cannot show that an upload half-succeeded; two that disagree can. ?>
+    <div class="notice <?=$status['ok']?'':'warn'?>"><strong><?=e(version_status_text($status))?></strong></div>
     <dl class="facts">
-        <div><dt><?=e(t('Version','Version'))?></dt><dd><?=e(trim(file_get_contents(ROOT.'/VERSION')))?></dd></div>
+        <div><dt><?=e(t('Version der Dateien','Version of the files'))?></dt><dd><?=e($status['files'])?></dd></div>
+        <div><dt><?=e(t('Version in der Datenbank','Version in the database'))?></dt><dd><?=e($status['database']!==''?$status['database']:t('noch nicht geschrieben','not written yet'))?></dd></div>
         <div><dt>PHP</dt><dd><?=e(PHP_VERSION)?></dd></div>
-        <?php // schema_migrations does not exist before the first migrate, which is
-              // exactly when an operator is most likely to open this page.
-              try { $schemaVersion=(string)(scalar('SELECT MAX(version) FROM schema_migrations')?:''); $pending=schema_pending(); }
-              catch (PDOException) { $schemaVersion=''; $pending=[]; } ?>
-        <div><dt><?=e(t('Datenbankstand','Database version'))?></dt><dd><?=e($schemaVersion!==''?$schemaVersion:t('noch nicht migriert','not migrated yet'))?></dd></div>
+        <div><dt><?=e(t('Angewendete Datenbankänderungen','Database changes applied'))?></dt><dd><?=(int)$status['applied']?></dd></div>
         <div><dt><?=e(t('Letzter Versandlauf','Last mail run'))?></dt><dd><?=e(setting('mail_last_run')?fmt_datetime((string)setting('mail_last_run')):t('noch keiner','none yet'))?></dd></div>
         <div><dt><?=e(t('Wartende E-Mails','Queued email'))?></dt><dd><?=(int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE status='queued'")?></dd></div>
         <div><dt><?=e(t('Fehlgeschlagene E-Mails','Failed email'))?></dt><dd><?=(int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE status='failed'")?></dd></div>
@@ -141,7 +142,39 @@ if($tab==='skills'):
     <div class="notice"><?=e(plural(count($pending),'Datenbankänderung wartet noch','Datenbankänderungen warten noch','database change is still waiting','database changes are still waiting'))?>: <?=e(implode(', ',$pending))?>.
     <?=e(t('Sie werden beim nächsten Seitenaufruf angewendet, sobald der Wartungsmodus aus ist.','They are applied on the next page view once maintenance mode is off.'))?></div>
     <?php endif ?>
-    <p class="muted"><?=e(t('Update: die neuen Dateien hochladen. Die Datenbank wird beim nächsten Aufruf des Portals selbst angepasst – es ist kein weiterer Schritt nötig.','Update: upload the new files. The database updates itself on the next page view; there is no further step.'))?></p>
+    <?php if($status['extra']): ?>
+    <div class="notice warn"><?=e(t('Die Datenbank kennt Änderungen, die diese Dateien nicht enthalten: ','The database knows changes these files do not contain: '))?><?=e(implode(', ',$status['extra']))?>.</div>
+    <?php endif ?>
+    <p class="muted"><?=e(t('Update: die neuen Dateien hochladen. Die Datenbank wird beim nächsten Aufruf des Portals selbst angepasst – es ist kein weiterer Schritt nötig. Mit Shell-Zugang geht auch bin/update.sh.','Update: upload the new files. The database updates itself on the next page view; there is no further step. With shell access, bin/update.sh does the same.'))?></p>
+    <?php if($status['history']): ?>
+    <h3><?=e(t('Bisherige Versionen','Releases so far'))?></h3>
+    <?php foreach(array_slice($status['history'],0,5) as $step): ?>
+    <div class="record-row"><div><strong><?=e(($step['from']?:t('Neuinstallation','First install')).' → '.$step['to'])?></strong><p><?=e(fmt_datetime((string)$step['at']))?></p></div></div>
+    <?php endforeach ?>
+    <?php endif ?>
+</section>
+<section class="card">
+    <h2><?=e(t('Beispieldaten','Example data'))?></h2>
+    <p class="muted"><?=e(t('Füllt das Portal mit erfundenen Kindern, Kursen, Beiträgen und Nachrichten, damit sich alles ausprobieren lässt, bevor echte Familien darin stehen. Beispieldaten sind in der Datenbank gekennzeichnet und lassen sich vollständig wieder entfernen.','Fills the portal with made-up children, courses, charges and messages, so everything can be tried out before real families are in it. Example data is marked as such in the database and can be removed again completely.'))?></p>
+    <?php $demo=demo_counts(); if(demo_present()): ?>
+        <dl class="facts">
+            <div><dt><?=e(t('Beispielschüler','Example students'))?></dt><dd><?=(int)$demo['students']?></dd></div>
+            <div><dt><?=e(t('Beispielkurse','Example courses'))?></dt><dd><?=(int)$demo['courses']?></dd></div>
+            <div><dt><?=e(t('Beispielkonten','Example accounts'))?></dt><dd><?=(int)$demo['accounts']?></dd></div>
+        </dl>
+        <?php if(!empty($_SESSION['demo_password'])): ?>
+        <div class="notice"><?=e(t('Passwort für alle Beispielkonten','Password for every example account'))?>: <strong class="mono"><?=e((string)$_SESSION['demo_password'])?></strong><br>
+            <?=e(t('Es wird nur hier gezeigt und nirgends gespeichert. Konten: trainerin@beispiel.test, familie.hofer@beispiel.test, familie.berger@beispiel.test','Shown only here and stored nowhere. Accounts: trainerin@beispiel.test, familie.hofer@beispiel.test, familie.berger@beispiel.test'))?></div>
+        <?php endif ?>
+        <?php start_form('demo_data',['mode'=>'clear']);submit_button(t('Beispieldaten entfernen','Remove example data'),'danger');?></form>
+    <?php else: ?>
+        <?php $real=(int)scalar('SELECT COUNT(*) FROM students'); if($real): ?>
+        <div class="notice warn"><?=e(t('Es gibt bereits echte Schüler. Beispieldaten würden sich darunter mischen.','There are real students already. Example data would be mixed in among them.'))?></div>
+        <?php endif ?>
+        <?php start_form('demo_data',['mode'=>'fill']);
+              if($real) check_field('confirm',t('Mir ist klar, dass sich Beispieldaten unter die echten Schüler mischen.','I understand the example data will be mixed in among the real students.'));
+              submit_button(t('Beispieldaten anlegen','Create example data'),'secondary');?></form>
+    <?php endif ?>
 </section>
 <section class="card">
     <h2><?=e(t('Sicherungen','Backups'))?></h2>
@@ -150,7 +183,6 @@ if($tab==='skills'):
     <dl class="facts">
         <div><dt><?=e(t('Letzte Sicherung','Last backup'))?></dt><dd><?=e($copies?fmt_datetime($copies[0]['made_at']):t('noch keine','none yet'))?></dd></div>
         <div><dt><?=e(t('Vorhandene Sicherungen','Copies kept'))?></dt><dd><?=count($copies)?></dd></div>
-        <div><dt><?=e(t('Datenbank geschrieben von','Database written by'))?></dt><dd><?=e(setting('schema_written_by')?:t('unbekannt','unknown'))?></dd></div>
         <div><dt><?=e(t('Letzte Aktualisierung','Last update'))?></dt><dd><?=e(isset($update['at'])?fmt_datetime((string)$update['at']):t('noch keine','none yet'))?></dd></div>
     </dl>
     <?php if($copies): ?>

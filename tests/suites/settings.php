@@ -49,3 +49,20 @@ ok((int)scalar('SELECT COUNT(*) FROM skill_areas') > 0, 'at least one skill area
 ok((int)scalar('SELECT COUNT(*) FROM payment_profiles') > 0, 'a payment profile to fill in');
 is_same((int)scalar('SELECT id FROM payment_profiles LIMIT 1'), (int)setting('default_payment_profile'),
         'and it is the configured default');
+
+case_('The privacy notice says what is still in the way, rather than just "no"');
+$long = str_repeat('Diese Erklärung beschreibt die Verarbeitung. ', 20);
+sign_in_as(make_account(['role'=>'admin']));
+$save = fn(string $de, string $en, bool $ready) =>
+    act('privacy_save', ['privacy_de'=>$de, 'privacy_en'=>$en] + ($ready ? ['privacy_ready'=>'1'] : []));
+throws(fn() => $save('kurz', $long, true), 'a version that is too short is named', 'Deutsch');
+throws(fn() => $save($long, 'short', true), 'and so is the other one', 'English');
+throws(fn() => $save($long.'[Name des Betreibers]', $long, true), 'a leftover placeholder is quoted back', '[Name des Betreibers]');
+throws(fn() => $save($long, $long.'[operator name]', true), 'in either version', '[operator name]');
+does_not_throw(fn() => $save($long, $long, true), 'two complete versions are accepted');
+is_same(true, (bool)setting('privacy_ready'), 'and the notice is released');
+// Saving a draft must work even while it is incomplete, or there is nowhere to
+// keep half-finished text and the page looks as though it ignored the edit.
+does_not_throw(fn() => $save('Entwurf', 'Draft', false), 'an incomplete draft still saves');
+is_same('Entwurf', setting('privacy_de'), 'and the text is actually stored');
+is_same(false, (bool)setting('privacy_ready'), 'with the release tick cleared');

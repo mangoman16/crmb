@@ -31,6 +31,16 @@ function schema_fingerprint(): string {
 }
 
 /**
+ * The exact release these files are, migrations and version together.
+ *
+ * The version is part of it so that a release carrying no migration still
+ * records itself in the database. Without that, schema_written_by would name
+ * whichever older release last happened to change the schema, and the marker
+ * the operator is asked to trust would be quietly wrong.
+ */
+function schema_state(): string { return schema_fingerprint() . ' ' . app_version(); }
+
+/**
  * Where the "already up to date" marker lives.
  *
  * Beside the maintenance flag, which is the path an operator running separate
@@ -48,17 +58,17 @@ function schema_stamp_file(): string { return dirname(maintenance_file()) . '/sc
  * only ever a cache of it.
  */
 function schema_is_current(): bool {
-    $want = schema_fingerprint();
+    $want = schema_state();
     if (@file_get_contents(schema_stamp_file()) === $want) return true;
-    try { $have = (string)setting('schema_fingerprint', ''); } catch (Throwable) { return false; }
+    try { $have = (string)setting('schema_fingerprint') . ' ' . database_version(); } catch (Throwable) { return false; }
     if ($have !== $want) return false;
     schema_write_stamp($want);
     return true;
 }
 
 /** Best effort: a read-only storage directory costs a query per request, not correctness. */
-function schema_write_stamp(?string $fingerprint = null): void {
-    @file_put_contents(schema_stamp_file(), $fingerprint ?? schema_fingerprint());
+function schema_write_stamp(?string $state = null): void {
+    @file_put_contents(schema_stamp_file(), $state ?? schema_state());
 }
 
 /** Migration files that have not been recorded as applied. */
@@ -206,7 +216,11 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
         require ROOT . '/database/defaults.php';
         setting_cache_clear();
         set_setting('schema_fingerprint', schema_fingerprint());
-        set_setting('schema_written_by', trim((string)file_get_contents(ROOT . '/VERSION')));
+        // Recorded before the marker is overwritten, so the change log can say
+        // which release the portal came from as well as which it is on.
+        $was = database_version();
+        if ($was !== app_version()) version_history_add($was, app_version());
+        set_setting('schema_written_by', app_version());
         if ($applied) set_setting('schema_last_update', ['at' => now(), 'applied' => $applied]);
     } finally {
         run("SELECT RELEASE_LOCK('badminton_crm_migrate')");

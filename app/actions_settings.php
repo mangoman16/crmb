@@ -47,7 +47,14 @@ function dispatch_settings_or_messages(string $action): array {
         require_admin();return ['outbox',['process'=>1]];
     case 'privacy_save':
         require_admin();$de=text_limit('privacy_de',30000);$en=text_limit('privacy_en',30000);
-        if(post('privacy_ready') && (mb_strlen($de)<300 || mb_strlen($en)<300 || preg_match('/\[[^\]]+\]/u',$de.$en)))throw new UserError(t('Bitte beide Datenschutzerklärungen vervollständigen und Platzhalter ersetzen.','Complete both privacy notices and replace the placeholders.'));
+        // The text is always saved. Only the release tick is refused, and it says
+        // which version and which placeholder is in the way: "complete both and
+        // replace the placeholders" sent an operator hunting through two walls of
+        // text, and looked from the outside as though saving had done nothing.
+        if(post('privacy_ready')) foreach(['privacy_de'=>[$de,'Deutsch'],'privacy_en'=>[$en,'English']] as [$text,$which]) {
+            if(mb_strlen($text)<300) throw new UserError(t('Die Fassung „','The “').$which.t('“ ist noch zu kurz, um freigegeben zu werden.','” version is still too short to be released.'));
+            if(preg_match('/\[[^\]]{1,80}\]/u',$text,$m)) throw new UserError(t('In der Fassung „','In the “').$which.t('“ steht noch ein Platzhalter: ','” version there is still a placeholder: ').$m[0]);
+        }
         set_setting('privacy_de',$de);set_setting('privacy_en',$en);set_setting('privacy_ready',(bool)post('privacy_ready'));
         audit('privacy.saved','settings');flash(t('Datenschutzerklärung gespeichert.','Privacy notice saved.'));return ['settings',['tab'=>'privacy']];
     case 'template_save':

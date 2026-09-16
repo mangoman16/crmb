@@ -26,6 +26,7 @@ require __DIR__ . '/tx.php';
 require __DIR__ . '/validate.php';
 require __DIR__ . '/history.php';
 require __DIR__ . '/defaults.php';
+require __DIR__ . '/version.php';
 require __DIR__ . '/backup.php';
 require __DIR__ . '/schema.php';
 require __DIR__ . '/auth.php';
@@ -34,6 +35,7 @@ require __DIR__ . '/classes.php';
 require __DIR__ . '/skills.php';
 require __DIR__ . '/attendance.php';
 require __DIR__ . '/billing.php';
+require __DIR__ . '/demo.php';
 require __DIR__ . '/mail.php';
 require __DIR__ . '/tick.php';
 if (is_file(ROOT . '/vendor/autoload.php')) { require ROOT . '/vendor/autoload.php'; }

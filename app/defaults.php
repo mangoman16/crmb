@@ -157,6 +157,10 @@ function setting_schema(): array {
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
             'label' => ['Datenbank zuletzt geschrieben von Version', 'Database last written by version'],
         ],
+        'version_history' => [
+            'kind' => 'raw', 'default' => [], 'group' => 'system', 'internal' => true,
+            'label' => ['Bisherige Versionen', 'Releases this database has seen'],
+        ],
         'schema_last_update' => [
             'kind' => 'raw', 'default' => [], 'group' => 'system', 'internal' => true,
             'label' => ['Letzte Datenbankaktualisierung', 'Last database update'],

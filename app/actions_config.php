@@ -270,6 +270,24 @@ function dispatch_config(string $action): array {
         flash(t('Änderung zurückgenommen.','Change undone.'));
         return ['history',[]];
 
+    case 'demo_data':
+        require_admin(); $mode=choose(post('mode'),['fill','clear']);
+        if($mode==='clear') {
+            $removed=demo_clear(); unset($_SESSION['demo_password']);
+            flash(t('Beispieldaten entfernt: ','Example data removed: ').plural($removed['students'],'Schüler','Schüler','student','students').'.');
+            return ['settings',['tab'=>'system']];
+        }
+        $result=demo_fill(post('confirm')!=='');
+        // Held in the session rather than the database: it is only ever needed by
+        // the person who just pressed the button, and a password sitting in a
+        // settings row outlives every reason anyone had for it.
+        $_SESSION['demo_password']=$result['password'];
+        flash(t('Beispieldaten angelegt: ','Example data created: ')
+            .plural($result['students'],'Schüler','Schüler','student','students').', '
+            .plural($result['courses'],'Kurs','Kurse','course','courses').'. '
+            .t('Das Passwort für die Beispielkonten steht unten.','The password for the example accounts is below.'));
+        return ['settings',['tab'=>'system']];
+
     case 'maintenance_toggle':
         require_admin(); $on=post('mode')==='on';
         if($on) {
