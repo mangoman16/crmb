@@ -1,0 +1,33 @@
+ENTWURF – vor Verwendung vervollständigen
+
+1. Verantwortliche Stelle
+[Vollständiger Name / Organisation, Anschrift, E-Mail-Adresse, gegebenenfalls Datenschutzkontakt]
+
+2. Wofür wir Angaben verwenden
+Wir verwenden die Angaben im Badminton-Portal zur Organisation des Trainings, zur Verwaltung von Mitgliedschaften und Beiträgen und zur Kommunikation mit Schülern beziehungsweise ihren Kontaktpersonen. Ein eingeladenes Konto kann mehreren Schülern zugeordnet sein. Die Person, die dieses Konto nutzt, kann die zugeordneten Schülerdaten sehen und freigegebene Angaben bearbeiten.
+
+3. Welche Angaben verarbeitet werden
+Verarbeitet werden Kontodaten, Schülernamen, gegebenenfalls Geburtsdaten, Kontaktpersonen und deren Telefonnummern oder E-Mail-Adressen, Mitgliedschafts- und Tarifangaben, Beiträge, Zahlungen, freiwillige Abwesenheitsmeldungen, Nachrichten sowie die im Formular ausdrücklich erhobenen weiteren Angaben. Kennwörter werden als Hash gespeichert. SMTP-Passwörter und versandbereite E-Mail-Inhalte sind in der Anwendungsdatenbank verschlüsselt.
+[Verwendete eigene Felder, Zwecke und Erforderlichkeit je Kategorie ergänzen. Für Krankmeldungen als Gesundheitsangaben eine passende Rechtsgrundlage nach Art. 9 DSGVO und ein Verfahren für Minderjährige festlegen; keine Diagnosen anfordern. Alternativ ausschließlich allgemeine Abwesenheiten erfassen.]
+
+4. Rechtsgrundlagen
+[Für Training und Mitgliedschaft die einschlägige Vertragsgrundlage nach Art. 6 Abs. 1 lit. b DSGVO prüfen und benennen; konkrete gesetzliche Pflichten nach lit. c und berechtigte Interessen nach lit. f, soweit tatsächlich einschlägig, ergänzen. Für besondere Datenkategorien zusätzliche Voraussetzungen festlegen.]
+Der Newsletter wird nur an Konten mit aktiviertem Newsletter-Abonnement gesendet. Die Anmeldung ist freiwillig und kann in den Kontoeinstellungen oder über den Abmeldelink widerrufen werden. Die Rechtmäßigkeit einer zuvor auf Einwilligung beruhenden Verarbeitung bleibt davon unberührt. E-Mail-Hinweise auf private Nachrichten haben eine eigene Einstellung. Sicherheitsmails wie Einladungen und Passwortlinks dienen der Bereitstellung des Zugangs.
+
+5. Empfänger und Dienstleister
+Die zuständige Trainingsverwaltung und die zum jeweiligen Schüler gehörende Kontoperson haben Zugriff entsprechend ihren Berechtigungen. Andere Schülerkonten haben keinen Zugriff.
+[Hosting-Dienstleister, Verarbeitungsort, SMTP-Dienstleister, Auftragsverarbeiter und gegebenenfalls Drittlandübermittlungen samt geeigneten Garantien konkret angeben.]
+
+6. Speicherung und Löschung
+[Konkrete Löschfristen beziehungsweise nachvollziehbare Kriterien für Mitgliedschaftsdaten, Abwesenheiten, Nachrichten, Versandprotokolle, Einwilligungsnachweise, Sicherheitsprotokolle und Beitragsdaten festlegen. Tatsächliche gesetzliche Aufbewahrungspflichten berücksichtigen.]
+Eine Kontolöschung entfernt den Login und seine privaten Unterhaltungen. Zugeordnete Schüler und Beitragsunterlagen bleiben zur gesonderten Bearbeitung erhalten. Eine Kontosperre verhindert den Zugang, löscht jedoch keine Schülerdaten.
+
+7. Technisch notwendige Daten
+Das Portal setzt ein notwendiges Sitzungscookie für die Anmeldung, Sprache und den Schutz von Formularen. Es lädt keine externen Schriftarten, Analyse- oder Werbedienste. Kurzlebige technische Datensätze begrenzen Anmeldeversuche und verhindern doppelte Formulareingaben.
+[Tatsächliche Protokollierung des Webservers, Umfang, Zweck und Frist ergänzen.]
+
+8. Deine Rechte
+Unter den gesetzlichen Voraussetzungen bestehen Rechte auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung und Datenübertragbarkeit. Soweit die Verarbeitung auf berechtigten Interessen beruht, kann ein Widerspruchsrecht bestehen. Einwilligungen können für die Zukunft widerrufen werden. Anfragen sind an die oben genannte verantwortliche Stelle zu richten. Eine Beschwerde ist bei der österreichischen Datenschutzbehörde möglich: https://www.dsb.gv.at/.
+[Erforderliche und freiwillige Angaben, Folgen einer Nichtbereitstellung sowie gegebenenfalls Informationen über automatisierte Entscheidungen ergänzen.]
+
+Stand: [Datum]

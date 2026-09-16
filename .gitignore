@@ -1,0 +1,11 @@
+/config/config.php
+/vendor/
+/storage/*
+!/storage/.gitkeep
+!/storage/.htaccess
+/.env
+*.log
+__pycache__/
+*.pyc
+/source-history.bundle
+/tests/.config.generated.php

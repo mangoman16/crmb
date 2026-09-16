@@ -1,0 +1,28 @@
+# Adapt paths, certificates, PHP-FPM socket and domain before use.
+server {
+    listen 80;
+    server_name badminton.example.at;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name badminton.example.at;
+    ssl_certificate /etc/letsencrypt/live/badminton.example.at/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/badminton.example.at/privkey.pem;
+    root /srv/badminton/current/public;
+    index index.php;
+    autoindex off;
+    client_max_body_size 2m;
+
+    types { application/manifest+json webmanifest; }
+    location / { try_files $uri $uri/ /index.php?$query_string; }
+    location = /index.php {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $realpath_root/index.php;
+        fastcgi_param DOCUMENT_ROOT $realpath_root;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+    location ~ \.php$ { return 404; }
+    location ~ /\. { deny all; }
+}

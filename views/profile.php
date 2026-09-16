@@ -1,0 +1,12 @@
+<?php page_head(t('Mein Konto','My account')); ?>
+<section class="card"><h2><?=e(t('Profil und Darstellung','Profile and appearance'))?></h2><?php start_form('preferences_save');?><div class="grid two"><?php
+input('name',t('Name','Name'),$user['name'],'text',true);
+select_field('locale',t('Sprache','Language'),['de'=>'Deutsch','en'=>'English'],$user['locale'],true);
+select_field('theme',t('Erscheinungsbild','Appearance'),['auto'=>t('Wie am Gerät eingestellt','Match my device'),'light'=>t('Immer hell','Always light'),'dark'=>t('Immer dunkel','Always dark')],$user['theme']??'auto',true);
+select_field('text_scale',t('Schriftgröße','Text size'),['normal'=>t('Normal','Normal'),'large'=>t('Größer','Larger'),'larger'=>t('Noch größer','Even larger'),'largest'=>t('Am größten','Largest')],$user['text_scale']??'normal',true);
+?></div><p class="muted"><?=e(t('„Wie am Gerät eingestellt“ übernimmt den Dunkelmodus von iPhone, iPad oder Mac automatisch.','“Match my device” follows the dark mode setting on your iPhone, iPad or Mac automatically.'))?></p><p class="muted"><?=e($user['email'])?> · <?=e(t('bestätigt','verified'))?></p><?php check_field('newsletter',t('Neuigkeiten per E-Mail erhalten','Receive news by email'),(bool)$user['newsletter']);check_field('notifications',t('E-Mail-Hinweise bei privaten Nachrichten erhalten','Receive email notifications for private messages'),(bool)$user['notifications']);
+check_field('payment_notices',t('Erinnerung, wenn ein Beitrag offen ist','Remind me when a payment is outstanding'),(bool)($user['payment_notices']??true));
+submit_button();?></form></section>
+<section class="card"><details><summary><?=e(t('E-Mail-Adresse ändern','Change email address'))?></summary><?php start_form('email_change');input('email',t('Neue E-Mail-Adresse','New email address'),'','email',true);input('password',t('Aktuelles Passwort','Current password'),'','password',true);submit_button(t('Bestätigungslink senden','Send verification link'));?></form></details></section>
+<section class="card"><details><summary><?=e(t('Passwort ändern','Change password'))?></summary><?php start_form('password_change');input('current_password',t('Aktuelles Passwort','Current password'),'','password',true);input('password',t('Neues Passwort','New password'),'','password',true);input('password_confirm',t('Passwort wiederholen','Repeat password'),'','password',true);submit_button();?></form></details></section>
+<?php start_form('logout',[],'inline-form');submit_button(t('Abmelden','Sign out'),'secondary');?></form>

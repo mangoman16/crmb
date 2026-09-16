@@ -1,0 +1,2 @@
+<div class="auth-card card"><h1><?=e(t('Passwort zurücksetzen','Reset password'))?></h1><p class="muted"><?=e(t('Wir senden dir einen Link an deine bestätigte E-Mail-Adresse.','We will send a link to your verified email address.'))?></p>
+<?php start_form('forgot');input('email',t('E-Mail-Adresse','Email address'),'','email',true);submit_button(t('Link anfordern','Request link'));?></form><a href="<?=e(url('login'))?>"><?=e(t('Zur Anmeldung','Back to sign in'))?></a></div>
