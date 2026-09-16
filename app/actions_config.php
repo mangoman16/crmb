@@ -296,7 +296,7 @@ function dispatch_config(string $action): array {
     // ---- defaults registry and maintenance -----------------------------
 
     case 'defaults_registry_save':
-        $group=choose(post('group'),['portal','students','payments','system']);
+        $group=choose(post('group'),['portal','students','payments','organisation','system']);
         // Who may change what, rather than one rule for the whole registry:
         // membership statuses and payment methods are the trainer's words for
         // her own work; the portal's name and the background jobs are not.
@@ -315,6 +315,59 @@ function dispatch_config(string $action): array {
         revert_version((int)post('id'));
         flash(t('Änderung zurückgenommen.','Change undone.'));
         return ['history',[]];
+
+    // ---- invoices --------------------------------------------------------
+
+    case 'invoice_create':
+        require_staff(); $s=student((int)post('student_id'));
+        $ids=$_POST['charge_ids']??[];
+        if(!is_array($ids)) throw new UserError(t('Ungültige Auswahl.','Invalid selection.'));
+        $id=create_invoice((int)$s['id'],array_map('intval',$ids),post('issued_on'),post('terms')!==''?(int)post('terms'):-1);
+        flash(t('Rechnung angelegt.','Invoice created.'));
+        return ['student',['id'=>$s['id'],'tab'=>'invoices','invoice'=>$id]];
+
+    case 'invoice_state':
+        require_staff(); $inv=invoice((int)post('id'));
+        $mode=choose(post('mode'),['paid','cancel','send']);
+        if($mode==='paid') {
+            $methods=(array)setting('payment_methods');
+            $written=invoice_mark_paid((int)$inv['id'],date_value(post('paid_on'))??today(),
+                choose(post('method',(string)($methods[0]??'Überweisung')),$methods),text_limit('note'));
+            flash($written?t('Als bezahlt eingetragen.','Marked as paid.')
+                          :t('Diese Rechnung war schon vollständig bezahlt.','That invoice was already paid in full.'));
+        } elseif($mode==='cancel') {
+            invoice_cancel((int)$inv['id'],text_limit('note'));
+            flash(t('Rechnung storniert. Die Nummer bleibt vergeben, damit die Nummernfolge lückenlos bleibt.','Invoice cancelled. The number stays used, so the sequence has no hole in it.'));
+        } else {
+            if(!setting('smtp',[])) throw new UserError(t('Bitte zuerst SMTP einrichten.','Set up SMTP first.'));
+            flash(notify_invoice($inv)?t('Rechnung liegt im Postausgang.','The invoice is in the outbox.')
+                                      :t('Für dieses Kind ist kein Konto hinterlegt, an das die Rechnung gehen könnte.','This child has no account for the invoice to go to.'));
+        }
+        return ['student',['id'=>$inv['student_id'],'tab'=>'invoices']];
+
+    case 'proof_upload':
+        $u=require_user(); $s=student((int)post('student_id'));
+        $chargeId=post('charge_id')!==''?(int)post('charge_id'):null;
+        if($chargeId && !one('SELECT id FROM charges WHERE id=? AND student_id=?',[$chargeId,$s['id']]))
+            throw new UserError(t('Dieser Beitrag gehört nicht zu diesem Kind.','That charge does not belong to this child.'));
+        $invoiceId=post('invoice_id')!==''?(int)post('invoice_id'):null;
+        if($invoiceId) invoice($invoiceId);
+        $stored=store_upload('proof','proof');
+        run('INSERT INTO payment_proofs (charge_id,invoice_id,student_id,stored_name,original_name,mime,bytes,note,uploaded_by,created_at)'
+            .' VALUES (?,?,?,?,?,?,?,?,?,?)',
+            [$chargeId,$invoiceId,$s['id'],$stored['stored_name'],$stored['original_name'],$stored['mime'],$stored['bytes'],
+             text_limit('note'),$u['id'],now()]);
+        audit('proof.uploaded','student',(int)$s['id']);
+        flash(t('Danke! Der Beleg ist angekommen.','Thank you. The proof has arrived.'));
+        return ['student',['id'=>$s['id'],'tab'=>'payments']];
+
+    case 'proof_delete':
+        require_staff(); $p=one('SELECT * FROM payment_proofs WHERE id=?',[(int)post('id')]);
+        if(!$p) throw new UserError(t('Diesen Beleg gibt es nicht.','No such proof.'));
+        run('DELETE FROM payment_proofs WHERE id=?',[$p['id']]);
+        delete_upload('proof',(string)$p['stored_name']);
+        audit('proof.deleted','student',(int)$p['student_id']);
+        return ['student',['id'=>$p['student_id'],'tab'=>'payments']];
 
     case 'demo_data':
         require_admin(); $mode=choose(post('mode'),['fill','clear']);

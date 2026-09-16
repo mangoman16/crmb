@@ -7,7 +7,7 @@
  * live under Verwaltung, where she can reach them without an administrator.
  */
 $tab=(string)($_GET['tab']??'portal');
-$items=['portal'=>t('Portal','Portal'),'fields'=>t('Eigene Felder','Custom fields'),
+$items=['portal'=>t('Portal','Portal'),'organisation'=>t('Betrieb','Business'),'fields'=>t('Eigene Felder','Custom fields'),
         'smtp'=>'SMTP','privacy'=>t('Datenschutz','Privacy'),'system'=>t('System','System')];
 if(!isset($items[$tab]))$tab='portal';$edit=(int)($_GET['edit']??0);
 page_head(t('Einstellungen','Settings'),t('Technische Verwaltung des Portals. Die Listen für den Trainingsalltag stehen unter „Verwaltung“.','Technical administration of the portal. The lists for day-to-day training are under “Verwaltung”.'));
@@ -15,7 +15,8 @@ tabs($items,$tab,'settings');
 // Plain statements rather than extra branches, because PHP will not parse a
 // braced if as the last statement of an alternative-syntax elseif branch.
 if($tab==='system') require ROOT.'/views/_settings_system.php';
-if(in_array($tab,['portal','system'],true)) require ROOT.'/views/_settings_registry.php';
+if($tab==='organisation') require ROOT.'/views/_organisation.php';
+if(in_array($tab,['portal','organisation','system'],true)) require ROOT.'/views/_settings_registry.php';
 if($tab==='fields'):
 $f=$edit?one('SELECT * FROM field_definitions WHERE id=?',[$edit]):null;
 ?>
@@ -35,5 +36,6 @@ select_field('visibility',t('Berechtigung für Schüler','Student permission'),[
 <section class="card"><h2><?=e(t('Ausgehende E-Mails','Outgoing email'))?></h2><?php start_form('smtp_save');?><div class="grid two"><?php input('host',t('SMTP-Server','SMTP server'),$smtp['host']??'','text',true);input('port',t('Port','Port'),$smtp['port']??587,'number',true);select_field('encryption',t('Verschlüsselung','Encryption'),['tls'=>'STARTTLS','ssl'=>'TLS / SSL'],$smtp['encryption']??'tls',true);input('username',t('SMTP-Benutzername','SMTP username'),$smtp['username']??'');?><div class="field"><label for="smtp_password"><?=e(t('SMTP-Passwort','SMTP password'))?></label><input id="smtp_password" name="smtp_password" type="password" autocomplete="new-password"><small><?=e(!empty($smtp['password'])?t('Gespeichert. Leer lassen, um es beizubehalten.','Saved. Leave blank to keep it.'):t('Noch kein Passwort gespeichert.','No password saved.'))?></small></div><?php input('from_email',t('Absenderadresse (No-Reply)','Sender address (no-reply)'),$smtp['from_email']??'','email',true);input('from_name',t('Absendername','Sender name'),$smtp['from_name']??setting('club_name','Badminton'),'text',true);?></div><?php check_field('clear_password',t('Gespeichertes SMTP-Passwort entfernen','Remove saved SMTP password'));submit_button();?></form></section>
 <section class="card"><h2><?=e(t('Verbindung testen','Test connection'))?></h2><p class="muted"><?=e(t('Die Testmail geht an deine bestätigte Konto-Adresse. Versandstatus im Postausgang prüfen.','The test email goes to your verified account address. Check its status in the outbox.'))?></p><?php start_form('smtp_test');submit_button(t('Testmail vormerken','Queue test email'),'secondary');?></form></section>
 <?php elseif($tab==='privacy'): ?>
-<section class="card"><h2><?=e(t('Datenschutzerklärung','Privacy notice'))?></h2><p class="muted"><?=e(t('Den Entwurf an den tatsächlichen Betreiber, das Hosting und den E-Mail-Dienst anpassen. Beide Sprachfassungen sind öffentlich vor der Anmeldung erreichbar.','Adapt the draft to the actual operator, hosting and email service. Both languages are accessible before sign-in.'))?></p><?php start_form('privacy_save');input('privacy_de','Deutsch',setting('privacy_de',''),'textarea',true);input('privacy_en','English',setting('privacy_en',''),'textarea',true);check_field('privacy_ready',t('Beide Fassungen sind vervollständigt und zur Verwendung freigegeben.','Both versions are complete and approved for use.'),(bool)setting('privacy_ready',false));submit_button();?></form></section>
+<section class="card"><h2><?=e(t('Datenschutzerklärung','Privacy notice'))?></h2><p class="muted"><?=e(t('Den Entwurf an das tatsächliche Hosting und den E-Mail-Dienst anpassen. Beide Sprachfassungen sind öffentlich vor der Anmeldung erreichbar.','Adapt the draft to the actual hosting and email service. Both languages are accessible before sign-in.'))?></p>
+<div class="notice"><?=e(t('Name und Anschrift kommen aus „Betrieb“ und müssen hier nicht getippt werden. Diese Platzhalter werden beim Anzeigen ersetzt: ','The name and address come from “Betrieb” and do not have to be typed here. These placeholders are filled in when the notice is shown: '))?><code><?=e(implode(' ',array_keys(privacy_placeholders())))?></code></div><?php start_form('privacy_save');input('privacy_de','Deutsch',setting('privacy_de',''),'textarea',true);input('privacy_en','English',setting('privacy_en',''),'textarea',true);check_field('privacy_ready',t('Beide Fassungen sind vervollständigt und zur Verwendung freigegeben.','Both versions are complete and approved for use.'),(bool)setting('privacy_ready',false));submit_button();?></form></section>
 <?php endif ?>

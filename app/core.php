@@ -71,9 +71,11 @@ function form_context(string $action=''): string {
     return $current;
 }
 
-function form_open(string $action, array $hidden=[], string $class=''): void {
+function form_open(string $action, array $hidden=[], string $class='', bool $multipart=false): void {
     form_context($action);
-    echo '<form method="post" action="'.e(url()).'" class="'.e($class).'">';
+    // A form carrying a file has to say so, or PHP receives an empty $_FILES and
+    // the upload looks to the person like nothing happened.
+    echo '<form method="post" action="'.e(url()).'" class="'.e($class).'"'.($multipart?' enctype="multipart/form-data"':'').'>';
     foreach (['action'=>$action,'csrf'=>csrf(),'request_id'=>bin2hex(random_bytes(32))]+$hidden as $k=>$v) echo '<input type="hidden" name="'.e($k).'" value="'.e($v).'">';
 }
 
@@ -208,7 +210,39 @@ function seal(string $plain): string { $iv=random_bytes(12); $tag=''; $cipher=op
 function unseal(string $value): string { $b=base64_decode($value,true); if($b===false || strlen($b)<28) throw new RuntimeException('Invalid encrypted data'); $plain=openssl_decrypt(substr($b,28),'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,substr($b,0,12),substr($b,12,16)); if($plain===false) throw new RuntimeException('Cannot decrypt with this app key'); return $plain; }
 function email_value(string $value): string { $v=mb_strtolower(trim($value)); if(!filter_var($v,FILTER_VALIDATE_EMAIL) || strlen($v)>254) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.')); return $v; }
 function choose(string $value,array $allowed): string { if(!in_array($value,$allowed,true)) throw new UserError(t('Ungültige Auswahl.','Invalid choice.')); return $value; }
-function notice_version(): string { return substr(hash('sha256',setting('privacy_de','').setting('privacy_en','')),0,16); }
+/**
+ * The privacy notice, with the operator's own details filled in.
+ *
+ * The draft ships with placeholders for the controller, because a notice naming
+ * nobody is not a notice. Rather than asking her to type her address into two
+ * long texts and keep them in step, the texts carry {{org_*}} markers and the
+ * details come from the one place they are already entered for invoices.
+ */
+function privacy_placeholders(): array {
+    $address=trim(trim((string)setting('org_street')).', '.trim((string)setting('org_zip').' '.(string)setting('org_city')), ' ,');
+    return [
+        '{{org_name}}'    => (string)setting('org_name'),
+        '{{org_address}}' => $address,
+        '{{org_email}}'   => (string)setting('org_email'),
+        '{{org_phone}}'   => (string)setting('org_phone'),
+        '{{org_country}}' => (string)setting('org_country'),
+    ];
+}
+
+function privacy_text(?string $locale=null): string {
+    return strtr((string)setting(($locale ?? locale())==='en' ? 'privacy_en' : 'privacy_de'), privacy_placeholders());
+}
+
+/**
+ * Which version of the notice somebody agreed to.
+ *
+ * Hashed after substitution, so moving house changes the notice and the people
+ * who agreed to the old wording are recorded as having agreed to the old
+ * wording - which is the point of storing a version at all.
+ */
+function notice_version(): string {
+    return substr(hash('sha256', privacy_text('de') . privacy_text('en')), 0, 16);
+}
 // Appearance follows the signed-in account; signed-out pages follow the device.
 function appearance(?array $user): array {
     return [

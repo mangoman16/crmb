@@ -27,7 +27,7 @@
 <?php if(!$public):
 $nav=['dashboard'=>['home',t('Übersicht','Overview')],'students'=>['users',t('Schüler','Students')]];
 $waitingRequests=is_staff($user)?pending_request_count():0;
-if(is_staff($user)){$nav['classes']=['calendar',t('Kurse','Courses')];$nav['payments']=['wallet',t('Beiträge','Payments')];}
+if(is_staff($user)){$nav['classes']=['calendar',t('Kurse','Courses')];$nav['payments']=['wallet',t('Beiträge','Payments')];$nav['invoices']=['news',t('Rechnungen','Invoices')];}
 $nav['messages']=['mail',t('Nachrichten','Messages')];$nav['news']=['news',t('Neuigkeiten','News')];
 $unreadTotal=unread_count($user);
 if(is_staff($user)){$nav['manage']=['settings',t('Verwaltung','Management')];$nav['accounts']=['lock',t('Konten','Accounts')];$nav['outbox']=['mail',t('Postausgang','Outbox')];}

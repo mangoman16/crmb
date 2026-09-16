@@ -3,12 +3,13 @@ $id=(int)($_GET['id']??0);$staff=is_staff($user);if(!$id)require_staff();
 $defaultTariff=setting('default_tariff',null);
 $s=$id?student($id):['id'=>0,'first_name'=>'','last_name'=>'','birth_date'=>'','joined_on'=>today(),'ended_on'=>'','status'=>setting('default_status','active'),'account_id'=>null,'level_id'=>(int)(level_default()['id']??0),'age_group_id'=>null,'tariff_id'=>$defaultTariff,'price_cents'=>null,'price_note'=>'','internal_notes'=>''];
 $tab=(string)($_GET['tab']??'details');
-$tabsAllowed=$staff?['details','contacts','payments','absence','classes','attendance']:['details','contacts','payments','absence'];
+$tabsAllowed=$staff?['details','contacts','payments','invoices','absence','classes','attendance']:['details','contacts','payments','invoices','absence','classes'];
 if(!in_array($tab,$tabsAllowed,true))$tab='details';
 page_head($id?$s['first_name'].' '.$s['last_name']:t('Neuen Schüler anlegen','Add a student'),$id?status_label($s['status']):'',link_button(t('Alle Schüler','All students'),'students',[],'secondary'));
 if($id){
-    $tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),'absence'=>t('Abwesenheit','Absences')];
-    if($staff){$tabLabels['attendance']=t('Anwesenheit','Attendance');$tabLabels['classes']=t('Kurse','Classes');}
+    $tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),
+                'invoices'=>t('Rechnungen','Invoices'),'classes'=>t('Kurse','Courses'),'absence'=>t('Abwesenheit','Absences')];
+    if($staff){$tabLabels['attendance']=t('Anwesenheit','Attendance');}
     tabs($tabLabels,$tab,'student',['id'=>$id]);
 }
 if($tab==='details' || !$id): ?>
@@ -170,6 +171,77 @@ endforeach ?></div></section><?php endif ?>
     <?php endforeach ?>
 </section>
 <?php endif ?>
+<?php elseif($tab==='invoices'): $invoices=invoices_for($id); $open=uninvoiced_charges($id); ?>
+<section class="card">
+    <h2><?=e(t('Rechnungen','Invoices'))?></h2>
+    <p class="muted"><?=e(t('Jede Rechnung wird beim Ausstellen festgeschrieben: das PDF zeigt immer den Stand von damals, auch wenn sich später etwas ändert. Es wird erst beim Herunterladen erzeugt und belegt keinen Speicherplatz.','Each invoice is frozen when it is issued: the PDF always shows how things stood then, even if something changes later. It is built when you download it and takes up no space.'))?></p>
+    <?php if(!$invoices)echo '<p class="muted">'.e(t('Noch keine Rechnung.','No invoices yet.')).'</p>';
+    foreach($invoices as $inv): ?>
+    <div class="record-row">
+        <div>
+            <strong><?=e($inv['number'])?></strong> <?php badge(invoice_status_label($inv['status']),invoice_status_tone($inv['status'])); ?>
+            <p><?=e(money((int)$inv['gross_cents']))?><?php if((int)$inv['tax_cents']>0)echo ' '.e(t('inkl. ','incl. ').money((int)$inv['tax_cents']).' '.t('USt','VAT'));?>
+               · <?=e(t('zahlbar bis ','payable by ').fmt_date((string)$inv['due_on']))?></p>
+            <small><?=e(t('Ausgestellt am ','Issued ').fmt_date((string)$inv['issued_on']))?><?php
+                if($inv['sent_at'])echo ' · '.e(t('per E-Mail geschickt am ','emailed ').fmt_datetime((string)$inv['sent_at']));
+                if($inv['cancelled_at'])echo ' · '.e(t('storniert: ','cancelled: ').($inv['cancel_reason']?:t('ohne Grund','no reason given')));?></small>
+        </div>
+        <div class="row-actions">
+            <a class="button secondary" href="<?=e(url('download',['what'=>'invoice','id'=>$inv['id']]))?>"><?=e(t('PDF herunterladen','Download PDF'))?></a>
+            <?php if($staff && $inv['status']!=='cancelled'): ?>
+                <?php if($inv['status']!=='paid'): ?>
+                <details><summary><?=e(t('Als bezahlt eintragen','Mark as paid'))?></summary>
+                    <?php start_form('invoice_state',['id'=>$inv['id'],'mode'=>'paid']); ?>
+                    <div class="grid two"><?php
+                    input('paid_on',t('Bezahlt am','Paid on'),today(),'date',true);
+                    $methods=(array)setting('payment_methods');
+                    select_field('method',t('Zahlungsart','How'),array_combine($methods,$methods),$methods[0]??'',true);
+                    ?></div>
+                    <?php input('note',t('Notiz','Note'));submit_button(t('Als bezahlt eintragen','Mark as paid'));?></form>
+                </details>
+                <?php endif ?>
+                <?php start_form('invoice_state',['id'=>$inv['id'],'mode'=>'send'],'inline-form');submit_button(t('Per E-Mail schicken','Email it'),'subtle');?></form>
+                <?php if((int)$inv['paid_cents']===0): ?>
+                <details class="account-delete"><summary><?=e(t('Stornieren','Cancel'))?></summary>
+                    <p><?=e(t('Die Nummer bleibt vergeben – eine Lücke in der Nummernfolge wäre bei einer Prüfung nicht erklärbar.','The number stays used – a hole in the sequence would be impossible to explain at an audit.'))?></p>
+                    <?php start_form('invoice_state',['id'=>$inv['id'],'mode'=>'cancel']);
+                    input('note',t('Grund','Reason'),'','text',true);
+                    submit_button(t('Rechnung stornieren','Cancel invoice'),'danger');?></form>
+                </details>
+                <?php endif ?>
+            <?php endif ?>
+        </div>
+    </div>
+    <?php endforeach ?>
+</section>
+
+<?php if($staff): ?>
+<section class="card">
+    <h2><?=e(t('Rechnung ausstellen','Issue an invoice'))?></h2>
+    <?php $problems=invoice_issuer_problems(); if($problems): ?>
+    <div class="notice warn"><strong><?=e(t('Es fehlen noch Angaben zum Betrieb:','Some details about the business are still missing:'))?></strong>
+        <?php foreach($problems as $problem): ?><br><?=e($problem)?><?php endforeach ?>
+        <p><?=link_button(t('Jetzt eintragen','Fill them in now'),'settings',['tab'=>'organisation'],'secondary')?></p></div>
+    <?php elseif(!$open): ?>
+    <p class="muted"><?=e(t('Alle Beiträge dieses Kindes stehen schon auf einer Rechnung.','Every charge for this child is already on an invoice.'))?></p>
+    <?php else: ?>
+    <p class="muted"><?=e(t('Wähle die Beiträge aus, die auf die Rechnung sollen. Mehrere ergeben eine Rechnung mit mehreren Zeilen.','Choose the charges that belong on the invoice. Several make one invoice with several lines.'))?></p>
+    <?php start_form('invoice_create',['student_id'=>$id]); ?>
+    <div class="recipient-list">
+    <?php foreach($open as $c): ?>
+        <label class="recipient"><input type="checkbox" name="charge_ids[]" value="<?=(int)$c['id']?>" checked>
+            <span><strong><?=e($c['label'])?></strong><small><?=e(money((int)$c['amount_cents']).' · '.t('fällig am ','due ').fmt_date((string)$c['due_on']))?></small></span></label>
+    <?php endforeach ?>
+    </div>
+    <div class="grid two"><?php
+    input('issued_on',t('Rechnungsdatum','Invoice date'),today(),'date',true);
+    input('terms',t('Zahlungsziel in Tagen','Payment term in days'),(int)setting('invoice_terms_days'),'number');
+    ?></div>
+    <?php submit_button(t('Rechnung ausstellen','Issue the invoice'));?></form>
+    <?php endif ?>
+</section>
+<?php endif ?>
+
 <?php elseif($tab==='payments'): ?>
 <?php if($staff): $enrolments=student_enrolments($id); $paying=array_filter($enrolments,fn($r)=>$r['left_on']===null && $r['tariff_id']!==null); ?>
 <section class="card">
@@ -227,6 +299,26 @@ if($remaining>0 && !$c['cancelled'] && setting('show_payment_qr')):
 <?php if((int)$c['amount_cents']>$allocated):?><details><summary><?=e(t('+ Zahlung erfassen','+ Record payment'))?></summary><?php start_form('payment_add',['charge_id'=>$c['id']]);?><div class="grid three"><?php input('amount',t('Betrag (€)','Amount (€)'),amount_input((int)$c['amount_cents']-$allocated),'text',true);input('paid_on',t('Zahlungsdatum','Payment date'),today(),'date',true);$methods=setting('payment_methods',['Überweisung','Bar']);select_field('method',t('Zahlungsart','Payment method'),array_combine($methods,$methods),$methods[0],true);?></div><?php input('note',t('Notiz / Buchungsreferenz','Note / payment reference'));check_field('confirmed',t('Zahlungseingang bestätigen','Confirm receipt of payment'));submit_button(t('Zahlung erfassen','Record payment'));?></form></details><?php endif ?>
 <?php if(!$allocated){start_form('charge_cancel',['id'=>$c['id']],'inline-form');submit_button(t('Beitrag stornieren','Cancel charge'),'subtle danger-text');echo '</form>';}endif ?></section>
 <?php endforeach ?>
+<?php $proofs=rows('SELECT * FROM payment_proofs WHERE student_id=? ORDER BY created_at DESC, id DESC',[$id]); ?>
+<section class="card">
+    <h2><?=e(t('Zahlungsbeleg','Proof of payment'))?></h2>
+    <p class="muted"><?=e($staff
+        ? t('Familien können hier einen Beleg hochladen. Das ist freiwillig und ersetzt keine Bestätigung.','Families can upload a proof here. It is optional and does not replace confirming the payment.')
+        : t('Wenn du überwiesen hast, kannst du hier den Beleg hochladen. Das musst du nicht – es geht dann nur schneller.','If you have made the transfer you can upload the confirmation here. You do not have to – it just makes it quicker.'))?></p>
+    <?php foreach($proofs as $proof): ?>
+    <div class="record-row">
+        <div><strong><a href="<?=e(url('download',['what'=>'proof','id'=>$proof['id']]))?>"><?=e($proof['original_name']?:t('Beleg','Proof'))?></a></strong>
+            <p><?=e(fmt_datetime((string)$proof['created_at']).' · '.round(((int)$proof['bytes'])/1024).' kB')?></p>
+            <?php if($proof['note']):?><p><?=e($proof['note'])?></p><?php endif ?></div>
+        <?php if($staff): ?><div class="row-actions"><?php start_form('proof_delete',['id'=>$proof['id']],'inline-form');submit_button(t('Entfernen','Remove'),'subtle danger-text');?></form></div><?php endif ?>
+    </div>
+    <?php endforeach ?>
+    <?php start_form('proof_upload',['student_id'=>$id],'form',true);
+    file_field('proof',t('Beleg als Foto oder PDF','Proof as a photo or PDF'),'proof');
+    input('note',t('Notiz (optional)','Note (optional)'),'','text',false,'',t('z. B. „am 3. überwiesen“','e.g. “transferred on the 3rd”'));
+    submit_button(t('Beleg hochladen','Upload the proof'),'secondary');?></form>
+</section>
+
 <?php if($staff): $first=array_values($paying)[0]??null; ?>
 <section class="card"><h2><?=e(t('Beitrag von Hand anlegen','Create a charge by hand'))?></h2>
 <p class="muted"><?=e(t('Für alles, was kein regelmäßiger Kursbeitrag ist – Turniergebühr, Schläger, Hallenmiete.','For anything that is not a recurring course fee – a tournament entry, a racket, hall hire.'))?></p>

@@ -19,8 +19,22 @@ function icon(string $name): string {
     ];
     return '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'.($paths[$name]??$paths['arrow']).'</svg>';
 }
-function start_form(string $action,array $hidden=[],string $class='form'): void {
-    form_open($action,$hidden+['return_page'=>current_page(),'return_id'=>(int)($_GET['id']??0),'return_tab'=>(string)($_GET['tab']??'')],$class);
+function start_form(string $action,array $hidden=[],string $class='form',bool $multipart=false): void {
+    form_open($action,$hidden+['return_page'=>current_page(),'return_id'=>(int)($_GET['id']??0),'return_tab'=>(string)($_GET['tab']??'')],$class,$multipart);
+}
+
+/**
+ * A file picker, with the real limit written under it.
+ *
+ * The limit shown is upload_limit(), which is the smaller of what the operator
+ * asked for and what this server will actually accept - because a form that
+ * promises more than PHP allows fails in a way that looks like a broken portal.
+ */
+function file_field(string $name,string $label,string $kind='proof',string $hint=''): void {
+    $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
+    echo '<div class="field"><label for="'.e($id).'">'.e($label).'</label>';
+    echo '<input id="'.e($id).'" name="'.e($name).'" type="file" accept="'.e(implode(',',array_keys(upload_types($kind)))).'">';
+    echo '<small>'.e(($hint?$hint.' ':'').t('Höchstens ','At most ').upload_limit_label().'.').'</small></div>';
 }
 /**
  * A labelled form field.

@@ -229,3 +229,13 @@ html[data-text=largest]{font-size:21px}
 /* A date that is not happening reads as struck through rather than merely grey. */
 .editor-list-item.is-off strong{text-decoration:line-through;text-decoration-thickness:1px}
 .editor-list-item.is-off{opacity:.75}
+
+/* How the operator's details will look at the top of an invoice. Monospaced-ish
+   spacing so a missing line is visible here rather than on a sent document. */
+.invoice-preview{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin:16px 0;display:grid;gap:3px;font-size:.9375rem}
+.invoice-preview strong{font-size:1.05rem}
+.invoice-preview span{color:var(--ink-2)}
+.invoice-preview hr{border:0;border-top:1px solid var(--border);margin:8px 0;width:100%}
+
+/* A filter chip that is the one currently showing. */
+.chip.is-on{border-color:var(--teal);color:var(--teal);background:var(--teal-soft)}

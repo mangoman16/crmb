@@ -15,7 +15,7 @@ try {
     require ROOT.'/app/actions_config.php';
     require ROOT.'/app/ui.php';
     $page=is_scalar($_GET['page']??'')?(string)($_GET['page']??'dashboard'):'dashboard';
-    $allowed=['dashboard','students','student','payments','classes','accounts','messages','compose','news','outbox','manage','settings','history','profile','login','forgot','activate','unsubscribe','privacy'];
+    $allowed=['dashboard','students','student','payments','classes','accounts','messages','compose','news','outbox','manage','invoices','download','settings','history','profile','login','forgot','activate','unsubscribe','privacy'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
     if($_SERVER['REQUEST_METHOD']==='POST') {
         try {
@@ -51,7 +51,11 @@ try {
     $public=in_array($page,['login','forgot','activate','unsubscribe','privacy','not_found'],true);
     $user=$public?current_user():require_user();
     if($user)touch_last_seen($user);
-    if(in_array($page,['accounts','payments','compose','outbox','classes','manage'],true))require_staff();
+    if(in_array($page,['accounts','payments','compose','outbox','classes','manage','invoices'],true))require_staff();
+    // A download is not a page: it answers with a file and leaves. Handled here
+    // rather than in a view because a view is wrapped in the layout, and the one
+    // thing a PDF must not have around it is HTML.
+    if($page==='download')serve_download();
     if(in_array($page,['settings','history'],true))require_admin();
     // Read once, like the flash message: a submission that was rejected is offered
     // back to the form that follows and then forgotten, so it cannot reappear on a

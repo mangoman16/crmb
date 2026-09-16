@@ -88,6 +88,102 @@ function setting_schema(): array {
             'label' => ['Anwesenheit: mögliche Einträge', 'Attendance: possible entries'],
             'hint'  => ['Weitere Einträge sind möglich, z. B. „Verspätet“.', 'You can add more, for example “Late”.'],
         ],
+        // --- who is running this ------------------------------------------
+        // Entered once and used twice: in the privacy notice, where the law wants
+        // a named controller, and on every invoice, where Austrian law wants a
+        // name and address (§ 11 Abs 1 UStG).
+        'org_name' => [
+            'kind' => 'text', 'default' => '', 'max' => 160, 'group' => 'organisation',
+            'label' => ['Name oder Firma', 'Name or company'],
+            'hint'  => ['Genau so, wie es auf einer Rechnung stehen soll.', 'Exactly as it should appear on an invoice.'],
+        ],
+        'org_street' => [
+            'kind' => 'text', 'default' => '', 'max' => 160, 'group' => 'organisation',
+            'label' => ['Straße und Hausnummer', 'Street and number'],
+        ],
+        'org_zip' => [
+            'kind' => 'text', 'default' => '', 'max' => 12, 'group' => 'organisation',
+            'label' => ['PLZ', 'Postcode'],
+        ],
+        'org_city' => [
+            'kind' => 'text', 'default' => '', 'max' => 120, 'group' => 'organisation',
+            'label' => ['Ort', 'Town'],
+        ],
+        'org_country' => [
+            'kind' => 'text', 'default' => 'Österreich', 'max' => 80, 'group' => 'organisation',
+            'label' => ['Land', 'Country'],
+        ],
+        'org_email' => [
+            'kind' => 'text', 'default' => '', 'max' => 254, 'group' => 'organisation',
+            'label' => ['E-Mail für Rückfragen', 'Email for questions'],
+        ],
+        'org_phone' => [
+            'kind' => 'text', 'default' => '', 'max' => 60, 'group' => 'organisation',
+            'label' => ['Telefon', 'Telephone'],
+        ],
+        'org_web' => [
+            'kind' => 'text', 'default' => '', 'max' => 160, 'group' => 'organisation',
+            'label' => ['Website', 'Website'],
+        ],
+        'org_vat_id' => [
+            'kind' => 'text', 'default' => '', 'max' => 20, 'group' => 'organisation',
+            'label' => ['UID-Nummer', 'VAT identification number'],
+            'hint'  => ['Leer lassen, wenn keine vorhanden ist. Kleinunternehmer haben meist keine.',
+                        'Leave empty if you have none. Small businesses usually do not.'],
+        ],
+        'org_register_no' => [
+            'kind' => 'text', 'default' => '', 'max' => 60, 'group' => 'organisation',
+            'label' => ['Firmenbuch- oder GISA-Nummer', 'Company or trade register number'],
+        ],
+        'org_tax_mode' => [
+            'kind' => 'choice', 'default' => 'small', 'options' => 'org_tax_modes', 'group' => 'organisation',
+            'label' => ['Umsatzsteuer', 'VAT'],
+            'hint'  => ['Kleinunternehmer stellen ohne Umsatzsteuer aus und müssen stattdessen auf die Befreiung hinweisen.',
+                        'A small business invoices without VAT and must state the exemption instead.'],
+        ],
+        'org_tax_modes' => [
+            'kind' => 'raw', 'group' => 'organisation', 'internal' => true,
+            'default' => ['small' => 'Kleinunternehmer (keine Umsatzsteuer)', 'vat' => 'Mit Umsatzsteuer'],
+            'label' => ['Umsatzsteuer-Varianten', 'VAT options'],
+        ],
+        'org_vat_rate' => [
+            'kind' => 'int', 'default' => 20, 'min' => 0, 'max' => 100, 'group' => 'organisation',
+            'label' => ['Steuersatz in Prozent', 'Tax rate, per cent'],
+            'hint'  => ['Nur wenn mit Umsatzsteuer abgerechnet wird.', 'Only used when invoicing with VAT.'],
+        ],
+        'org_tax_note' => [
+            'kind' => 'text', 'default' => 'Umsatzsteuerbefreit – Kleinunternehmer gemäß § 6 Abs 1 Z 27 UStG.',
+            'max' => 255, 'group' => 'organisation',
+            'label' => ['Hinweis zur Steuerbefreiung', 'Note about the tax exemption'],
+            'hint'  => ['Muss auf jeder Rechnung stehen, wenn keine Umsatzsteuer ausgewiesen wird.',
+                        'Must appear on every invoice when no VAT is shown.'],
+        ],
+        'invoice_number_format' => [
+            'kind' => 'text', 'default' => '{year}-{number}', 'max' => 40, 'group' => 'organisation',
+            'label' => ['Aufbau der Rechnungsnummer', 'Shape of the invoice number'],
+            'hint'  => ['Platzhalter: {year} {number}. Die Nummer läuft je Jahr fortlaufend, wie es das Gesetz verlangt.',
+                        'Placeholders: {year} {number}. The number runs consecutively within each year, as the law requires.'],
+        ],
+        'invoice_footer' => [
+            'kind' => 'longtext', 'default' => '', 'max' => 1000, 'group' => 'organisation',
+            'label' => ['Fußzeile der Rechnung', 'Invoice footer'],
+            'hint'  => ['Zum Beispiel Bankverbindung in Worten oder ein Dank.', 'Bank details in words, or a thank you.'],
+        ],
+        'invoice_terms_days' => [
+            'kind' => 'int', 'default' => 14, 'min' => 0, 'max' => 180, 'group' => 'organisation',
+            'label' => ['Zahlungsziel neuer Rechnungen (Tage)', 'Payment term for new invoices (days)'],
+        ],
+        'invoice_sequence' => [
+            'kind' => 'raw', 'default' => [], 'group' => 'organisation', 'internal' => true,
+            'label' => ['Letzte Rechnungsnummer je Jahr', 'Last invoice number per year'],
+        ],
+
+        'upload_max_kb' => [
+            'kind' => 'int', 'default' => 4096, 'min' => 64, 'max' => 51200, 'group' => 'portal',
+            'label' => ['Größte erlaubte Datei (kB)', 'Largest allowed file (kB)'],
+            'hint'  => ['Gilt für Zahlungsbelege, Anhänge und Profilbilder. Der Server begrenzt zusätzlich; es gilt der kleinere Wert.',
+                        'Applies to payment proofs, attachments and profile pictures. The server has its own limit; the smaller one wins.'],
+        ],
         'online_window_minutes' => [
             'kind' => 'int', 'default' => 5, 'min' => 1, 'max' => 120, 'group' => 'portal',
             'label' => ['Als „online“ gilt eine Aktivität innerhalb von (Minuten)', 'Count as “online” when active within (minutes)'],
