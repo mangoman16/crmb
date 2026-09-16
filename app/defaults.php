@@ -189,6 +189,12 @@ function setting_schema(): array {
                           'red'=>'Rot','orange'=>'Orange','green'=>'Grün','slate'=>'Grau'],
             'label' => ['Farbauswahl', 'Colour choices'],
         ],
+        'history_months' => [
+            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 240, 'group' => 'system',
+            'label' => ['Änderungen aufbewahren (Monate)', 'Keep changes for (months)'],
+            'hint'  => ['Ältere Einträge im Änderungsprotokoll werden beim nächtlichen Aufräumen entfernt. Das Prüfprotokoll ist davon nicht betroffen.',
+                        'Older entries in the change log are removed during the nightly cleanup. The audit log is not affected.'],
+        ],
         'upload_max_kb' => [
             'kind' => 'int', 'default' => 4096, 'min' => 64, 'max' => 51200, 'group' => 'portal',
             'label' => ['Größte erlaubte Datei (kB)', 'Largest allowed file (kB)'],

@@ -36,6 +36,9 @@ function prune_expired(): void {
     run('DELETE FROM auth_tokens WHERE expires_at<?', [now()]);
     run('DELETE FROM rate_limits WHERE window_start<?', [time() - 86400]);
     run('DELETE FROM form_requests WHERE created_at<?', [gmdate('Y-m-d H:i:s', time() - 604800)]);
+    // The change log is informative, not evidence, so it has a horizon. The
+    // audit log next to it does not, because that one is evidence.
+    history_prune((int)setting('history_months'));
 }
 
 /** Whether enough time has passed since the last background run. */

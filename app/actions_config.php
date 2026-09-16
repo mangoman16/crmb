@@ -321,12 +321,6 @@ function dispatch_config(string $action): array {
         audit('settings.saved','settings'); flash(t('Vorgaben gespeichert.','Defaults saved.'));
         return [choose(post('to_page','settings'),['settings','manage']),['tab'=>post('to_tab')?:$group]];
 
-    case 'version_revert':
-        require_admin();
-        revert_version((int)post('id'));
-        flash(t('Änderung zurückgenommen.','Change undone.'));
-        return ['history',[]];
-
     // ---- invoices --------------------------------------------------------
 
     case 'invoice_create':
