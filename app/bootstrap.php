@@ -36,6 +36,7 @@ require __DIR__ . '/enrolment.php';
 require __DIR__ . '/groups.php';
 require __DIR__ . '/attendance.php';
 require __DIR__ . '/billing.php';
+require __DIR__ . '/shell.php';
 require __DIR__ . '/uploads.php';
 require __DIR__ . '/pdf.php';
 require __DIR__ . '/invoices.php';

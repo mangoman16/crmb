@@ -205,7 +205,19 @@ function set_setting(string $key, mixed $value): void {
     run('INSERT INTO settings (setting_key,setting_value,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)',[$key,json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),now()]);
     $cache=&setting_cache(); unset($cache[$key]);
 }
-function audit(string $action,string $type,?int $id=null): void { run('INSERT INTO audit_log (actor_id,action,entity_type,entity_id,created_at) VALUES (?,?,?,?,?)',[current_user()['id']??null,$action,$type,$id,now()]); }
+/**
+ * Write down that something happened, and who did it.
+ *
+ * "Who" is the person really signed in. While somebody is looking through
+ * another account's eyes, the session belongs to that account but the decision
+ * was made by the person impersonating, and an audit log that named the borrowed
+ * account would be recording the wrong person for the one kind of action where
+ * it matters most.
+ */
+function audit(string $action,string $type,?int $id=null): void {
+    $actor=$_SESSION['impersonator_id'] ?? (current_user()['id']??null);
+    run('INSERT INTO audit_log (actor_id,action,entity_type,entity_id,created_at) VALUES (?,?,?,?,?)',[$actor?(int)$actor:null,$action,$type,$id,now()]);
+}
 function seal(string $plain): string { $iv=random_bytes(12); $tag=''; $cipher=openssl_encrypt($plain,'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,$iv,$tag); if($cipher===false) throw new RuntimeException('Encryption failed'); return base64_encode($iv.$tag.$cipher); }
 function unseal(string $value): string { $b=base64_decode($value,true); if($b===false || strlen($b)<28) throw new RuntimeException('Invalid encrypted data'); $plain=openssl_decrypt(substr($b,28),'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,substr($b,0,12),substr($b,12,16)); if($plain===false) throw new RuntimeException('Cannot decrypt with this app key'); return $plain; }
 function email_value(string $value): string { $v=mb_strtolower(trim($value)); if(!filter_var($v,FILTER_VALIDATE_EMAIL) || strlen($v)>254) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.')); return $v; }

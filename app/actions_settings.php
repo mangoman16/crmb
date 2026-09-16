@@ -94,7 +94,10 @@ function dispatch_settings_or_messages(string $action): array {
         require_staff();run('DELETE FROM saved_filters WHERE id=?',[(int)post('id')]);return ['students',[]];
     case 'preferences_save':
         $u=require_user();$newsletter=(bool)post('newsletter');$notifications=(bool)post('notifications');$payments=(bool)post('payment_notices');
-        run('UPDATE accounts SET name=?,locale=?,theme=?,text_scale=?,newsletter=?,notifications=?,payment_notices=? WHERE id=?',[required_text('name'),choose(post('locale'),['de','en']),choose(post('theme','auto'),['auto','light','dark']),choose(post('text_scale','normal'),['normal','large','larger','largest']),$newsletter?1:0,$notifications?1:0,$payments?1:0,$u['id']]);
+        // An empty accent means "whatever the administrator chose", which is a
+        // real answer and has to stay distinguishable from a colour.
+        $accent=post('accent')===''?'':choose(post('accent'),array_keys(accents()));
+        run('UPDATE accounts SET name=?,locale=?,theme=?,accent=?,text_scale=?,newsletter=?,notifications=?,payment_notices=? WHERE id=?',[required_text('name'),choose(post('locale'),['de','en']),choose(post('theme','auto'),['auto','light','dark']),$accent,choose(post('text_scale','normal'),['normal','large','larger','largest']),$newsletter?1:0,$notifications?1:0,$payments?1:0,$u['id']]);
         if((bool)($u['payment_notices']??1)!==$payments)record_consent((int)$u['id'],'payment_notices',$payments);
         if((bool)$u['newsletter']!==$newsletter)record_consent((int)$u['id'],'newsletter',$newsletter);
         if((bool)$u['notifications']!==$notifications)record_consent((int)$u['id'],'notifications',$notifications);

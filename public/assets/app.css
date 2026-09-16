@@ -259,3 +259,94 @@ html[data-text=largest]{font-size:21px}
 .timeline-item.is-today .timeline-when{color:var(--teal-ink);font-weight:650}
 .timeline-item.is-empty .timeline-what small{font-style:italic}
 @media(max-width:560px){.timeline-item{flex-wrap:wrap;gap:6px 12px}.timeline-when{flex-basis:100%}}
+
+/* ---------------------------------------------------------------------------
+   The shell: a pinned bar, what is waiting, who you are, and colour.
+   --------------------------------------------------------------------------- */
+
+/* The accent is one token. Every component already reads --teal, so choosing a
+   colour is one declaration rather than a second stylesheet, and a colour that
+   was removed falls back to the shipped one rather than to nothing. */
+html[data-accent=blue]  {--teal:#1f5fa9;--teal-ink:#174a85;--teal-soft:#e6eefa;--teal-border:#c2d6ef;--focus:#2c73c2}
+html[data-accent=violet]{--teal:#6c4bb6;--teal-ink:#563a93;--teal-soft:#eee9fa;--teal-border:#d5c9ef;--focus:#7d5ccc}
+html[data-accent=pink]  {--teal:#b03a72;--teal-ink:#8d2e5b;--teal-soft:#fbe7f0;--teal-border:#efc4d8;--focus:#c74a86}
+html[data-accent=red]   {--teal:#b5432f;--teal-ink:#8f3425;--teal-soft:#fbe9e5;--teal-border:#f0c8c0;--focus:#c9513c}
+html[data-accent=orange]{--teal:#9a5a12;--teal-ink:#7c480d;--teal-soft:#fbefdf;--teal-border:#ecd4b0;--focus:#b06a1c}
+html[data-accent=green] {--teal:#3a7a2e;--teal-ink:#2e6124;--teal-soft:#e8f3e5;--teal-border:#c6e0c0;--focus:#468f38}
+html[data-accent=slate] {--teal:#41566b;--teal-ink:#334454;--teal-soft:#e9eef3;--teal-border:#c8d4de;--focus:#516b85}
+/* In the dark palette the same accents have to lift off the background rather
+   than sink into it, so each one is lighter than its daylight twin. */
+@media(prefers-color-scheme:dark){
+  html:not([data-theme=light])[data-accent=blue]  {--teal:#79b0f2;--teal-ink:#a8cdf8;--teal-soft:#15263a;--teal-border:#27405f}
+  html:not([data-theme=light])[data-accent=violet]{--teal:#b49bf0;--teal-ink:#cdbcf7;--teal-soft:#241d3a;--teal-border:#3b3160}
+  html:not([data-theme=light])[data-accent=pink]  {--teal:#f091bc;--teal-ink:#f7b6d3;--teal-soft:#351f2b;--teal-border:#5a2a44}
+  html:not([data-theme=light])[data-accent=red]   {--teal:#f3947f;--teal-ink:#f8b7a8;--teal-soft:#37201b;--teal-border:#5d352c}
+  html:not([data-theme=light])[data-accent=orange]{--teal:#e3ab6a;--teal-ink:#f0c68c;--teal-soft:#342616;--teal-border:#573f23}
+  html:not([data-theme=light])[data-accent=green] {--teal:#86cf75;--teal-ink:#a9dd9c;--teal-soft:#1c2f18;--teal-border:#2f4d28}
+  html:not([data-theme=light])[data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--teal-soft:#1e2833;--teal-border:#33465a}
+}
+html[data-theme=dark][data-accent=blue]  {--teal:#79b0f2;--teal-ink:#a8cdf8;--teal-soft:#15263a;--teal-border:#27405f}
+html[data-theme=dark][data-accent=violet]{--teal:#b49bf0;--teal-ink:#cdbcf7;--teal-soft:#241d3a;--teal-border:#3b3160}
+html[data-theme=dark][data-accent=pink]  {--teal:#f091bc;--teal-ink:#f7b6d3;--teal-soft:#351f2b;--teal-border:#5a2a44}
+html[data-theme=dark][data-accent=red]   {--teal:#f3947f;--teal-ink:#f8b7a8;--teal-soft:#37201b;--teal-border:#5d352c}
+html[data-theme=dark][data-accent=orange]{--teal:#e3ab6a;--teal-ink:#f0c68c;--teal-soft:#342616;--teal-border:#573f23}
+html[data-theme=dark][data-accent=green] {--teal:#86cf75;--teal-ink:#a9dd9c;--teal-soft:#1c2f18;--teal-border:#2f4d28}
+html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--teal-soft:#1e2833;--teal-border:#33465a}
+
+/* Pinned. Everything in the bar is wanted from wherever you have scrolled to. */
+.topbar{position:sticky;top:0;z-index:30;backdrop-filter:saturate(1.2) blur(6px)}
+.topbar-actions{gap:12px}
+.account-link.compact{display:flex;align-items:center;gap:9px;color:var(--ink);max-width:210px;min-height:44px}
+.account-link.compact span{min-width:0;overflow:hidden}
+.account-link.compact>span>small{color:var(--muted)}
+.account-link.compact:hover{text-decoration:none}
+@media(max-width:760px){.account-link.compact>span{display:none}}
+
+/* What is waiting. A <details> rather than a script: it opens without
+   JavaScript, closes on Escape like any other, and needs no focus trap. */
+.notification-pane{position:relative}
+.notification-pane>summary{list-style:none;display:grid;place-items:center;position:relative;min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink-2);cursor:pointer}
+.notification-pane>summary::-webkit-details-marker{display:none}
+.notification-pane>summary .count{position:absolute;top:-6px;right:-6px}
+.notification-list{position:absolute;right:0;top:calc(100% + 8px);width:min(360px,calc(100vw - 32px));max-height:min(70vh,520px);overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px var(--shadow-tint);padding:8px;z-index:40}
+.notification-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px 10px}
+.notification-list>.muted{padding:10px}
+.notification{display:flex;gap:11px;align-items:flex-start;padding:11px 10px;border-radius:9px;color:inherit;min-height:44px}
+.notification:hover{background:var(--surface-2);text-decoration:none}
+.notification>svg{color:var(--muted-2);margin-top:2px}
+.notification span{display:grid;gap:2px;min-width:0}
+.notification small{color:var(--muted)}
+.notification time{font-size:.75rem;color:var(--muted-2)}
+.notification.is-unread{background:var(--teal-soft)}
+.notification.is-unread strong{color:var(--teal-ink)}
+
+/* Being somebody else, and the way back. Loud on purpose: forgetting you are
+   impersonating and then editing something is the failure worth designing
+   against. */
+.impersonation-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;background:var(--amber-bg);color:var(--amber-ink);border:1px solid var(--amber-border);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:.9375rem}
+
+/* A picture where the initials used to be. */
+.avatar.has-photo{padding:0;overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.avatar.large{width:88px;height:88px;border-radius:22px;font-size:1.6rem}
+.avatar-editor{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.avatar-editor>div{flex:1;min-width:240px}
+
+/* Choosing a colour. Big targets, because the people most likely to enjoy this
+   are the children. */
+.accent-picker{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 20px}
+.accent-swatch{display:grid;justify-items:center;gap:6px;cursor:pointer;min-width:64px}
+.accent-swatch input{position:absolute;opacity:0;width:0;height:0}
+.accent-dot{width:40px;height:40px;border-radius:50%;border:3px solid transparent;box-shadow:inset 0 0 0 1px var(--border-strong)}
+.accent-dot.is-default{background:linear-gradient(135deg,var(--surface-3) 50%,var(--border-strong) 50%)}
+.accent-swatch small{font-size:.75rem;color:var(--muted)}
+.accent-swatch input:checked+.accent-dot{border-color:var(--ink);box-shadow:inset 0 0 0 2px var(--surface)}
+.accent-swatch input:focus-visible+.accent-dot{outline:3px solid var(--focus);outline-offset:3px}
+
+/* "Something is wrong here", at the bottom of every page. Quiet until opened. */
+.feedback{margin:36px 0 0;border-top:1px solid var(--border);padding-top:10px;color:var(--muted)}
+.feedback>summary{display:flex;align-items:center;gap:9px;font-size:.875rem;font-weight:500;color:var(--muted)}
+.feedback>summary:hover{color:var(--ink-2)}
+.feedback[open]{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-top:36px}
+.feedback p{font-size:.875rem;margin-bottom:12px}
+@media print{.feedback,.notification-pane,.impersonation-bar{display:none!important}}

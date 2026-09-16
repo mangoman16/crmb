@@ -178,6 +178,17 @@ function setting_schema(): array {
             'label' => ['Letzte Rechnungsnummer je Jahr', 'Last invoice number per year'],
         ],
 
+        'default_accent' => [
+            'kind' => 'choice', 'default' => 'teal', 'options' => 'accent_options', 'group' => 'portal',
+            'label' => ['Standardfarbe des Portals', 'Default colour of the portal'],
+            'hint'  => ['Jede und jeder kann im eigenen Konto eine andere wählen.', 'Everybody can pick a different one for their own account.'],
+        ],
+        'accent_options' => [
+            'kind' => 'raw', 'group' => 'portal', 'internal' => true,
+            'default' => ['teal'=>'Türkis','blue'=>'Blau','violet'=>'Violett','pink'=>'Pink',
+                          'red'=>'Rot','orange'=>'Orange','green'=>'Grün','slate'=>'Grau'],
+            'label' => ['Farbauswahl', 'Colour choices'],
+        ],
         'upload_max_kb' => [
             'kind' => 'int', 'default' => 4096, 'min' => 64, 'max' => 51200, 'group' => 'portal',
             'label' => ['Größte erlaubte Datei (kB)', 'Largest allowed file (kB)'],

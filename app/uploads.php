@@ -184,6 +184,26 @@ function serve_download(): void {
         $invoice = invoice($id);
         send_bytes(invoice_pdf($invoice), 'application/pdf', invoice_filename($invoice));
     }
+    if ($what === 'avatar') {
+        // A picture is shown to everybody who can already see the person's name,
+        // which on this portal is everybody signed in: a family sees the
+        // trainer, the trainer sees the children, and a child sees their own.
+        require_user();
+        $kind = ($_GET['kind'] ?? '') === 'student' ? 'students' : 'accounts';
+        $name = (string)(scalar('SELECT avatar_name FROM ' . $kind . ' WHERE id=?', [$id]) ?: '');
+        // The type comes back from the same table the extension was chosen
+        // from, so a file is never announced as something it is not.
+        $mime = array_search(pathinfo($name, PATHINFO_EXTENSION), upload_types('avatar'), true);
+        if ($name !== '' && $mime !== false) send_upload('avatar', $name, (string)$mime);
+    }
+    if ($what === 'shot') {
+        require_admin();
+        $report = one('SELECT * FROM feedback WHERE id=?', [$id]);
+        if ($report && $report['screenshot_name'] !== '') {
+            $mime = array_search(pathinfo((string)$report['screenshot_name'], PATHINFO_EXTENSION), upload_types('avatar'), true);
+            if ($mime !== false) send_upload('avatar', (string)$report['screenshot_name'], (string)$mime);
+        }
+    }
     if ($what === 'proof') {
         $proof = one('SELECT * FROM payment_proofs WHERE id=?', [$id]);
         if ($proof) {

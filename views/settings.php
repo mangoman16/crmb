@@ -8,7 +8,9 @@
  */
 $tab=(string)($_GET['tab']??'portal');
 $items=['portal'=>t('Portal','Portal'),'organisation'=>t('Betrieb','Business'),'fields'=>t('Eigene Felder','Custom fields'),
-        'smtp'=>'SMTP','privacy'=>t('Datenschutz','Privacy'),'system'=>t('System','System')];
+        'smtp'=>'SMTP','privacy'=>t('Datenschutz','Privacy'),
+        'feedback'=>t('Rückmeldungen','Reports').(unread_feedback()?' ('.unread_feedback().')':''),
+        'system'=>t('System','System')];
 if(!isset($items[$tab]))$tab='portal';$edit=(int)($_GET['edit']??0);
 page_head(t('Einstellungen','Settings'),t('Technische Verwaltung des Portals. Die Listen für den Trainingsalltag stehen unter „Verwaltung“.','Technical administration of the portal. The lists for day-to-day training are under “Verwaltung”.'));
 tabs($items,$tab,'settings');
@@ -16,6 +18,7 @@ tabs($items,$tab,'settings');
 // braced if as the last statement of an alternative-syntax elseif branch.
 if($tab==='system') require ROOT.'/views/_settings_system.php';
 if($tab==='organisation') require ROOT.'/views/_organisation.php';
+if($tab==='feedback') require ROOT.'/views/_feedback.php';
 if(in_array($tab,['portal','organisation','system'],true)) require ROOT.'/views/_settings_registry.php';
 if($tab==='fields'):
 $f=$edit?one('SELECT * FROM field_definitions WHERE id=?',[$edit]):null;

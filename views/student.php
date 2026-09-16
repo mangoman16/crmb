@@ -14,6 +14,21 @@ if($id){
 }
 if($tab==='details' || !$id): ?>
 <?php start_form('student_save',['id'=>$id,'revision'=>$s['revision']??0],'form'); ?>
+<?php if($id): ?>
+<section class="card">
+    <h2><?=e(t('Bild','Picture'))?></h2>
+    <div class="avatar-editor">
+        <?=avatar($s,'large','student')?>
+        <div>
+            <p class="muted"><?=e(t('Freiwillig. Ohne Bild zeigt das Portal die Anfangsbuchstaben.','Optional. Without one the portal shows the initials.'))?></p>
+            <?php start_form('avatar_save',['kind'=>'student','id'=>$id],'form',true);
+            file_field('avatar',t('Bild auswählen','Choose a picture'),'avatar');
+            submit_button(t('Bild speichern','Save the picture'),'secondary');?></form>
+            <?php if(($s['avatar_name']??'')!==''){start_form('avatar_save',['kind'=>'student','id'=>$id,'remove'=>1],'inline-form');submit_button(t('Bild entfernen','Remove the picture'),'subtle danger-text');echo '</form>';} ?>
+        </div>
+    </div>
+</section>
+<?php endif ?>
 <section class="card"><h2><?=e(t('Persönliche Daten','Personal details'))?></h2><div class="grid two"><?php
 input('first_name',t('Vorname','First name'),$s['first_name'],'text',true);
 input('last_name',t('Nachname','Last name'),$s['last_name'],'text',true);

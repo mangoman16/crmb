@@ -444,5 +444,14 @@ function test_load_actions(): void {
 function act(string $action, array $fields = []): array {
     test_load_actions();
     $_POST = $fields;
-    return dispatch_action($action);
+    // Signing in and out regenerate the session id, which PHP cannot do in a
+    // command-line run that has already printed a line. That is a property of
+    // the runner, not of the action being tested, so only that one warning is
+    // swallowed and everything else still reports.
+    $previous = set_error_handler(static function (int $no, string $message) use (&$previous) {
+        if (str_contains($message, 'session_regenerate_id')) return true;
+        return $previous ? $previous(...func_get_args()) : false;
+    });
+    try { return dispatch_action($action); }
+    finally { restore_error_handler(); }
 }

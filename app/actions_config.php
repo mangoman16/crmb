@@ -65,6 +65,10 @@ function dispatch_config(string $action): array {
         // made to correct a typo should not send fifteen emails.
         if(post('notify')) {
             $entry=class_session((int)$c['id'],$on);
+            foreach(rows('SELECT DISTINCT s.account_id FROM class_students cs JOIN students s ON s.id=cs.student_id'
+                .' WHERE cs.class_id=? AND cs.left_on IS NULL AND s.account_id IS NOT NULL',[(int)$c['id']]) as $who)
+                notify((int)$who['account_id'],'schedule',$c['name'].' – '.fmt_date($on),
+                    session_statuses()[$entry['status']??'planned']??'','classes',['id'=>(int)$c['id'],'tab'=>'dates']);
             $sent=notify_class_change($c,$on,$entry,text_limit('note',500));
             flash(plural($sent,'Familie informiert','Familien informiert','family notified','families notified').'.');
         }
@@ -125,6 +129,8 @@ function dispatch_config(string $action): array {
             flash(t('Erledigt.','Done.'));
         } else {
             request_enrolment((int)$s['id'],$classId,$kind,$tariffId,text_limit('message',500));
+            notify_staff('request',request_kind_label($kind).': '.$s['first_name'].' '.$s['last_name'],
+                (string)scalar('SELECT name FROM classes WHERE id=?',[$classId]),'classes',['tab'=>'requests']);
             flash(t('Deine Anfrage ist unterwegs. Die Trainerin entscheidet darüber.','Your request has been sent. The trainer will decide.'));
         }
         return ['student',['id'=>$s['id'],'tab'=>'classes']];
@@ -134,6 +140,11 @@ function dispatch_config(string $action): array {
         $approve=post('decision')==='approve';
         $r=decide_request((int)post('id'),$approve,text_limit('note',500));
         notify_enrolment_decision($r,$approve,text_limit('note',500));
+        if($account=scalar('SELECT account_id FROM students WHERE id=?',[(int)$r['student_id']]))
+            notify((int)$account,'request',
+                request_kind_label((string)$r['kind']).': '.($approve?t('angenommen','approved'):t('abgelehnt','declined')),
+                (string)scalar('SELECT name FROM classes WHERE id=?',[(int)$r['class_id']]),
+                'student',['id'=>(int)$r['student_id'],'tab'=>'classes']);
         flash($approve?t('Angenommen. Das Kind ist eingetragen.','Approved. The child is enrolled.')
                       :t('Abgelehnt. Die Familie wird benachrichtigt.','Declined. The family is told.'));
         return ['classes',['tab'=>'requests']];
@@ -323,6 +334,11 @@ function dispatch_config(string $action): array {
         $ids=$_POST['charge_ids']??[];
         if(!is_array($ids)) throw new UserError(t('Ungültige Auswahl.','Invalid selection.'));
         $id=create_invoice((int)$s['id'],array_map('intval',$ids),post('issued_on'),post('terms')!==''?(int)post('terms'):-1);
+        $created=invoice($id);
+        if($created['account_id'])
+            notify((int)$created['account_id'],'payment',t('Neue Rechnung: ','New invoice: ').$created['number'],
+                money((int)$created['gross_cents']).t(', zahlbar bis ',', payable by ').fmt_date((string)$created['due_on']),
+                'student',['id'=>(int)$s['id'],'tab'=>'invoices']);
         flash(t('Rechnung angelegt.','Invoice created.'));
         return ['student',['id'=>$s['id'],'tab'=>'invoices','invoice'=>$id]];
 
@@ -368,6 +384,75 @@ function dispatch_config(string $action): array {
         delete_upload('proof',(string)$p['stored_name']);
         audit('proof.deleted','student',(int)$p['student_id']);
         return ['student',['id'=>$p['student_id'],'tab'=>'payments']];
+
+    // ---- the shell: notifications, pictures, colours, impersonation ------
+
+    case 'notifications_read':
+        $u=require_user();
+        if(post('id')!=='') run('UPDATE notifications SET read_at=? WHERE id=? AND account_id=? AND read_at IS NULL',[now(),(int)post('id'),$u['id']]);
+        else run('UPDATE notifications SET read_at=? WHERE account_id=? AND read_at IS NULL',[now(),$u['id']]);
+        return [post('return_page','dashboard'),[]];
+
+    case 'avatar_save':
+        $u=require_user();
+        $kind=choose(post('kind','account'),['account','student']);
+        $table=$kind==='student'?'students':'accounts';
+        // A family may change their own picture and their own children's; staff
+        // may change anybody's, which is how a wrong photo gets fixed.
+        if($kind==='student') { $s=student((int)post('id')); $id=(int)$s['id']; }
+        else { $id=(int)post('id'); if($id!==(int)$u['id'] && !is_staff($u)) throw new UserError(t('Kein Zugriff.','Access denied.')); }
+        $old=(string)(scalar('SELECT avatar_name FROM '.$table.' WHERE id=?',[$id])?:'');
+        if(post('remove')) {
+            run('UPDATE '.$table.' SET avatar_name=? WHERE id=?',['',$id]);
+            if($old!=='') delete_upload('avatar',$old);
+            flash(t('Bild entfernt.','Picture removed.'));
+        } else {
+            $stored=store_upload('avatar','avatar');
+            run('UPDATE '.$table.' SET avatar_name=? WHERE id=?',[$stored['stored_name'],$id]);
+            if($old!=='') delete_upload('avatar',$old);
+            flash(t('Bild gespeichert.','Picture saved.'));
+        }
+        audit('avatar.saved',$kind,$id);
+        return $kind==='student'?['student',['id'=>$id]]:['profile',[]];
+
+    case 'impersonate':
+        // Stopping is checked against who is really signed in, not against the
+        // session's rights: while a trainer is looking through a family's eyes
+        // the session has no staff rights at all, so requiring them here left
+        // the only way back out refusing to work.
+        if(post('mode')==='stop') {
+            if(!impersonator()) throw new UserError(t('Du siehst das Portal gerade nicht als jemand anderer.','You are not viewing the portal as somebody else.'));
+            stop_impersonation(); flash(t('Du bist wieder du selbst.','You are yourself again.')); return ['dashboard',[]];
+        }
+        require_staff();
+        $target=start_impersonation((int)post('id'));
+        flash(t('Du siehst das Portal jetzt als ','You are now seeing the portal as ').$target['name'].t('. Oben kannst du das beenden.','. You can stop that at the top.'));
+        return ['dashboard',[]];
+
+    case 'feedback_send':
+        $u=current_user();
+        $message=required_text('message',4000);
+        $page=mb_substr(post('page','dashboard'),0,60);
+        $screenshot='';
+        // A screenshot is a file the person took themselves. The portal cannot
+        // take one for them without loading a rendering library into every page,
+        // and that is a lot of code on every request for a rare moment.
+        if(isset($_FILES['screenshot']) && (int)($_FILES['screenshot']['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE)
+            $screenshot=store_upload('screenshot','avatar')['stored_name'];
+        run('INSERT INTO feedback (account_id,page,message,context_json,screenshot_name,created_at) VALUES (?,?,?,?,?,?)',
+            [$u['id']??null,$page,$message,json_encode(feedback_context($page),JSON_UNESCAPED_UNICODE),$screenshot,now()]);
+        $id=(int)db()->lastInsertId();
+        foreach(rows("SELECT id FROM accounts WHERE role='admin' AND state='active'") as $admin)
+            notify((int)$admin['id'],'problem',t('Jemand meldet ein Problem','Somebody reported a problem'),
+                mb_substr($message,0,200),'settings',['tab'=>'feedback']);
+        audit('feedback.sent','feedback',$id);
+        flash(t('Danke! Die Meldung ist angekommen.','Thank you. Your report has arrived.'));
+        return [post('return_page','dashboard'),[]];
+
+    case 'feedback_state':
+        require_admin();
+        run('UPDATE feedback SET state=? WHERE id=?',[choose(post('state'),['new','seen','done']),(int)post('id')]);
+        return ['settings',['tab'=>'feedback']];
 
     case 'demo_data':
         require_admin(); $mode=choose(post('mode'),['fill','clear']);

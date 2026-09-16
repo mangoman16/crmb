@@ -30,8 +30,20 @@ function dispatch_messages(string $action): array {
             run('INSERT INTO threads (account_id,subject,updated_at) VALUES (?,?,?)',[$accountId,required_text('subject',180),now()]);$id=(int)db()->lastInsertId();$thread=thread_record($id);
         }
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',[$id,$u['id'],required_text('body',20000),now()]);run('UPDATE threads SET updated_at=? WHERE id=?',[now(),$id]);
-        if(is_staff($u))notify_thread(one('SELECT * FROM accounts WHERE id=?',[$thread['account_id']]),$id,$thread['subject']);
-        else foreach(rows("SELECT * FROM accounts WHERE role IN ('admin','manager') AND state='active'") as $a)notify_thread($a,$id,$thread['subject']);
+        // Whoever did not write it gets told, by email if they want one and in the
+        // portal either way. The staff list said role IN ('admin','manager'):
+        // 'manager' is the name trainers had before 0.2, so a message to the
+        // trainer reached the administrator and nobody else.
+        if(is_staff($u)) {
+            $recipient=one('SELECT * FROM accounts WHERE id=?',[$thread['account_id']]);
+            notify_thread($recipient,$id,$thread['subject']);
+            notify((int)$recipient['id'],'message',t('Neue Nachricht','New message'),$thread['subject'],'messages',['id'=>$id]);
+        } else {
+            foreach(rows("SELECT * FROM accounts WHERE role IN ('admin','trainer','manager') AND state='active'") as $a) {
+                notify_thread($a,$id,$thread['subject']);
+                notify((int)$a['id'],'message',t('Neue Nachricht von ','New message from ').$u['name'],$thread['subject'],'messages',['id'=>$id]);
+            }
+        }
         mark_thread_read($id,(int)$u['id']);
         audit('message.sent','thread',$id);return ['messages',['id'=>$id]];
     case 'bulk_preview':
