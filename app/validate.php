@@ -21,6 +21,17 @@ function time_value(string $value): ?string {
 }
 
 /**
+ * "17:30:00" or "17:30" as ['17','30']; anything else as two empty strings.
+ *
+ * Beside time_value() rather than with the form helpers, because splitting a
+ * time and validating one are the same subject, and this way it is loaded
+ * wherever a time is handled rather than only where a form is drawn.
+ */
+function time_parts(string $value): array {
+    return preg_match('/^([01]\d|2[0-3]):([0-5]\d)/',trim($value),$m)?[$m[1],$m[2]]:['',''];
+}
+
+/**
  * The time posted by one time_field(), or null when it was left blank.
  *
  * The hour and the minute arrive as two boxes, because <input type="time">
@@ -118,6 +129,73 @@ function posted_time_rows(string $name): array {
         $out[$i]=time_value($hour.':'.$minute);
     }
     return $out;
+}
+
+/**
+ * The price list a tariff form posts: one row per interval.
+ *
+ * Returns interval months => cents, cheapest interval first. A row with no
+ * price is the blank line at the bottom of the form and is dropped; the same
+ * interval twice is a double-tap, and the second one loses rather than the form
+ * being refused - she would have to work out which of two identical rows the
+ * complaint is about.
+ */
+function posted_tariff_rates(bool $recurring): array {
+    $intervals=$_POST['rate_interval']??[]; $prices=$_POST['rate_price']??[];
+    if(!is_array($intervals) || !is_array($prices)) throw new UserError(t('Ungültige Preise.','Invalid prices.'));
+    $out=[];
+    foreach($intervals as $i=>$months) {
+        $price=is_scalar($prices[$i]??'')?trim((string)($prices[$i]??'')):'';
+        if($price==='') continue;
+        $months=$recurring?billing_valid_interval((int)(is_scalar($months)?$months:0)):1;
+        if(isset($out[$months])) continue;
+        $out[$months]=cents($price);
+    }
+    if(!$out) throw new UserError(t('Bitte mindestens einen Preis eintragen.','Please enter at least one price.'));
+    if(count($out)>count(billing_intervals())) throw new UserError(t('Zu viele Preise.','Too many prices.'));
+    ksort($out);
+    return $out;
+}
+
+/**
+ * The discount templates a tariff form posts.
+ *
+ * A template is a shape she gives, not an agreement: "dauerhaft -20 %", "erster
+ * Monat frei". A row with no name is the blank line at the bottom.
+ */
+function posted_discount_templates(): array {
+    $names=$_POST['discount_name']??[]; $months=$_POST['discount_months']??[];
+    $kinds=$_POST['discount_kind']??[]; $values=$_POST['discount_value']??[];
+    foreach([$names,$months,$kinds,$values] as $list)
+        if(!is_array($list)) throw new UserError(t('Ungültige Rabatte.','Invalid discounts.'));
+    $out=[];
+    foreach($names as $i=>$name) {
+        $name=is_scalar($name)?trim((string)$name):'';
+        if($name==='') continue;
+        if(mb_strlen($name)>120) throw new UserError(t('Der Name des Rabatts ist zu lang.','That discount name is too long.'));
+        $out[]=['name'=>$name]+discount_from_post($kinds[$i]??'percent',$months[$i]??'0',$values[$i]??'0');
+    }
+    if(count($out)>20) throw new UserError(t('Höchstens 20 Rabattvorlagen je Tarif.','At most 20 discount templates per tariff.'));
+    return $out;
+}
+
+/**
+ * One discount, wherever it was typed: how long it runs, in what shape, and how
+ * much.
+ *
+ * -1 month is "for as long as they stay", which is the only way to say a
+ * permanently reduced rate; the forms offer it as its own choice rather than
+ * asking anybody to type a negative number.
+ */
+function discount_from_post(mixed $kind,mixed $months,mixed $value): array {
+    $kind=choose(is_scalar($kind)?trim((string)$kind):'percent',['percent','fixed']);
+    $months=(int)(is_scalar($months)?trim((string)$months):0);
+    if($months<-1||$months>120) throw new UserError(t('Rabattdauer: 0 bis 120 Monate, oder dauerhaft.','Discount length: 0 to 120 months, or permanent.'));
+    $raw=is_scalar($value)?trim((string)$value):'';
+    $amount=$months===0||$raw===''?0:($kind==='fixed'?cents($raw):(int)$raw);
+    if($kind==='percent'&&($amount<0||$amount>100)) throw new UserError(t('Rabatt: 0 bis 100 Prozent.','Discount: 0 to 100 per cent.'));
+    if($amount<0) throw new UserError(t('Ein Rabatt kann nicht negativ sein.','A discount cannot be negative.'));
+    return ['months'=>$amount===0?0:$months,'kind'=>$kind,'value'=>$amount];
 }
 
 /**

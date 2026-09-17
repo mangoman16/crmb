@@ -70,25 +70,52 @@ is_same(0, (int)scalar('SELECT COUNT(*) FROM class_sessions WHERE class_id=? AND
 is_same('planned', class_session($course, '2026-09-14')['status'], 'and it is going ahead again');
 
 // ---------------------------------------------------------------------------
-case_('A course carries its own tariffs');
-act('tariff_save', ['class_id'=>$course, 'name'=>'Monatsbeitrag', 'price'=>'45,00', 'period'=>'recurring',
-    'interval_months'=>'1', 'due_day'=>'1', 'grace_days'=>'7', 'first_period'=>'prorate',
-    'discount_months'=>'1', 'discount_kind'=>'percent', 'discount_percent'=>'100']);
-act('tariff_save', ['class_id'=>$course, 'name'=>'Halbjahr', 'price'=>'240,00', 'period'=>'recurring',
-    'interval_months'=>'6', 'due_day'=>'1', 'grace_days'=>'7', 'first_period'=>'prorate',
-    'discount_months'=>'0', 'discount_kind'=>'percent', 'discount_percent'=>'0']);
+case_('A course carries its own tariffs, and one tariff carries its own prices');
+$rate = fn(array $prices) => ['rate_interval'=>array_map('strval', array_keys($prices)),
+                              'rate_price'=>array_values($prices)];
+$basics = ['class_id'=>$course, 'period'=>'recurring', 'due_day'=>'1', 'grace_days'=>'7', 'first_period'=>'prorate'];
+act('tariff_save', $basics + ['name'=>'Beitrag', 'interval_months'=>'1']
+    + $rate([1=>'37,00', 3=>'99,00', 6=>'162,00', 12=>'252,00'])
+    + ['discount_name'=>['Erster Monat gratis',''], 'discount_months'=>['1','0'],
+       'discount_kind'=>['percent','percent'], 'discount_value'=>['100','']]);
+act('tariff_save', $basics + ['name'=>'Halbjahr', 'interval_months'=>'6'] + $rate([6=>'240,00']));
 is_same(2, count(class_tariffs($course)), 'both belong to this course');
-throws(fn() => act('tariff_save', ['name'=>'Heimatlos', 'price'=>'10,00', 'period'=>'recurring',
-    'interval_months'=>'1', 'due_day'=>'1', 'grace_days'=>'7', 'first_period'=>'prorate']),
+$beitrag = one("SELECT id FROM tariffs WHERE name='Beitrag'");
+is_same([1=>3700, 3=>9900, 6=>16200, 12=>25200], tariff_rates((int)$beitrag['id']),
+        'four ways to pay one tariff, cheapest period first');
+is_same(1, count(tariff_discount_templates((int)$beitrag['id'])), 'and one discount ready to give');
+is_same('Erster Monat gratis', tariff_discount_templates((int)$beitrag['id'])[0]['name'], 'by the name she gave it');
+
+throws(fn() => act('tariff_save', ['name'=>'Heimatlos', 'period'=>'recurring',
+    'interval_months'=>'1', 'due_day'=>'1', 'grace_days'=>'7', 'first_period'=>'prorate'] + $rate([1=>'10,00'])),
     'a tariff with no course is refused', 'Kurs');
-throws(fn() => act('tariff_save', ['class_id'=>$course, 'name'=>'Falsch', 'price'=>'10,00', 'period'=>'recurring',
-    'interval_months'=>'1', 'due_day'=>'31', 'grace_days'=>'7', 'first_period'=>'prorate']),
+// The override goes on the left: array + array keeps the left-hand keys, so
+// putting due_day into $basics' place would have left it at 1 and the check
+// would have passed by never being made.
+throws(fn() => act('tariff_save', ['name'=>'Falsch', 'interval_months'=>'1', 'due_day'=>'31'] + $basics + $rate([1=>'10,00'])),
     'a due day that not every month has', 'Zahltag');
+throws(fn() => act('tariff_save', $basics + ['name'=>'Preislos', 'interval_months'=>'1'] + $rate([])),
+    'a tariff with no price at all is refused', 'mindestens einen Preis');
+// The usual interval decides what an enrolment that says nothing is billed at,
+// so a tariff whose usual interval has no price is a tariff that cannot bill.
+throws(fn() => act('tariff_save', $basics + ['name'=>'Lücke', 'interval_months'=>'1'] + $rate([6=>'100,00'])),
+    'and so is one whose usual interval has no price', 'üblichen Zeitraum');
 
 case_('And says what it is in one sentence');
 $tariffs = class_tariffs($course);
-ok(str_contains(tariff_summary($tariffs[0]), 'monatlich') || str_contains(tariff_summary($tariffs[1]), 'monatlich'),
-   'the monthly one says monthly');
+$sentences = array_map('tariff_summary', $tariffs);
+ok(str_contains(implode(' ', $sentences), 'monatlich'), 'the monthly one says monthly');
+ok(str_contains(implode(' ', $sentences), '252,00'), 'and names the yearly price as well');
+
+case_('A tariff can be copied, prices and discounts and all');
+$copy = duplicate_tariff((int)$beitrag['id']);
+is_same(tariff_rates((int)$beitrag['id']), tariff_rates($copy), 'the copy has the same four prices');
+is_same(1, count(tariff_discount_templates($copy)), 'and the same discount template');
+ok(str_contains((string)scalar('SELECT name FROM tariffs WHERE id=?', [$copy]), 'Kopie'),
+   'under a name that says it is a copy');
+$second = duplicate_tariff((int)$beitrag['id']);
+ok(scalar('SELECT name FROM tariffs WHERE id=?', [$second]) !== scalar('SELECT name FROM tariffs WHERE id=?', [$copy]),
+   'and a second copy is not called the same thing as the first');
 
 // ---------------------------------------------------------------------------
 case_('A student asks to join, and nothing happens until the trainer agrees');
@@ -201,3 +228,46 @@ if (test_driver() === 'mysql') {
     ok(in_array($price, array_map(fn($t) => (int)$t['id'], unattached_tariffs()), true),
        'so the trainer can see it and attach it to another course');
 }
+
+// ---------------------------------------------------------------------------
+case_('The trainer chooses how a family pays, and what they were given');
+sign_in_as($trainer);
+$flexCourse = make_class(['name'=>'Flexkurs']);
+$flexTariff = make_tariff(['class_id'=>$flexCourse, 'name'=>'Beitrag', 'interval_months'=>1,
+                           'rates'=>[1=>3700, 3=>9900, 12=>25200]]);
+$kid = make_student(['first_name'=>'Wahl','joined_on'=>'2026-01-01']);
+make_enrolment($flexCourse, $kid, ['tariff_id'=>$flexTariff, 'joined_on'=>'2026-01-01']);
+$save = fn(array $fields) => act('enrolment_save', ['class_id'=>(string)$flexCourse, 'student_id'=>(string)$kid,
+    'tariff_id'=>(string)$flexTariff, 'price'=>'', 'price_note'=>'', 'due_day'=>'0',
+    'joined_on'=>'2026-01-01', 'left_on'=>''] + $fields);
+
+$save(['interval_months'=>'3', 'discount_months'=>'0', 'discount_kind'=>'percent', 'discount_value'=>'']);
+$row = enrolment($flexCourse, $kid);
+is_same(3, (int)$row['interval_months'], 'the interval she chose');
+is_same(9900, (int)$row['tariff_price'], 'priced at that interval');
+
+// An interval the tariff has no price for would bill this child at an amount
+// nobody could point at, so it is refused rather than guessed.
+throws(fn() => $save(['interval_months'=>'6', 'discount_months'=>'0', 'discount_kind'=>'percent', 'discount_value'=>'']),
+       'an interval with no price is refused', 'keinen Preis');
+throws(fn() => $save(['interval_months'=>'5', 'discount_months'=>'0', 'discount_kind'=>'percent', 'discount_value'=>'']),
+       'and so is one that is not a billing interval at all', 'Abrechnungszeitraum');
+is_same(3, (int)enrolment($flexCourse, $kid)['interval_months'], 'and the refusal changed nothing');
+
+$save(['interval_months'=>'0', 'discount_months'=>'-1', 'discount_kind'=>'percent', 'discount_value'=>'20',
+       'discount_note'=>'Geschwisterrabatt']);
+$row = enrolment($flexCourse, $kid);
+is_same(1, (int)$row['interval_months'], 'back to the tariff’s usual interval');
+is_same(-1, (int)$row['discount_months'], 'the discount runs for as long as they stay');
+is_same(20, (int)$row['discount_value'], 'at twenty per cent');
+is_same('Geschwisterrabatt', $row['discount_note'], 'under the name that goes on the invoice');
+
+// A value of nothing is no discount, and the name goes with it: a name left
+// behind on an enrolment with no discount reads as a discount on the invoice.
+$save(['interval_months'=>'0', 'discount_months'=>'-1', 'discount_kind'=>'percent', 'discount_value'=>'',
+       'discount_note'=>'Geschwisterrabatt']);
+$row = enrolment($flexCourse, $kid);
+is_same(0, (int)$row['discount_months'], 'no value means no discount');
+is_same('', $row['discount_note'], 'and no name either');
+throws(fn() => $save(['interval_months'=>'0', 'discount_months'=>'3', 'discount_kind'=>'percent', 'discount_value'=>'120']),
+       'a discount over 100 per cent is refused', '0 bis 100');

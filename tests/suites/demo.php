@@ -31,10 +31,12 @@ ok((int)scalar('SELECT COUNT(*) FROM (SELECT student_id FROM class_students GROU
    'somebody in more than one course');
 ok((int)scalar('SELECT COUNT(*) FROM (SELECT class_id FROM class_days GROUP BY class_id HAVING COUNT(*)>1) x') >= 1,
    'a course that meets more than once a week');
-ok((int)scalar('SELECT COUNT(*) FROM (SELECT class_id FROM tariffs GROUP BY class_id HAVING COUNT(*)>1) x') >= 1,
-   'a course offering more than one tariff');
+ok((int)scalar('SELECT COUNT(*) FROM (SELECT tariff_id FROM tariff_rates GROUP BY tariff_id HAVING COUNT(*)>1) x') >= 1,
+   'a tariff that can be paid in more than one way');
 ok((int)scalar('SELECT COUNT(*) FROM tariffs WHERE interval_months>1') >= 1, 'a tariff that is not monthly');
-ok((int)scalar('SELECT COUNT(*) FROM tariffs WHERE discount_months<>0') >= 1, 'and one with a welcome discount');
+ok((int)scalar('SELECT COUNT(*) FROM tariff_discounts') >= 1, 'a discount template ready to be given');
+ok((int)scalar('SELECT COUNT(*) FROM class_students WHERE discount_months<>0') >= 1, 'and one family who has been given one');
+ok((int)scalar('SELECT COUNT(*) FROM class_students WHERE interval_months>0') >= 1, 'and one paying on a longer interval than the usual');
 ok((int)scalar('SELECT COUNT(*) FROM students WHERE birth_date < ?', [date('Y-m-d', strtotime('-18 years'))]) >= 1, 'an adult');
 ok((int)scalar('SELECT COUNT(*) FROM students WHERE birth_date > ?', [date('Y-m-d', strtotime('-12 years'))]) >= 1, 'a child under twelve');
 ok((int)scalar('SELECT COUNT(*) FROM contacts') >= $result['students'], 'every child has somebody to ring');

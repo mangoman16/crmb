@@ -67,7 +67,9 @@ function class_days_for(array $classIds): array {
 /** The tariffs a course offers, cheapest arrangement first. */
 function class_tariffs(int $classId, bool $archived=false): array {
     return rows('SELECT * FROM tariffs WHERE class_id=?'.($archived?'':' AND archived=0')
-        .' ORDER BY sort_order, price_cents, name, id', [$classId]);
+        // Was "cheapest first" when a tariff had one price. It has several now,
+        // so the order she puts them in is the only order that means anything.
+        .' ORDER BY sort_order, name, id', [$classId]);
 }
 
 /** Tariffs that belong to no course yet, so they can be given one rather than lost. */

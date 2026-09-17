@@ -2,6 +2,29 @@
 
 ## 0.6.0 — unreleased
 
+### One tariff, several ways to pay it
+
+- **Four prices for the same thing used to be four tariffs.** "252 € im Jahr,
+  162 € im Halbjahr, 99 € im Quartal, 37 € im Monat" meant four rows with the
+  same name and four places to change the price when it goes up. A tariff now
+  carries a price per interval, and the enrolment says which of them a child is
+  on — chosen from a list that shows what each one costs, so the interval and
+  its price are never looked up separately.
+- **The welcome discount moved off the price list and onto the agreement.** It
+  sat on the tariff, which made "three months at half price for this one child"
+  into a tariff nobody else could be put on. The tariff now carries only the
+  *shapes* of discount she gives — „Erster Monat gratis", „Geschwisterrabatt,
+  dauerhaft −20 %" — and the child carries the one that family actually got,
+  under a name that goes on their invoice. Changing a template changes nothing
+  for a family who already has one.
+- **A tariff can be copied**, with its prices and its templates, because four
+  intervals and three templates is twenty minutes of typing to get a second
+  tariff that differs in one number — and twenty minutes of typing is where a
+  wrong price comes from.
+- Nobody's next invoice changes because of the update: every tariff's price
+  becomes its first rate, every discount becomes a template *and* is copied onto
+  every enrolment that was getting it.
+
 ### A menu that fits, and a mail test that answers
 
 - **The menu on the left scrolled.** Thirteen destinations in one column are

@@ -9,27 +9,46 @@ function dispatch_settings_or_messages(string $action): array {
         $classId=reference_or_null('classes','class_id');
         if(!$classId)throw new UserError(t('Bitte den Kurs wählen, zu dem dieser Tarif gehört.','Please choose the course this tariff belongs to.'));
         $recurring=post('period','recurring')!=='once';
+        $rates=posted_tariff_rates($recurring);
         $interval=$recurring?billing_valid_interval((int)post('interval_months','1')):1;
+        // The normal interval is one of the prices on the list, or the list says
+        // one thing and the tariff says another - and the enrolments that follow
+        // the tariff would be billed at a price that is not written down.
+        if(!isset($rates[$interval]))throw new UserError(t('Für den üblichen Zeitraum ist kein Preis eingetragen.','There is no price for the usual interval.'));
         $dueDay=(int)post('due_day','1');
         if($dueDay<1||$dueDay>28)throw new UserError(t('Zahltag: 1 bis 28. Der 29. bis 31. existiert nicht in jedem Monat.','Payment day: 1 to 28. The 29th to 31st do not exist in every month.'));
         $grace=(int)post('grace_days','7');
         if($grace<0||$grace>365)throw new UserError(t('Frist bis „überfällig“: 0 bis 365 Tage.','Days before overdue: 0 to 365.'));
         $firstPeriod=choose(post('first_period','prorate'),array_keys(billing_first_period_rules()));
-        // -1 is "for as long as they stay", which the form offers as its own
-        // choice rather than asking anybody to type a negative number.
-        $discountMonths=post('discount_forever')?-1:(int)post('discount_months','0');
-        if($discountMonths<-1||$discountMonths>120)throw new UserError(t('Rabattdauer: 0 bis 120 Monate.','Discount length: 0 to 120 months.'));
-        $discountKind=choose(post('discount_kind','percent'),['percent','fixed']);
-        $discountValue=$discountMonths===0?0:($discountKind==='fixed'?cents(post('discount_amount','0')):(int)post('discount_percent','0'));
-        if($discountKind==='percent'&&($discountValue<0||$discountValue>100))throw new UserError(t('Rabatt: 0 bis 100 Prozent.','Discount: 0 to 100 per cent.'));
-        $args=[$classId,required_text('name',120),text_limit('description',300),cents(post('price')),
+        $templates=posted_discount_templates();
+        $args=[$classId,required_text('name',120),text_limit('description',300),
                $recurring?'recurring':'once',$interval,$dueDay,$grace,$firstPeriod,
-               $discountMonths,$discountKind,$discountValue,(int)post('sort_order','0'),post('archived')?1:0];
-        if($id)run('UPDATE tariffs SET class_id=?,name=?,description=?,price_cents=?,period=?,interval_months=?,due_day=?,grace_days=?,first_period=?,discount_months=?,discount_kind=?,discount_value=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
-        else {run('INSERT INTO tariffs (class_id,name,description,price_cents,period,interval_months,due_day,grace_days,first_period,discount_months,discount_kind,discount_value,sort_order,archived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',$args);$id=(int)db()->lastInsertId();}
+               (int)post('sort_order','0'),post('archived')?1:0];
+        $id=transactional(function() use ($id,$args,$rates,$templates) {
+            if($id)run('UPDATE tariffs SET class_id=?,name=?,description=?,period=?,interval_months=?,due_day=?,grace_days=?,first_period=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
+            else {run('INSERT INTO tariffs (class_id,name,description,period,interval_months,due_day,grace_days,first_period,sort_order,archived) VALUES (?,?,?,?,?,?,?,?,?,?)',$args);$id=(int)db()->lastInsertId();}
+            // Rewritten rather than merged: a row removed from the form is a
+            // price she has taken off the list, and merging would leave it there.
+            // Enrolments name an interval, not a rate row, so nothing dangles.
+            run('DELETE FROM tariff_rates WHERE tariff_id=?',[$id]);
+            foreach($rates as $months=>$cents)
+                run('INSERT INTO tariff_rates (tariff_id,interval_months,price_cents) VALUES (?,?,?)',[$id,$months,$cents]);
+            run('DELETE FROM tariff_discounts WHERE tariff_id=?',[$id]);
+            foreach($templates as $i=>$template)
+                run('INSERT INTO tariff_discounts (tariff_id,name,months,kind,value,sort_order) VALUES (?,?,?,?,?,?)',
+                    [$id,$template['name'],$template['months'],$template['kind'],$template['value'],$i]);
+            return $id;
+        });
         audit('tariff.saved','tariff',$id);
         flash(t('Tarif gespeichert. Schon erstellte Beiträge ändern sich nicht.','Tariff saved. Charges already created are unchanged.'));
         return ['classes',['id'=>$classId,'tab'=>'tariffs']];
+    case 'tariff_duplicate':
+        require_staff();$source=one('SELECT * FROM tariffs WHERE id=?',[(int)post('id')]);
+        if(!$source)throw new UserError(t('Diesen Tarif gibt es nicht.','No such tariff.'));
+        $copy=duplicate_tariff((int)$source['id']);
+        audit('tariff.duplicated','tariff',$copy);
+        flash(t('Kopie angelegt. Name und Preise anpassen und speichern.','Copy created. Change the name and the prices, then save.'));
+        return ['classes',['id'=>(int)$source['class_id'],'tab'=>'tariffs','tariff'=>$copy]];
     case 'field_save':
         require_admin();$id=(int)post('id');$old=$id?one('SELECT * FROM field_definitions WHERE id=?',[$id]):null;
         if($id && !$old)throw new UserError('Not found');

@@ -25,7 +25,7 @@ $course = make_class(['name'=>'Kindertraining', 'location'=>'Halle Nord', 'capac
     'days'=>[['weekday'=>1,'starts_at'=>'16:00:00','ends_at'=>'17:30:00','location'=>'Halle Nord'],
              ['weekday'=>4,'starts_at'=>'17:00:00','ends_at'=>'18:30:00','location'=>'Halle Süd']]]);
 $tariff = make_tariff(['class_id'=>$course, 'name'=>'Monatsbeitrag', 'price_cents'=>4500,
-                       'interval_months'=>1, 'discount_months'=>1, 'discount_value'=>100]);
+                       'interval_months'=>1, 'rates'=>[1=>4500, 3=>12000, 12=>45000]]);
 $lena = make_student(['first_name'=>'Lena', 'last_name'=>'Hofer', 'account_id'=>$family,
                       'birth_date'=>'2015-04-02', 'joined_on'=>'2026-01-01']);
 $tobi = make_student(['first_name'=>'Tobias', 'last_name'=>'Hofer', 'account_id'=>$family,

@@ -36,29 +36,43 @@ function request_state_label(string $state): string {
     };
 }
 
+/**
+ * The columns every enrolment screen needs, with the tariff it names.
+ *
+ * cs.interval_months and t.interval_months are both called interval_months, and
+ * a fetch keyed by column name keeps whichever came last. Both are aliased here
+ * so neither can quietly stand in for the other, and with_tariff_rate() writes
+ * the answer back as 'interval_months'.
+ */
+const ENROLMENT_COLUMNS = 'cs.*, cs.interval_months AS enrolment_interval,'
+    .' c.name AS class_name, c.location, t.name AS tariff_name, t.period,'
+    .' t.interval_months AS tariff_interval, t.due_day AS tariff_due_day';
+
 /** One enrolment, with the tariff it names and the course it is in. */
 function enrolment(int $classId, int $studentId): ?array {
-    return one('SELECT cs.*, c.name AS class_name, c.location, t.name AS tariff_name,'
-        .' t.price_cents AS tariff_price, t.interval_months, t.due_day AS tariff_due_day'
+    $row = one('SELECT '.ENROLMENT_COLUMNS
         .' FROM class_students cs JOIN classes c ON c.id=cs.class_id'
         .' LEFT JOIN tariffs t ON t.id=cs.tariff_id'
         .' WHERE cs.class_id=? AND cs.student_id=?', [$classId, $studentId]);
+    return $row === null ? null : with_tariff_rate($row, tariff_rate_map([(int)$row['tariff_id']]));
 }
 
 /** Every course one student is in, current ones first. */
 function student_enrolments(int $studentId): array {
-    return rows('SELECT cs.*, c.name AS class_name, c.location, c.archived, t.name AS tariff_name,'
-        .' t.price_cents AS tariff_price, t.interval_months, t.period, t.due_day AS tariff_due_day'
+    $rows = rows('SELECT '.ENROLMENT_COLUMNS.', c.archived'
         .' FROM class_students cs JOIN classes c ON c.id=cs.class_id'
         .' LEFT JOIN tariffs t ON t.id=cs.tariff_id'
         .' WHERE cs.student_id=? ORDER BY cs.left_on IS NOT NULL, c.sort_order, c.name', [$studentId]);
+    $rates = tariff_rate_map(array_column($rows, 'tariff_id'));
+    return array_map(fn($row) => with_tariff_rate($row, $rates), $rows);
 }
 
 /** What this enrolment costs per period, and where that number came from. */
 function enrolment_price(array $enrolment): array {
     if ($enrolment['price_cents'] !== null)
         return ['cents' => (int)$enrolment['price_cents'], 'own' => true, 'note' => (string)$enrolment['price_note']];
-    if ($enrolment['tariff_id'] === null) return ['cents' => null, 'own' => false, 'note' => ''];
+    if ($enrolment['tariff_id'] === null || ($enrolment['tariff_price'] ?? null) === null)
+        return ['cents' => null, 'own' => false, 'note' => ''];
     return ['cents' => (int)$enrolment['tariff_price'], 'own' => false, 'note' => ''];
 }
 

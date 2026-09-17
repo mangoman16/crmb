@@ -629,3 +629,28 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 /* Inside a repeating row the pair is one cell of the grid, and the cell is
    wider than the single <input type="time"> needed, because it holds two. */
 .day-row .time-field,.day-row .time-field select{min-height:44px}
+
+/* ---------------------------------------------------------------------------
+   The repeating rows of the tariff form: a price per way of paying, and the
+   shapes of discount she gives. Same editor as the training days, different
+   columns.
+   --------------------------------------------------------------------------- */
+.rate-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:center}
+/* The two boxes that describe the discount get a floor rather than a share:
+   between 1180 and 1400px the editor column is at its narrowest, and a share of
+   it left "kein Rabatt" at 63px of room for 76px of word. The name gives way
+   instead, because a name that is too long to read in full is still a name. */
+.discount-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(125px,1fr) minmax(125px,1fr) minmax(80px,.7fr);gap:10px;align-items:center}
+.rate-row select,.rate-row input,.discount-row select,.discount-row input{min-height:44px}
+/* The native arrow is drawn beside the text, not over it, so the default 24px
+   of right padding took "Prozent" down to "Proze" in a column this narrow. */
+.rate-row select,.discount-row select{padding-left:8px;padding-right:18px;font-size:.9375rem}
+.option-editor+.button{margin-bottom:24px}
+@media(max-width:760px){
+  /* Four boxes across a 288px card is 60px each, which is not a box. The name
+     takes its own row and the three that describe the discount share the next. */
+  .discount-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+  .discount-row>input:first-child{grid-column:1/-1}
+  .discount-row>input:last-child{grid-column:1/-1}
+  .rate-row{gap:8px}
+}

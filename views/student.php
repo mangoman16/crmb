@@ -48,7 +48,7 @@ select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(
 echo '<div class="field-note">'.e(t('Probetraining, aktiv, pausiert oder beendet.','On trial, active, paused or ended.')).'</div>';
 ?></div></section>
 <section class="card"><h2><?=e(t('Tarif und Beitrag','Tariff and fee'))?></h2><div class="grid two">
-<?php select_field('tariff_id',t('Tarif','Tariff'),array_column(rows('SELECT id,name FROM tariffs WHERE archived=0 OR id=? ORDER BY name',[$s['tariff_id']??0]),'name','id'),$s['tariff_id']);$tariffPrice=$s['tariff_id']?(int)scalar('SELECT price_cents FROM tariffs WHERE id=?',[$s['tariff_id']]):null;
+<?php select_field('tariff_id',t('Tarif','Tariff'),array_column(rows('SELECT id,name FROM tariffs WHERE archived=0 OR id=? ORDER BY name',[$s['tariff_id']??0]),'name','id'),$s['tariff_id']);$tariffPrice=tariff_price($s['tariff_id']?(int)$s['tariff_id']:null);
 default_field('price',t('Vereinbarter Preis (€)','Agreed price (€)'),amount_input($s['price_cents']===null?null:(int)$s['price_cents']),
     $tariffPrice!==null?amount_input($tariffPrice):'',
     $tariffPrice!==null?money($tariffPrice).' · '.($s['tariff_name']??''):t('kein Tarif gewählt','no tariff chosen'),
@@ -146,11 +146,19 @@ endforeach ?></div></section><?php endif ?>
         <?php endif ?>
     </div>
     <?php if($staff && !$past): ?>
-    <details><summary><?=e(t('Tarif und Preis für diesen Kurs','Tariff and price for this course'))?></summary>
-        <?php start_form('enrolment_save',['class_id'=>$row['class_id'],'student_id'=>$id]); ?>
-        <div class="grid two"><?php
+    <details><summary><?=e(t('Tarif, Zahlungsweise und Rabatt','Tariff, how it is paid, and any discount'))?></summary>
+        <?php start_form('enrolment_save',['class_id'=>$row['class_id'],'student_id'=>$id]);
         $offered=class_tariffs((int)$row['class_id']);
+        $chosenRates=$row['tariff_id']?tariff_rates((int)$row['tariff_id']):[];
+        ?>
+        <div class="grid two"><?php
         select_field('tariff_id',t('Tarif','Tariff'),array_column($offered,'name','id'),$row['tariff_id']);
+        // Every way the chosen tariff may be paid, with what each one costs, so
+        // "alle 3 Monate" does not have to be looked up somewhere else.
+        $intervalOptions=[0=>t('wie im Tarif üblich','as the tariff usually is')
+            .($chosenRates?' – '.billing_interval_label((int)$row['tariff_interval']).' '.money((int)($chosenRates[(int)$row['tariff_interval']]??0)):'')];
+        foreach($chosenRates as $months=>$cents) $intervalOptions[$months]=billing_interval_label((int)$months).' – '.money((int)$cents);
+        select_field('interval_months',t('Zahlungsweise','How it is paid'),$intervalOptions,(int)$row['enrolment_interval'],true);
         $tariffPrice=$row['tariff_price']!==null?(int)$row['tariff_price']:null;
         default_field('price',t('Vereinbarter Preis (€)','Agreed price (€)'),amount_input($row['price_cents']===null?null:(int)$row['price_cents']),
             $tariffPrice!==null?amount_input($tariffPrice):'',
@@ -162,7 +170,29 @@ endforeach ?></div></section><?php endif ?>
         input('joined_on',t('Dabei seit','Member since'),$row['joined_on'],'date');
         input('left_on',t('Ausgetreten am','Left on'),$row['left_on'],'date');
         ?></div>
-        <?php submit_button();?></form>
+        <?php /* The discount belongs to the agreement with this family, not to
+                 the price list. The tariff's templates are offered as a starting
+                 point - picking one fills these three boxes in - and every one of
+                 them stays editable, because the exception is the reason a
+                 discount gets given in the first place. */
+        $templates=$row['tariff_id']?tariff_discount_templates((int)$row['tariff_id']):[];
+        ?>
+        <h3><?=e(t('Rabatt für dieses Kind','Discount for this child'))?></h3>
+        <?php if($templates): ?>
+        <div class="placeholder-list"><?php foreach($templates as $template): ?>
+            <span class="chip"><?=e($template['name'])?>: <?=e(discount_summary((int)$template['months'],(string)$template['kind'],(int)$template['value']))?></span>
+        <?php endforeach ?></div>
+        <p class="muted"><?=e(t('Vorlagen dieses Tarifs. Trage die Werte unten ein – der Name darf auf der Rechnung stehen.','Templates on this tariff. Type the values below – the name is what appears on the invoice.'))?></p>
+        <?php endif ?>
+        <div class="grid three"><?php
+        select_field('discount_months',t('Wie lange','How long'),discount_spans(),(int)$row['discount_months'],true);
+        select_field('discount_kind',t('Art','Kind'),['percent'=>t('Prozent','Per cent'),'fixed'=>t('Fester Betrag je Monat','Fixed amount per month')],$row['discount_kind'],true);
+        input('discount_value',t('Wert','Value'),(int)$row['discount_value']===0?'':($row['discount_kind']==='fixed'?amount_input((int)$row['discount_value']):(string)(int)$row['discount_value']),'text',false,
+              t('Prozent, oder Betrag in € je Monat.','Per cent, or an amount in € per month.'));
+        ?></div>
+        <?php input('discount_note',t('Name des Rabatts','What to call it'),$row['discount_note'],'text',false,
+              t('Steht so auf der Rechnung, z. B. „Geschwisterrabatt“.','This is what appears on the invoice, e.g. “sibling discount”.'));
+        submit_button();?></form>
     </details>
     <?php endif ?>
     <?php endforeach ?>
@@ -178,7 +208,7 @@ endforeach ?></div></section><?php endif ?>
         <div>
             <strong><?=e($row['name'])?></strong>
             <p><?=e(class_schedule($row,$pattern[(int)$row['id']]??[]))?></p>
-            <small><?=e($offered?implode(' · ',array_map(fn($x)=>$x['name'].' '.money((int)$x['price_cents']),$offered)):t('Noch kein Tarif hinterlegt','No tariff set yet'))?></small>
+            <small><?=e($offered?implode(' | ',array_map(fn($x)=>$x['name'].': '.tariff_summary($x),$offered)):t('Noch kein Tarif hinterlegt','No tariff set yet'))?></small>
             <?php if($full)badge(t('Voll','Full'),'red');?>
         </div>
         <?php if(!$full): ?>
@@ -295,10 +325,7 @@ endforeach ?></div></section><?php endif ?>
                 if((int)($s['billing_paused']??0)===1) echo e(t('Pausiert – für dieses Kind werden keine Beiträge angelegt.','Paused – no charges are created for this child.'));
                 elseif(!$paying) echo e(t('Beiträge entstehen aus den Kursen. Dieses Kind ist in keinem Kurs mit Tarif.','Charges come from courses. This child is in no course with a tariff.'));
                 else echo e(t('Aus ','From ').plural(count($paying),'Kurs','Kursen','course','courses').': '
-                    .implode(' · ',array_map(fn($r)=>$r['class_name'].' – '.tariff_summary([
-                        'period'=>$r['period'],'price_cents'=>$r['price_cents']??$r['tariff_price'],
-                        'interval_months'=>$r['interval_months'],'due_day'=>$r['due_day']?:$r['tariff_due_day'],
-                    ]),$paying)));
+                    .implode(' | ',array_map(fn($r)=>$r['class_name'].' – '.enrolment_summary($r),$paying)));
             ?></p>
         </div>
     </div>
@@ -367,7 +394,7 @@ if($remaining>0 && !$c['cancelled'] && setting('show_payment_qr')):
 <p class="muted"><?=e(t('Für alles, was kein regelmäßiger Kursbeitrag ist – Turniergebühr, Schläger, Hallenmiete.','For anything that is not a recurring course fee – a tournament entry, a racket, hall hire.'))?></p>
 <?php start_form('charge_add',['student_id'=>$id]);?><div class="grid two"><?php
 input('label',t('Bezeichnung','Description'),'','text',true);
-input('amount',t('Betrag (€)','Amount (€)'),$first?amount_input((int)($first['price_cents']??$first['tariff_price'])):'','text',true);
+input('amount',t('Betrag (€)','Amount (€)'),$first?amount_input(enrolment_price($first)['cents']):'','text',true);
 input('period_from',t('Bezahlt für Zeitraum ab','Covers from'),'','date');
 input('period_to',t('Bis einschließlich','Covers through'),'','date');
 input('due_on',t('Fällig am','Due on'),date('Y-m-d',strtotime('+14 days')),'date',true);

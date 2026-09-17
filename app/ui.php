@@ -344,11 +344,6 @@ function time_cells(string $name,string $label,string $value=''): string {
         .select_options(['' => '–']+minute_options($minute),$minute).'</select></span>';
 }
 
-/** "17:30:00" or "17:30" as ['17','30']; anything else as two empty strings. */
-function time_parts(string $value): array {
-    return preg_match('/^([01]\d|2[0-3]):([0-5]\d)/',trim($value),$m)?[$m[1],$m[2]]:['',''];
-}
-
 /** The <option> list of a select, escaped. */
 function select_options(array $options,mixed $value): string {
     $out='';

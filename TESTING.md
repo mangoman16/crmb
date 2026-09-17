@@ -282,14 +282,37 @@ Skip on an ordinary code change; do all of it before a release.
   otherwise.
 - [ ] **8.3** **Kurse → ein Kurs → Tarife**: every price a course can be taken
   at lives here. There is no tariff floating free of a course.
-- [ ] **8.4** A tariff has an interval: monthly, every two, three or six months,
-  or yearly. Pick a non-monthly one and check the summary sentence under it
-  describes what will actually be charged.
+- [ ] **8.4** One tariff can be paid in more than one way. Give it four prices —
+  37 € monthly, 99 € quarterly, 162 € half-yearly, 252 € yearly — and check the
+  summary sentence lists all four, with the usual interval first.
+- [ ] **8.4a** Save with a price for an interval but the **üblicher Zeitraum**
+  set to one with no price: refused, by name. That interval is what an enrolment
+  saying nothing is billed at.
+- [ ] **8.4b** Save with no price at all: refused. An empty row at the bottom is
+  ignored rather than refused.
+- [ ] **8.4c** „+ Weitere Zahlungsweise" adds an empty row; the same interval
+  twice keeps the first one rather than refusing the form.
+- [ ] **8.4d** **Kopieren** makes a copy with every price and every discount
+  template, named „… (Kopie)", and opens it. Copy it again: the second is not
+  called the same as the first.
 - [ ] **8.5** A tariff has a due day. A child can override it; the child's page
   says which of the two applies.
-- [ ] **8.6** A tariff can carry a discount — a number of months (or unlimited)
-  at a percentage or a fixed amount off. 100 % reads as free, not as €0,00
-  hidden in a corner.
+- [ ] **8.6** A tariff carries **Rabattvorlagen** — the shapes of discount she
+  gives, like „Erster Monat gratis" or „Geschwisterrabatt, dauerhaft −20 %".
+  They are templates: changing one here changes nothing for a family who has
+  already been given it.
+- [ ] **8.6a** On a child, under **Tarif, Zahlungsweise und Rabatt**: the
+  templates of that tariff are listed above the boxes, and the boxes take the
+  discount this family actually gets, with a name that appears on the invoice.
+- [ ] **8.6b** Give one child a discount and check the child beside them on the
+  same tariff is unaffected. That is the whole reason it moved off the tariff.
+- [ ] **8.6c** Put a child on a longer interval than the tariff's usual one. The
+  agreed-price default beside it changes to that interval's price, and the next
+  charge is for that period and that amount.
+- [ ] **8.6d** Choose an interval, then delete that price from the tariff. The
+  child is billed at the tariff's usual price rather than not billed at all.
+- [ ] **8.6e** A discount of 100 % reads as „gratis", not as €0,00 hidden in a
+  corner, and „dauerhaft" says so rather than showing −1.
 - [ ] **8.7** A child in two courses is billed for both, each at its own
   tariff.
 - [ ] **8.8** Archive a course. It leaves the lists, keeps its history, and

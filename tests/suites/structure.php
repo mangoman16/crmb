@@ -189,7 +189,7 @@ function printable_parts(string $expr): array {
    mb_substr() or looking a code up in a settings array does not make it safe. */
 $escaping = ['e',                                                   // escapes
              'icon','link_button','qr_svg','progress_chart','avatar', // build their own markup and escape inside
-             'sidebar_nav','time_cells',                            // build their own markup and escape inside
+             'sidebar_nav','time_cells','select_options',           // build their own markup and escape inside
              'money','number_format','count','ceil','floor','round','array_sum','plural',  // numbers
              'fmt_date','fmt_datetime',                             // formatted dates
              'role_label','entity_label'];                          // fixed sets in code
