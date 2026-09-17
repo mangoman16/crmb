@@ -178,6 +178,19 @@ function create_invoice(int $studentId, array $chargeIds, string $issuedOn = '',
             if ($c['period_to'] && ($to === null || $c['period_to'] > $to)) $to = $c['period_to'];
         }
 
+        // One invoice carries one set of bank details, so the charges on it have
+        // to agree about where the money goes. They did not have to before: the
+        // first charge's account was printed and the rest were quietly billed to
+        // it, which on a document a family pays from is the wrong IBAN.
+        $accounts = [];
+        foreach ($charges as $c) {
+            $profile = charge_payment_profile($c);
+            $accounts[$profile ? (string)$profile['iban'] : ''] = true;
+        }
+        if (count($accounts) > 1)
+            throw new UserError(t('Diese Beiträge gehören zu Kursen mit verschiedenen Bankverbindungen. Bitte getrennte Rechnungen ausstellen.',
+                                  'These charges belong to courses with different bank accounts. Please issue separate invoices.'));
+
         $year = (int)substr((string)$issuedOn, 0, 4);
         $allocated = invoice_next_number($year);
         $recipient = invoice_recipient($student);

@@ -359,6 +359,9 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **13.13** A family can download their own invoice, and nobody else's.
 - [ ] **13.14** A child whose family has no portal account: the invoice is
   addressed to their standard contact, and can be emailed there.
+- [ ] **13.15** Two courses collecting into different bank accounts: putting a
+  charge from each on one invoice is refused in words. One invoice carries one
+  IBAN, and it has to be the right one.
 
 ---
 

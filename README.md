@@ -30,7 +30,7 @@ Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Online status for accounts, and email reminders for outstanding payments.
 - A change log that says what changed, field by field, in the words she uses.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs 1912 assertions in a few seconds, and [TESTING.md](TESTING.md) is the list to walk by hand after a change.
+- A test suite that needs no database server: `php tests/run.php` runs 1915 assertions in a few seconds, and [TESTING.md](TESTING.md) is the list to walk by hand after a change.
 
 ## Install
 

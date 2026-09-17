@@ -185,3 +185,26 @@ $freeCharge = fixture('charges', ['student_id'=>$freeStudent, 'label'=>'Willkomm
 $freeInvoice = invoice(create_invoice($freeStudent, [$freeCharge], '2026-09-01'));
 is_same(0, (int)$freeInvoice['gross_cents'], 'nothing is owed');
 is_same('paid', invoice_status($freeInvoice), 'so it is settled, not open and later overdue');
+
+case_('One invoice, one bank account');
+// Two courses can collect into different accounts. An invoice prints one set of
+// bank details, so charges that disagree about where the money goes cannot share
+// one document: the family would transfer to whichever account happened to be
+// first.
+$profileA = fixture('payment_profiles', ['name'=>'Verein', 'recipient'=>'Badminton Verein',
+    'iban'=>'AT611904300234573201', 'bic'=>'BKAUATWW', 'currency'=>'EUR', 'qr_template'=>'', 'note'=>'',
+    'archived'=>0, 'created_at'=>now()]);
+$profileB = fixture('payment_profiles', ['name'=>'Privat', 'recipient'=>'Hofer Privat',
+    'iban'=>'AT022050302101023600', 'bic'=>'SPIHAT22', 'currency'=>'EUR', 'qr_template'=>'', 'note'=>'',
+    'archived'=>0, 'created_at'=>now()]);
+$splitStudent = make_student(['first_name'=>'Zwei', 'last_name'=>'Konten']);
+$chargeA = fixture('charges', ['student_id'=>$splitStudent, 'payment_profile_id'=>$profileA, 'label'=>'Kurs A',
+    'amount_cents'=>3000, 'gross_cents'=>3000, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>null,
+    'period_to'=>null, 'due_on'=>today(), 'overdue_on'=>today(), 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+$chargeB = fixture('charges', ['student_id'=>$splitStudent, 'payment_profile_id'=>$profileB, 'label'=>'Kurs B',
+    'amount_cents'=>4000, 'gross_cents'=>4000, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>null,
+    'period_to'=>null, 'due_on'=>today(), 'overdue_on'=>today(), 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+throws(fn() => create_invoice($splitStudent, [$chargeA, $chargeB]),
+       'the two together are refused, with what to do instead', 'getrennte Rechnungen');
+does_not_throw(fn() => create_invoice($splitStudent, [$chargeA]), 'separately, each one is fine');
+does_not_throw(fn() => create_invoice($splitStudent, [$chargeB]), 'and so is the other');

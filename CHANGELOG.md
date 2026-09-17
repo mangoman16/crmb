@@ -46,6 +46,10 @@ update path was exercised against a real MariaDB rather than reasoned about.
   course page and absent from the unattached list. A tariff now becomes
   unattached when its course is deleted, because what a charge was priced by has
   to stay readable.
+- **One invoice could carry two bank accounts.** Charges from courses that
+  collect into different accounts were put on one document, which printed the
+  first one's IBAN and quietly billed the rest to it. They have to be issued
+  separately now, and the message says so.
 - **The automatic charges said "on the 1st" and were not.** The portal has page
   views, not a clock: they are created once a month, on the first page view of
   that month. The setting now says that, and so does the README.
@@ -149,7 +153,7 @@ open it.
   portal account is addressed to that contact.
 - **A feature list with steps to test it** — [TESTING.md](TESTING.md) — for the
   administrator to walk after a code change or a release, alongside the
-  automated suites, which now run 1912 assertions.
+  automated suites, which now run 1915 assertions.
 
 ## 0.5.0 — unreleased
 

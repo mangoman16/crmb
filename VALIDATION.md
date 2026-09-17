@@ -28,7 +28,7 @@ put through the update path step by step.
 - **Two updates at once.** Two processes ran the migration simultaneously: one
   applied it, the other waited on the advisory lock and found nothing left to
   do. The table was created once and recorded once.
-- **The whole suite** passes on both engines: **1912 assertions on SQLite, 1928
+- **The whole suite** passes on both engines: **1915 assertions on SQLite, 1931
   against MariaDB 10.11.14**, with all fourteen migrations applying there.
 
 **Not covered here.** No PDF was opened in Adobe Reader, no mail was sent
