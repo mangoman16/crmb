@@ -36,6 +36,7 @@ is what covers them, and it is the run to quote when you say a release works.
 | `contacts` | Somebody to ring, one standard contact, and an address to invoice |
 | `dates` | UTC to local conversion, money as integer cents |
 | `demo` | Example data fills, is recognisable, and comes out again completely |
+| `pages` | Every page opens for every role with data behind it, warnings included |
 | `enrolment` | Timetables, joining and leaving, who decides |
 | `forms` | A rejected form comes back filled in; defaults are visible as defaults |
 | `groups` | Levels and age groups, and the difference between them |
@@ -47,8 +48,9 @@ is what covers them, and it is the run to quote when you say a release works.
 | `security` | Authorisation boundaries, credentials, what must not leak |
 | `settings` | Every setting has a type and a usable default |
 | `shell` | Notifications, impersonation, avatars, themes, feedback |
-| `structure` | That no file has been silently destroyed, and every value is escaped |
+| `structure` | That no file has been silently destroyed, every value is escaped, every page classified |
 | `transactions` | A failed write leaves nothing behind |
+| `uploads` | Limits, allowed kinds, and files swept once their record has gone |
 | `views` | The real pages render and say what they are supposed to say |
 
 Run one on its own while working: `php tests/run.php billing invoices`.
@@ -251,6 +253,9 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **9.4** Decline a request. The family is told, and no enrolment exists.
 - [ ] **9.5** Ask to leave a course. Same again: it takes the trainer's yes.
 - [ ] **9.6** A full course does not offer itself to anybody new.
+- [ ] **9.7** With one place left, let two families ask, then accept both. The
+  second is refused in words rather than putting a ninth child in an eight-place
+  hall.
 
 ---
 
@@ -292,8 +297,13 @@ Skip on an ordinary code change; do all of it before a release.
   first of the month.
 - [ ] **11.8** An unpaid charge becomes **überfällig** on its own, the set
   number of days after it was due (seven by default).
-- [ ] **11.9** Pause a child's billing. The next run skips them and says why.
-- [ ] **11.10** „Alle überfälligen per E-Mail erinnern" queues one email per
+- [ ] **11.9** A child who joins in the second month of a longer period is
+  charged for it — and the due date is in the month the charge was created, not
+  before it. It is never overdue on the day it appears.
+- [ ] **11.10** A child who leaves mid-period is charged for the days they were
+  there, whatever the tariff's joining rule says.
+- [ ] **11.11** Pause a child's billing. The next run skips them and says why.
+- [ ] **11.12** „Alle überfälligen per E-Mail erinnern" queues one email per
   family, not one per charge.
 
 ---
@@ -469,7 +479,11 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **21.1** Interrupt a save (close the tab mid-request). Nothing half-written
   is left behind.
 - [ ] **21.2** **Einstellungen → System**: take a backup before an update. The
-  file exists and is not empty.
+  file exists and is not empty. Import it into an empty database in the hosting
+  panel once, deliberately, so you know the route works before you need it.
+- [ ] **21.7** After deleting an account or a child that had a picture, an
+  attachment or a proof, the file goes too — the nightly maintenance sweeps
+  anything no record points at. `storage/uploads` should not grow for ever.
 - [ ] **21.3** An update that could not back up first refuses to run.
 - [ ] **21.4** After any update, **Einstellungen → System** shows the same
   version for the files and for the database.

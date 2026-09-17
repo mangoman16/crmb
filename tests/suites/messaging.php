@@ -128,3 +128,22 @@ case_('A staff member may write to a family without being asked');
 sign_in_as($trainer);
 is_same(true, may_message(current_user(), $hofer), 'she may');
 throws(fn() => request_contact(current_user(), $hofer, ''), 'so she has nothing to ask for', 'ohnehin');
+
+case_('Deleting an account takes their side of a private conversation with it');
+// threads.account_id cascades, so the conversation goes when the family who
+// started it does. That is the right answer for a family asking to be forgotten,
+// and it is worth being explicit about: the other side loses the thread too.
+$leaving = make_account(['role'=>'student', 'name'=>'Familie Zieht Weg']);
+sign_in_as($leaving);
+request_contact(current_user(), $gruber, 'Hallo');
+sign_in_as($gruber);
+decide_contact((int)contact_requests_for($gruber)[0]['id'], true);
+sign_in_as($leaving);
+$goodbye = direct_thread(current_user(), $gruber);
+act('message_send', ['thread_id'=>(string)$goodbye, 'body'=>'Wir ziehen weg.']);
+is_same(1, (int)scalar('SELECT COUNT(*) FROM threads WHERE id=?', [$goodbye]), 'the conversation exists');
+run('DELETE FROM accounts WHERE id=?', [$leaving]);
+is_same(0, (int)scalar('SELECT COUNT(*) FROM threads WHERE id=?', [$goodbye]), 'and goes when the account does');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM messages WHERE thread_id=?', [$goodbye]), 'messages with it');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM thread_participants WHERE thread_id=?', [$goodbye]),
+        'and nobody is left listed as a participant in something that no longer exists');

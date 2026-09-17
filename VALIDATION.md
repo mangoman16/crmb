@@ -1,5 +1,42 @@
 # Validation
 
+## 0.6.0 — the update path, drilled
+
+Executed against PHP **8.4.19** and MariaDB **10.11.14**, on a real installed
+copy rather than the test harness: a database created the way a hosting panel
+creates one, the portal installed into it, filled with example data, and then
+put through the update path step by step.
+
+- **A real update.** A new migration arrived; `php bin/console.php update`
+  switched maintenance mode on, wrote a copy, applied it, compared the row
+  counts of all seventeen guarded tables and opened the portal again.
+- **The copy is restorable, and was restored.** The dump written before that
+  migration was imported into a second, empty database: **39 of 42 tables came
+  back byte-identical**, the three that differed being the ones the migration
+  itself changed afterwards (the new table, the migration ledger and the
+  settings row). Umlauts and the privacy text survived intact.
+- **Each refusal was triggered on purpose.** An applied migration edited after
+  the fact, an older release put back over a newer database, a copy that could
+  not be written: each one stopped the update, left the portal closed, and
+  recorded nothing as applied. `storage/skip-backup` let one through and was
+  consumed.
+- **The row-count guard was proven by breaking something.** A migration that
+  deletes every attendance row was written and run: the update stopped with
+  "attendance 64 → 0", the portal stayed closed, and the copy taken moments
+  earlier had all 64 rows. Before this release, `attendance` was not on the
+  guarded list and the same migration passed silently.
+- **Two updates at once.** Two processes ran the migration simultaneously: one
+  applied it, the other waited on the advisory lock and found nothing left to
+  do. The table was created once and recorded once.
+- **The whole suite** passes on both engines: **1912 assertions on SQLite, 1928
+  against MariaDB 10.11.14**, with all fourteen migrations applying there.
+
+**Not covered here.** No PDF was opened in Adobe Reader, no mail was sent
+through a real provider, and nothing was rendered on a real iPhone;
+[TESTING.md](TESTING.md) is the list of checks that exist for exactly that
+reason. **MySQL 8.0 itself remains unverified.** No real hosting account has
+been used.
+
 ## 0.6.0 — the trainer's half of the portal
 
 Executed against PHP **8.4.19** and MariaDB **10.11.14-MariaDB-0ubuntu0.24.04.1**.

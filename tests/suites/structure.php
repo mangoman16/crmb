@@ -54,6 +54,39 @@ foreach (array_map(fn($p) => trim($p, " '"), explode(',', $m[1] ?? '')) as $page
     ok(is_file(APP_ROOT.'/views/'.$page.'.php'), 'views/'.$page.'.php exists');
 }
 
+case_('Every page the router allows is classified: public, everyone, staff or admin');
+// The guard lives in the router rather than in the view, so adding a page to
+// the allow-list and forgetting the other three lists is all it takes to serve
+// the trainer's payments screen to a family. This is the list, written down
+// once: a new page fails here until somebody says who may open it.
+$expected = [
+    'login' => 'public', 'forgot' => 'public', 'activate' => 'public',
+    'unsubscribe' => 'public', 'privacy' => 'public',
+    'dashboard' => 'everyone', 'students' => 'everyone', 'student' => 'everyone',
+    'messages' => 'everyone', 'news' => 'everyone', 'profile' => 'everyone',
+    'download' => 'everyone',   // decides per file, inside serve_download()
+    'accounts' => 'staff', 'payments' => 'staff', 'compose' => 'staff', 'outbox' => 'staff',
+    'classes' => 'staff', 'manage' => 'staff', 'invoices' => 'staff', 'attendance' => 'staff',
+    'settings' => 'admin', 'history' => 'admin',
+];
+$list = function (string $pattern) use ($router): array {
+    preg_match($pattern, $router, $found);
+    return array_values(array_filter(array_map(fn($p) => trim($p, " '"), explode(',', $found[1] ?? ''))));
+};
+$allowed = $list("/\\\$allowed=\[([^\]]*)\]/");
+$publicPages = $list("/\\\$public=in_array\(\\\$page,\[([^\]]*)\]/");
+$staffPages  = $list("/in_array\(\\\$page,\[([^\]]*)\],true\)\)require_staff/");
+$adminPages  = $list("/in_array\(\\\$page,\[([^\]]*)\],true\)\)require_admin/");
+ok($allowed && $publicPages && $staffPages && $adminPages, 'all four lists were found in the router');
+foreach ($allowed as $page) {
+    $actual = in_array($page, $adminPages, true) ? 'admin'
+        : (in_array($page, $staffPages, true) ? 'staff'
+        : (in_array($page, $publicPages, true) ? 'public' : 'everyone'));
+    is_same($expected[$page] ?? 'UNCLASSIFIED', $actual, $page.' is open to: '.$actual);
+}
+foreach (array_keys($expected) as $page)
+    ok(in_array($page, $allowed, true) || $page === 'not_found', $page.' is still a page the router knows');
+
 case_('Every migration parses into statements');
 foreach (glob(APP_ROOT.'/database/migrations/*.sql') as $file)
     ok(count(split_sql((string)file_get_contents($file))) > 0, basename($file).' contains statements');

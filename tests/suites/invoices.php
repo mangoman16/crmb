@@ -43,21 +43,26 @@ set_setting('org_country', 'Österreich');
 set_setting('org_email', 'kontakt@beispiel.test');
 set_setting('org_tax_mode', 'small');
 is_same([], invoice_issuer_problems(), 'nothing is missing now');
-$id = create_invoice($student, [$charge], '2026-09-02', 14);
+// Issued today rather than on a fixed day in 2026: an invoice dated in the past
+// turns overdue the moment the calendar passes its due date, and the assertion
+// further down that it "starts open" would then fail on an ordinary Tuesday for
+// a reason nobody reading it could see.
+$issuedOn = today();
+$id = create_invoice($student, [$charge], $issuedOn, 14);
 $invoice = invoice($id);
 is_same(4500, (int)$invoice['gross_cents'], 'the total is the charge');
 is_same(0, (int)$invoice['tax_cents'], 'a small business shows no tax');
-is_same('2026-09-16', $invoice['due_on'], 'payable fourteen days after the invoice date');
+is_same(date('Y-m-d', strtotime($issuedOn . ' +14 days')), $invoice['due_on'], 'payable fourteen days after the invoice date');
 is_same('2026-09-01', $invoice['supplied_from'], 'the period of supply starts where the charge does');
 is_same('2026-09-30', $invoice['supplied_to'], 'and ends where it ends');
 
 case_('The number runs consecutively within the year');
-ok(str_contains($invoice['number'], '2026'), 'it carries the year');
+ok(str_contains($invoice['number'], date('Y', strtotime($issuedOn))), 'it carries the year');
 is_same(1, (int)$invoice['sequence'], 'and starts at one');
 $second = invoice(create_invoice($student, [fixture('charges', ['student_id'=>$student, 'label'=>'Beitrag Oktober',
     'amount_cents'=>4500, 'gross_cents'=>4500, 'discount_cents'=>0, 'discount_note'=>'',
     'period_from'=>'2026-10-01', 'period_to'=>'2026-10-31', 'due_on'=>'2026-10-01', 'overdue_on'=>'2026-10-08',
-    'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()])], '2026-10-02'));
+    'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()])], $issuedOn));
 is_same(2, (int)$second['sequence'], 'the next one follows it');
 ok($second['number'] !== $invoice['number'], 'with a different number');
 
@@ -80,7 +85,7 @@ ok(str_contains($text, 'Lena Hofer'), 'who it is for');
 ok(str_contains($text, 'Beitrag September'), 'what was supplied');
 ok(str_contains($text, '01.09.2026'), 'when it was supplied');
 ok(str_contains($text, $invoice['number']), 'the consecutive number');
-ok(str_contains($text, '02.09.2026'), 'the date it was issued');
+ok(str_contains($text, fmt_date($issuedOn)), 'the date it was issued');
 ok(str_contains($text, '45,00'), 'the amount');
 ok(str_contains($text, '6 Abs 1 Z 27'), 'and, with no VAT shown, why there is none');
 

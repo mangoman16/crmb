@@ -65,3 +65,20 @@ does_not_throw(fn() => demo_clear(), 'a second clear finds nothing and says so')
 case_('With real students there, filling needs to be insisted on');
 throws(fn() => demo_fill(), 'refused while a real student exists', 'echte');
 does_not_throw(fn() => demo_fill(true), 'unless the caller insists');
+
+case_('Nothing example-shaped is left in any table');
+// The clear leans on the database's own cascades for everything that hangs off
+// a demo student or a demo account. A table added later that cascades from
+// neither would keep its rows and nobody would notice until a real portal had
+// example attendance in its statistics.
+// First prove there is something to lose: an assertion that a table is empty is
+// worth nothing if it was empty to begin with.
+foreach (['charges','class_students','attendance','contacts','threads'] as $table)
+    ok((int)scalar('SELECT COUNT(*) FROM '.$table) > 0, $table.' has example rows before the clear');
+demo_clear();
+foreach (['students','classes','tariffs','accounts','news'] as $table)
+    is_same(0, (int)scalar('SELECT COUNT(*) FROM '.$table.' WHERE is_demo=1'), $table.' has nothing left');
+foreach (['charges','payments','class_students','attendance','absences','contacts',
+          'enrolment_requests','notifications','thread_participants','messages','threads'] as $table)
+    is_same(0, (int)scalar('SELECT COUNT(*) FROM '.$table), $table.' was taken with it');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs'), 'and nothing is left waiting in the outbox');

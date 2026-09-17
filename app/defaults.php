@@ -237,9 +237,13 @@ function setting_schema(): array {
         ],
         'auto_billing' => [
             'kind' => 'bool', 'default' => false, 'group' => 'system',
-            'label' => ['Monatsbeiträge am 1. automatisch anlegen', 'Create the monthly charges automatically on the 1st'],
-            'hint'  => ['Aus: die Beiträge werden unter „Beiträge → Monatsbeiträge“ angelegt, mit Vorschau.',
-                        'Off: the charges are created under “Beiträge → Monatsbeiträge”, with a preview first.'],
+            'label' => ['Monatsbeiträge automatisch anlegen', 'Create the monthly charges automatically'],
+            // Said exactly: the portal has no clock of its own, it has page
+            // views. "Am 1." was not true on a month where nobody opened the
+            // portal until the 3rd, and it was not true of the moment the switch
+            // itself is turned on.
+            'hint'  => ['Einmal pro Monat, beim ersten Seitenaufruf in diesem Monat – nicht auf die Minute am 1. Wird sie mitten im Monat eingeschaltet, entstehen die Beiträge dieses Monats sofort. Aus: unter „Beiträge → Monatsbeiträge“ anlegen, mit Vorschau.',
+                        'Once a month, on the first page view in that month – not on the stroke of the 1st. Switched on mid-month, this month’s charges are created straight away. Off: create them under “Beiträge → Monatsbeiträge”, with a preview first.'],
         ],
         'tick_last_run' => [
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,

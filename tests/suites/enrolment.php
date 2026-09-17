@@ -180,3 +180,24 @@ is_same(1, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND
         'and the course still holds one child');
 does_not_throw(fn() => decide_request($askSecond, false, 'Leider voll.'),
                'declining it is still possible, which is how the trainer answers');
+
+case_('A tariff outlives the course it belonged to, as something unattached');
+// Not as a row pointing at a course that is gone: invisible on every course
+// page because nothing joins, and absent from the unattached list because
+// class_id was not NULL. What a charge was priced by has to stay readable.
+$migration = (string)file_get_contents(APP_ROOT.'/database/migrations/014_tariffs_belong_to_a_course.sql');
+ok(str_contains($migration, 'REFERENCES classes(id) ON DELETE SET NULL'),
+   'the constraint says what happens: the tariff stays, its course does not');
+if (test_driver() === 'mysql') {
+    // The sqlite driver cannot add a constraint to an existing table and says so
+    // in the run's footer, so the behaviour itself is checked on the engine that
+    // has it rather than asserted twice in two different ways.
+    $doomed = make_class(['name'=>'Wird gelöscht', 'days'=>[]]);
+    $price = make_tariff(['class_id'=>$doomed, 'name'=>'Preis des gelöschten Kurses']);
+    run('DELETE FROM classes WHERE id=?', [$doomed]);
+    $kept = one('SELECT * FROM tariffs WHERE id=?', [$price]);
+    ok($kept !== null, 'the tariff is still there');
+    is_same(null, $kept['class_id'], 'and belongs to no course any more');
+    ok(in_array($price, array_map(fn($t) => (int)$t['id'], unattached_tariffs()), true),
+       'so the trainer can see it and attach it to another course');
+}

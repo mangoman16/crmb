@@ -430,6 +430,12 @@ function render_view(string $page, array $query = []): string {
     $GLOBALS['page'] = $page;
     $level = ob_get_level();
     ob_start();
+    // A warning from a view is printed into the page - between two table cells,
+    // where nobody reads it - so unless it is turned into a failure here, an
+    // undefined index or a division by zero renders green for ever.
+    set_error_handler(static function (int $no, string $message, string $file, int $line): bool {
+        throw new RuntimeException($message . ' @ ' . basename($file) . ':' . $line);
+    });
     try {
         require $file;
         return (string)ob_get_clean();
@@ -437,6 +443,7 @@ function render_view(string $page, array $query = []): string {
         while (ob_get_level() > $level) ob_end_clean();
         throw $e;
     } finally {
+        restore_error_handler();
         $_GET = $restore;
         if ($restorePage === null) unset($GLOBALS['page']); else $GLOBALS['page'] = $restorePage;
     }

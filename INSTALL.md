@@ -190,7 +190,7 @@ dem Update gehört zur vorherigen Version, also auch deren ZIP wieder hochladen.
 
 Ohne Cronjob erledigt das Portal wartende Aufgaben selbst, kurz nachdem eine
 Seite ausgeliefert wurde: E-Mails verschicken, abgelaufene Links entfernen und –
-wenn eingeschaltet – am 1. die Monatsbeiträge anlegen. Höchstens einmal pro
+wenn eingeschaltet – einmal im Monat die Monatsbeiträge anlegen. Höchstens einmal pro
 Minute, und nach dem Absenden der Seite, sodass niemand darauf wartet. Der Stand
 steht unter **Einstellungen → System**.
 

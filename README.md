@@ -30,7 +30,7 @@ Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Online status for accounts, and email reminders for outstanding payments.
 - A change log that says what changed, field by field, in the words she uses.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs 1621 assertions in a few seconds, and [TESTING.md](TESTING.md) is the list to walk by hand after a change.
+- A test suite that needs no database server: `php tests/run.php` runs 1912 assertions in a few seconds, and [TESTING.md](TESTING.md) is the list to walk by hand after a change.
 
 ## Install
 
@@ -69,7 +69,7 @@ folder denies itself, so `app/`, `config/` and `storage/` stay unreachable even
 when they sit inside the published directory.
 
 No cron job is required. Waiting work — sending queued email, removing expired
-links, and optionally creating the monthly charges on the 1st — runs just after
+links, and optionally creating the monthly charges once a month — runs just after
 a page has been delivered, at most once a minute. A real cron job can take over
 instead; see INSTALL.md.
 
@@ -181,7 +181,7 @@ The distribution ZIP includes PHPMailer, BaconQrCode and the Composer autoloader
 
 ## Scope of this version
 
-Monthly charges are generated on the 1st from each student's agreed price or monthly tariff. One-time and fixed-period tariffs are still entered by hand, because they do not recur. There is no online payment processor. SMTP sends email; replies belong in the app. No mailbox reader or backup system is included.
+Recurring charges are created from the tariff each enrolment names, for periods anchored to the calendar year, either from the payments screen with a preview or automatically once a month on the first page view of that month. One-off tariffs are entered by hand, because they do not recur. There is no online payment processor. SMTP sends email; replies belong in the app. No mailbox reader or backup system is included.
 
 Custom content, tariff names and message templates are entered by the operator; switching the interface language does not translate their content. The privacy notice is an editable draft that still needs the actual operator and service-provider details. Invitations stay disabled until SMTP is configured and both privacy texts are completed in settings.
 

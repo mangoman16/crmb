@@ -5,6 +5,59 @@
 Her half of the portal: what she runs day to day, in the words she uses for it,
 after a round of testing that produced a list of about forty things.
 
+### A pass over the whole thing, and what it found
+
+Every finding below was turned into a test that fails without the fix, and the
+update path was exercised against a real MariaDB rather than reasoned about.
+
+- **A migration that returns rows poisoned the rest of the update.** A SELECT
+  inside a migration - to check something before altering it - left its result
+  set open on the connection, so the next statement failed with "unbuffered
+  queries are active" and blamed the wrong line. Statements are drained now.
+- **The backup only noticed a write that failed outright.** A disk filling up
+  produces a short write instead, which left a truncated dump named as though it
+  were complete. It counts the bytes and flushes before naming the file.
+- **The row-count guard covered ten tables** and the portal has grown: it now
+  also holds enrolments, attendance, invoices, invoice lines, payment proofs,
+  message files and consent records. Proven with a migration that deletes
+  attendance: before, it passed; now the portal stays closed and the copy taken
+  moments earlier brings the rows back.
+- **A charge could be created already overdue.** A child joining in the second
+  month of a quarter got one dated to the start of the quarter, with the
+  automatic reminder to match. The due date never precedes the month the charge
+  is written in.
+- **"What happens when somebody joins mid-period" was deciding the leaving case
+  too**, silently: a child who left on the 15th cost nothing under "not until
+  the next period" and a whole period under "the whole period". Leaving is
+  charged by the days they were there, whatever the joining rule says.
+- **An invoice for nothing** - a welcome discount that took a charge to zero -
+  stayed open for ever and then turned overdue, asking a family to transfer
+  0,00 €.
+- **The last place in a course could be given away twice**: capacity was checked
+  when a family asked and not when the trainer said yes.
+- **The problem-report form accepted a post from nobody**, with a file attached.
+  It is only ever drawn for somebody signed in; now the action says so, and one
+  account cannot fill the disk with reports.
+- **Uploaded files were never removed when their record went.** A deleted
+  account took its conversation with it and left the voice notes on disk for
+  ever. The nightly maintenance sweeps files nothing points at, leaving anything
+  younger than an hour alone.
+- **A tariff could point at a course that no longer exists** - invisible on every
+  course page and absent from the unattached list. A tariff now becomes
+  unattached when its course is deleted, because what a charge was priced by has
+  to stay readable.
+- **The automatic charges said "on the 1st" and were not.** The portal has page
+  views, not a clock: they are created once a month, on the first page view of
+  that month. The setting now says that, and so does the README.
+- Downloads are streamed rather than read into memory first, and `bin/update.sh`
+  no longer follows the default branch from a checkout pinned to a tag.
+
+The suite grew with it: every page is now opened for every role with data behind
+it, a PHP warning in a view is a failure rather than something printed between
+two table cells, and the router's four permission lists are checked against a
+written-down expectation, so a new page cannot be added without saying who may
+open it.
+
 - **Install by `git clone`, update with one command.** `bin/update.sh` pulls,
   installs the dependencies, applies the migrations and prints the status; it
   refuses on an uncommitted change rather than discarding work, and does the
@@ -96,7 +149,7 @@ after a round of testing that produced a list of about forty things.
   portal account is addressed to that contact.
 - **A feature list with steps to test it** — [TESTING.md](TESTING.md) — for the
   administrator to walk after a code change or a release, alongside the
-  automated suites, which now run 1621 assertions.
+  automated suites, which now run 1912 assertions.
 
 ## 0.5.0 — unreleased
 
