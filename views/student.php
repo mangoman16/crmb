@@ -14,6 +14,12 @@ if($id){
     if($staff){$tabLabels['attendance']=t('Anwesenheit','Attendance');}
     tabs($tabLabels,$tab,'student',['id'=>$id]);
 }
+/* Creating a child asks for a name and an address and nothing else - a form
+   with twenty boxes on it is a form somebody abandons half-way. The rest is not
+   optional, though: a child with no course is a child nobody bills. So the page
+   says what is left, in the order she would do it, rather than leaving her to
+   remember four days later. */
+next_steps_card($id&&$staff?student_next_steps($id):[]);
 if($tab==='details' || !$id): ?>
 <?php /* Outside the form below, and before it: a form inside a form is markup
          the browser throws away, so the picture would have been saved by
@@ -66,7 +72,20 @@ echo '<div class="field-note">'.e(t('Nur nötig, wenn Geschwister sich ein Konto
 <?php endif ?>
 </section>
 
-<?php if($staff):?><section class="card"><h2><?=e(t('Einteilung','Grouping'))?></h2>
+<?php /* A new child gets the two questions that cannot be answered later - what
+         is this child called, where do we write - and the one that decides
+         whether they count as a member. Everything else has a default, a tab of
+         its own, or a place on the list above, and a form of twenty boxes is a
+         form somebody abandons in the middle of a training session. */
+if($staff && !$id): ?>
+<section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><div class="grid two"><?php
+select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$s['status'],true);
+input('joined_on',t('Dabei seit','Member since'),$s['joined_on'],'date');
+?></div>
+<p class="muted"><?=e(t('Leistungsgruppe, Kurs, Tarif, Kontakte und alles Weitere trägst du gleich auf der Seite des Kindes ein – sie steht dann auch als Liste „Noch zu tun“ dort.','The level, the course, the tariff, the contacts and everything else are entered on the child’s own page next – it lists them there as “Still to do”.'))?></p>
+</section>
+<?php endif ?>
+<?php if($staff && $id):?><section class="card"><h2><?=e(t('Einteilung','Grouping'))?></h2>
 <p class="muted"><?=e(t('Drei verschiedene Dinge, die leicht durcheinandergehen: wie weit das Kind ist, wie alt es ist, und ob es gerade dabei ist.','Three different things that are easy to confuse: how far along the child is, how old they are, and whether they are currently taking part.'))?></p>
 <div class="grid three"><?php
 select_field('level_id',t('Leistungsgruppe','Level'),array_column(rows('SELECT id,name FROM levels WHERE archived=0 OR id=? ORDER BY sort_order,name',[$s['level_id']??0]),'name','id'),$s['level_id']);
@@ -83,7 +102,7 @@ default_field('price',t('Vereinbarter Preis (€)','Agreed price (€)'),amount_
     $tariffPrice!==null?money($tariffPrice).' · '.($s['tariff_name']??''):t('kein Tarif gewählt','no tariff chosen'),
     'text', t('Leer lassen, um den Preis des Tarifs zu übernehmen.','Leave blank to follow the tariff’s price.'));input('price_note',t('Preisvereinbarung / Rabatt','Price agreement / discount'),$s['price_note']);input('joined_on',t('Dabei seit','Member since'),$s['joined_on'],'date');input('ended_on',t('Mitgliedschaft bis','Membership until'),$s['ended_on'],'date'); ?>
 </div></section><?php elseif($id):?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Tarif','Tariff'))?></dt><dd><?=e($s['tariff_name']?:'–')?></dd></div><div><dt><?=e(t('Vereinbarter Preis','Agreed price'))?></dt><dd><?=$s['price_cents']!==null?e(money((int)$s['price_cents'])):'–'?></dd></div><div><dt><?=e(t('Dabei seit','Member since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div></dl></section><?php endif ?>
-<?php $fields=array_filter(field_definitions(),fn($f)=>$staff || $f['visibility']!=='internal');if($fields): ?><section class="card"><h2><?=e(t('Weitere Angaben','Additional details'))?></h2><div class="grid two">
+<?php $fields=$id?array_filter(field_definitions(),fn($f)=>$staff || $f['visibility']!=='internal'):[];if($fields): ?><section class="card"><h2><?=e(t('Weitere Angaben','Additional details'))?></h2><div class="grid two">
 <?php $lastSection='';foreach($fields as $f):$v=$id?field_value($id,(int)$f['id']):json_decode($f['default_json'],true);$label=field_label($f);$n='custom['.$f['id'].']';
 if($f['section_name'] && $f['section_name']!==$lastSection){echo '<h3 class="full">'.e($f['section_name']).'</h3>';$lastSection=$f['section_name'];}
 if(!$staff && $f['visibility']==='view'){echo '<div class="field"><label>'.e($label).'</label><div class="readonly">'.e(is_array($v)?implode(', ',$v):(is_bool($v)?($v?t('Ja','Yes'):t('Nein','No')):($v??'–'))).'</div></div>';continue;}
@@ -91,8 +110,8 @@ if(in_array($f['field_type'],['select','multiselect'],true)){$opts=json_decode($
 elseif($f['field_type']==='checkbox')check_field($n,$label.($f['required']?' *':''),(bool)$v);
 else input($n,$label,$v??'',$f['field_type']==='number'?'text':$f['field_type'],(bool)$f['required']);
 endforeach ?></div></section><?php endif ?>
-<?php if($staff):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>
-<div class="form-footer"><?php submit_button(t('Schüler speichern','Save student'));?></div></form>
+<?php if($staff && $id):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>
+<div class="form-footer"><?php submit_button($id?t('Schüler speichern','Save student'):t('Anlegen und weiter','Create and continue'));?></div></form>
 <?php if($staff && $id && !$s['account_id']): ?>
 <?php /* Outside the student form, because it is its own decision and its own
          POST: saving a birth date should not send anybody an email. */ ?>

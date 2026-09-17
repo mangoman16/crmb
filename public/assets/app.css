@@ -753,3 +753,13 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
   .sheet-head{margin-bottom:10px;padding-bottom:8px}
   .sheet-foot{margin-top:10px;padding-top:6px}
 }
+
+/* What is still to do on a record she has just created. Numbered, because it is
+   a sequence rather than a list of complaints, and at the top of the page,
+   because the bottom of a page is where things go to be forgotten. */
+.next-steps{background:var(--teal-soft);border-color:var(--teal-border)}
+.next-steps h2{color:var(--teal-ink);font-size:1rem;margin-bottom:12px}
+.next-steps ol{margin:0;padding-left:20px;display:grid;gap:10px}
+.next-steps li{color:var(--teal-ink)}
+.next-steps a{font-weight:650}
+.next-steps small{display:block;color:var(--ink-2);margin-top:2px}

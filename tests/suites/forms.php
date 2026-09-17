@@ -11,17 +11,50 @@ $reject = function (string $action, array $fields) {
 };
 
 case_('What was typed survives a rejected save');
+/* Creating a child asks for the basics only now, so this is the form that is
+   actually in front of somebody: a name, a date, and the address the portal
+   writes to - which is the one that gets this refused. */
 $reject('student_save', ['return_page'=>'student','return_id'=>'0','return_tab'=>'',
     'first_name'=>'Lena','last_name'=>'Hofer','birth_date'=>'2015-04-02','status'=>'active',
-    'price'=>'45,50 €',                       // the euro sign is what gets it refused
-    'price_note'=>'Geschwisterermäßigung','internal_notes'=>'Trainiert seit Herbst']);
+    'joined_on'=>'2026-01-15',
+    'email'=>'maria.hofer@',                  // half an address is what gets it refused
+]);
 $html = render_view('student', ['id'=>0]);
 ok(str_contains($html, 'value="Lena"'), 'the first name is still there');
 ok(str_contains($html, 'value="Hofer"'), 'and the surname');
 ok(str_contains($html, 'value="2015-04-02"'), 'and the date of birth');
-ok(str_contains($html, '45,50 €'), 'and the value that was refused, so it can be corrected rather than guessed at');
+ok(str_contains($html, 'value="2026-01-15"'), 'and the day they joined');
+ok(str_contains($html, 'maria.hofer@'), 'and the value that was refused, so it can be corrected rather than guessed at');
+
+case_('And on the full form, which has the boxes the short one leaves out');
+$existing = make_student(['first_name'=>'Tobias', 'last_name'=>'Hofer']);
+$reject('student_save', ['return_page'=>'student','return_id'=>(string)$existing,'return_tab'=>'',
+    'id'=>(string)$existing, 'revision'=>'1',
+    'first_name'=>'Tobias','last_name'=>'Hofer','birth_date'=>'','status'=>'active',
+    'price'=>'45,50 €',                       // the euro sign is what gets it refused
+    'price_note'=>'Geschwisterermäßigung','internal_notes'=>'Trainiert seit Herbst']);
+$html = render_view('student', ['id'=>$existing]);
+ok(str_contains($html, '45,50 €'), 'the value that was refused');
 ok(str_contains($html, 'Geschwisterermäßigung'), 'and the note beside it');
 ok(str_contains($html, 'Trainiert seit Herbst'), 'and the long text nobody wants to type twice');
+
+case_('A new child is asked the few things that cannot wait');
+$blank = render_view('student', ['id'=>0]);
+foreach (['first_name', 'last_name', 'birth_date', 'email', 'status', 'joined_on'] as $asked)
+    ok(str_contains($blank, 'name="'.$asked.'"'), 'the create form asks for '.$asked);
+foreach (['price_note', 'internal_notes', 'level_id', 'age_group_id'] as $later)
+    ok(!str_contains($blank, 'name="'.$later.'"'), $later.' waits until the record exists');
+// Her own fields wait too. They are the ones most likely to be many, and a
+// create form that grows every time she adds one is a create form that is back
+// where it started.
+$own = fixture('field_definitions', ['label'=>'Bisheriger Verein', 'label_en'=>'', 'field_type'=>'text',
+    'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
+    'visibility'=>'view', 'sort_order'=>9, 'archived'=>0]);
+$blank = render_view('student', ['id'=>0]);
+ok(!str_contains($blank, 'custom['.$own.']'), 'and so does a custom field she added herself');
+ok(str_contains($blank, 'Anlegen und weiter'), 'and the button says there is more to come');
+$existingHtml = render_view('student', ['id'=>$existing]);
+ok(str_contains($existingHtml, 'custom['.$own.']'), 'while the record’s own page has it');
 
 case_('It is offered back once, and then forgotten');
 // The next request takes it out of the session again and finds nothing, which is
@@ -137,3 +170,35 @@ is_same(9900, (int)$saved['price_cents'], 'the price of the tariff at its usual 
 is_same(9900, tariff_price($priced), 'which is what tariff_price says it is');
 is_same(null, tariff_price(null), 'and no tariff is no price');
 is_same(null, tariff_price(999999), 'as is a tariff that is not there');
+
+// ---------------------------------------------------------------------------
+case_('And then the page says what is left, in the order she would do it');
+/* The short form is only kind if the things it left out are asked for
+   somewhere. A child with no course is a child nobody bills, and four days
+   later nobody remembers which of fifteen children that was. */
+$fresh = make_student(['first_name'=>'Frisch', 'last_name'=>'Angelegt', 'account_id'=>null]);
+run("UPDATE students SET email='' WHERE id=?", [$fresh]);
+$steps = fn() => array_column(student_next_steps($fresh), 'what');
+ok(in_array(t('Notfallkontakt eintragen','Add an emergency contact'), $steps(), true), 'somebody to ring');
+ok(in_array(t('E-Mail-Adresse eintragen','Add an email address'), $steps(), true), 'somewhere to write');
+ok(in_array(t('In einen Kurs eintragen','Put them in a course'), $steps(), true), 'and a course');
+ok(str_contains(render_view('student', ['id'=>$fresh]), 'Noch zu tun'), 'and the page says so');
+
+fixture('contacts', ['student_id'=>$fresh, 'owner_name'=>'Oma', 'relation_label'=>'Großmutter',
+                     'phone'=>'+43 660 1', 'email'=>'', 'is_primary'=>1]);
+ok(!in_array(t('Notfallkontakt eintragen','Add an emergency contact'), $steps(), true), 'a contact ticks the first one off');
+run("UPDATE students SET email='eltern@beispiel.test' WHERE id=?", [$fresh]);
+// With an address but no account, the next thing to do is to hand it out.
+ok(in_array(t('Zugang einladen','Invite them in'), $steps(), true), 'and the address turns into an invitation to send');
+
+$courseForFresh = make_class(['name'=>'Kurs für Frisch']);
+$tariffForFresh = make_tariff(['class_id'=>$courseForFresh, 'name'=>'Beitrag']);
+make_enrolment($courseForFresh, $fresh, ['tariff_id'=>null]);
+ok(in_array(t('Tarif wählen','Choose a tariff'), $steps(), true), 'a course with no tariff is the next thing');
+run('UPDATE class_students SET tariff_id=? WHERE student_id=?', [$tariffForFresh, $fresh]);
+ok(!in_array(t('Tarif wählen','Choose a tariff'), $steps(), true), 'and choosing one clears it');
+
+// Somebody who has left is not chased through a checklist they will never need.
+run('UPDATE class_students SET left_on=? WHERE student_id=?', [today(), $fresh]);
+ok(in_array(t('In einen Kurs eintragen','Put them in a course'), $steps(), true),
+   'and a child who has left every course is asked for one again');

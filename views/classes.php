@@ -30,6 +30,10 @@ if($id){
     if(!$edit) tabs(['list'=>t('Kurse','Courses'),
                      'requests'=>t('Anfragen','Requests').($waiting?' ('.$waiting.')':'')],$tab,'classes');
 }
+// The same list a new child gets: the form that creates a course asks what a
+// course is, and what makes it usable is said here rather than discovered on
+// the first of the month when nobody was billed.
+if($id && $mayEdit) next_steps_card(class_next_steps($id));
 
 // ---------------------------------------------------------------------------
 if(!$id && !$edit && $tab==='list'):

@@ -271,3 +271,19 @@ is_same(0, (int)$row['discount_months'], 'no value means no discount');
 is_same('', $row['discount_note'], 'and no name either');
 throws(fn() => $save(['interval_months'=>'0', 'discount_months'=>'3', 'discount_kind'=>'percent', 'discount_value'=>'120']),
        'a discount over 100 per cent is refused', '0 bis 100');
+
+// ---------------------------------------------------------------------------
+case_('A new course says what it still needs, rather than billing nobody quietly');
+sign_in_as($trainer);
+$empty = make_class(['name'=>'Ganz neu', 'days'=>[]]);
+$what = fn(int $c) => array_column(class_next_steps($c), 'what');
+ok(in_array(t('Trainingstag eintragen','Add a training day'), $what($empty), true), 'a day to meet on');
+ok(in_array(t('Tarif anlegen','Add a tariff'), $what($empty), true), 'and a price');
+ok(str_contains(render_view('classes', ['id'=>$empty]), 'Noch zu tun'), 'and the course page says so');
+
+fixture('class_days', ['class_id'=>$empty, 'weekday'=>2, 'starts_at'=>'17:00:00', 'ends_at'=>'18:00:00',
+                       'location'=>'', 'sort_order'=>0]);
+ok(!in_array(t('Trainingstag eintragen','Add a training day'), $what($empty), true), 'a day ticks the first one off');
+make_tariff(['class_id'=>$empty, 'name'=>'Beitrag']);
+is_same([], $what($empty), 'and a tariff clears the list');
+ok(!str_contains(render_view('classes', ['id'=>$empty]), 'Noch zu tun'), 'so the card goes away');

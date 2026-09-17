@@ -284,6 +284,16 @@ Skip on an ordinary code change; do all of it before a release.
   page.
 - [ ] **7.15** Both say what happens to the data, and neither is reachable by a
   family.
+- [ ] **7.16** **+ Schüler anlegen** asks for a name, a date of birth, an email
+  address and whether they are a member — and nothing else. Not the level, not
+  the tariff, not the internal notes, not your own custom fields.
+- [ ] **7.17** After **Anlegen und weiter**, the child's page opens with **Noch
+  zu tun** at the top: an emergency contact, an email address or an invitation,
+  a course, a tariff — in that order, each a link to where it is done.
+- [ ] **7.18** Do them one at a time and watch each disappear. When the last one
+  goes, the card goes.
+- [ ] **7.19** A course you have just created says the same: a training day and
+  a tariff. A course that has both shows no card.
 - [ ] **7.9** Add a second contact. It is an ordinary one. Tick
   „Als Standardkontakt verwenden" on it and the badge moves — there is never
   more than one.

@@ -79,6 +79,48 @@ function students_missing_contact(): array {
         .' ORDER BY s.first_name,s.last_name');
 }
 
+/**
+ * What is still missing on one child's record, as things to do with links.
+ *
+ * Creating a child asks for a name and an address and nothing else, because a
+ * form with twenty boxes on it is a form somebody abandons. The rest is not
+ * optional, though - a child with no course is a child nobody bills - so the
+ * page says what is left rather than leaving her to remember.
+ *
+ * In the order she would do them: somebody to ring, a way to reach the family,
+ * a course, and the price they are on.
+ */
+function student_next_steps(int $studentId): array {
+    $student = one('SELECT * FROM students WHERE id=?', [$studentId]);
+    if (!$student) return [];
+    $steps = [];
+    if (!primary_contact($studentId))
+        $steps[] = ['what' => t('Notfallkontakt eintragen', 'Add an emergency contact'),
+                    'why'  => t('Wen du anrufst, wenn etwas ist.', 'Who you ring if something happens.'),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'contacts']];
+    if ((string)$student['email'] === '' && $student['account_id'] === null)
+        $steps[] = ['what' => t('E-Mail-Adresse eintragen', 'Add an email address'),
+                    'why'  => t('Dorthin gehen Einladung, Rechnungen und Erinnerungen.', 'The invitation, the invoices and the reminders go there.'),
+                    'page' => 'student', 'params' => ['id' => $studentId]];
+    elseif ($student['account_id'] === null)
+        $steps[] = ['what' => t('Zugang einladen', 'Invite them in'),
+                    'why'  => t('Damit die Familie Termine und Beiträge selbst sieht.', 'So the family can see dates and charges themselves.'),
+                    'page' => 'student', 'params' => ['id' => $studentId]];
+    // Only the courses they are still in: a child who has left every one of them
+    // needs a course again, and saying otherwise would tick the box for ever on
+    // the strength of a membership that ended in March.
+    $enrolments = array_filter(student_enrolments($studentId), fn($e) => $e['left_on'] === null);
+    if (!$enrolments)
+        $steps[] = ['what' => t('In einen Kurs eintragen', 'Put them in a course'),
+                    'why'  => t('Ohne Kurs entstehen keine Beiträge.', 'Without a course there are no charges.'),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes']];
+    elseif (array_filter($enrolments, fn($e) => $e['tariff_id'] === null))
+        $steps[] = ['what' => t('Tarif wählen', 'Choose a tariff'),
+                    'why'  => t('Eine Kursteilnahme hat noch keinen Tarif.', 'One of their courses has no tariff yet.'),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes']];
+    return $steps;
+}
+
 /** The children with nowhere to send an invitation or an invoice. */
 function students_missing_email(): array {
     return rows('SELECT s.id,s.first_name,s.last_name FROM students s'

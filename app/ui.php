@@ -388,3 +388,19 @@ function print_tick(string $label, ?bool $ticked = null): void {
 function print_signature(string $label): void {
     echo '<div class="print-sign"><span class="print-rule"></span><small>'.e($label).'</small></div>';
 }
+
+/**
+ * The list of things still to do on a record that has just been created.
+ *
+ * Numbered, because it is a sequence rather than a list of complaints, and
+ * shown at the top of the record: the bottom of a page is where things go to
+ * be forgotten. Disappears the moment there is nothing left on it.
+ */
+function next_steps_card(array $steps): void {
+    if (!$steps) return;
+    echo '<section class="card next-steps"><h2>'.e(t('Noch zu tun','Still to do')).'</h2><ol>';
+    foreach ($steps as $step)
+        echo '<li><a href="'.e(url($step['page'],$step['params'])).'">'.e($step['what']).'</a>'
+            .'<small>'.e($step['why']).'</small></li>';
+    echo '</ol></section>';
+}

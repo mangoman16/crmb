@@ -2,6 +2,20 @@
 
 ## 0.6.0 — unreleased
 
+### Creating something asks for the basics, and then says what is left
+
+- **The form that creates a child now asks for four things**: a name, a date of
+  birth, the email address, and whether they are a member. Not the level, not
+  the tariff, not the internal notes, and not the custom fields she has added
+  herself — a form of twenty boxes is a form somebody abandons in the middle of
+  a training session.
+- **And then the child's page says what is still to do**, numbered, at the top:
+  an emergency contact, an address or an invitation, a course, a tariff. Each
+  one is a link to where it is done, and each disappears when it is. A child
+  with no course is a child nobody bills, and four days later nobody remembers
+  which of fifteen children that was.
+- A newly created course says the same: a training day, and a tariff.
+
 ### Two things to print
 
 - **A blank registration form**, for a parent standing in the hall with a biro.
