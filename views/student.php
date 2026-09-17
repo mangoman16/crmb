@@ -80,24 +80,20 @@ endforeach ?></div></section><?php endif ?>
         <?php if(count($contacts)>1): start_form('contact_delete',['student_id'=>$id,'id'=>$c['id']],'inline-form');submit_button(t('Entfernen','Remove'),'subtle danger-text');?></form><?php endif ?>
     </div>
     <details><summary><?=e(t('Kontakt bearbeiten','Edit contact'))?></summary>
-        <?php start_form('contact_save',['student_id'=>$id,'id'=>$c['id']]);?><div class="grid two"><?php
-        input('owner_name',t('Name','Name'),$c['owner_name'],'text',true);
-        input('relation_label',t('Beziehung','Relationship'),$c['relation_label'],'text',true);
-        input('phone',t('Telefonnummer','Phone number'),$c['phone'],'tel');
-        input('email',t('E-Mail-Adresse','Email address'),$c['email'],'email',(bool)$c['is_primary']);?></div>
-        <?php if((int)$c['is_primary'])echo '<p class="muted">'.e(t('Das ist der Standardkontakt. Um das zu ändern, setze bei einem anderen Kontakt das Häkchen.','This is the standard contact. To change that, tick the box on another contact.')).'</p>';
+        <?php start_form('contact_save',['student_id'=>$id,'id'=>$c['id']]);
+        contact_fields($c,(bool)$c['is_primary']);
+        if((int)$c['is_primary'])echo '<p class="muted">'.e(t('Das ist der Standardkontakt. Um das zu ändern, setze bei einem anderen Kontakt das Häkchen.','This is the standard contact. To change that, tick the box on another contact.')).'</p>';
         else check_field('is_primary',t('Als Standardkontakt verwenden','Use as the standard contact'),false);
         submit_button();?></form>
     </details>
     <?php endforeach ?>
 </section>
 <section class="card"><h2><?=e(t('Kontakt hinzufügen','Add contact'))?></h2>
-    <?php start_form('contact_add',['student_id'=>$id]);?><div class="grid two"><?php
-    input('owner_name',t('Wem gehört der Kontakt?','Whose contact is this?'),'','text',true);
-    input('relation_label',t('Beziehung, z. B. Mutter','Relationship, e.g. mother'),'','text',true);
-    input('phone',t('Telefonnummer','Phone number'),'','tel');
-    input('email',t('E-Mail-Adresse','Email address'),'','email',!$contacts);?></div>
-    <?php if($contacts)check_field('is_primary',t('Als Standardkontakt verwenden','Use as the standard contact'),false);
+    <?php start_form('contact_add',['student_id'=>$id]);
+    // The first contact a child has is the standard one by definition, so it is
+    // the one that needs an address to send an invoice to.
+    contact_fields([],!$contacts);
+    if($contacts)check_field('is_primary',t('Als Standardkontakt verwenden','Use as the standard contact'),false);
     submit_button(t('Kontakt hinzufügen','Add contact'));?></form>
 </section>
 <?php elseif($tab==='absence'): ?>

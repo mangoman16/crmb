@@ -20,6 +20,7 @@ function icon(string $name): string {
         'camera'=>'<path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.5"/>',
         'eye'=>'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
         'mic'=>'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+        'help'=>'<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.2-2.8 4"/><path d="M12 17.3v.01"/>',
     ];
     return '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'.($paths[$name]??$paths['arrow']).'</svg>';
 }
@@ -263,4 +264,28 @@ function sidebar_nav(array $user,string $page): string {
             .'<div class="nav-sub">'.$inner.'</div></details>';
     }
     return $html.'</nav>';
+}
+
+/**
+ * The fields of one contact person.
+ *
+ * One copy for adding and for editing. They were written out twice and drifted:
+ * the same box was "Name" on one form and "Wem gehört der Kontakt?" on the
+ * other, which reads as a question about ownership rather than a request for
+ * the person's name - and "Beziehung, z. B. Mutter" put the example inside the
+ * label, where it stays on screen after the box has been filled in.
+ *
+ * $standard says whether this contact is, or would become, the one invoices and
+ * reminders are sent to, which is the only reason the email address is required.
+ */
+function contact_fields(array $contact=[], bool $standard=false): void {
+    echo '<div class="grid two">';
+    input('owner_name',t('Name der Kontaktperson','Name of the contact'),$contact['owner_name']??'','text',true,
+          '',t('z. B. Maria Hofer','e.g. Maria Hofer'));
+    input('relation_label',t('Beziehung zum Kind','Relationship to the child'),$contact['relation_label']??'','text',true,
+          '',t('z. B. Mutter','e.g. mother'));
+    input('phone',t('Telefonnummer','Phone number'),$contact['phone']??'','tel');
+    input('email',t('E-Mail-Adresse','Email address'),$contact['email']??'','email',$standard,
+          $standard?t('Dorthin gehen Rechnungen und Erinnerungen.','Invoices and reminders go here.'):'');
+    echo '</div>';
 }

@@ -553,3 +553,53 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 .transcript{margin:12px 0 0;padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8125rem;line-height:1.6;white-space:pre;overflow-x:auto;max-height:420px;overflow-y:auto;color:var(--ink-2)}
 .mail-test .row-actions{margin-top:4px}
 @media(max-width:760px){.transcript{font-size:.75rem;padding:11px}}
+
+/* ---------------------------------------------------------------------------
+   "Etwas funktioniert hier nicht", pinned.
+
+   It used to sit under the last card, which meant it was only ever found by
+   somebody scrolling to the bottom of a page they had already given up on. On
+   a desktop screen it is a button in the bottom right corner, where a help
+   button has lived in every product she has ever used, and the form opens
+   upwards out of it.
+
+   Below 760px it stays in the flow at the end of the page on purpose. The
+   bottom of a phone screen already carries the menu bar and, on a form, the
+   sticky Save button; a third thing floating over those is how a Save button
+   becomes unreachable. The menu drawer carries a link down to it instead.
+   --------------------------------------------------------------------------- */
+.feedback-link{display:none}
+@media(min-width:761px){
+  .feedback{position:fixed;right:24px;bottom:24px;z-index:45;margin:0;padding:0;border:0;
+            width:min(400px,calc(100vw - 48px));display:flex;flex-direction:column;align-items:flex-end}
+  /* Column-reverse would reorder it, but the summary must stay first in the
+     document for the disclosure to work, so the panel is ordered above it. */
+  .feedback>summary{order:2;background:var(--surface);color:var(--ink-2);border:1px solid var(--border-strong);
+                    border-radius:24px;box-shadow:0 6px 20px var(--shadow-tint);padding:0 18px;min-height:48px;
+                    font-size:.9375rem;font-weight:600;margin:0;width:auto;align-self:flex-end}
+  .feedback>summary:hover{color:var(--ink);border-color:var(--teal)}
+  .feedback>summary svg{color:var(--teal)}
+  .feedback[open]{background:none;border:0;padding:0;margin:0}
+  .feedback[open]>summary{margin-top:12px;border-color:var(--teal);color:var(--ink)}
+  .feedback>.feedback-panel{order:1;width:100%;background:var(--surface);border:1px solid var(--border);
+                            border-radius:14px;box-shadow:var(--shadow);padding:18px 20px 20px;
+                            max-height:min(62vh,540px);overflow-y:auto}
+}
+/* A narrow window has no room for a 400px panel beside the page, so the button
+   keeps its corner and the panel takes what is left. */
+@media(min-width:761px) and (max-width:900px){
+  .feedback{width:min(340px,calc(100vw - 32px));right:16px;bottom:16px}
+}
+@media(max-width:760px){
+  .feedback-link{display:flex;align-items:center;gap:10px;color:var(--nav-ink);min-height:44px;
+                 font-size:.9375rem;padding:10px 14px;border-radius:10px;margin-bottom:6px}
+  .feedback-link:hover{background:var(--nav-hover);text-decoration:none}
+  /* The anchor jumps here; the bar at the top of the page must not cover it. */
+  .feedback{scroll-margin-top:80px}
+}
+
+/* The public footer carries a sentence now, not just two links, so it stacks
+   and reads at a paragraph width instead of stretching across the page. */
+.public-footer{flex-direction:column;gap:14px;max-width:640px;margin-left:auto;margin-right:auto;padding:0 20px;text-align:center}
+.public-notice{font-size:.8125rem;line-height:1.7;color:var(--muted);margin:0}
+.public-footer-links{display:flex;justify-content:center;align-items:center;gap:24px;margin:0}

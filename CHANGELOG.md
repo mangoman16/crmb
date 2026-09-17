@@ -21,6 +21,23 @@
   transcript, because the whole point of it is to be forwarded to a host.
 - The sign-in page no longer explains which address to use. It asks for an email
   address and a password, which is what the form already said.
+- **„Etwas funktioniert hier nicht" was under the last card**, which meant it
+  was only ever found by somebody who scrolled to the bottom of a page they had
+  already given up on. On a desktop screen it is a button in the bottom right
+  corner now. On a phone it stays at the end of the page and the **Mehr** menu
+  carries a link down to it: the bottom of a phone screen already holds the menu
+  bar and the sticky **Speichern** button, and a third thing floating over those
+  is how a Save button becomes unreachable.
+- **„Wem gehört der Kontakt?"** asked about ownership when it wanted a name —
+  and the same box said „Name" on the edit form next to it. The two forms had
+  been written out twice and drifted; they are one fieldset now, and it asks for
+  „Name der Kontaktperson".
+- **Every signed-out page says what happens to the data**: the privacy notice
+  applies, only the cookies the portal needs to work are set, there is no
+  analytics and no advertising, and nothing is sold or passed to anybody else.
+  The same paragraph is in the shipped privacy draft under *Empfänger* —
+  a portal installed before this keeps its own edited notice, so add the
+  sentence there by hand if you want it.
 
 Her half of the portal: what she runs day to day, in the words she uses for it,
 after a round of testing that produced a list of about forty things.

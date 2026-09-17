@@ -167,12 +167,22 @@ Skip on an ordinary code change; do all of it before a release.
   password immediately afterwards is refused too — that is the point.
 - [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
   once and not twice.
+- [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
+  the privacy notice — carries the line about the privacy notice, the necessary
+  cookies and the data not being sold or passed on, above the footer links, and
+  it reads at 320px without the page scrolling sideways.
 - [ ] **4.8** Suspending an account in **Konten** stops that person signing in.
 
 ---
 
 ## The shell: the bar, notifications, feedback, impersonation
 
+- [ ] **5.0** On a desktop screen, „Etwas funktioniert hier nicht" is a button in
+  the bottom right corner of every page. It opens upwards, stays inside the
+  window, and closing it leaves the page where it was.
+- [ ] **5.0a** On a phone it is *not* floating: it is at the end of the page,
+  reached from „Etwas funktioniert nicht" in the **Mehr** menu. Check on a form
+  page that nothing covers the sticky **Speichern** bar.
 - [ ] **5.1** Scroll a long page. The top bar stays where it is.
 - [ ] **5.1a** As the administrator, on a laptop at **110% and 125% zoom**, the
   menu on the left has no scrollbar of its own and its last entry is above the
@@ -244,6 +254,9 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **7.8** The first contact you add becomes the **Standardkontakt** without
   being asked, and it cannot be saved without an email address: that is where
   invoices and reminders go.
+- [ ] **7.8a** „Kontakt hinzufügen" and „Kontakt bearbeiten" ask for the same
+  things, in the same words: the first box is the contact person's own name, not
+  a question about whose contact it is.
 - [ ] **7.9** Add a second contact. It is an ordinary one. Tick
   „Als Standardkontakt verwenden" on it and the badge moves — there is never
   more than one.
