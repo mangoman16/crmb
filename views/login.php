@@ -1,5 +1,5 @@
 <?php if($user)go('dashboard'); ?>
-<div class="auth-card card"><h1><?=e(t('Anmelden','Sign in'))?></h1><p class="muted"><?=e(t('Mit der E-Mail-Adresse, an die die Einladung geschickt wurde.','With the email address the invitation was sent to.'))?></p>
+<div class="auth-card card"><h1><?=e(t('Anmelden','Sign in'))?></h1>
 <?php start_form('login'); input('email',t('E-Mail-Adresse','Email address'),'','email',true); ?>
 <?php /* Written out rather than through input(), because the browser needs
          autocomplete="current-password" to offer the saved one - but it carries

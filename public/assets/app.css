@@ -38,7 +38,7 @@ html[data-text=largest]{font-size:21px}
 .thread-item.unread strong{color:var(--ink)}
 .thread-item.unread p{color:var(--ink-2);font-weight:600}
 .thread-item .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--teal);vertical-align:middle;margin-left:2px}
-.sidebar nav a .count,.mobile-nav a .count{background:var(--teal);color:#0b1218;font-size:.75rem;font-weight:700;min-width:20px;height:20px;border-radius:10px;display:inline-grid;place-items:center;padding:0 5px;line-height:1}
+.sidebar nav a .count,.sidebar nav summary .count,.mobile-nav a .count{background:var(--teal);color:#0b1218;font-size:.75rem;font-weight:700;min-width:20px;height:20px;border-radius:10px;display:inline-grid;place-items:center;padding:0 5px;line-height:1}
 .sidebar nav a{position:relative}
 .sidebar nav a .count{margin-left:auto}
 .mobile-nav a{position:relative}
@@ -466,3 +466,90 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
    Links inside prose are deliberately left alone: a paragraph whose every link
    is 44px tall does not read as a paragraph. */
 .text-link,.auth-card>a{display:inline-flex;align-items:center;min-height:44px}
+
+/* ---------------------------------------------------------------------------
+   The main menu, as sections.
+
+   An administrator has thirteen destinations, and in one column they made the
+   panel 958px tall: a 1920x1080 screen at 110% zoom leaves 873px, so the last
+   three were below the fold and the panel scrolled - which is how a menu loses
+   its bottom. Six of them now sit inside two sections, and <details name> makes
+   the browser close the others when one opens, so the panel is never taller
+   than one open section: 715px at a full window, 541px at the zoom this was
+   reported at. The panel keeps overflow-y:auto as a last resort - at some zoom
+   level nothing fits, and a scrollbar is better than a link nobody can reach.
+   --------------------------------------------------------------------------- */
+/* Deliberately not display:grid or flex: Chromium and WebKit hide a shut
+   section's contents through the default display of <details>, so overriding it
+   leaves every section standing open. The gaps are margins for that reason. */
+.sidebar nav details{margin:0}
+.sidebar nav summary{display:flex;gap:13px;align-items:center;color:var(--nav-ink);border-radius:10px;padding:12px 14px;font-size:.9375rem;font-weight:400;line-height:1.5;min-height:46px;margin:0;list-style:none}
+.sidebar nav summary::-webkit-details-marker{display:none}
+/* Below 760px every flex summary in the portal is given a drawn triangle at the
+   start of its row. The menu already says the same thing with the chevron at
+   the end, beside where the section will open, so it does not need both. */
+.sidebar nav summary:before{display:none}
+.sidebar nav details[open]>summary{margin-bottom:0}
+.sidebar nav summary:hover{background:var(--nav-hover)}
+.sidebar nav .chevron{margin-left:auto;display:flex;color:var(--nav-ink-2);transition:transform .15s ease}
+.sidebar nav details[open]>summary .chevron{transform:rotate(90deg)}
+.sidebar nav .chevron svg{width:16px;height:16px}
+/* Indented and hung off a rule, so a glance says these four belong to the row
+   above them rather than to the menu. */
+.sidebar nav .nav-sub{display:grid;gap:7px;margin:7px 0 4px 18px;padding-left:11px;border-left:1px solid var(--on-navy-faint)}
+/* The number of things waiting belongs on the entry itself. It moves up to the
+   section only while the section is shut and the entry cannot be seen. */
+.sidebar nav details[open]>summary .section-count{display:none}
+.sidebar nav summary .count{margin-left:auto}
+.sidebar nav summary .count+.chevron{margin-left:9px}
+
+/* Desktop: the panel is a fixed column next to the page, not a drawer, so its
+   rows are aimed at with a pointer. 40px there buys the four rows that a shut
+   section saves; the drawer below 760px keeps its 46px, because that one is
+   hit with a thumb. */
+@media(min-width:761px){
+  .sidebar{padding:24px 20px 14px}
+  .sidebar nav{margin-top:24px;gap:4px}
+  .sidebar nav a,.sidebar nav summary{min-height:40px;padding:9px 13px}
+  .sidebar nav .nav-sub{gap:4px;margin-top:4px}
+  .sidebar nav .nav-sub a{min-height:37px;padding:7px 12px;font-size:.875rem}
+  .sidebar-bottom{padding-top:16px}
+  .sidebar-meta{margin-top:0}
+}
+
+/* Two steps down for short windows. What goes first is decoration - the
+   subtitle under the club name, the padding around everything - and only then
+   the height of the rows, because a destination that is off the screen is worse
+   than a row that is 33px instead of 40px to a mouse pointer. Measured, not
+   guessed: 715px of menu at a full window, 587px here, 536px below, against the
+   582px a 1366x768 laptop leaves at the 110% zoom this was reported at. */
+@media(min-width:761px) and (max-height:760px){
+  .sidebar{padding:16px 16px 10px}
+  .brand{font-size:1.1rem}
+  .brand small{display:none}
+  .brand-mark{width:38px;height:38px;font-size:26px}
+  .sidebar nav{margin-top:14px;gap:3px}
+  .sidebar nav .nav-sub{gap:3px;margin-top:3px;margin-bottom:2px}
+  .sidebar nav a,.sidebar nav summary{min-height:36px;padding:7px 12px;font-size:.875rem}
+  .sidebar nav .nav-sub a{min-height:33px;padding:6px 11px}
+  .sidebar-bottom{padding-top:10px}
+  .sidebar-meta a{min-height:36px}
+}
+@media(min-width:761px) and (max-height:620px){
+  .sidebar{padding:14px 15px 9px}
+  .sidebar nav{margin-top:12px}
+  .sidebar nav a,.sidebar nav summary{min-height:33px;padding:5px 12px}
+  .sidebar nav .nav-sub a{min-height:31px;padding:4px 11px}
+  .sidebar-bottom{padding-top:9px}
+}
+
+/* The SMTP transcript. A server conversation is lines of fixed-width text - a
+   response code and its message - and wrapping it as prose makes it unreadable
+   at exactly the moment somebody needs to read it. It scrolls sideways rather
+   than reflowing, and stays inside the card on a phone. */
+.test-result{margin-top:24px;border-top:1px solid var(--border);padding-top:18px}
+.test-result .section-heading{margin-bottom:12px}
+.test-result p+p{margin-top:6px}
+.transcript{margin:12px 0 0;padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8125rem;line-height:1.6;white-space:pre;overflow-x:auto;max-height:420px;overflow-y:auto;color:var(--ink-2)}
+.mail-test .row-actions{margin-top:4px}
+@media(max-width:760px){.transcript{font-size:.75rem;padding:11px}}

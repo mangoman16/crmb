@@ -151,7 +151,9 @@ Skip on an ordinary code change; do all of it before a release.
 
 - [ ] **4.1** Sign in as the trainer. **Verwaltung**, **Kurse**,
   **Anwesenheit**, **Beiträge**, **Rechnungen**, **Konten** and **Postausgang**
-  are all in the menu.
+  are all in the menu — **Kurse** and **Anwesenheit** inside **Training**,
+  **Beiträge** and **Rechnungen** inside **Geld**, **Konten** and
+  **Postausgang** inside **System**.
 - [ ] **4.2** As the trainer, **Einstellungen** and **Änderungen** are *not* in
   the menu, and typing their addresses by hand is refused.
 - [ ] **4.3** As the administrator, everything the trainer can reach, you can
@@ -172,6 +174,16 @@ Skip on an ordinary code change; do all of it before a release.
 ## The shell: the bar, notifications, feedback, impersonation
 
 - [ ] **5.1** Scroll a long page. The top bar stays where it is.
+- [ ] **5.1a** As the administrator, on a laptop at **110% and 125% zoom**, the
+  menu on the left has no scrollbar of its own and its last entry is above the
+  fold. Open **System**: **Training** and **Geld** shut by themselves, so the
+  menu is never taller than one open section.
+- [ ] **5.1b** Whichever page you are on, its section is already open when the
+  page loads — nothing has to be clicked to see where you are.
+- [ ] **5.1c** With a course request waiting, the number is on **Training**
+  while it is shut and on **Kurse** once it is open, never on both.
+- [ ] **5.1d** On a phone the menu is still the drawer behind **Mehr**, every
+  row is still 44pt, and each section row has one arrow, not two.
 - [ ] **5.2** Your name and role appear **once**, in the top bar — not again at
   the bottom of the menu.
 - [ ] **5.3** The bell shows a number when something is waiting. Opening it
@@ -428,8 +440,18 @@ Skip on an ordinary code change; do all of it before a release.
 
 - [ ] **15.1** Publish a news item. Families see it under **Neuigkeiten**.
 - [ ] **15.2** With the newsletter ticked, an email is queued per subscriber.
-- [ ] **15.3** **Einstellungen → SMTP → Testmail**: it either arrives or the
-  error says what the server actually replied.
+- [ ] **15.3** **Einstellungen → SMTP → Verbindung testen**: with a target
+  address filled in, the page comes back with the outcome on it, not with a
+  message in a list to go and find. It arrives, or the summary says which step
+  failed — the port, the certificate, the password, the sender address.
+- [ ] **15.3a** **Nur Verbindung prüfen** connects and signs in without sending
+  anything, and no job appears in the outbox.
+- [ ] **15.3b** Open **Gespräch mit dem Server anzeigen**. The transcript is
+  fixed-width, scrolls sideways rather than wrapping, fits inside the card at
+  320px, and contains no password: the AUTH lines read `[entfernt]` or
+  `[credentials hidden]`. Read it before forwarding it to a host.
+- [ ] **15.3c** Put in a port nothing listens on: the answer is that the port is
+  usually blocked or wrong, in one sentence, rather than a mail-library error.
 - [ ] **15.4** **Postausgang** shows queued, sent and failed. A failure retries
   with a growing delay rather than hammering.
 - [ ] **15.5** An unsubscribe link at the bottom of a newsletter works without

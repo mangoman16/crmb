@@ -29,22 +29,12 @@ $realUser=$public?null:impersonator();
 <body class="<?=$public?'public-page':'app-page'?>">
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
 <?php if(!$public):
-$nav=['dashboard'=>['home',t('Übersicht','Overview')],'students'=>['users',t('Schüler','Students')]];
-$waitingRequests=is_staff($user)?pending_request_count():0;
-if(is_staff($user)){$nav['classes']=['calendar',t('Kurse','Courses')];$nav['attendance']=['check',t('Anwesenheit','Attendance')];$nav['payments']=['wallet',t('Beiträge','Payments')];$nav['invoices']=['news',t('Rechnungen','Invoices')];}
-$nav['messages']=['mail',t('Nachrichten','Messages')];$nav['news']=['news',t('Neuigkeiten','News')];
 $unreadTotal=unread_count($user);
 $unreadNotes=unread_notifications((int)$user['id']);
-if(is_staff($user)){$nav['manage']=['settings',t('Verwaltung','Management')];$nav['accounts']=['lock',t('Konten','Accounts')];$nav['outbox']=['mail',t('Postausgang','Outbox')];}
-if(is_admin($user)){$nav['history']=['calendar',t('Änderungen','Changes')];$nav['settings']=['settings',t('Einstellungen','Settings')];}
 ?>
 <aside class="sidebar" id="sidebar">
     <a class="brand" href="<?=e(url('dashboard'))?>"><span class="brand-mark">B<span></span></span><span><?=e(setting('club_name','Badminton'))?><small><?=e(is_staff($user)?t('Verwaltung','Management'):t('Mein Portal','My portal'))?></small></span></a>
-    <nav aria-label="<?=e(t('Hauptmenü','Main menu'))?>">
-    <?php foreach($nav as $route=>[$symbol,$label]):$active=$route===$page || ($route==='students'&&$page==='student') || ($route==='messages'&&$page==='compose'); ?>
-        <a href="<?=e(url($route))?>" <?=$active?'aria-current="page"':''?>><?=icon($symbol)?><span><?=e($label)?></span><?php if($route==='messages'&&$unreadTotal):?><span class="count" aria-label="<?=e($unreadTotal.' '.t('ungelesen','unread'))?>"><?=$unreadTotal?></span><?php endif ?><?php if($route==='classes'&&$waitingRequests):?><span class="count" aria-label="<?=e($waitingRequests.' '.t('Anfragen','requests'))?>"><?=e($waitingRequests)?></span><?php endif ?></a>
-    <?php endforeach ?>
-    </nav>
+    <?=sidebar_nav($user,$page)?>
     <?php /* The account used to be here as well as in the top bar. One of the two
              was always redundant, and the top bar is the one on screen whatever
              you have scrolled to, so only what it has no room for stays here. */ ?>

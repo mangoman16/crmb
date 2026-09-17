@@ -118,7 +118,19 @@ function default_field(string $name,string $label,mixed $value,string $defaultVa
     if($defaultValue!=='') echo '<button type="button" class="chip default-reset" hidden>'.e(t('Standard übernehmen','Use the default')).'</button>';
     echo '</p></div>';
 }
-function submit_button(string $label='',string $class='primary'): void { echo '<button class="button '.e($class).'" type="submit">'.e($label?:t('Speichern','Save')).'</button>'; }
+/**
+ * The button that sends a form.
+ *
+ * $name and $value are for the rare form that does two things - "test the
+ * connection" and "send a test email" ask the same questions and differ in one
+ * word - so that it stays one form with one set of fields rather than two forms
+ * whose fields have to be kept in step.
+ */
+function submit_button(string $label='',string $class='primary',string $name='',string $value=''): void {
+    echo '<button class="button '.e($class).'" type="submit"'
+        .($name!==''?' name="'.e($name).'" value="'.e($value).'"':'').'>'
+        .e($label?:t('Speichern','Save')).'</button>';
+}
 function page_head(string $title,string $description='',string $action=''): void { echo '<div class="page-heading"><div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>'; }
 function link_button(string $label,string $page,array $params=[],string $class='primary'): string { return '<a class="button '.e($class).'" href="'.e(url($page,$params)).'">'.e($label).'</a>'; }
 function empty_state(string $title,string $body='',string $action=''): void { echo '<div class="empty"><div class="empty-icon">'.icon('users').'</div><h2>'.e($title).'</h2>'.($body?'<p>'.e($body).'</p>':'').$action.'</div>'; }
@@ -156,4 +168,99 @@ function render_filters(array $f,string $target='students'): void {
     input('value',t('Wert entspricht','Value equals'),$f['value']??'');echo '</div></details>';
     check_field('overdue',t('Nur überfällige Beiträge','Overdue charges only'),!empty($f['overdue']));
     submit_button(t('Filtern','Filter'),'secondary');echo '</form>';
+}
+
+/**
+ * The main menu, as sections rather than one long list.
+ *
+ * An administrator has thirteen destinations. In a row they made the panel
+ * taller than a laptop window at 110% zoom, and a menu you have to scroll is a
+ * menu whose last three entries nobody finds. So the six that clearly belong to
+ * a subject sit inside it, and only the section you are working in is open.
+ *
+ * What stays at the top level is what she reaches for without thinking:
+ * Übersicht, Schüler, Nachrichten, Neuigkeiten, and the lists under Verwaltung.
+ *
+ * Returns an ordered list of entries, each either
+ *   ['route'=>…, 'icon'=>…, 'label'=>…, 'count'=>int]   a destination, or
+ *   ['section'=>…, 'icon'=>…, 'label'=>…, 'items'=>[…]] a section of them.
+ */
+function nav_entries(array $user): array {
+    $staff=is_staff($user); $admin=is_admin($user);
+    $entry=fn(string $route,string $symbol,string $label,int $count=0)=>
+        ['route'=>$route,'icon'=>$symbol,'label'=>$label,'count'=>$count];
+    $out=[$entry('dashboard','home',t('Übersicht','Overview')),
+          $entry('students','users',t('Schüler','Students'))];
+    if($staff) {
+        $out[]=['section'=>'training','icon'=>'calendar','label'=>t('Training','Training'),'items'=>[
+            $entry('classes','calendar',t('Kurse','Courses'),pending_request_count()),
+            $entry('attendance','check',t('Anwesenheit','Attendance'))]];
+        $out[]=['section'=>'money','icon'=>'wallet','label'=>t('Geld','Money'),'items'=>[
+            $entry('payments','wallet',t('Beiträge','Payments')),
+            $entry('invoices','news',t('Rechnungen','Invoices'))]];
+    }
+    $out[]=$entry('messages','mail',t('Nachrichten','Messages'),unread_count($user));
+    $out[]=$entry('news','news',t('Neuigkeiten','News'));
+    if($staff) {
+        $out[]=$entry('manage','settings',t('Verwaltung','Management'));
+        $system=[$entry('accounts','lock',t('Konten','Accounts')),
+                 $entry('outbox','mail',t('Postausgang','Outbox'))];
+        if($admin) {
+            $system[]=$entry('history','calendar',t('Änderungen','Changes'));
+            $system[]=$entry('settings','settings',t('Einstellungen','Settings'));
+        }
+        $out[]=['section'=>'system','icon'=>'lock','label'=>t('System','System'),'items'=>$system];
+    }
+    return $out;
+}
+
+/**
+ * Whether a menu entry is the page being looked at.
+ *
+ * Three pages have no entry of their own because they are opened from one:
+ * a single student, a new message, and the page that is not there.
+ */
+function nav_is_current(string $route,string $page): bool {
+    return $route===$page
+        || ($route==='students' && $page==='student')
+        || ($route==='messages' && $page==='compose');
+}
+
+/** One menu row: the link, its label, and the number waiting behind it. */
+function nav_link(array $item,string $page): string {
+    $count=(int)($item['count']??0);
+    return '<a href="'.e(url($item['route'])).'" '.(nav_is_current($item['route'],$page)?'aria-current="page"':'').'>'
+        .icon($item['icon']).'<span>'.e($item['label']).'</span>'
+        .($count?'<span class="count" aria-label="'.e($count.' '.t('wartet','waiting')).'">'.e((string)$count).'</span>':'')
+        .'</a>';
+}
+
+/**
+ * The main menu as markup.
+ *
+ * The open section is decided here rather than in the browser, so the menu is
+ * already showing where you are on the first paint and without JavaScript. The
+ * name attribute makes the browser close the other sections when one is opened,
+ * which is what keeps the panel one section tall; a browser too old for it
+ * simply lets two stand open.
+ */
+function sidebar_nav(array $user,string $page): string {
+    $html='<nav aria-label="'.e(t('Hauptmenü','Main menu')).'">';
+    foreach(nav_entries($user) as $entry) {
+        if(isset($entry['route'])) {$html.=nav_link($entry,$page);continue;}
+        $open=false; $waiting=0; $inner='';
+        foreach($entry['items'] as $item) {
+            $open=$open || nav_is_current($item['route'],$page);
+            $waiting+=(int)($item['count']??0);
+            $inner.=nav_link($item,$page);
+        }
+        $html.='<details class="nav-section" name="nav-section"'.($open?' open':'').'>'
+            .'<summary>'.icon($entry['icon']).'<span>'.e($entry['label']).'</span>'
+            // Shown by the stylesheet only while the section is closed: the count
+            // is on the entry itself once you can see the entry.
+            .($waiting?'<span class="count section-count" aria-label="'.e($waiting.' '.t('wartet','waiting')).'">'.e((string)$waiting).'</span>':'')
+            .'<span class="chevron" aria-hidden="true">'.icon('arrow').'</span></summary>'
+            .'<div class="nav-sub">'.$inner.'</div></details>';
+    }
+    return $html.'</nav>';
 }

@@ -2,6 +2,26 @@
 
 ## 0.6.0 — unreleased
 
+### A menu that fits, and a mail test that answers
+
+- **The menu on the left scrolled.** Thirteen destinations in one column are
+  958px tall, and a 1920x1080 screen at 110% zoom leaves 873px, so the last
+  three were below the fold. Six of them now sit inside three sections —
+  **Training**, **Geld** and **System** — and only the section you are working
+  in is open, which the browser keeps true by shutting the others. 715px at a
+  full window, 541px at the zoom it was reported at. The count of what is
+  waiting moves up to the section while the section is shut.
+- **„Testmail vormerken" was not a test.** It queued a message and sent the
+  operator to the outbox to look for it, where a blocked port, a wrong
+  certificate and a rejected password all looked the same: nothing arrived.
+  **Einstellungen → SMTP → Verbindung testen** now opens the connection while
+  she waits, sends to any address she types in, and writes down every step —
+  and says which one failed in a sentence she can act on, with the server's own
+  words underneath. The user name and the password are taken back out of the
+  transcript, because the whole point of it is to be forwarded to a host.
+- The sign-in page no longer explains which address to use. It asks for an email
+  address and a password, which is what the form already said.
+
 Her half of the portal: what she runs day to day, in the words she uses for it,
 after a round of testing that produced a list of about forty things.
 

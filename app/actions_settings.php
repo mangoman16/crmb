@@ -55,9 +55,16 @@ function dispatch_settings_or_messages(string $action): array {
         if(post('clear_password'))$s['password']='';
         set_setting('smtp',$s);audit('smtp.saved','settings');flash(t('SMTP-Einstellungen gespeichert.','SMTP settings saved.'));return ['settings',['tab'=>'smtp']];
     case 'smtp_test':
-        $u=require_admin();throttle('smtp-test',(string)$u['id'],5,300);
-        queue_mail((int)$u['id'],$u['email'],t('SMTP-Test: Badminton','SMTP test: Badminton'),t('Deine SMTP-Verbindung funktioniert.','Your SMTP connection works.'),'test');
-        flash(t('Testmail liegt im Postausgang.','Test email is in the outbox.'));return ['outbox',[]];
+        // Run while she waits, rather than queued: she pressed the button to find
+        // out whether the server answers, and an answer that turns up in the
+        // outbox five minutes later - or never - is what sent her here.
+        $u=require_admin();throttle('smtp-test',(string)$u['id'],10,300);
+        $to=post('test_email')!==''?email_value(post('test_email')):'';
+        $result=smtp_check(post('mode')==='connect'?null:($to?:$u['email']));
+        set_setting('smtp_last_test',$result);
+        audit($result['ok']?'smtp.tested':'smtp.test_failed','settings');
+        flash($result['summary'],$result['ok']?'success':'error');
+        return ['settings',['tab'=>'smtp']];
     case 'mail_retry':
         require_staff();$j=one('SELECT * FROM mail_jobs WHERE id=? AND status=?',[(int)post('id'),'failed']);
         if(!$j)throw new UserError('Not found');

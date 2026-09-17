@@ -38,7 +38,35 @@ select_field('visibility',t('Berechtigung für Schüler','Student permission'),[
 <?php check_field('required',t('Pflichtfeld','Required field'),(bool)($f['required']??false));check_field('archived',t('Archivieren (Werte behalten)','Archive (keep values)'),(bool)($f['archived']??false));submit_button();?></form></section></div>
 <?php elseif($tab==='smtp'):$smtp=setting('smtp',[]); ?>
 <section class="card"><h2><?=e(t('Ausgehende E-Mails','Outgoing email'))?></h2><?php start_form('smtp_save');?><div class="grid two"><?php input('host',t('SMTP-Server','SMTP server'),$smtp['host']??'','text',true);input('port',t('Port','Port'),$smtp['port']??587,'number',true);select_field('encryption',t('Verschlüsselung','Encryption'),['tls'=>'STARTTLS','ssl'=>'TLS / SSL'],$smtp['encryption']??'tls',true);input('username',t('SMTP-Benutzername','SMTP username'),$smtp['username']??'');?><div class="field"><label for="smtp_password"><?=e(t('SMTP-Passwort','SMTP password'))?></label><input id="smtp_password" name="smtp_password" type="password" autocomplete="new-password"><small><?=e(!empty($smtp['password'])?t('Gespeichert. Leer lassen, um es beizubehalten.','Saved. Leave blank to keep it.'):t('Noch kein Passwort gespeichert.','No password saved.'))?></small></div><?php input('from_email',t('Absenderadresse (No-Reply)','Sender address (no-reply)'),$smtp['from_email']??'','email',true);input('from_name',t('Absendername','Sender name'),$smtp['from_name']??setting('club_name','Badminton'),'text',true);?></div><?php check_field('clear_password',t('Gespeichertes SMTP-Passwort entfernen','Remove saved SMTP password'));submit_button();?></form></section>
-<section class="card"><h2><?=e(t('Verbindung testen','Test connection'))?></h2><p class="muted"><?=e(t('Die Testmail geht an deine bestätigte Konto-Adresse. Versandstatus im Postausgang prüfen.','The test email goes to your verified account address. Check its status in the outbox.'))?></p><?php start_form('smtp_test');submit_button(t('Testmail vormerken','Queue test email'),'secondary');?></form></section>
+<?php /* The test used to queue a message and send the operator to the outbox to
+         look for it. A wrong port, a blocked outgoing connection and a rejected
+         password all looked the same from there: nothing arrived, and nothing
+         said why. Now the connection is opened while she waits and every step
+         is written down, because "which step failed" is the whole answer. */
+$test=setting('smtp_last_test',[]); ?>
+<section class="card mail-test"><h2><?=e(t('Verbindung testen','Test the connection'))?></h2>
+<p class="muted"><?=e(t('Öffnet die Verbindung zum Mailserver, meldet sich an und schreibt jeden Schritt mit. Auf Wunsch geht danach eine echte Testmail an eine Adresse deiner Wahl.','Opens the connection to the mail server, signs in, and writes down every step. It can then send a real test email to any address you like.'))?></p>
+<?php start_form('smtp_test');
+input('test_email',t('Testmail an diese Adresse','Send the test email to'),$test['sent_to']??$user['email'],'email',false,
+      t('Beliebige Adresse – am besten ein Postfach, das du gerade offen hast.','Any address – best one you have open right now.'));
+?><div class="row-actions">
+<?php submit_button(t('Verbindung prüfen und Testmail senden','Test the connection and send'),'primary','mode','send');
+submit_button(t('Nur Verbindung prüfen','Only test the connection'),'secondary','mode','connect'); ?>
+</div></form>
+<?php if($test): ?>
+<div class="test-result">
+    <div class="section-heading"><h3><?=e(t('Letzter Test','Last test'))?></h3><?php badge(!empty($test['ok'])?t('Erfolgreich','Worked'):t('Fehlgeschlagen','Failed'),!empty($test['ok'])?'green':'red');?></div>
+    <p><?=e((string)($test['summary']??''))?></p>
+    <p class="muted"><?=e(fmt_datetime((string)($test['at']??now())))?></p>
+    <?php if(($test['transcript']??'')!==''): ?>
+    <details><summary><?=e(t('Gespräch mit dem Server anzeigen','Show the conversation with the server'))?></summary>
+        <pre class="transcript"><?=e((string)$test['transcript'])?></pre>
+        <p class="muted"><?=e(t('Benutzername und Passwort sind hier entfernt. Den Rest kannst du deinem Hoster schicken.','The user name and the password are removed here. The rest can go to your host.'))?></p>
+    </details>
+    <?php endif ?>
+</div>
+<?php endif ?>
+</section>
 <?php elseif($tab==='privacy'): ?>
 <section class="card"><h2><?=e(t('Datenschutzerklärung','Privacy notice'))?></h2><p class="muted"><?=e(t('Den Entwurf an das tatsächliche Hosting und den E-Mail-Dienst anpassen. Beide Sprachfassungen sind öffentlich vor der Anmeldung erreichbar.','Adapt the draft to the actual hosting and email service. Both languages are accessible before sign-in.'))?></p>
 <div class="notice"><?=e(t('Name und Anschrift kommen aus „Betrieb“ und müssen hier nicht getippt werden. Diese Platzhalter werden beim Anzeigen ersetzt: ','The name and address come from “Betrieb” and do not have to be typed here. These placeholders are filled in when the notice is shown: '))?><code><?=e(implode(' ',array_keys(privacy_placeholders())))?></code></div><?php start_form('privacy_save');input('privacy_de','Deutsch',setting('privacy_de',''),'textarea',true);input('privacy_en','English',setting('privacy_en',''),'textarea',true);check_field('privacy_ready',t('Beide Fassungen sind vervollständigt und zur Verwendung freigegeben.','Both versions are complete and approved for use.'),(bool)setting('privacy_ready',false));submit_button();?></form></section>

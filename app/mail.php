@@ -153,6 +153,181 @@ function notify_invoice(array $invoice): bool {
     return true;
 }
 
+/**
+ * One PHPMailer, configured from the stored settings.
+ *
+ * The queue and the connection test have to talk to the server the same way,
+ * or a green test proves nothing about what the queue will do. One copy, so
+ * they cannot drift apart.
+ *
+ * $debug, when given, receives the SMTP conversation line by line.
+ */
+function smtp_mailer(array $s, ?callable $debug=null): \PHPMailer\PHPMailer\PHPMailer {
+    $m=new \PHPMailer\PHPMailer\PHPMailer(true);
+    $m->isSMTP(); $m->Host=(string)($s['host']??''); $m->Port=(int)($s['port']??0);
+    $m->SMTPAuth=($s['username']??'')!==''; $m->Username=(string)($s['username']??'');
+    // unseal() rather than smtp_password(): a password this installation can no
+    // longer decrypt must stop the send loudly, not quietly try an empty one.
+    $m->Password=empty($s['password'])?'':unseal($s['password']);
+    $m->SMTPSecure=($s['encryption']??'tls')==='tls'
+        ?\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS
+        :\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+    $m->Timeout=15; $m->CharSet='UTF-8';
+    $m->SMTPDebug=$debug?\PHPMailer\PHPMailer\SMTP::DEBUG_SERVER:\PHPMailer\PHPMailer\SMTP::DEBUG_OFF;
+    if($debug) $m->Debugoutput=static function(string $line,int $level) use ($debug): void { $debug($line); };
+    return $m;
+}
+
+/**
+ * Take the credentials back out of a transcript.
+ *
+ * AUTH LOGIN sends the user name and the password as two lines of base64, which
+ * is not encryption, it is spelling; AUTH PLAIN sends both on the command line.
+ * The transcript is shown on a screen, stored in the settings table and copied
+ * into support emails, so neither may survive in it. Only the lines of the AUTH
+ * exchange are touched, so what is left - the greeting, the capabilities, the
+ * refusal and its code - still says what went wrong.
+ */
+function smtp_redact(string $transcript, array $s): string {
+    $out=[]; $inAuth=false;
+    foreach(preg_split('/\R/',$transcript) ?: [] as $line) {
+        $text=strip_smtp_prefix($line);
+        if(preg_match('/^AUTH\s+(\S+)(\s.*)?$/i',$text,$m)) {
+            $inAuth=true;
+            if(($m[2]??'')!=='') $line=str_replace($m[2],' [entfernt]',$line);
+        } elseif($inAuth) {
+            if(preg_match('#^[A-Za-z0-9+/]{4,}={0,2}$#D',$text)) $line=str_replace($text,'[entfernt]',$line);
+            elseif(!preg_match('/^334\b/',$text)) $inAuth=false;
+        }
+        // A backstop for a mechanism the rule above does not know. The password
+        // only: the user name is worth reading back - it is half of what she is
+        // checking - and the AUTH rule has already taken it out of the exchange
+        // itself, which is the only place it is sent.
+        $secret=smtp_password($s);
+        if($secret!=='') $line=str_replace([$secret,base64_encode($secret)],'[entfernt]',$line);
+        $out[]=$line;
+    }
+    return implode("\n",$out);
+}
+
+/**
+ * The stored password, for redaction only.
+ *
+ * Never throws: a transcript that cannot be cleaned because the key changed
+ * must still be a transcript that is safe to show, and the AUTH rule above has
+ * already removed the exchange.
+ */
+function smtp_password(array $s): string {
+    if(empty($s['password'])) return '';
+    try { return unseal($s['password']); } catch(Throwable) { return ''; }
+}
+
+/** A debug line without PHPMailer's "SERVER -> CLIENT:" prefix. */
+function strip_smtp_prefix(string $line): string {
+    return trim((string)preg_replace('/^(SERVER -> CLIENT|CLIENT -> SERVER|SMTP[^:]*)\s*:\s*/i','',trim($line)));
+}
+
+/**
+ * What a mail library's failure means, in a sentence the operator can act on.
+ *
+ * PHPMailer's own wording is English, and accurate about the protocol rather
+ * than about what to change: "Could not authenticate" is a password, "SSL
+ * operation failed" is usually the wrong choice between STARTTLS and TLS/SSL.
+ * The original text stays in the transcript, so nothing is hidden from whoever
+ * she forwards it to.
+ */
+function smtp_explain(string $raw): string {
+    $seen=static fn(string ...$needles)=>array_filter($needles,fn($n)=>stripos($raw,$n)!==false)!==[];
+    if($seen('could not authenticate','535','authentication failed','auth failed'))
+        return t('Benutzername oder Passwort hat der Server nicht angenommen.','The server did not accept the user name or the password.');
+    if($seen('certificate verify failed','ssl operation failed','certificate has expired','self-signed','self signed'))
+        return t('Die verschlüsselte Verbindung kam nicht zustande. Meist passt die Einstellung „Verschlüsselung“ nicht zum Port – STARTTLS gehört zu 587, TLS/SSL zu 465.','The encrypted connection could not be set up. Usually the “Encryption” setting does not match the port – STARTTLS goes with 587, TLS/SSL with 465.');
+    if($seen('could not connect to smtp host','smtp connect() failed'))
+        return t('Der Server hat nicht geantwortet. Servername, Port und Verschlüsselung prüfen.','The server did not answer. Check the server name, the port and the encryption.');
+    if($seen('relay','not permitted','sender address rejected','550','553'))
+        return t('Der Server hat die Absender- oder Empfängeradresse abgelehnt. Die Absenderadresse muss zu diesem Postfach gehören.','The server refused the sender or the recipient address. The sender address has to belong to this mailbox.');
+    if($seen('data not accepted'))
+        return t('Der Server hat die Nachricht selbst abgelehnt.','The server refused the message itself.');
+    return $raw;
+}
+
+/**
+ * Try the SMTP server now and say what happened, step by step.
+ *
+ * Queueing a message and telling the operator to go and look in the outbox was
+ * not a test: a wrong port, a blocked outgoing connection and a rejected
+ * password all looked the same from there - nothing arrived. This opens the
+ * connection while she waits and writes down each step, because "which step
+ * failed" is the whole answer.
+ *
+ * $recipient, when given, also sends one real message to that address.
+ *
+ * Returns ['ok'=>bool,'summary'=>string,'transcript'=>string,'sent_to'=>string,
+ *          'at'=>string], with the credentials taken back out of the transcript.
+ */
+function smtp_check(?string $recipient=null): array {
+    $s=setting('smtp',[]);
+    $lines=[]; $ok=false; $summary='';
+    $note=static function(string $step,string $detail='') use (&$lines): void {
+        $lines[]=$detail===''?$step:$step.': '.$detail;
+    };
+    $host=(string)($s['host']??''); $port=(int)($s['port']??0);
+    $encryption=($s['encryption']??'tls')==='tls'?'STARTTLS':'TLS/SSL';
+    $note(t('Einstellungen','Settings'),$host===''?t('kein Server eingetragen','no server configured'):$host.':'.$port.' ('.$encryption.')');
+    $note(t('Absender','Sender'),(string)($s['from_email']??'')?:t('keine Absenderadresse eingetragen','no sender address configured'));
+    $note(t('Anmeldung','Authentication'),($s['username']??'')!==''
+        ?t('als ','as ').$s['username'].(empty($s['password'])?' '.t('(ohne gespeichertes Passwort)','(no password saved)'):'')
+        :t('ohne Benutzernamen','without a user name'));
+    try {
+        if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class))
+            throw new UserError(t('PHPMailer fehlt. Der Ordner vendor/ wurde nicht mit hochgeladen.','PHPMailer is missing. The vendor/ folder was not uploaded.'));
+        if($host===''||$port<1||empty($s['from_email']))
+            throw new UserError(t('Server, Port und Absenderadresse müssen zuerst gespeichert werden.','Save the server, the port and the sender address first.'));
+        if(!extension_loaded('openssl'))
+            throw new UserError(t('Die PHP-Erweiterung openssl fehlt, ohne sie ist keine verschlüsselte Verbindung möglich.','The PHP extension openssl is missing; without it there is no encrypted connection.'));
+        // Tried before PHPMailer, because a hosting package with outgoing mail
+        // ports closed is the commonest reason for this to fail, and a plain
+        // "connection refused" says so where a mail library says "SMTP connect()
+        // failed" and sends the operator looking at her password.
+        $started=microtime(true);
+        $socket=@stream_socket_client(($encryption==='TLS/SSL'?'ssl://':'tcp://').$host.':'.$port,$errno,$errstr,10);
+        if(!$socket) throw new UserError(t('Keine Verbindung zu ','Could not reach ').$host.':'.$port.' – '.($errstr?:t('Zeitüberschreitung','timed out'))
+            .'. '.t('Meist ist der Port beim Hoster gesperrt oder falsch eingetragen.','Usually the port is blocked by the host or entered wrongly.'));
+        fclose($socket);
+        $note(t('Verbindung','Connection'),t('offen nach ','open after ').round((microtime(true)-$started)*1000).' ms');
+
+        $m=smtp_mailer($s,static function(string $line) use (&$lines): void { $lines[]=rtrim($line); });
+        if(!$m->smtpConnect()) throw new UserError(t('Der Server hat die Verbindung nicht angenommen.','The server did not accept the connection.'));
+        $note(t('SMTP','SMTP'),t('Verbindung und Anmeldung erfolgreich','connected and authenticated'));
+        $m->smtpClose();
+        $ok=true;
+        $summary=t('Verbindung und Anmeldung haben funktioniert.','The connection and the sign-in worked.');
+
+        if($recipient!==null) {
+            $note('');
+            $note(t('Testmail an ','Test email to ').$recipient);
+            $m=smtp_mailer($s,static function(string $line) use (&$lines): void { $lines[]=rtrim($line); });
+            $m->setFrom($s['from_email'],(string)($s['from_name']??''));
+            $m->addAddress($recipient);
+            $m->Subject=t('Test aus dem Badminton-Portal','Test from the badminton portal');
+            $m->isHTML(false);
+            $m->Body=t("Wenn du das liest, verschickt das Portal E-Mails.\n\nGesendet am ","If you are reading this, the portal can send email.\n\nSent on ")
+                .fmt_datetime(now())." \u{2013} ".(string)setting('club_name','Badminton');
+            $m->send();
+            $note(t('Testmail','Test email'),t('angenommen für ','accepted for ').$recipient);
+            $summary=t('Testmail an ','Test email sent to ').$recipient.t(' verschickt.','.');
+        }
+    } catch(Throwable $ex) {
+        $ok=false;
+        $raw=mb_substr($ex->getMessage(),0,500);
+        $summary=$ex instanceof UserError?$raw:smtp_explain($raw);
+        $note(t('Fehlgeschlagen','Failed'),$summary);
+        if($summary!==$raw) $note(t('Meldung des Mailservers','What the mail library said'),$raw);
+    }
+    return ['ok'=>$ok,'summary'=>$summary,'transcript'=>smtp_redact(implode("\n",$lines),$s),
+            'sent_to'=>$ok&&$recipient!==null?$recipient:'','at'=>now()];
+}
+
 function process_mail(int $limit=25, float $budget=0.0): array {
     if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
     if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');
@@ -189,12 +364,7 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                 $switch=['newsletter'=>'newsletter','notifications'=>'notifications','payments'=>'payment_notices'][$job['category']]??null;
                 if($eligible && $switch!==null) $eligible=(bool)($a[$switch]??1);
                 if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='',retry_after=NULL WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}
-                $m=new \PHPMailer\PHPMailer\PHPMailer(true);
-                $m->isSMTP(); $m->Host=$s['host']; $m->Port=(int)$s['port'];
-                $m->SMTPAuth=($s['username']??'')!==''; $m->Username=$s['username']??'';
-                $m->Password=empty($s['password'])?'':unseal($s['password']);
-                $m->SMTPSecure=$s['encryption']==='tls'?\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS:\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
-                $m->Timeout=15; $m->SMTPDebug=0; $m->CharSet='UTF-8';
+                $m=smtp_mailer($s);
                 $m->setFrom($s['from_email'],$s['from_name']); $m->addAddress($job['recipient']);
                 $m->Subject=$job['subject'];
                 $body=$plainBody; $en=$a['locale']==='en';
