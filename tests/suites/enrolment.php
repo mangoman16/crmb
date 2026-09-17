@@ -108,12 +108,12 @@ ok(str_contains(implode(' ', $sentences), 'monatlich'), 'the monthly one says mo
 ok(str_contains(implode(' ', $sentences), '252,00'), 'and names the yearly price as well');
 
 case_('A tariff can be copied, prices and discounts and all');
-$copy = duplicate_tariff((int)$beitrag['id']);
+$copy = duplicate_record('tariffs', (int)$beitrag['id']);
 is_same(tariff_rates((int)$beitrag['id']), tariff_rates($copy), 'the copy has the same four prices');
 is_same(1, count(tariff_discount_templates($copy)), 'and the same discount template');
 ok(str_contains((string)scalar('SELECT name FROM tariffs WHERE id=?', [$copy]), 'Kopie'),
    'under a name that says it is a copy');
-$second = duplicate_tariff((int)$beitrag['id']);
+$second = duplicate_record('tariffs', (int)$beitrag['id']);
 ok(scalar('SELECT name FROM tariffs WHERE id=?', [$second]) !== scalar('SELECT name FROM tariffs WHERE id=?', [$copy]),
    'and a second copy is not called the same thing as the first');
 

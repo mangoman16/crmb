@@ -110,7 +110,7 @@ elseif($id && !$edit && $tab==='tariffs'):
     </section>
     <section class="card">
         <div class="section-heading"><h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2>
-        <?php if($tariff){start_form('tariff_duplicate',['id'=>$editTariff],'inline-form');submit_button(t('Kopieren','Duplicate'),'secondary');echo '</form>';}?></div>
+        <?php if($tariff)duplicate_button('tariffs',$editTariff);?></div>
         <?php start_form('tariff_save',['id'=>$editTariff,'class_id'=>$id]); ?>
         <div class="grid two"><?php
         input('name',t('Name','Name'),$tf['name'],'text',true,'',t('z. B. Beitrag','e.g. Fee'));
@@ -270,7 +270,11 @@ if($available): ?>
 // ---------------------------------------------------------------------------
 elseif($edit): ?>
 <section class="card">
-    <h2><?=e($id?t('Kurs bearbeiten','Edit course'):t('Kurs anlegen','Create course'))?></h2>
+    <div class="section-heading"><h2><?=e($id?t('Kurs bearbeiten','Edit course'):t('Kurs anlegen','Create course'))?></h2>
+    <?php /* The copy brings the training days and the whole price list with it,
+             which is what makes "the same course on Wednesday" a one-minute job
+             rather than a twenty-minute one. */
+    if($id)duplicate_button('classes',(int)$id,t('Kurs kopieren','Duplicate course'));?></div>
     <?php start_form('class_save',['id'=>$id]); ?>
     <div class="grid two">
     <?php

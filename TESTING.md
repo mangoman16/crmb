@@ -295,6 +295,13 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **8.4d** **Kopieren** makes a copy with every price and every discount
   template, named „… (Kopie)", and opens it. Copy it again: the second is not
   called the same as the first.
+- [ ] **8.4e** **Kurs kopieren** on the course form brings the training days and
+  the whole price list, and brings *nobody*: the children in the original are
+  still only in the original.
+- [ ] **8.4f** The same **Kopieren** button is on a level, an age group, a
+  payment recipient, an email template, a custom field and a news item. A copied
+  news item is a draft, whatever the original was; a copy of an archived record
+  is not archived.
 - [ ] **8.5** A tariff has a due day. A child can override it; the child's page
   says which of the two applies.
 - [ ] **8.6** A tariff carries **Rabattvorlagen** — the shapes of discount she

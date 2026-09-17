@@ -18,6 +18,7 @@ $expected = [
     'app/groups.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
     'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
+    'app/duplicate.php' => 80,
     'app/backup.php' => 100, 'public/setup.php' => 180,
 ];
 foreach ($expected as $file => $minLines) {
@@ -33,8 +34,12 @@ foreach (['actions','actions_settings','actions_messages','actions_config'] as $
     if (preg_match_all("/case '([a-z_]+)':/", (string)file_get_contents(APP_ROOT.'/app/'.$file.'.php'), $m))
         $dispatched = array_merge($dispatched, $m[1]);
 $offered = [];
-foreach (glob(APP_ROOT.'/views/*.php') as $view)
-    if (preg_match_all("/start_form\('([a-z_]+)'/", (string)file_get_contents($view), $m))
+// app/ as well as views/, because a form can be written out by a shared helper:
+// duplicate_button() offers the same action from eight different lists, and the
+// point of this rule is "every handler is reachable", not "every handler is
+// spelled out in a view".
+foreach (array_merge(glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/app/*.php')) as $file)
+    if (preg_match_all("/start_form\('([a-z_]+)'/", (string)file_get_contents($file), $m))
         $offered = array_merge($offered, $m[1]);
 $offered = array_values(array_unique($offered));
 ok(count($offered) > 20, 'the views offer a realistic number of actions ('.count($offered).')');

@@ -492,42 +492,6 @@ function tariff_summary(array $tariff, ?array $rates = null): string {
     return implode(' · ', $parts);
 }
 
-/** Every tariff of one course, archived ones included, for a name check. */
-function tariffs_of_course(mixed $classId): array {
-    return $classId === null
-        ? rows('SELECT name FROM tariffs WHERE class_id IS NULL')
-        : rows('SELECT name FROM tariffs WHERE class_id=?', [(int)$classId]);
-}
-
-/**
- * Copy one tariff, with its prices and its discount templates.
- *
- * Four intervals and three templates is twenty minutes of typing to get a
- * second tariff that differs in one number, and twenty minutes of typing is
- * where a wrong price comes from. The copy is archived-free and named so that
- * it cannot be mistaken for the original on a list.
- */
-function duplicate_tariff(int $tariffId): int {
-    $source = one('SELECT * FROM tariffs WHERE id=?', [$tariffId]);
-    if (!$source) throw new UserError(t('Diesen Tarif gibt es nicht.', 'No such tariff.'));
-    return transactional(function () use ($source) {
-        run('INSERT INTO tariffs (class_id,name,description,period,interval_months,due_day,grace_days,first_period,sort_order,archived)'
-            .' VALUES (?,?,?,?,?,?,?,?,?,0)',
-            [$source['class_id'],
-             copy_name((string)$source['name'], array_column(tariffs_of_course($source['class_id']), 'name')),
-             $source['description'], $source['period'],
-             $source['interval_months'], $source['due_day'], $source['grace_days'], $source['first_period'],
-             (int)$source['sort_order']]);
-        $copy = (int)db()->lastInsertId();
-        foreach (tariff_rates((int)$source['id']) as $months => $cents)
-            run('INSERT INTO tariff_rates (tariff_id,interval_months,price_cents) VALUES (?,?,?)', [$copy, $months, $cents]);
-        foreach (tariff_discount_templates((int)$source['id']) as $template)
-            run('INSERT INTO tariff_discounts (tariff_id,name,months,kind,value,sort_order) VALUES (?,?,?,?,?,?)',
-                [$copy, $template['name'], $template['months'], $template['kind'], $template['value'], $template['sort_order']]);
-        return $copy;
-    });
-}
-
 /**
  * The shapes of discount this tariff offers, as something to start from.
  *

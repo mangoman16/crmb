@@ -21,7 +21,8 @@ $sepa="BCD\n002\n1\nSCT\n{bic}\n{recipient}\n{iban}\n{currency}{amount}\n\n{refe
         <p class="muted"><?=e(t('Ein Kurs kann einen eigenen Empfänger haben. Ohne eigenen wird der Standard aus „Vorgaben“ verwendet.','A class can have its own recipient. Without one, the default from “Defaults” is used.'))?></p>
     </section>
     <section class="card">
-        <h2><?=e($profile?t('Empfänger bearbeiten','Edit profile'):t('Empfänger anlegen','Create profile'))?></h2>
+        <div class="section-heading"><h2><?=e($profile?t('Empfänger bearbeiten','Edit profile'):t('Empfänger anlegen','Create profile'))?></h2>
+        <?php if($profile)duplicate_button('payment_profiles',$editProfile);?></div>
         <?php start_form('profile_save',['id'=>$editProfile]);?>
         <div class="grid two"><?php
         input('name',t('Bezeichnung','Label'),$profile['name']??'','text',true);

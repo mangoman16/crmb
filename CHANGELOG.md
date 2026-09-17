@@ -24,6 +24,11 @@
 - Nobody's next invoice changes because of the update: every tariff's price
   becomes its first rate, every discount becomes a template *and* is copied onto
   every enrolment that was getting it.
+- **Everything she builds by hand can be copied** — a course with its training
+  days and its whole price list, a tariff, a level, an age group, a payment
+  recipient, an email template, a custom field, a news item. What comes with a
+  copy is written down rather than followed from the foreign keys, because a
+  course's training days belong to it and the children enrolled in it do not.
 
 ### A menu that fits, and a mail test that answers
 

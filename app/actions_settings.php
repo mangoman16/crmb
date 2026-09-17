@@ -42,13 +42,16 @@ function dispatch_settings_or_messages(string $action): array {
         audit('tariff.saved','tariff',$id);
         flash(t('Tarif gespeichert. Schon erstellte Beiträge ändern sich nicht.','Tariff saved. Charges already created are unchanged.'));
         return ['classes',['id'=>$classId,'tab'=>'tariffs']];
-    case 'tariff_duplicate':
-        require_staff();$source=one('SELECT * FROM tariffs WHERE id=?',[(int)post('id')]);
-        if(!$source)throw new UserError(t('Diesen Tarif gibt es nicht.','No such tariff.'));
-        $copy=duplicate_tariff((int)$source['id']);
-        audit('tariff.duplicated','tariff',$copy);
-        flash(t('Kopie angelegt. Name und Preise anpassen und speichern.','Copy created. Change the name and the prices, then save.'));
-        return ['classes',['id'=>(int)$source['class_id'],'tab'=>'tariffs','tariff'=>$copy]];
+    case 'record_duplicate':
+        // One handler for every list she builds by hand. Which tables may be
+        // copied, and where the copy is then opened, are declared in
+        // duplicate.php rather than spelled out again per list.
+        require_staff();$table=post('table');
+        if(!isset(duplicable_records()[$table]))throw new UserError(t('Das lässt sich nicht kopieren.','That cannot be copied.'));
+        if(in_array($table,['field_definitions','payment_profiles','message_templates'],true))require_admin();
+        $copy=duplicate_record($table,(int)post('id'));
+        flash(t('Kopie angelegt. Sie ist noch nicht veröffentlicht – ändern und speichern.','Copy created. It is not published yet – change it and save.'));
+        return duplicate_destination($table,$copy);
     case 'field_save':
         require_admin();$id=(int)post('id');$old=$id?one('SELECT * FROM field_definitions WHERE id=?',[$id]):null;
         if($id && !$old)throw new UserError('Not found');
