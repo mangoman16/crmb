@@ -55,6 +55,32 @@ is what covers them, and it is the run to quote when you say a release works.
 
 Run one on its own while working: `php tests/run.php billing invoices`.
 
+### The layout check, in a real browser
+
+The PHP suite renders pages and reads the HTML. It cannot tell you that a button
+is 32 pixels tall or that a card is wider than the screen, because neither of
+those is in the HTML — they are in the stylesheet, and only a browser knows.
+
+```bash
+node tests/mobile.mjs --admin <admin email> --family <family email> --password '<password>'
+```
+
+It opens every page for both roles at **320 and 390 CSS pixels**, in light and
+dark, plus the signed-out pages, and fails on:
+
+- anything wider than the screen, or a page that had to zoom out to fit
+- a link, button, tab or chip shorter than **44pt**
+- text below 12px
+- a JavaScript error, or a resource the page asked for and did not get
+
+It needs Playwright and a Chromium (`npm i -g playwright`, or set
+`PLAYWRIGHT_PATH`), a portal with example data in it, and an account it can sign
+in with. It only ever reads: every page is opened with GET.
+
+> Sign-ins are rate-limited, as they should be, so the script signs in once per
+> role. If it reports that it could not sign in, wait fifteen minutes or clear
+> `rate_limits`.
+
 ---
 
 ## The five-minute sweep — after any code change
@@ -216,6 +242,9 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **7.12** Absences: add one with a reason and a date range; it shows on the
   child and in the attendance screen for those days.
 - [ ] **7.13** Delete a child. **Änderungen** still says what the record held.
+- [ ] **7.14** Open a link to a child or a course that has been deleted. The page
+  says **„Nicht gefunden"** — not „Kein Zugriff", which would say she is not
+  allowed to see her own course.
 
 ---
 
@@ -500,7 +529,17 @@ Do this last, on a real phone, not a resized desktop window.
 - [ ] **22.1** Sign in, take attendance for one course, and record one payment,
   one-handed.
 - [ ] **22.2** At 320 px wide: no sideways scrolling, no overlapping labels, no
-  tap target smaller than a fingertip.
+  tap target smaller than a fingertip. `node tests/mobile.mjs` answers this for
+  every page at once; do the walk anyway for the two or three screens you use
+  most, because it cannot tell you that something is ugly.
+- [ ] **22.5** On the attendance screen at 320 px, the three statuses read as
+  words — not "Entschuldi / gt" — and the last child in the list can be reached
+  without the save bar sitting on top of them.
+- [ ] **22.6** **Mein Konto → Farbe**: the eight dots show eight colours. If they
+  are grey, a style has been written inline again and the browser is refusing
+  it.
+- [ ] **22.7** The pinned bar shows your picture or initials on a phone, not an
+  empty square.
 - [ ] **22.3** Add the portal to the home screen. It opens without browser
   chrome and with its own icon.
 - [ ] **22.4** In dark mode, every screen you touched above is still readable.

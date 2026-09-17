@@ -45,10 +45,16 @@ is_same('violet', accent_for(null), 'and a signed-out page still has a colour');
 set_setting('default_accent', 'nicht-echt');
 is_same('teal', accent_for(['accent'=>'']), 'a broken default falls back to the shipped one');
 set_setting('default_accent', 'teal');
-foreach (accents() as $key => [$colour, $label]) {
-    ok(preg_match('/^#[0-9a-f]{6}$/D', $colour) === 1, $key.' is a real colour');
-    ok($label !== '', 'and has a name a person can read');
+$css = (string)file_get_contents(APP_ROOT.'/public/assets/app.css');
+foreach (accents() as $key => $label) {
+    ok($label !== '', $key.' has a name a person can read');
+    // The dot is coloured by the stylesheet, because the portal's own
+    // Content-Security-Policy refuses a style attribute - which is how all
+    // eight of them came to render grey.
+    ok(str_contains($css, '.accent-dot.accent-'.$key.'{background:#'), $key.' has a colour in the stylesheet');
 }
+ok(!str_contains((string)file_get_contents(APP_ROOT.'/views/profile.php'), 'style="'),
+   'and the picker sets no inline style, which the browser would refuse anyway');
 
 case_('A picture replaces the initials, and initials are never more than two');
 is_same('LH', initials('Lena Hofer'), 'two names');

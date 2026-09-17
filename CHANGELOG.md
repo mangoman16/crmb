@@ -5,6 +5,46 @@
 Her half of the portal: what she runs day to day, in the words she uses for it,
 after a round of testing that produced a list of about forty things.
 
+### The same pass, done in a browser on a phone
+
+Every page was opened at 320 and 390 CSS pixels, in light and dark, for the
+trainer, a family and a signed-out visitor. What that found, which no test
+running on the server could have:
+
+- **The eight colour dots under „Mein Konto → Farbe" were all grey.** They were
+  coloured with a style attribute, and the portal's own Content-Security-Policy
+  refuses inline styles, so the browser threw every one of them away. They are
+  classes now, and the `structure` suite fails if a view ever sets a style
+  attribute again.
+- **The pinned bar showed an empty square where your picture belongs.** The rule
+  that hides your name on a phone hid every direct child of the link, the
+  picture included.
+- **"Entschuldigt" broke mid-word** inside the attendance control at 320px
+  ("Entschuldi / gt"). Two statuses per row below 380px, and the odd one out
+  takes the full width.
+- **The message box was the smallest thing in the composer** — four controls in
+  one row left it about 180px wide, so the placeholder wrapped over four lines.
+  It gets its own row on a narrow screen now.
+- **A row of tabs wider than the screen had nothing to say it scrolled**, so
+  „Anwesenheit" on a child's page was never found. There is a shadow at the edge
+  now, and it disappears when the strip is scrolled to the end.
+- **Six tap targets were under 44pt**: the language switch, the privacy link in
+  both footers, "Passwort vergessen?", "Zur Anmeldung", "Zurück" and the "use
+  the default" chip.
+- **The example family could not see their own example conversation.** The demo
+  data wrote a thread without the row that says who is in it, so the family was
+  told they had no messages while the trainer could read them.
+- **"Links eine Unterhaltung auswählen"** — there is no left on a phone.
+- **A deleted course answered "Kein Zugriff"**, which tells the trainer she is
+  not allowed to see her own course. A record that is gone now says „Nicht
+  gefunden" and answers 404, while somebody else's child still gets exactly the
+  same answer as a child who was deleted.
+
+`node tests/mobile.mjs` is the check itself, kept in the repository: it opens
+every page for every role at both widths and fails on anything wider than the
+screen, any tap target under 44pt, text under 12px, or a browser error. It
+reports 120 screens with nothing to fix; before this pass it found eight.
+
 ### A pass over the whole thing, and what it found
 
 Every finding below was turned into a test that fails without the fix, and the
@@ -153,7 +193,7 @@ open it.
   portal account is addressed to that contact.
 - **A feature list with steps to test it** — [TESTING.md](TESTING.md) — for the
   administrator to walk after a code change or a release, alongside the
-  automated suites, which now run 1915 assertions.
+  automated suites, which now run 1957 assertions.
 
 ## 0.5.0 — unreleased
 

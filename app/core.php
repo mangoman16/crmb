@@ -2,6 +2,17 @@
 declare(strict_types=1);
 
 class UserError extends RuntimeException {}
+/**
+ * A record that is not there - or not theirs to see.
+ *
+ * Separate from UserError only so the page can use the right word and the right
+ * status: a stale link to a deleted course was answering "Kein Zugriff", which
+ * tells the trainer she is not allowed to see her own course. The two cases are
+ * deliberately one class, because a family asking for another family's child
+ * must be told the same thing as somebody asking for a child who has been
+ * deleted; anything else confirms the record exists.
+ */
+class NotFound extends UserError {}
 function config(string $key): mixed { global $config; return $config[$key] ?? null; }
 function connect(): PDO {
     // Seam for the test harness, which supplies its own connection so the suite

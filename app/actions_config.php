@@ -18,7 +18,7 @@ function dispatch_config(string $action): array {
 
     case 'class_save':
         require_staff(); $id=(int)post('id');
-        if($id && !one('SELECT id FROM classes WHERE id=?',[$id])) throw new UserError(t('Kurs nicht gefunden.','Course not found.'));
+        if($id && !one('SELECT id FROM classes WHERE id=?',[$id])) throw new NotFound(t('Kurs nicht gefunden.','Course not found.'));
         $capacity=(int)post('capacity','0');
         if($capacity<0 || $capacity>500) throw new UserError(t('Plätze: 0 bis 500 (0 = unbegrenzt).','Places: 0 to 500 (0 = unlimited).'));
         $days=class_days_from_post();
@@ -114,7 +114,7 @@ function dispatch_config(string $action): array {
     case 'enrolment_request':
         $u=require_user(); $s=student((int)post('student_id'));
         $classId=(int)post('class_id');
-        if(!one('SELECT id FROM classes WHERE id=? AND archived=0',[$classId])) throw new UserError(t('Diesen Kurs gibt es nicht.','No such course.'));
+        if(!one('SELECT id FROM classes WHERE id=? AND archived=0',[$classId])) throw new NotFound(t('Diesen Kurs gibt es nicht.','No such course.'));
         $kind=choose(post('kind'),array_keys(request_kinds()));
         $tariffId=post('tariff_id')!==''?(int)post('tariff_id'):null;
         if($kind==='join') {
@@ -373,7 +373,7 @@ function dispatch_config(string $action): array {
 
     case 'proof_delete':
         require_staff(); $p=one('SELECT * FROM payment_proofs WHERE id=?',[(int)post('id')]);
-        if(!$p) throw new UserError(t('Diesen Beleg gibt es nicht.','No such proof.'));
+        if(!$p) throw new NotFound(t('Diesen Beleg gibt es nicht.','No such proof.'));
         run('DELETE FROM payment_proofs WHERE id=?',[$p['id']]);
         delete_upload('proof',(string)$p['stored_name']);
         audit('proof.deleted','student',(int)$p['student_id']);

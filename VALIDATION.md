@@ -1,5 +1,28 @@
 # Validation
 
+## 0.6.0 — on a phone, in a browser
+
+Executed with Chromium 141 driven by Playwright against a real installed copy,
+at **320 and 390 CSS pixels**, in light and dark, as the trainer, as a family
+and signed out — 120 screens in all.
+
+- Every page was measured as rendered: nothing is wider than the screen, no page
+  has to zoom out to fit, no link, button, tab or chip is shorter than 44pt, no
+  text is under 12px, and no page raised a JavaScript error or asked for a
+  resource it did not get.
+- The check that says so is `tests/mobile.mjs`, kept in the repository. Its own
+  measurement was verified by breaking the stylesheet on purpose — a 30px chip
+  and an over-wide card — and watching it report both.
+- Against the code as it stood before this pass, the same check reports eight
+  screens with something to fix. The defects it found, and the ones only a pair
+  of eyes could find, are listed in the changelog.
+- Dark mode was checked with computed colours rather than by eye: no text token
+  on the screens examined falls below 4.5:1 against what it sits on.
+
+**Not covered here.** Chromium is not Safari: the layout engine differs in
+places that matter (form controls, `backdrop-filter`, date pickers), and nothing
+here was opened on a real iPhone. TESTING.md still asks for that walk.
+
 ## 0.6.0 — the update path, drilled
 
 Executed against PHP **8.4.19** and MariaDB **10.11.14**, on a real installed

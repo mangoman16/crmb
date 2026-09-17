@@ -33,8 +33,8 @@ function attachment_kind(string $mime): string {
 function thread_record(int $id): array {
     $u = require_user();
     $row = one('SELECT t.*, a.name AS account_name FROM threads t LEFT JOIN accounts a ON a.id=t.account_id WHERE t.id=?', [$id]);
-    if (!$row) throw new UserError(t('Unterhaltung nicht gefunden.', 'Conversation not found.'));
-    if (!may_read_thread($u, $row)) throw new UserError(t('Unterhaltung nicht gefunden.', 'Conversation not found.'));
+    if (!$row) throw new NotFound(t('Unterhaltung nicht gefunden.', 'Conversation not found.'));
+    if (!may_read_thread($u, $row)) throw new NotFound(t('Unterhaltung nicht gefunden.', 'Conversation not found.'));
     return $row;
 }
 

@@ -156,7 +156,10 @@ elseif($new && !$staff): ?>
     submit_button(t('Nachricht senden','Send message'));?></form>
 <?php else:
     empty_state(t('Keine Unterhaltung geöffnet','No conversation open'),
-        t('Links eine Unterhaltung auswählen, oder eine neue Nachricht schreiben.','Pick a conversation on the left, or write a new message.'),
+        // Not "on the left": on a phone the list is above this, and a portal
+        // that tells somebody to look somewhere they cannot look reads as
+        // broken. The words have to fit both layouts.
+        t('Wähle eine Unterhaltung aus, oder schreibe eine neue Nachricht.','Choose a conversation, or write a new message.'),
         link_button(t('Neue Nachricht','New message'),'messages',['contacts'=>1]));
 endif ?>
 </section>

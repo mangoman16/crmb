@@ -300,7 +300,7 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 .account-link.compact span{min-width:0;overflow:hidden}
 .account-link.compact>span>small{color:var(--muted)}
 .account-link.compact:hover{text-decoration:none}
-@media(max-width:760px){.account-link.compact>span{display:none}}
+@media(max-width:760px){.account-link.compact>span:not(.avatar){display:none}}
 
 /* What is waiting. A <details> rather than a script: it opens without
    JavaScript, closes on Escape like any other, and needs no focus trap. */
@@ -379,3 +379,90 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 .bubble-file span{display:grid;min-width:0;overflow-wrap:anywhere}
 .bubble-file small{color:var(--muted)}
 .thread-item .badge{margin-left:6px}
+
+
+/* ---------------------------------------------------------------------------
+   Found by driving the portal on a phone at 320 and 390 CSS pixels.
+   --------------------------------------------------------------------------- */
+
+/* The colour picker. These are the same eight values the html[data-accent]
+   blocks above set --teal to, and they have to live here rather than in a
+   style attribute: script-src and style-src are both 'self', so an inline
+   style is refused by the browser and every dot rendered grey. */
+.accent-dot.accent-teal{background:#077e76}
+.accent-dot.accent-blue{background:#1f5fa9}
+.accent-dot.accent-violet{background:#6c4bb6}
+.accent-dot.accent-pink{background:#b03a72}
+.accent-dot.accent-red{background:#b5432f}
+.accent-dot.accent-orange{background:#9a5a12}
+.accent-dot.accent-green{background:#3a7a2e}
+.accent-dot.accent-slate{background:#41566b}
+
+/* 44pt, the minimum Apple asks for, and the figure this project has used since
+   the first review. The language switch was 40 and the two footer links were
+   the height of their text. */
+.language{min-height:44px;min-width:44px}
+.sidebar-meta a,.public-footer a{display:inline-flex;align-items:center;min-height:44px}
+.sidebar-meta{align-items:center}
+
+/* The attendance control at 320px. Three statuses across a 288px card leaves
+   80px each, and "Entschuldigt" broke mid-word into "Entschuldi / gt". Two per
+   row reads, and each one is still a full-height target. */
+@media(max-width:379px){
+  /* It is a grid, not a flex row: two columns, and a lone third status takes the
+     whole width rather than a third of it. */
+  .segmented{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .segmented label{hyphens:auto}
+  .segmented label:last-of-type:nth-of-type(odd){grid-column:1/-1}
+}
+
+/* The save bar floats above the list, so the last rows need somewhere to go:
+   without this, whoever is at the bottom of the register is permanently under
+   the button that saves them. */
+@media(max-width:760px){
+  .attendance-list{padding-bottom:64px}
+}
+
+/* A row of tabs wider than the screen scrolls, but on iOS there is no scrollbar
+   to say so, and "Anwesenheit" on a child's page was simply never found. The
+   shadow at the edge is the affordance: the two covering gradients scroll with
+   the content (background-attachment: local), so each shadow shows only while
+   there is something in that direction, and neither one appears when the whole
+   strip fits. No JavaScript, so it is there on the first paint. */
+.tabs{-webkit-overflow-scrolling:touch;
+      background:
+        linear-gradient(90deg,var(--bg) 40%,transparent) 0 0/26px 100% no-repeat local,
+        linear-gradient(270deg,var(--bg) 40%,transparent) 100% 0/26px 100% no-repeat local,
+        radial-gradient(farthest-side at 0 50%,var(--scroll-shadow),transparent) 0 0/13px 100% no-repeat scroll,
+        radial-gradient(farthest-side at 100% 50%,var(--scroll-shadow),transparent) 100% 0/13px 100% no-repeat scroll}
+/* Declared from --ink so it follows the theme without a second dark palette.
+   A browser too old for color-mix keeps the plain value and loses the shadow,
+   not the tabs. */
+:root{--scroll-shadow:rgba(23,45,66,.18)}
+@supports (color:color-mix(in srgb,red,blue)){:root{--scroll-shadow:color-mix(in srgb,var(--ink) 22%,transparent)}}
+
+/* "Use the default" sits under a field she has changed. It is a chip, and the
+   chip rule that gives every other one its height did not reach it, so it was
+   32px in a portal whose rule is 44. */
+.chip.default-reset{min-height:44px}
+
+/* The composer at 320px. Four controls in one row left the box itself about
+   180px wide, so "Nachricht schreiben ..." wrapped over four lines and the most
+   important control on the screen was the smallest thing on it. Below 380px the
+   box takes its own row and the three round buttons sit under it, which is what
+   every messenger does at this width. */
+@media(max-width:379px){
+  .composer-row{flex-wrap:wrap;justify-content:flex-end}
+  .composer-row textarea{flex:1 1 100%;order:-1;min-width:0}
+}
+.composer-row textarea{min-width:0}
+
+/* The version and the privacy link sit on one line; once the link is a 44px
+   target, they need to be centred against each other or it reads as crooked. */
+.public-footer{align-items:center}
+
+/* A link standing on its own under a form or an article is something a thumb
+   aims at, not a word inside a sentence, so it gets the same 44pt as a button.
+   Links inside prose are deliberately left alone: a paragraph whose every link
+   is 44px tall does not read as a paragraph. */
+.text-link,.auth-card>a{display:inline-flex;align-items:center;min-height:44px}

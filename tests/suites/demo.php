@@ -82,3 +82,18 @@ foreach (['charges','payments','class_students','attendance','absences','contact
           'enrolment_requests','notifications','thread_participants','messages','threads'] as $table)
     is_same(0, (int)scalar('SELECT COUNT(*) FROM '.$table), $table.' was taken with it');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs'), 'and nothing is left waiting in the outbox');
+
+case_('The example family can see their own example conversation');
+// They could not: the thread was written without the row that says who is in
+// it, so the family opened Nachrichten and was told there was nothing there.
+// Nobody noticed, because the trainer sees every staff conversation anyway.
+demo_fill(true);
+$familyId = (int)scalar('SELECT id FROM accounts WHERE email=?', ['familie.hofer@beispiel.test']);
+ok($familyId > 0, 'the example family has an account');
+sign_in_as($familyId);
+$theirs = threads_for(current_user());
+is_same(1, count($theirs), 'and one conversation of their own');
+ok(str_contains((string)$theirs[0]['subject'], 'Schläger'), 'the one the example data wrote');
+ok(str_contains((string)$theirs[0]['last_message'], 'Schläger'), 'with the trainer’s answer in it');
+sign_in_as($admin);
+demo_clear();

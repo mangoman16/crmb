@@ -138,7 +138,7 @@ function create_invoice(int $studentId, array $chargeIds, string $issuedOn = '',
 
     return transactional(function () use ($studentId, $ids, $issuedOn, $termDays): int {
         $student = one('SELECT * FROM students WHERE id=?', [$studentId]);
-        if (!$student) throw new UserError(t('Schüler nicht gefunden.', 'Student not found.'));
+        if (!$student) throw new NotFound(t('Schüler nicht gefunden.', 'Student not found.'));
 
         $in = implode(',', array_fill(0, count($ids), '?'));
         $charges = rows('SELECT * FROM charges WHERE id IN (' . $in . ') AND student_id=? AND cancelled=0 ORDER BY due_on, id',
@@ -224,7 +224,7 @@ function invoice(int $id): array {
     $u = require_user();
     $sql = 'SELECT i.*, s.first_name, s.last_name FROM invoices i JOIN students s ON s.id=i.student_id WHERE i.id=?';
     $row = is_staff($u) ? one($sql, [$id]) : one($sql . ' AND s.account_id=?', [$id, (int)$u['id']]);
-    if (!$row) throw new UserError(t('Rechnung nicht gefunden.', 'Invoice not found.'));
+    if (!$row) throw new NotFound(t('Rechnung nicht gefunden.', 'Invoice not found.'));
     return $row;
 }
 
@@ -302,7 +302,7 @@ function all_invoices(int $limit = 200): array {
 function invoice_mark_paid(int $invoiceId, string $paidOn, string $method, string $note): int {
     return transactional(function () use ($invoiceId, $paidOn, $method, $note): int {
         $invoice = one('SELECT * FROM invoices WHERE id=? FOR UPDATE', [$invoiceId]);
-        if (!$invoice) throw new UserError(t('Rechnung nicht gefunden.', 'Invoice not found.'));
+        if (!$invoice) throw new NotFound(t('Rechnung nicht gefunden.', 'Invoice not found.'));
         if ($invoice['cancelled_at'] !== null) throw new UserError(t('Diese Rechnung ist storniert.', 'That invoice has been cancelled.'));
         $written = 0;
         foreach (rows('SELECT c.*, ' . charge_paid_sql() . ' AS paid FROM charges c'
@@ -330,7 +330,7 @@ function invoice_mark_paid(int $invoiceId, string $paidOn, string $method, strin
 function invoice_cancel(int $invoiceId, string $reason): void {
     transactional(function () use ($invoiceId, $reason): void {
         $invoice = one('SELECT * FROM invoices WHERE id=? FOR UPDATE', [$invoiceId]);
-        if (!$invoice) throw new UserError(t('Rechnung nicht gefunden.', 'Invoice not found.'));
+        if (!$invoice) throw new NotFound(t('Rechnung nicht gefunden.', 'Invoice not found.'));
         if ($invoice['cancelled_at'] !== null) throw new UserError(t('Diese Rechnung ist bereits storniert.', 'That invoice is already cancelled.'));
         if (invoice_paid_cents($invoiceId) > 0)
             throw new UserError(t('Auf diese Rechnung wurde schon gezahlt. Bitte zuerst die Zahlung stornieren.',

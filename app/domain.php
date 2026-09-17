@@ -8,7 +8,7 @@ function reason_label(string $s): string { $en=['sick'=>'Sick','holiday'=>'Holid
 function student(int $id): array {
     $u=require_user();
     $s=one('SELECT s.*,t.name AS tariff_name,l.name AS level_name FROM students s LEFT JOIN tariffs t ON t.id=s.tariff_id LEFT JOIN levels l ON l.id=s.level_id WHERE s.id=?'.(is_staff($u)?'':' AND s.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
-    if(!$s) throw new UserError(t('Schüler nicht gefunden.','Student not found.')); return $s;
+    if(!$s) throw new NotFound(t('Schüler nicht gefunden.','Student not found.')); return $s;
 }
 /**
  * What counts as money actually received.

@@ -153,7 +153,7 @@ function dispatch_action(string $action): array {
     case 'contact_delete':
         $s=student((int)post('student_id'));
         $contact=one('SELECT * FROM contacts WHERE id=? AND student_id=?',[(int)post('id'),$s['id']]);
-        if(!$contact) throw new UserError(t('Kontakt nicht gefunden.','Contact not found.'));
+        if(!$contact) throw new NotFound(t('Kontakt nicht gefunden.','Contact not found.'));
         if(count(student_contacts((int)$s['id']))<2) throw new UserError(t('Jedes Kind braucht mindestens eine Kontaktperson. Trage zuerst eine andere ein.','Every child needs at least one contact person. Enter another one first.'));
         run('DELETE FROM contacts WHERE id=? AND student_id=?',[(int)$contact['id'],$s['id']]);
         // Removing the standard contact must not leave the child without one.
@@ -163,7 +163,7 @@ function dispatch_action(string $action): array {
     case 'contact_save':
         $s=student((int)post('student_id'));$email=contact_email();
         $contact=one('SELECT * FROM contacts WHERE id=? AND student_id=?',[(int)post('id'),$s['id']]);
-        if(!$contact) throw new UserError(t('Kontakt nicht gefunden.','Contact not found.'));
+        if(!$contact) throw new NotFound(t('Kontakt nicht gefunden.','Contact not found.'));
         // Unticking the box does not take the standard away: another contact is
         // made the standard one instead, so the child is never left without.
         $standard=(int)$contact['is_primary']===1 || (bool)post('is_primary');

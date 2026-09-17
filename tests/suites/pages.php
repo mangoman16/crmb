@@ -144,3 +144,19 @@ case_('A family cannot open another family’s child by editing the address');
 sign_in_as($other);
 throws(fn() => render_view('student', ['id'=>$lena]), 'the page refuses');
 throws(fn() => render_view('messages', ['id'=>$thread]), 'and so does the conversation');
+
+case_('A record that is gone says so, rather than accusing anybody');
+// "Kein Zugriff" over "Kurs nicht gefunden" reads as "you are not allowed to
+// see your own course". The two cases are told apart by type, so the page can
+// use the right word - and a family asking for somebody else's child still
+// gets exactly the same answer as somebody asking for a child who was deleted.
+sign_in_as($trainer);
+throws(fn() => training_class(999999), 'a course that is gone', 'nicht gefunden');
+try { training_class(999999); } catch (Throwable $e) { ok($e instanceof NotFound, 'is a NotFound, so the page answers 404'); }
+try { student(999999); } catch (Throwable $e) { ok($e instanceof NotFound, 'and so is a child that is gone'); }
+sign_in_as($other);
+try { student($lena); } catch (Throwable $e) {
+    ok($e instanceof NotFound, 'somebody else’s child is the same answer, not a different one');
+}
+ok(str_contains((string)file_get_contents(APP_ROOT.'/public/index.php'), 'NotFound'),
+   'and the router is what turns that into the right page');

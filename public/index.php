@@ -67,8 +67,14 @@ try {
     $content=ob_get_clean();
     require ROOT.'/views/layout.php';
 } catch(UserError $ex) {
-    if(ob_get_level())ob_end_clean();http_response_code(403);
-    $content='<div class="card"><h1>'.e(t('Kein Zugriff','Access denied')).'</h1><p>'.e($ex->getMessage()).'</p><a class="button" href="'.e(url('dashboard')).'">'.e(t('Zur Übersicht','Back to overview')).'</a></div>';
+    // A record that is gone is not a refusal. "Kein Zugriff" over "Kurs nicht
+    // gefunden" tells the trainer she is not allowed to see her own course,
+    // when what happened is that she followed a link to something deleted.
+    $missing=$ex instanceof NotFound;
+    if(ob_get_level())ob_end_clean();http_response_code($missing?404:403);
+    $content='<div class="card"><h1>'.e($missing?t('Nicht gefunden','Not found'):t('Kein Zugriff','Access denied')).'</h1><p>'.e($ex->getMessage()).'</p>'
+        .($missing?'<p class="muted">'.e(t('Vielleicht wurde der Eintrag gelöscht, oder der Link ist alt.','It may have been deleted, or the link may be an old one.')).'</p>':'')
+        .'<a class="button" href="'.e(url('dashboard')).'">'.e(t('Zur Übersicht','Back to overview')).'</a></div>';
     $page='error';$public=true;$user=null;require ROOT.'/views/layout.php';
 } catch(Throwable $ex) {
     if(ob_get_level())ob_end_clean();http_response_code(503);error_log('CRM: '.$ex->getMessage());header('Content-Type: text/html; charset=utf-8');

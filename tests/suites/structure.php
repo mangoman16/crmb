@@ -54,6 +54,17 @@ foreach (array_map(fn($p) => trim($p, " '"), explode(',', $m[1] ?? '')) as $page
     ok(is_file(APP_ROOT.'/views/'.$page.'.php'), 'views/'.$page.'.php exists');
 }
 
+case_('No view sets an inline style, because the browser refuses to apply it');
+// style-src is 'self', so a style attribute is not a shortcut - it is markup
+// that silently does nothing. The colour picker spent a release with eight grey
+// dots for exactly this reason, and nothing in the test suite could see it.
+foreach (array_merge(glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php')) as $file) {
+    $body = (string)file_get_contents($file);
+    ok(!preg_match('/\sstyle\s*=\s*["\']/', $body), basename($file).' sets no style attribute');
+}
+ok(str_contains((string)file_get_contents(APP_ROOT.'/app/bootstrap.php'), "style-src 'self'"),
+   'and the policy that makes that true is still in place');
+
 case_('Every page the router allows is classified: public, everyone, staff or admin');
 // The guard lives in the router rather than in the view, so adding a page to
 // the allow-list and forgetting the other three lists is all it takes to serve

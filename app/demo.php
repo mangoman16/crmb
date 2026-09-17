@@ -245,6 +245,17 @@ function demo_fill(bool $force = false): array {
         run('INSERT INTO threads (account_id,subject,updated_at) VALUES (?,?,?)',
             [$accounts['familie.hofer@beispiel.test'], 'Frage zum Schläger', now()]);
         $thread = (int)db()->lastInsertId();
+        // Who is in a thread is a row of its own, and without it the example
+        // family opened Nachrichten and was told they had none - while the
+        // trainer could see the conversation, because staff see every staff
+        // thread. Example data that lies about the app is worse than none.
+        run('INSERT INTO thread_participants (thread_id,account_id,joined_at) VALUES (?,?,?)',
+            [$thread, $accounts['familie.hofer@beispiel.test'], now()]);
+        // Who is in a thread is a row of its own, and without it the example
+        // family opened Nachrichten and was told they had none - while the
+        // trainer could see the conversation, because staff see every staff
+        // thread. Example data that lies about the app is worse than none.
+
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',
             [$thread, $accounts['familie.hofer@beispiel.test'], 'Hallo! Welchen Schläger sollen wir für Lena kaufen?', now()]);
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',

@@ -76,14 +76,14 @@ function notification_icon(string $kind): string {
  */
 function accents(): array {
     return [
-        'teal'   => ['#077e76', t('Türkis',  'Teal')],
-        'blue'   => ['#1f5fa9', t('Blau',    'Blue')],
-        'violet' => ['#6c4bb6', t('Violett', 'Violet')],
-        'pink'   => ['#b03a72', t('Pink',    'Pink')],
-        'red'    => ['#b5432f', t('Rot',     'Red')],
-        'orange' => ['#9a5a12', t('Orange',  'Orange')],
-        'green'  => ['#3a7a2e', t('Grün',    'Green')],
-        'slate'  => ['#41566b', t('Grau',    'Slate')],
+        'teal'   => t('Türkis',  'Teal'),
+        'blue'   => t('Blau',    'Blue'),
+        'violet' => t('Violett', 'Violet'),
+        'pink'   => t('Pink',    'Pink'),
+        'red'    => t('Rot',     'Red'),
+        'orange' => t('Orange',  'Orange'),
+        'green'  => t('Grün',    'Green'),
+        'slate'  => t('Grau',    'Slate'),
     ];
 }
 

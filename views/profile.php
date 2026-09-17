@@ -24,10 +24,14 @@ select_field('text_scale',t('Schriftgröße','Text size'),['normal'=>t('Normal',
     <label class="accent-swatch" data-accent="">
         <input type="radio" name="accent" value="" <?=($user['accent']??'')===''?'checked':''?>>
         <span class="accent-dot is-default"></span><small><?=e(t('Wie eingestellt','As set up'))?></small></label>
-<?php foreach(accents() as $key=>[$colour,$label]): ?>
+<?php /* The colour of each dot comes from the stylesheet, not from a style
+         attribute: the portal's own Content-Security-Policy refuses inline
+         styles, so a style attribute here left every dot grey and the choice
+         impossible to make. */
+foreach(accents() as $key=>$label): ?>
     <label class="accent-swatch" data-accent="<?=e($key)?>">
         <input type="radio" name="accent" value="<?=e($key)?>" <?=($user['accent']??'')===$key?'checked':''?>>
-        <span class="accent-dot" style="background:<?=e($colour)?>"></span><small><?=e($label)?></small></label>
+        <span class="accent-dot accent-<?=e($key)?>"></span><small><?=e($label)?></small></label>
 <?php endforeach ?>
 </div><p class="muted"><?=e(t('„Wie am Gerät eingestellt“ übernimmt den Dunkelmodus von iPhone, iPad oder Mac automatisch.','“Match my device” follows the dark mode setting on your iPhone, iPad or Mac automatically.'))?></p><p class="muted"><?=e($user['email'])?> · <?=e(t('bestätigt','verified'))?></p><?php check_field('newsletter',t('Neuigkeiten per E-Mail erhalten','Receive news by email'),(bool)$user['newsletter']);check_field('notifications',t('E-Mail-Hinweise bei privaten Nachrichten erhalten','Receive email notifications for private messages'),(bool)$user['notifications']);
 check_field('payment_notices',t('Erinnerung, wenn ein Beitrag offen ist','Remind me when a payment is outstanding'),(bool)($user['payment_notices']??true));

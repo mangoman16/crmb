@@ -44,7 +44,7 @@ function training_class(int $id): array {
     $c = one('SELECT c.*, p.name AS profile_name, a.name AS trainer_name'
         .' FROM classes c LEFT JOIN payment_profiles p ON p.id=c.payment_profile_id'
         .' LEFT JOIN accounts a ON a.id=c.trainer_id WHERE c.id=?', [$id]);
-    if (!$c) throw new UserError(t('Kurs nicht gefunden.','Course not found.'));
+    if (!$c) throw new NotFound(t('Kurs nicht gefunden.','Course not found.'));
     return $c;
 }
 
