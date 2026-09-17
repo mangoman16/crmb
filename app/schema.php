@@ -31,6 +31,16 @@ function schema_fingerprint(): string {
 }
 
 /**
+ * The exact release these files are, migrations and version together.
+ *
+ * The version is part of it so that a release carrying no migration still
+ * records itself in the database. Without that, schema_written_by would name
+ * whichever older release last happened to change the schema, and the marker
+ * the operator is asked to trust would be quietly wrong.
+ */
+function schema_state(): string { return schema_fingerprint() . ' ' . app_version(); }
+
+/**
  * Where the "already up to date" marker lives.
  *
  * Beside the maintenance flag, which is the path an operator running separate
@@ -48,17 +58,17 @@ function schema_stamp_file(): string { return dirname(maintenance_file()) . '/sc
  * only ever a cache of it.
  */
 function schema_is_current(): bool {
-    $want = schema_fingerprint();
+    $want = schema_state();
     if (@file_get_contents(schema_stamp_file()) === $want) return true;
-    try { $have = (string)setting('schema_fingerprint', ''); } catch (Throwable) { return false; }
+    try { $have = (string)setting('schema_fingerprint') . ' ' . database_version(); } catch (Throwable) { return false; }
     if ($have !== $want) return false;
     schema_write_stamp($want);
     return true;
 }
 
 /** Best effort: a read-only storage directory costs a query per request, not correctness. */
-function schema_write_stamp(?string $fingerprint = null): void {
-    @file_put_contents(schema_stamp_file(), $fingerprint ?? schema_fingerprint());
+function schema_write_stamp(?string $state = null): void {
+    @file_put_contents(schema_stamp_file(), $state ?? schema_state());
 }
 
 /** Migration files that have not been recorded as applied. */
@@ -93,7 +103,13 @@ function schema_extra(): array {
  */
 function schema_guarded_tables(): array {
     return ['accounts', 'students', 'contacts', 'field_values', 'absences',
-            'charges', 'payments', 'threads', 'messages', 'news'];
+            'charges', 'payments', 'threads', 'messages', 'message_files', 'news',
+            // Added as the portal grew. A table left off this list is a table an
+            // update may quietly empty, so anything a family, the tax office or a
+            // consent record would miss belongs here. schema_counts() skips a
+            // table that does not exist yet, so naming one early is free.
+            'class_students', 'attendance', 'invoices', 'invoice_charges',
+            'payment_proofs', 'consent_log'];
 }
 
 /**
@@ -195,7 +211,7 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
             }
             $statements = split_sql((string)file_get_contents($file));
             foreach ($statements as $i => $statement) {
-                try { db()->exec($statement); }
+                try { run_migration_statement($statement); }
                 catch (Throwable $e) { throw new SchemaError($version, $i + 1, count($statements), $statement, $e->getMessage()); }
             }
             run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)', [$version, $hash, now()]);
@@ -206,13 +222,40 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
         require ROOT . '/database/defaults.php';
         setting_cache_clear();
         set_setting('schema_fingerprint', schema_fingerprint());
-        set_setting('schema_written_by', trim((string)file_get_contents(ROOT . '/VERSION')));
+        // Recorded before the marker is overwritten, so the change log can say
+        // which release the portal came from as well as which it is on.
+        $was = database_version();
+        if ($was !== app_version()) version_history_add($was, app_version());
+        set_setting('schema_written_by', app_version());
         if ($applied) set_setting('schema_last_update', ['at' => now(), 'applied' => $applied]);
     } finally {
         run("SELECT RELEASE_LOCK('badminton_crm_migrate')");
     }
     schema_write_stamp();
     return $applied;
+}
+
+/**
+ * Run one statement from a migration file.
+ *
+ * Not db()->exec(): a statement that returns rows - a SELECT to check something
+ * before altering it, a SHOW, a stored-routine call - leaves its result set open
+ * on the connection, and every query after it in the same run fails with
+ * "Cannot execute queries while other unbuffered queries are active". The
+ * migration that did it is then blamed for a failure two statements later, and
+ * the recorded state of the update becomes hard to reason about. So the rows are
+ * drained and the cursor closed, whatever kind of statement it was.
+ */
+function run_migration_statement(string $statement): void {
+    $result = db()->query($statement);
+    if (!$result instanceof PDOStatement) return;
+    $result->fetchAll();
+    // nextRowset() is how a CALL that returns several result sets is drained.
+    // SQLite has no such thing and says so rather than returning false, which is
+    // not a failure of the migration.
+    try { while ($result->nextRowset()) $result->fetchAll(); }
+    catch (PDOException) { /* one rowset is all this driver has */ }
+    $result->closeCursor();
 }
 
 /**

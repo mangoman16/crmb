@@ -87,3 +87,68 @@ foreach (array_merge($pages, ['classes','payments','accounts','compose','outbox'
     foreach (['Fatal error','Warning:','Deprecated:','Notice:','Undefined ','Uncaught','\u20','Array to string'] as $token)
         is_same(false, str_contains($out, $token), $page.' is free of "'.$token.'"');
 }
+
+case_('Verwaltung renders every tab for a trainer, without an administrator');
+$trainerView = make_account(['role'=>'trainer']); sign_in_as($trainerView);
+foreach (['levels','ages','members','tariffs','templates','payments'] as $tab) {
+    $html = render_view('manage', ['tab'=>$tab]);
+    ok(str_contains($html, 'Verwaltung'), 'manage/'.$tab.' renders');
+    ok(str_contains($html, 'Wer gehört wohin?'), 'manage/'.$tab.' explains which grouping is which');
+}
+
+case_('The placeholder list and the placeholders that actually work are the same list');
+$html = render_view('manage', ['tab'=>'templates']);
+foreach (array_keys(template_placeholders()) as $key)
+    ok(str_contains($html, '{{'.$key.'}}'), 'the editor offers {{'.$key.'}}');
+$student = one('SELECT s.*, NULL AS tariff_name FROM students s LIMIT 1') ?: ['id'=>make_student(), 'first_name'=>'Lena', 'last_name'=>'Hofer', 'tariff_name'=>'', 'level_id'=>null, 'birth_date'=>null, 'age_group_id'=>null];
+$filled = template_text(implode(' ', array_map(fn($k) => '{{'.$k.'}}', array_keys(template_placeholders()))), $student);
+ok(!str_contains($filled, '{{'), 'and every one of them is filled in when a message is sent');
+
+case_('Einstellungen keeps only what an administrator has to decide');
+sign_in_as(make_account(['role'=>'admin']));
+$html = render_view('settings', ['tab'=>'portal']);
+foreach (['tab=levels','tab=ages','tab=tariffs','tab=templates'] as $moved)
+    ok(!str_contains($html, $moved), 'Einstellungen no longer offers '.$moved);
+
+case_('The start page says when the next training is');
+sign_in_as($trainer = make_account(['role'=>'trainer']));
+$tlCourse = make_class(['name'=>'Timeline-Kurs', 'location'=>'Halle A',
+                        'days'=>[['weekday'=>(int)date('N'), 'starts_at'=>'16:00:00', 'ends_at'=>'17:30:00']]]);
+$html = render_view('dashboard');
+ok(str_contains($html, 'Timeline-Kurs'), 'the course is on the timeline');
+ok(str_contains($html, 'Heute'), 'and today is marked');
+ok(str_contains($html, 'Halle A'), 'with where it is');
+
+case_('A cancelled day says so on the start page rather than simply vanishing');
+fixture('class_sessions', ['class_id'=>$tlCourse, 'session_on'=>today(), 'starts_at'=>null, 'ends_at'=>null,
+    'location'=>'', 'status'=>'cancelled', 'note'=>'Halle gesperrt', 'created_by'=>$trainer, 'created_at'=>now()]);
+$html = render_view('dashboard');
+ok(str_contains($html, 'Entfällt'), 'it is shown as cancelled');
+ok(str_contains($html, 'Halle gesperrt'), 'with the reason');
+
+case_('Attendance is its own page and opens on a real course');
+$html = render_view('attendance');
+ok(str_contains($html, 'Timeline-Kurs'), 'the course picker is there');
+ok(str_contains($html, 'Anwesenheit'), 'and so is the list');
+
+case_('A saved view says what it selects, not only what it is called');
+$level = (int)levels()[0]['id'];
+fixture('saved_filters', ['name'=>'Montagsgruppe', 'criteria_json'=>json_encode(['course'=>$tlCourse, 'level'=>$level])]);
+$html = render_view('students');
+ok(str_contains($html, 'Montagsgruppe'), 'the view is offered');
+ok(str_contains($html, 'Timeline-Kurs'), 'and says which course it selects');
+ok(str_contains($html, (string)levels()[0]['name']), 'and which level');
+
+case_('The proof upload is offered where a family will see it, and only when something is open');
+$family = make_account(['role'=>'student', 'name'=>'Familie Berger']);
+$kid = make_student(['first_name'=>'Nina', 'last_name'=>'Berger', 'account_id'=>$family]);
+sign_in_as($family);
+$html = render_view('dashboard');
+ok(!str_contains($html, 'Schon überwiesen'), 'nothing owed, nothing to offer');
+fixture('charges', ['student_id'=>$kid, 'label'=>'Monatsbeitrag', 'amount_cents'=>4500,
+    'period_from'=>null, 'period_to'=>null, 'due_on'=>today(), 'cancelled'=>0, 'created_at'=>now()]);
+$html = render_view('dashboard');
+ok(str_contains($html, 'Schon überwiesen'), 'with an open charge the offer is on the page they land on');
+ok(str_contains($html, 'Freiwillig'), 'and says it is voluntary, because it is');
+sign_in_as($trainer);
+ok(!str_contains(render_view('dashboard'), 'Schon überwiesen'), 'the trainer is not the one uploading it');

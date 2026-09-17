@@ -1,11 +1,16 @@
 <?php
-// Renders whatever app/defaults.php declares for this group. Adding a setting
+// Renders whatever app/defaults.php declares for one group. Adding a setting
 // there makes it appear here with no change to this file.
-$specs=settings_in_group($tab);
+//
+// $registryGroup names the group when it differs from the tab showing it, which
+// is how the same declarations serve both Einstellungen and Verwaltung without a
+// second copy of this form.
+$registryGroup=$registryGroup??$tab;
+$specs=settings_in_group($registryGroup);
 if(!$specs):?><p class="muted"><?=e(t('Für diesen Bereich gibt es keine Vorgaben.','No defaults in this group.'))?></p><?php else:?>
 <section class="card">
     <p class="muted"><?=e(t('Leere Felder fallen auf die eingebaute Vorgabe zurück, damit nie ein undefinierter Wert entsteht.','An empty field falls back to the built-in default, so no value is ever undefined.'))?></p>
-    <?php start_form('defaults_registry_save',['group'=>$tab]); ?>
+    <?php start_form('defaults_registry_save',['group'=>$registryGroup,'to_page'=>current_page(),'to_tab'=>$tab]); ?>
     <div class="grid two">
     <?php foreach($specs as $key=>$spec):
         $value=setting($key); $label=setting_label($spec); $hint=setting_hint($spec); $name='set_'.$key;

@@ -1,5 +1,94 @@
 # Validation
 
+## 0.6.0 — on a phone, in a browser
+
+Executed with Chromium 141 driven by Playwright against a real installed copy,
+at **320 and 390 CSS pixels**, in light and dark, as the trainer, as a family
+and signed out — 120 screens in all.
+
+- Every page was measured as rendered: nothing is wider than the screen, no page
+  has to zoom out to fit, no link, button, tab or chip is shorter than 44pt, no
+  text is under 12px, and no page raised a JavaScript error or asked for a
+  resource it did not get.
+- The check that says so is `tests/mobile.mjs`, kept in the repository. Its own
+  measurement was verified by breaking the stylesheet on purpose — a 30px chip
+  and an over-wide card — and watching it report both.
+- Against the code as it stood before this pass, the same check reports eight
+  screens with something to fix. The defects it found, and the ones only a pair
+  of eyes could find, are listed in the changelog.
+- Dark mode was checked with computed colours rather than by eye: no text token
+  on the screens examined falls below 4.5:1 against what it sits on.
+
+**Not covered here.** Chromium is not Safari: the layout engine differs in
+places that matter (form controls, `backdrop-filter`, date pickers), and nothing
+here was opened on a real iPhone. TESTING.md still asks for that walk.
+
+## 0.6.0 — the update path, drilled
+
+Executed against PHP **8.4.19** and MariaDB **10.11.14**, on a real installed
+copy rather than the test harness: a database created the way a hosting panel
+creates one, the portal installed into it, filled with example data, and then
+put through the update path step by step.
+
+- **A real update.** A new migration arrived; `php bin/console.php update`
+  switched maintenance mode on, wrote a copy, applied it, compared the row
+  counts of all seventeen guarded tables and opened the portal again.
+- **The copy is restorable, and was restored.** The dump written before that
+  migration was imported into a second, empty database: **39 of 42 tables came
+  back byte-identical**, the three that differed being the ones the migration
+  itself changed afterwards (the new table, the migration ledger and the
+  settings row). Umlauts and the privacy text survived intact.
+- **Each refusal was triggered on purpose.** An applied migration edited after
+  the fact, an older release put back over a newer database, a copy that could
+  not be written: each one stopped the update, left the portal closed, and
+  recorded nothing as applied. `storage/skip-backup` let one through and was
+  consumed.
+- **The row-count guard was proven by breaking something.** A migration that
+  deletes every attendance row was written and run: the update stopped with
+  "attendance 64 → 0", the portal stayed closed, and the copy taken moments
+  earlier had all 64 rows. Before this release, `attendance` was not on the
+  guarded list and the same migration passed silently.
+- **Two updates at once.** Two processes ran the migration simultaneously: one
+  applied it, the other waited on the advisory lock and found nothing left to
+  do. The table was created once and recorded once.
+- **The whole suite** passes on both engines: **1915 assertions on SQLite, 1931
+  against MariaDB 10.11.14**, with all fourteen migrations applying there.
+
+**Not covered here.** No PDF was opened in Adobe Reader, no mail was sent
+through a real provider, and nothing was rendered on a real iPhone;
+[TESTING.md](TESTING.md) is the list of checks that exist for exactly that
+reason. **MySQL 8.0 itself remains unverified.** No real hosting account has
+been used.
+
+## 0.6.0 — the trainer's half of the portal
+
+Executed against PHP **8.4.19** and MariaDB **10.11.14-MariaDB-0ubuntu0.24.04.1**.
+
+- The whole suite passes on both engines: **1621 assertions on SQLite, 1634
+  against MariaDB** (the extra ones being the foreign keys and the MySQL-dialect
+  backup that the SQLite translation cannot express), with all thirteen
+  migrations applying on MariaDB — including `013_standard_contact.sql`, whose
+  back-fill updates `contacts` from a derived table because MySQL will not read
+  from the table it is updating.
+- Each new rule was verified by breaking what it guards and watching the test
+  fail: the first contact no longer becoming the standard one, the standard
+  contact no longer needing an email address, the last contact becoming
+  removable, and the reported-absence note disappearing from the attendance
+  screen. Each was restored and re-run green.
+- The invoice PDF was parsed with an **independent** library (pypdf) rather than
+  with the code that wrote it: one page, readable metadata, and the text
+  extracted with umlauts and the euro sign intact.
+- A conversation between two families was checked from five sides — both
+  participants, the trainer, the administrator and an unrelated family — through
+  the thread, the conversation list, the unread count and the attachment
+  download route. Only the participants can reach any of them.
+
+**Not covered here.** No PDF was opened in Adobe Reader, no mail was sent
+through a real provider, and nothing was rendered on a real iPhone;
+[TESTING.md](TESTING.md) is the list of checks that exist for exactly that
+reason. **MySQL 8.0 itself remains unverified** — MariaDB is one of the two
+supported engines, not both. No real hosting account has been used.
+
 ## 0.5.0 — installing and updating
 
 Executed against PHP **8.4.19** and MariaDB **10.11.14**.

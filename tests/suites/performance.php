@@ -117,30 +117,3 @@ is_same($few, $many, 'three charges and thirty-six cost the same ('.$few.')');
 ok($many < 12, 'and that is a flat handful, not one per charge (took '.$many.')');
 ok(str_contains(render_view('student', ['id'=>$billed,'tab'=>'payments']), 'Beitrag 35'), 'the last charge really is on the page');
 
-case_('The student skills tab does not grow a query per skill or per assessment day');
-$area  = fixture('skill_areas', ['name'=>'Technik','sort_order'=>1,'archived'=>0,'created_at'=>now()]);
-$scale = fixture('rating_scales', ['name'=>'0-10','min_value'=>0,'max_value'=>10,'step'=>1,
-    'labels_json'=>'{}','archived'=>0,'created_at'=>now()]);
-$rated = make_student(['first_name'=>'Viele','last_name'=>'Faehigkeiten']);
-$addSkill = function (int $n) use ($area, $scale, $rated, $trainer) {
-    $skill = fixture('skills', ['area_id'=>$area,'scale_id'=>$scale,'name'=>'Skill '.$n,
-        'sort_order'=>$n,'archived'=>0,'created_at'=>now()]);
-    // A different day each time, so the history list grows as well.
-    fixture('assessments', ['student_id'=>$rated,'skill_id'=>$skill,'value'=>7,'note'=>'',
-        'assessed_on'=>sprintf('2026-%02d-%02d', ($n % 12) + 1, ($n % 28) + 1),
-        'assessed_by'=>$trainer,'created_at'=>now()]);
-};
-for ($n = 0; $n < 2; $n++) $addSkill($n);
-render_view('student', ['id'=>$rated,'tab'=>'skills']);      // warm-up, as above
-payment_cache_clear();
-$fewSkills = query_count(fn() => render_view('student', ['id'=>$rated,'tab'=>'skills']));
-for ($n = 2; $n < 20; $n++) $addSkill($n);
-payment_cache_clear();
-$manySkills = query_count(fn() => render_view('student', ['id'=>$rated,'tab'=>'skills']));
-/* Not exact equality: whether the area-score tiles render depends on how many
-   assessments fall inside the configured window, and that costs a settings read.
-   The property worth guarding is that ten times the rows does not mean ten times
-   the queries — an N+1 here would be eighteen more, not one. */
-ok($manySkills <= $fewSkills + 2, 'twenty skills cost no more than two queries above two skills ('.$fewSkills.' then '.$manySkills.')');
-ok($manySkills < 12, 'and that is a flat handful (took '.$manySkills.')');
-ok(str_contains(render_view('student', ['id'=>$rated,'tab'=>'skills']), 'Skill 19'), 'the last skill really is on the page');

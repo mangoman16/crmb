@@ -102,10 +102,13 @@ function test_driver(): string { return getenv('CRM_TEST_DRIVER') ?: 'sqlite'; }
  */
 function sqlite_translate(string $sql): array {
     $sql = preg_replace('/ENGINE=InnoDB[^;]*/', '', $sql) ?? $sql;
-    $sql = str_replace(
-        ['BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY', 'LONGTEXT', 'DATETIME', 'TINYINT', 'DECIMAL(6,2)', 'TIME'],
-        ['INTEGER PRIMARY KEY AUTOINCREMENT', 'TEXT', 'TEXT', 'INTEGER', 'REAL', 'TEXT'],
-        $sql);
+    $sql = str_replace('BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY', 'INTEGER PRIMARY KEY AUTOINCREMENT', $sql);
+    // Whole words only. A plain str_replace of DATETIME turned UTC_TIMESTAMP()
+    // into UTC_TEXTSTAMP(), which failed at the one moment it mattered - inside a
+    // migration, where the error names a statement rather than a function.
+    $sql = preg_replace_callback('/\b(LONGTEXT|DATETIME|TINYINT|TIME)\b|DECIMAL\(6,2\)/',
+        fn($m) => ['LONGTEXT'=>'TEXT','DATETIME'=>'TEXT','TINYINT'=>'INTEGER','TIME'=>'TEXT'][$m[0]] ?? 'REAL',
+        $sql) ?? $sql;
     $out = ['statements' => [], 'unsupported' => []];
     foreach (split_sql($sql) as $statement) {
         $statement = preg_replace('/\s+AFTER\s+`?\w+`?/', '', $statement) ?? $statement;
@@ -175,6 +178,7 @@ function test_boot(): void {
             // Advisory locks are a MySQL concept; a single-connection test always
             // "holds" the lock, which is the behaviour the code expects.
             $pdo->sqliteCreateFunction('GET_LOCK', fn($n, $t) => 1, 2);
+            $pdo->sqliteCreateFunction('UTC_TIMESTAMP', fn() => gmdate('Y-m-d H:i:s'), 0);
             $pdo->sqliteCreateFunction('RELEASE_LOCK', fn($n) => 1, 1);
             $pdo->exec('PRAGMA journal_mode=WAL');
             $pdo->exec('PRAGMA busy_timeout=4000');
@@ -234,21 +238,27 @@ function test_tables(): array {
     return array_column(rows('SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()'), 'name');
 }
 
-/** Empty every data table, keeping the schema, then re-seed the defaults. */
+/**
+ * Empty every data table, keeping the schema, then re-seed the defaults.
+ *
+ * The list of tables is read from the database rather than kept here. A
+ * hand-kept list stops matching the schema the first time a migration adds a
+ * table, and it does so silently: rows from one suite survive into the next, and
+ * the failure turns up somewhere unrelated as a count that is one too high.
+ */
 function test_reset(): void {
-    $tables = ['attendance','assessments','skills','skill_areas','rating_scales','class_students','classes',
-               'payment_profiles','consent_log','audit_log','form_requests','thread_reads','messages','threads',
-               'mail_jobs','saved_filters','message_templates','news','payments','charges','absences',
-               'field_values','field_definitions','contacts','students','tariffs','rate_limits','auth_tokens',
-               'accounts','settings'];
-    if (test_has_table('record_versions')) array_unshift($tables, 'record_versions');
     // Emptying parents before children is a foreign-key violation on MySQL just
     // as it is on SQLite, so both engines get the constraints switched off here
     // rather than only the one the suite usually runs on.
     $sqlite = test_driver() === 'sqlite';
     db()->exec($sqlite ? 'PRAGMA foreign_keys = OFF' : 'SET FOREIGN_KEY_CHECKS=0');
     try {
-        foreach ($tables as $table) db()->exec('DELETE FROM '.sql_name($table, 'table'));
+        foreach (test_tables() as $table) {
+            // schema_migrations is the record of what this database is, not data
+            // a suite put there.
+            if ($table === 'schema_migrations') continue;
+            db()->exec('DELETE FROM ' . sql_name($table, 'table'));
+        }
         if ($sqlite) db()->exec('DELETE FROM sqlite_sequence');
     } finally {
         db()->exec($sqlite ? 'PRAGMA foreign_keys = ON' : 'SET FOREIGN_KEY_CHECKS=1');
@@ -257,7 +267,7 @@ function test_reset(): void {
     run_counter('DELETE FROM rate_limits');
     setting_cache_clear();
     $_SESSION = ['locale' => 'de'];
-    require APP_ROOT.'/database/defaults.php';
+    require APP_ROOT . '/database/defaults.php';
     setting_cache_clear();
     // Request-scoped memos outlive a request here, because a test run is one
     // process. Emptying them keeps every suite measuring a cold page, the way
@@ -308,18 +318,59 @@ function make_student(array $over=[]): int {
 function make_tariff(array $over=[]): int {
     static $n = 0; $n++;
     return fixture('tariffs', array_merge([
-        'name' => 'Tarif '.$n, 'price_cents' => 4500, 'period' => 'monthly',
-        'due_days' => 14, 'archived' => 0,
+        'name' => 'Tarif '.$n, 'description' => '', 'class_id' => null,
+        'price_cents' => 4500, 'period' => 'recurring', 'interval_months' => 1,
+        'due_day' => 1, 'grace_days' => 7, 'first_period' => 'prorate',
+        'discount_months' => 0, 'discount_kind' => 'percent', 'discount_value' => 0,
+        'due_days' => 14, 'sort_order' => 0, 'archived' => 0, 'is_demo' => 0,
     ], $over));
 }
 
+/**
+ * A course, and by default the one meeting day most tests assume.
+ *
+ * 'days' is lifted out before the row is written: a course's pattern lives in
+ * class_days now, and a fixture that still passed weekday would fail in a way
+ * that says "no such column" rather than "this test is out of date".
+ */
 function make_class(array $over=[]): int {
     static $n = 0; $n++;
-    return fixture('classes', array_merge([
-        'name' => 'Kurs '.$n, 'description' => '', 'weekday' => 1,
-        'starts_at' => '16:00:00', 'ends_at' => '17:30:00', 'location' => '',
-        'capacity' => 0, 'sort_order' => 0, 'archived' => 0, 'created_at' => now(),
+    $days = $over['days'] ?? [['weekday'=>1, 'starts_at'=>'16:00:00', 'ends_at'=>'17:30:00']];
+    unset($over['days']);
+    $id = fixture('classes', array_merge([
+        'name' => 'Kurs '.$n, 'description' => '', 'location' => '',
+        'capacity' => 0, 'sort_order' => 0, 'archived' => 0, 'created_at' => now(), 'is_demo' => 0,
     ], $over));
+    foreach ($days as $order => $day)
+        fixture('class_days', array_merge(['class_id'=>$id, 'weekday'=>1, 'starts_at'=>null,
+                                           'ends_at'=>null, 'location'=>'', 'sort_order'=>$order*10], $day));
+    return $id;
+}
+
+/**
+ * A conversation, with its participants.
+ *
+ * Who is in a thread decides who may read it, so a fixture that wrote the thread
+ * and not its participants would be a conversation nobody can open - including
+ * the person it belongs to.
+ */
+function make_thread(array $accountIds, array $over=[]): int {
+    $id = fixture('threads', array_merge([
+        'account_id' => $accountIds[0] ?? null, 'kind' => 'staff',
+        'subject' => 'Unterhaltung', 'updated_at' => now(),
+    ], $over));
+    foreach ($accountIds as $accountId)
+        fixture('thread_participants', ['thread_id'=>$id, 'account_id'=>$accountId, 'joined_at'=>now()]);
+    return $id;
+}
+
+/** A student in a course, on a tariff. Returns the course id for chaining. */
+function make_enrolment(int $classId, int $studentId, array $over=[]): int {
+    fixture('class_students', array_merge([
+        'class_id' => $classId, 'student_id' => $studentId, 'joined_on' => '2025-01-01',
+        'left_on' => null, 'tariff_id' => null, 'price_cents' => null, 'price_note' => '', 'due_day' => 0,
+    ], $over));
+    return $classId;
 }
 
 /** Pretend a given account is signed in, for code that calls current_user(). */
@@ -361,12 +412,7 @@ function query_count(callable $fn): int {
  * variables are in scope: $page, $public and $user.
  */
 function render_view(string $page, array $query = []): string {
-    static $loaded = false;
-    if (!$loaded) {
-        foreach (['actions', 'actions_settings', 'actions_messages', 'actions_config', 'ui'] as $unit)
-            require_once APP_ROOT . '/app/' . $unit . '.php';
-        $loaded = true;
-    }
+    test_load_actions();
     $file = APP_ROOT . '/views/' . $page . '.php';
     if (!is_file($file)) throw new RuntimeException('No such view: ' . $page);
 
@@ -374,12 +420,22 @@ function render_view(string $page, array $query = []): string {
     $user = current_user();
     if (!$public && !$user) throw new RuntimeException('View ' . $page . ' needs a signed-in account.');
 
-    // The query string belongs to this render only; anything checked afterwards
-    // should see what it set up, not the leftovers of a page.
+    // The query string and the current page belong to this render only; anything
+    // checked afterwards should see what it set up, not the leftovers of a page.
+    // public/index.php holds $page in a global, and start_form() reads it from
+    // there, so the harness has to publish it the same way.
     $restore = $_GET;
+    $restorePage = $GLOBALS['page'] ?? null;
     $_GET = $query;
+    $GLOBALS['page'] = $page;
     $level = ob_get_level();
     ob_start();
+    // A warning from a view is printed into the page - between two table cells,
+    // where nobody reads it - so unless it is turned into a failure here, an
+    // undefined index or a division by zero renders green for ever.
+    set_error_handler(static function (int $no, string $message, string $file, int $line): bool {
+        throw new RuntimeException($message . ' @ ' . basename($file) . ':' . $line);
+    });
     try {
         require $file;
         return (string)ob_get_clean();
@@ -387,11 +443,45 @@ function render_view(string $page, array $query = []): string {
         while (ob_get_level() > $level) ob_end_clean();
         throw $e;
     } finally {
+        restore_error_handler();
         $_GET = $restore;
+        if ($restorePage === null) unset($GLOBALS['page']); else $GLOBALS['page'] = $restorePage;
     }
 }
 
 /** Populate $_POST for an action, including the fields handle_post() requires. */
 function post_data(array $fields): void {
     $_POST = $fields;
+}
+
+/** Load the action and interface units the way public/index.php loads them. */
+function test_load_actions(): void {
+    static $loaded = false;
+    if ($loaded) return;
+    foreach (['actions', 'actions_settings', 'actions_messages', 'actions_config', 'ui'] as $unit)
+        require_once APP_ROOT . '/app/' . $unit . '.php';
+    $loaded = true;
+}
+
+/**
+ * Run one action the way a form submission would, and return where it goes next.
+ *
+ * The real dispatcher, so a suite exercises what ships rather than a description
+ * of it. The CSRF token, the throttles and the duplicate-submission claim belong
+ * to handle_post() and are left out on purpose: they are the request's business,
+ * not the action's, and they have their own checks in the security suite.
+ */
+function act(string $action, array $fields = []): array {
+    test_load_actions();
+    $_POST = $fields;
+    // Signing in and out regenerate the session id, which PHP cannot do in a
+    // command-line run that has already printed a line. That is a property of
+    // the runner, not of the action being tested, so only that one warning is
+    // swallowed and everything else still reports.
+    $previous = set_error_handler(static function (int $no, string $message) use (&$previous) {
+        if (str_contains($message, 'session_regenerate_id')) return true;
+        return $previous ? $previous(...func_get_args()) : false;
+    });
+    try { return dispatch_action($action); }
+    finally { restore_error_handler(); }
 }

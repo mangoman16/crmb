@@ -2,27 +2,96 @@
 declare(strict_types=1);
 
 /**
- * Record versioning and undo.
+ * The change log: what changed, when, and who changed it.
  *
- * Wrap a change in tracked() and the row's state before and after is stored, so
- * the change can be shown to the operator and put back. This is what makes a
- * mis-tap survivable: deleting the wrong student is a mistake to undo rather
- * than a restore from backup.
+ * Wrap a change in tracked() and what actually differed is written down in
+ * words a person can read - "Vorname: Lena → Lena-Marie" rather than two blobs
+ * of JSON.
  *
- * It is not the audit log. audit_log says that something happened and is never
- * rewritten; this says what the row looked like and exists to be acted on.
+ * It used to be an undo mechanism, and a version therefore held the whole row
+ * twice so that the old values could be written back. Putting values straight
+ * back into a record is a dangerous thing to offer next to a list of every
+ * change ever made - a later edit to the same row is silently undone with it -
+ * and it cost a full copy of every record on every save. So the undo is gone,
+ * and a version now stores only the columns that differed. A deletion still
+ * keeps the whole row, because that is the one case where the log is the only
+ * remaining description of what was there.
  *
- * Reverting is an ordinary change: it writes the old values back and records a
- * new version doing so. Nothing is ever removed from the history, so the record
- * of what happened stays complete even after an undo.
+ * It is not the audit log. audit_log says that something happened, in one line,
+ * and is never rewritten. This says what it looked like before and after.
  */
+
+/**
+ * What a stored column is called in the interface.
+ *
+ * Column names are what a developer calls a field. This is what she calls it,
+ * which is the difference between a change log and a dump - and the reason the
+ * log is worth keeping at all.
+ */
+function history_field_label(string $column): string {
+    return match ($column) {
+        'first_name' => t('Vorname', 'First name'),
+        'last_name' => t('Nachname', 'Last name'),
+        'birth_date' => t('Geburtsdatum', 'Date of birth'),
+        'joined_on' => t('Dabei seit', 'Member since'),
+        'left_on' => t('Ausgetreten am', 'Left on'),
+        'ended_on' => t('Mitgliedschaft bis', 'Membership until'),
+        'status' => t('Mitgliedschaft', 'Membership'),
+        'level_id' => t('Leistungsgruppe', 'Level'),
+        'age_group_id' => t('Altersgruppe', 'Age group'),
+        'tariff_id' => t('Tarif', 'Tariff'),
+        'class_id' => t('Kurs', 'Course'),
+        'account_id' => t('Zugeordnetes Konto', 'Linked account'),
+        'price_cents' => t('Vereinbarter Preis', 'Agreed price'),
+        'price_note' => t('Preisvereinbarung', 'Price agreement'),
+        'amount_cents' => t('Betrag', 'Amount'),
+        'gross_cents' => t('Betrag vor Rabatt', 'Amount before discount'),
+        'discount_cents' => t('Rabatt', 'Discount'),
+        'due_on' => t('Fällig am', 'Due on'),
+        'overdue_on' => t('Überfällig ab', 'Overdue from'),
+        'period_from' => t('Zeitraum ab', 'Period from'),
+        'period_to' => t('Zeitraum bis', 'Period to'),
+        'billing_paused' => t('Beiträge pausiert', 'Billing paused'),
+        'billing_note' => t('Hinweis zu den Beiträgen', 'Note about billing'),
+        'billing_due_day' => t('Zahltag', 'Payment day'),
+        'internal_notes' => t('Interne Notizen', 'Internal notes'),
+        'name' => t('Name', 'Name'),
+        'email' => t('E-Mail-Adresse', 'Email address'),
+        'role' => t('Rolle', 'Role'),
+        'state' => t('Zustand', 'State'),
+        'description' => t('Beschreibung', 'Description'),
+        'location' => t('Ort', 'Place'),
+        'capacity' => t('Plätze', 'Places'),
+        'archived' => t('Archiviert', 'Archived'),
+        'sort_order' => t('Reihenfolge', 'Order'),
+        'interval_months' => t('Abrechnung alle (Monate)', 'Billed every (months)'),
+        'due_day' => t('Zahltag', 'Payment day'),
+        'grace_days' => t('Tage bis überfällig', 'Days before overdue'),
+        'first_period' => t('Erster Zeitraum', 'First period'),
+        'discount_months' => t('Rabatt für (Monate)', 'Discount for (months)'),
+        'discount_value' => t('Höhe des Rabatts', 'Size of the discount'),
+        'title' => t('Titel', 'Title'),
+        'body' => t('Text', 'Text'),
+        'published' => t('Veröffentlicht', 'Published'),
+        'subject' => t('Betreff', 'Subject'),
+        'label' => t('Bezeichnung', 'Description'),
+        'cancelled' => t('Storniert', 'Cancelled'),
+        'voided' => t('Storniert', 'Voided'),
+        'method' => t('Zahlungsart', 'Payment method'),
+        'is_default' => t('Standard', 'Default'),
+        'min_age' => t('Ab Alter', 'From age'),
+        'max_age' => t('Bis Alter', 'To age'),
+        'iban' => 'IBAN', 'bic' => 'BIC', 'recipient' => t('Empfänger', 'Recipient'),
+        default => $column,
+    };
+}
 
 /**
  * Tables that may be versioned, and how to describe one to a person.
  *
- * An allowlist rather than "any table": revert_version() writes columns straight
- * back, so the set of tables it can touch is a security boundary and belongs in
- * one visible place.
+ * An allowlist rather than "any table": entity_snapshot() reads SELECT * from a
+ * name that reaches it from a caller, so the set of tables it can touch belongs
+ * in one visible place.
  */
 function tracked_entities(): array {
     return [
@@ -32,9 +101,8 @@ function tracked_entities(): array {
         'classes'          => ['label' => ['Kurs', 'Class'],                 'title' => ['name']],
         'tariffs'          => ['label' => ['Tarif', 'Tariff'],               'title' => ['name']],
         'payment_profiles' => ['label' => ['Zahlungsempfänger', 'Payment profile'], 'title' => ['name']],
-        'skills'           => ['label' => ['Fähigkeit', 'Skill'],            'title' => ['name']],
-        'skill_areas'      => ['label' => ['Bereich', 'Skill area'],         'title' => ['name']],
-        'rating_scales'    => ['label' => ['Skala', 'Rating scale'],         'title' => ['name']],
+        'levels'           => ['label' => ['Leistungsgruppe', 'Level'],      'title' => ['name']],
+        'age_groups'       => ['label' => ['Altersgruppe', 'Age group'],     'title' => ['name']],
         'contacts'         => ['label' => ['Kontakt', 'Contact'],            'title' => ['owner_name']],
         'accounts'         => ['label' => ['Konto', 'Account'],              'title' => ['name']],
         'news'             => ['label' => ['Neuigkeit', 'News'],             'title' => ['title']],
@@ -69,15 +137,32 @@ function entity_snapshot(string $entity, int $id): ?array {
     return one('SELECT * FROM '.$entity.' WHERE id=?', [$id]);
 }
 
-/** Write one version row. Called by tracked(); rarely useful on its own. */
+/**
+ * Write one version row.
+ *
+ * An update stores only the columns that differ. A record with forty columns
+ * changed in one of them used to cost two copies of all forty, on every save,
+ * for as long as the portal is used; now it costs the one.
+ *
+ * A creation and a deletion keep the whole row on purpose: for a creation it is
+ * what was entered, and for a deletion it is the only remaining description of
+ * what used to be there.
+ */
 function history_record(string $entity, int $id, string $operation, string $label, ?array $before, ?array $after): int {
     tracked_entity($entity);
+    if ($operation === 'update' && $before !== null && $after !== null) {
+        $differing = [];
+        foreach ($before as $column => $value)
+            if ((string)$value !== (string)($after[$column] ?? null)) $differing[$column] = true;
+        $before = array_intersect_key($before, $differing);
+        $after  = array_intersect_key($after,  $differing);
+    }
     run('INSERT INTO record_versions (entity,entity_id,operation,label,before_json,after_json,actor_id,created_at)'
         .' VALUES (?,?,?,?,?,?,?,?)',
         [$entity, $id, $operation, mb_substr($label, 0, 160),
          $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE),
          $after  === null ? null : json_encode($after,  JSON_UNESCAPED_UNICODE),
-         current_user()['id'] ?? null, now()]);
+         $_SESSION['impersonator_id'] ?? (current_user()['id'] ?? null), now()]);
     return (int)db()->lastInsertId();
 }
 
@@ -131,9 +216,9 @@ function history_recent(int $limit = 60): array {
 /**
  * Which columns actually differ between the two sides of a version.
  *
- * Used to show a change rather than two opaque blobs, and to keep the revert
- * narrow: only the columns a change touched are written back, so reverting an
- * old edit does not also undo every later one.
+ * Used to show a change rather than two opaque blobs. An update already stores
+ * only the differing columns; this still compares, because a creation and a
+ * deletion store the whole row and only some of it is worth reading.
  */
 function version_changes(array $version): array {
     $before = $version['before_json'] ? json_decode($version['before_json'], true) : null;
@@ -141,7 +226,9 @@ function version_changes(array $version): array {
     $columns = array_keys(($before ?? []) + ($after ?? []));
     $out = [];
     foreach ($columns as $column) {
-        if (in_array($column, ['id', 'updated_at', 'revision'], true)) continue;
+        // Bookkeeping columns change on every save and say nothing about what
+        // was actually edited.
+        if (in_array($column, ['id', 'updated_at', 'created_at', 'revision'], true)) continue;
         $from = $before[$column] ?? null;
         $to   = $after[$column]  ?? null;
         if ((string)$from === (string)$to) continue;
@@ -159,57 +246,13 @@ function history_value(mixed $v): string {
 }
 
 /**
- * Put a change back.
+ * Trim the log so it cannot grow without end.
  *
- * An update is reversed by writing the columns it changed back to their old
- * values — not the whole row, so a later edit to a different column survives.
- * A creation is reversed by deleting the row. A deletion is reversed by
- * re-inserting it under its original id, so anything that referenced it lines
- * up again.
- *
- * The reversal is recorded as a new version and the original is marked, which
- * is what stops it being applied twice.
+ * Kept by age rather than by count: "what changed in the last year" is the
+ * question anybody asks of it, and a count would silently drop the history of a
+ * quiet record because a busy one filled the table.
  */
-function revert_version(int $versionId): void {
-    transactional(function () use ($versionId) {
-        $v = one('SELECT * FROM record_versions WHERE id=? FOR UPDATE', [$versionId]);
-        if (!$v) throw new UserError(t('Diese Änderung gibt es nicht.', 'No such change.'));
-        if ($v['reverted_at'] !== null) throw new UserError(t('Diese Änderung wurde bereits zurückgenommen.', 'That change has already been undone.'));
-        $entity = (string)$v['entity'];
-        tracked_entity($entity);
-        $id = (int)$v['entity_id'];
-        $before = $v['before_json'] ? json_decode($v['before_json'], true) : null;
-
-        if ($v['operation'] === 'insert') {
-            if (!entity_snapshot($entity, $id)) throw new UserError(t('Der Eintrag ist bereits entfernt.', 'That record is already gone.'));
-            run('DELETE FROM '.$entity.' WHERE id=?', [$id]);
-            history_record($entity, $id, 'revert', t('Anlegen zurückgenommen', 'Creation undone'), $v['after_json'] ? json_decode($v['after_json'], true) : null, null);
-
-        } elseif ($v['operation'] === 'delete') {
-            if (!$before) throw new UserError(t('Für diese Löschung ist kein Stand gespeichert.', 'No stored state for that deletion.'));
-            if (entity_snapshot($entity, $id)) throw new UserError(t('Es gibt bereits wieder einen Eintrag mit dieser Nummer.', 'A record with that number exists again.'));
-            $columns = array_keys($before);
-            foreach ($columns as $column) sql_name((string)$column, 'column');
-            run('INSERT INTO '.$entity.' ('.implode(',', array_map(fn($c) => '`'.$c.'`', $columns)).')'
-                .' VALUES ('.implode(',', array_fill(0, count($columns), '?')).')', array_values($before));
-            history_record($entity, $id, 'revert', t('Löschen zurückgenommen', 'Deletion undone'), null, entity_snapshot($entity, $id));
-
-        } else {
-            if (!$before) throw new UserError(t('Für diese Änderung ist kein Stand gespeichert.', 'No stored state for that change.'));
-            $current = entity_snapshot($entity, $id);
-            if (!$current) throw new UserError(t('Der Eintrag existiert nicht mehr.', 'That record no longer exists.'));
-            $changes = version_changes($v);
-            if (!$changes) throw new UserError(t('An dieser Änderung gibt es nichts zurückzunehmen.', 'There is nothing to undo in that change.'));
-            $set = []; $args = [];
-            foreach (array_keys($changes) as $column) {
-                $set[] = '`'.sql_name((string)$column, 'column').'`=?'; $args[] = $before[$column];
-            }
-            $args[] = $id;
-            run('UPDATE '.$entity.' SET '.implode(',', $set).' WHERE id=?', $args);
-            history_record($entity, $id, 'revert', t('Änderung zurückgenommen', 'Change undone'), $current, entity_snapshot($entity, $id));
-        }
-
-        run('UPDATE record_versions SET reverted_at=?,reverted_by=? WHERE id=?', [now(), current_user()['id'] ?? null, $versionId]);
-        audit('record.reverted', $entity, $id);
-    });
+function history_prune(int $months = 24): int {
+    $before = (new DateTimeImmutable(now()))->modify('-' . max(1, $months) . ' months')->format('Y-m-d H:i:s');
+    return run('DELETE FROM record_versions WHERE created_at < ?', [$before])->rowCount();
 }

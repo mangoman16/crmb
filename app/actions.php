@@ -109,16 +109,22 @@ function dispatch_action(string $action): array {
             if($tariffId && (!$tariff || ($tariff['archived'] && $tariffId!==(int)($existing['tariff_id']??0)))) throw new UserError(t('Tarif ist nicht verfügbar.','Tariff is not available.'));
             $price=post('price')!==''?cents(post('price')):($tariff?(int)$tariff['price_cents']:null);
             $status=post('status');if(!isset(statuses()[$status]) && !($existing && $status===$existing['status'])) throw new UserError(t('Bitte einen Status auswählen.','Please choose a status.'));
+            // A child is always in a level, so an unanswered field means the
+            // default rather than nothing. An age group is the opposite: blank is
+            // the normal answer and means "work it out from the date of birth",
+            // which keeps being right as they have birthdays.
+            $levelId=reference_or_null('levels','level_id') ?? (int)(level_default()['id'] ?? 0) ?: null;
+            $ageGroupId=reference_or_null('age_groups','age_group_id');
             $join=date_value(post('joined_on'));$end=date_value(post('ended_on'));date_range($join,$end);
-            $args=[$accountId,$first,$last,$birth,$join,$end,$status,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
+            $args=[$accountId,$first,$last,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
             if($id) {
                 tracked('students',$id,$first.' '.$last,function() use ($args,$id) {
-                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,birth_date=?,joined_on=?,ended_on=?,status=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
+                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
                     if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
                 });
             }
             else {$id=tracked_insert('students',$first.' '.$last,function() use ($args) {
-                run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+                run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
                 return (int)db()->lastInsertId();
             });}
         } else {
@@ -133,16 +139,37 @@ function dispatch_action(string $action): array {
         tracked('students',(int)$s['id'],$s['first_name'].' '.$s['last_name'],fn()=>run('DELETE FROM students WHERE id=?',[$s['id']]),'delete');
         audit('student.deleted','student',(int)$s['id']);
         flash(t('Schüler gelöscht. Das lässt sich unter „Änderungen“ rückgängig machen.','Student deleted. This can be undone under “Changes”.'));return ['students',[]];
+    /* Contacts: a child always has one, one of them is the standard one, and the
+       standard one has an email address - that is where an invoice and a
+       reminder go. The three rules live here, in the three actions that can
+       break them, rather than in the page that happens to show them. */
     case 'contact_add':
-        $s=student((int)post('student_id'));$email=post('email');if($email!=='')$email=email_value($email);
-        run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email) VALUES (?,?,?,?,?)',[$s['id'],required_text('owner_name'),required_text('relation_label',100),text_limit('phone',80),$email]);
+        $s=student((int)post('student_id'));$email=contact_email();
+        $standard=!student_contacts((int)$s['id']) || post('is_primary');   // the first one is it, without being asked
+        if($standard) contact_needs_email($email);
+        if($standard) run('UPDATE contacts SET is_primary=0 WHERE student_id=?',[$s['id']]);
+        run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email,is_primary) VALUES (?,?,?,?,?,?)',[$s['id'],required_text('owner_name'),required_text('relation_label',100),text_limit('phone',80),$email,$standard?1:0]);
         audit('contact.added','student',(int)$s['id']);return ['student',['id'=>$s['id'],'tab'=>'contacts']];
     case 'contact_delete':
-        $s=student((int)post('student_id'));run('DELETE FROM contacts WHERE id=? AND student_id=?',[(int)post('id'),$s['id']]);return ['student',['id'=>$s['id'],'tab'=>'contacts']];
+        $s=student((int)post('student_id'));
+        $contact=one('SELECT * FROM contacts WHERE id=? AND student_id=?',[(int)post('id'),$s['id']]);
+        if(!$contact) throw new NotFound(t('Kontakt nicht gefunden.','Contact not found.'));
+        if(count(student_contacts((int)$s['id']))<2) throw new UserError(t('Jedes Kind braucht mindestens eine Kontaktperson. Trage zuerst eine andere ein.','Every child needs at least one contact person. Enter another one first.'));
+        run('DELETE FROM contacts WHERE id=? AND student_id=?',[(int)$contact['id'],$s['id']]);
+        // Removing the standard contact must not leave the child without one.
+        if((int)$contact['is_primary'] && ($next=one('SELECT id FROM contacts WHERE student_id=? ORDER BY id LIMIT 1',[$s['id']])))
+            run('UPDATE contacts SET is_primary=1 WHERE id=?',[(int)$next['id']]);
+        audit('contact.deleted','student',(int)$s['id']);return ['student',['id'=>$s['id'],'tab'=>'contacts']];
     case 'contact_save':
-        $s=student((int)post('student_id'));$email=post('email');if($email!=='')$email=email_value($email);
-        if(!one('SELECT id FROM contacts WHERE id=? AND student_id=?',[(int)post('id'),$s['id']]))throw new UserError('Not found');
-        run('UPDATE contacts SET owner_name=?,relation_label=?,phone=?,email=? WHERE id=? AND student_id=?',[required_text('owner_name'),required_text('relation_label',100),text_limit('phone',80),$email,(int)post('id'),$s['id']]);
+        $s=student((int)post('student_id'));$email=contact_email();
+        $contact=one('SELECT * FROM contacts WHERE id=? AND student_id=?',[(int)post('id'),$s['id']]);
+        if(!$contact) throw new NotFound(t('Kontakt nicht gefunden.','Contact not found.'));
+        // Unticking the box does not take the standard away: another contact is
+        // made the standard one instead, so the child is never left without.
+        $standard=(int)$contact['is_primary']===1 || (bool)post('is_primary');
+        if($standard) contact_needs_email($email);
+        if($standard) run('UPDATE contacts SET is_primary=0 WHERE student_id=?',[$s['id']]);
+        run('UPDATE contacts SET owner_name=?,relation_label=?,phone=?,email=?,is_primary=? WHERE id=? AND student_id=?',[required_text('owner_name'),required_text('relation_label',100),text_limit('phone',80),$email,$standard?1:0,(int)$contact['id'],$s['id']]);
         audit('contact.updated','student',(int)$s['id']);return ['student',['id'=>$s['id'],'tab'=>'contacts']];
     case 'absence_add':
         $u=require_user();$s=student((int)post('student_id'));$from=date_value(post('starts_on'),true);$to=date_value(post('ends_on'),true);date_range($from,$to);

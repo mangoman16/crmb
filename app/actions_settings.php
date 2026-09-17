@@ -4,12 +4,32 @@ declare(strict_types=1);
 function dispatch_settings_or_messages(string $action): array {
     switch($action) {
     case 'tariff_save':
-        require_admin();$id=(int)post('id');$days=(int)post('due_days','14');
-        if($days<0 || $days>365)throw new UserError(t('Zahlungsziel: 0 bis 365 Tage.','Payment term: 0 to 365 days.'));
-        $args=[required_text('name',120),cents(post('price')),choose(post('period'),['monthly','fixed','once']),$days,post('archived')?1:0];
-        if($id)run('UPDATE tariffs SET name=?,price_cents=?,period=?,due_days=?,archived=? WHERE id=?',[...$args,$id]);
-        else {run('INSERT INTO tariffs (name,price_cents,period,due_days,archived) VALUES (?,?,?,?,?)',$args);$id=(int)db()->lastInsertId();}
-        audit('tariff.saved','tariff',$id);flash(t('Tarif gespeichert. Bestehende Vereinbarungen bleiben erhalten.','Tariff saved. Existing agreements are preserved.'));return ['settings',['tab'=>'tariffs']];
+        require_staff();$id=(int)post('id');
+        if($id && !one('SELECT id FROM tariffs WHERE id=?',[$id]))throw new UserError(t('Diesen Tarif gibt es nicht.','No such tariff.'));
+        $classId=reference_or_null('classes','class_id');
+        if(!$classId)throw new UserError(t('Bitte den Kurs wählen, zu dem dieser Tarif gehört.','Please choose the course this tariff belongs to.'));
+        $recurring=post('period','recurring')!=='once';
+        $interval=$recurring?billing_valid_interval((int)post('interval_months','1')):1;
+        $dueDay=(int)post('due_day','1');
+        if($dueDay<1||$dueDay>28)throw new UserError(t('Zahltag: 1 bis 28. Der 29. bis 31. existiert nicht in jedem Monat.','Payment day: 1 to 28. The 29th to 31st do not exist in every month.'));
+        $grace=(int)post('grace_days','7');
+        if($grace<0||$grace>365)throw new UserError(t('Frist bis „überfällig“: 0 bis 365 Tage.','Days before overdue: 0 to 365.'));
+        $firstPeriod=choose(post('first_period','prorate'),array_keys(billing_first_period_rules()));
+        // -1 is "for as long as they stay", which the form offers as its own
+        // choice rather than asking anybody to type a negative number.
+        $discountMonths=post('discount_forever')?-1:(int)post('discount_months','0');
+        if($discountMonths<-1||$discountMonths>120)throw new UserError(t('Rabattdauer: 0 bis 120 Monate.','Discount length: 0 to 120 months.'));
+        $discountKind=choose(post('discount_kind','percent'),['percent','fixed']);
+        $discountValue=$discountMonths===0?0:($discountKind==='fixed'?cents(post('discount_amount','0')):(int)post('discount_percent','0'));
+        if($discountKind==='percent'&&($discountValue<0||$discountValue>100))throw new UserError(t('Rabatt: 0 bis 100 Prozent.','Discount: 0 to 100 per cent.'));
+        $args=[$classId,required_text('name',120),text_limit('description',300),cents(post('price')),
+               $recurring?'recurring':'once',$interval,$dueDay,$grace,$firstPeriod,
+               $discountMonths,$discountKind,$discountValue,(int)post('sort_order','0'),post('archived')?1:0];
+        if($id)run('UPDATE tariffs SET class_id=?,name=?,description=?,price_cents=?,period=?,interval_months=?,due_day=?,grace_days=?,first_period=?,discount_months=?,discount_kind=?,discount_value=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
+        else {run('INSERT INTO tariffs (class_id,name,description,price_cents,period,interval_months,due_day,grace_days,first_period,discount_months,discount_kind,discount_value,sort_order,archived) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',$args);$id=(int)db()->lastInsertId();}
+        audit('tariff.saved','tariff',$id);
+        flash(t('Tarif gespeichert. Schon erstellte Beiträge ändern sich nicht.','Tariff saved. Charges already created are unchanged.'));
+        return ['classes',['id'=>$classId,'tab'=>'tariffs']];
     case 'field_save':
         require_admin();$id=(int)post('id');$old=$id?one('SELECT * FROM field_definitions WHERE id=?',[$id]):null;
         if($id && !$old)throw new UserError('Not found');
@@ -47,16 +67,26 @@ function dispatch_settings_or_messages(string $action): array {
         require_admin();return ['outbox',['process'=>1]];
     case 'privacy_save':
         require_admin();$de=text_limit('privacy_de',30000);$en=text_limit('privacy_en',30000);
-        if(post('privacy_ready') && (mb_strlen($de)<300 || mb_strlen($en)<300 || preg_match('/\[[^\]]+\]/u',$de.$en)))throw new UserError(t('Bitte beide Datenschutzerklärungen vervollständigen und Platzhalter ersetzen.','Complete both privacy notices and replace the placeholders.'));
+        // The text is always saved. Only the release tick is refused, and it says
+        // which version and which placeholder is in the way: "complete both and
+        // replace the placeholders" sent an operator hunting through two walls of
+        // text, and looked from the outside as though saving had done nothing.
+        if(post('privacy_ready')) foreach(['privacy_de'=>[$de,'Deutsch'],'privacy_en'=>[$en,'English']] as [$text,$which]) {
+            if(mb_strlen($text)<300) throw new UserError(t('Die Fassung „','The “').$which.t('“ ist noch zu kurz, um freigegeben zu werden.','” version is still too short to be released.'));
+            if(preg_match('/\[[^\]]{1,80}\]/u',$text,$m)) throw new UserError(t('In der Fassung „','In the “').$which.t('“ steht noch ein Platzhalter: ','” version there is still a placeholder: ').$m[0]);
+        }
         set_setting('privacy_de',$de);set_setting('privacy_en',$en);set_setting('privacy_ready',(bool)post('privacy_ready'));
         audit('privacy.saved','settings');flash(t('Datenschutzerklärung gespeichert.','Privacy notice saved.'));return ['settings',['tab'=>'privacy']];
     case 'template_save':
-        require_admin();$id=(int)post('id');$subject=required_text('subject',180);$body=required_text('body',20000);
+        require_staff();$id=(int)post('id');$subject=required_text('subject',180);$body=required_text('body',20000);
         preg_match_all('/\{\{[^}]+\}\}/',$subject.$body,$matches);
-        foreach($matches[0] as $match)if(!in_array($match,['{{student_name}}','{{first_name}}','{{tariff}}','{{outstanding}}','{{paid_through}}','{{portal_url}}'],true))throw new UserError(t('Unbekannter Platzhalter: ','Unknown placeholder: ').$match);
+        $known=array_map(fn($k)=>'{{'.$k.'}}',array_keys(template_placeholders()));
+        foreach($matches[0] as $match)if(!in_array($match,$known,true))
+            throw new UserError(t('Unbekannter Platzhalter: ','Unknown placeholder: ').$match.'. '
+                .t('Möglich sind: ','Available: ').implode(' ',$known));
         $args=[required_text('name',120),$subject,$body];
         if($id)run('UPDATE message_templates SET name=?,subject=?,body=? WHERE id=?',[...$args,$id]);else run('INSERT INTO message_templates (name,subject,body) VALUES (?,?,?)',$args);
-        audit('template.saved','template',$id?:null);flash(t('Vorlage gespeichert.','Template saved.'));return ['settings',['tab'=>'templates']];
+        audit('template.saved','template',$id?:null);flash(t('Vorlage gespeichert.','Template saved.'));return ['manage',['tab'=>'templates']];
     case 'filter_save':
         require_staff();$criteria=filters_from($_POST);
         run('INSERT INTO saved_filters (name,criteria_json) VALUES (?,?)',[required_text('name',120),json_encode($criteria,JSON_UNESCAPED_UNICODE)]);flash(t('Filter gespeichert.','Filter saved.'));return ['students',$criteria];
@@ -64,7 +94,10 @@ function dispatch_settings_or_messages(string $action): array {
         require_staff();run('DELETE FROM saved_filters WHERE id=?',[(int)post('id')]);return ['students',[]];
     case 'preferences_save':
         $u=require_user();$newsletter=(bool)post('newsletter');$notifications=(bool)post('notifications');$payments=(bool)post('payment_notices');
-        run('UPDATE accounts SET name=?,locale=?,theme=?,text_scale=?,newsletter=?,notifications=?,payment_notices=? WHERE id=?',[required_text('name'),choose(post('locale'),['de','en']),choose(post('theme','auto'),['auto','light','dark']),choose(post('text_scale','normal'),['normal','large','larger','largest']),$newsletter?1:0,$notifications?1:0,$payments?1:0,$u['id']]);
+        // An empty accent means "whatever the administrator chose", which is a
+        // real answer and has to stay distinguishable from a colour.
+        $accent=post('accent')===''?'':choose(post('accent'),array_keys(accents()));
+        run('UPDATE accounts SET name=?,locale=?,theme=?,accent=?,text_scale=?,newsletter=?,notifications=?,payment_notices=? WHERE id=?',[required_text('name'),choose(post('locale'),['de','en']),choose(post('theme','auto'),['auto','light','dark']),$accent,choose(post('text_scale','normal'),['normal','large','larger','largest']),$newsletter?1:0,$notifications?1:0,$payments?1:0,$u['id']]);
         if((bool)($u['payment_notices']??1)!==$payments)record_consent((int)$u['id'],'payment_notices',$payments);
         if((bool)$u['newsletter']!==$newsletter)record_consent((int)$u['id'],'newsletter',$newsletter);
         if((bool)$u['notifications']!==$notifications)record_consent((int)$u['id'],'notifications',$notifications);

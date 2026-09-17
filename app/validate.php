@@ -37,7 +37,7 @@ function decimal_value(string $value): float {
 function reference_or_null(string $table, string $field, string $extra=''): ?int {
     $id=(int)post($field);
     if($id<=0) return null;
-    if(!one('SELECT id FROM '.$table.' WHERE id=?'.($extra?' AND '.$extra:''),[$id]))
+    if(!one('SELECT id FROM '.sql_name($table,'table').' WHERE id=?'.($extra?' AND '.$extra:''),[$id]))
         throw new UserError(t('Die Auswahl ist nicht verfügbar.','That selection is not available.'));
     return $id;
 }
@@ -82,4 +82,38 @@ function valid_iban(string $iban): bool {
     $remainder=0;
     foreach(str_split($digits) as $d) $remainder=($remainder*10+(int)$d)%97;
     return $remainder===1;
+}
+
+/**
+ * The weekly pattern a course form posts: one row per meeting day.
+ *
+ * Rows arrive as parallel arrays, the way the settings map editor already does
+ * it, so a row can be added in the browser without the server knowing how many
+ * there will be. A row with no weekday chosen is a blank line at the bottom of
+ * the form and is dropped rather than refused.
+ */
+function class_days_from_post(): array {
+    $weekdays=$_POST['day_weekday']??[]; $starts=$_POST['day_starts_at']??[];
+    $ends=$_POST['day_ends_at']??[]; $places=$_POST['day_location']??[];
+    foreach([$weekdays,$starts,$ends,$places] as $list)
+        if(!is_array($list)) throw new UserError(t('Ungültige Termine.','Invalid schedule.'));
+    $out=[]; $seen=[];
+    foreach($weekdays as $i=>$weekday) {
+        if(!is_scalar($weekday) || trim((string)$weekday)==='') continue;
+        $day=(int)choose(trim((string)$weekday),array_map('strval',array_keys(weekdays())));
+        $from=time_value(is_scalar($starts[$i]??'')?(string)($starts[$i]??''):'');
+        $to=time_value(is_scalar($ends[$i]??'')?(string)($ends[$i]??''):'');
+        if($from && $to && $from>=$to)
+            throw new UserError(weekdays()[$day].': '.t('Das Ende muss nach dem Beginn liegen.','The end time must be after the start time.'));
+        $where=is_scalar($places[$i]??'')?trim((string)($places[$i]??'')):'';
+        if(mb_strlen($where)>160) throw new UserError(t('Der Ort ist zu lang.','That place name is too long.'));
+        // Two entries for the same weekday at the same time is a double-tap on a
+        // phone, not a course that meets twice at once.
+        $key=$day.'|'.(string)$from;
+        if(isset($seen[$key])) continue;
+        $seen[$key]=true;
+        $out[]=['weekday'=>$day,'starts_at'=>$from,'ends_at'=>$to,'location'=>$where];
+    }
+    if(count($out)>14) throw new UserError(t('Höchstens 14 Termine pro Kurs.','At most 14 meeting days per course.'));
+    return $out;
 }

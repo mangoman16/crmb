@@ -2,12 +2,23 @@
 declare(strict_types=1);
 
 /**
- * Training classes and the payment details attached to them.
+ * Courses: when they meet, what they cost, and who is in them.
  *
- * A student may be in several classes. A charge resolves its payment recipient
- * in order: the charge's own profile, then the class's, then the configured
- * default. Each step falls back rather than erroring, so a charge created
- * before any of this existed still shows correct bank details.
+ * A course is a timetable, not a weekday. It has any number of meeting days,
+ * each with its own time and place; a day with no place of its own uses the
+ * course's, so moving the whole course to another hall is one change rather than
+ * five. One dated meeting can differ from the pattern - cancelled, moved,
+ * somewhere else - and only those are stored, so a term that runs as planned
+ * writes nothing.
+ *
+ * A course also owns its tariffs. That is the whole of the answer to "it is very
+ * confusing to have both tarifs and courses": there is no longer a separate
+ * list of prices to reconcile with a separate list of courses.
+ *
+ * A student may be in several courses. A charge resolves its payment recipient
+ * in order: the charge's own profile, then the course's, then the configured
+ * default. Each step falls back rather than erroring, so a charge created before
+ * any of this existed still shows correct bank details.
  */
 
 function weekdays(): array {
@@ -19,10 +30,10 @@ function weekdays(): array {
 }
 
 function training_classes(bool $archived=false): array {
-    return rows('SELECT c.*, t.name AS tariff_name, p.name AS profile_name, a.name AS trainer_name,'
-        .' (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL) AS member_count'
+    return rows('SELECT c.*, p.name AS profile_name, a.name AS trainer_name,'
+        .' (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL) AS member_count,'
+        .' (SELECT COUNT(*) FROM tariffs t WHERE t.class_id=c.id AND t.archived=0) AS tariff_count'
         .' FROM classes c'
-        .' LEFT JOIN tariffs t ON t.id=c.tariff_id'
         .' LEFT JOIN payment_profiles p ON p.id=c.payment_profile_id'
         .' LEFT JOIN accounts a ON a.id=c.trainer_id'
         .($archived?'':' WHERE c.archived=0')
@@ -30,12 +41,56 @@ function training_classes(bool $archived=false): array {
 }
 
 function training_class(int $id): array {
-    $c = one('SELECT c.*, t.name AS tariff_name, p.name AS profile_name, a.name AS trainer_name'
-        .' FROM classes c LEFT JOIN tariffs t ON t.id=c.tariff_id'
-        .' LEFT JOIN payment_profiles p ON p.id=c.payment_profile_id'
+    $c = one('SELECT c.*, p.name AS profile_name, a.name AS trainer_name'
+        .' FROM classes c LEFT JOIN payment_profiles p ON p.id=c.payment_profile_id'
         .' LEFT JOIN accounts a ON a.id=c.trainer_id WHERE c.id=?', [$id]);
-    if (!$c) throw new UserError(t('Kurs nicht gefunden.','Class not found.'));
+    if (!$c) throw new NotFound(t('Kurs nicht gefunden.','Course not found.'));
     return $c;
+}
+
+/** The weekly pattern of one course, in the order she put it in. */
+function class_days(int $classId): array {
+    return rows('SELECT * FROM class_days WHERE class_id=? ORDER BY sort_order, weekday, starts_at, id', [$classId]);
+}
+
+/** The weekly pattern of several courses at once, as class_id => rows. */
+function class_days_for(array $classIds): array {
+    $ids = array_values(array_unique(array_map('intval', $classIds)));
+    if (!$ids) return [];
+    $out = array_fill_keys($ids, []);
+    foreach (rows('SELECT * FROM class_days WHERE class_id IN ('.implode(',', array_fill(0, count($ids), '?')).')'
+        .' ORDER BY sort_order, weekday, starts_at, id', $ids) as $day)
+        $out[(int)$day['class_id']][] = $day;
+    return $out;
+}
+
+/** The tariffs a course offers, cheapest arrangement first. */
+function class_tariffs(int $classId, bool $archived=false): array {
+    return rows('SELECT * FROM tariffs WHERE class_id=?'.($archived?'':' AND archived=0')
+        .' ORDER BY sort_order, price_cents, name, id', [$classId]);
+}
+
+/** Tariffs that belong to no course yet, so they can be given one rather than lost. */
+function unattached_tariffs(): array {
+    return rows('SELECT * FROM tariffs WHERE class_id IS NULL AND archived=0 ORDER BY name, id');
+}
+
+/**
+ * How one meeting day reads: "Montag 16:00-17:30, Sporthalle Nord".
+ *
+ * The place is only named when the day has one of its own; otherwise the course
+ * already said where it is and repeating it on every line is noise.
+ */
+function class_day_label(array $day, array $class=[]): string {
+    $parts = [weekdays()[(int)$day['weekday']] ?? '?'];
+    if ($day['starts_at']) {
+        $time = substr((string)$day['starts_at'], 0, 5);
+        if ($day['ends_at']) $time .= '–'.substr((string)$day['ends_at'], 0, 5);
+        $parts[] = $time;
+    }
+    $where = (string)($day['location'] !== '' ? $day['location'] : ($class['location'] ?? ''));
+    if ($where !== '') $parts[] = $where;
+    return implode(' · ', $parts);
 }
 
 /** Members of a class, current first. */
@@ -52,16 +107,16 @@ function student_classes(int $studentId): array {
         .' ORDER BY cs.left_on IS NOT NULL, c.sort_order, c.name', [$studentId]);
 }
 
-function class_schedule(array $c): string {
-    $parts = [];
-    if ($c['weekday'] !== null && isset(weekdays()[(int)$c['weekday']])) $parts[] = weekdays()[(int)$c['weekday']];
-    if ($c['starts_at']) {
-        $time = substr((string)$c['starts_at'], 0, 5);
-        if ($c['ends_at']) $time .= '–'.substr((string)$c['ends_at'], 0, 5);
-        $parts[] = $time;
-    }
-    if (($c['location'] ?? '') !== '') $parts[] = (string)$c['location'];
-    return $parts ? implode(' · ', $parts) : t('Kein Termin hinterlegt','No schedule set');
+/**
+ * The whole weekly pattern of a course on one line.
+ *
+ * $days lets a caller listing many courses pass the pattern it has already
+ * loaded, instead of one query per course on a page whose job is to list them.
+ */
+function class_schedule(array $c, ?array $days=null): string {
+    $days ??= class_days((int)$c['id']);
+    if (!$days) return ($c['location'] ?? '') !== '' ? (string)$c['location'] : t('Kein Termin hinterlegt','No schedule set');
+    return implode(' | ', array_map(fn($day) => class_day_label($day, $c), $days));
 }
 
 function payment_profiles(bool $archived=false): array {
@@ -131,4 +186,98 @@ function charge_reference(array $charge, array $student): string {
     ]);
     // EPC allows 140 characters of unstructured remittance information.
     return mb_substr(trim(preg_replace('/\s+/', ' ', $text) ?? $text), 0, 140);
+}
+
+// ---------------------------------------------------------------------------
+// The calendar: what actually happens on which day
+// ---------------------------------------------------------------------------
+
+/** What a dated meeting can be, beyond simply happening. */
+function session_statuses(): array {
+    return [
+        'planned'   => t('Findet statt',  'Going ahead'),
+        'cancelled' => t('Entfällt',      'Cancelled'),
+        'changed'   => t('Geändert',      'Changed'),
+        'extra'     => t('Zusatztermin',  'Extra session'),
+    ];
+}
+
+/**
+ * Every meeting between two dates, from the weekly pattern plus what differs.
+ *
+ * The pattern produces the dates; class_sessions overrides them. An override may
+ * move the time, move the hall, cancel the day outright, or add a date the
+ * pattern never produced - which is how a make-up session on a Saturday exists
+ * without pretending the course meets on Saturdays.
+ *
+ * Three queries however wide the window is, because this feeds the start page
+ * and the start page is the one everybody opens.
+ */
+function class_calendar(string $from, string $to, ?int $classId = null): array {
+    $start = new DateTimeImmutable($from);
+    $end = new DateTimeImmutable($to);
+    if ($start > $end) return [];
+    // A window nobody asked for is a page that never finishes rendering.
+    if ((int)$start->diff($end)->days > 400) $end = $start->modify('+400 days');
+
+    $classes = [];
+    foreach (rows('SELECT id, name, location, archived FROM classes WHERE archived=0'
+        . ($classId ? ' AND id=?' : '') . ' ORDER BY sort_order, name, id', $classId ? [$classId] : []) as $c)
+        $classes[(int)$c['id']] = $c;
+    if (!$classes) return [];
+
+    $pattern = class_days_for(array_keys($classes));
+    $overrides = [];
+    foreach (rows('SELECT * FROM class_sessions WHERE session_on BETWEEN ? AND ?'
+        . ($classId ? ' AND class_id=?' : ''), $classId ? [$from, $to, $classId] : [$from, $to]) as $row)
+        $overrides[(int)$row['class_id'] . ':' . $row['session_on']] = $row;
+
+    $entries = [];
+    foreach ($classes as $id => $class) {
+        foreach ($pattern[$id] ?? [] as $day) {
+            // Walk forward from the first matching weekday rather than over every
+            // date in the window: a year is 52 steps, not 365.
+            $offset = ((int)$day['weekday'] - (int)$start->format('N') + 7) % 7;
+            for ($date = $start->modify('+' . $offset . ' days'); $date <= $end; $date = $date->modify('+7 days'))
+                $entries[$id . ':' . $date->format('Y-m-d')] = [
+                    'class_id' => $id, 'class_name' => $class['name'], 'date' => $date->format('Y-m-d'),
+                    'starts_at' => $day['starts_at'], 'ends_at' => $day['ends_at'],
+                    'location' => $day['location'] !== '' ? $day['location'] : $class['location'],
+                    'status' => 'planned', 'note' => '', 'session_id' => null];
+        }
+    }
+    foreach ($overrides as $key => $row) {
+        $id = (int)$row['class_id'];
+        if (!isset($classes[$id])) continue;
+        $base = $entries[$key] ?? ['class_id' => $id, 'class_name' => $classes[$id]['name'],
+                                   'date' => $row['session_on'], 'starts_at' => null, 'ends_at' => null,
+                                   'location' => $classes[$id]['location'], 'status' => 'extra', 'note' => ''];
+        $entries[$key] = [
+            'class_id' => $id, 'class_name' => $classes[$id]['name'], 'date' => $row['session_on'],
+            'starts_at' => $row['starts_at'] ?: $base['starts_at'],
+            'ends_at' => $row['ends_at'] ?: $base['ends_at'],
+            'location' => $row['location'] !== '' ? $row['location'] : $base['location'],
+            'status' => $row['status'], 'note' => $row['note'], 'session_id' => (int)$row['id']];
+    }
+    usort($entries, fn($a, $b) => [$a['date'], (string)$a['starts_at'], $a['class_name']]
+                              <=> [$b['date'], (string)$b['starts_at'], $b['class_name']]);
+    return array_values($entries);
+}
+
+/** One meeting on one date, whether it is stored or only implied by the pattern. */
+function class_session(int $classId, string $date): ?array {
+    $found = class_calendar($date, $date, $classId);
+    return $found[0] ?? null;
+}
+
+/** How a meeting reads on one line: "16:00–17:30 · Sporthalle Nord". */
+function session_label(array $entry): string {
+    $parts = [];
+    if ($entry['starts_at']) {
+        $time = substr((string)$entry['starts_at'], 0, 5);
+        if ($entry['ends_at']) $time .= '–' . substr((string)$entry['ends_at'], 0, 5);
+        $parts[] = $time;
+    }
+    if (($entry['location'] ?? '') !== '') $parts[] = (string)$entry['location'];
+    return $parts ? implode(' · ', $parts) : t('Zeit noch offen', 'Time not set');
 }

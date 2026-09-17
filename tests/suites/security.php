@@ -46,8 +46,8 @@ is_same(['student'], assignable_roles(['role'=>'trainer']), 'a trainer may only 
 is_same(['student','trainer','admin'], assignable_roles(['role'=>'admin']), 'an admin may grant anything');
 
 case_('A conversation is scoped to its account');
-$threadA = fixture('threads', ['account_id'=>$parentA,'subject'=>'A','updated_at'=>now()]);
-$threadB = fixture('threads', ['account_id'=>$parentB,'subject'=>'B','updated_at'=>now()]);
+$threadA = make_thread([$parentA], ['subject'=>'A']);
+$threadB = make_thread([$parentB], ['subject'=>'B']);
 sign_in_as($parentA);
 does_not_throw(fn() => thread_record($threadA), 'their own thread');
 throws(fn() => thread_record($threadB), 'not another account\'s thread');

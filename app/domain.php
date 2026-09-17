@@ -7,19 +7,8 @@ function status_label(string $s): string { $en=['trial'=>'Trial','active'=>'Acti
 function reason_label(string $s): string { $en=['sick'=>'Sick','holiday'=>'Holiday','other'=>'Absent']; return locale()==='en' && isset($en[$s])?$en[$s]:(reasons()[$s]??$s); }
 function student(int $id): array {
     $u=require_user();
-    $s=one('SELECT s.*,t.name AS tariff_name FROM students s LEFT JOIN tariffs t ON t.id=s.tariff_id WHERE s.id=?'.(is_staff($u)?'':' AND s.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
-    if(!$s) throw new UserError(t('Schüler nicht gefunden.','Student not found.')); return $s;
-}
-/**
- * A conversation the signed-in account is allowed to see.
- *
- * Staff see every thread; anyone else only their own. Same shape as student():
- * the scoping is part of the lookup, so no caller can forget it.
- */
-function thread_record(int $id): array {
-    $u=require_user();
-    $r=one('SELECT t.*,a.name AS account_name FROM threads t JOIN accounts a ON a.id=t.account_id WHERE t.id=?'.(is_staff($u)?'':' AND t.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
-    if(!$r)throw new UserError(t('Unterhaltung nicht gefunden.','Conversation not found.'));return $r;
+    $s=one('SELECT s.*,t.name AS tariff_name,l.name AS level_name FROM students s LEFT JOIN tariffs t ON t.id=s.tariff_id LEFT JOIN levels l ON l.id=s.level_id WHERE s.id=?'.(is_staff($u)?'':' AND s.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
+    if(!$s) throw new NotFound(t('Schüler nicht gefunden.','Student not found.')); return $s;
 }
 /**
  * What counts as money actually received.
@@ -30,6 +19,48 @@ function thread_record(int $id): array {
  * forgotten when the rule changes, and the two then disagree about what a family
  * owes. The `structure` suite fails if the condition reappears spelled out.
  */
+/**
+ * The people to ring about one child, the standard one first.
+ *
+ * Exactly one contact per child carries is_primary; the actions below keep it
+ * that way. The ordering falls back to the oldest row so that a record written
+ * before that rule existed still answers with somebody rather than nothing.
+ */
+function student_contacts(int $studentId): array {
+    return rows('SELECT * FROM contacts WHERE student_id=? ORDER BY is_primary DESC, id',[$studentId]);
+}
+
+function primary_contact(int $studentId): ?array {
+    return one('SELECT * FROM contacts WHERE student_id=? ORDER BY is_primary DESC, id LIMIT 1',[$studentId]);
+}
+
+/**
+ * What a child's contacts are still missing, in the words she would use, or ''
+ * when nothing is. Every child needs somebody to ring in an emergency and an
+ * address to send an invoice to, so both are stated rather than assumed.
+ */
+function contact_gap(int $studentId): string {
+    $contact=primary_contact($studentId);
+    if(!$contact) return t('Für dieses Kind ist noch keine Kontaktperson eingetragen.','No contact person has been entered for this child yet.');
+    if((string)$contact['email']==='') return t('Der Standardkontakt hat noch keine E-Mail-Adresse.','The standard contact has no email address yet.');
+    return '';
+}
+
+/** What a contact form carries as an email: optional, but valid when given. */
+function contact_email(): string { $email=post('email'); return $email===''?'':email_value($email); }
+
+/** The standard contact is where an invoice and a reminder go, so it needs one. */
+function contact_needs_email(string $email): void {
+    if($email==='') throw new UserError(t('Der Standardkontakt braucht eine E-Mail-Adresse – dorthin gehen Rechnungen und Erinnerungen.','The standard contact needs an email address – that is where invoices and reminders go.'));
+}
+
+/** The children she still has to ask for a contact. Ended memberships are not chased. */
+function students_missing_contact(): array {
+    return rows('SELECT s.id,s.first_name,s.last_name FROM students s'
+        ." WHERE s.status<>'ended' AND NOT EXISTS (SELECT 1 FROM contacts c WHERE c.student_id=s.id AND c.is_primary=1 AND c.email<>'')"
+        .' ORDER BY s.first_name,s.last_name');
+}
+
 function payment_counts_sql(string $payment='p'): string {
     return sql_name($payment,'alias').'.confirmed_at IS NOT NULL AND '.sql_name($payment,'alias').'.voided=0';
 }
@@ -44,8 +75,21 @@ function charge_paid_sql(string $charge='c'): string {
         .' WHERE p.charge_id='.sql_name($charge,'alias').'.id AND '.payment_counts_sql().'),0)';
 }
 
+/**
+ * SQL for the day a charge stops being merely open and starts being late.
+ *
+ * A charge written before grace days existed has no overdue_on, and for it the
+ * due date is the answer - which is exactly how it behaved before. Written once
+ * here for the same reason payment_counts_sql() is: a second copy is the one
+ * that gets forgotten, and the two then disagree about who owes money.
+ */
+function charge_overdue_sql(string $charge='c'): string {
+    $a=sql_name($charge,'alias');
+    return 'COALESCE('.$a.'.overdue_on, '.$a.'.due_on)';
+}
+
 function balance(int $studentId, bool $overdue=false): int {
-    $charges=rows('SELECT c.amount_cents,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? AND c.cancelled=0'.($overdue?' AND c.due_on<?':''),$overdue?[$studentId,today()]:[$studentId]);
+    $charges=rows('SELECT c.amount_cents,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? AND c.cancelled=0'.($overdue?' AND '.charge_overdue_sql().'<?':''),$overdue?[$studentId,today()]:[$studentId]);
     return array_sum(array_map(fn($c)=>max(0,(int)$c['amount_cents']-(int)$c['paid']),$charges));
 }
 /**
@@ -60,7 +104,7 @@ function balances(bool $overdue=false): array {
     foreach(rows('SELECT c.student_id, SUM(GREATEST(0, c.amount_cents - COALESCE(p.paid,0))) AS due'
         .' FROM charges c LEFT JOIN (SELECT charge_id, SUM(amount_cents) AS paid FROM payments'
         .'   WHERE '.payment_counts_sql('payments').' GROUP BY charge_id) p ON p.charge_id=c.id'
-        .' WHERE c.cancelled=0'.($overdue?' AND c.due_on<?':'').' GROUP BY c.student_id',
+        .' WHERE c.cancelled=0'.($overdue?' AND '.charge_overdue_sql().'<?':'').' GROUP BY c.student_id',
         $overdue?[today()]:[]) as $r) $out[(int)$r['student_id']]=(int)$r['due'];
     return $out;
 }
@@ -119,7 +163,7 @@ function save_custom_fields(int $id,bool $new): void {
     }
 }
 function filters_from(array $data): array {
-    $keys=['q','status','absence','overdue','tariff','field','value']; $out=[];
+    $keys=['q','status','absence','overdue','tariff','level','age_group','course','field','value']; $out=[];
     foreach($keys as $key) if(isset($data[$key]) && is_scalar($data[$key])) $out[$key]=mb_substr(trim((string)$data[$key]),0,200);
     return $out;
 }
@@ -129,8 +173,26 @@ function filtered_students(array $f,?int $accountId=null): array {
     if(!empty($f['q'])){$where[]="CONCAT(s.first_name,' ',s.last_name) LIKE ?";$p[]='%'.$f['q'].'%';}
     if(!empty($f['status'])){$where[]='s.status=?';$p[]=$f['status'];}
     if(!empty($f['tariff'])){$where[]='s.tariff_id=?';$p[]=(int)$f['tariff'];}
+    if(!empty($f['level'])){$where[]='s.level_id=?';$p[]=(int)$f['level'];}
+    // "Who is in Monday's group" is the view she builds most often, so a course
+    // is a filter in its own right rather than something to be read off a card.
+    if(!empty($f['course'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.class_id=? AND cs.left_on IS NULL)';$p[]=(int)$f['course'];}
+    // An age group is usually not stored on the student, so filtering by one has
+    // to cover both the pinned case and the dates that fall into the band. The
+    // bounds become dates once here rather than a function call per row.
+    if(!empty($f['age_group'])){
+        $band=one('SELECT * FROM age_groups WHERE id=?',[(int)$f['age_group']]);
+        if($band){
+            $youngest=(new DateTimeImmutable(today()))->modify('-'.((int)$band['min_age']+1).' years')->modify('+1 day')->format('Y-m-d');
+            $oldest=$band['max_age']===null?null:(new DateTimeImmutable(today()))->modify('-'.((int)$band['max_age']+1).' years')->modify('+1 day')->format('Y-m-d');
+            $clause='s.age_group_id=? OR (s.age_group_id IS NULL AND s.birth_date IS NOT NULL AND s.birth_date<=?';
+            array_push($p,(int)$band['id'],$youngest);
+            if($oldest!==null){$clause.=' AND s.birth_date>?';$p[]=$oldest;}
+            $where[]='('.$clause.'))';
+        }
+    }
     if(!empty($f['absence'])){$where[]='EXISTS (SELECT 1 FROM absences a WHERE a.student_id=s.id AND a.reason=? AND a.starts_on<=? AND a.ends_on>=?)';array_push($p,$f['absence'],today(),today());}
-    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND c.cancelled=0 AND c.due_on<? AND c.amount_cents>'.charge_paid_sql().')';$p[]=today();}
+    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND c.cancelled=0 AND '.charge_overdue_sql().'<? AND c.amount_cents>'.charge_paid_sql().')';$p[]=today();}
     if(!empty($f['field']) && isset($f['value'])){
         $def=one('SELECT * FROM field_definitions WHERE id=? AND archived=0',[(int)$f['field']]);
         if($def && (is_staff() || $def['visibility']!=='internal')) {
@@ -138,10 +200,49 @@ function filtered_students(array $f,?int $accountId=null): array {
             array_push($p,$def['id'],json_encode($def['field_type']==='checkbox'?in_array($f['value'],['1','true','yes'],true):$f['value'],JSON_UNESCAPED_UNICODE));
         }
     }
-    return rows('SELECT s.*,t.name AS tariff_name,a.name AS account_name FROM students s LEFT JOIN tariffs t ON t.id=s.tariff_id LEFT JOIN accounts a ON a.id=s.account_id WHERE '.implode(' AND ',$where).' ORDER BY s.last_name,s.first_name,s.id',$p);
+    return rows('SELECT s.*,t.name AS tariff_name,a.name AS account_name,l.name AS level_name FROM students s'
+        .' LEFT JOIN tariffs t ON t.id=s.tariff_id LEFT JOIN accounts a ON a.id=s.account_id LEFT JOIN levels l ON l.id=s.level_id'
+        .' WHERE '.implode(' AND ',$where).' ORDER BY s.last_name,s.first_name,s.id',$p);
 }
-function template_text(string $text,array $s): string {
+/**
+ * Every placeholder a message template may use, what it means, and an example.
+ *
+ * One list. template_values() fills them in, template_save() validates against
+ * them, and the editor shows them beside the box they go into. The same set used
+ * to be written out in three places, so adding one meant remembering all three
+ * and a template could be accepted that the sender then could not fill in.
+ */
+function template_placeholders(): array {
+    return [
+        'student_name' => [t('Vollständiger Name','Full name'),                          'Lena Hofer'],
+        'first_name'   => [t('Vorname','First name'),                                    'Lena'],
+        'level'        => [t('Leistungsgruppe','Level'),                                 t('Anfänger','Beginner')],
+        'age_group'    => [t('Altersgruppe','Age group'),                                t('Unter 12','Under 12')],
+        'tariff'       => [t('Tarif','Tariff'),                                          t('Monatsbeitrag','Monthly fee')],
+        'outstanding'  => [t('Offener Gesamtbetrag','Total outstanding'),                money(4500)],
+        'paid_through' => [t('Ende des letzten bezahlten Zeitraums','End of the latest paid period'), fmt_date(today())],
+        'portal_url'   => [t('Link zum Portal','Link to the portal'),                    url('messages')],
+    ];
+}
+
+/** What each placeholder becomes for one student. Keys match template_placeholders(). */
+function template_values(array $s): array {
     $paidThrough=null;
     foreach(student_charges((int)$s['id']) as $c) if(!$c['cancelled'] && $c['paid']>=$c['amount_cents'] && $c['period_to'] && (!$paidThrough || $c['period_to']>$paidThrough)) $paidThrough=$c['period_to'];
-    return strtr($text,['{{student_name}}'=>$s['first_name'].' '.$s['last_name'],'{{first_name}}'=>$s['first_name'],'{{tariff}}'=>$s['tariff_name']??'','{{outstanding}}'=>money(balance((int)$s['id'])),'{{paid_through}}'=>fmt_date($paidThrough),'{{portal_url}}'=>url('messages')]);
+    return [
+        'student_name' => $s['first_name'].' '.$s['last_name'],
+        'first_name'   => $s['first_name'],
+        'level'        => level_name(isset($s['level_id'])?(int)$s['level_id']:null),
+        'age_group'    => age_group_name($s),
+        'tariff'       => $s['tariff_name']??'',
+        'outstanding'  => money(balance((int)$s['id'])),
+        'paid_through' => fmt_date($paidThrough),
+        'portal_url'   => url('messages'),
+    ];
+}
+
+function template_text(string $text,array $s): string {
+    $map=[];
+    foreach(template_values($s) as $key=>$value) $map['{{'.$key.'}}']=$value;
+    return strtr($text,$map);
 }

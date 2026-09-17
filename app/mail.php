@@ -1,10 +1,50 @@
 <?php
 declare(strict_types=1);
 
-function queue_mail(?int $accountId,string $recipient,string $subject,string $body,string $category): void {
+/**
+ * The marker that tells a stored payload apart from a plain one.
+ *
+ * A payload used to be the message text and nothing else. Attachments need more
+ * than that, and a job queued by the previous version has to keep sending, so
+ * the structured form announces itself rather than being guessed at.
+ */
+const MAIL_STRUCTURED = "\x01crm-mail\n";
+
+/**
+ * Queue one email.
+ *
+ * $attach describes files rather than carrying them: ['kind'=>'invoice','id'=>7].
+ * The file is built when the message is sent, which keeps a queue of invoices
+ * from being a queue of PDFs and means what goes out is the current document.
+ */
+function queue_mail(?int $accountId,string $recipient,string $subject,string $body,string $category,array $attach=[]): void {
     email_value($recipient);
     if(preg_match('/[\r\n]/',$subject) || mb_strlen($subject)>255) throw new UserError(t('Ungültiger Betreff.','Invalid subject.'));
-    run('INSERT INTO mail_jobs (account_id,recipient,subject,payload,category,created_at) VALUES (?,?,?,?,?,?)',[$accountId,$recipient,$subject,seal($body),$category,now()]);
+    $payload=$attach
+        ? MAIL_STRUCTURED.json_encode(['body'=>$body,'attach'=>$attach],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)
+        : $body;
+    run('INSERT INTO mail_jobs (account_id,recipient,subject,payload,category,created_at) VALUES (?,?,?,?,?,?)',[$accountId,$recipient,$subject,seal($payload),$category,now()]);
+}
+
+/** A stored payload, as message text and the files to build. */
+function mail_payload(string $stored): array {
+    if(!str_starts_with($stored,MAIL_STRUCTURED)) return ['body'=>$stored,'attach'=>[]];
+    $decoded=json_decode(substr($stored,strlen(MAIL_STRUCTURED)),true);
+    if(!is_array($decoded)) return ['body'=>$stored,'attach'=>[]];
+    return ['body'=>(string)($decoded['body']??''),'attach'=>is_array($decoded['attach']??null)?$decoded['attach']:[]];
+}
+
+/**
+ * Build one described attachment, or null when it can no longer be built.
+ *
+ * A null means the file is gone - an invoice deleted, say - and the message goes
+ * without it rather than failing for ever in the queue.
+ */
+function mail_attachment(array $described): ?array {
+    if(($described['kind']??'')!=='invoice') return null;
+    $invoice=one('SELECT * FROM invoices WHERE id=?',[(int)($described['id']??0)]);
+    if(!$invoice) return null;
+    return ['name'=>invoice_filename($invoice),'mime'=>'application/pdf','body'=>invoice_pdf($invoice)];
 }
 function cancel_account_mail(int $id): void { run("UPDATE mail_jobs SET status='cancelled',payload='',error=NULL WHERE account_id=? AND status IN ('queued','failed')",[$id]); }
 function notify_thread(array $account,int $threadId,string $subject): void {
@@ -37,6 +77,82 @@ function notify_payment(array $account, array $student, int $amountCents, string
         $en?'Outstanding badminton payment':'Offener Badminton-Beitrag',$body,'payments');
     return true;
 }
+/**
+ * Tell the families in a course that one date has changed.
+ *
+ * Sent to the account behind each current member, once, with the change spelled
+ * out rather than a link saying something changed. A family reading this on a
+ * phone at eight in the morning should not have to open anything.
+ *
+ * Deliberately a separate step from saving: correcting a typo in a note should
+ * not send fifteen emails.
+ */
+function notify_class_change(array $class, string $date, ?array $entry, string $note): int {
+    $sent=0;
+    foreach(rows('SELECT DISTINCT a.* FROM class_students cs'
+        .' JOIN students s ON s.id=cs.student_id JOIN accounts a ON a.id=s.account_id'
+        .' WHERE cs.class_id=? AND cs.left_on IS NULL', [(int)$class['id']]) as $account) {
+        if($account['state']!=='active' || !$account['verified_at'] || empty($account['notifications'])) continue;
+        $en=$account['locale']==='en';
+        $what=match($entry['status']??'planned') {
+            'cancelled' => $en?'is cancelled':'entfällt',
+            'extra'     => $en?'is an extra session':'ist ein Zusatztermin',
+            'changed'   => $en?'has changed':'hat sich geändert',
+            default     => $en?'is going ahead':'findet statt',
+        };
+        $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+            .$class['name'].' '.($en?'on ':'am ').fmt_date($date).' '.$what.".\n"
+            .($entry?session_label($entry)."\n":'')
+            .($note!==''?"\n".$note."\n":'')
+            ."\n".($en?'All dates are in the portal:':'Alle Termine stehen im Portal:')."\n".url('classes',['id'=>$class['id']]);
+        queue_mail((int)$account['id'],$account['email'],
+            ($en?'Change to ':'Änderung: ').$class['name'].' – '.fmt_date($date),$body,'notifications');
+        $sent++;
+    }
+    return $sent;
+}
+
+/** Tell one family what the trainer decided about their request. */
+function notify_enrolment_decision(array $request, bool $approved, string $note): bool {
+    $account=one('SELECT a.* FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.id=?', [(int)$request['student_id']]);
+    if(!$account || $account['state']!=='active' || !$account['verified_at'] || empty($account['notifications'])) return false;
+    $student=one('SELECT first_name,last_name FROM students WHERE id=?',[(int)$request['student_id']]);
+    $class=one('SELECT name FROM classes WHERE id=?',[(int)$request['class_id']]);
+    $en=$account['locale']==='en';
+    $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+        .request_kind_label((string)$request['kind']).' – '.$student['first_name'].' '.$student['last_name']
+        .' · '.$class['name'].":\n"
+        .($approved?($en?'Approved.':'Angenommen.'):($en?'Not approved.':'Leider nicht angenommen.'))."\n"
+        .($note!==''?"\n".$note."\n":'')
+        ."\n".($en?'Details are in the portal:':'Die Einzelheiten stehen im Portal:')."\n".url('student',['id'=>$request['student_id'],'tab'=>'classes']);
+    queue_mail((int)$account['id'],$account['email'],
+        ($en?'Your request: ':'Deine Anfrage: ').$class['name'],$body,'notifications');
+    return true;
+}
+
+/**
+ * Send one invoice to the family, with the PDF attached.
+ *
+ * The amount, the number and the due date are in the body as well, because an
+ * attachment on a phone is a tap away and a parent reading this on the bus
+ * should already know what it says.
+ */
+function notify_invoice(array $invoice): bool {
+    $account=$invoice['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$invoice['account_id']]):null;
+    if(!$account || $account['state']!=='active' || !$account['verified_at']) return false;
+    $en=$account['locale']==='en';
+    $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+        .($en?'Invoice ':'Rechnung ').$invoice['number'].' '.($en?'over':'über').' '.money((int)$invoice['gross_cents'])
+        .', '.($en?'payable by ':'zahlbar bis ').fmt_date((string)$invoice['due_on']).".\n\n"
+        .($en?'The invoice is attached as a PDF and is also in the portal:':'Die Rechnung hängt als PDF an und steht auch im Portal:')."\n"
+        .url('student',['id'=>$invoice['student_id'],'tab'=>'invoices']);
+    queue_mail((int)$account['id'],$account['email'],
+        ($en?'Invoice ':'Rechnung ').$invoice['number'],$body,'payments',
+        [['kind'=>'invoice','id'=>(int)$invoice['id']]]);
+    run('UPDATE invoices SET sent_at=? WHERE id=?',[now(),(int)$invoice['id']]);
+    return true;
+}
+
 function process_mail(int $limit=25, float $budget=0.0): array {
     if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
     if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');
@@ -62,7 +178,8 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                 // Hold the account lock during send: suspension/deletion cannot race this check.
                 $a=$job['account_id']?one('SELECT * FROM accounts WHERE id=? FOR UPDATE',[$job['account_id']]):null;
                 $eligible=$a && $a['state']!=='suspended';
-                $plainBody=$job['payload']!==''?unseal($job['payload']):'';
+                $stored=$job['payload']!==''?mail_payload(unseal($job['payload'])):['body'=>'','attach'=>[]];
+                $plainBody=$stored['body'];
                 if($eligible && $job['category']==='security') {
                     preg_match('/[?&]token=([a-f0-9]{64})\b/',$plainBody,$match);
                     $token=isset($match[1])?token_record(hash('sha256',$match[1])):null;
@@ -86,6 +203,10 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                     $link=url('unsubscribe',['account'=>$a['id'],'category'=>$job['category'],'signature'=>unsubscribe_signature((int)$a['id'],$job['category'])]);
                     $body.="\n\n".($en?'Unsubscribe: ':'Abmelden: ').$link;
                     $m->addCustomHeader('List-Unsubscribe','<'.$link.'>');
+                }
+                foreach($stored['attach'] as $described) {
+                    $file=mail_attachment(is_array($described)?$described:[]);
+                    if($file) $m->addStringAttachment($file['body'],$file['name'],'base64',$file['mime']);
                 }
                 $m->Body=$body; $m->isHTML(false); $m->send();
                 run("UPDATE mail_jobs SET status='sent',sent_at=?,attempts=attempts+1,error=NULL,retry_after=NULL,payload=IF(category='security','',payload) WHERE id=?",[now(),$job['id']]);

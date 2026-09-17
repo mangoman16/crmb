@@ -1,39 +1,65 @@
 # Badminton CRM
 
-Version **0.5.0**. A self-hosted PHP/MySQL application for a badminton coach and her students, built for mobile use, with German and English interfaces.
+Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and her students, built for mobile use, with German and English interfaces.
 
 ## Included
 
 - Invitation-only email/password accounts; verified invitation links, password reset and verified email changes.
-- One account can manage multiple students. Administrator, trainer and student roles; account suspension and deletion. Administrators configure the portal; trainers run the day-to-day work.
-- Training classes with their own schedule, tariff and bank details. A student can be in several classes.
-- Attendance per training session, designed for one hand on a phone: the class on one screen, one tap each, one save.
-- Monthly charges on the 1st, with the first month after joining free, per-student pausing, and a preview before anything is created.
-- Skill assessment: configurable rating scales, skill areas, dated values per student, progress charts and automatic grouping by level. Visible to staff only.
-- Payment profiles with a transfer QR code for anything a parent still owes, generated on the server from an editable payload template.
-- Students, named contact people, membership dates, configurable statuses and dated absences.
+- One account can manage multiple students. Administrator, trainer and student roles; account suspension and deletion. An administrator can do everything a trainer can; the lists the trainer works with sit under **Verwaltung**, away from the technical settings.
+- Courses with a timetable rather than a weekday: several days a week, each with its own time and place, its own tariffs and its own bank details. A student can be in several courses.
+- Students can ask to join, leave or change tariff; the trainer accepts or declines.
+- Attendance on one screen, designed for one hand on a phone: pick the course, pick the day, one tap per child, one save. A child reported absent that day carries the reason beside their name.
+- Charges monthly, every two, three or six months, or yearly; a first period prorated, charged whole or skipped; a discount for a number of months as a percentage or a fixed amount; a due day from the tariff or from the child; overdue a set number of days later; per-student pausing and a preview before anything is created.
+- Invoices that carry what § 11 Abs 1 UStG asks for, numbered consecutively per year, as a PDF generated on request — with the Kleinunternehmer note or with net, rate and tax.
+- Levels (Anfänger, Fortgeschritten, Könner) and age groups worked out from the date of birth, both renameable and extendable, with one of each as the default.
+- Payment profiles with a transfer QR code for anything a parent still owes, generated on the server from an editable payload template. Families can upload a proof of payment, optionally.
+- Students with contact people — one of them the standard contact, with an address invoices and reminders go to — membership dates, configurable statuses and dated absences.
 - Editable custom fields: types, options, defaults, sections, ordering, student permissions and archiving.
-- Named tariffs, default prices, individual prices and manual charges with coverage dates. Partial, confirmed and voided payments.
-- In-app conversations with unread markers, recipient filters, saved filters, message templates and a preview before group sending.
+- Messages in the shape people already know one: conversations, bubbles, pictures, PDFs and voice notes. Writing to the trainer needs nobody's permission; writing to another family needs theirs. A conversation between two families is private — neither the trainer nor the administrator can read it. Group messages with filters, saved views, templates and a review step are a separate page.
 - News, optional newsletter emails, separate private-message notifications, and unsubscribe links.
 - SMTP settings, encrypted SMTP password, a mail queue with automatic retry and an outgoing-mail overview.
-- Editable German/English privacy drafts, acknowledgement and subscription records.
-- Light and dark appearance following the device, adjustable text size, and installable to a phone home screen.
-- A browser installer for hosting without a shell, versioned migrations that apply themselves when new files are uploaded, and a maintenance switch with an administrator bypass.
+- Editable German/English privacy drafts filled in from the operator's own details, acknowledgement and subscription records.
+- A pinned top bar with notifications, profile pictures, a portal colour each person can override for themselves, light and dark following the device, adjustable text size, and installable to a phone home screen.
+- Any page can report that something is wrong on it, with a screenshot; the report arrives with the page, the device, the address and the version attached.
+- An administrator or trainer can view the portal as somebody else, with a bar saying so and a way back — and what they change is recorded against them.
+- Example data at the press of a button, and out again, so the portal can be tried before it holds anybody real.
+- A browser installer for hosting without a shell, versioned migrations that apply themselves when new files are uploaded, `bin/update.sh` for a server with one, and a maintenance switch with an administrator bypass.
 - An update that refuses to run against an older package, an incomplete upload, a database it could not back up first, or a result with fewer rows than it started with.
-- Queued email, cleanup and optional monthly charges run without a cron job, just after a page has been served.
+- Queued email, cleanup and optional charge creation run without a cron job, just after a page has been served.
 - Every operator setting declared once with a type and a default, editable from the settings screen, so no value is ever undefined.
 - Online status for accounts, and email reminders for outstanding payments.
-- Undo: changes to the main records are versioned, listed under **Änderungen**, and can be put back — including restoring a deleted student under their original number.
+- A change log that says what changed, field by field, in the words she uses.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs 1003 assertions in a few seconds.
+- A test suite that needs no database server: `php tests/run.php` runs 1957 assertions in a few seconds, and [TESTING.md](TESTING.md) is the list to walk by hand after a change.
 
 ## Install
 
-On ordinary web hosting, with no shell: create an empty database in the hosting
-panel, upload the distribution ZIP into the domain's folder, unpack it, and open
-the address in a browser. The setup page asks for the four database details the
-panel gave you and for the first account, then installs everything itself.
+There are two ways in, and which one you want depends on whether the server has
+a shell.
+
+**With a shell (Git).** This is the supported route for a server you can log
+into, and the one `bin/update.sh` keeps up to date afterwards:
+
+```bash
+git clone https://github.com/mangoman16/crmb.git /path/to/webroot
+cd /path/to/webroot
+composer install --no-dev --prefer-dist --optimize-autoloader
+# then open the address in a browser and finish the setup page
+```
+
+`bin/update.sh --clone /path/to/webroot` does the same in one command.
+
+**Without a shell (ZIP).** On ordinary web hosting: create an empty database in
+the hosting panel, upload the distribution ZIP into the domain's folder, unpack
+it, and open the address in a browser. The setup page asks for the four database
+details the panel gave you and for the first account, then installs everything
+itself.
+
+> **Where is that ZIP?** It is not published anywhere yet — this repository has
+> no GitHub release. The ZIP is built from a checkout with `bin/release.sh`,
+> which bundles the dependencies so the upload needs nothing else. Until a
+> release is published, somebody with a shell has to build it and hand over the
+> file.
 
 Full guide, including what to do when a step fails: [INSTALL.md](INSTALL.md).
 
@@ -43,7 +69,7 @@ folder denies itself, so `app/`, `config/` and `storage/` stay unreachable even
 when they sit inside the published directory.
 
 No cron job is required. Waiting work — sending queued email, removing expired
-links, and optionally creating the monthly charges on the 1st — runs just after
+links, and optionally creating the monthly charges once a month — runs just after
 a page has been delivered, at most once a minute. A real cron job can take over
 instead; see INSTALL.md.
 
@@ -108,6 +134,15 @@ self-contained:
 bin/release.sh
 ```
 
+Updating a checkout, files and database together:
+
+```bash
+bin/update.sh                  # pull, install dependencies, migrate, report
+bin/update.sh --check          # say what would happen, change nothing
+bin/update.sh --ref v0.6.0     # pin to a tag
+php bin/console.php status     # do the files and the database agree?
+```
+
 ## For developers
 
 ```bash
@@ -136,16 +171,17 @@ project is going, and what has to be true before it holds real data, is in
 
 ## Start here
 
-1. Follow [INSTALL.md](INSTALL.md): empty database, upload, open the address.
+1. Follow [INSTALL.md](INSTALL.md): empty database, files in place, open the address.
 2. Configure the portal under **Einstellungen**. Create tariffs and edit student fields.
 3. Add students, invite the account holders, and link each student to the appropriate account.
-4. To update, upload the new files. Nothing else.
+4. To try it before real families are in it: **Einstellungen → System → Beispieldaten anlegen**.
+5. To update, upload the new files — or run `bin/update.sh` on a checkout. Nothing else.
 
 The distribution ZIP includes PHPMailer, BaconQrCode and the Composer autoloader, so an upload needs nothing else. A Git checkout uses `composer install --no-dev --prefer-dist --optimize-autoloader` to install the exact versions in `composer.lock`.
 
 ## Scope of this version
 
-Monthly charges are generated on the 1st from each student's agreed price or monthly tariff. One-time and fixed-period tariffs are still entered by hand, because they do not recur. There is no online payment processor. SMTP sends email; replies belong in the app. No mailbox reader or backup system is included.
+Recurring charges are created from the tariff each enrolment names, for periods anchored to the calendar year, either from the payments screen with a preview or automatically once a month on the first page view of that month. One-off tariffs are entered by hand, because they do not recur. There is no online payment processor. SMTP sends email; replies belong in the app. No mailbox reader or backup system is included.
 
 Custom content, tariff names and message templates are entered by the operator; switching the interface language does not translate their content. The privacy notice is an editable draft that still needs the actual operator and service-provider details. Invitations stay disabled until SMTP is configured and both privacy texts are completed in settings.
 

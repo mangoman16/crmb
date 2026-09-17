@@ -4,6 +4,7 @@
 $on=date_value((string)($_GET['on']??''))??attendance_suggested_date($form);
 $members=array_filter(class_members($id),fn($m)=>$m['left_on']===null||$m['left_on']>=$on);
 $recorded=attendance_for_session($id,$on);
+$reported=absences_on(array_map(fn($m)=>(int)$m['id'],$members),$on);
 $statuses=attendance_statuses();
 $dates=attendance_session_dates($id);
 ?>
@@ -16,10 +17,14 @@ $dates=attendance_session_dates($id);
     </div>
 
     <?php // Changing the date is a GET, so an accidental tap cannot lose entries. ?>
+    <?php /* Reached both from Kurse and from the Anwesenheit page, so every link
+             here goes back to whichever one it was opened from rather than
+             always landing on the course. */
+    $back=current_page()==='attendance'?['page'=>'attendance','id'=>$id]:['page'=>'classes','id'=>$id,'tab'=>'attendance']; ?>
     <form method="get" class="attendance-date">
-        <input type="hidden" name="page" value="classes">
-        <input type="hidden" name="id" value="<?=$id?>">
-        <input type="hidden" name="tab" value="attendance">
+    <?php foreach($back as $key=>$value): ?>
+        <input type="hidden" name="<?=e($key)?>" value="<?=e($value)?>">
+    <?php endforeach ?>
         <?php input('on',t('Trainingstag','Training day'),$on,'date',true); ?>
         <?php submit_button(t('Tag wechseln','Change day'),'secondary'); ?>
     </form>
@@ -42,7 +47,7 @@ $dates=attendance_session_dates($id);
         <div class="attendance-row">
             <div class="attendance-name">
                 <span class="avatar small"><?=e(mb_substr($m['first_name'],0,1).mb_substr($m['last_name'],0,1))?></span>
-                <span><strong><?=e($m['first_name'])?></strong><small><?=e($m['last_name'])?></small></span>
+                <span><strong><?=e($m['first_name'])?></strong><small><?=e(isset($reported[$sid])?$m['last_name'].' · '.reason_label($reported[$sid]).t(' gemeldet',' reported'):$m['last_name'])?></small></span>
                 <?php $rid='att_'.$sid.'_none'; ?>
                 <input class="clear-radio" type="radio" id="<?=e($rid)?>" name="present[<?=$sid?>]" value="" <?=$current===''?'checked':''?>>
                 <label class="clear-mark" for="<?=e($rid)?>" title="<?=e(t('Nicht erfasst','Not recorded'))?>">
@@ -70,7 +75,7 @@ $dates=attendance_session_dates($id);
     <h2><?=e(t('Frühere Trainings','Earlier sessions'))?></h2>
     <div class="saved-filters">
     <?php foreach($dates as $d): ?>
-        <a class="chip <?=$d===$on?'selected':''?>" href="<?=e(url('classes',['id'=>$id,'tab'=>'attendance','on'=>$d]))?>"><?=e(fmt_date($d))?></a>
+        <a class="chip <?=$d===$on?'is-on':''?>" href="<?=e(url(current_page(),array_diff_key($back,['page'=>1])+['on'=>$d]))?>"><?=e(fmt_date($d))?></a>
     <?php endforeach ?>
     </div>
     <?php if(isset($recorded) && $recorded): ?>

@@ -1,17 +1,24 @@
 <?php
 /** Attendance: statuses, the suggested day, and the summary figures. */
 $trainer = make_account(['role'=>'trainer']); sign_in_as($trainer);
-$class = make_class(['weekday'=>1]);              // Mondays
+$class = make_class(['days'=>[['weekday'=>1]]]);   // Mondays
 $a = make_student(); $b = make_student(); $c = make_student();
 foreach ([$a,$b,$c] as $s) fixture('class_students', ['class_id'=>$class,'student_id'=>$s,'joined_on'=>'2025-01-01']);
 
 case_('The suggested day is the class day, not simply today');
-$cls = fn(?int $weekday) => ['weekday'=>$weekday];
-$monday = attendance_suggested_date($cls(1));
+$mondayClass = make_class(['days'=>[['weekday'=>1]]]);
+$noDayClass  = make_class(['days'=>[]]);
+$monday = attendance_suggested_date(['id'=>$mondayClass]);
 is_same('Monday', date('l', strtotime($monday)), 'a Monday class suggests a Monday');
 ok($monday <= today(), 'and never a day in the future');
 ok(strtotime(today()) - strtotime($monday) < 7*86400, 'within the last week');
-is_same(today(), attendance_suggested_date($cls(null)), 'a class with no fixed day suggests today');
+is_same(today(), attendance_suggested_date(['id'=>$noDayClass]), 'a course with no fixed day suggests today');
+// A course meeting twice a week should open on whichever day came last, not on
+// whichever happens to be listed first.
+$twice = make_class(['days'=>[['weekday'=>1],['weekday'=>4]]]);
+$suggested = attendance_suggested_date(['id'=>$twice]);
+ok(in_array((int)date('N', strtotime($suggested)), [1,4], true), 'a twice-weekly course suggests one of its days');
+ok($suggested >= attendance_suggested_date(['id'=>$mondayClass]), 'and the later of the two');
 
 case_('Statuses come from settings and have a preselection');
 $statuses = attendance_statuses();
@@ -51,3 +58,16 @@ foreach (['2026-09-07','2026-08-31'] as $d)
     fixture('attendance', ['class_id'=>$class,'student_id'=>$a,'session_on'=>$d,'status'=>'present',
                            'note'=>'','recorded_by'=>$trainer,'created_at'=>now()]);
 is_same(['2026-09-14','2026-09-07','2026-08-31'], attendance_session_dates($class), 'newest first');
+
+case_('A reported absence is shown beside the name, and is not a mark');
+fixture('absences', ['student_id'=>$b, 'reason'=>'sick', 'starts_on'=>'2026-09-21', 'ends_on'=>'2026-09-23',
+                     'created_by'=>$trainer]);
+is_same(['sick'], array_values(absences_on([$a,$b,$c], '2026-09-22')), 'the day inside the range');
+is_same([$b], array_keys(absences_on([$a,$b,$c], '2026-09-21')), 'the first day counts');
+is_same([$b], array_keys(absences_on([$a,$b,$c], '2026-09-23')), 'and so does the last');
+is_same([], absences_on([$a,$b,$c], '2026-09-24'), 'the day after does not');
+is_same([], absences_on([], '2026-09-22'), 'nobody to ask about is not a query');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM attendance WHERE student_id=? AND session_on=?', [$b,'2026-09-22']),
+        'and nothing was recorded on their behalf: what is recorded is what she taps');
+$html = render_view('attendance', ['id'=>(string)$class, 'on'=>'2026-09-22']);
+ok(str_contains($html, 'gemeldet'), 'the screen says the child was reported absent');

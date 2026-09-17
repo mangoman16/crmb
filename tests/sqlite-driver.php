@@ -46,6 +46,11 @@ final class TestSqlitePdo extends PDO {
     }
 
     private function translate(string $sql): string {
+        // Storage engine and charset are MySQL's business. The migration files go
+        // through sqlite_translate(); this covers the CREATE TABLE that
+        // schema_apply() carries inline, so the migration runner itself can be
+        // exercised rather than only the files it reads.
+        if (stripos($sql, 'ENGINE=') !== false) $sql = preg_replace('/\s*ENGINE=\w+(\s+DEFAULT\s+CHARSET=\w+)?(\s+COLLATE=\w+)?/i', '', $sql) ?? $sql;
         if (stripos($sql, 'FOR UPDATE') !== false) $sql = preg_replace('/\s+FOR UPDATE\b/i', '', $sql) ?? $sql;
         if (stripos($sql, 'ON DUPLICATE KEY UPDATE') !== false) $sql = $this->upsert($sql);
         // MySQL IF(cond, a, b) has no SQLite equivalent.

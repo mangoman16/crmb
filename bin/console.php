@@ -24,6 +24,9 @@ if($command==='help'){
         ."php bin/console.php maintenance:on\n"
         ."php bin/console.php maintenance:off\n"
         ."php bin/console.php check\n"
+        ."php bin/console.php status         Do the files and the database agree on the version?\n"
+        ."php bin/console.php demo:fill      Fill an empty portal with example data for testing\n"
+        ."php bin/console.php demo:clear     Remove everything demo:fill created\n"
         ."php bin/console.php version\n";exit;
 }
 try{
@@ -40,10 +43,34 @@ try{
         $schema=null;
         try{$schema=scalar('SELECT MAX(version) FROM schema_migrations');}catch(PDOException){$schema='not migrated';}
         try{$pending=schema_pending();}catch(PDOException){$pending=array_map('basename',migration_files());}
-        $result=['version'=>trim(file_get_contents(ROOT.'/VERSION')),'php'=>PHP_VERSION,'maintenance'=>is_file(maintenance_file()),'schema'=>$schema,'pending'=>$pending];
+        $result=['version'=>app_version(),'php'=>PHP_VERSION,'maintenance'=>is_file(maintenance_file()),'schema'=>$schema,'pending'=>$pending];
         foreach(['accounts','students','contacts','field_definitions','field_values','absences','charges','payments','threads','messages','news','mail_jobs'] as $table)$result['rows'][$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
         $result['totals_cents']=['charges'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM charges WHERE cancelled=0'),'confirmed_payments'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE voided=0 AND confirmed_at IS NOT NULL')];
         echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE).PHP_EOL;exit;
+    }
+    if($command==='status'){
+        // Deliberately readable rather than JSON: this is the command a person
+        // runs when they are not sure whether an update finished.
+        $s=version_status();
+        printf("files    %s\n",$s['files']);
+        printf("database %s\n",$s['database']!==''?$s['database']:'never written');
+        printf("state    %s\n",$s['state']);
+        printf("applied  %d migrations\n",$s['applied']);
+        if($s['pending'])printf("pending  %s\n",implode(', ',$s['pending']));
+        if($s['extra'])printf("extra    %s  <- the database knows migrations these files do not have\n",implode(', ',$s['extra']));
+        echo $s['ok']?"\nFiles and database agree.\n":"\n".($s['state']==='older'
+            ?"The installed files are older than the database. Install the newest release.\n"
+            :"Run: php bin/console.php update\n");
+        exit($s['ok']?0:1);
+    }
+    if($command==='demo:fill'){
+        $result=demo_fill(($argv[2]??'')==='--force');
+        printf("Created %d students, %d courses, %d charges, %d accounts.\n",$result['students'],$result['courses'],$result['charges'],$result['accounts']);
+        echo "Every demo account signs in with the password printed above.\n";exit;
+    }
+    if($command==='demo:clear'){
+        $result=demo_clear();
+        printf("Removed %d demo students and %d demo accounts.\n",$result['students'],$result['accounts']);exit;
     }
     if($command==='migrate'){
         // The engine lives in app/schema.php, because the browser installer and

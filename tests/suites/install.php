@@ -230,6 +230,18 @@ ok(str_contains($dropped?->de ?? '', 'storage/backups'), 'and says where the cop
 does_not_throw(fn() => schema_verify_counts(['no_such_table' => 5], fn(string $l) => null),
                'a table the release has not created yet is skipped rather than reported as lost');
 
+case_('A migration statement that returns rows does not poison the rest of the run');
+// PDO::exec() leaves an open result set behind for anything that returns rows -
+// a SELECT that checks something before altering it, a SHOW - and every query
+// after it on the same connection then fails with "unbuffered queries are
+// active", blaming a statement two lines further down. Only MySQL raises that;
+// the SQLite translation cannot, so this is the engine-specific half of the run.
+run_migration_statement('SELECT 1');
+does_not_throw(fn() => scalar('SELECT COUNT(*) FROM accounts'),
+               'the connection is still usable afterwards');
+run_migration_statement('SELECT 1');
+does_not_throw(fn() => run_migration_statement('SELECT 2'), 'and so is the next statement of the migration');
+
 case_('The guarded tables are the ones a family would notice');
 foreach (['accounts', 'students', 'charges', 'payments', 'messages'] as $table)
     ok(in_array($table, schema_guarded_tables(), true), $table.' is guarded');
@@ -381,3 +393,43 @@ foreach ([['', 'a@example.test', 'korrektesPferdBatterie', 'an empty name'],
           ['Name', 'a@example.test', 'passwordpassword', 'a password an attacker tries first']] as [$n, $m, $p, $what])
     throws(fn() => create_admin_account($n, $m, $p), 'refused: ' . $what);
 is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts'), 'and not one of them left a row behind');
+
+case_('The version is written into the database, not only into the files');
+// Every shipped migration recorded as applied, so schema_apply() has nothing to
+// run and what is exercised here is its bookkeeping: the marker, the version and
+// the history it writes afterwards.
+db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at TEXT NOT NULL)');
+db()->exec('DELETE FROM schema_migrations');
+foreach (migration_files() as $file)
+    run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)',
+        [basename($file), hash_file('sha256', $file), now()]);
+is_same([], schema_pending(), 'nothing is waiting to be applied');
+schema_apply();
+setting_cache_clear();
+is_same(app_version(), database_version(), 'applying records which release wrote this database');
+ok(str_contains(schema_state(), app_version()), 'the "already current" marker carries the version, not only the migrations');
+is_same(true, schema_is_current(), 'and afterwards there is nothing waiting');
+
+case_('A release that brings no migration still records itself');
+// Without the version in the marker, schema_written_by would keep naming
+// whichever older release last happened to change the schema, and the number
+// the operator is asked to trust would be quietly wrong.
+set_setting('schema_written_by', '0.0.1');
+@unlink(schema_stamp_file());
+is_same(false, schema_is_current(), 'a version the database does not know means there is work to do');
+schema_apply();
+setting_cache_clear();
+is_same(app_version(), database_version(), 'and doing it brings the marker up to date');
+$history = version_history();
+ok($history !== [], 'the move between releases is written down');
+is_same('0.0.1', $history[0]['from'] ?? '', 'saying which release it came from');
+is_same(app_version(), $history[0]['to'] ?? '', 'and which it is on now');
+
+case_('Status says plainly whether files and database agree');
+$status = version_status();
+is_same('current', $status['state'], 'they agree');
+is_same(true, $status['ok'], 'so nothing needs doing');
+ok(version_status_text($status) !== '', 'and it can say so in words');
+ok($status['applied'] >= count(migration_files()), 'every shipped migration is recorded as applied');
+
+db()->exec('DROP TABLE schema_migrations');

@@ -15,7 +15,7 @@ $expected = [
     'app/billing.php' => 60, 'app/bootstrap.php' => 20, 'app/classes.php' => 40,
     'app/core.php' => 60, 'app/defaults.php' => 80, 'app/domain.php' => 50,
     'app/history.php' => 80, 'app/mail.php' => 50, 'app/qr.php' => 20,
-    'app/skills.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
+    'app/groups.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
     'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
     'app/backup.php' => 100, 'public/setup.php' => 180,
@@ -53,6 +53,50 @@ foreach (array_map(fn($p) => trim($p, " '"), explode(',', $m[1] ?? '')) as $page
     if ($page === '') continue;
     ok(is_file(APP_ROOT.'/views/'.$page.'.php'), 'views/'.$page.'.php exists');
 }
+
+case_('No view sets an inline style, because the browser refuses to apply it');
+// style-src is 'self', so a style attribute is not a shortcut - it is markup
+// that silently does nothing. The colour picker spent a release with eight grey
+// dots for exactly this reason, and nothing in the test suite could see it.
+foreach (array_merge(glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php')) as $file) {
+    $body = (string)file_get_contents($file);
+    ok(!preg_match('/\sstyle\s*=\s*["\']/', $body), basename($file).' sets no style attribute');
+}
+ok(str_contains((string)file_get_contents(APP_ROOT.'/app/bootstrap.php'), "style-src 'self'"),
+   'and the policy that makes that true is still in place');
+
+case_('Every page the router allows is classified: public, everyone, staff or admin');
+// The guard lives in the router rather than in the view, so adding a page to
+// the allow-list and forgetting the other three lists is all it takes to serve
+// the trainer's payments screen to a family. This is the list, written down
+// once: a new page fails here until somebody says who may open it.
+$expected = [
+    'login' => 'public', 'forgot' => 'public', 'activate' => 'public',
+    'unsubscribe' => 'public', 'privacy' => 'public',
+    'dashboard' => 'everyone', 'students' => 'everyone', 'student' => 'everyone',
+    'messages' => 'everyone', 'news' => 'everyone', 'profile' => 'everyone',
+    'download' => 'everyone',   // decides per file, inside serve_download()
+    'accounts' => 'staff', 'payments' => 'staff', 'compose' => 'staff', 'outbox' => 'staff',
+    'classes' => 'staff', 'manage' => 'staff', 'invoices' => 'staff', 'attendance' => 'staff',
+    'settings' => 'admin', 'history' => 'admin',
+];
+$list = function (string $pattern) use ($router): array {
+    preg_match($pattern, $router, $found);
+    return array_values(array_filter(array_map(fn($p) => trim($p, " '"), explode(',', $found[1] ?? ''))));
+};
+$allowed = $list("/\\\$allowed=\[([^\]]*)\]/");
+$publicPages = $list("/\\\$public=in_array\(\\\$page,\[([^\]]*)\]/");
+$staffPages  = $list("/in_array\(\\\$page,\[([^\]]*)\],true\)\)require_staff/");
+$adminPages  = $list("/in_array\(\\\$page,\[([^\]]*)\],true\)\)require_admin/");
+ok($allowed && $publicPages && $staffPages && $adminPages, 'all four lists were found in the router');
+foreach ($allowed as $page) {
+    $actual = in_array($page, $adminPages, true) ? 'admin'
+        : (in_array($page, $staffPages, true) ? 'staff'
+        : (in_array($page, $publicPages, true) ? 'public' : 'everyone'));
+    is_same($expected[$page] ?? 'UNCLASSIFIED', $actual, $page.' is open to: '.$actual);
+}
+foreach (array_keys($expected) as $page)
+    ok(in_array($page, $allowed, true) || $page === 'not_found', $page.' is still a page the router knows');
 
 case_('Every migration parses into statements');
 foreach (glob(APP_ROOT.'/database/migrations/*.sql') as $file)
@@ -144,7 +188,7 @@ function printable_parts(string $expr): array {
    belongs in a view wrapped in e(), not on this list: truncating a string with
    mb_substr() or looking a code up in a settings array does not make it safe. */
 $escaping = ['e',                                                   // escapes
-             'icon','link_button','qr_svg','progress_chart',        // build their own markup and escape inside
+             'icon','link_button','qr_svg','progress_chart','avatar', // build their own markup and escape inside
              'money','number_format','count','ceil','floor','round','array_sum','plural',  // numbers
              'fmt_date','fmt_datetime',                             // formatted dates
              'role_label','entity_label'];                          // fixed sets in code

@@ -77,6 +77,11 @@ php tests/run.php billing views    # one or more suites
 php -l <file>                      # after any edit that a test might not reach
 ```
 
+[TESTING.md](TESTING.md) is the other half: the feature list with the steps to
+walk by hand, for the things no suite can reach — a PDF opened in a real reader,
+mail through a real provider, a phone at 320px. Add the checks for what you
+build to it in the same commit.
+
 Two things that have actually gone wrong here, so check for them:
 
 1. **A test suite can stay green while a file is destroyed.** A bad edit once

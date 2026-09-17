@@ -1,5 +1,200 @@
 # Changelog
 
+## 0.6.0 — unreleased
+
+Her half of the portal: what she runs day to day, in the words she uses for it,
+after a round of testing that produced a list of about forty things.
+
+### The same pass, done in a browser on a phone
+
+Every page was opened at 320 and 390 CSS pixels, in light and dark, for the
+trainer, a family and a signed-out visitor. What that found, which no test
+running on the server could have:
+
+- **The eight colour dots under „Mein Konto → Farbe" were all grey.** They were
+  coloured with a style attribute, and the portal's own Content-Security-Policy
+  refuses inline styles, so the browser threw every one of them away. They are
+  classes now, and the `structure` suite fails if a view ever sets a style
+  attribute again.
+- **The pinned bar showed an empty square where your picture belongs.** The rule
+  that hides your name on a phone hid every direct child of the link, the
+  picture included.
+- **"Entschuldigt" broke mid-word** inside the attendance control at 320px
+  ("Entschuldi / gt"). Two statuses per row below 380px, and the odd one out
+  takes the full width.
+- **The message box was the smallest thing in the composer** — four controls in
+  one row left it about 180px wide, so the placeholder wrapped over four lines.
+  It gets its own row on a narrow screen now.
+- **A row of tabs wider than the screen had nothing to say it scrolled**, so
+  „Anwesenheit" on a child's page was never found. There is a shadow at the edge
+  now, and it disappears when the strip is scrolled to the end.
+- **Six tap targets were under 44pt**: the language switch, the privacy link in
+  both footers, "Passwort vergessen?", "Zur Anmeldung", "Zurück" and the "use
+  the default" chip.
+- **The example family could not see their own example conversation.** The demo
+  data wrote a thread without the row that says who is in it, so the family was
+  told they had no messages while the trainer could read them.
+- **"Links eine Unterhaltung auswählen"** — there is no left on a phone.
+- **A deleted course answered "Kein Zugriff"**, which tells the trainer she is
+  not allowed to see her own course. A record that is gone now says „Nicht
+  gefunden" and answers 404, while somebody else's child still gets exactly the
+  same answer as a child who was deleted.
+
+`node tests/mobile.mjs` is the check itself, kept in the repository: it opens
+every page for every role at both widths and fails on anything wider than the
+screen, any tap target under 44pt, text under 12px, or a browser error. It
+reports 120 screens with nothing to fix; before this pass it found eight.
+
+### A pass over the whole thing, and what it found
+
+Every finding below was turned into a test that fails without the fix, and the
+update path was exercised against a real MariaDB rather than reasoned about.
+
+- **A migration that returns rows poisoned the rest of the update.** A SELECT
+  inside a migration - to check something before altering it - left its result
+  set open on the connection, so the next statement failed with "unbuffered
+  queries are active" and blamed the wrong line. Statements are drained now.
+- **The backup only noticed a write that failed outright.** A disk filling up
+  produces a short write instead, which left a truncated dump named as though it
+  were complete. It counts the bytes and flushes before naming the file.
+- **The row-count guard covered ten tables** and the portal has grown: it now
+  also holds enrolments, attendance, invoices, invoice lines, payment proofs,
+  message files and consent records. Proven with a migration that deletes
+  attendance: before, it passed; now the portal stays closed and the copy taken
+  moments earlier brings the rows back.
+- **A charge could be created already overdue.** A child joining in the second
+  month of a quarter got one dated to the start of the quarter, with the
+  automatic reminder to match. The due date never precedes the month the charge
+  is written in.
+- **"What happens when somebody joins mid-period" was deciding the leaving case
+  too**, silently: a child who left on the 15th cost nothing under "not until
+  the next period" and a whole period under "the whole period". Leaving is
+  charged by the days they were there, whatever the joining rule says.
+- **An invoice for nothing** - a welcome discount that took a charge to zero -
+  stayed open for ever and then turned overdue, asking a family to transfer
+  0,00 €.
+- **The last place in a course could be given away twice**: capacity was checked
+  when a family asked and not when the trainer said yes.
+- **The problem-report form accepted a post from nobody**, with a file attached.
+  It is only ever drawn for somebody signed in; now the action says so, and one
+  account cannot fill the disk with reports.
+- **Uploaded files were never removed when their record went.** A deleted
+  account took its conversation with it and left the voice notes on disk for
+  ever. The nightly maintenance sweeps files nothing points at, leaving anything
+  younger than an hour alone.
+- **A tariff could point at a course that no longer exists** - invisible on every
+  course page and absent from the unattached list. A tariff now becomes
+  unattached when its course is deleted, because what a charge was priced by has
+  to stay readable.
+- **One invoice could carry two bank accounts.** Charges from courses that
+  collect into different accounts were put on one document, which printed the
+  first one's IBAN and quietly billed the rest to it. They have to be issued
+  separately now, and the message says so.
+- **The automatic charges said "on the 1st" and were not.** The portal has page
+  views, not a clock: they are created once a month, on the first page view of
+  that month. The setting now says that, and so does the README.
+- Downloads are streamed rather than read into memory first, and `bin/update.sh`
+  no longer follows the default branch from a checkout pinned to a tag.
+
+The suite grew with it: every page is now opened for every role with data behind
+it, a PHP warning in a view is a failure rather than something printed between
+two table cells, and the router's four permission lists are checked against a
+written-down expectation, so a new page cannot be added without saying who may
+open it.
+
+- **Install by `git clone`, update with one command.** `bin/update.sh` pulls,
+  installs the dependencies, applies the migrations and prints the status; it
+  refuses on an uncommitted change rather than discarding work, and does the
+  database half by calling the same console command the browser does. The
+  version is now written into the database as well as the files, so
+  **Einstellungen → System** can say whether the two agree, and
+  `bin/update.sh --check` answers the same question from a shell.
+  README says plainly that no ZIP is published anywhere yet, because there is no
+  release: somebody with a shell builds it with `bin/release.sh`.
+- **Example data, one button.** **Einstellungen → System → „Beispieldaten
+  anlegen"** fills a portal with three courses, fifteen children aged 7 to 41,
+  contacts, enrolments, charges, payments, attendance, absences, news and a
+  conversation, so the app can be tried before it holds anybody real. It refuses
+  to run twice, and refuses to mix into real students. „Beispieldaten entfernen"
+  takes all of it out again.
+- **A rejected form no longer empties itself.** A euro sign in a number field
+  used to cost the whole page of typing. What was entered comes back, the error
+  sits beside the field that caused it, and passwords are deliberately not
+  refilled. A field left blank to inherit a price now shows the price it would
+  inherit, marked as a default, with a button that puts the default back and
+  names the value it is putting back.
+- **Two groupings instead of one detailed one.** Skill assessment with scales
+  and dated values is replaced by **Leistungsgruppen** — Anfänger,
+  Fortgeschritten, Könner, renameable and extendable, one of them the default a
+  new child starts in — and **Altersgruppen** (Unter 12, Jugend, Erwachsene),
+  worked out from the date of birth, overridable per child, and warned about
+  when the bands leave a gap. Both live under **Verwaltung**, which is the
+  trainer's own screen: settings stayed the administrator's.
+- **The course is the one place a price lives.** A tariff belongs to exactly one
+  course, a course has a timetable rather than a single weekday — several days a
+  week, each with its own time and place — and a child can be in several
+  courses, billed for each at the tariff their enrolment names.
+- **Families can ask, and the trainer decides.** A child's page offers the
+  courses with room in them; joining, leaving and changing tariff are requests
+  that wait for the trainer's yes, counted beside **Kurse** in the menu.
+- **Billing as she bills.** Monthly, every two, three or six months, or yearly;
+  a first period prorated, charged whole, or skipped; a discount for a number of
+  months (or unlimited) as a percentage or a fixed amount; a due day on the
+  tariff that a child can override; and overdue a set number of days after that.
+  The preview says what will be created, one line per enrolment, with a reason
+  beside anybody skipped.
+- **Invoices that hold up in Austria.** The operator's own details are entered
+  once under **Einstellungen → Betrieb** and feed both the invoice and the
+  privacy notice. An invoice carries what § 11 Abs 1 UStG asks for, numbers
+  itself consecutively per year, states the § 6 Abs 1 Z 27 exemption for a
+  Kleinunternehmer or shows net, rate and tax when VAT applies, and is generated
+  as a PDF on request rather than stored. Open becomes overdue on its own; paid
+  is the trainer's word and writes real payments behind it; cancelled keeps its
+  number.
+- **Attendance where she needs it.** One screen: pick the course, pick the day,
+  every child in it, one tap each, one save — reachable from the menu and not
+  only from inside a course. A child reported absent for that day carries the
+  reason beside their name, as a note rather than a mark. The start page grew a
+  timeline of what was, what is on today and what is next.
+- **Named views.** A filtered list of children can be saved under a name and
+  opened again as a chip, each one saying underneath what it selects.
+- **A shell that stays where you put it.** The top bar is pinned, and carries
+  the language switch, a notification pane, and who you are — once, instead of
+  once at the top and once at the bottom. Profile pictures for accounts and
+  children. A default colour set by the administrator that each person can
+  override for themselves. Any page can report that something is wrong on it,
+  with a screenshot, and the report arrives with the page, the device, the
+  address and the version attached. An administrator or trainer can view the
+  portal as somebody else to see what they see, with a bar saying so and a way
+  back that works from inside the borrowed session; what they change is recorded
+  against them, not against the person they were viewing as.
+- **Messages in the shape people already know one.** Conversations down one
+  side, bubbles down the other, one box with a paper clip and a microphone.
+  Pictures, PDFs and voice notes, within a size limit that is never higher than
+  what PHP itself accepts. Writing to the trainer needs nobody's permission;
+  writing to another family needs theirs, asked for and agreed to. **A
+  conversation between two families is private: neither the trainer nor the
+  administrator can read it**, which the screen says in words. The bulk tool —
+  filters, templates, a review step — is still there, on its own page.
+- **The change log informs.** It says what changed, field by field, in the words
+  she uses, storing only what actually differed. The undo is gone: a page that
+  can put a record back is a page that can put a record back by accident, and
+  the cost of keeping it was a copy of every record on every save.
+- **The proof of payment is offered where it is easy.** A family with something
+  outstanding is asked on the page they land on — „Schon überwiesen?" — with the
+  upload one tap away, and told plainly that it is voluntary.
+- **What may be customised now says so.** Custom fields are for students only,
+  and the screen says why the rest — courses, tariffs, charges, invoices — has
+  fixed fields, and where the lists that *are* hers to change live instead.
+- **Every child has somebody to ring.** One contact is the standard one — the
+  number you reach for and the address an invoice goes to — so it cannot be
+  saved without an email, the last contact cannot be removed, and a child
+  without one is named on the student list. An invoice for a family with no
+  portal account is addressed to that contact.
+- **A feature list with steps to test it** — [TESTING.md](TESTING.md) — for the
+  administrator to walk after a code change or a release, alongside the
+  automated suites, which now run 1957 assertions.
+
 ## 0.5.0 — unreleased
 
 Installing and updating without a shell.
