@@ -135,6 +135,11 @@ $bare = make_student(['first_name'=>'Neu', 'last_name'=>'Angelegt', 'birth_date'
 foreach ([[], ['tab'=>'contacts'], ['tab'=>'absence'], ['tab'=>'attendance'], ['tab'=>'classes'],
           ['tab'=>'invoices'], ['tab'=>'payments']] as $tab)
     does_not_throw(fn() => render_view('student', ['id'=>$bare] + $tab), 'a bare record: '.json_encode($tab));
+// A child with no account is the one whose page carries the invitation form, so
+// it is the one the nested-form rule below has to see.
+$bareHtml = render_view('student', ['id'=>$bare]);
+ok(str_contains($bareHtml, 'Zugang einladen'), 'a child with no account is offered one');
+is_same(1, deepest_form_nesting($bareHtml), 'and that form is not inside the record’s own form');
 
 case_('An id that does not exist is refused rather than half-rendered');
 foreach (['student'=>['id'=>999999], 'classes'=>['id'=>999999], 'messages'=>['id'=>999999]] as $page => $query)
@@ -160,3 +165,38 @@ try { student($lena); } catch (Throwable $e) {
 }
 ok(str_contains((string)file_get_contents(APP_ROOT.'/public/index.php'), 'NotFound'),
    'and the router is what turns that into the right page');
+
+// ---------------------------------------------------------------------------
+case_('No page puts one form inside another');
+/* A form inside a form is markup the browser throws away: it keeps the outer
+   one and drops the inner, so the button that says "Bild speichern" quietly
+   submits the whole student record instead. Nothing on the page looks wrong,
+   which is why it survived on the student page until somebody counted the tags.
+
+   Counted rather than parsed, because the rule is about the tags themselves:
+   a form opened and not closed is the same bug seen from the other side. */
+function deepest_form_nesting(string $html): int {
+    $depth = 0; $deepest = 0;
+    foreach (preg_split('/(<form\b[^>]*>|<\/form\s*>)/i', $html, -1, PREG_SPLIT_DELIM_CAPTURE) as $piece) {
+        if (preg_match('/^<form\b/i', $piece)) { $depth++; $deepest = max($deepest, $depth); }
+        elseif (preg_match('/^<\/form/i', $piece)) $depth--;
+    }
+    return $depth === 0 ? $deepest : 99;   // 99: unbalanced, which is worse
+}
+is_same(1, deepest_form_nesting('<form></form><form></form>'), 'two forms in a row are one deep');
+is_same(2, deepest_form_nesting('<form><form></form></form>'), 'one inside another is two');
+is_same(99, deepest_form_nesting('<form>'), 'and a form never closed is reported, not counted as fine');
+
+sign_in_as($admin);
+foreach ($pages + $staffPages + $adminPages as $page => $variants)
+    foreach ($variants as $query) {
+        $depth = deepest_form_nesting(render_view($page, $query));
+        ok($depth <= 1, $page.' '.json_encode($query).' has no form inside a form (depth '.$depth.')');
+    }
+sign_in_as($family);
+foreach ($pages as $page => $variants)
+    foreach ($variants as $query) {
+        if ($page === 'students' && isset($query['saved'])) continue;
+        $depth = deepest_form_nesting(render_view($page, $query));
+        ok($depth <= 1, 'as a family, '.$page.' '.json_encode($query).' has no form inside a form (depth '.$depth.')');
+    }

@@ -2,6 +2,32 @@
 
 ## 0.6.0 — unreleased
 
+### Signing in belongs to the child, and a contact is somebody to ring
+
+- **One row was answering two questions.** "Who do I ring when she falls over"
+  and "who does the portal write to" were both the standard contact, and they
+  came apart in practice: the grandmother who should be rung has no email, the
+  father who reads the invoices is never in the hall. The form could not answer
+  either without lying about the other.
+- **The address is on the child now.** For a child that is a parent's address,
+  which is why it is a field rather than a second person: whoever reads the
+  invoices is whoever holds the login. **Zugang einladen** on the child's page
+  creates the account and sends the invitation there; a second child at the same
+  address joins the same account, which is how siblings share a login without a
+  second concept for it.
+- **Contacts are emergency contacts.** They need a phone number and no longer
+  need an email address. Nothing is sent to them.
+- An invitation is not sent twice to an account that has already set a password:
+  that link would have replaced a password that works.
+- The **Schüler** list names the two gaps separately, because they are filled in
+  in two different places.
+- Nobody is signed out by the update: every account keeps its own address and
+  its own password, and the new field is filled from whatever the portal was
+  already writing to.
+- **A form inside a form** on the student page meant the browser was throwing
+  the inner one away: „Bild speichern" was submitting the whole record. Every
+  page is now counted for that, for every role.
+
 ### One tariff, several ways to pay it
 
 - **Four prices for the same thing used to be four tariffs.** "252 € im Jahr,

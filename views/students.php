@@ -5,15 +5,20 @@ $all=filtered_students($f,$staff?null:(int)$user['id']);$pageNum=max(1,(int)($_G
 $overdueBy=balances(true);
 page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in this selection'),$staff?link_button(t('+ Schüler anlegen','+ Add student'),'student'):'');
 if($staff): ?>
-<?php /* Somebody to ring is the one thing a record about a child has to have,
-         so a missing one is said on the list rather than found on the day it
-         matters. */
-$missing=students_missing_contact(); if($missing): ?>
+<?php /* Two different gaps, said separately because they are filled in two
+         different places and neither is found on the day it matters: somebody
+         to ring, and somewhere to write. */
+foreach([['students'=>students_missing_contact(),
+          'heading'=>plural(count(students_missing_contact()),'Kind ohne Notfallkontakt','Kinder ohne Notfallkontakt','child with nobody to ring','children with nobody to ring'),
+          'tab'=>'contacts'],
+         ['students'=>students_missing_email(),
+          'heading'=>plural(count(students_missing_email()),'Kind ohne E-Mail-Adresse','Kinder ohne E-Mail-Adresse','child with no email address','children with no email address'),
+          'tab'=>'']] as $gap): if(!$gap['students']) continue; ?>
 <div class="notice warn">
-    <strong><?=e(plural(count($missing),'Kind ohne Standardkontakt','Kinder ohne Standardkontakt','child without a standard contact','children without a standard contact'))?></strong>
-    <p><?php foreach(array_slice($missing,0,6) as $i=>$m): ?><?=$i?', ':''?><a href="<?=e(url('student',['id'=>$m['id'],'tab'=>'contacts']))?>"><?=e($m['first_name'].' '.$m['last_name'])?></a><?php endforeach ?><?php if(count($missing)>6):?> <?=e(t('und weitere','and more'))?><?php endif ?></p>
+    <strong><?=e($gap['heading'])?></strong>
+    <p><?php foreach(array_slice($gap['students'],0,6) as $i=>$m): ?><?=$i?', ':''?><a href="<?=e(url('student',['id'=>$m['id']]+($gap['tab']?['tab'=>$gap['tab']]:[])))?>"><?=e($m['first_name'].' '.$m['last_name'])?></a><?php endforeach ?><?php if(count($gap['students'])>6):?> <?=e(t('und weitere','and more'))?><?php endif ?></p>
 </div>
-<?php endif ?>
+<?php endforeach ?>
 <?php /* Saved filters are the "views" she asked for: a named selection she opens
          instead of rebuilding. Each chip carries what it selects underneath its
          name, because a chip called "Montag" says nothing a month later. */

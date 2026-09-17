@@ -257,6 +257,22 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **7.8a** „Kontakt hinzufügen" and „Kontakt bearbeiten" ask for the same
   things, in the same words: the first box is the contact person's own name, not
   a question about whose contact it is.
+- [ ] **7.8b** A contact with a phone number and **no** email address saves.
+  That is the grandmother who answers the telephone, and she is the reason this
+  list and the portal's address are two different things now.
+- [ ] **7.8c** On the child's own page, **Zugang zum Portal** holds the address
+  the portal writes to. For a child that is a parent's address.
+- [ ] **7.8d** **Zugang einladen** on a child with no account creates one and
+  queues the invitation to that address. Check the outbox.
+- [ ] **7.8e** Invite a *second* child at the same address: one account, both
+  children on it, and — once that account has set a password — no second
+  invitation, which would have replaced a password that works.
+- [ ] **7.8f** Inviting a child at an address that belongs to a trainer or an
+  administrator is refused, and the child stays unattached.
+- [ ] **7.8g** An invoice for a child with no account is addressed to the child
+  at the child's own address, whatever email any contact has.
+- [ ] **7.8h** The **Schüler** list names two gaps separately: children with
+  nobody to ring, and children with no address.
 - [ ] **7.9** Add a second contact. It is an ordinary one. Tick
   „Als Standardkontakt verwenden" on it and the badge moves — there is never
   more than one.

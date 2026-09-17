@@ -73,6 +73,8 @@ function history_field_label(string $column): string {
         'discount_kind' => t('Art des Rabatts', 'Kind of discount'),
         'discount_note' => t('Name des Rabatts', 'Name of the discount'),
         'price_cents' => t('Preis', 'Price'),
+        'email' => t('E-Mail-Adresse', 'Email address'),
+        'account_id' => t('Zugeordnetes Konto', 'Linked account'),
         'price_note' => t('Preisvereinbarung', 'Price agreement'),
         'title' => t('Titel', 'Title'),
         'body' => t('Text', 'Text'),

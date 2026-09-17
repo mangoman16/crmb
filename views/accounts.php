@@ -1,5 +1,10 @@
 <?php page_head(t('Konten und Einladungen','Accounts and invitations'),t('Ein Konto kann mehrere Schüler verwalten.','One account can manage several students.')); ?>
-<details class="card" <?=!scalar('SELECT COUNT(*) FROM accounts WHERE role=?',['student'])?'open':''?>><summary><?=e(t('+ Konto einladen','+ Invite account'))?></summary><?php start_form('account_invite');?><div class="grid two"><?php input('name',t('Name der Kontaktperson','Account holder name'),'','text',true);input('email',t('E-Mail-Adresse','Email address'),'','email',true);select_field('locale',t('Sprache der Einladung','Invitation language'),['de'=>'Deutsch','en'=>'English'],'de',true);$roles=[];foreach(assignable_roles($user) as $r)$roles[$r]=role_label($r);
+<details class="card" <?=!scalar('SELECT COUNT(*) FROM accounts WHERE role=?',['student'])?'open':''?>><summary><?=e(t('+ Konto einladen','+ Invite account'))?></summary>
+<?php /* For a trainer or a second administrator. A family is invited from the
+         child's own page, where the address already is - inviting them here
+         means typing it a second time and then remembering to connect the two. */ ?>
+<p class="muted"><?=e(t('Für Trainerinnen und Administratoren. Eine Familie lädst du beim Kind ein – dort steht die Adresse schon, und das Konto wird gleich richtig zugeordnet.','For trainers and administrators. A family is invited from the child’s own page, where the address already is and the account is linked to the right child straight away.'))?></p>
+<?php start_form('account_invite');?><div class="grid two"><?php input('name',t('Name der Kontaktperson','Account holder name'),'','text',true);input('email',t('E-Mail-Adresse','Email address'),'','email',true);select_field('locale',t('Sprache der Einladung','Invitation language'),['de'=>'Deutsch','en'=>'English'],'de',true);$roles=[];foreach(assignable_roles($user) as $r)$roles[$r]=role_label($r);
 if(count($roles)>1)select_field('role',t('Rolle','Role'),$roles,'student',true);?></div><?php submit_button(t('Einladung senden','Send invitation'));?></form></details>
 <div class="card">
 <?php foreach(rows('SELECT a.*,(SELECT COUNT(*) FROM students s WHERE s.account_id=a.id) AS student_count FROM accounts a ORDER BY a.name') as $a): ?>

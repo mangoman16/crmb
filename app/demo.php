@@ -152,11 +152,17 @@ function demo_fill(bool $force = false): array {
             // tariff at all, which is what the billing preview has to be able to
             // explain rather than skip silently.
             $price = $i === 4 ? 4000 : ($i === 9 ? 5000 : null);
-            run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,'
+            // The address the portal writes to. For a child that is a parent's,
+            // which is why two of them share one: siblings on one login is the
+            // ordinary case, not an exception the demo should hide.
+            $writeTo = $i === 0 ? 'familie.hofer@beispiel.test'
+                     : ($i === 1 ? 'familie.berger@beispiel.test'
+                     : ($age < 18 ? 'eltern.' : '') . mb_strtolower($n[1]) . '@beispiel.test');
+            run('INSERT INTO students (account_id,first_name,last_name,email,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,'
                 .'price_cents,price_note,billing_paused,billing_note,internal_notes,revision,created_at,updated_at,is_demo)'
-                .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,1)',
+                .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,1)',
                 [$i === 0 ? $accounts['familie.hofer@beispiel.test'] : ($i === 1 ? $accounts['familie.berger@beispiel.test'] : null),
-                 $n[0], $n[1], $birth->format('Y-m-d'), $joined->format('Y-m-d'),
+                 $n[0], $n[1], $writeTo, $birth->format('Y-m-d'), $joined->format('Y-m-d'),
                  $status === 'ended' ? $today->modify('-30 days')->format('Y-m-d') : null,
                  $status,
                  // Spread across the levels, so a list filtered by one is not empty.
@@ -173,11 +179,18 @@ function demo_fill(bool $force = false): array {
             $students[] = ['id' => $id, 'course' => $courses[$course], 'age' => $age, 'index' => $i];
             $counts['students']++;
 
-            // Every child has somebody to ring. That is the point of the list.
+            // Every child has somebody to ring. That is the point of the list -
+            // and one of them has no email address at all, because the
+            // grandmother who answers the telephone is exactly the case the old
+            // "the contact we write to" rule could not express.
             run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email,is_primary) VALUES (?,?,?,?,?,1)',
                 [$id, ($age < 18 ? 'Elternteil ' : '') . $n[1],
                  $age < 18 ? 'Erziehungsberechtigt' : 'Selbst',
-                 '+43 660 ' . (1000000 + $i * 13), mb_strtolower($n[1]) . '@beispiel.test']);
+                 '+43 660 ' . (1000000 + $i * 13),
+                 $i === 3 ? '' : mb_strtolower($n[1]) . '@beispiel.test']);
+            if ($i === 3)
+                run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email,is_primary) VALUES (?,?,?,?,?,0)',
+                    [$id, 'Oma ' . $n[1], 'Großmutter', '+43 660 ' . (2000000 + $i * 13), '']);
 
             // Everybody is on the first tariff their course offers; one pays it
             // half-yearly and one quarterly, so a longer billing period is there

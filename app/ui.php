@@ -285,9 +285,10 @@ function contact_fields(array $contact=[], bool $standard=false): void {
           '',t('z. B. Maria Hofer','e.g. Maria Hofer'));
     input('relation_label',t('Beziehung zum Kind','Relationship to the child'),$contact['relation_label']??'','text',true,
           '',t('z. B. Mutter','e.g. mother'));
-    input('phone',t('Telefonnummer','Phone number'),$contact['phone']??'','tel');
-    input('email',t('E-Mail-Adresse','Email address'),$contact['email']??'','email',$standard,
-          $standard?t('Dorthin gehen Rechnungen und Erinnerungen.','Invoices and reminders go here.'):'');
+    input('phone',t('Telefonnummer','Phone number'),$contact['phone']??'','tel',false,
+          t('Das Wichtigste an einem Notfallkontakt.','The thing that makes an emergency contact useful.'));
+    input('email',t('E-Mail-Adresse (optional)','Email address (optional)'),$contact['email']??'','email',false,
+          t('Nur als Notiz. Rechnungen und Einladungen gehen an die Adresse des Kindes.','A note only. Invoices and invitations go to the child’s own address.'));
     echo '</div>';
 }
 

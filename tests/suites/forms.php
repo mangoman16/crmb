@@ -119,3 +119,21 @@ ok(isset($withOdd['37']), 'a stored 17:37 keeps its minute');
 is_same(['00','05','10','15','20','25','30','35','37','40','45','50','55'], array_values($withOdd), 'in its place in the order');
 ok(str_contains(select_options($withOdd,'37'),'value="37" selected'), 'and it is the one shown as chosen');
 is_same($every5, minute_options('30'), 'and a time already on the grid adds nothing');
+
+// ---------------------------------------------------------------------------
+case_('A student saved with a tariff and no price of their own follows the tariff');
+/* The tariff carries a rate per interval now rather than a price column, and
+   reading the column that used to be there would have filed the child at no
+   price at all - silently, because an undefined key is a warning, not a stop. */
+sign_in_as(make_account(['role'=>'admin']));
+$course = make_class(['name'=>'Kindertraining']);
+$priced = make_tariff(['class_id'=>$course, 'name'=>'Beitrag', 'interval_months'=>3,
+                       'rates'=>[1=>3700, 3=>9900]]);
+act('student_save', ['first_name'=>'Preis', 'last_name'=>'Folger', 'birth_date'=>'', 'joined_on'=>today(),
+                     'ended_on'=>'', 'status'=>'active', 'tariff_id'=>(string)$priced, 'price'=>'',
+                     'price_note'=>'', 'internal_notes'=>'', 'revision'=>'1']);
+$saved = one("SELECT * FROM students WHERE first_name='Preis'");
+is_same(9900, (int)$saved['price_cents'], 'the price of the tariff at its usual interval');
+is_same(9900, tariff_price($priced), 'which is what tariff_price says it is');
+is_same(null, tariff_price(null), 'and no tariff is no price');
+is_same(null, tariff_price(999999), 'as is a tariff that is not there');

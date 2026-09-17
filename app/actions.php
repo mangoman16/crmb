@@ -79,6 +79,41 @@ function dispatch_action(string $action): array {
         $id=(int)db()->lastInsertId();
         send_account_token(one('SELECT * FROM accounts WHERE id=?',[$id]),'invite');audit('account.invited','account',$id);
         flash(t('Konto angelegt. Die Einladung liegt im Postausgang.','Account created. The invitation is in the outbox.'));return ['accounts',[]];
+    case 'student_invite':
+        /* The invitation goes to the child's own record rather than to one of
+           the people on their emergency list. Those are two different questions
+           - who do I ring when she falls over, who reads the invoices - and one
+           row answering both is how a grandmother with no email ended up being
+           the reason a family could not sign in.
+
+           An address that already has an account is linked rather than
+           duplicated, which is what makes "both parents" and "three siblings on
+           one login" work without a second concept. */
+        $u=require_staff();$s=student((int)post('student_id'));
+        if($s['account_id']) throw new UserError(t('Dieses Kind ist schon einem Konto zugeordnet.','This child already belongs to an account.'));
+        $email=email_value(post('email')!==''?post('email'):(string)$s['email']);
+        $name=trim(post('name'))!==''?required_text('name'):$s['first_name'].' '.$s['last_name'];
+        $existing=one('SELECT * FROM accounts WHERE email=? FOR UPDATE',[$email]);
+        if($existing) {
+            if($existing['role']!=='student') throw new UserError(t('Diese Adresse gehört schon zu einem Konto der Verwaltung.','That address already belongs to a management account.'));
+            $accountId=(int)$existing['id'];
+        } else {
+            run('INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,?,?,?)',
+                [$name,$email,'student',choose(post('locale','de'),['de','en']),now()]);
+            $accountId=(int)db()->lastInsertId();
+        }
+        run('UPDATE students SET account_id=?,email=?,updated_at=?,revision=revision+1 WHERE id=?',[$accountId,$email,now(),$s['id']]);
+        // An account that has already set a password is being given another
+        // child to look after, not invited again: a second invitation would
+        // reset a password that works.
+        $account=one('SELECT * FROM accounts WHERE id=?',[$accountId]);
+        if($account['state']==='invited' && !$account['verified_at']) { send_account_token($account,'invite'); $sent=true; }
+        else $sent=false;
+        audit($existing?'account.linked':'account.invited','account',$accountId);
+        flash($sent
+            ? t('Einladung liegt im Postausgang.','The invitation is in the outbox.')
+            : t('Das Kind wurde dem bestehenden Konto zugeordnet. Es kann sich wie bisher anmelden.','The child was added to the existing account. It signs in as before.'));
+        return ['student',['id'=>$s['id']]];
     case 'account_state':
         $u=require_staff();$id=(int)post('id');$mode=choose(post('mode'),['suspend','restore','delete','reinvite']);
         $a=one('SELECT * FROM accounts WHERE id=? FOR UPDATE',[$id]);
@@ -107,7 +142,10 @@ function dispatch_action(string $action): array {
             if($accountId && !one("SELECT id FROM accounts WHERE id=? AND role='student'",[$accountId])) throw new UserError(t('Schülerkonto nicht gefunden.','Student account not found.'));
             $tariffId=(int)post('tariff_id')?:null;$tariff=$tariffId?one('SELECT * FROM tariffs WHERE id=?',[$tariffId]):null;
             if($tariffId && (!$tariff || ($tariff['archived'] && $tariffId!==(int)($existing['tariff_id']??0)))) throw new UserError(t('Tarif ist nicht verfügbar.','Tariff is not available.'));
-            $price=post('price')!==''?cents(post('price')):($tariff?(int)$tariff['price_cents']:null);
+            // Through tariff_price(): a tariff has a rate per interval now, not a
+            // price column, and reading a column that no longer exists would have
+            // filed the student at no price at all rather than at the tariff's.
+            $price=post('price')!==''?cents(post('price')):tariff_price($tariffId);
             $status=post('status');if(!isset(statuses()[$status]) && !($existing && $status===$existing['status'])) throw new UserError(t('Bitte einen Status auswählen.','Please choose a status.'));
             // A child is always in a level, so an unanswered field means the
             // default rather than nothing. An age group is the opposite: blank is
@@ -116,15 +154,19 @@ function dispatch_action(string $action): array {
             $levelId=reference_or_null('levels','level_id') ?? (int)(level_default()['id'] ?? 0) ?: null;
             $ageGroupId=reference_or_null('age_groups','age_group_id');
             $join=date_value(post('joined_on'));$end=date_value(post('ended_on'));date_range($join,$end);
-            $args=[$accountId,$first,$last,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
+            // Where the portal writes to this family, which for a child is a
+            // parent's address. Optional while the record is being set up, and
+            // asked for by contact_gap() until it is there.
+            $email=post('email')!==''?email_value(post('email')):'';
+            $args=[$accountId,$first,$last,$email,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
             if($id) {
                 tracked('students',$id,$first.' '.$last,function() use ($args,$id) {
-                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
+                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,email=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
                     if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
                 });
             }
             else {$id=tracked_insert('students',$first.' '.$last,function() use ($args) {
-                run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+                run('INSERT INTO students (account_id,first_name,last_name,email,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
                 return (int)db()->lastInsertId();
             });}
         } else {
@@ -139,14 +181,15 @@ function dispatch_action(string $action): array {
         tracked('students',(int)$s['id'],$s['first_name'].' '.$s['last_name'],fn()=>run('DELETE FROM students WHERE id=?',[$s['id']]),'delete');
         audit('student.deleted','student',(int)$s['id']);
         flash(t('Schüler gelöscht. Das lässt sich unter „Änderungen“ rückgängig machen.','Student deleted. This can be undone under “Changes”.'));return ['students',[]];
-    /* Contacts: a child always has one, one of them is the standard one, and the
-       standard one has an email address - that is where an invoice and a
-       reminder go. The three rules live here, in the three actions that can
-       break them, rather than in the page that happens to show them. */
+    /* Contacts: a child always has one, and one of them is the one to try first.
+       They are people to ring and nothing else now - a phone number is what
+       makes one useful, and an email address on one is a convenience, not the
+       address the portal writes to. That one is on the child. The rules live
+       here, in the actions that can break them, rather than in the page that
+       happens to show them. */
     case 'contact_add':
         $s=student((int)post('student_id'));$email=contact_email();
         $standard=!student_contacts((int)$s['id']) || post('is_primary');   // the first one is it, without being asked
-        if($standard) contact_needs_email($email);
         if($standard) run('UPDATE contacts SET is_primary=0 WHERE student_id=?',[$s['id']]);
         run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email,is_primary) VALUES (?,?,?,?,?,?)',[$s['id'],required_text('owner_name'),required_text('relation_label',100),text_limit('phone',80),$email,$standard?1:0]);
         audit('contact.added','student',(int)$s['id']);return ['student',['id'=>$s['id'],'tab'=>'contacts']];
@@ -167,7 +210,6 @@ function dispatch_action(string $action): array {
         // Unticking the box does not take the standard away: another contact is
         // made the standard one instead, so the child is never left without.
         $standard=(int)$contact['is_primary']===1 || (bool)post('is_primary');
-        if($standard) contact_needs_email($email);
         if($standard) run('UPDATE contacts SET is_primary=0 WHERE student_id=?',[$s['id']]);
         run('UPDATE contacts SET owner_name=?,relation_label=?,phone=?,email=?,is_primary=? WHERE id=? AND student_id=?',[required_text('owner_name'),required_text('relation_label',100),text_limit('phone',80),$email,$standard?1:0,(int)$contact['id'],$s['id']]);
         audit('contact.updated','student',(int)$s['id']);return ['student',['id'=>$s['id'],'tab'=>'contacts']];
