@@ -88,6 +88,7 @@ $staffPages = [
     'payments'   => [[], ['period'=>'2026-09']],
     'invoices'   => [[], ['state'=>'open'], ['state'=>'overdue'], ['state'=>'paid'], ['state'=>'all']],
     'accounts'   => [[]],
+    'print'      => [[], ['id'=>$lena]],
     'outbox'     => [[], ['p'=>1]],
     'compose'    => [[], ['course'=>$course]],
     'manage'     => [[], ['tab'=>'levels'], ['tab'=>'ages'], ['tab'=>'members'], ['tab'=>'tariffs'],
@@ -200,3 +201,36 @@ foreach ($pages as $page => $variants)
         $depth = deepest_form_nesting(render_view($page, $query));
         ok($depth <= 1, 'as a family, '.$page.' '.json_encode($query).' has no form inside a form (depth '.$depth.')');
     }
+
+// ---------------------------------------------------------------------------
+case_('What goes on paper is exactly what the portal can hold');
+/* A blank form that asks for something with nowhere to go produces a family who
+   wrote it down and a trainer with nowhere to type it - and a filled sheet that
+   leaves something out is a sheet nobody can check. So both are the same
+   layout, and this is the rule that keeps them so. */
+sign_in_as($trainer);
+fixture('field_definitions', ['label'=>'Verein bisher', 'label_en'=>'Previous club', 'field_type'=>'text',
+                              'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
+                              'visibility'=>'view', 'sort_order'=>5, 'archived'=>0]);
+fixture('field_definitions', ['label'=>'Nur intern', 'label_en'=>'', 'field_type'=>'text',
+                              'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
+                              'visibility'=>'internal', 'sort_order'=>6, 'archived'=>0]);
+$blank = render_view('print');
+foreach (['Vorname', 'Nachname', 'Geburtsdatum', 'E-Mail-Adresse', 'Notfallkontakte', 'Verein bisher'] as $asked)
+    ok(str_contains($blank, $asked), 'the blank form asks for '.$asked);
+ok(!str_contains($blank, 'Nur intern'), 'and not for a field marked internal, which is hers and not theirs');
+ok(substr_count($blank, 'sheet-contact') >= 2, 'with room for two people to ring, not one');
+ok(str_contains($blank, 'print-boxes'), 'in boxes, one letter each');
+ok(!str_contains($blank, 'print-value'), 'and nothing filled in');
+ok(str_contains($blank, 'nicht verkauft'), 'saying what happens to what they write down');
+
+$sheet = render_view('print', ['id'=>$lena]);
+ok(str_contains($sheet, 'print-value'), 'the data sheet has values on it');
+ok(str_contains($sheet, 'Lena'), 'the child’s name among them');
+ok(str_contains($sheet, 'Maria Hofer'), 'and the person to ring');
+ok(str_contains($sheet, 'Unterschrift'), 'with somewhere to sign that it was checked');
+is_same(0, deepest_form_nesting($blank), 'and no form at all on it: it is printed, not submitted');
+
+case_('And it is staff-only, because it carries a family’s details');
+sign_in_as($family);
+throws(fn() => render_view('print', ['id'=>$lena]), 'a family does not open the print view', 'Zugriff');

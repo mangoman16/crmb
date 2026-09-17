@@ -83,6 +83,7 @@ $expected = [
     'download' => 'everyone',   // decides per file, inside serve_download()
     'accounts' => 'staff', 'payments' => 'staff', 'compose' => 'staff', 'outbox' => 'staff',
     'classes' => 'staff', 'manage' => 'staff', 'invoices' => 'staff', 'attendance' => 'staff',
+    'print' => 'staff',
     'settings' => 'admin', 'history' => 'admin',
 ];
 $list = function (string $pattern) use ($router): array {

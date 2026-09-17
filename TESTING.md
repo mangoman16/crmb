@@ -273,6 +273,17 @@ Skip on an ordinary code change; do all of it before a release.
   at the child's own address, whatever email any contact has.
 - [ ] **7.8h** The **Schüler** list names two gaps separately: children with
   nobody to ring, and children with no address.
+- [ ] **7.12** **Schüler → Leeres Formular drucken**: a registration form on
+  **one** sheet of A4, boxes one letter wide, two people to ring side by side.
+  Print it for real and check it is one page with headers and footers off.
+- [ ] **7.13** The blank form asks for exactly what the portal stores — every
+  custom field that is not marked *internal*, and nothing else. Add a custom
+  field and it appears; mark one internal and it does not.
+- [ ] **7.14** **Ein Kind → Datenblatt drucken**: the same layout with the
+  values filled in, a date, and a line to sign that they were checked. Also one
+  page.
+- [ ] **7.15** Both say what happens to the data, and neither is reachable by a
+  family.
 - [ ] **7.9** Add a second contact. It is an ordinary one. Tick
   „Als Standardkontakt verwenden" on it and the badge moves — there is never
   more than one.

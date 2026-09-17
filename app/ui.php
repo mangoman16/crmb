@@ -352,3 +352,39 @@ function select_options(array $options,mixed $value): string {
         $out.='<option value="'.e((string)$key).'" '.((string)$key===(string)$value?'selected':'').'>'.e((string)$label).'</option>';
     return $out;
 }
+
+/**
+ * One line of a paper form: a label, and either boxes to write in or a value.
+ *
+ * Boxes, one per character, because that is what a form somebody fills in with a
+ * biro looks like: block capitals, one letter per box, legible to whoever types
+ * it back in afterwards. The alternative - a ruled line - produces handwriting
+ * nobody can read and a date that might be 03/04 or 04/03.
+ *
+ * $value fills it in instead, for the sheet she prints out and hands back after
+ * entering somebody's details herself. Marked aria-hidden because a screen
+ * reader reading out twenty-four empty boxes is nobody's idea of a form; the
+ * label and the value carry the meaning.
+ */
+function print_field(string $label, int $boxes = 18, string $value = '', string $hint = '', bool $wide = false): void {
+    echo '<div class="print-field'.($wide?' print-wide':'').'"><span class="print-label">'.e($label)
+        .($hint!==''?' <small>('.e($hint).')</small>':'').'</span>';
+    if ($value !== '') echo '<span class="print-value">'.e($value).'</span>';
+    else {
+        echo '<span class="print-boxes" aria-hidden="true">';
+        for ($i = 0; $i < max(1, $boxes); $i++) echo '<span></span>';
+        echo '</span>';
+    }
+    echo '</div>';
+}
+
+/** A tick box on a paper form, ticked when the portal already knows the answer. */
+function print_tick(string $label, ?bool $ticked = null): void {
+    echo '<div class="print-tick"><span class="print-box">'.($ticked ? '&#10003;' : '').'</span>'
+        .'<span>'.e($label).'</span></div>';
+}
+
+/** A line to sign on, with what it is for underneath it. */
+function print_signature(string $label): void {
+    echo '<div class="print-sign"><span class="print-rule"></span><small>'.e($label).'</small></div>';
+}

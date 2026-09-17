@@ -2,6 +2,19 @@
 
 ## 0.6.0 — unreleased
 
+### Two things to print
+
+- **A blank registration form**, for a parent standing in the hall with a biro.
+  One letter per box, in block capitals, because a ruled line produces
+  handwriting nobody can read back and a date that might be 03/04 or 04/03.
+- **A data sheet** for a child whose details the trainer typed in herself, to
+  hand back for checking and signing.
+- Both are the same layout on purpose: what is asked for on paper is exactly
+  what the portal stores — including her own custom fields, and never the ones
+  she marked internal. Nothing is collected that has nowhere to go.
+- Both fit on one sheet of A4, which was measured by generating the PDF and
+  counting its pages. A screenshot said the form fitted; the printer said two.
+
 ### Signing in belongs to the child, and a contact is somebody to ring
 
 - **One row was answering two questions.** "Who do I ring when she falls over"

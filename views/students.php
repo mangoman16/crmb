@@ -3,7 +3,9 @@ $staff=is_staff($user);$f=filters_from($_GET);
 if($staff && !empty($_GET['saved'])){$saved=one('SELECT * FROM saved_filters WHERE id=?',[(int)$_GET['saved']]);if($saved)$f=json_decode($saved['criteria_json'],true);}
 $all=filtered_students($f,$staff?null:(int)$user['id']);$pageNum=max(1,(int)($_GET['p']??1));$visible=array_slice($all,($pageNum-1)*50,50);
 $overdueBy=balances(true);
-page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in this selection'),$staff?link_button(t('+ Schüler anlegen','+ Add student'),'student'):'');
+page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in this selection'),
+    $staff?link_button(t('Leeres Formular drucken','Print a blank form'),'print',[],'secondary')
+           .link_button(t('+ Schüler anlegen','+ Add student'),'student'):'');
 if($staff): ?>
 <?php /* Two different gaps, said separately because they are filled in two
          different places and neither is found on the day it matters: somebody
