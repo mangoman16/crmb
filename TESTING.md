@@ -315,6 +315,17 @@ Skip on an ordinary code change; do all of it before a release.
 
 ## Attendance
 
+- [ ] **9.x** On a device whose language is set to **English (US)**, open a
+  course and its times. Every time is 24 hours — "16:00", never "04:00 PM" —
+  because the boxes are the portal's own, not the browser's picker. Change one,
+  save, reopen: it is what you chose.
+- [ ] **9.x.1** A day with an hour but no minute is refused by name rather than
+  stored as "on the hour".
+- [ ] **9.x.2** A course whose time is not on a five-minute boundary (17:37, say)
+  still shows 37 in the minute box, and saving something else on that form does
+  not move it.
+- [ ] **9.x.3** „+ Weiterer Trainingstag" adds an empty row — the new row does
+  not inherit the time of the row above it.
 - [ ] **10.1** **Anwesenheit** in the menu opens one screen: pick a course, pick
   a date, see every child in it, one tap each, one save.
 - [ ] **10.2** The date offered is the course's own training day, not today when

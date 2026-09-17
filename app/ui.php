@@ -84,8 +84,9 @@ function select_field(string $name,string $label,array $options,mixed $value='',
     $value=held_input($name,$value);
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
     echo '<div class="field"><label for="'.e($id).'">'.e($label).($required?' *':'').'</label><select id="'.e($id).'" name="'.e($name).($multiple?'[]':'').'" '.($required?'required ':'').($multiple?'multiple size="4"':'').'>';
-    if(!$multiple)echo '<option value="">'.e(t('Auswählen','Select')).'</option>';
-    foreach($options as $k=>$v)echo '<option value="'.e($k).'" '.(($multiple?in_array((string)$k,array_map('strval',is_array($value)?$value:[]),true):(string)$k===(string)$value)?'selected':'').'>'.e($v).'</option>';
+    if(!$multiple) echo select_options(['' => t('Auswählen','Select')]+$options,$value);
+    else foreach($options as $k=>$v)
+        echo '<option value="'.e($k).'" '.(in_array((string)$k,array_map('strval',is_array($value)?$value:[]),true)?'selected':'').'>'.e($v).'</option>';
     echo '</select></div>';
 }
 function check_field(string $name,string $label,bool $value=false): void {
@@ -288,4 +289,70 @@ function contact_fields(array $contact=[], bool $standard=false): void {
     input('email',t('E-Mail-Adresse','Email address'),$contact['email']??'','email',$standard,
           $standard?t('Dorthin gehen Rechnungen und Erinnerungen.','Invoices and reminders go here.'):'');
     echo '</div>';
+}
+
+/**
+ * The choices in the minute box: every five minutes, plus whatever is stored.
+ *
+ * Training starts at half past, not at 17:37, so twelve choices are a wheel you
+ * can flick rather than one you have to aim at. A time already in the database
+ * that is not on the grid is kept in the list, or saving an unrelated change
+ * would quietly move it.
+ */
+function minute_options(string $current=''): array {
+    $out=[];
+    for($m=0;$m<60;$m+=5) $out[]=sprintf('%02d',$m);
+    if($current!=='' && !in_array($current,$out,true)) { $out[]=$current; sort($out); }
+    return array_combine($out,$out);
+}
+
+/**
+ * A time of day, as an hour box and a minute box.
+ *
+ * Not <input type="time">: that one renders in the language of the phone or the
+ * computer rather than of the page, so a device set to English shows "05:30 PM"
+ * however the portal is set - and a trainer reading 17:30 off a hall timetable
+ * should not have to translate it. Two boxes are the same 24-hour time on every
+ * device, and on a phone they are the same native wheel the picker would have
+ * been.
+ *
+ * Posts as <name>_h and <name>_m; posted_time() puts them back together.
+ */
+function time_field(string $name,string $label,string $value='',bool $required=false,string $hint=''): void {
+    [$hour,$minute]=time_parts($value);
+    $hour=(string)held_input($name.'_h',$hour); $minute=(string)held_input($name.'_m',$minute);
+    $blank=$required?[]:['' => '–'];
+    $hours=[]; for($h=0;$h<24;$h++) $hours[sprintf('%02d',$h)]=sprintf('%02d',$h);
+    echo '<div class="field"><label for="'.e($name).'_h">'.e($label).($required?' <span aria-hidden="true">*</span>':'').'</label>'
+        .'<div class="time-field">'
+        .'<select name="'.e($name).'_h" id="'.e($name).'_h" aria-label="'.e($label.' – '.t('Stunde','hour')).'">'
+        .select_options($blank+$hours,$hour).'</select>'
+        .'<span class="time-colon" aria-hidden="true">:</span>'
+        .'<select name="'.e($name).'_m" aria-label="'.e($label.' – '.t('Minute','minute')).'">'
+        .select_options($blank+minute_options($minute),$minute).'</select>'
+        .'</div>'.($hint?'<small>'.e($hint).'</small>':'').'</div>';
+}
+
+/** The two boxes of a repeating row, without the label a single field carries. */
+function time_cells(string $name,string $label,string $value=''): string {
+    [$hour,$minute]=time_parts($value);
+    $hours=['' => '–']; for($h=0;$h<24;$h++) $hours[sprintf('%02d',$h)]=sprintf('%02d',$h);
+    return '<span class="time-field">'
+        .'<select name="'.e($name).'_h[]" aria-label="'.e($label.' – '.t('Stunde','hour')).'">'.select_options($hours,$hour).'</select>'
+        .'<span class="time-colon" aria-hidden="true">:</span>'
+        .'<select name="'.e($name).'_m[]" aria-label="'.e($label.' – '.t('Minute','minute')).'">'
+        .select_options(['' => '–']+minute_options($minute),$minute).'</select></span>';
+}
+
+/** "17:30:00" or "17:30" as ['17','30']; anything else as two empty strings. */
+function time_parts(string $value): array {
+    return preg_match('/^([01]\d|2[0-3]):([0-5]\d)/',trim($value),$m)?[$m[1],$m[2]]:['',''];
+}
+
+/** The <option> list of a select, escaped. */
+function select_options(array $options,mixed $value): string {
+    $out='';
+    foreach($options as $key=>$label)
+        $out.='<option value="'.e((string)$key).'" '.((string)$key===(string)$value?'selected':'').'>'.e((string)$label).'</option>';
+    return $out;
 }

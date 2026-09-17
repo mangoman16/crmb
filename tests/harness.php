@@ -449,6 +449,26 @@ function render_view(string $page, array $query = []): string {
     }
 }
 
+/**
+ * The fields one time box posts, written as the time a person would say.
+ *
+ * The form posts an hour and a minute separately, because <input type="time">
+ * renders in the language of the device rather than of the page. A suite should
+ * still read as "16:00", so it says that and this splits it.
+ *
+ *   act('x', ['a'=>1] + time_post('starts_at', '16:00'));
+ *   act('y', time_post('day_starts_at', ['16:00', '18:00', '']));
+ */
+function time_post(string $name, string|array $value): array {
+    if (is_array($value)) {
+        $hours = []; $minutes = [];
+        foreach ($value as $one) { [$h, $m] = time_parts((string)$one); $hours[] = $h; $minutes[] = $m; }
+        return [$name.'_h' => $hours, $name.'_m' => $minutes];
+    }
+    [$hour, $minute] = time_parts($value);
+    return [$name.'_h' => $hour, $name.'_m' => $minute];
+}
+
 /** Populate $_POST for an action, including the fields handle_post() requires. */
 function post_data(array $fields): void {
     $_POST = $fields;

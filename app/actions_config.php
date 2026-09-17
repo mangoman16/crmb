@@ -45,7 +45,7 @@ function dispatch_config(string $action): array {
         require_staff(); $c=training_class((int)post('class_id'));
         $on=date_value(post('session_on'),true);
         $status=choose(post('status','planned'),array_keys(session_statuses()));
-        $from=time_value(post('starts_at')); $to=time_value(post('ends_at'));
+        $from=posted_time('starts_at'); $to=posted_time('ends_at');
         if($from && $to && $from>=$to) throw new UserError(t('Das Ende muss nach dem Beginn liegen.','The end time must be after the start time.'));
         // "Findet statt" with nothing else changed is the weekly pattern, so the
         // row is removed rather than stored: a table of rows that say "as usual"

@@ -32,6 +32,14 @@
   and the same box said „Name" on the edit form next to it. The two forms had
   been written out twice and drifted; they are one fieldset now, and it asks for
   „Name der Kontaktperson".
+- **A time of day was shown in the language of the device, not of the portal.**
+  `<input type="time">` ignores the page and follows the phone or the computer,
+  so on a device set to English every training time read "04:00 PM" however the
+  portal was set — and a trainer copying 16:00 off a hall timetable should not
+  have to translate it. Times are an hour box and a minute box now: 24 hours on
+  every device, every five minutes, and a time already stored that is not on
+  that grid keeps its place in the list rather than being quietly moved. An hour
+  with no minute is refused instead of being stored as "on the hour".
 - **Every signed-out page says what happens to the data**: the privacy notice
   applies, only the cookies the portal needs to work are set, there is no
   analytics and no advertising, and nothing is sold or passed to anybody else.

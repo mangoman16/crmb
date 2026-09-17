@@ -78,3 +78,44 @@ $html = render_view('student', ['id'=>$student]);
 ok(str_contains($html, 'value="40.00"'), 'her own price is in the box');
 ok(str_contains($html, '45,00'), 'the tariff price is still named, so the difference is visible');
 ok(!str_contains($html, 'with-default is-default'), 'and the field is no longer marked as following the default');
+
+// ---------------------------------------------------------------------------
+case_('A time of day is 24 hours on every device, because the page decides it');
+/* <input type="time"> renders in the language of the phone or the computer, not
+   of the page: a device set to English shows "05:30 PM" however the portal is
+   set. So a time is an hour box and a minute box, posted separately. */
+is_same(['17','30'], time_parts('17:30:00'), 'a stored time splits into two boxes');
+is_same(['17','30'], time_parts('17:30'), 'with or without the seconds');
+is_same(['',''], time_parts(''), 'and nothing at all is two empty boxes');
+is_same(['',''], time_parts('5:30 PM'), 'a twelve-hour time is not a time this portal wrote');
+is_same(['00','00'], time_parts('00:00:00'), 'midnight is a time, not an absence');
+
+post_data(time_post('starts_at', '17:30'));
+is_same('17:30:00', posted_time('starts_at'), 'the two boxes come back as one time');
+post_data(time_post('starts_at', ''));
+is_same(null, posted_time('starts_at'), 'both left alone means no time was given');
+// Half a time is somebody who stopped in the middle, not somebody who meant
+// "on the hour" - and stored as 17:00 it would be a training session that
+// silently starts at the wrong time.
+post_data(['starts_at_h'=>'17', 'starts_at_m'=>'']);
+throws(fn() => posted_time('starts_at'), 'an hour with no minute is refused', 'Stunde und Minute');
+post_data(['starts_at_h'=>'', 'starts_at_m'=>'30']);
+throws(fn() => posted_time('starts_at'), 'and a minute with no hour', 'Stunde und Minute');
+post_data(['starts_at_h'=>'25', 'starts_at_m'=>'00']);
+throws(fn() => posted_time('starts_at'), 'a 25th hour is refused', 'HH:MM');
+
+case_('The minute box offers every five minutes, and never loses a stored time');
+$every5 = minute_options();
+is_same(12, count($every5), 'twelve choices, not sixty');
+ok(isset($every5['00']) && isset($every5['55']), 'from on the hour to five to');
+ok(!isset($every5['37']), 'and nothing in between');
+// A time already in the database that is not on the grid has to stay in the
+// list, or saving an unrelated change on that form would quietly move it.
+$withOdd = minute_options('37');
+ok(isset($withOdd['37']), 'a stored 17:37 keeps its minute');
+// Compared as values: PHP turns "10" into the integer key 10 but leaves "00"
+// and "05" alone, so the keys of this map are deliberately not all one type.
+// Everything that reads it casts to string, which is what select_options does.
+is_same(['00','05','10','15','20','25','30','35','37','40','45','50','55'], array_values($withOdd), 'in its place in the order');
+ok(str_contains(select_options($withOdd,'37'),'value="37" selected'), 'and it is the one shown as chosen');
+is_same($every5, minute_options('30'), 'and a time already on the grid adds nothing');

@@ -20,6 +20,21 @@ function time_value(string $value): ?string {
     return $m[0].':00';
 }
 
+/**
+ * The time posted by one time_field(), or null when it was left blank.
+ *
+ * The hour and the minute arrive as two boxes, because <input type="time">
+ * renders in the language of the device rather than of the page. Half a time is
+ * a mistake worth naming: an hour with no minute is somebody who stopped
+ * half-way, not somebody who meant "on the hour".
+ */
+function posted_time(string $name): ?string {
+    $hour=post($name.'_h'); $minute=post($name.'_m');
+    if($hour==='' && $minute==='') return null;
+    if($hour==='' || $minute==='') throw new UserError(t('Bitte Stunde und Minute angeben.','Please give both the hour and the minute.'));
+    return time_value($hour.':'.$minute);
+}
+
 /** A decimal from a form, accepting a comma as the separator. */
 function decimal_value(string $value): float {
     $v=str_replace(',','.',trim($value));
@@ -85,6 +100,27 @@ function valid_iban(string $iban): bool {
 }
 
 /**
+ * The times of one column of repeating rows, as row index to "HH:MM:00".
+ *
+ * Each row posts its hour and its minute separately, so a row that is there at
+ * all has both or neither; a row with only one of them is refused rather than
+ * stored as midnight.
+ */
+function posted_time_rows(string $name): array {
+    $hours=$_POST[$name.'_h']??[]; $minutes=$_POST[$name.'_m']??[];
+    if(!is_array($hours) || !is_array($minutes)) throw new UserError(t('Ungültige Termine.','Invalid schedule.'));
+    $out=[];
+    foreach($hours as $i=>$hour) {
+        $hour=is_scalar($hour)?trim((string)$hour):'';
+        $minute=is_scalar($minutes[$i]??'')?trim((string)($minutes[$i]??'')):'';
+        if($hour==='' && $minute==='') { $out[$i]=null; continue; }
+        if($hour==='' || $minute==='') throw new UserError(t('Bitte Stunde und Minute angeben.','Please give both the hour and the minute.'));
+        $out[$i]=time_value($hour.':'.$minute);
+    }
+    return $out;
+}
+
+/**
  * The weekly pattern a course form posts: one row per meeting day.
  *
  * Rows arrive as parallel arrays, the way the settings map editor already does
@@ -93,16 +129,15 @@ function valid_iban(string $iban): bool {
  * the form and is dropped rather than refused.
  */
 function class_days_from_post(): array {
-    $weekdays=$_POST['day_weekday']??[]; $starts=$_POST['day_starts_at']??[];
-    $ends=$_POST['day_ends_at']??[]; $places=$_POST['day_location']??[];
-    foreach([$weekdays,$starts,$ends,$places] as $list)
+    $weekdays=$_POST['day_weekday']??[]; $places=$_POST['day_location']??[];
+    $starts=posted_time_rows('day_starts_at'); $ends=posted_time_rows('day_ends_at');
+    foreach([$weekdays,$places] as $list)
         if(!is_array($list)) throw new UserError(t('Ungültige Termine.','Invalid schedule.'));
     $out=[]; $seen=[];
     foreach($weekdays as $i=>$weekday) {
         if(!is_scalar($weekday) || trim((string)$weekday)==='') continue;
         $day=(int)choose(trim((string)$weekday),array_map('strval',array_keys(weekdays())));
-        $from=time_value(is_scalar($starts[$i]??'')?(string)($starts[$i]??''):'');
-        $to=time_value(is_scalar($ends[$i]??'')?(string)($ends[$i]??''):'');
+        $from=$starts[$i]??null; $to=$ends[$i]??null;
         if($from && $to && $from>=$to)
             throw new UserError(weekdays()[$day].': '.t('Das Ende muss nach dem Beginn liegen.','The end time must be after the start time.'));
         $where=is_scalar($places[$i]??'')?trim((string)($places[$i]??'')):'';

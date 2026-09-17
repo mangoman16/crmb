@@ -5,7 +5,7 @@ $course = make_class(['name'=>'Kindertraining','location'=>'Sporthalle Nord','da
 
 case_('A course can meet more than once a week, each day in its own place');
 act('class_save', ['id'=>$course, 'name'=>'Kindertraining', 'location'=>'Sporthalle Nord',
-    'day_weekday'=>['1','4',''], 'day_starts_at'=>['16:00','18:00',''], 'day_ends_at'=>['17:30','19:30',''],
+    'day_weekday'=>['1','4',''],] + time_post('day_starts_at', ['16:00','18:00','']) + time_post('day_ends_at', ['17:30','19:30','']) + [
     'day_location'=>['','Turnsaal Ost','']]);
 $days = class_days($course);
 is_same(2, count($days), 'both days were kept and the blank row dropped');
@@ -18,18 +18,18 @@ ok(str_contains(class_schedule($class, $days), '|'), 'the whole pattern reads as
 
 case_('An impossible day is refused by name');
 throws(fn() => act('class_save', ['id'=>$course, 'name'=>'Kindertraining',
-    'day_weekday'=>['1'], 'day_starts_at'=>['18:00'], 'day_ends_at'=>['16:00'], 'day_location'=>['']]),
+    'day_weekday'=>['1'], 'day_location'=>['']] + time_post('day_starts_at', ['18:00']) + time_post('day_ends_at', ['16:00'])),
     'an end before the start', 'Montag');
 is_same(2, count(class_days($course)), 'and nothing was saved');
 
 case_('A double-tapped day is one day');
 act('class_save', ['id'=>$course, 'name'=>'Kindertraining',
-    'day_weekday'=>['1','1'], 'day_starts_at'=>['16:00','16:00'], 'day_ends_at'=>['17:30','17:30'], 'day_location'=>['','']]);
+    'day_weekday'=>['1','1'], 'day_location'=>['','']] + time_post('day_starts_at', ['16:00','16:00']) + time_post('day_ends_at', ['17:30','17:30']));
 is_same(1, count(class_days($course)), 'the duplicate was dropped');
 
 case_('The calendar is the pattern, until one day differs');
 act('class_save', ['id'=>$course, 'name'=>'Kindertraining', 'location'=>'Sporthalle Nord',
-    'day_weekday'=>['1'], 'day_starts_at'=>['16:00'], 'day_ends_at'=>['17:30'], 'day_location'=>['']]);
+    'day_weekday'=>['1'], 'day_location'=>['']] + time_post('day_starts_at', ['16:00']) + time_post('day_ends_at', ['17:30']));
 $from = '2026-09-01'; $to = '2026-09-30';
 $calendar = class_calendar($from, $to, $course);
 is_same(4, count($calendar), 'four Mondays in September 2026');
@@ -39,7 +39,7 @@ is_same('Sporthalle Nord', $calendar[0]['location'], 'in the course’s usual pl
 
 case_('One date can be cancelled without touching the pattern');
 act('class_session_save', ['class_id'=>$course, 'session_on'=>'2026-09-14', 'status'=>'cancelled',
-    'note'=>'Halle belegt', 'starts_at'=>'', 'ends_at'=>'', 'location'=>'']);
+    'note'=>'Halle belegt', 'location'=>''] + time_post('starts_at', '') + time_post('ends_at', ''));
 $calendar = class_calendar($from, $to, $course);
 $cancelled = array_values(array_filter($calendar, fn($e) => $e['date'] === '2026-09-14'))[0];
 is_same('cancelled', $cancelled['status'], 'that Monday is off');
@@ -49,7 +49,7 @@ is_same(1, count(class_days($course)), 'and the weekly pattern is unchanged');
 
 case_('Or moved somewhere else, at another time');
 act('class_session_save', ['class_id'=>$course, 'session_on'=>'2026-09-21', 'status'=>'changed',
-    'starts_at'=>'18:00', 'ends_at'=>'19:30', 'location'=>'Turnsaal Ost', 'note'=>'']);
+    'location'=>'Turnsaal Ost', 'note'=>''] + time_post('starts_at', '18:00') + time_post('ends_at', '19:30'));
 $moved = array_values(array_filter(class_calendar($from, $to, $course), fn($e) => $e['date'] === '2026-09-21'))[0];
 is_same('18:00:00', $moved['starts_at'], 'the new time');
 is_same('Turnsaal Ost', $moved['location'], 'and the new place');
@@ -57,14 +57,14 @@ ok(str_contains(session_label($moved), '18:00–19:30'), 'which reads as one lin
 
 case_('An extra session exists without pretending the course meets that day');
 act('class_session_save', ['class_id'=>$course, 'session_on'=>'2026-09-26', 'status'=>'extra',
-    'starts_at'=>'10:00', 'ends_at'=>'12:00', 'location'=>'', 'note'=>'Nachholtermin']);
+    'location'=>'', 'note'=>'Nachholtermin'] + time_post('starts_at', '10:00') + time_post('ends_at', '12:00'));
 $calendar = class_calendar($from, $to, $course);
 is_same(5, count($calendar), 'the Saturday is in the calendar');
 is_same(1, count(class_days($course)), 'but Saturday is not part of the weekly pattern');
 
 case_('Putting a date back to normal removes the row rather than storing "as usual"');
 act('class_session_save', ['class_id'=>$course, 'session_on'=>'2026-09-14', 'status'=>'planned',
-    'starts_at'=>'', 'ends_at'=>'', 'location'=>'', 'note'=>'']);
+    'location'=>'', 'note'=>''] + time_post('starts_at', '') + time_post('ends_at', ''));
 is_same(0, (int)scalar('SELECT COUNT(*) FROM class_sessions WHERE class_id=? AND session_on=?', [$course, '2026-09-14']),
         'nothing is stored for a day that follows the pattern');
 is_same('planned', class_session($course, '2026-09-14')['status'], 'and it is going ahead again');

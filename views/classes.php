@@ -169,8 +169,8 @@ elseif($id && !$edit && $tab==='dates'):
         <div class="grid two"><?php
         input('session_on',t('Datum','Date'),$chosen?:today(),'date',true);
         select_field('status',t('Was ist damit','What about it'),session_statuses(),$current['status']??'planned',true);
-        input('starts_at',t('Beginn (nur wenn anders)','Starts (only if different)'),substr((string)($current['starts_at']??''),0,5),'time');
-        input('ends_at',t('Ende (nur wenn anders)','Ends (only if different)'),substr((string)($current['ends_at']??''),0,5),'time');
+        time_field('starts_at',t('Beginn (nur wenn anders)','Starts (only if different)'),(string)($current['starts_at']??''));
+        time_field('ends_at',t('Ende (nur wenn anders)','Ends (only if different)'),(string)($current['ends_at']??''));
         ?></div>
         <?php
         input('location',t('Ort (nur wenn anders)','Place (only if different)'),$current['session_id']??0?($current['location']??''):'','text',false,
@@ -274,8 +274,8 @@ elseif($edit): ?>
                 <option value="<?=(int)$n?>" <?=(string)$day['weekday']===(string)$n?'selected':''?>><?=e($label)?></option>
                 <?php endforeach ?>
             </select>
-            <input type="time" name="day_starts_at[]" value="<?=e(substr((string)$day['starts_at'],0,5))?>" aria-label="<?=e(t('Beginn','Starts'))?>">
-            <input type="time" name="day_ends_at[]" value="<?=e(substr((string)$day['ends_at'],0,5))?>" aria-label="<?=e(t('Ende','Ends'))?>">
+            <?=time_cells('day_starts_at',t('Beginn','Starts'),(string)$day['starts_at'])?>
+            <?=time_cells('day_ends_at',t('Ende','Ends'),(string)$day['ends_at'])?>
             <input name="day_location[]" value="<?=e($day['location'])?>" placeholder="<?=e(t('Ort, falls abweichend','Place, if different'))?>" aria-label="<?=e(t('Ort','Place'))?>">
         </div>
     <?php endforeach ?>

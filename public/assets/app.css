@@ -222,9 +222,9 @@ html[data-text=largest]{font-size:21px}
 
 /* A course's weekly pattern: weekday, two times and an optional place, on one
    row that still works at 320px by wrapping rather than shrinking. */
-.day-row{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.4fr);gap:8px;align-items:center}
+.day-row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr);gap:12px;align-items:center}
 .day-row select,.day-row input{min-height:44px}
-@media(max-width:700px){.day-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.day-row select,.day-row input:last-child{grid-column:1/-1}}
+@media(max-width:700px){.day-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.day-row>select,.day-row>input:last-child{grid-column:1/-1}}
 
 /* A date that is not happening reads as struck through rather than merely grey. */
 .editor-list-item.is-off strong{text-decoration:line-through;text-decoration-thickness:1px}
@@ -603,3 +603,29 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 .public-footer{flex-direction:column;gap:14px;max-width:640px;margin-left:auto;margin-right:auto;padding:0 20px;text-align:center}
 .public-notice{font-size:.8125rem;line-height:1.7;color:var(--muted);margin:0}
 .public-footer-links{display:flex;justify-content:center;align-items:center;gap:24px;margin:0}
+
+/* ---------------------------------------------------------------------------
+   A time of day, as an hour box and a minute box.
+
+   <input type="time"> renders in the language of the device rather than of the
+   page: a phone set to English shows "05:30 PM" however the portal is set, and
+   a trainer reading 17:30 off a hall timetable should not have to translate it.
+   Two selects are the same 24-hour time everywhere, and on a phone they open
+   the same wheel the picker would have.
+   --------------------------------------------------------------------------- */
+/* Tighter inside a pair than between the pairs, or 16:00 and 17:30 read as
+   four boxes in a row rather than as a start and an end. */
+.time-field{display:flex;align-items:center;gap:5px;min-width:0}
+/* No native arrow on these two. Chromium reserves room for it beside the text
+   rather than over it, and in a box this narrow that left about one character:
+   16:00 rendered as "1 : 0". A box holding two digits between a label and a
+   colon does not need an arrow to say what it is. */
+.time-field select{flex:1 1 0;min-width:0;text-align:center;appearance:none;-webkit-appearance:none;
+                   background-image:none;padding:10px 6px}
+.time-colon{color:var(--muted);font-weight:700;flex-shrink:0}
+/* On its own under a label, the pair is two small boxes on the left, not a
+   time stretched across the width of the card. */
+.field>.time-field{max-width:190px}
+/* Inside a repeating row the pair is one cell of the grid, and the cell is
+   wider than the single <input type="time"> needed, because it holds two. */
+.day-row .time-field,.day-row .time-field select{min-height:44px}
