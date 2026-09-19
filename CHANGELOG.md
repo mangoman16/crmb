@@ -76,7 +76,10 @@
   wrong price comes from.
 - Nobody's next invoice changes because of the update: every tariff's price
   becomes its first rate, every discount becomes a template *and* is copied onto
-  every enrolment that was getting it.
+  every enrolment that was getting it. That sentence, and "nobody is signed out"
+  above it, are now checked rather than asserted: the suite builds a portal as it
+  stood before the update, applies the rest, and reads back the prices, the
+  discounts and the addresses.
 - **Everything she builds by hand can be copied** — a course with its training
   days and its whole price list, a tariff, a level, an age group, a payment
   recipient, an email template, a custom field, a news item. What comes with a

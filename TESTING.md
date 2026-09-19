@@ -24,10 +24,14 @@ tests/mariadb-local.sh            # the same suite against a real MariaDB
 Anything else and the manual sweep below is a waste of your time — fix that
 first.
 
-The run ends by printing what its SQLite translation could **not** cover
-(foreign keys on three tables, and the MySQL-dialect backup). Those lines are
-not a warning, they are the honest edge of the measurement: `tests/mariadb-local.sh`
-is what covers them, and it is the run to quote when you say a release works.
+The run ends by printing what it could **not** cover. On SQLite that is foreign
+keys on three tables and the MySQL-dialect backup, which `tests/mariadb-local.sh`
+covers — it is the run to quote when you say a release works. On MariaDB it is
+the data carried across by migrations 015 and 016: the `migrations` suite has to
+apply the migrations in two halves with rows in between, which the run's own
+database cannot do because it has all of them applied already, so it does that in
+a second process against its own SQLite file whichever engine the run is using.
+Those lines are not a warning, they are the honest edge of the measurement.
 
 | Suite | What it holds the line on |
 |---|---|
@@ -44,6 +48,7 @@ is what covers them, and it is the run to quote when you say a release works.
 | `install` | The browser installer, migrations applying themselves, the refusals |
 | `invoices` | § 11 UStG details in the produced document, numbering, status |
 | `messaging` | Who may read a conversation and who may write to whom |
+| `migrations` | An update carries the data with it: prices, discounts, addresses |
 | `performance` | Query counts, so a page does not issue one query per row |
 | `security` | Authorisation boundaries, credentials, what must not leak |
 | `settings` | Every setting has a type and a usable default |
@@ -139,6 +144,14 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **3.8** A real update: `bash bin/update.sh` pulls, installs dependencies,
   applies migrations and prints the status. Afterwards **Einstellungen →
   System** shows the new version for both the files and the database.
+- [ ] **3.8a** The same update on a portal that has **real rows in it**, not an
+  empty database: before updating, write down one tariff's price, one child who
+  is getting a discount and the amount they pay, and the address one family
+  signs in with. Afterwards, the tariff shows that price as its first interval,
+  that child's enrolment shows the same discount with the same amount, and that
+  family signs in with the same address and the same password. (The `migrations`
+  suite checks this on SQLite; this is the same check on the engine she is
+  actually running.)
 - [ ] **3.9** Put an older package over a newer database. The portal stays
   closed and says why, instead of guessing.
 - [ ] **3.10** Switch **Wartungsmodus** on from **Einstellungen → System**.
