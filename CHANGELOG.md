@@ -2,6 +2,135 @@
 
 ## 0.6.0 — unreleased
 
+### Creating something asks for the basics, and then says what is left
+
+- **The form that creates a child now asks for four things**: a name, a date of
+  birth, the email address, and whether they are a member. Not the level, not
+  the tariff, not the internal notes, and not the custom fields she has added
+  herself — a form of twenty boxes is a form somebody abandons in the middle of
+  a training session.
+- **And then the child's page says what is still to do**, numbered, at the top:
+  an emergency contact, an address or an invitation, a course, a tariff. Each
+  one is a link to where it is done, and each disappears when it is. A child
+  with no course is a child nobody bills, and four days later nobody remembers
+  which of fifteen children that was.
+- A newly created course says the same: a training day, and a tariff.
+
+### Two things to print
+
+- **A blank registration form**, for a parent standing in the hall with a biro.
+  One letter per box, in block capitals, because a ruled line produces
+  handwriting nobody can read back and a date that might be 03/04 or 04/03.
+- **A data sheet** for a child whose details the trainer typed in herself, to
+  hand back for checking and signing.
+- Both are the same layout on purpose: what is asked for on paper is exactly
+  what the portal stores — including her own custom fields, and never the ones
+  she marked internal. Nothing is collected that has nowhere to go.
+- Both fit on one sheet of A4, which was measured by generating the PDF and
+  counting its pages. A screenshot said the form fitted; the printer said two.
+
+### Signing in belongs to the child, and a contact is somebody to ring
+
+- **One row was answering two questions.** "Who do I ring when she falls over"
+  and "who does the portal write to" were both the standard contact, and they
+  came apart in practice: the grandmother who should be rung has no email, the
+  father who reads the invoices is never in the hall. The form could not answer
+  either without lying about the other.
+- **The address is on the child now.** For a child that is a parent's address,
+  which is why it is a field rather than a second person: whoever reads the
+  invoices is whoever holds the login. **Zugang einladen** on the child's page
+  creates the account and sends the invitation there; a second child at the same
+  address joins the same account, which is how siblings share a login without a
+  second concept for it.
+- **Contacts are emergency contacts.** They need a phone number and no longer
+  need an email address. Nothing is sent to them.
+- An invitation is not sent twice to an account that has already set a password:
+  that link would have replaced a password that works.
+- The **Schüler** list names the two gaps separately, because they are filled in
+  in two different places.
+- Nobody is signed out by the update: every account keeps its own address and
+  its own password, and the new field is filled from whatever the portal was
+  already writing to.
+- **A form inside a form** on the student page meant the browser was throwing
+  the inner one away: „Bild speichern" was submitting the whole record. Every
+  page is now counted for that, for every role.
+
+### One tariff, several ways to pay it
+
+- **Four prices for the same thing used to be four tariffs.** "252 € im Jahr,
+  162 € im Halbjahr, 99 € im Quartal, 37 € im Monat" meant four rows with the
+  same name and four places to change the price when it goes up. A tariff now
+  carries a price per interval, and the enrolment says which of them a child is
+  on — chosen from a list that shows what each one costs, so the interval and
+  its price are never looked up separately.
+- **The welcome discount moved off the price list and onto the agreement.** It
+  sat on the tariff, which made "three months at half price for this one child"
+  into a tariff nobody else could be put on. The tariff now carries only the
+  *shapes* of discount she gives — „Erster Monat gratis", „Geschwisterrabatt,
+  dauerhaft −20 %" — and the child carries the one that family actually got,
+  under a name that goes on their invoice. Changing a template changes nothing
+  for a family who already has one.
+- **A tariff can be copied**, with its prices and its templates, because four
+  intervals and three templates is twenty minutes of typing to get a second
+  tariff that differs in one number — and twenty minutes of typing is where a
+  wrong price comes from.
+- Nobody's next invoice changes because of the update: every tariff's price
+  becomes its first rate, every discount becomes a template *and* is copied onto
+  every enrolment that was getting it. That sentence, and "nobody is signed out"
+  above it, are now checked rather than asserted: the suite builds a portal as it
+  stood before the update, applies the rest, and reads back the prices, the
+  discounts and the addresses.
+- **Everything she builds by hand can be copied** — a course with its training
+  days and its whole price list, a tariff, a level, an age group, a payment
+  recipient, an email template, a custom field, a news item. What comes with a
+  copy is written down rather than followed from the foreign keys, because a
+  course's training days belong to it and the children enrolled in it do not.
+
+### A menu that fits, and a mail test that answers
+
+- **The menu on the left scrolled.** Thirteen destinations in one column are
+  958px tall, and a 1920x1080 screen at 110% zoom leaves 873px, so the last
+  three were below the fold. Six of them now sit inside three sections —
+  **Training**, **Geld** and **System** — and only the section you are working
+  in is open, which the browser keeps true by shutting the others. 715px at a
+  full window, 541px at the zoom it was reported at. The count of what is
+  waiting moves up to the section while the section is shut.
+- **„Testmail vormerken" was not a test.** It queued a message and sent the
+  operator to the outbox to look for it, where a blocked port, a wrong
+  certificate and a rejected password all looked the same: nothing arrived.
+  **Einstellungen → SMTP → Verbindung testen** now opens the connection while
+  she waits, sends to any address she types in, and writes down every step —
+  and says which one failed in a sentence she can act on, with the server's own
+  words underneath. The user name and the password are taken back out of the
+  transcript, because the whole point of it is to be forwarded to a host.
+- The sign-in page no longer explains which address to use. It asks for an email
+  address and a password, which is what the form already said.
+- **„Etwas funktioniert hier nicht" was under the last card**, which meant it
+  was only ever found by somebody who scrolled to the bottom of a page they had
+  already given up on. On a desktop screen it is a button in the bottom right
+  corner now. On a phone it stays at the end of the page and the **Mehr** menu
+  carries a link down to it: the bottom of a phone screen already holds the menu
+  bar and the sticky **Speichern** button, and a third thing floating over those
+  is how a Save button becomes unreachable.
+- **„Wem gehört der Kontakt?"** asked about ownership when it wanted a name —
+  and the same box said „Name" on the edit form next to it. The two forms had
+  been written out twice and drifted; they are one fieldset now, and it asks for
+  „Name der Kontaktperson".
+- **A time of day was shown in the language of the device, not of the portal.**
+  `<input type="time">` ignores the page and follows the phone or the computer,
+  so on a device set to English every training time read "04:00 PM" however the
+  portal was set — and a trainer copying 16:00 off a hall timetable should not
+  have to translate it. Times are an hour box and a minute box now: 24 hours on
+  every device, every five minutes, and a time already stored that is not on
+  that grid keeps its place in the list rather than being quietly moved. An hour
+  with no minute is refused instead of being stored as "on the hour".
+- **Every signed-out page says what happens to the data**: the privacy notice
+  applies, only the cookies the portal needs to work are set, there is no
+  analytics and no advertising, and nothing is sold or passed to anybody else.
+  The same paragraph is in the shipped privacy draft under *Empfänger* —
+  a portal installed before this keeps its own edited notice, so add the
+  sentence there by hand if you want it.
+
 Her half of the portal: what she runs day to day, in the words she uses for it,
 after a round of testing that produced a list of about forty things.
 

@@ -88,31 +88,36 @@ run("UPDATE tariffs SET first_period='full' WHERE id=?", [$monthly]);
 is_same(4500, $line('2026-09', $mid)['amount'], 'or charged in full, if that is what she chose');
 run("UPDATE tariffs SET first_period='prorate' WHERE id=?", [$monthly]);
 
-case_('A welcome discount, in the months she described it in');
-run("UPDATE tariffs SET discount_months=1, discount_kind='percent', discount_value=100 WHERE id=?", [$monthly]);
+case_('A discount this family was given, in the months she described it in');
+/* It is on the enrolment, not on the tariff: giving one child a free first
+   month must not mean inventing a tariff nobody else can be put on. */
 $new = make_student(['first_name'=>'Neu','joined_on'=>'2026-09-01']);
 make_enrolment($course, $new, ['tariff_id'=>$monthly,'joined_on'=>'2026-09-01']);
+give_discount($course, $new, 1, 'percent', 100, 'Erster Monat gratis');
 $row = $line('2026-09', $new);
 is_same(4500, $row['gross'], 'the full price is still recorded');
 is_same(4500, $row['discount'], 'and all of it comes off');
 is_same(0, $row['amount'], 'so the first month is free');
-ok(str_contains($row['note'], 'Willkommensrabatt'), 'and it says why');
+ok(str_contains($row['note'], 'Erster Monat gratis'), 'and it says why, in the words she used');
 is_same(4500, $line('2026-10', $new)['amount'], 'the second month is not');
+// The child beside them on the same tariff is untouched, which is the whole
+// point of the discount having moved off the price list.
+is_same(4500, $line('2026-09', $child)['amount'], 'and nobody else on that tariff is affected');
 
 case_('A percentage over several months');
-run("UPDATE tariffs SET discount_months=6, discount_kind='percent', discount_value=30 WHERE id=?", [$monthly]);
+give_discount($course, $new, 6, 'percent', 30);
 is_same(3150, $line('2026-09', $new)['amount'], '30 per cent off');
 is_same(3150, $line('2027-02', $new)['amount'], 'still, six months later');
 is_same(4500, $line('2027-03', $new)['amount'], 'and full price the month after that');
 
 case_('A fixed amount off, and a discount that never ends');
-run("UPDATE tariffs SET discount_months=2, discount_kind='fixed', discount_value=1000 WHERE id=?", [$monthly]);
+give_discount($course, $new, 2, 'fixed', 1000);
 is_same(3500, $line('2026-09', $new)['amount'], 'ten euro off');
 is_same(4500, $line('2026-11', $new)['amount'], 'for two months only');
-run("UPDATE tariffs SET discount_months=-1, discount_kind='percent', discount_value=50 WHERE id=?", [$monthly]);
+give_discount($course, $new, -1, 'percent', 50);
 is_same(2250, $line('2030-05', $new)['amount'], 'a standing discount still applies years later');
-ok(str_contains($line('2030-05', $new)['note'], 'Dauerhaft'), 'and calls itself what it is');
-run("UPDATE tariffs SET discount_months=0, discount_value=0 WHERE id=?", [$monthly]);
+ok(str_contains($line('2030-05', $new)['note'], 'Dauerhafter Nachlass'), 'and calls itself what it is');
+give_discount($course, $new, 0, 'percent', 0);
 
 // ---------------------------------------------------------------------------
 case_('A longer billing period is charged once, in its first month');
@@ -133,14 +138,15 @@ is_same(null, $line('2026-08', $late)['skip'], 'their first charge does not wait
 is_same('2026-07-01', $line('2026-08', $late)['from'], 'it is the quarter they joined during');
 
 case_('A discount spanning fewer months than the period only discounts its share');
-run("UPDATE tariffs SET first_period='prorate', discount_months=1, discount_kind='percent', discount_value=100 WHERE id=?", [$quarterly]);
+run("UPDATE tariffs SET first_period='prorate' WHERE id=?", [$quarterly]);
 $qNew = make_student(['first_name'=>'Quartalsneu','joined_on'=>'2026-07-01']);
 make_enrolment($course, $qNew, ['tariff_id'=>$quarterly,'joined_on'=>'2026-07-01']);
+give_discount($course, $qNew, 1, 'percent', 100);
 $row = $line('2026-07', $qNew);
 is_same(12000, $row['gross'], 'the quarter costs what it costs');
 is_same(4000, $row['discount'], 'one free month is a third of it');
 is_same(8000, $row['amount'], 'so two of the three months are paid for');
-run("UPDATE tariffs SET discount_months=0, discount_value=0 WHERE id=?", [$quarterly]);
+give_discount($course, $qNew, 0, 'percent', 0);
 
 // ---------------------------------------------------------------------------
 case_('Why the others are not charged, said out loud rather than left out');
@@ -222,12 +228,27 @@ throws(function () {
 is_same($before, (int)scalar('SELECT COUNT(*) FROM charges'), 'November was rolled back entirely');
 
 case_('A tariff describes itself the way she would say it');
-$summary = tariff_summary(['period'=>'recurring','price_cents'=>4500,'interval_months'=>1,'due_day'=>1,
-                           'discount_months'=>1,'discount_kind'=>'percent','discount_value'=>100]);
-ok(str_contains($summary, '45,00'), 'the price');
+/* Every way it may be paid, the usual one first: "37,00 € monatlich" is the
+   answer to "what does it cost?", and the rest answer "and for the year?". */
+$summary = tariff_summary(['id'=>0,'period'=>'recurring','interval_months'=>1,'due_day'=>1],
+                          [1=>3700, 3=>9900, 6=>16200, 12=>25200]);
+ok(str_contains($summary, '37,00'), 'the price');
 ok(str_contains($summary, 'monatlich'), 'how often');
-ok(str_contains($summary, 'gratis'), 'and that the first month is free');
-ok(str_contains(tariff_summary(['period'=>'once','price_cents'=>2000]), 'einmalig'), 'a one-off tariff says so');
+ok(str_contains($summary, '252,00'), 'and what the year costs');
+ok(str_starts_with($summary, '37,00'), 'the usual interval is the one it leads with');
+ok(strpos($summary, '99,00') < strpos($summary, '162,00'), 'and the rest run cheapest period first');
+ok(str_contains(tariff_summary(['id'=>0,'period'=>'once','interval_months'=>1,'due_day'=>1], [1=>2000]), 'einmalig'),
+   'a one-off tariff says so');
+is_same(t('Noch kein Preis hinterlegt','No price set yet'),
+        tariff_summary(['id'=>0,'period'=>'recurring','interval_months'=>1,'due_day'=>1], []),
+        'and a tariff with no price at all says that, rather than 0,00 €');
+
+case_('A discount describes itself too, wherever it is written down');
+is_same(t('Kein Rabatt','No discount'), discount_summary(0, 'percent', 0), 'nothing is nothing');
+ok(str_contains(discount_summary(1, 'percent', 100), 'gratis'), '100 per cent is free');
+ok(str_contains(discount_summary(3, 'percent', 50), '3 Monate'), 'three months says three months');
+ok(str_contains(discount_summary(-1, 'percent', 20), 'dauerhaft'), 'and minus one month is for as long as they stay');
+ok(str_contains(discount_summary(2, 'fixed', 1000), '10,00'), 'a fixed amount is money');
 
 // ---------------------------------------------------------------------------
 // Two things this got wrong until they were looked for.
@@ -277,3 +298,47 @@ foreach (['prorate' => 1100, 'full' => 3000, 'skip' => null] as $rule => $expect
     foreach (billing_plan('2026-06') as $r) if ((int)$r['student_id'] === $joiner)
         is_same($expected, $r['amount'], $rule.': joining on the 20th');
 }
+
+// ---------------------------------------------------------------------------
+case_('One tariff, several ways to pay it, and the enrolment says which');
+/* "252 € im Jahr, 162 € im Halbjahr, 99 € im Quartal, 37 € im Monat" was four
+   tariffs with the same name and four places to change the price when it rises.
+   It is one tariff with four rates now. */
+$flex = make_tariff(['class_id'=>$course, 'name'=>'Beitrag', 'interval_months'=>1, 'due_day'=>1,
+                     'grace_days'=>7, 'first_period'=>'full',
+                     'rates'=>[1=>3700, 3=>9900, 6=>16200, 12=>25200]]);
+$monthly2 = make_student(['first_name'=>'Monatlich','joined_on'=>'2025-01-01']);
+$yearly  = make_student(['first_name'=>'Jährlich','joined_on'=>'2025-01-01']);
+make_enrolment($course, $monthly2, ['tariff_id'=>$flex,'joined_on'=>'2025-01-01']);
+make_enrolment($course, $yearly, ['tariff_id'=>$flex,'joined_on'=>'2025-01-01']);
+bill_every($course, $yearly, 12);
+
+is_same(3700, $line('2026-09', $monthly2)['amount'], 'saying nothing means the tariff’s usual interval');
+is_same(1, $line('2026-09', $monthly2)['interval'], 'which is a month');
+is_same(25200, $line('2026-01', $yearly)['amount'], 'and the one paying yearly pays the yearly price');
+is_same(12, $line('2026-01', $yearly)['interval'], 'over twelve months');
+is_same('2026-12-31', $line('2026-01', $yearly)['to'], 'covering the whole year');
+is_same('Zeitraum beginnt in einem anderen Monat', $line('2026-09', $yearly)['skip'],
+        'and September does not start a year, so nothing happens then');
+
+case_('An interval taken off the price list falls back rather than billing nothing');
+// Tidying up a price list must never quietly stop a child being billed: that
+// shows up as a charge nobody notices is missing, months later.
+bill_every($course, $yearly, 6);
+is_same(16200, $line('2026-07', $yearly)['amount'], 'half-yearly while the half-yearly price is there');
+run('DELETE FROM tariff_rates WHERE tariff_id=? AND interval_months=6', [$flex]);
+$fallen = $line('2026-09', $yearly);
+is_same(3700, $fallen['amount'], 'and the tariff’s usual price once it is gone');
+is_same(1, $fallen['interval'], 'on the tariff’s usual interval');
+ok($fallen['enrolment']['interval_missing'], 'with the row saying it had to fall back');
+
+case_('The price a family pays says which of the two numbers it is');
+$e = enrolment($course, $monthly2);
+ok(str_contains(enrolment_summary($e), '37,00'), 'the price');
+ok(str_contains(enrolment_summary($e), 'monatlich'), 'and how often');
+give_discount($course, $monthly2, -1, 'percent', 20, 'Geschwisterrabatt');
+$e = enrolment($course, $monthly2);
+ok(str_contains(enrolment_summary($e), 'Geschwisterrabatt'), 'the discount by the name she gave it');
+ok(str_contains(enrolment_summary($e), 'dauerhaft'), 'and for how long');
+is_same(2960, $line('2026-09', $monthly2)['amount'], 'and it comes off what they are actually charged');
+give_discount($course, $monthly2, 0, 'percent', 0);

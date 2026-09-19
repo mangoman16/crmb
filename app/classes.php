@@ -64,10 +64,33 @@ function class_days_for(array $classIds): array {
     return $out;
 }
 
+/**
+ * What is still missing on one course, as things to do with links.
+ *
+ * The same idea as a child's list: the form that creates a course asks what a
+ * course is, and the two things that make it usable - when it meets and what it
+ * costs - are said here rather than discovered on the first of the month when
+ * nobody was billed.
+ */
+function class_next_steps(int $classId): array {
+    $steps = [];
+    if (!class_days($classId))
+        $steps[] = ['what' => t('Trainingstag eintragen', 'Add a training day'),
+                    'why'  => t('Ohne Termin gibt es nichts, wozu man anwesend sein kann.', 'Without a date there is nothing to be present at.'),
+                    'page' => 'classes', 'params' => ['id' => $classId, 'edit' => 1]];
+    if (!class_tariffs($classId))
+        $steps[] = ['what' => t('Tarif anlegen', 'Add a tariff'),
+                    'why'  => t('Ohne Tarif entstehen für diesen Kurs keine Beiträge.', 'Without a tariff this course bills nobody.'),
+                    'page' => 'classes', 'params' => ['id' => $classId, 'tab' => 'tariffs']];
+    return $steps;
+}
+
 /** The tariffs a course offers, cheapest arrangement first. */
 function class_tariffs(int $classId, bool $archived=false): array {
     return rows('SELECT * FROM tariffs WHERE class_id=?'.($archived?'':' AND archived=0')
-        .' ORDER BY sort_order, price_cents, name, id', [$classId]);
+        // Was "cheapest first" when a tariff had one price. It has several now,
+        // so the order she puts them in is the only order that means anything.
+        .' ORDER BY sort_order, name, id', [$classId]);
 }
 
 /** Tariffs that belong to no course yet, so they can be given one rather than lost. */

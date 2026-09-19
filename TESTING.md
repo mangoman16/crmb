@@ -24,10 +24,14 @@ tests/mariadb-local.sh            # the same suite against a real MariaDB
 Anything else and the manual sweep below is a waste of your time — fix that
 first.
 
-The run ends by printing what its SQLite translation could **not** cover
-(foreign keys on three tables, and the MySQL-dialect backup). Those lines are
-not a warning, they are the honest edge of the measurement: `tests/mariadb-local.sh`
-is what covers them, and it is the run to quote when you say a release works.
+The run ends by printing what it could **not** cover. On SQLite that is foreign
+keys on three tables and the MySQL-dialect backup, which `tests/mariadb-local.sh`
+covers — it is the run to quote when you say a release works. On MariaDB it is
+the data carried across by migrations 015 and 016: the `migrations` suite has to
+apply the migrations in two halves with rows in between, which the run's own
+database cannot do because it has all of them applied already, so it does that in
+a second process against its own SQLite file whichever engine the run is using.
+Those lines are not a warning, they are the honest edge of the measurement.
 
 | Suite | What it holds the line on |
 |---|---|
@@ -44,6 +48,7 @@ is what covers them, and it is the run to quote when you say a release works.
 | `install` | The browser installer, migrations applying themselves, the refusals |
 | `invoices` | § 11 UStG details in the produced document, numbering, status |
 | `messaging` | Who may read a conversation and who may write to whom |
+| `migrations` | An update carries the data with it: prices, discounts, addresses |
 | `performance` | Query counts, so a page does not issue one query per row |
 | `security` | Authorisation boundaries, credentials, what must not leak |
 | `settings` | Every setting has a type and a usable default |
@@ -139,6 +144,14 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **3.8** A real update: `bash bin/update.sh` pulls, installs dependencies,
   applies migrations and prints the status. Afterwards **Einstellungen →
   System** shows the new version for both the files and the database.
+- [ ] **3.8a** The same update on a portal that has **real rows in it**, not an
+  empty database: before updating, write down one tariff's price, one child who
+  is getting a discount and the amount they pay, and the address one family
+  signs in with. Afterwards, the tariff shows that price as its first interval,
+  that child's enrolment shows the same discount with the same amount, and that
+  family signs in with the same address and the same password. (The `migrations`
+  suite checks this on SQLite; this is the same check on the engine she is
+  actually running.)
 - [ ] **3.9** Put an older package over a newer database. The portal stays
   closed and says why, instead of guessing.
 - [ ] **3.10** Switch **Wartungsmodus** on from **Einstellungen → System**.
@@ -151,7 +164,9 @@ Skip on an ordinary code change; do all of it before a release.
 
 - [ ] **4.1** Sign in as the trainer. **Verwaltung**, **Kurse**,
   **Anwesenheit**, **Beiträge**, **Rechnungen**, **Konten** and **Postausgang**
-  are all in the menu.
+  are all in the menu — **Kurse** and **Anwesenheit** inside **Training**,
+  **Beiträge** and **Rechnungen** inside **Geld**, **Konten** and
+  **Postausgang** inside **System**.
 - [ ] **4.2** As the trainer, **Einstellungen** and **Änderungen** are *not* in
   the menu, and typing their addresses by hand is refused.
 - [ ] **4.3** As the administrator, everything the trainer can reach, you can
@@ -165,13 +180,33 @@ Skip on an ordinary code change; do all of it before a release.
   password immediately afterwards is refused too — that is the point.
 - [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
   once and not twice.
+- [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
+  the privacy notice — carries the line about the privacy notice, the necessary
+  cookies and the data not being sold or passed on, above the footer links, and
+  it reads at 320px without the page scrolling sideways.
 - [ ] **4.8** Suspending an account in **Konten** stops that person signing in.
 
 ---
 
 ## The shell: the bar, notifications, feedback, impersonation
 
+- [ ] **5.0** On a desktop screen, „Etwas funktioniert hier nicht" is a button in
+  the bottom right corner of every page. It opens upwards, stays inside the
+  window, and closing it leaves the page where it was.
+- [ ] **5.0a** On a phone it is *not* floating: it is at the end of the page,
+  reached from „Etwas funktioniert nicht" in the **Mehr** menu. Check on a form
+  page that nothing covers the sticky **Speichern** bar.
 - [ ] **5.1** Scroll a long page. The top bar stays where it is.
+- [ ] **5.1a** As the administrator, on a laptop at **110% and 125% zoom**, the
+  menu on the left has no scrollbar of its own and its last entry is above the
+  fold. Open **System**: **Training** and **Geld** shut by themselves, so the
+  menu is never taller than one open section.
+- [ ] **5.1b** Whichever page you are on, its section is already open when the
+  page loads — nothing has to be clicked to see where you are.
+- [ ] **5.1c** With a course request waiting, the number is on **Training**
+  while it is shut and on **Kurse** once it is open, never on both.
+- [ ] **5.1d** On a phone the menu is still the drawer behind **Mehr**, every
+  row is still 44pt, and each section row has one arrow, not two.
 - [ ] **5.2** Your name and role appear **once**, in the top bar — not again at
   the bottom of the menu.
 - [ ] **5.3** The bell shows a number when something is waiting. Opening it
@@ -232,6 +267,46 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **7.8** The first contact you add becomes the **Standardkontakt** without
   being asked, and it cannot be saved without an email address: that is where
   invoices and reminders go.
+- [ ] **7.8a** „Kontakt hinzufügen" and „Kontakt bearbeiten" ask for the same
+  things, in the same words: the first box is the contact person's own name, not
+  a question about whose contact it is.
+- [ ] **7.8b** A contact with a phone number and **no** email address saves.
+  That is the grandmother who answers the telephone, and she is the reason this
+  list and the portal's address are two different things now.
+- [ ] **7.8c** On the child's own page, **Zugang zum Portal** holds the address
+  the portal writes to. For a child that is a parent's address.
+- [ ] **7.8d** **Zugang einladen** on a child with no account creates one and
+  queues the invitation to that address. Check the outbox.
+- [ ] **7.8e** Invite a *second* child at the same address: one account, both
+  children on it, and — once that account has set a password — no second
+  invitation, which would have replaced a password that works.
+- [ ] **7.8f** Inviting a child at an address that belongs to a trainer or an
+  administrator is refused, and the child stays unattached.
+- [ ] **7.8g** An invoice for a child with no account is addressed to the child
+  at the child's own address, whatever email any contact has.
+- [ ] **7.8h** The **Schüler** list names two gaps separately: children with
+  nobody to ring, and children with no address.
+- [ ] **7.12** **Schüler → Leeres Formular drucken**: a registration form on
+  **one** sheet of A4, boxes one letter wide, two people to ring side by side.
+  Print it for real and check it is one page with headers and footers off.
+- [ ] **7.13** The blank form asks for exactly what the portal stores — every
+  custom field that is not marked *internal*, and nothing else. Add a custom
+  field and it appears; mark one internal and it does not.
+- [ ] **7.14** **Ein Kind → Datenblatt drucken**: the same layout with the
+  values filled in, a date, and a line to sign that they were checked. Also one
+  page.
+- [ ] **7.15** Both say what happens to the data, and neither is reachable by a
+  family.
+- [ ] **7.16** **+ Schüler anlegen** asks for a name, a date of birth, an email
+  address and whether they are a member — and nothing else. Not the level, not
+  the tariff, not the internal notes, not your own custom fields.
+- [ ] **7.17** After **Anlegen und weiter**, the child's page opens with **Noch
+  zu tun** at the top: an emergency contact, an email address or an invitation,
+  a course, a tariff — in that order, each a link to where it is done.
+- [ ] **7.18** Do them one at a time and watch each disappear. When the last one
+  goes, the card goes.
+- [ ] **7.19** A course you have just created says the same: a training day and
+  a tariff. A course that has both shows no card.
 - [ ] **7.9** Add a second contact. It is an ordinary one. Tick
   „Als Standardkontakt verwenden" on it and the badge moves — there is never
   more than one.
@@ -257,14 +332,44 @@ Skip on an ordinary code change; do all of it before a release.
   otherwise.
 - [ ] **8.3** **Kurse → ein Kurs → Tarife**: every price a course can be taken
   at lives here. There is no tariff floating free of a course.
-- [ ] **8.4** A tariff has an interval: monthly, every two, three or six months,
-  or yearly. Pick a non-monthly one and check the summary sentence under it
-  describes what will actually be charged.
+- [ ] **8.4** One tariff can be paid in more than one way. Give it four prices —
+  37 € monthly, 99 € quarterly, 162 € half-yearly, 252 € yearly — and check the
+  summary sentence lists all four, with the usual interval first.
+- [ ] **8.4a** Save with a price for an interval but the **üblicher Zeitraum**
+  set to one with no price: refused, by name. That interval is what an enrolment
+  saying nothing is billed at.
+- [ ] **8.4b** Save with no price at all: refused. An empty row at the bottom is
+  ignored rather than refused.
+- [ ] **8.4c** „+ Weitere Zahlungsweise" adds an empty row; the same interval
+  twice keeps the first one rather than refusing the form.
+- [ ] **8.4d** **Kopieren** makes a copy with every price and every discount
+  template, named „… (Kopie)", and opens it. Copy it again: the second is not
+  called the same as the first.
+- [ ] **8.4e** **Kurs kopieren** on the course form brings the training days and
+  the whole price list, and brings *nobody*: the children in the original are
+  still only in the original.
+- [ ] **8.4f** The same **Kopieren** button is on a level, an age group, a
+  payment recipient, an email template, a custom field and a news item. A copied
+  news item is a draft, whatever the original was; a copy of an archived record
+  is not archived.
 - [ ] **8.5** A tariff has a due day. A child can override it; the child's page
   says which of the two applies.
-- [ ] **8.6** A tariff can carry a discount — a number of months (or unlimited)
-  at a percentage or a fixed amount off. 100 % reads as free, not as €0,00
-  hidden in a corner.
+- [ ] **8.6** A tariff carries **Rabattvorlagen** — the shapes of discount she
+  gives, like „Erster Monat gratis" or „Geschwisterrabatt, dauerhaft −20 %".
+  They are templates: changing one here changes nothing for a family who has
+  already been given it.
+- [ ] **8.6a** On a child, under **Tarif, Zahlungsweise und Rabatt**: the
+  templates of that tariff are listed above the boxes, and the boxes take the
+  discount this family actually gets, with a name that appears on the invoice.
+- [ ] **8.6b** Give one child a discount and check the child beside them on the
+  same tariff is unaffected. That is the whole reason it moved off the tariff.
+- [ ] **8.6c** Put a child on a longer interval than the tariff's usual one. The
+  agreed-price default beside it changes to that interval's price, and the next
+  charge is for that period and that amount.
+- [ ] **8.6d** Choose an interval, then delete that price from the tariff. The
+  child is billed at the tariff's usual price rather than not billed at all.
+- [ ] **8.6e** A discount of 100 % reads as „gratis", not as €0,00 hidden in a
+  corner, and „dauerhaft" says so rather than showing −1.
 - [ ] **8.7** A child in two courses is billed for both, each at its own
   tariff.
 - [ ] **8.8** Archive a course. It leaves the lists, keeps its history, and
@@ -290,6 +395,17 @@ Skip on an ordinary code change; do all of it before a release.
 
 ## Attendance
 
+- [ ] **9.x** On a device whose language is set to **English (US)**, open a
+  course and its times. Every time is 24 hours — "16:00", never "04:00 PM" —
+  because the boxes are the portal's own, not the browser's picker. Change one,
+  save, reopen: it is what you chose.
+- [ ] **9.x.1** A day with an hour but no minute is refused by name rather than
+  stored as "on the hour".
+- [ ] **9.x.2** A course whose time is not on a five-minute boundary (17:37, say)
+  still shows 37 in the minute box, and saving something else on that form does
+  not move it.
+- [ ] **9.x.3** „+ Weiterer Trainingstag" adds an empty row — the new row does
+  not inherit the time of the row above it.
 - [ ] **10.1** **Anwesenheit** in the menu opens one screen: pick a course, pick
   a date, see every child in it, one tap each, one save.
 - [ ] **10.2** The date offered is the course's own training day, not today when
@@ -428,8 +544,18 @@ Skip on an ordinary code change; do all of it before a release.
 
 - [ ] **15.1** Publish a news item. Families see it under **Neuigkeiten**.
 - [ ] **15.2** With the newsletter ticked, an email is queued per subscriber.
-- [ ] **15.3** **Einstellungen → SMTP → Testmail**: it either arrives or the
-  error says what the server actually replied.
+- [ ] **15.3** **Einstellungen → SMTP → Verbindung testen**: with a target
+  address filled in, the page comes back with the outcome on it, not with a
+  message in a list to go and find. It arrives, or the summary says which step
+  failed — the port, the certificate, the password, the sender address.
+- [ ] **15.3a** **Nur Verbindung prüfen** connects and signs in without sending
+  anything, and no job appears in the outbox.
+- [ ] **15.3b** Open **Gespräch mit dem Server anzeigen**. The transcript is
+  fixed-width, scrolls sideways rather than wrapping, fits inside the card at
+  320px, and contains no password: the AUTH lines read `[entfernt]` or
+  `[credentials hidden]`. Read it before forwarding it to a host.
+- [ ] **15.3c** Put in a port nothing listens on: the answer is that the port is
+  usually blocked or wrong, in one sentence, rather than a mail-library error.
 - [ ] **15.4** **Postausgang** shows queued, sent and failed. A failure retries
   with a growing delay rather than hammering.
 - [ ] **15.5** An unsubscribe link at the bottom of a newsletter works without

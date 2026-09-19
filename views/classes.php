@@ -30,6 +30,10 @@ if($id){
     if(!$edit) tabs(['list'=>t('Kurse','Courses'),
                      'requests'=>t('Anfragen','Requests').($waiting?' ('.$waiting.')':'')],$tab,'classes');
 }
+// The same list a new child gets: the form that creates a course asks what a
+// course is, and what makes it usable is said here rather than discovered on
+// the first of the month when nobody was billed.
+if($id && $mayEdit) next_steps_card(class_next_steps($id));
 
 // ---------------------------------------------------------------------------
 if(!$id && !$edit && $tab==='list'):
@@ -87,19 +91,20 @@ elseif($id && !$edit && $tab==='attendance'): require ROOT.'/views/_class_attend
 elseif($id && !$edit && $tab==='tariffs'):
     $editTariff=(int)($_GET['tariff']??0);
     $tariff=$editTariff?one('SELECT * FROM tariffs WHERE id=? AND class_id=?',[$editTariff,$id]):null;
-    $blankTariff=['id'=>0,'name'=>'','description'=>'','price_cents'=>null,'period'=>'recurring','interval_months'=>1,
-                  'due_day'=>1,'grace_days'=>7,'first_period'=>'prorate','discount_months'=>0,
-                  'discount_kind'=>'percent','discount_value'=>0,'sort_order'=>0,'archived'=>0];
+    $blankTariff=['id'=>0,'name'=>'','description'=>'','period'=>'recurring','interval_months'=>1,
+                  'due_day'=>1,'grace_days'=>7,'first_period'=>'prorate','sort_order'=>0,'archived'=>0];
     $tf=$tariff??$blankTariff;
+    $rates=$editTariff?tariff_rates($editTariff):[];
+    $templates=$editTariff?tariff_discount_templates($editTariff):[];
 ?>
 <div class="settings-grid">
     <section class="card">
         <div class="section-heading"><h2><?=e(t('Tarife dieses Kurses','Tariffs for this course'))?></h2><?=link_button(t('+ Neu','+ New'),'classes',['id'=>$id,'tab'=>'tariffs'],'secondary')?></div>
-        <p class="muted"><?=e(t('Ein Kurs kann mehrere Tarife haben – zum Beispiel monatlich oder günstiger im Halbjahr. Beim Anmelden wählt die Familie einen davon.','A course can have several tariffs – monthly, say, or cheaper for half a year. A family picks one when they enrol.'))?></p>
-        <?php foreach(class_tariffs($id,true) as $row): ?>
+        <p class="muted"><?=e(t('Ein Tarif kann auf mehrere Arten bezahlt werden – monatlich, im Quartal, im Halbjahr, im Jahr. Beim Eintragen in den Kurs wählst du, welche davon für dieses Kind gilt.','One tariff can be paid in more than one way – monthly, quarterly, half-yearly, yearly. When you put a child in the course you choose which of them applies to them.'))?></p>
+        <?php foreach(class_tariffs($id,true) as $row): $rowRates=tariff_rates((int)$row['id']); ?>
         <a class="editor-list-item <?=$editTariff===(int)$row['id']?'selected':''?>" href="<?=e(url('classes',['id'=>$id,'tab'=>'tariffs','tariff'=>$row['id']]))?>">
-            <span><strong><?=e($row['name'])?></strong><small><?=e(tariff_summary($row))?></small></span>
-            <span><?=e(money((int)$row['price_cents']))?><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></span>
+            <span><strong><?=e($row['name'])?></strong><small><?=e(tariff_summary($row,$rowRates))?></small></span>
+            <span><?=e($rowRates?plural(count($rowRates),'Preis','Preise','price','prices'):t('kein Preis','no price'))?><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></span>
         </a>
         <?php endforeach ?>
         <?php $orphans=unattached_tariffs(); if($orphans): ?>
@@ -108,40 +113,63 @@ elseif($id && !$edit && $tab==='tariffs'):
         <?php endif ?>
     </section>
     <section class="card">
-        <h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2>
+        <div class="section-heading"><h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2>
+        <?php if($tariff)duplicate_button('tariffs',$editTariff);?></div>
         <?php start_form('tariff_save',['id'=>$editTariff,'class_id'=>$id]); ?>
         <div class="grid two"><?php
-        input('name',t('Name','Name'),$tf['name'],'text',true,'',t('z. B. Monatsbeitrag','e.g. Monthly fee'));
-        input('price',t('Preis je Zeitraum (€)','Price per period (€)'),$tf['price_cents']===null?'':amount_input((int)$tf['price_cents']),'text',true,
-              t('Der Betrag für einen ganzen Abrechnungszeitraum, nicht pro Monat.','The amount for one whole billing period, not per month.'));
+        input('name',t('Name','Name'),$tf['name'],'text',true,'',t('z. B. Beitrag','e.g. Fee'));
         select_field('period',t('Wiederkehrend?','Does it recur?'),['recurring'=>t('Ja, regelmäßig','Yes, regularly'),'once'=>t('Nein, einmalig','No, one-off')],$tf['period'],true);
-        select_field('interval_months',t('Wie oft','How often'),billing_intervals(),(int)$tf['interval_months'],true);
         ?></div>
+
+        <h3><?=e(t('Preise','Prices'))?></h3>
+        <p class="muted"><?=e(t('Ein Preis je Zahlungsweise. Der Betrag gilt für den ganzen Zeitraum, nicht pro Monat: 252 € jährlich, 162 € halbjährlich, 99 € im Quartal, 37 € im Monat. Leere Zeilen werden ignoriert.','One price per way of paying. The amount is for the whole period, not per month: 252 € yearly, 162 € half-yearly, 99 € quarterly, 37 € monthly. Empty rows are ignored.'))?></p>
+        <div class="option-editor" data-option-editor="rate">
+        <?php foreach(array_merge(array_map(fn($m,$c)=>['interval'=>$m,'price'=>$c],array_keys($rates),$rates),[['interval'=>'','price'=>null]]) as $rate): ?>
+            <div class="option-row rate-row">
+                <select name="rate_interval[]" aria-label="<?=e(t('Zahlungsweise','How it is paid'))?>">
+                    <?=select_options(billing_interval_choices(),$rate['interval'])?>
+                </select>
+                <input name="rate_price[]" inputmode="decimal" value="<?=e($rate['price']===null?'':amount_input((int)$rate['price']))?>" placeholder="<?=e(t('Betrag in €','Amount in €'))?>" aria-label="<?=e(t('Preis','Price'))?>">
+            </div>
+        <?php endforeach ?>
+        </div>
+        <button type="button" class="button secondary" data-add-option="rate"><?=e(t('+ Weitere Zahlungsweise','+ Another way of paying'))?></button>
+
         <h3><?=e(t('Zahlung','Payment'))?></h3>
         <div class="grid two"><?php
+        select_field('interval_months',t('Üblicher Zeitraum','The usual interval'),billing_intervals(),(int)$tf['interval_months'],true);
         input('due_day',t('Zahltag im Monat','Day of the month it is due'),(int)$tf['due_day'],'number',true,
               t('1 bis 28. Am 29. bis 31. gibt es nicht in jedem Monat.','1 to 28. The 29th to 31st do not exist in every month.'));
         input('grace_days',t('Tage bis „überfällig“','Days before it counts as overdue'),(int)$tf['grace_days'],'number',true,
               t('Danach erscheint der Beitrag als überfällig.','After this the charge shows as overdue.'));
         select_field('first_period',t('Wer mittendrin einsteigt','Somebody joining part-way through'),billing_first_period_rules(),$tf['first_period'],true);
-        input('sort_order',t('Reihenfolge','Order'),(int)$tf['sort_order'],'number');
         ?></div>
-        <h3><?=e(t('Willkommensrabatt','Welcome discount'))?></h3>
-        <p class="muted"><?=e(t('Zum Beispiel: 1 Monat zu 100 % ist ein Gratismonat. 6 Monate zu 30 % ist ein halbes Jahr günstiger.','For example: 1 month at 100 % is a free month. 6 months at 30 % is half a year cheaper.'))?></p>
-        <div class="grid three"><?php
-        input('discount_months',t('Für wie viele Monate','For how many months'),(int)$tf['discount_months']>0?(int)$tf['discount_months']:0,'number',false,
-              t('0 = kein Rabatt.','0 = no discount.'));
-        select_field('discount_kind',t('Art','Kind'),['percent'=>t('Prozent','Per cent'),'fixed'=>t('Fester Betrag je Monat','Fixed amount per month')],$tf['discount_kind'],true);
-        if($tf['discount_kind']==='fixed') input('discount_amount',t('Betrag je Monat (€)','Amount per month (€)'),amount_input((int)$tf['discount_value']),'text');
-        else input('discount_percent',t('Prozent','Per cent'),(int)$tf['discount_value'],'number');
-        ?></div>
-        <?php check_field('discount_forever',t('Dauerhaft, nicht nur am Anfang','Permanently, not only at the start'),(int)$tf['discount_months']<0);
-        input('description',t('Erklärung für die Familie','Explanation for the family'),$tf['description'],'text');
+
+        <h3><?=e(t('Rabattvorlagen','Discount templates'))?></h3>
+        <p class="muted"><?=e(t('Die Nachlässe, die du gibst – einmal aufgeschrieben, damit du sie beim Kind nur noch auswählen musst. Was eine Familie tatsächlich bekommt, steht beim Kind und ändert sich nicht mit, wenn du hier etwas änderst.','The discounts you give, written down once so that giving one to a child is a choice from a list. What a family actually got is on the child and does not change when you change something here.'))?></p>
+        <div class="option-editor" data-option-editor="discount">
+        <?php foreach(array_merge($templates,[['name'=>'','months'=>0,'kind'=>'percent','value'=>0]]) as $template): ?>
+            <div class="option-row discount-row">
+                <input name="discount_name[]" value="<?=e($template['name'])?>" placeholder="<?=e(t('z. B. Geschwisterrabatt','e.g. sibling discount'))?>" aria-label="<?=e(t('Name des Rabatts','Discount name'))?>">
+                <select name="discount_months[]" aria-label="<?=e(t('Wie lange','How long'))?>">
+                    <?=select_options(discount_spans(),(int)$template['months'])?>
+                </select>
+                <select name="discount_kind[]" aria-label="<?=e(t('Art','Kind'))?>">
+                    <?=select_options(['percent'=>t('Prozent','Per cent'),'fixed'=>t('€ je Monat','€ per month')],$template['kind'])?>
+                </select>
+                <input name="discount_value[]" inputmode="decimal" value="<?=e((int)$template['value']===0?'':($template['kind']==='fixed'?amount_input((int)$template['value']):(string)(int)$template['value']))?>" placeholder="<?=e(t('Wert','Value'))?>" aria-label="<?=e(t('Wert','Value'))?>">
+            </div>
+        <?php endforeach ?>
+        </div>
+        <button type="button" class="button secondary" data-add-option="discount"><?=e(t('+ Weitere Rabattvorlage','+ Another discount template'))?></button>
+
+        <?php input('description',t('Erklärung für die Familie','Explanation for the family'),$tf['description'],'text');
+        input('sort_order',t('Reihenfolge in der Liste','Position in the list'),(int)$tf['sort_order'],'number',false,
+              t('Kleine Zahl zuerst. Nur dafür da, in welcher Reihenfolge die Tarife dieses Kurses erscheinen.','Lowest number first. This only decides the order the tariffs of this course are listed in.'));
         check_field('archived',t('Archivieren (bestehende Anmeldungen bleiben)','Archive (existing enrolments stay)'),(bool)$tf['archived']);
         submit_button();?></form>
     </section>
 </div>
-
 <?php
 // ---------------------------------------------------------------------------
 elseif($id && !$edit && $tab==='dates'):
@@ -169,8 +197,8 @@ elseif($id && !$edit && $tab==='dates'):
         <div class="grid two"><?php
         input('session_on',t('Datum','Date'),$chosen?:today(),'date',true);
         select_field('status',t('Was ist damit','What about it'),session_statuses(),$current['status']??'planned',true);
-        input('starts_at',t('Beginn (nur wenn anders)','Starts (only if different)'),substr((string)($current['starts_at']??''),0,5),'time');
-        input('ends_at',t('Ende (nur wenn anders)','Ends (only if different)'),substr((string)($current['ends_at']??''),0,5),'time');
+        time_field('starts_at',t('Beginn (nur wenn anders)','Starts (only if different)'),(string)($current['starts_at']??''));
+        time_field('ends_at',t('Ende (nur wenn anders)','Ends (only if different)'),(string)($current['ends_at']??''));
         ?></div>
         <?php
         input('location',t('Ort (nur wenn anders)','Place (only if different)'),$current['session_id']??0?($current['location']??''):'','text',false,
@@ -246,7 +274,11 @@ if($available): ?>
 // ---------------------------------------------------------------------------
 elseif($edit): ?>
 <section class="card">
-    <h2><?=e($id?t('Kurs bearbeiten','Edit course'):t('Kurs anlegen','Create course'))?></h2>
+    <div class="section-heading"><h2><?=e($id?t('Kurs bearbeiten','Edit course'):t('Kurs anlegen','Create course'))?></h2>
+    <?php /* The copy brings the training days and the whole price list with it,
+             which is what makes "the same course on Wednesday" a one-minute job
+             rather than a twenty-minute one. */
+    if($id)duplicate_button('classes',(int)$id,t('Kurs kopieren','Duplicate course'));?></div>
     <?php start_form('class_save',['id'=>$id]); ?>
     <div class="grid two">
     <?php
@@ -274,8 +306,8 @@ elseif($edit): ?>
                 <option value="<?=(int)$n?>" <?=(string)$day['weekday']===(string)$n?'selected':''?>><?=e($label)?></option>
                 <?php endforeach ?>
             </select>
-            <input type="time" name="day_starts_at[]" value="<?=e(substr((string)$day['starts_at'],0,5))?>" aria-label="<?=e(t('Beginn','Starts'))?>">
-            <input type="time" name="day_ends_at[]" value="<?=e(substr((string)$day['ends_at'],0,5))?>" aria-label="<?=e(t('Ende','Ends'))?>">
+            <?=time_cells('day_starts_at',t('Beginn','Starts'),(string)$day['starts_at'])?>
+            <?=time_cells('day_ends_at',t('Ende','Ends'),(string)$day['ends_at'])?>
             <input name="day_location[]" value="<?=e($day['location'])?>" placeholder="<?=e(t('Ort, falls abweichend','Place, if different'))?>" aria-label="<?=e(t('Ort','Place'))?>">
         </div>
     <?php endforeach ?>

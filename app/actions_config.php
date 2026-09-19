@@ -45,7 +45,7 @@ function dispatch_config(string $action): array {
         require_staff(); $c=training_class((int)post('class_id'));
         $on=date_value(post('session_on'),true);
         $status=choose(post('status','planned'),array_keys(session_statuses()));
-        $from=time_value(post('starts_at')); $to=time_value(post('ends_at'));
+        $from=posted_time('starts_at'); $to=posted_time('ends_at');
         if($from && $to && $from>=$to) throw new UserError(t('Das Ende muss nach dem Beginn liegen.','The end time must be after the start time.'));
         // "Findet statt" with nothing else changed is the weekly pattern, so the
         // row is removed rather than stored: a table of rows that say "as usual"
@@ -101,10 +101,25 @@ function dispatch_config(string $action): array {
         if(!enrolment((int)$c['id'],(int)$s['id'])) throw new UserError(t('Dieses Kind ist nicht in diesem Kurs.','This child is not in this course.'));
         $dueDay=(int)post('due_day','0');
         if($dueDay<0 || $dueDay>28) throw new UserError(t('Zahltag: 1 bis 28, oder 0 für „wie im Tarif“.','Payment day: 1 to 28, or 0 for “as the tariff says”.'));
-        run('UPDATE class_students SET tariff_id=?,price_cents=?,price_note=?,due_day=?,joined_on=?,left_on=? WHERE class_id=? AND student_id=?',
-            [reference_or_null('tariffs','tariff_id','class_id='.(int)$c['id']),
+        $tariffId=reference_or_null('tariffs','tariff_id','class_id='.(int)$c['id']);
+        // 0 is "whatever this tariff's usual interval is", which is what most
+        // enrolments say. Anything else has to be a price that is written down,
+        // or the child would be billed at an amount nobody could point at.
+        $interval=(int)post('interval_months','0');
+        if($interval!==0) {
+            billing_valid_interval($interval);
+            if(!isset(tariff_rates((int)$tariffId)[$interval]))
+                throw new UserError(t('Für diese Zahlungsweise hat der Tarif keinen Preis.','The tariff has no price for that way of paying.'));
+        }
+        $discount=discount_from_post(post('discount_kind','percent'),post('discount_months','0'),post('discount_value'));
+        run('UPDATE class_students SET tariff_id=?,interval_months=?,price_cents=?,price_note=?,due_day=?,joined_on=?,left_on=?,'
+            .'discount_months=?,discount_kind=?,discount_value=?,discount_note=? WHERE class_id=? AND student_id=?',
+            [$tariffId, $interval,
              post('price')!==''?cents(post('price')):null, text_limit('price_note'), $dueDay,
-             date_value(post('joined_on')), date_value(post('left_on')), $c['id'], $s['id']]);
+             date_value(post('joined_on')), date_value(post('left_on')),
+             $discount['months'], $discount['kind'], $discount['value'],
+             $discount['value']>0?text_limit('discount_note',120):'',
+             $c['id'], $s['id']]);
         audit('enrolment.saved','student',(int)$s['id']);
         flash(t('Kursteilnahme gespeichert.','Enrolment saved.'));
         return ['student',['id'=>$s['id'],'tab'=>'classes']];

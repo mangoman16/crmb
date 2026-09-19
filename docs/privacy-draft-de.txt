@@ -16,6 +16,7 @@ Der Newsletter wird nur an Konten mit aktiviertem Newsletter-Abonnement gesendet
 
 5. Empfänger und Dienstleister
 Die zuständige Trainingsverwaltung und die zum jeweiligen Schüler gehörende Kontoperson haben Zugriff entsprechend ihren Berechtigungen. Andere Schülerkonten haben keinen Zugriff.
+Die Daten werden nicht verkauft, nicht vermietet und nicht zu Werbezwecken an Dritte weitergegeben. Sie werden ausschließlich intern für den Trainingsbetrieb verarbeitet: Kurse, Mitgliedschaften, Beiträge und die Kommunikation darüber. Eine Weitergabe erfolgt nur, soweit sie für den Betrieb des Portals technisch erforderlich ist (Hosting, E-Mail-Versand) oder eine gesetzliche Pflicht besteht.
 [Hosting-Dienstleister, Verarbeitungsort, SMTP-Dienstleister, Auftragsverarbeiter und gegebenenfalls Drittlandübermittlungen samt geeigneten Garantien konkret angeben.]
 
 6. Speicherung und Löschung

@@ -16,6 +16,7 @@ Newsletters are emailed only to accounts that enable the newsletter subscription
 
 5. Recipients and services
 The training management team and the account holder linked to a student can access information according to their permissions. Other student accounts cannot access it.
+The information is never sold, never rented, and never passed to anybody else for advertising. It is used inside the club, for running the training: courses, memberships, charges and the messages about them. It is passed on only where the portal technically needs it to work (hosting, sending email) or where the law requires it.
 [Specify the hosting provider, processing location, SMTP provider, processors, and any international transfers and applicable safeguards.]
 
 6. Retention and deletion

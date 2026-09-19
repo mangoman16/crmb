@@ -29,26 +29,19 @@ $realUser=$public?null:impersonator();
 <body class="<?=$public?'public-page':'app-page'?>">
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
 <?php if(!$public):
-$nav=['dashboard'=>['home',t('Übersicht','Overview')],'students'=>['users',t('Schüler','Students')]];
-$waitingRequests=is_staff($user)?pending_request_count():0;
-if(is_staff($user)){$nav['classes']=['calendar',t('Kurse','Courses')];$nav['attendance']=['check',t('Anwesenheit','Attendance')];$nav['payments']=['wallet',t('Beiträge','Payments')];$nav['invoices']=['news',t('Rechnungen','Invoices')];}
-$nav['messages']=['mail',t('Nachrichten','Messages')];$nav['news']=['news',t('Neuigkeiten','News')];
 $unreadTotal=unread_count($user);
 $unreadNotes=unread_notifications((int)$user['id']);
-if(is_staff($user)){$nav['manage']=['settings',t('Verwaltung','Management')];$nav['accounts']=['lock',t('Konten','Accounts')];$nav['outbox']=['mail',t('Postausgang','Outbox')];}
-if(is_admin($user)){$nav['history']=['calendar',t('Änderungen','Changes')];$nav['settings']=['settings',t('Einstellungen','Settings')];}
 ?>
 <aside class="sidebar" id="sidebar">
     <a class="brand" href="<?=e(url('dashboard'))?>"><span class="brand-mark">B<span></span></span><span><?=e(setting('club_name','Badminton'))?><small><?=e(is_staff($user)?t('Verwaltung','Management'):t('Mein Portal','My portal'))?></small></span></a>
-    <nav aria-label="<?=e(t('Hauptmenü','Main menu'))?>">
-    <?php foreach($nav as $route=>[$symbol,$label]):$active=$route===$page || ($route==='students'&&$page==='student') || ($route==='messages'&&$page==='compose'); ?>
-        <a href="<?=e(url($route))?>" <?=$active?'aria-current="page"':''?>><?=icon($symbol)?><span><?=e($label)?></span><?php if($route==='messages'&&$unreadTotal):?><span class="count" aria-label="<?=e($unreadTotal.' '.t('ungelesen','unread'))?>"><?=$unreadTotal?></span><?php endif ?><?php if($route==='classes'&&$waitingRequests):?><span class="count" aria-label="<?=e($waitingRequests.' '.t('Anfragen','requests'))?>"><?=e($waitingRequests)?></span><?php endif ?></a>
-    <?php endforeach ?>
-    </nav>
+    <?=sidebar_nav($user,$page)?>
     <?php /* The account used to be here as well as in the top bar. One of the two
              was always redundant, and the top bar is the one on screen whatever
              you have scrolled to, so only what it has no room for stays here. */ ?>
-    <div class="sidebar-bottom"><div class="sidebar-meta"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutz','Privacy'))?></a><span>v<?=e(app_version())?></span></div></div>
+    <div class="sidebar-bottom">
+        <a class="feedback-link" href="#feedback"><?=icon('help')?><span><?=e(t('Etwas funktioniert nicht','Something is wrong'))?></span></a>
+        <div class="sidebar-meta"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutz','Privacy'))?></a><span>v<?=e(app_version())?></span></div>
+    </div>
 </aside>
 <div class="app-shell">
 <?php /* Pinned, because everything in it - the language switch, what is waiting,
@@ -100,15 +93,23 @@ if(is_admin($user)){$nav['history']=['calendar',t('Änderungen','Changes')];$nav
 <?php if(!$public): ?>
 <?php /* On every page, because the page something goes wrong on is the page you
          are looking at, and "email the administrator" needs a working email
-         address and the presence of mind to describe where you were. */ ?>
-<details class="feedback">
-    <summary><?=icon('lock')?><span><?=e(t('Etwas funktioniert hier nicht','Something is wrong on this page'))?></span></summary>
+         address and the presence of mind to describe where you were.
+
+         Pinned to the bottom right on a desktop screen, where a help button has
+         lived in every product she has ever used. On a phone it stays at the end
+         of the page: the bottom of a phone screen already holds the menu bar and
+         the sticky save button, and a third thing floating over them is how a
+         Save button becomes unreachable. The menu carries a link down to it. */ ?>
+<details class="feedback" id="feedback">
+    <summary><?=icon('help')?><span><?=e(t('Etwas funktioniert hier nicht','Something is wrong on this page'))?></span></summary>
+    <div class="feedback-panel">
     <p class="muted"><?=e(t('Beschreibe kurz, was du erwartet hast und was passiert ist. Welche Seite du gerade ansiehst, welches Gerät du benutzt und welche Version das Portal hat, wird automatisch mitgeschickt – das musst du nicht wissen.','Say briefly what you expected and what happened. Which page you are on, what device you are using and which version the portal is are sent automatically – you do not have to know any of that.'))?></p>
     <?php start_form('feedback_send',['page'=>$page],'form',true);
     input('message',t('Was ist passiert?','What happened?'),'','textarea',true);
     file_field('screenshot',t('Bildschirmfoto (optional)','Screenshot (optional)'),'avatar',
                t('Falls du eines gemacht hast.','If you took one.'));
     submit_button(t('Absenden','Send'),'secondary');?></form>
+    </div>
 </details>
 <?php endif ?>
 </main>
@@ -119,6 +120,15 @@ if(is_admin($user)){$nav['history']=['calendar',t('Änderungen','Changes')];$nav
 <button type="button" id="menu-toggle" aria-controls="sidebar" aria-expanded="false"><?=icon('more')?><span><?=e(t('Mehr','More'))?></span></button>
 </nav>
 <button type="button" class="menu-backdrop" id="menu-backdrop" aria-label="<?=e(t('Menü schließen','Close menu'))?>" hidden></button>
-<?php else: ?><footer class="public-footer"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><span>v<?=e(app_version())?></span></footer><?php endif ?>
+<?php else: ?>
+<?php /* Said on the way in rather than only in a notice nobody opens. Worded as
+         what is true, not as consent: a notice is information, and the session
+         cookie this portal sets is the one that makes signing in work, which is
+         the kind that never needed asking for. What people actually want to know
+         before typing their child's name in is on the line below. */ ?>
+<footer class="public-footer">
+    <p class="public-notice"><?=e(t('Mit der Nutzung dieses Portals gilt die Datenschutzerklärung. Es werden nur technisch notwendige Cookies gesetzt – für die Anmeldung, die Sprache und den Schutz der Formulare. Keine Analyse, keine Werbung. Deine Daten werden nicht verkauft und nicht an Dritte weitergegeben; sie werden ausschließlich intern für den Trainingsbetrieb verarbeitet.','Using this portal means the privacy notice applies. It sets only the cookies it needs to work – for signing in, for the language and to protect its forms. No analytics, no advertising. Your data is never sold and never passed to anybody else; it is used inside the club, for running the training.'))?></p>
+    <p class="public-footer-links"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><span>v<?=e(app_version())?></span></p>
+</footer><?php endif ?>
 </body>
 </html>

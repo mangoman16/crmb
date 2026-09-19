@@ -221,6 +221,10 @@ function setting_schema(): array {
             'kind' => 'raw', 'default' => [], 'group' => 'smtp', 'internal' => true,
             'label' => ['SMTP', 'SMTP'],
         ],
+        'smtp_last_test' => [
+            'kind' => 'raw', 'default' => [], 'group' => 'smtp', 'internal' => true,
+            'label' => ['Letzter Verbindungstest', 'Last connection test'],
+        ],
         'mail_last_run' => [
             'kind' => 'raw', 'default' => '', 'group' => 'smtp', 'internal' => true,
             'label' => ['Letzter Versandlauf', 'Last mail run'],

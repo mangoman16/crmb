@@ -315,15 +315,29 @@ function make_student(array $over=[]): int {
     ], $over));
 }
 
+/**
+ * A tariff and its rates.
+ *
+ * 'price_cents' is a convenience for the common case of one rate at the tariff's
+ * normal interval; 'rates' takes an interval => cents map for a tariff that
+ * offers a choice. The price lives in tariff_rates, never on the tariff itself,
+ * so a suite that sets both cannot describe a tariff the application could not.
+ */
 function make_tariff(array $over=[]): int {
     static $n = 0; $n++;
-    return fixture('tariffs', array_merge([
+    $rates = $over['rates'] ?? null;
+    $price = (int)($over['price_cents'] ?? 4500);
+    unset($over['rates'], $over['price_cents']);
+    $id = fixture('tariffs', array_merge([
         'name' => 'Tarif '.$n, 'description' => '', 'class_id' => null,
-        'price_cents' => 4500, 'period' => 'recurring', 'interval_months' => 1,
+        'period' => 'recurring', 'interval_months' => 1,
         'due_day' => 1, 'grace_days' => 7, 'first_period' => 'prorate',
-        'discount_months' => 0, 'discount_kind' => 'percent', 'discount_value' => 0,
         'due_days' => 14, 'sort_order' => 0, 'archived' => 0, 'is_demo' => 0,
     ], $over));
+    $interval = (int)($over['interval_months'] ?? 1);
+    foreach ($rates ?? [$interval => $price] as $months => $cents)
+        fixture('tariff_rates', ['tariff_id' => $id, 'interval_months' => (int)$months, 'price_cents' => (int)$cents]);
+    return $id;
 }
 
 /**
@@ -447,6 +461,43 @@ function render_view(string $page, array $query = []): string {
         $_GET = $restore;
         if ($restorePage === null) unset($GLOBALS['page']); else $GLOBALS['page'] = $restorePage;
     }
+}
+
+/**
+ * The fields one time box posts, written as the time a person would say.
+ *
+ * The form posts an hour and a minute separately, because <input type="time">
+ * renders in the language of the device rather than of the page. A suite should
+ * still read as "16:00", so it says that and this splits it.
+ *
+ *   act('x', ['a'=>1] + time_post('starts_at', '16:00'));
+ *   act('y', time_post('day_starts_at', ['16:00', '18:00', '']));
+ */
+function time_post(string $name, string|array $value): array {
+    if (is_array($value)) {
+        $hours = []; $minutes = [];
+        foreach ($value as $one) { [$h, $m] = time_parts((string)$one); $hours[] = $h; $minutes[] = $m; }
+        return [$name.'_h' => $hours, $name.'_m' => $minutes];
+    }
+    [$hour, $minute] = time_parts($value);
+    return [$name.'_h' => $hour, $name.'_m' => $minute];
+}
+
+/**
+ * The discount one family was given on one enrolment.
+ *
+ * It lives on the enrolment rather than on the tariff, because a discount on
+ * the tariff is a property of the price list: giving one child three months at
+ * half price used to mean inventing a tariff nobody else could be put on.
+ */
+function give_discount(int $classId, int $studentId, int $months, string $kind, int $value, string $note=''): void {
+    run('UPDATE class_students SET discount_months=?, discount_kind=?, discount_value=?, discount_note=?'
+        .' WHERE class_id=? AND student_id=?', [$months, $kind, $value, $note, $classId, $studentId]);
+}
+
+/** Which of its tariff's intervals this enrolment is billed on; 0 = the usual. */
+function bill_every(int $classId, int $studentId, int $months): void {
+    run('UPDATE class_students SET interval_months=? WHERE class_id=? AND student_id=?', [$months, $classId, $studentId]);
 }
 
 /** Populate $_POST for an action, including the fields handle_post() requires. */
