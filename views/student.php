@@ -69,6 +69,20 @@ if($linked) {
 select_field('account_id',t('Bestehendes Konto verknüpfen','Link an existing account'),array_column(rows("SELECT id,CONCAT(name,' · ',email) AS label FROM accounts WHERE role='student' ORDER BY name"),'label','id'),$s['account_id']);
 echo '<div class="field-note">'.e(t('Nur nötig, wenn Geschwister sich ein Konto teilen sollen. Sonst legt „Zugang einladen“ das Konto an.','Only needed when siblings are to share one account. Otherwise “Zugang einladen” creates it.')).'</div>';
 ?></div>
+
+<h3><?=e(t('Anschrift und Telefon','Address and telephone'))?></h3>
+<?php /* One line for the address, the way an anmeldeformular asks it, because it
+         is typed once and printed once and never sorted on. The telephone is the
+         member's own: for an adult those are the same person as the emergency
+         contact, and listing yourself as who to ring is not a record anybody
+         should have to keep. */
+input('address',t('Anschrift','Postal address'),$s['address']??'','text',false,
+      t('Straße, PLZ und Ort in einer Zeile. Gehört ab 400 € Rechnungsbetrag auf die Rechnung.',
+        'Street, postcode and town on one line. Required on an invoice above 400 €.'));
+input('phone',t('Telefonnummer','Telephone number'),$s['phone']??'','tel',false,
+      t('Die eigene Nummer. Wen wir im Notfall anrufen, steht unter „Kontakte“.',
+        'Their own number. Who to ring in an emergency is under “Contacts”.'));
+?>
 <?php endif ?>
 </section>
 

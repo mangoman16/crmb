@@ -50,6 +50,11 @@ function billing_interval_choices(): array {
 function billing_first_period_rules(): array {
     return [
         'prorate' => t('anteilig nach Tagen',           'pro rata by days'),
+        // What a club's own form usually promises when it says "aliquot": every
+        // calendar month they are a member for any part of counts in full. A
+        // 252 € year entered in November is 42 €, which is what the family
+        // signed - pro rata by days would have been 34,52 €.
+        'months'  => t('anteilig nach vollen Monaten',  'pro rata by whole months'),
         'full'    => t('voller Zeitraum',               'the whole period'),
         'skip'    => t('erst ab dem nächsten Zeitraum', 'not until the next period'),
     ];
@@ -116,6 +121,19 @@ function billing_days(string $from, string $to): int {
     return (int)(new DateTimeImmutable($from))->diff(new DateTimeImmutable($to))->days + 1;
 }
 
+/** The first day of the month $date falls in, and the last day of it. */
+function billing_month_start(string $date): string { return (new DateTimeImmutable($date))->format('Y-m-01'); }
+function billing_month_end(string $date): string { return (new DateTimeImmutable($date))->format('Y-m-t'); }
+
+/** How many calendar months $from..$to touches, counting both ends in full. */
+function billing_whole_months(string $from, string $to): int {
+    $a = new DateTimeImmutable(billing_month_start($from));
+    $b = new DateTimeImmutable(billing_month_start($to));
+    if ($b < $a) return 0;
+    $diff = $a->diff($b);
+    return $diff->y * 12 + $diff->m + 1;
+}
+
 /**
  * The first day this enrolment is billed from.
  *
@@ -145,7 +163,7 @@ function billing_amount_for(array $enrolment, array $tariff, array $period): arr
     $joinedLate = $coverFrom > $period['from'];
     $leftEarly  = $coverTo < $period['to'];
 
-    $rule = in_array($tariff['first_period'] ?? 'prorate', ['prorate', 'full', 'skip'], true) ? $tariff['first_period'] : 'prorate';
+    $rule = in_array($tariff['first_period'] ?? 'prorate', ['prorate', 'months', 'full', 'skip'], true) ? $tariff['first_period'] : 'prorate';
     // The rule answers one question - what happens to somebody who starts in the
     // middle of a period - and the form says so. Leaving is not a choice the
     // tariff gets to make: they were there for part of the period, so that part
@@ -156,12 +174,21 @@ function billing_amount_for(array $enrolment, array $tariff, array $period): arr
         return ['gross' => 0, 'discount' => 0, 'amount' => 0, 'note' => '',
                 'skip' => t('Erst ab dem nächsten vollen Zeitraum', 'Not until the next whole period')];
 
-    $billFrom = $joinedLate && $rule === 'prorate' ? $coverFrom : $period['from'];
+    $billFrom = $joinedLate && $rule !== 'full' ? $coverFrom : $period['from'];
     $billTo   = $coverTo;
-    $partial  = $billFrom > $period['from'] || $leftEarly;
-    $gross = $partial
-        ? (int)round($price * billing_days($billFrom, $billTo) / billing_days($period['from'], $period['to']))
-        : $price;
+    // By whole months, the month somebody arrives in and the month they leave in
+    // are theirs entirely, so the span rounds outwards to those month ends - and
+    // the covered span below says so, because that is what they are paying for.
+    if ($rule === 'months' && ($billFrom > $period['from'] || $leftEarly)) {
+        $billFrom = max($period['from'], billing_month_start($billFrom));
+        $billTo   = min($period['to'],   billing_month_end($billTo));
+    }
+    $partial  = $billFrom > $period['from'] || $billTo < $period['to'];
+    $gross = !$partial ? $price
+        : ($rule === 'months'
+            ? (int)round($price * billing_whole_months($billFrom, $billTo)
+                                / max(1, billing_whole_months($period['from'], $period['to'])))
+            : (int)round($price * billing_days($billFrom, $billTo) / billing_days($period['from'], $period['to'])));
 
     [$discount, $note] = billing_discount($enrolment, $period, $start, $gross, $months);
     return ['gross' => $gross, 'discount' => $discount, 'amount' => max(0, $gross - $discount),
@@ -482,7 +509,7 @@ function billing_charge_label(string $template, array $entry): string {
  * form all show it, and three descriptions of the same rules is how two of them
  * end up wrong.
  */
-function tariff_summary(array $tariff, ?array $rates = null): string {
+function tariff_summary(array $tariff, ?array $rates = null, bool $withDueDay = true): string {
     $rates ??= tariff_rates((int)$tariff['id']);
     $normal = (int)($tariff['interval_months'] ?? 1);
     if (($tariff['period'] ?? 'recurring') !== 'recurring')
@@ -495,7 +522,10 @@ function tariff_summary(array $tariff, ?array $rates = null): string {
     usort($order, fn($a, $b) => [$a !== $normal, $a] <=> [$b !== $normal, $b]);
     $parts = [];
     foreach ($order as $months) $parts[] = money($rates[$months]) . ' ' . billing_interval_label($months);
-    $parts[] = t('fällig am ', 'due on the ') . (int)$tariff['due_day'] . t('.', '');
+    // The day of the month answers "when do I pay it", which is a question the
+    // portal's own pages need and a registration form does not: on paper it is a
+    // third of a line spent on something nobody ticking a box is deciding.
+    if ($withDueDay) $parts[] = t('fällig am ', 'due on the ') . (int)$tariff['due_day'] . t('.', '');
     return implode(' · ', $parts);
 }
 

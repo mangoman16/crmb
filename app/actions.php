@@ -158,15 +158,21 @@ function dispatch_action(string $action): array {
             // parent's address. Optional while the record is being set up, and
             // asked for by contact_gap() until it is there.
             $email=post('email')!==''?email_value(post('email')):'';
-            $args=[$accountId,$first,$last,$email,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
+            // One line, the way the paper form asks it, because it is typed once
+            // and printed once and never sorted on. Her own number rather than an
+            // emergency contact's: for an adult member those are the same person,
+            // and listing yourself as the person to ring is not a record anybody
+            // should have to keep.
+            $address=text_limit('address',200);$phone=text_limit('phone',60);
+            $args=[$accountId,$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
             if($id) {
                 tracked('students',$id,$first.' '.$last,function() use ($args,$id) {
-                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,email=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
+                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,email=?,address=?,phone=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
                     if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
                 });
             }
             else {$id=tracked_insert('students',$first.' '.$last,function() use ($args) {
-                run('INSERT INTO students (account_id,first_name,last_name,email,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+                run('INSERT INTO students (account_id,first_name,last_name,email,address,phone,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
                 return (int)db()->lastInsertId();
             });}
         } else {

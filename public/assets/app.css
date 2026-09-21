@@ -710,9 +710,16 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 }
 @media print{
   /* The sheet is the page. Everything that is interface goes, including the
-     card it is shown in on screen. */
-  .no-print,.page-heading,.tabs{display:none!important}
+     card it is shown in on screen - and the skip link, which is parked off the
+     top of the screen with a negative offset rather than hidden, so on paper it
+     came back and printed "Zum Inhalt" across the signature line. */
+  .no-print,.page-heading,.tabs,.skip-link{display:none!important}
   .sheet{border:0;border-radius:0;padding:0;margin:0;max-width:none;box-shadow:none}
+  /* The page the sheet sits in keeps its screen padding otherwise - 36px above
+     and 60px below - which is 96px of nothing and was the difference between one
+     sheet of paper and two. */
+  .app-shell{margin:0}
+  .main-content{max-width:none;margin:0;padding:0}
   .print-boxes span{border-color:#555}
   .print-box{border-color:#000}
   .sheet-block{margin-bottom:16px}
@@ -736,24 +743,31 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 /* Two people to ring, side by side. One under the other cost 145px of a page
    that has 1017, which is the difference between one sheet of paper and two. */
 .sheet-contact{border-bottom:0;padding-bottom:0}
+/* The fee choices. Full width so the lines are not broken in half, and in two
+   columns of their own, because a club with four tariffs in one column was what
+   pushed the blank form onto a second sheet. */
+.sheet-ticks{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 26px}
+.sheet-sub{grid-column:1/-1;font-size:.75rem;font-weight:650;margin:6px 0 2px}
 @media(max-width:620px){
   .sheet-block{grid-template-columns:minmax(0,1fr)}
 }
 @media print{
   /* Measured against a real PDF rather than a screenshot: a screenshot ignores
      @page, so it says the form fits when the printer says two pages. */
-  .sheet-block{margin-bottom:8px;gap:0 22px}
+  .sheet-block{margin-bottom:6px;gap:0 22px}
+  .sheet-ticks{gap:0 22px}
+  .sheet-ticks .print-tick{margin-bottom:3px;font-size:.6875rem}
   .sheet-block h2{margin-bottom:6px;padding-bottom:3px}
-  .print-field{margin-bottom:4px}
+  .print-field{margin-bottom:3px}
   .print-label{margin-bottom:2px;font-size:.6875rem}
   .print-boxes{gap:2px}
-  .print-boxes span{width:15px;height:20px}
+  .print-boxes span{width:14px;height:18px}
   .print-value{min-height:20px;font-size:.875rem}
-  .print-tick{margin-bottom:5px}
+  .print-tick{margin-bottom:4px}
   .sheet-note{margin-bottom:6px}
   .sheet-contact{margin-bottom:6px;padding-bottom:0}
-  .sheet-signatures{margin-top:14px}
-  .print-rule{height:26px}
+  .sheet-signatures{margin-top:10px}
+  .print-rule{height:22px}
   .sheet-intro{margin-bottom:10px}
   .sheet-head{margin-bottom:10px;padding-bottom:8px}
   .sheet-foot{margin-top:10px;padding-top:6px}

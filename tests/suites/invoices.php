@@ -132,6 +132,28 @@ $banked = invoice(create_invoice($student, [fixture('charges', ['student_id'=>$s
 ok(str_contains($pdfText(invoice_pdf($banked)), 'AT05 5100 0805 1317 6900'),
    'and the invoice carries it in groups, not as one twenty-character run');
 
+case_('Above 400 € the recipient’s address has to be on it');
+/* § 11 Abs 1 Z 3 lit b UStG wants the recipient's name and address; Abs 6 lets
+   a Kleinbetragsrechnung up to 400 € gross leave both out, which is most of a
+   club's invoices. So the address is asked for where it matters rather than
+   made compulsory on a monthly fee. */
+$big = fixture('charges', ['student_id'=>$student, 'label'=>'Jahresbeitrag und Anmeldung',
+    'amount_cents'=>40100, 'gross_cents'=>40100, 'discount_cents'=>0, 'discount_note'=>'',
+    'period_from'=>'2026-01-01', 'period_to'=>'2026-12-31', 'covered_from'=>'2026-01-01',
+    'covered_to'=>'2026-12-31', 'due_on'=>'2026-01-01', 'overdue_on'=>'2026-01-08',
+    'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+throws(fn() => create_invoice($student, [$big], $issuedOn), 'over the threshold it is refused', 'Anschrift');
+$under = fixture('charges', ['student_id'=>$student, 'label'=>'Beitrag Dezember',
+    'amount_cents'=>40000, 'gross_cents'=>40000, 'discount_cents'=>0, 'discount_note'=>'',
+    'period_from'=>'2026-12-01', 'period_to'=>'2026-12-31', 'covered_from'=>'2026-12-01',
+    'covered_to'=>'2026-12-31', 'due_on'=>'2026-12-01', 'overdue_on'=>'2026-12-08',
+    'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+does_not_throw(fn() => create_invoice($student, [$under], $issuedOn), 'at exactly 400 € it is not');
+run('UPDATE students SET address=? WHERE id=?', ['Hauptstraße 5, 7000 Eisenstadt', $student]);
+$addressed = invoice(create_invoice($student, [$big], $issuedOn));
+ok(str_contains($pdfText(invoice_pdf($addressed)), 'Hauptstraße 5, 7000 Eisenstadt'),
+   'and with it filled in the document carries it, under the name');
+
 case_('The same charge cannot be invoiced twice');
 throws(fn() => create_invoice($student, [$charge]), 'a charge already on an invoice', 'schon eine Rechnung');
 is_same(0, count(array_filter(uninvoiced_charges($student), fn($c) => (int)$c['id'] === $charge)),

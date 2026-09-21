@@ -30,6 +30,34 @@ from the paper form to a printed invoice. Five things came out of that.
   As a comma-separated sentence they were 17px tall and touching, which on a
   phone is a third of the minimum this project measures against, twice over.
 
+### And the four things that form asked for and the portal could not hold
+
+- **A member has an address and a telephone number of their own.** The paper form
+  asks six things and the portal held four. The address had nowhere to go at all,
+  and a number could only be recorded by inventing an emergency contact — which
+  for an adult member means listing yourself as the person to ring if something
+  happens to you. One line for the address, the way the form asks it.
+- **Above 400 € an invoice carries the recipient's address**, and is refused
+  until there is one. § 11 Abs 1 Z 3 lit b UStG wants the name and the address;
+  Abs 6 lets a Kleinbetragsrechnung up to 400 € gross leave both out, which is
+  most of a club's invoices — so it is asked for where it matters rather than
+  made compulsory on a monthly fee.
+- **„Anteilig nach vollen Monaten" is a way of charging a part period.** What a
+  club form means by „aliquot": the month somebody joins in is theirs entirely.
+  Their own worked example is 42 € for November and December of a 252 € year;
+  pro rata by days — the only rule the portal had — would have been 34,52 €, and
+  42 € is the number the family signed.
+- **The printables carry the price list and no longer address everybody as a
+  child.** A blank form now has the fee as lines to tick, taken from the courses
+  so paper and portal cannot drift; the heading and the signature line say
+  „bei Minderjährigen" rather than assuming one. Still one sheet of A4 with four
+  tariffs on it — measured with a real 14mm-margin PDF after the first version
+  ran to two pages.
+- „ZVR-, Firmenbuch- oder GISA-Nummer": a registered club in Austria has a
+  ZVR-Zahl and neither of the other two, and it goes on everything it sends out.
+- The skip link („Zum Inhalt") is parked off the top of the screen rather than
+  hidden, so it printed across the signature line of both sheets.
+
 ### Creating something asks for the basics, and then says what is left
 
 - **The form that creates a child now asks for four things**: a name, a date of

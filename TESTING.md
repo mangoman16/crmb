@@ -292,6 +292,20 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **7.13** The blank form asks for exactly what the portal stores — every
   custom field that is not marked *internal*, and nothing else. Add a custom
   field and it appears; mark one internal and it does not.
+- [ ] **7.13a** It asks for the **address** and the **telephone number**, which
+  every club form asks for on paper.
+- [ ] **7.13b** It carries the **price list** as lines to tick, taken from the
+  courses so paper and portal cannot drift, with the course named once above the
+  list and no „fällig am" on it. With a club's four tariffs on it, it is still
+  **one page** — check the real print dialog with headers and footers off, not a
+  screenshot: this block pushed it onto a second sheet the first time.
+- [ ] **7.13c** It is not headed „Kind" and the signature line reads
+  „bei Minderjährigen …": half a club's members are adults.
+- [ ] **7.13d** A photo or video consent is added the way any other question is:
+  a checkbox under **Einstellungen → Eigene Felder**, with **Berechtigung für
+  Schüler** set to anything other than „Nur intern" — a field marked internal is
+  hers and deliberately never printed. It then appears on both printables as a
+  line to tick. Nothing is hard-coded for it, because not every club asks.
 - [ ] **7.14** **Ein Kind → Datenblatt drucken**: the same layout with the
   values filled in, a date, and a line to sign that they were checked. Also one
   page.
@@ -435,6 +449,11 @@ Skip on an ordinary code change; do all of it before a release.
   The charge shows the days it covers, which are not the billing period.
 - [ ] **11.4** The same tariff set to „whole period" charges the whole amount,
   and set to „skip" charges nothing until the next period.
+- [ ] **11.4a** Set to „anteilig nach vollen Monaten": somebody joining on any
+  day of November on a 252 € yearly tariff is charged **42 €** for November and
+  December, and the charge covers 01.11. – 31.12. That is what a club form means
+  by „aliquot", and pro rata by days would have been 34,52 €. The month somebody
+  leaves in counts in full too.
 - [ ] **11.5** A yearly tariff produces one charge a year, not twelve.
 - [ ] **11.6** A discount of 50 % for three months produces three reduced
   charges and then the normal amount.
@@ -503,6 +522,10 @@ Skip on an ordinary code change; do all of it before a release.
   sentence under it was not, on a document a family keeps.)
 - [ ] **13.5b** The IBAN on the document is in groups of four, so it can be
   typed into a banking app without losing your place.
+- [ ] **13.5c** An invoice whose total is **over 400 €** is refused until the
+  member has an address, and then carries it under their name. At exactly 400 €
+  it is not: up to that a Kleinbetragsrechnung may leave name and address out
+  (§ 11 Abs 6 UStG), and most of a club's invoices are under it.
 - [ ] **13.6** As a Kleinunternehmer, the § 6 Abs 1 Z 27 note is on the
   document and no VAT is shown.
 - [ ] **13.7** Switch to „mit Umsatzsteuer": the net, the rate, the tax and the

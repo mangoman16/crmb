@@ -133,7 +133,12 @@ function setting_schema(): array {
         ],
         'org_register_no' => [
             'kind' => 'text', 'default' => '', 'max' => 60, 'group' => 'organisation',
-            'label' => ['Firmenbuch- oder GISA-Nummer', 'Company or trade register number'],
+            // A registered club in Austria has a ZVR-Zahl and neither of the
+            // other two, and it goes on everything the club sends out. Named
+            // first because it is the commonest operator of this portal.
+            'label' => ['ZVR-, Firmenbuch- oder GISA-Nummer', 'Register number (ZVR, company or trade register)'],
+            'hint'  => ['Bei einem Verein die ZVR-Zahl, mit „ZVR“ davor, z. B. ZVR 1447346144. Sie erscheint so auf der Rechnung.',
+                        'For a club, the ZVR number with “ZVR” in front, e.g. ZVR 1447346144. It appears on the invoice exactly as typed.'],
         ],
         'org_tax_mode' => [
             'kind' => 'choice', 'default' => 'small', 'options' => 'org_tax_modes', 'group' => 'organisation',

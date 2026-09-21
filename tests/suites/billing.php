@@ -102,6 +102,36 @@ is_same(['2026-09-01', '2026-09-30'],
         'an older charge falls back to the period it carries');
 run('UPDATE charges SET cancelled=1 WHERE student_id IN (?,?)', [$mid, $child]);
 
+case_('Or by whole months, which is what a club form means by „aliquot“');
+/* A real club's form: "Monate bis zum folgenden Jahr bzw. Halbjahr werden
+   aliquot verrechnet. Beispiel: Ich trete im November 2024 ein … Ich zahle 42 €
+   (November und Dezember) + 252 € (Jahresgebühr 2025)". Pro rata by days would
+   have been 34,52 €, and the family signed the other number. */
+$yearly = make_tariff(['name'=>'Jahresbeitrag Erwachsene', 'interval_months'=>12, 'due_day'=>1,
+                       'grace_days'=>7, 'first_period'=>'months', 'rates'=>[12=>25200]]);
+$november = make_student(['first_name'=>'November', 'joined_on'=>'2026-11-12']);
+make_enrolment($course, $november, ['tariff_id'=>$yearly, 'joined_on'=>'2026-11-12']);
+$first = $line('2026-11', $november);
+is_same(4200, $first['amount'], 'November and December of a 252 € year is 42 €, to the cent');
+is_same('2026-11-01', $first['covered_from'], 'and the month they arrived in is theirs from the first');
+is_same('2026-12-31', $first['covered_to'], 'through to the end of the period');
+is_same(25200, $line('2027-01', $november)['amount'], 'and the next whole year is the whole price');
+// Six of twelve months, so exactly half - the half-year entry the same form has.
+$july = make_student(['first_name'=>'Juli', 'joined_on'=>'2026-07-31']);
+make_enrolment($course, $july, ['tariff_id'=>$yearly, 'joined_on'=>'2026-07-31']);
+is_same(12600, $line('2026-07', $july)['amount'], 'joining on the last day of July still buys all of July');
+// The same joining date under the rule beside it, so the difference is visible.
+run("UPDATE tariffs SET first_period='prorate' WHERE id=?", [$yearly]);
+is_same(3452, $line('2026-11', $november)['amount'], 'by days the same member pays 34,52 €');
+run("UPDATE tariffs SET first_period='months' WHERE id=?", [$yearly]);
+
+case_('And the month somebody leaves in is theirs too');
+$leaver = make_student(['first_name'=>'Abgang', 'joined_on'=>'2026-01-01']);
+make_enrolment($course, $leaver, ['tariff_id'=>$yearly, 'joined_on'=>'2026-01-01', 'left_on'=>'2026-03-04']);
+$last = $line('2026-01', $leaver);
+is_same(6300, $last['amount'], 'January to March of a 252 € year is three twelfths');
+is_same('2026-03-31', $last['covered_to'], 'because the month they left in counts in full');
+
 case_('Or not charged at all, when the tariff says so');
 run("UPDATE tariffs SET first_period='skip' WHERE id=?", [$monthly]);
 is_same('Erst ab dem nächsten vollen Zeitraum', $line('2026-09', $mid)['skip'], 'the part month is skipped');

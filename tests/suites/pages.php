@@ -220,16 +220,39 @@ fixture('field_definitions', ['label'=>'Nur intern', 'label_en'=>'', 'field_type
                               'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
                               'visibility'=>'internal', 'sort_order'=>6, 'archived'=>0]);
 $blank = render_view('print');
-foreach (['Vorname', 'Nachname', 'Geburtsdatum', 'E-Mail-Adresse', 'Notfallkontakte', 'Verein bisher'] as $asked)
+// Every one of these is on a real club's own anmeldeformular. The address and
+// the telephone were the two it asked for that the portal had nowhere to put.
+foreach (['Vorname', 'Nachname', 'Geburtsdatum', 'E-Mail-Adresse', 'Anschrift', 'Telefonnummer',
+          'Notfallkontakte', 'Verein bisher'] as $asked)
     ok(str_contains($blank, $asked), 'the blank form asks for '.$asked);
+// A blank form does not know who is filling it in, and half a club's members are
+// adults: it must not tell them it is meant for a child.
+ok(!str_contains($blank, '>Kind<'), 'and it is not headed "Kind", because an adult joins too');
+ok(str_contains($blank, 'bei Minderjährigen'), 'the guardian signs where that applies, not always');
 ok(!str_contains($blank, 'Nur intern'), 'and not for a field marked internal, which is hers and not theirs');
 ok(substr_count($blank, 'sheet-contact') >= 2, 'with room for two people to ring, not one');
 ok(str_contains($blank, 'print-boxes'), 'in boxes, one letter each');
 ok(!str_contains($blank, 'print-value'), 'and nothing filled in');
 ok(str_contains($blank, 'nicht verkauft'), 'saying what happens to what they write down');
+// The fee block a club's own form has. Without it a parent has filled in a page
+// that never says what they are agreeing to pay.
+ok(str_contains($blank, 'Beitrag'), 'and what it costs is on it');
+ok(str_contains($blank, 'Monatsbeitrag'), 'with the tariff named');
+ok(str_contains($blank, '45,00'), 'and its price, taken from the price list so the paper cannot drift');
+ok(!str_contains($blank, 'fällig am'), 'but not the day of the month, which is not what a tick decides');
+// The course name goes above the list, not on every line: four tariffs meant
+// four repetitions of the same words, and the sheet ran onto a second page.
+// One course here, so its name is not repeated above the list at all; with two
+// it appears once each. Either way, never once per tariff.
+ok(substr_count($blank, 'Monatsbeitrag') <= 1, 'and the tariff itself appears once');
+is_same(0, substr_count($blank, 'Kindertraining · Monatsbeitrag'), 'the course is not glued to every tariff line');
 
+run('UPDATE students SET address=?, phone=? WHERE id=?',
+    ['Hauptstraße 5, 7000 Eisenstadt', '+43 660 1234567', $lena]);
 $sheet = render_view('print', ['id'=>$lena]);
 ok(str_contains($sheet, 'print-value'), 'the data sheet has values on it');
+ok(str_contains($sheet, 'Hauptstraße 5, 7000 Eisenstadt'), 'with the address on it to be checked');
+ok(str_contains($sheet, '+43 660 1234567'), 'and the number to ring them on');
 ok(str_contains($sheet, 'Lena'), 'the child’s name among them');
 ok(str_contains($sheet, 'Maria Hofer'), 'and the person to ring');
 ok(str_contains($sheet, 'Unterschrift'), 'with somewhere to sign that it was checked');

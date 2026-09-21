@@ -22,6 +22,12 @@ $contacts = $student ? student_contacts($id) : [];
 // ring is a child nobody can reach when that person is at work.
 $contactBlocks = $student ? max(count($contacts), 1) : 2;
 $club = (string)setting('club_name', 'Badminton');
+// A blank form is filled in by whoever is joining, and half a club's members are
+// adults: "Kind" over the first block and "Unterschrift der erziehungsberechtigten
+// Person" underneath told an adult the form was not meant for them. A filled
+// sheet knows the age; a blank one cannot, so it says both and lets the minor's
+// guardian sign where it applies - which is how the club's own form words it.
+$minor = $student ? (($age = student_age($student['birth_date'] ?? null)) !== null && $age < 18) : null;
 ?>
 <div class="page-heading no-print">
     <div>
@@ -51,7 +57,7 @@ $club = (string)setting('club_name', 'Badminton');
     <?php endif ?>
 
     <section class="sheet-block">
-        <h2><?=e(t('Kind','Child'))?></h2>
+        <h2><?=e($minor === false ? t('Mitglied','Member') : t('Mitglied / Kind','Member / child'))?></h2>
         <?php
         print_field(t('Vorname','First name'), 17, (string)($student['first_name'] ?? ''));
         print_field(t('Nachname','Last name'), 17, (string)($student['last_name'] ?? ''));
@@ -63,6 +69,10 @@ $club = (string)setting('club_name', 'Badminton');
         print_field(t('E-Mail-Adresse für das Portal','Email address for the portal'), 34,
                     $student ? student_email($student) : '',
                     t('Bei einem Kind die Adresse eines Elternteils','For a child, a parent’s address'), true);
+        // Asked for on paper by every club form and, above 400 €, by § 11 UStG.
+        print_field(t('Anschrift','Postal address'), 34, (string)($student['address'] ?? ''),
+                    t('Straße, PLZ und Ort','Street, postcode and town'), true);
+        print_field(t('Telefonnummer','Telephone number'), 17, (string)($student['phone'] ?? ''));
         ?>
     </section>
 
@@ -79,6 +89,36 @@ $club = (string)setting('club_name', 'Badminton');
         </div>
         <?php endfor ?>
     </section>
+
+    <?php /* What it costs, as a choice to tick. A club's anmeldeformular has this
+             block - "Jährliche Zahlung: 252 €, Halbjährliche Zahlung: 162 €" -
+             and without it a parent standing in the hall has filled in a form
+             that never says what they are agreeing to pay. Taken from the price
+             list so the paper cannot drift from the portal. */
+    $priced = [];
+    foreach ($student ? [] : training_classes() as $course) {
+        $tariffs = class_tariffs((int)$course['id']);
+        if ($tariffs) $priced[(string)$course['name']] = $tariffs;
+    }
+    $enrolled = $student ? array_filter(student_enrolments($id), fn($r) => $r['left_on'] === null) : [];
+    if($priced || $enrolled): ?>
+    <section class="sheet-block">
+        <h2><?=e(t('Beitrag','Fee'))?></h2>
+        <?php if($student): foreach($enrolled as $row):
+            print_field($row['class_name'], 24, enrolment_summary($row));
+        endforeach; else: ?>
+        <p class="sheet-note"><?=e(t('Bitte ankreuzen, was gewählt wird.','Please tick what is being chosen.'))?></p>
+        <?php foreach($priced as $courseName => $tariffs): ?>
+            <?php if(count($priced) > 1): ?><h3 class="sheet-sub"><?=e($courseName)?></h3><?php endif ?>
+            <div class="sheet-ticks"><?php
+            // The course name once above the list rather than on every line: with
+            // four tariffs it was four repetitions of the same words, and the
+            // blank form ran onto a second sheet because of them.
+            foreach($tariffs as $tariff) print_tick($tariff['name'].': '.tariff_summary($tariff, null, false));
+            ?></div>
+        <?php endforeach; endif ?>
+    </section>
+    <?php endif ?>
 
     <?php if($fields): ?>
     <section class="sheet-block">
@@ -99,7 +139,13 @@ $club = (string)setting('club_name', 'Badminton');
         print_tick(t('Ja, ich möchte die Neuigkeiten per E-Mail bekommen.','Yes, send me the news by email.'), null);
         print_tick(t('Ja, bitte per E-Mail an neue Nachrichten erinnern.','Yes, email me when there is a new message.'), null);
         ?>
-        <p class="sheet-note"><?=e(t('Die Angaben werden ausschließlich intern für den Trainingsbetrieb verarbeitet: Kurse, Mitgliedschaft, Beiträge und die Kommunikation darüber. Sie werden nicht verkauft und nicht zu Werbezwecken an Dritte weitergegeben. Die vollständige Datenschutzerklärung steht im Portal.','The details are processed inside the club only, for running the training: courses, membership, charges and the messages about them. They are never sold and never passed to anybody else for advertising. The full privacy notice is in the portal.'))?></p>
+        <?php /* The long version of this is in the intro at the top of a blank
+                 form, and two paragraphs saying the same thing cost the sheet a
+                 second page. A data sheet has no intro, so it gets the sentence
+                 here; a blank form gets the pointer. */ ?>
+        <p class="sheet-note"><?=e($student
+            ? t('Die Angaben werden nur intern für den Trainingsbetrieb verarbeitet, nicht verkauft und nicht für Werbung weitergegeben. Die vollständige Datenschutzerklärung steht im Portal.','The details are used inside the club only, never sold and never passed on for advertising. The full privacy notice is in the portal.')
+            : t('Die vollständige Datenschutzerklärung steht im Portal.','The full privacy notice is in the portal.'))?></p>
     </section>
 
     <section class="sheet-block sheet-signatures">
@@ -107,7 +153,8 @@ $club = (string)setting('club_name', 'Badminton');
         print_signature(t('Ort und Datum','Place and date'));
         print_signature($student
             ? t('Unterschrift – Angaben geprüft','Signature – details checked')
-            : t('Unterschrift der erziehungsberechtigten Person','Signature of the parent or guardian'));
+            : t('Unterschrift (bei Minderjährigen der erziehungsberechtigten Person)',
+                'Signature (for a minor, the parent or guardian)'));
         ?>
     </section>
 

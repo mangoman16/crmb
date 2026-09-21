@@ -92,11 +92,23 @@ function invoice_recipient(array $student): array {
     // a child is a parent's address - that is what the field is for.
     return [
         'name'    => $account ? (string)$account['name'] : $name,
+        'address' => (string)($student['address'] ?? ''),
         'email'   => student_email($student),
         'student' => $name,
         'account_id' => $account ? (int)$account['id'] : null,
     ];
 }
+
+/**
+ * Above this, an invoice has to name the recipient's address.
+ *
+ * § 11 Abs 1 Z 3 lit b UStG wants the name and the address of the recipient.
+ * Abs 6 lets a Kleinbetragsrechnung leave both out, and a Kleinbetragsrechnung
+ * is one whose gross total does not exceed 400 €, so most of a club's invoices
+ * never need it - which is why the address is a field she fills in when it
+ * matters rather than one that blocks the form for a monthly fee.
+ */
+const INVOICE_ADDRESS_FROM_CENTS = 40000;
 
 /**
  * The span one charge actually paid for, as [from, to].
@@ -246,9 +258,17 @@ function create_invoice(int $studentId, array $chargeIds, string $issuedOn = '',
                     'These charges have no payment recipient, so the invoice would not say where to send the money. Add one under “Manage → Payment recipients” and choose it on the course or as the default.'));
         }
 
+        $recipient = invoice_recipient($student);
+        $recipientAddress = $recipient['address'];
+        // The threshold is on the gross of this document, so it cannot be known
+        // from the settings the way the issuer's own details can: it is checked
+        // here, where the charges are finally added up.
+        if ($gross > INVOICE_ADDRESS_FROM_CENTS && trim((string)$recipientAddress) === '')
+            throw new UserError(t('Über 400 € gehört die Anschrift der Rechnungsempfängerin oder des Rechnungsempfängers auf die Rechnung (§ 11 Abs 1 UStG). Sie steht beim Kind unter „Anschrift“.',
+                                  'Above 400 € the recipient’s postal address belongs on the invoice (§ 11 Abs 1 UStG). It goes on the child’s record under “Anschrift”.'));
+
         $year = (int)substr((string)$issuedOn, 0, 4);
         $allocated = invoice_next_number($year);
-        $recipient = invoice_recipient($student);
         $profile = charge_payment_profile($charges[0]);
         $snapshot = [
             'issuer'    => invoice_issuer(),
@@ -429,6 +449,11 @@ function invoice_pdf(array $invoice): string {
 
     pdf_text($doc, t('Rechnungsempfänger', 'Billed to'), 9, false, PDF_MARGIN, 0.45);
     pdf_text($doc, (string)$recipient['name'], 12, true);
+    // On an invoice above 400 € this is what § 11 Abs 1 Z 3 lit b UStG asks for,
+    // and create_invoice() refuses without it. Printed whenever it is there: an
+    // older document reprinted from its snapshot simply has nothing here.
+    if (trim((string)($recipient['address'] ?? '')) !== '')
+        pdf_text($doc, (string)$recipient['address'], 10);
     if (($recipient['student'] ?? '') !== '' && $recipient['student'] !== $recipient['name'])
         pdf_text($doc, t('für ', 'for ') . $recipient['student'], 10, false, PDF_MARGIN, 0.35);
     pdf_down($doc, 16);
