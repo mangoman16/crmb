@@ -79,6 +79,43 @@ function dispatch_action(string $action): array {
         $id=(int)db()->lastInsertId();
         send_account_token(one('SELECT * FROM accounts WHERE id=?',[$id]),'invite');audit('account.invited','account',$id);
         flash(t('Konto angelegt. Die Einladung liegt im Postausgang.','Account created. The invitation is in the outbox.'));return ['accounts',[]];
+    /* A login made here and now, with a password typed rather than emailed.
+       Inviting needs working SMTP and a released privacy notice, which is right
+       for a real family and wrong for every other reason somebody needs an
+       account: trying the portal out before the mail is set up, a second
+       administrator on the day the first one loses their phone, a trainer who
+       stands next to her and can pick a password on the spot. Administrator
+       only, because handing out a login is more than inviting one. */
+    case 'account_create':
+        $u=require_admin();
+        $role=choose(post('role','student'),assignable_roles($u));
+        $email=email_value(required_text('email',254));
+        $password=(string)post('password'); strong_password($password);
+        if(one('SELECT id FROM accounts WHERE email=?',[$email]))
+            throw new UserError(t('Diese Adresse hat schon ein Konto.','That address already has an account.'));
+        // Active and verified: there is no link to click, and an account that
+        // cannot sign in is not what she asked for. The address is not proven
+        // to belong to anybody, which is what the invitation does, so this says
+        // so in the change log rather than pretending otherwise.
+        run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,locale,created_at)"
+            ." VALUES (?,?,?,?,'active',?,?,?)",
+            [required_text('name'),$email,password_hash($password,PASSWORD_DEFAULT),$role,now(),
+             choose(post('locale','de'),['de','en']),now()]);
+        $id=(int)db()->lastInsertId();
+        // A family account with nothing attached to it signs in and sees an
+        // empty portal, which looks like a broken login rather than a missing
+        // link. Inviting from the child's page already joins the two by address;
+        // doing it here as well means the two ways in agree.
+        $linked=0;
+        if($role==='student')
+            $linked=run('UPDATE students SET account_id=?,updated_at=?,revision=revision+1 WHERE email=? AND account_id IS NULL',
+                        [$id,now(),$email])->rowCount();
+        audit($linked?'account.created_directly_and_linked':'account.created_directly','account',$id);
+        flash(t('Konto angelegt. Es kann sich sofort mit diesem Passwort anmelden – die Adresse wurde dabei nicht bestätigt.',
+                'Account created. It can sign in with that password straight away – the address was not confirmed.')
+              .($linked?' '.plural($linked,'Kind wurde damit verknüpft.','Kinder wurden damit verknüpft.',
+                                   'child was linked to it.','children were linked to it.'):''));
+        return ['accounts',[]];
     case 'student_invite':
         /* The invitation goes to the child's own record rather than to one of
            the people on their emergency list. Those are two different questions

@@ -2,6 +2,36 @@
 
 ## 0.6.0 — unreleased
 
+### Trying it out no longer takes a term's worth of typing
+
+- **The installer offers to fill the portal with example data.** An empty portal
+  is unrecognisable: no courses, no children, every page an empty state, and
+  anybody deciding whether to use this had to invent a term's worth of data
+  first. One tick on the setup page now gives three courses, fifteen children
+  with charges, and three sign-ins — a trainer and two families — with the
+  password printed on the finish page. Unticked, nothing but the administrator
+  is created, which is what a portal about to hold real data wants.
+- **`demo:fill` prints the password it set.** It said „the password printed
+  above" and printed no password, so the three accounts it had just made could
+  not be signed in to at all. It is generated once and never stored in the
+  clear, so the fill is the only moment anybody can be told it.
+- **An account can be created directly, with a password instead of a link.**
+  Inviting needs working SMTP and a released privacy notice, so a portal on its
+  first evening had no way to make a second account at all — not for a second
+  administrator, not for a trainer standing next to her, not for trying the
+  thing out. Administrators only, because handing out a login is more than
+  sending an invitation, and the flash says plainly that the address was not
+  confirmed. A family account made this way adopts the child at that address, so
+  it does not sign in to an empty portal.
+- **The layout check can use both roles on an example portal.** Its one
+  `--password` could not cover an administrator and the example accounts, which
+  have a password of their own; `--family-password` closes that, and the sweep
+  went from 100 screens to 120.
+- **TESTING.md opens with a twenty-minute script**: install with example data,
+  build the real club's course and price list, add a member, watch the 42 €
+  come out, issue the invoice, print both sheets, impersonate, sign in as a
+  family, make a login without email, and put it all back.
+
 ### What a real club's own paperwork found
 
 The portal was set up on MariaDB with the price list, the bank account and the

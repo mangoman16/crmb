@@ -35,6 +35,8 @@ $form = [
     'app_url' => install_base_url($_SERVER), 'timezone' => 'Europe/Vienna',
     'admin_name' => '', 'admin_email' => '',
 ];
+$withDemo = false;
+$demo = null;     // what demo_fill() created, to be shown on the finish page
 if ($state === 'configured' && $stored) {
     $form['db_host'] = (string)($stored['db']['host'] ?? '');
     $form['db_port'] = (string)($stored['db']['port'] ?? '3306');
@@ -47,6 +49,7 @@ if ($state === 'configured' && $stored) {
 if ($post && $state !== 'installed' && !$blockers) {
     foreach (array_keys($form) as $field)
         if (isset($_POST[$field]) && is_string($_POST[$field])) $form[$field] = trim($_POST[$field]);
+    $withDemo = isset($_POST['demo_fill']);
     $password = is_string($_POST['admin_password'] ?? null) ? (string)$_POST['admin_password'] : '';
     $repeat   = is_string($_POST['admin_password2'] ?? null) ? (string)$_POST['admin_password2'] : '';
     $dbPassword = is_string($_POST['db_password'] ?? null) ? (string)$_POST['db_password'] : '';
@@ -111,6 +114,16 @@ if ($post && $state !== 'installed' && !$blockers) {
             // older than, and an empty database has nothing worth copying.
             schema_apply(null, safeguards: false);
             create_admin_account($form['admin_name'], $form['admin_email'], $password);
+            // Example data here rather than only afterwards, because the portal
+            // is unrecognisable empty: no courses, no children, no charges, and
+            // every page an empty state. Trying it out meant inventing a term's
+            // worth of data first, which is the one thing somebody deciding
+            // whether to use it will not do. Failing to fill it is not failing
+            // to install: the portal is up either way, and the reason is shown.
+            if ($withDemo) {
+                try { $demo = demo_fill(); }
+                catch (Throwable $e) { $warnings[] = install_t('Beispieldaten: ', 'Example data: ') . $e->getMessage(); }
+            }
             $done = true;
         } catch (Throwable $e) {
             error_log('CRM setup: ' . $e->getMessage());
@@ -160,6 +173,25 @@ header('X-Robots-Tag: noindex');
         'Sign in now with the email address and password you just chose.'))?></p>
     <p><a class="button" href="<?=install_e($portal)?>"><?=install_e(install_t('Zur Anmeldung', 'Go to sign-in'))?></a></p>
 </div>
+<?php if ($demo): ?>
+<div class="card setup-step">
+    <h2><?=install_e(install_t('Die Beispieldaten', 'The example data'))?></h2>
+    <p><?=install_e(install_t('Angelegt: ', 'Created: ')
+        . (int)$demo['courses'] . install_t(' Kurse, ', ' courses, ') . (int)$demo['students']
+        . install_t(' Kinder, ', ' children, ') . (int)$demo['charges'] . install_t(' Beiträge.', ' charges.'))?></p>
+    <p><?=install_e(install_t('Diese Konten kannst du zum Anprobieren verwenden:', 'These accounts are there to try it with:'))?></p>
+    <ul>
+        <li>trainerin@beispiel.test <?=install_e(install_t('(Trainerin)', '(trainer)'))?></li>
+        <li>familie.hofer@beispiel.test <?=install_e(install_t('(Familie)', '(family)'))?></li>
+        <li>familie.berger@beispiel.test <?=install_e(install_t('(Familie)', '(family)'))?></li>
+    </ul>
+    <p><?=install_e(install_t('Passwort für alle drei: ', 'The password for all three: '))?>
+       <strong class="mono"><?=install_e((string)$demo['password'])?></strong></p>
+    <p class="muted"><?=install_e(install_t(
+        'Jetzt aufschreiben – es wird nicht noch einmal angezeigt. Entfernen lässt sich alles unter Einstellungen → System → „Beispieldaten entfernen“.',
+        'Write it down now – it is not shown again. Remove all of it under Einstellungen → System → “Remove example data”.'))?></p>
+</div>
+<?php endif ?>
 <div class="card setup-step">
     <h2><?=install_e(install_t('Die nächsten zwei Schritte', 'The next two steps'))?></h2>
     <p class="muted"><?=install_e(install_t(
@@ -274,6 +306,17 @@ header('X-Robots-Tag: noindex');
         <div class="field"><label for="admin_password2"><?=install_e(install_t('Passwort wiederholen', 'Repeat password'))?></label>
             <input id="admin_password2" name="admin_password2" type="password" required minlength="12" maxlength="72" autocomplete="new-password"></div>
     </div>
+</div>
+
+<div class="card setup-step">
+    <h2><?=install_e(install_t('Zum Ausprobieren', 'To try it out'))?></h2>
+    <label class="check">
+        <input type="checkbox" name="demo_fill" value="1"<?=$withDemo ? ' checked' : ''?>>
+        <span><?=install_e(install_t('Beispieldaten anlegen', 'Create example data'))?>
+        <small><?=install_e(install_t(
+            'Zwei Kurse, ein paar erfundene Kinder mit Beiträgen, und Konten zum Anmelden – eine Trainerin und zwei Familien. Das Passwort dafür steht auf der nächsten Seite. Alles davon lässt sich später unter Einstellungen → System mit einem Tippen wieder entfernen. Für ein Portal, das gleich echte Daten bekommt: nicht ankreuzen.',
+            'Two courses, a few invented children with charges, and accounts to sign in with – one trainer and two families. The password is on the next page. All of it can be removed again later under Einstellungen → System with one tap. For a portal that is about to hold real data: leave it unticked.'))?></small></span>
+    </label>
 </div>
 
 <div class="card setup-step">

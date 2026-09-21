@@ -50,6 +50,18 @@ case_('Every dispatched action is reachable from the interface');
 foreach (array_unique($dispatched) as $action)
     ok(in_array($action, $offered, true), 'the handler "'.$action.'" is offered by some view');
 
+case_('The installer offers the example data and actually fills it');
+/* An empty portal is unrecognisable: no courses, no children, every page an
+   empty state. The offer has to be on the form and the call has to be in the
+   handler - a checkbox that posts a value nothing reads is worse than none. */
+$setup = (string)file_get_contents(APP_ROOT.'/public/setup.php');
+ok(str_contains($setup, 'name="demo_fill"'), 'the setup form has the box');
+ok(str_contains($setup, 'demo_fill()'), 'and the handler calls the function behind it');
+ok(str_contains($setup, "isset(\$_POST['demo_fill'])"), 'reading what that box posts');
+// A fill that fails must not fail the install: the portal is up either way.
+ok(preg_match('/try \{ \$demo = demo_fill\(\); \}\s*catch/', $setup) === 1,
+   'and a failed fill is caught, because the portal is installed either way');
+
 case_('Every page the router allows has a view file');
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
 preg_match("/\\\$allowed=\[([^\]]*)\]/", $router, $m);

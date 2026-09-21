@@ -45,6 +45,47 @@ case_('Only an administrator may grant a privileged role');
 is_same(['student'], assignable_roles(['role'=>'trainer']), 'a trainer may only invite parents');
 is_same(['student','trainer','admin'], assignable_roles(['role'=>'admin']), 'an admin may grant anything');
 
+case_('A login made on the spot is an administrator\'s to make, and nobody else\'s');
+/* Inviting needs working SMTP and a released privacy notice, so a portal on its
+   first evening had no way to make a second account at all. Handing out a
+   password is more than sending a link, so this one is admin-only. */
+sign_in_as($trainerId);
+throws(fn() => act('account_create', ['name'=>'Zweite Trainerin', 'email'=>'zweite@beispiel.test',
+    'password'=>'Federball-2026-Halle!', 'role'=>'trainer', 'locale'=>'de']),
+    'a trainer cannot make one', 'Administratoren');
+sign_in_as($adminId);
+does_not_throw(fn() => act('account_create', ['name'=>'Zweite Trainerin', 'email'=>'zweite@beispiel.test',
+    'password'=>'Federball-2026-Halle!', 'role'=>'trainer', 'locale'=>'de']),
+    'an administrator can');
+$made = one('SELECT * FROM accounts WHERE email=?', ['zweite@beispiel.test']);
+is_same('trainer', $made['role'], 'with the role that was asked for');
+is_same('active', $made['state'], 'able to sign in at once, because there is no link to click');
+ok($made['verified_at'] !== null, 'and not left waiting on a verification it will never get');
+ok(password_verify('Federball-2026-Halle!', $made['password_hash']), 'the password is the one that was typed');
+ok(!str_contains((string)$made['password_hash'], 'Federball'), 'and is stored as a hash, not as itself');
+throws(fn() => act('account_create', ['name'=>'Noch eine', 'email'=>'zweite@beispiel.test',
+    'password'=>'Federball-2026-Halle!', 'role'=>'student', 'locale'=>'de']),
+    'and one address cannot have two', 'schon ein Konto');
+throws(fn() => act('account_create', ['name'=>'Schwach', 'email'=>'schwach@beispiel.test',
+    'password'=>'badminton123', 'role'=>'student', 'locale'=>'de']),
+    'a guessable password is refused here too', 'erraten');
+// A family account with nothing attached signs in to an empty portal, which
+// looks like a broken login rather than a missing link. Inviting from the
+// child's page joins the two by address; this way in has to agree.
+$waiting = make_student(['first_name'=>'Wartend', 'last_name'=>'Hofer', 'email'=>'wartend@beispiel.test']);
+$elsewhere = make_student(['first_name'=>'Woanders', 'last_name'=>'Berger', 'email'=>'woanders@beispiel.test']);
+act('account_create', ['name'=>'Familie Wartend', 'email'=>'wartend@beispiel.test',
+    'password'=>'Federball-2026-Halle!', 'role'=>'student', 'locale'=>'de']);
+$account = one('SELECT id FROM accounts WHERE email=?', ['wartend@beispiel.test']);
+is_same((int)$account['id'], (int)scalar('SELECT account_id FROM students WHERE id=?', [$waiting]),
+        'the child at that address is linked to it');
+is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$elsewhere]),
+        'and a child at another address is not');
+act('account_create', ['name'=>'Dritte Trainerin', 'email'=>'wartend2@beispiel.test',
+    'password'=>'Federball-2026-Halle!', 'role'=>'trainer', 'locale'=>'de']);
+is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$elsewhere]),
+        'a management account adopts nobody');
+
 case_('A conversation is scoped to its account');
 $threadA = make_thread([$parentA], ['subject'=>'A']);
 $threadB = make_thread([$parentB], ['subject'=>'B']);

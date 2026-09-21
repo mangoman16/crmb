@@ -8,6 +8,17 @@ is_same(0, demo_counts()['students'], 'and the count agrees');
 
 case_('Filling writes a portal worth looking at');
 $result = demo_fill();
+// The console said "the password printed above" and printed no password, so
+// the three accounts it had just made could not be signed in to at all. It is
+// generated once and never stored in the clear, so the fill is the only moment
+// anybody can be told it.
+ok(($result['password'] ?? '') !== '', 'the fill hands back the password it set');
+ok(str_contains((string)file_get_contents(APP_ROOT.'/bin/console.php'), "\$result['password']"),
+   'and the console prints it rather than pointing at nothing');
+foreach (['trainerin@beispiel.test', 'familie.hofer@beispiel.test', 'familie.berger@beispiel.test'] as $who)
+    ok(password_verify((string)$result['password'],
+        (string)scalar('SELECT password_hash FROM accounts WHERE email=?', [$who])),
+        $who.' signs in with exactly that password');
 ok($result['students'] >= 10, 'enough children that a list is a list');
 ok($result['courses'] >= 3, 'more than one course');
 ok($result['charges'] > 0, 'and some money to look at');

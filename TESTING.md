@@ -107,10 +107,86 @@ If you changed one thing, these six are the ones that catch a broken deploy.
 
 ---
 
+## Twenty minutes, from nothing to an invoice
+
+The script to follow when you want to see the whole thing work, in order, with
+nothing to invent as you go. Everything it needs is either created by the
+installer or typed in below. Sections 3 onwards are the exhaustive list; this is
+the path through it.
+
+**0 · Put it up.** Open `setup.php`, give it the database details, a name, an
+address and a password — and **tick „Beispieldaten anlegen"**. The finish page
+prints three sign-ins and one password for all of them; write the password down,
+it is not shown again. (From a shell: `php bin/console.php demo:fill` prints the
+same three and the password.)
+
+| You sign in as | Address | What you are testing |
+|---|---|---|
+| Administrator | the address you just chose | everything |
+| `trainerin@beispiel.test` | trainer | what a trainer may *not* see |
+| `familie.hofer@beispiel.test` | family | what a parent sees |
+| `familie.berger@beispiel.test` | family | a second family, to prove separation |
+
+**1 · Look around as the administrator.** The overview shows active children,
+outstanding money and this week's sessions. Nothing is empty, nothing says
+„Noch keine …".
+
+**2 · Make a course the way a club does.** **Kurse → + Kurs anlegen**: name it
+`Training mit TrainerIn`, a Wednesday, 18:00 to 20:00. Save.
+
+**3 · Put its real price list in.** On the course, **Tarife → + Neu**. Make
+`Erwachsene`, press **+ Weitere Zahlungsweise** once, and enter *12 Monate ·
+252* and *6 Monate · 162*. Usual interval: jährlich. Wer mittendrin einsteigt:
+**anteilig nach vollen Monaten**. Add a discount template `Partnerschule` ·
+dauerhaft · Prozent · 20. Save. The list should read
+„252,00 € jährlich · 162,00 € alle 6 Monate".
+
+**4 · Add a member.** **Schüler → + Schüler anlegen**: a name, a date of birth,
+an address to write to, aktiv. Save — the page then lists what is still to do.
+Fill in the **Anschrift** and **Telefonnummer**, and add an emergency contact.
+
+**5 · Enrol them and check the arithmetic.** On the child, **Kurse → In einen
+Kurs eintragen**, pick the course and `Erwachsene`. Open *Tarif, Zahlungsweise
+und Rabatt*, set **Dabei seit** to the 12th of last November and Zahlungsweise
+to jährlich. Save. Then **Beiträge → Beiträge anlegen** for that November: it
+should offer **42,00 €** — November and December of a 252 € year. Create it.
+
+**6 · Invoice it, and watch it refuse first.** On the child, **Rechnungen**.
+It will say what is missing: the operator's name and address under
+**Einstellungen → Betrieb**, and the IBAN on **Verwaltung → Zahlungsempfänger →
+Vereinskonto**. Fill both in, come back, and issue the invoice. Download the
+PDF: one page, the right Leistungszeitraum (12.11. – 31.12., not the whole
+year), the IBAN in groups of four, and the exemption note.
+
+**7 · Print the two sheets.** **Schüler → Leeres Formular drucken** and, on the
+child, **Datenblatt drucken**. Each is one sheet of A4 with headers and footers
+turned off in the print dialog. The blank one carries the price list as lines to
+tick.
+
+**8 · Be somebody else.** **Konten → „Portal als diese Person ansehen"** on
+Familie Berger. A red strip names whose eyes you are using; the portal shows
+their children only. **Ansicht beenden** gives you yourself back.
+
+**9 · Sign in as a family for real.** Sign out, sign in as
+`familie.hofer@beispiel.test`. Four menu entries, their own children only, their
+own charges. Try `?page=student&id=` with a number that is not theirs: it
+answers 404.
+
+**10 · Make a login without email.** Back as the administrator, **Konten → +
+Konto direkt anlegen (ohne E-Mail)**. Give it a name, an address and a password.
+Sign out, sign in as it — it works with no SMTP configured anywhere. If the
+address matches a child's, that child is attached to it.
+
+**11 · Put it back.** **Einstellungen → System → „Beispieldaten entfernen"**.
+Every invented child, course and charge goes; anything you made yourself stays.
+
+---
+
 ## Preparation for the full sweep
 
 - [ ] **2.1** **Einstellungen → System → „Beispieldaten anlegen"** on a portal
-  with no real students. It creates three courses, fifteen children aged 7 to
+  with no real students, or the box on the setup page, which does the same thing
+  at install and saves the trip. It creates three courses, fifteen children aged 7 to
   41, contacts, enrolments, charges, payments, attendance, absences, news and a
   conversation. The page then says example data is present.
 - [ ] **2.2** Press it a second time. It refuses, and says so. It does not
@@ -135,6 +211,14 @@ Skip on an ordinary code change; do all of it before a release.
   written.
 - [ ] **3.4** Correct details. `config/config.php` is written, every migration
   is recorded, exactly one administrator exists, and the sign-in page is served.
+- [ ] **3.4a** Tick **„Beispieldaten anlegen"** on the setup page. The finish
+  page reports what was made and prints three sign-ins with one password for all
+  of them. That password is shown once and never again.
+- [ ] **3.4b** The same install with the box unticked creates nothing but the
+  administrator, which is what a portal about to hold real data wants.
+- [ ] **3.4c** `php bin/console.php demo:fill` prints the three addresses and
+  the password too. (It used to say „the password printed above" and print no
+  password, which left three accounts nobody could sign in to.)
 - [ ] **3.5** Open `setup.php` again. It answers 403 and creates nothing.
 - [ ] **3.6** `bash bin/update.sh --check` on an installed copy reports the file
   version, the database version and whether anything is pending, and changes
@@ -180,6 +264,14 @@ Skip on an ordinary code change; do all of it before a release.
   password immediately afterwards is refused too — that is the point.
 - [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
   once and not twice.
+- [ ] **4.6a** **Konten → + Konto direkt anlegen (ohne E-Mail)** as an
+  administrator: a name, an address and a password of at least 12 characters.
+  The new account signs in straight away with **no SMTP configured at all**, and
+  a weak password is refused here exactly as everywhere else.
+- [ ] **4.6b** A trainer is not offered that form and cannot post to it.
+- [ ] **4.6c** Creating one with role *Schüler* at an address a child already
+  carries attaches that child to it. Creating a trainer or administrator
+  attaches nobody.
 - [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
   the privacy notice — carries the line about the privacy notice, the necessary
   cookies and the data not being sold or passed on, above the footer links, and

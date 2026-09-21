@@ -67,7 +67,15 @@ try{
     if($command==='demo:fill'){
         $result=demo_fill(($argv[2]??'')==='--force');
         printf("Created %d students, %d courses, %d charges, %d accounts.\n",$result['students'],$result['courses'],$result['charges'],$result['accounts']);
-        echo "Every demo account signs in with the password printed above.\n";exit;
+        // It said "the password printed above" and printed no password, so the
+        // three accounts it had just made could not be signed in to at all.
+        // Generated once and never stored in the clear, so this is the only
+        // moment it can be shown.
+        echo "\n  trainerin@beispiel.test        (trainer)\n"
+            ."  familie.hofer@beispiel.test    (family)\n"
+            ."  familie.berger@beispiel.test   (family)\n\n"
+            ."All three sign in with: ".$result['password']."\n"
+            ."Write it down: it is not shown again. Remove everything with demo:clear.\n";exit;
     }
     if($command==='demo:clear'){
         $result=demo_clear();
