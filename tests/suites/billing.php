@@ -80,6 +80,28 @@ is_same(2250, $row['amount'], 'half a month is half the price');
 is_same(true, $row['prorated'], 'and the plan says it was prorated');
 is_same(4500, $line('2026-10', $mid)['amount'], 'the next whole month is the full price');
 
+case_('And the charge says what it actually paid for, not what the period was called');
+/* The amount was always right; the dates beside it were the whole period, so an
+   invoice told a family they had paid for a month they had not been a member
+   for. That sentence is the Zeitraum § 11 Abs 1 Z 3 lit d UStG asks for. */
+billing_run('2026-09');
+$written = one('SELECT * FROM charges WHERE student_id=? AND origin=? ORDER BY id DESC', [$mid, 'auto']);
+is_same(2250, (int)$written['amount_cents'], 'half a month, as planned');
+is_same('2026-09-01', $written['period_from'], 'the billing period is still the whole month');
+is_same('2026-09-30', $written['period_to'], 'both ends of it, which is how a second run knows not to bill it twice');
+is_same('2026-09-16', $written['covered_from'], 'and what it covers starts the day they joined');
+is_same('2026-09-30', $written['covered_to'], 'and runs to the end of the month');
+is_same(['2026-09-16', '2026-09-30'], charge_supplied($written), 'which is what an invoice states');
+$whole = one('SELECT * FROM charges WHERE student_id=? AND origin=? ORDER BY id DESC', [$child, 'auto']);
+is_same(['2026-09-01', '2026-09-30'], charge_supplied($whole), 'somebody there all month covers all of it');
+// A charge written before 017 has no covered span; its period is what it was
+// claiming, so that is what it goes on claiming rather than printing blank.
+run('UPDATE charges SET covered_from=NULL, covered_to=NULL WHERE id=?', [(int)$written['id']]);
+is_same(['2026-09-01', '2026-09-30'],
+        charge_supplied(one('SELECT * FROM charges WHERE id=?', [(int)$written['id']])),
+        'an older charge falls back to the period it carries');
+run('UPDATE charges SET cancelled=1 WHERE student_id IN (?,?)', [$mid, $child]);
+
 case_('Or not charged at all, when the tariff says so');
 run("UPDATE tariffs SET first_period='skip' WHERE id=?", [$monthly]);
 is_same('Erst ab dem nächsten vollen Zeitraum', $line('2026-09', $mid)['skip'], 'the part month is skipped');

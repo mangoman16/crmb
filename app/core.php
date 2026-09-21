@@ -175,7 +175,25 @@ function plural(int $n, string $de1, string $deN, string $en1, string $enN): str
     return $n.' '.($n===1 ? t($de1,$en1) : t($deN,$enN));
 }
 function money(?int $v): string { return number_format(($v??0)/100,2,locale()==='de'?',':'.',locale()==='de'?'.':',').' €'; }
-function amount_input(?int $v): string { return $v===null ? '' : number_format($v/100,2,'.',''); }
+/**
+ * An amount as it goes back into a box she types in.
+ *
+ * With the decimal point of the machine rather than of the country, the same
+ * 19,80 € she had just typed came back as 19.80 on a German form beside a list
+ * that said 19,80 € - and a point is where a reader looks for a thousands
+ * separator. cents() takes either, so nothing is lost by writing it her way.
+ * No thousands separator at all: that is the one thing cents() refuses.
+ */
+/**
+ * An IBAN in groups of four, the way it is printed on everything else.
+ *
+ * Stored without spaces, because that is the value, and read in fours, because
+ * that is how somebody copies twenty characters into a banking app without
+ * losing their place. The rule lived in two views and was missing from the one
+ * document where it matters most - the invoice a family types the number from.
+ */
+function iban_groups(string $iban): string { return trim(chunk_split(str_replace(' ', '', $iban), 4, ' ')); }
+function amount_input(?int $v): string { return $v===null ? '' : number_format($v/100,2,locale()==='de'?',':'.',''); }
 // Stored timestamps are UTC (now()). DATE columns are calendar dates and must not be
 // shifted; DATETIME values are converted to the configured timezone before display,
 // otherwise a record written after 22:00 UTC shows the previous day in Vienna.

@@ -108,7 +108,10 @@ ok(str_contains($html, 'is-default'), 'and the field is marked as following the 
 case_('A price of her own is marked as hers, with the default still visible');
 run('UPDATE students SET price_cents=4000 WHERE id=?', [$student]);
 $html = render_view('student', ['id'=>$student]);
-ok(str_contains($html, 'value="40.00"'), 'her own price is in the box');
+// With a comma, because the form is in German and the list beside it says
+// 45,00 €. A point in the box is where a reader looks for a thousands separator.
+ok(str_contains($html, 'value="40,00"'), 'her own price is in the box, written the way she types it');
+ok(!str_contains($html, 'value="40.00"'), 'and not with the decimal point of the machine');
 ok(str_contains($html, '45,00'), 'the tariff price is still named, so the difference is visible');
 ok(!str_contains($html, 'with-default is-default'), 'and the field is no longer marked as following the default');
 

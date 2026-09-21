@@ -432,6 +432,7 @@ Skip on an ordinary code change; do all of it before a release.
   does not charge anybody twice.
 - [ ] **11.3** A child who joined mid-period is charged the part of it they were
   there for, when the tariff says to prorate — and the amount matches the days.
+  The charge shows the days it covers, which are not the billing period.
 - [ ] **11.4** The same tariff set to „whole period" charges the whole amount,
   and set to „skip" charges nothing until the next period.
 - [ ] **11.5** A yearly tariff produces one charge a year, not twelve.
@@ -478,7 +479,16 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **13.1** With the business details empty, **Rechnungen** says which ones
   are missing and links straight to the form.
 - [ ] **13.2** Fill **Einstellungen → Betrieb** in: name, address, contact,
-  tax mode. Issuing becomes possible.
+  tax mode. One thing is still named as missing: the recipient the installer
+  left ready has no IBAN.
+- [ ] **13.2a** Type the account number into **Verwaltung → Zahlungsempfänger →
+  Vereinskonto**. Issuing becomes possible. (Left as it comes, a fresh portal
+  produced a finished-looking invoice with nowhere to send the money — this is
+  the state every new portal starts in, not a corner case.)
+- [ ] **13.2b** A course collecting into a second recipient that has no IBAN is
+  refused too, and the message names *that* recipient. A charge remembers the
+  recipient it was written for, so changing the course afterwards changes
+  nothing and the message must not send you there.
 - [ ] **13.3** On a child, **Rechnungen → Rechnung erstellen** from the charges
   that have not been invoiced. The charges are then no longer offered twice.
 - [ ] **13.4** Download the PDF and open it in a real PDF reader — not only in
@@ -487,6 +497,12 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **13.5** The document carries everything § 11 Abs 1 UStG asks for: who
   issued it, who it is for, what was supplied, the period, the date of issue,
   a consecutive number, and either the tax amount or the exemption note.
+- [ ] **13.5a** Invoice a member who joined part-way through a period. The line
+  states the days they were actually a member for, not the whole billing period.
+  (It said "01.01. – 31.12." for seven weeks: the amount was right and the
+  sentence under it was not, on a document a family keeps.)
+- [ ] **13.5b** The IBAN on the document is in groups of four, so it can be
+  typed into a banking app without losing your place.
 - [ ] **13.6** As a Kleinunternehmer, the § 6 Abs 1 Z 27 note is on the
   document and no VAT is shown.
 - [ ] **13.7** Switch to „mit Umsatzsteuer": the net, the rate, the tax and the

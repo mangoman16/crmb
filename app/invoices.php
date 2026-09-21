@@ -45,6 +45,17 @@ function invoice_issuer_problems(): array {
         $missing[] = t('Mit Umsatzsteuer muss ein Steuersatz angegeben sein.', 'With VAT, a tax rate has to be set.');
     if (setting('org_tax_mode') === 'vat' && trim((string)setting('org_vat_id')) === '')
         $missing[] = t('Mit Umsatzsteuer gehört die UID-Nummer auf die Rechnung.', 'With VAT, the VAT identification number belongs on the invoice.');
+    // The installer seeds a recipient called Vereinskonto with the SEPA payload
+    // ready and no account number in it, waiting to be filled in - and being the
+    // default, it is what every course and every charge picks up. Left as it
+    // comes, the portal produces invoices with nowhere to send the money, and
+    // the first anybody knows is the phone call. Said here so it is read on the
+    // invoices page, before there is a family waiting for the document.
+    $house = payment_profile((int)setting('default_payment_profile'));
+    if ($house && trim((string)$house['iban']) === '')
+        $missing[] = t('Beim Zahlungsempfänger „', 'The payment recipient “') . $house['name']
+            . t('“ fehlt die IBAN – einzutragen unter „Verwaltung → Zahlungsempfänger“.',
+                '” has no IBAN — add it under “Manage → Payment recipients”.');
     return $missing;
 }
 
@@ -85,6 +96,25 @@ function invoice_recipient(array $student): array {
         'student' => $name,
         'account_id' => $account ? (int)$account['id'] : null,
     ];
+}
+
+/**
+ * The span one charge actually paid for, as [from, to].
+ *
+ * Two dates on a charge answer two different questions. period_from and
+ * period_to are the billing period, which is how the run knows a period has been
+ * charged already. covered_from and covered_to are what the money was for, which
+ * is shorter for anybody who joined or left part-way through - and is what § 11
+ * Abs 1 Z 3 lit d UStG calls the Zeitraum of the supply.
+ *
+ * Charges written before migration 017 have no covered span. Their period is
+ * what they were claiming, so it is what they go on claiming rather than
+ * becoming blank on an old invoice that is reprinted.
+ */
+function charge_supplied(array $charge): array {
+    $from = $charge['covered_from'] ?? null ?: ($charge['period_from'] ?? null);
+    $to   = $charge['covered_to']   ?? null ?: ($charge['period_to']   ?? null);
+    return [$from ?: null, $to ?: null];
 }
 
 /** Charges of one student that no live invoice covers yet. */
@@ -167,16 +197,22 @@ function create_invoice(int $studentId, array $chargeIds, string $issuedOn = '',
         $lines = [];
         $from = null; $to = null;
         foreach ($charges as $c) {
+            // What was covered, not what the billing period was called: somebody
+            // who joined on 12 November paid for seven weeks of the year, and
+            // the period of supply this document states has to be those seven
+            // weeks. A charge written before 017 has no covered span, and its
+            // period is what it was claiming, so that is what it keeps saying.
+            [$lineFrom, $lineTo] = charge_supplied($c);
             $lines[] = [
                 'label'  => (string)$c['label'],
-                'period' => $c['period_from'] && $c['period_to'] ? [$c['period_from'], $c['period_to']] : null,
+                'period' => $lineFrom && $lineTo ? [$lineFrom, $lineTo] : null,
                 'gross'  => (int)$c['amount_cents'],
                 'before_discount' => (int)$c['gross_cents'] ?: (int)$c['amount_cents'],
                 'discount' => (int)$c['discount_cents'],
                 'discount_note' => (string)$c['discount_note'],
             ];
-            if ($c['period_from'] && ($from === null || $c['period_from'] < $from)) $from = $c['period_from'];
-            if ($c['period_to'] && ($to === null || $c['period_to'] > $to)) $to = $c['period_to'];
+            if ($lineFrom && ($from === null || $lineFrom < $from)) $from = $lineFrom;
+            if ($lineTo && ($to === null || $lineTo > $to)) $to = $lineTo;
         }
 
         // One invoice carries one set of bank details, so the charges on it have
@@ -191,6 +227,24 @@ function create_invoice(int $studentId, array $chargeIds, string $issuedOn = '',
         if (count($accounts) > 1)
             throw new UserError(t('Diese Beiträge gehören zu Kursen mit verschiedenen Bankverbindungen. Bitte getrennte Rechnungen ausstellen.',
                                   'These charges belong to courses with different bank accounts. Please issue separate invoices.'));
+        // An invoice with no account on it is a document a family cannot pay.
+        // It came out looking finished, which is worse than being refused: the
+        // first anybody knew was the phone call asking where to send the money.
+        //
+        // Which of the two things is wrong decides what she has to do, and the
+        // first version of this message got it wrong for the commoner one: a
+        // charge remembers the recipient it was written for, so changing the
+        // course afterwards changes nothing and she is sent round in a circle.
+        // The recipient it is actually pointing at is the thing to name.
+        if (trim((string)array_key_first($accounts)) === '') {
+            $named = charge_payment_profile($charges[0]);
+            throw new UserError($named
+                ? t('Beim Zahlungsempfänger „', 'The payment recipient “') . $named['name']
+                  . t('“ steht keine IBAN, also stünde auf der Rechnung nicht, wohin das Geld soll. Unter „Verwaltung → Zahlungsempfänger“ die IBAN dort eintragen.',
+                      '” has no IBAN, so the invoice would not say where to send the money. Add it under “Manage → Payment recipients”.')
+                : t('Für diese Beiträge ist kein Zahlungsempfänger hinterlegt – auf der Rechnung stünde nicht, wohin das Geld soll. Unter „Verwaltung → Zahlungsempfänger“ einen anlegen und beim Kurs oder als Standard auswählen.',
+                    'These charges have no payment recipient, so the invoice would not say where to send the money. Add one under “Manage → Payment recipients” and choose it on the course or as the default.'));
+        }
 
         $year = (int)substr((string)$issuedOn, 0, 4);
         $allocated = invoice_next_number($year);
@@ -422,7 +476,8 @@ function invoice_pdf(array $invoice): string {
         pdf_down($doc, 8);
         pdf_text($doc, t('Bankverbindung', 'Bank details'), 9, true, PDF_MARGIN, 0.35);
         pdf_text($doc, (string)$snapshot['bank']['name'], 10);
-        pdf_text($doc, 'IBAN ' . $snapshot['bank']['iban'] . (trim((string)$snapshot['bank']['bic']) !== '' ? '   BIC ' . $snapshot['bank']['bic'] : ''), 10);
+        pdf_text($doc, 'IBAN ' . iban_groups((string)$snapshot['bank']['iban'])
+            . (trim((string)$snapshot['bank']['bic']) !== '' ? '   BIC ' . $snapshot['bank']['bic'] : ''), 10);
         if (trim((string)($snapshot['reference'] ?? '')) !== '')
             pdf_text($doc, t('Verwendungszweck: ', 'Reference: ') . $snapshot['reference'], 10);
     }

@@ -2,6 +2,34 @@
 
 ## 0.6.0 — unreleased
 
+### What a real club's own paperwork found
+
+The portal was set up on MariaDB with the price list, the bank account and the
+registration form of a working badminton club, and a member was put through it
+from the paper form to a printed invoice. Five things came out of that.
+
+- **A part period is now stated as the part.** A member who joined on 12 November
+  and was charged seven weeks of a yearly fee got an invoice reading
+  „Leistungszeitraum 01.01. – 31.12." The amount had always been right and the
+  sentence under it had not, on a document a family keeps and § 11 Abs 1 Z 3
+  lit d UStG asks the period of. A charge now records what it covers beside the
+  billing period it belongs to; the period still decides what has been billed,
+  so nobody is billed twice by the change.
+- **An invoice with nowhere to pay it is refused.** The installer leaves a
+  recipient called „Vereinskonto" ready with the account number blank, and makes
+  it the default — so a fresh portal produced a finished-looking invoice with no
+  IBAN on it, and the first anybody knew was the phone call. **Rechnungen** now
+  names it among the things still missing, and issuing refuses and says which
+  recipient to fix. Not a corner case: it is the state every portal starts in.
+- **The IBAN is printed in groups of four on the invoice**, as it already was on
+  the two pages that show it. Twenty characters in one run is what somebody has
+  to copy into a banking app.
+- **Amounts in a box she types in are written with a comma.** 19,80 € came back
+  as 19.80 on a German form, next to a list that said 19,80 €.
+- **The names in a „these children still need something" notice are buttons.**
+  As a comma-separated sentence they were 17px tall and touching, which on a
+  phone is a third of the minimum this project measures against, twice over.
+
 ### Creating something asks for the basics, and then says what is left
 
 - **The form that creates a child now asks for four things**: a name, a date of

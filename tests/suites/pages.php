@@ -60,11 +60,15 @@ fixture('feedback', ['account_id'=>$family, 'page'=>'payments', 'message'=>'Der 
 notify($trainer, 'message', 'Neue Nachricht', 'Familie Hofer', 'messages', ['id'=>$thread]);
 request_enrolment($lena, make_class(['name'=>'Zweiter Kurs', 'days'=>[]]), 'join', null, 'Dürfen wir?');
 sign_in_as($admin);
-// An invoice needs the operator's own details; the invoices suite checks those
-// rules, this one only needs a document to exist so the pages have one to show.
+// An invoice needs the operator's own details and somewhere to send the money;
+// the invoices suite checks those rules, this one only needs a document to exist
+// so the pages have one to show.
 foreach (['org_name'=>'Badminton Beispiel', 'org_street'=>'Hauptstraße 1', 'org_zip'=>'1010',
           'org_city'=>'Wien', 'org_country'=>'Österreich', 'org_email'=>'buero@beispiel.test'] as $k => $v)
     set_setting($k, $v);
+set_setting('default_payment_profile', fixture('payment_profiles', ['name'=>'Vereinskonto',
+    'recipient'=>'Badminton Beispiel', 'iban'=>'AT05 5100 0805 1317 6900', 'bic'=>'', 'currency'=>'EUR',
+    'note'=>'', 'qr_template'=>'', 'archived'=>0, 'created_at'=>now()]));
 $invoice = create_invoice($lena, [$charge]);
 
 // ---------------------------------------------------------------------------

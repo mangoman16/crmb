@@ -18,7 +18,11 @@ foreach([['students'=>students_missing_contact(),
           'tab'=>'']] as $gap): if(!$gap['students']) continue; ?>
 <div class="notice warn">
     <strong><?=e($gap['heading'])?></strong>
-    <p><?php foreach(array_slice($gap['students'],0,6) as $i=>$m): ?><?=$i?', ':''?><a href="<?=e(url('student',['id'=>$m['id']]+($gap['tab']?['tab'=>$gap['tab']]:[])))?>"><?=e($m['first_name'].' '.$m['last_name'])?></a><?php endforeach ?><?php if(count($gap['students'])>6):?> <?=e(t('und weitere','and more'))?><?php endif ?></p>
+    <?php /* Each name is a button rather than a word in a sentence. As a
+             comma-separated list they were 17px tall and touching each other, so
+             on a phone the way to fix one child's record was to hit a target a
+             third of the minimum with another one beside it. */ ?>
+    <p class="gap-names"><?php foreach(array_slice($gap['students'],0,6) as $m): ?><a class="chip" href="<?=e(url('student',['id'=>$m['id']]+($gap['tab']?['tab'=>$gap['tab']]:[])))?>"><?=e($m['first_name'].' '.$m['last_name'])?></a><?php endforeach ?><?php if(count($gap['students'])>6):?><span class="muted"><?=e(t('und weitere','and more'))?></span><?php endif ?></p>
 </div>
 <?php endforeach ?>
 <?php /* Saved filters are the "views" she asked for: a named selection she opens

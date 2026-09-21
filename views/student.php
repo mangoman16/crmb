@@ -418,7 +418,7 @@ if($remaining>0 && !$c['cancelled'] && setting('show_payment_qr')):
         <dl class="facts">
             <div><dt><?=e(t('Betrag','Amount'))?></dt><dd><?=e(money($remaining))?></dd></div>
             <div><dt><?=e(t('Empfänger','Recipient'))?></dt><dd><?=e($profile['recipient']!==''?$profile['recipient']:$profile['name'])?></dd></div>
-            <div><dt>IBAN</dt><dd class="mono"><?=e(trim(chunk_split($profile['iban'],4,' ')))?></dd></div>
+            <div><dt>IBAN</dt><dd class="mono"><?=e(iban_groups($profile['iban']))?></dd></div>
             <?php if($profile['bic']):?><div><dt>BIC</dt><dd class="mono"><?=e($profile['bic'])?></dd></div><?php endif ?>
             <div><dt><?=e(t('Verwendungszweck','Reference'))?></dt><dd><?=e($reference)?></dd></div>
         </dl>

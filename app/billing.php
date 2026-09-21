@@ -405,6 +405,11 @@ function billing_plan(string $period): array {
         $entry['discount'] = $money['discount'];
         $entry['note'] = $money['note'];
         $entry['prorated'] = $money['prorated'] ?? false;
+        // What the money is actually for, which for somebody joining part-way
+        // through is not the period. The invoice prints this as the period of
+        // supply, so it has to survive as far as the charge.
+        $entry['covered_from'] = $money['covered_from'] ?? $entry['from'];
+        $entry['covered_to']   = $money['covered_to']   ?? $entry['to'];
         $entry['due'] = billing_due_date($dueFrom, $dueDay);
         $entry['overdue'] = billing_overdue_date($entry['due'], (int)$tariff['grace_days']);
         $rows[] = $entry;
@@ -427,14 +432,16 @@ function billing_run(string $period): array {
         if ($entry['skip'] !== null) { $skipped++; continue; }
         try {
             run('INSERT INTO charges (student_id,class_id,tariff_id,payment_profile_id,label,origin,billing_key,'
-                .'amount_cents,gross_cents,discount_cents,discount_note,period_from,period_to,due_on,overdue_on,created_at)'
-                .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                .'amount_cents,gross_cents,discount_cents,discount_note,period_from,period_to,'
+                .'covered_from,covered_to,due_on,overdue_on,created_at)'
+                .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 [$entry['student_id'], $entry['class_id'] ?: null, $entry['tariff_id'] ?? null,
                  $entry['enrolment']['payment_profile_id'] ?: null,
                  billing_charge_label($label, $entry), 'auto',
                  billing_key($entry['from'], $entry['student_id'], (int)$entry['class_id']),
                  $entry['amount'], $entry['gross'], $entry['discount'], $entry['note'],
-                 $entry['from'], $entry['to'], $entry['due'], $entry['overdue'], now()]);
+                 $entry['from'], $entry['to'], $entry['covered_from'], $entry['covered_to'],
+                 $entry['due'], $entry['overdue'], now()]);
             $created++; $total += (int)$entry['amount'];
         } catch (PDOException $e) {
             // 23000 here means the unique billing_key already exists, i.e. a
