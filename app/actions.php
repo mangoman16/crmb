@@ -11,13 +11,49 @@ declare(strict_types=1);
  */
 function attempted_email(): string { return mb_strtolower(post('email')); }
 
+/**
+ * The bucket attempts at one account are counted into.
+ *
+ * Spelled in one place, for the same reason rate_limit_bucket() is: counting
+ * and clearing have to agree, and a clear that spelled the key differently
+ * would empty nothing, silently, and leave the family locked out.
+ */
+function account_identity(int $accountId): string { return 'account:'.$accountId; }
+
+/**
+ * What an attempt at an address is counted against.
+ *
+ * Not the typed string. accounts.email is compared by the database under
+ * utf8mb4_unicode_ci, which folds case, accents, ss against ß, ligatures and
+ * full-width letters alike: 'familie@beispiel.at', 'familie@beispiel.át' and
+ * the ligature spelling are one row and three different PHP strings - measured
+ * on MariaDB 10.11.14, not assumed. Counting the string therefore gave ten
+ * guesses per spelling and as many spellings as anyone cared to invent, which
+ * is a limit of ten an attacker walks straight past. The same trick minted
+ * fresh reset-request buckets, and each new link invalidates the one a family
+ * may be in the middle of using.
+ *
+ * So the address is resolved first and the attempt counted against the row the
+ * database says it is, by its own rules rather than a PHP imitation of them -
+ * no imitation of a collation reaches ligatures and full-width letters. An
+ * address with no account is counted as what was typed, which is all there is.
+ *
+ * Read here, before the action's transaction opens, because the counters are
+ * written on their own connection and that connection cannot write while a
+ * transaction that has already written is open.
+ */
+function attempted_identity(): string {
+    $id=scalar('SELECT id FROM accounts WHERE email=?',[attempted_email()]);
+    return $id ? account_identity((int)$id) : attempted_email();
+}
+
 function handle_post(): array {
     $action=post('action');
     if(!hash_equals(csrf(),post('csrf'))) throw new UserError(t('Die Sitzung ist abgelaufen. Seite neu laden.','Your session expired. Reload the page.'));
     $ip=$_SERVER['REMOTE_ADDR']??'local';
     if(in_array($action,['login','forgot','activate'],true)) {
         throttle('auth-ip',$ip,60);
-        if($action!=='activate') throttle($action,attempted_email(),10);
+        if($action!=='activate') throttle($action,attempted_identity(),10);
     }
     if(in_array($action,['password_change','email_change'],true)) {
         $actor=require_user();throttle('account-security',(string)$actor['id'],10);
@@ -41,26 +77,37 @@ function handle_post(): array {
  * children share one phone reached ten correct sign-ins in a quarter of an hour
  * and was told "Zu viele Versuche", with no way out but waiting.
  *
- * Only the bucket belonging to a proven identity is cleared. A wrong password
- * stays counted; the per-IP limit is never cleared, because one valid account
- * must not be able to refresh the limit that slows down guessing at all the
- * others; and 'forgot' is never cleared either, since typing an address proves
- * nothing about who typed it and clearing it would hand anybody an unlimited
- * mailer pointed at one family's inbox.
+ * Two kinds of request prove who is asking, and they are exactly the two that
+ * end in sign_in(): a password typed correctly, and a one-time link opened out
+ * of the mailbox the address belongs to. Every purpose such a link carries
+ * proves it - an invitation accepted, a password reset, a changed address
+ * confirmed - so all three clear the bucket rather than 'reset' alone. Without
+ * the link half, the reset sent to a locked-out family lets them in once and
+ * leaves them locked out of the next sign-in until the window runs down.
  *
- * After the transaction rather than inside the action: the counters live on
- * their own connection so that a rolled-back action cannot refund them, and
- * that same connection cannot write while the action's transaction is still
- * open. Here the write has committed, so "this attempt succeeded" is true in
- * the only sense that matters, and the clearing cannot be rolled back.
+ * Only the bucket belonging to that proven identity is cleared. A wrong
+ * password stays counted; the per-IP limit is never cleared, because one valid
+ * account must not be able to refresh the limit that slows down guessing at all
+ * the others; and 'forgot' is never cleared either, since typing an address
+ * proves nothing about who typed it and clearing it would hand anybody an
+ * unlimited mailer pointed at one family's inbox.
+ *
+ * It runs after the transaction rather than inside the action because this is
+ * the first moment at which "the attempt succeeded" is a fact - throttle_clear()
+ * has its own reason for needing to be out here.
  */
 function forget_attempts_after_success(string $action): void {
-    if($action==='login') { throttle_clear('login',attempted_email()); return; }
-    // An emailed one-time link is the other proof of the same thing: whoever
-    // opened it reads the mailbox and has just chosen the password. Without
-    // this, the reset link sent to a locked-out family lets them in once and
-    // leaves them locked out of the next sign-in until the window runs down.
-    if($action==='activate' && ($who=current_user())) throttle_clear('login',mb_strtolower((string)$who['email']));
+    if(!in_array($action,['login','activate'],true)) return;
+    // Both branches ask the session the same question instead of reading
+    // success out of the fact that nothing threw: an action that failed threw
+    // out of handle_post() long before this line, but that is a fact about
+    // another file and this one should not depend on knowing it.
+    $who=current_user();
+    if(!$who) return;
+    // The account, not the address: that is the key the attempts were counted
+    // under, whichever of its spellings was typed at the time - an activation
+    // empties the bucket the failed sign-ins before it filled.
+    throttle_clear('login',account_identity((int)$who['id']));
 }
 
 function dispatch_action(string $action): array {
@@ -118,6 +165,8 @@ function dispatch_action(string $action): array {
     case 'account_invite':
         $u=require_staff(); $role=choose(post('role','student'),assignable_roles($u));
         $email=email_value(required_text('email',254));
+        if(account_using_email($email))
+            throw new UserError(t('Diese Adresse hat schon ein Konto.','That address already has an account.'));
         run('INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,?,?,?)',[required_text('name'),$email,$role,choose(post('locale','de'),['de','en']),now()]);
         $id=(int)db()->lastInsertId();
         send_account_token(one('SELECT * FROM accounts WHERE id=?',[$id]),'invite');audit('account.invited','account',$id);
@@ -134,11 +183,7 @@ function dispatch_action(string $action): array {
         $role=choose(post('role','student'),assignable_roles($u));
         $email=email_value(required_text('email',254));
         $password=(string)post('password'); strong_password($password);
-        // Held for the rest of the transaction, the way student_invite does it:
-        // two submissions that both look and then both write leave the second
-        // one meeting the UNIQUE index instead of the sentence that explains
-        // what went wrong.
-        if(one('SELECT id FROM accounts WHERE email=? FOR UPDATE',[$email]))
+        if(account_using_email($email))
             throw new UserError(t('Diese Adresse hat schon ein Konto.','That address already has an account.'));
         // Active and verified: there is no link to click, and an account that
         // cannot sign in is not what she asked for. The address is not proven
@@ -177,7 +222,7 @@ function dispatch_action(string $action): array {
         if($s['account_id']) throw new UserError(t('Dieses Kind ist schon einem Konto zugeordnet.','This child already belongs to an account.'));
         $email=email_value(post('email')!==''?post('email'):(string)$s['email']);
         $name=trim(post('name'))!==''?required_text('name'):$s['first_name'].' '.$s['last_name'];
-        $existing=one('SELECT * FROM accounts WHERE email=? FOR UPDATE',[$email]);
+        $existing=account_using_email($email);
         if($existing) {
             if($existing['role']!=='student') throw new UserError(t('Diese Adresse gehört schon zu einem Konto der Verwaltung.','That address already belongs to a management account.'));
             $accountId=(int)$existing['id'];

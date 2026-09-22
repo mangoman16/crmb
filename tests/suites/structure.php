@@ -371,25 +371,113 @@ is_same('COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=
        .' AND p.confirmed_at IS NOT NULL AND p.voided=0),0)',
         charge_paid_sql(), 'unchanged from the hand-written version it replaced');
 
+/**
+ * The named pieces of one PHP file: one entry per function and per action
+ * handler, so a rule can name the handler that is wrong rather than the file it
+ * sits in.
+ */
+function named_blocks_of(string $path): array {
+    $blocks = []; $name = basename($path).' (file)'; $buffer = '';
+    foreach (file($path) as $line) {
+        if (preg_match('/^\s*function\s+([a-z_][a-z0-9_]*)\s*\(/i', $line, $m)
+         || preg_match("/^\s*case\s+'([a-z0-9_]+)'\s*:/", $line, $m)) {
+            $blocks[$name] = ($blocks[$name] ?? '').$buffer;
+            $buffer = ''; $name = $m[1];
+        }
+        $buffer .= $line;
+    }
+    $blocks[$name] = ($blocks[$name] ?? '').$buffer;
+    return $blocks;
+}
+
+/**
+ * The SQL a stretch of PHP hands to the database.
+ *
+ * Tokenised rather than matched with a regular expression: a statement written
+ * with double quotes can hold an apostrophe - WHERE state='active' - and a
+ * regex that stops at the first quote reads half a statement and believes it.
+ * Literals joined with '.' are put back together the way the database receives
+ * them, whitespace is collapsed and the spaces around '=' are dropped, so a
+ * rule reads the statement rather than the way somebody happened to type it.
+ */
+function sql_statements_in(string $php): array {
+    $out = []; $current = null;
+    foreach (token_get_all("<?php\n".$php) as $token) {
+        if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) continue;
+        if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING) {
+            $current = ($current ?? '').substr($token[1], 1, -1);
+            continue;
+        }
+        if ($token === '.') continue;                       // the next literal continues this one
+        if ($current !== null) { $out[] = $current; $current = null; }
+    }
+    if ($current !== null) $out[] = $current;
+    return array_map(fn($sql) => (string)preg_replace('/\s*=\s*/', '=',
+                                 (string)preg_replace('/\s+/', ' ', trim($sql))), $out);
+}
+
 case_('A handler that makes an account holds the address while it checks it');
 /* Two people creating the same account at the same moment both looked, both
    found nothing and both wrote; the second one met the UNIQUE index instead of
    the sentence that explains the problem, and she was told to check her hosting
-   because she had tapped twice. Whoever looks an address up before writing one
-   has to hold it for the rest of the transaction. */
-$creators = 0;
-foreach (['actions','actions_settings','actions_messages','actions_config'] as $file) {
-    $source = (string)file_get_contents(APP_ROOT.'/app/'.$file.'.php');
-    foreach (preg_split("/\n    case '/", $source) as $block) {
-        if (!str_contains($block, 'INSERT INTO accounts')) continue;
-        $creators++;
-        $handler = 'app/'.$file.".php, case '".substr($block, 0, (int)strpos($block, "'"))."'";
-        preg_match_all('/FROM accounts WHERE email=\?(?: FOR UPDATE)?/', $block, $found);
-        foreach ($found[0] as $lookup)
-            ok(str_contains($lookup, 'FOR UPDATE'), $handler.' locks the address it checked');
+   because she had tapped twice. Whoever writes an account looks the address up
+   through account_using_email() first, which is the one lookup that holds what
+   it found.
+
+   The rule asserts once per handler rather than once per lookup it happens to
+   find: the version before this one only ever spoke about lookups that existed,
+   so account_invite - which had none, and had the race - passed it in silence
+   while the line underneath announced that every handler had been examined. */
+$exempt = [
+    // Each exemption names something that must still be in the handler, so it
+    // cannot quietly outlive the reason it was granted.
+    'app/auth.php create_admin_account' => [
+        "FROM accounts WHERE role='admin' FOR UPDATE",
+        'guards on the administrator count and holds every row that scan touched'],
+    'app/demo.php demo_fill' => [
+        'if (demo_present())',
+        'writes three fixed addresses nobody typed, and refuses to run a second time'],
+];
+$examined = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/public/*.php')) as $path) {
+    foreach (named_blocks_of($path) as $name => $block) {
+        $sql = sql_statements_in($block);
+        if (!array_filter($sql, fn($s) => str_contains($s, 'INSERT INTO accounts'))) continue;
+        $handler = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+        $examined[] = $handler;
+        $flat = (string)preg_replace('/\s*=\s*/', '=', (string)preg_replace('/[ \t]+/', ' ', $block));
+        if (isset($exempt[$handler])) {
+            [$stillThere, $why] = $exempt[$handler];
+            ok(str_contains($flat, $stillThere), $handler.' is exempt because it '.$why);
+            continue;
+        }
+        $lookups = array_values(array_filter($sql, fn($s) => (bool)preg_match('/FROM accounts\b[^|]* WHERE (?:\w+\.)?email=\?/', $s)));
+        ok(str_contains($block, 'account_using_email(') || $lookups !== [],
+           $handler.' looks the address up before it writes one');
+        foreach ($lookups as $lookup)
+            ok(str_contains($lookup, 'FOR UPDATE'), $handler.' holds the address it checked: '.$lookup);
     }
 }
-ok($creators >= 2, 'every way of creating an account was examined ('.$creators.' of them)');
+/* Named rather than counted: a count says "three of them" whether or not the
+   three are the ones that matter, and a handler that stops inserting - or a
+   file truncated to nothing - would just make the count smaller. */
+foreach (['app/actions.php account_invite', 'app/actions.php account_create',
+          'app/actions.php student_invite', 'app/auth.php create_admin_account',
+          'app/demo.php demo_fill'] as $known)
+    ok(in_array($known, $examined, true), 'the rule reached '.$known);
+foreach (array_diff($examined, ['app/actions.php account_invite', 'app/actions.php account_create',
+                                'app/actions.php student_invite', 'app/auth.php create_admin_account',
+                                'app/demo.php demo_fill']) as $new)
+    ok(false, $new.' creates accounts too and nobody has said so here - add it to the list above');
+
+case_('The lookup every account-creating handler shares actually holds');
+$lock = sql_statements_in(named_blocks_of(APP_ROOT.'/app/auth.php')['account_using_email'] ?? '');
+ok(in_array('SELECT * FROM accounts WHERE email=? FOR UPDATE', $lock, true),
+   'account_using_email() reads the row FOR UPDATE');
+throws(fn() => account_using_email('nobody@example.test'),
+       'and refuses outside a transaction, where it would hold nothing');
+does_not_throw(fn() => transactional(fn() => account_using_email('nobody@example.test')),
+               'inside one it answers');
 
 case_('A name interpolated into SQL cannot smuggle anything in');
 /* Identifiers cannot be bound as parameters, so sql_name() is the one backstop

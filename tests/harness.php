@@ -521,11 +521,16 @@ function test_load_actions(): void {
  * of it. The CSRF token, the throttles and the duplicate-submission claim belong
  * to handle_post() and are left out on purpose: they are the request's business,
  * not the action's, and they have their own checks in the security suite.
+ *
+ * The transaction is not left out. Every action that reaches dispatch_action()
+ * in the running portal is already inside one, and a locking read outside a
+ * transaction locks nothing - so a suite that dispatched bare would be proving
+ * the handlers work in a situation they are never in.
  */
 function act(string $action, array $fields = []): array {
     test_load_actions();
     $_POST = $fields;
-    return without_session_id_warning(fn() => dispatch_action($action));
+    return without_session_id_warning(fn() => transactional(fn() => dispatch_action($action)));
 }
 
 /**
