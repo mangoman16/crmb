@@ -2,6 +2,95 @@
 
 ## 0.6.0 — unreleased
 
+### Signing in correctly no longer counts against her
+
+- **A sign-in that works no longer spends one of the ten attempts.** Ten are
+  allowed per account per quarter of an hour, and each one is counted before the password is
+  checked, because at that moment nobody knows yet whether it is the right one —
+  but nothing ever undid the count afterwards. A family whose children share one
+  phone reached ten correct sign-ins inside fifteen minutes by using the portal
+  exactly as intended, and was answered with „Zu viele Versuche. Bitte später
+  erneut versuchen." — a sentence about attacks, shown to a parent who had done
+  nothing but sign in, with no way back but waiting. A sign-in that succeeds now
+  empties that account's count. A wrong password still counts, which is the
+  attempt the limit exists for.
+- **A one-time link opened out of the mailbox proves the same thing**, so an
+  accepted invitation, an opened reset link and a confirmed change of address
+  clear the count too. Without that, the reset sent to a locked-out family let
+  them in once and left them locked out of the next sign-in until the quarter of
+  an hour ran down.
+- **The attempts are counted against the account, not against the spelling that
+  was typed.** The database compares addresses under a collation that treats
+  upper and lower case, accents, ß and ss, ligatures and full-width letters as
+  the same, so `familie@beispiel.at` and `familie@beispiel.át` are one account
+  row and two different words to the portal. Every spelling used to get its own ten guesses, which
+  means somebody guessing passwords spelled the address differently and carried
+  on, with nothing but the limit per internet connection left in the way — and
+  behind that sign-in are children's birth dates, health notes and parents' bank
+  details. The address is now looked up first and the attempt counted against
+  the account it finds; an address with no account is counted as what was typed,
+  which is all there is. Measured on MariaDB 10.11.14 rather than assumed.
+- **What that deliberately does not close:** ten failed attempts on one spelling
+  and then one on another are refused straight away, which tells whoever is
+  trying that both reach the same account — eleven requests to learn that an
+  address is registered here. Closing it means keying the count on the
+  database's own sort key, which differs between engines, is missing from the
+  translation the test suite runs on, and is being withdrawn upstream. It is
+  accepted and written down rather than quietly left out.
+- **That the lockout ends was never actually checked.** „Bitte später erneut
+  versuchen" is a promise that later arrives, and a count that never reset would
+  have looked exactly like a working limit to every test there was: it would
+  refuse people, which is the visible half, and never let them back in, which is
+  the half nobody was watching. The quarter of an hour is now tested from both
+  sides — ten minutes in is not yet later, sixteen minutes in is. The clock
+  itself is still walked by hand, because the suite ages the stored counter
+  rather than waiting.
+- **Two limits are never cleared, on purpose.** The sixty attempts a quarter of
+  an hour from one internet connection stand, because one valid account must not
+  be able to refresh the limit that slows guessing at every other one; and
+  „Passwort vergessen" stands, because typing an address proves nothing about
+  who typed it and clearing it would hand anybody an unlimited mailer pointed at
+  one family's inbox. Families sharing one connection therefore share that
+  budget; TESTING.md 4.6d describes what that looks like from her side.
+
+### An account created twice, from two directions
+
+- **Inviting somebody whose address already has one now says so plainly.** The
+  invite form wrote the row and left the database to refuse it, so what came
+  back was the catch-all „Die Eingabe ist nicht möglich: Adresse bereits
+  vergeben oder verknüpfte Daten vorhanden." — one sentence covering two quite
+  different causes. It now says „Diese Adresse hat schon ein Konto.", which is
+  what the other way of creating an account has always said.
+- **Two setup pages open at once cannot both create the first administrator.**
+  The guard counted the administrators inside the transaction that writes the
+  row, and a plain count takes no locks — measured with two connections on
+  MariaDB 10.11.14: both pages saw an empty portal and it ended with two
+  administrators. The count now locks, so the second page waits and the portal
+  ends with one.
+- **The test suite had been dispatching actions with no transaction open**, so
+  every row lock the portal takes while it writes — the locks that stop two
+  submissions doing the same thing twice — had been holding nothing at all
+  throughout. It now dispatches the way a real request does, which is what makes
+  the two items above testable rather than merely written.
+
+### The documents were describing a portal that had moved
+
+- PROJECT.md's status table rated skill assessment „Built, tested" with high
+  confidence. Migration 008 dropped its four tables and there are no such
+  screens. A status table is read by somebody deciding what to rely on, so its
+  figures were counted again rather than remembered: six migrations against
+  eighteen, 31 tables against 42, 23 settings against 52, and a header two
+  releases behind.
+- Three documents were still saying six migrations, and README.md said the
+  update guard compares ten tables before and after when it compares nineteen —
+  the number somebody reads to decide whether an update is safe to run.
+- The by-hand list printed section 4 as 4.6, 4.6d, 4.6e, 4.6g, 4.7, 4.6a, and so
+  sent anybody working down the page backwards at item seven. It runs in order
+  now.
+- `docs/decisions/` writes down the structural decisions that had only ever been
+  habits — one per file, with what was rejected and why — and CLAUDE.md now says
+  which part of the project each contributor may change.
+
 ### Trying it out no longer takes a term's worth of typing
 
 - **The installer offers to fill the portal with example data.** An empty portal

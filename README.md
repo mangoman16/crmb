@@ -30,7 +30,7 @@ Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Online status for accounts, and email reminders for outstanding payments.
 - A change log that says what changed, field by field, in the words she uses.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs 1957 assertions in a few seconds, and [TESTING.md](TESTING.md) is the list to walk by hand after a change.
+- A test suite that needs no database server: `php tests/run.php` runs about 2500 assertions in half a minute, and [TESTING.md](TESTING.md) is the list to walk by hand after a change.
 
 ## Install
 
@@ -152,7 +152,10 @@ php tests/run.php billing      # one suite
 
 The suite builds a disposable SQLite database from the real migrations and boots
 the real application against it. That proves the PHP logic, **not** the SQL
-dialect — see [tests/README.md](tests/README.md). To prove the SQL:
+dialect — see [tests/README.md](tests/README.md). It ends by naming what it
+could not reach, rather than leaving that to be assumed: the four foreign keys,
+the MySQL-dialect database copy, and the half of the sign-in limit that depends
+on how the database compares two spellings of one address. To prove the SQL:
 
 ```bash
 tests/mariadb-local.sh          # starts a throwaway MariaDB, runs the suite, stops it

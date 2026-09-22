@@ -92,7 +92,11 @@ Each release can contain a symlink `config/config.php` to the shared configurati
 
 ## Versioning policy
 
-- `VERSION`, the Git tag and the ZIP filename identify the same release.
+- `VERSION`, the Git tag, the ZIP filename and the version line at the top of
+  `README.md` identify the same release. Only the ZIP filename follows on its
+  own — `bin/release.sh` reads `VERSION` to build it. The tag and the README
+  line are typed, so check both against `VERSION` before tagging: the README
+  line is the first thing anybody reads and nothing derives it.
 - `CHANGELOG.md` records behavior and any compatibility notes.
 - `composer.lock` fixes dependency versions. Deployment uses **install**, never **update**.
 - Database migrations are ordered SQL files. The migration ledger stores each file’s checksum. Do not edit a migration that has already been applied; add a new file.
