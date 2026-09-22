@@ -161,7 +161,7 @@ The default suite runs against a SQLite translation of the schema
 (`tests/sqlite-driver.php`). **That proves the PHP logic, not the SQL dialect.**
 It also prints, at the end of a run, whatever it could not cover.
 
-The whole suite has been run against **MariaDB 10.11.14**, where all six
+The whole suite has been run against **MariaDB 10.11.14**, where all eighteen
 migrations apply and all assertions pass. Before claiming a change works on the
 real engine, run it there yourself:
 

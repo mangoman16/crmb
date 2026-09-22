@@ -104,8 +104,8 @@ stops the update rather than proceeding on a guess:
    client in text mode, is caught rather than migrated against.
 3. **A backup was written.** A full SQL dump goes to `storage/backups` first. No
    backup, no migration. The last five are kept and older ones pruned.
-4. **No rows disappeared.** Counts across ten tables are compared before and
-   after; a count that fell keeps the portal closed.
+4. **No rows disappeared.** Counts across nineteen tables are compared before
+   and after; a count that fell keeps the portal closed.
 
 If anything fails the portal answers 503 and says in German and English what went
 wrong and what to do — never SQL, because that address is public and a parent may
@@ -188,9 +188,9 @@ Custom content, tariff names and message templates are entered by the operator; 
 This release has not been deployed. Validation results and remaining hosting
 checks are in [VALIDATION.md](VALIDATION.md). A full bug, security and design
 review is in [AUDIT.md](AUDIT.md), and what is done versus outstanding is in
-[ROADMAP.md](ROADMAP.md) — start there. All six migrations and the whole test
-suite have been run against **MariaDB 10.11.14**; **MySQL 8.0 itself has not
-been tried**. Either way, run `php bin/console.php update` against a disposable
+[ROADMAP.md](ROADMAP.md) — start there. All eighteen migrations and the whole
+test suite have been run against **MariaDB 10.11.14**; **MySQL 8.0 itself has
+not been tried**. Either way, run `php bin/console.php update` against a disposable
 copy of the database before touching anything real.
 
 ## Layout
