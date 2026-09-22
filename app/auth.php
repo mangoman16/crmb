@@ -77,10 +77,42 @@ function create_admin_account(string $name,string $email,string $password,bool $
         return (int)db()->lastInsertId();
     });
 }
+/**
+ * The counter a throttle counts into.
+ *
+ * Derived in one place because throttle() and throttle_clear() have to agree:
+ * a reset that spelled the key even slightly differently would clear nothing,
+ * silently, and the family it was meant to let back in would stay locked out.
+ */
+function rate_limit_bucket(string $name,string $identity): string { return hash('sha256',$name.'|'.$identity); }
 function throttle(string $name,string $identity,int $limit,int $seconds=900): void {
-    $key=hash('sha256',$name.'|'.$identity); $time=time();
+    $key=rate_limit_bucket($name,$identity); $time=time();
     run_counter('INSERT INTO rate_limits (bucket,hits,window_start) VALUES (?,1,?) ON DUPLICATE KEY UPDATE hits=IF(window_start < ?,1,hits+1),window_start=IF(window_start < ?,?,window_start)',[$key,$time,$time-$seconds,$time-$seconds,$time]);
     if((int)run_counter('SELECT hits FROM rate_limits WHERE bucket=?',[$key])->fetchColumn()>$limit) throw new UserError(t('Zu viele Versuche. Bitte später erneut versuchen.','Too many attempts. Please try again later.'));
+}
+/**
+ * Forget the attempts counted against one bucket.
+ *
+ * A sign-in has to be counted before the password is checked, because at that
+ * moment nobody knows whether this attempt is the family or an intruder. Once
+ * it turns out to be the family, the count is spent: without this, ten correct
+ * sign-ins from one address in a quarter of an hour - three children sharing
+ * one phone - end in "Zu viele Versuche" and a wait with no way out.
+ *
+ * Nothing is given away. Whoever clears a bucket has just authenticated as the
+ * account that bucket belongs to, so they already hold what guessing would be
+ * after; wrong passwords stay counted. Buckets that are not about one proven
+ * identity - the per-IP limit above all - are deliberately left alone, because
+ * one valid account must not be able to reset the limit that slows down
+ * guessing at everybody else's.
+ *
+ * Written on the counter connection, like the count itself, so no rollback can
+ * put the attempts back. That connection cannot write while an action's
+ * transaction is open, which is why the caller clears once the action has
+ * committed rather than from inside it - see forget_attempts_after_success().
+ */
+function throttle_clear(string $name,string $identity): void {
+    run_counter('DELETE FROM rate_limits WHERE bucket=?',[rate_limit_bucket($name,$identity)]);
 }
 function make_token(int $accountId,string $purpose,?string $email=null): string {
     run('DELETE FROM auth_tokens WHERE account_id=? AND purpose=?',[$accountId,$purpose]);

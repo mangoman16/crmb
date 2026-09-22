@@ -262,8 +262,19 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **4.6** Wrong password repeatedly (more than ten times for one address,
   within fifteen minutes) is refused with „Zu viele Versuche", and a correct
   password immediately afterwards is refused too — that is the point.
+- [ ] **4.6d** The same address signs in **correctly** twelve times in a row —
+  sign out, sign in, twelve times, which is one afternoon of three children
+  sharing a phone. All twelve work. A correct password must never produce „Zu
+  viele Versuche": the attempt is counted before the password can be checked,
+  and a sign-in that succeeds clears that count again.
+- [ ] **4.6e** Wrong password for one address until „Zu viele Versuche"
+  appears, then „Passwort vergessen", open the link and set a new password. You
+  are signed in; sign out and sign in again with the new password and it works
+  straight away, rather than being refused for the rest of the fifteen minutes.
 - [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
-  once and not twice.
+  once and not twice. Asking for a link ten times for one address is still
+  refused afterwards — that counter is never cleared, because typing an address
+  proves nothing about who typed it.
 - [ ] **4.6a** **Konten → + Konto direkt anlegen (ohne E-Mail)** as an
   administrator: a name, an address and a password of at least 12 characters.
   The new account signs in straight away with **no SMTP configured at all**, and
@@ -272,6 +283,11 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **4.6c** Creating one with role *Schüler* at an address a child already
   carries attaches that child to it. Creating a trainer or administrator
   attaches nobody.
+- [ ] **4.6f** The same form with an address that already has an account says
+  „Diese Adresse hat schon ein Konto." Tap **Anlegen** twice in quick
+  succession, or submit the same address from two browser tabs at once: the
+  second one gets a sentence in plain German, never a database error and never
+  the „vorübergehend nicht verfügbar" page.
 - [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
   the privacy notice — carries the line about the privacy notice, the necessary
   cookies and the data not being sold or passed on, above the footer links, and

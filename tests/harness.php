@@ -525,14 +525,35 @@ function test_load_actions(): void {
 function act(string $action, array $fields = []): array {
     test_load_actions();
     $_POST = $fields;
-    // Signing in and out regenerate the session id, which PHP cannot do in a
-    // command-line run that has already printed a line. That is a property of
-    // the runner, not of the action being tested, so only that one warning is
-    // swallowed and everything else still reports.
+    return without_session_id_warning(fn() => dispatch_action($action));
+}
+
+/**
+ * Run one action the way the browser does: through handle_post(), so the CSRF
+ * check, the rate limits and the duplicate-submission claim all apply.
+ *
+ * act() leaves those out on purpose. A defect that lives in the seam between
+ * the request's guards and the action itself - a throttle counted before the
+ * password is known and never cleared afterwards - is invisible to anything
+ * that exercises only one side of it.
+ */
+function submit(string $action, array $fields = []): array {
+    test_load_actions();
+    $_POST = $fields + ['action' => $action, 'csrf' => csrf(), 'request_id' => bin2hex(random_bytes(32))];
+    return without_session_id_warning(fn() => handle_post());
+}
+
+/**
+ * Signing in and out regenerate the session id, which PHP cannot do in a
+ * command-line run that has already printed a line. That is a property of the
+ * runner, not of the code under test, so only that one warning is swallowed and
+ * everything else still reports.
+ */
+function without_session_id_warning(callable $fn): mixed {
     $previous = set_error_handler(static function (int $no, string $message) use (&$previous) {
         if (str_contains($message, 'session_regenerate_id')) return true;
         return $previous ? $previous(...func_get_args()) : false;
     });
-    try { return dispatch_action($action); }
+    try { return $fn(); }
     finally { restore_error_handler(); }
 }

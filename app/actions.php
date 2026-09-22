@@ -1,29 +1,72 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * The address typed into the sign-in or password-reset form.
+ *
+ * One derivation, because it is both the identity an attempt is counted
+ * against and the address the account is looked up by. Two spellings of it
+ * would mean a sign-in that succeeds while its counter keeps climbing under a
+ * key nothing ever clears.
+ */
+function attempted_email(): string { return mb_strtolower(post('email')); }
+
 function handle_post(): array {
     $action=post('action');
     if(!hash_equals(csrf(),post('csrf'))) throw new UserError(t('Die Sitzung ist abgelaufen. Seite neu laden.','Your session expired. Reload the page.'));
     $ip=$_SERVER['REMOTE_ADDR']??'local';
     if(in_array($action,['login','forgot','activate'],true)) {
         throttle('auth-ip',$ip,60);
-        if($action!=='activate') throttle($action,mb_strtolower(post('email')),10);
+        if($action!=='activate') throttle($action,attempted_email(),10);
     }
     if(in_array($action,['password_change','email_change'],true)) {
         $actor=require_user();throttle('account-security',(string)$actor['id'],10);
     }
     $request=post('request_id');
     // One transaction around the whole action: it either happens or it does not.
-    return transactional(function() use ($request,$action) {
+    $result=transactional(function() use ($request,$action) {
         claim_request($request);
         return dispatch_action($action);
     });
+    forget_attempts_after_success($action);
+    return $result;
+}
+
+/**
+ * Forget the sign-in attempts counted against an address, now that the request
+ * has proved who was making them.
+ *
+ * The counting above has to happen before the password is checked, because at
+ * that moment the outcome is not known. Nothing undid it, so a family whose
+ * children share one phone reached ten correct sign-ins in a quarter of an hour
+ * and was told "Zu viele Versuche", with no way out but waiting.
+ *
+ * Only the bucket belonging to a proven identity is cleared. A wrong password
+ * stays counted; the per-IP limit is never cleared, because one valid account
+ * must not be able to refresh the limit that slows down guessing at all the
+ * others; and 'forgot' is never cleared either, since typing an address proves
+ * nothing about who typed it and clearing it would hand anybody an unlimited
+ * mailer pointed at one family's inbox.
+ *
+ * After the transaction rather than inside the action: the counters live on
+ * their own connection so that a rolled-back action cannot refund them, and
+ * that same connection cannot write while the action's transaction is still
+ * open. Here the write has committed, so "this attempt succeeded" is true in
+ * the only sense that matters, and the clearing cannot be rolled back.
+ */
+function forget_attempts_after_success(string $action): void {
+    if($action==='login') { throttle_clear('login',attempted_email()); return; }
+    // An emailed one-time link is the other proof of the same thing: whoever
+    // opened it reads the mailbox and has just chosen the password. Without
+    // this, the reset link sent to a locked-out family lets them in once and
+    // leaves them locked out of the next sign-in until the window runs down.
+    if($action==='activate' && ($who=current_user())) throttle_clear('login',mb_strtolower((string)$who['email']));
 }
 
 function dispatch_action(string $action): array {
     switch($action) {
     case 'login':
-        $a=one('SELECT * FROM accounts WHERE email=? FOR UPDATE',[mb_strtolower(post('email'))]);
+        $a=one('SELECT * FROM accounts WHERE email=? FOR UPDATE',[attempted_email()]);
         $hash=$a['password_hash']??'$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
         if(!password_verify(post('password'),$hash) || !$a || $a['state']!=='active' || !$a['verified_at']) throw new UserError(t('Anmeldung nicht möglich. Zugangsdaten und Einladung prüfen.','Unable to sign in. Check your credentials and invitation.'));
         if(password_needs_rehash($hash,PASSWORD_DEFAULT)) run('UPDATE accounts SET password_hash=? WHERE id=?',[password_hash(post('password'),PASSWORD_DEFAULT),$a['id']]);
@@ -31,7 +74,7 @@ function dispatch_action(string $action): array {
     case 'logout':
         $_SESSION=[]; session_regenerate_id(true); current_user(true); return ['login',[]];
     case 'forgot':
-        $a=one("SELECT * FROM accounts WHERE email=? AND state='active' AND verified_at IS NOT NULL",[mb_strtolower(post('email'))]);
+        $a=one("SELECT * FROM accounts WHERE email=? AND state='active' AND verified_at IS NOT NULL",[attempted_email()]);
         if($a && setting('smtp',[]) && setting('privacy_ready',false)) send_account_token($a,'reset');
         flash(t('Wenn ein aktives Konto existiert, erhältst du einen Link per E-Mail.','If an active account exists, you will receive an email link.'));
         return ['forgot',[]];
@@ -91,7 +134,11 @@ function dispatch_action(string $action): array {
         $role=choose(post('role','student'),assignable_roles($u));
         $email=email_value(required_text('email',254));
         $password=(string)post('password'); strong_password($password);
-        if(one('SELECT id FROM accounts WHERE email=?',[$email]))
+        // Held for the rest of the transaction, the way student_invite does it:
+        // two submissions that both look and then both write leave the second
+        // one meeting the UNIQUE index instead of the sentence that explains
+        // what went wrong.
+        if(one('SELECT id FROM accounts WHERE email=? FOR UPDATE',[$email]))
             throw new UserError(t('Diese Adresse hat schon ein Konto.','That address already has an account.'));
         // Active and verified: there is no link to click, and an account that
         // cannot sign in is not what she asked for. The address is not proven

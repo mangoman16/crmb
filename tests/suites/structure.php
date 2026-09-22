@@ -371,6 +371,26 @@ is_same('COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=
        .' AND p.confirmed_at IS NOT NULL AND p.voided=0),0)',
         charge_paid_sql(), 'unchanged from the hand-written version it replaced');
 
+case_('A handler that makes an account holds the address while it checks it');
+/* Two people creating the same account at the same moment both looked, both
+   found nothing and both wrote; the second one met the UNIQUE index instead of
+   the sentence that explains the problem, and she was told to check her hosting
+   because she had tapped twice. Whoever looks an address up before writing one
+   has to hold it for the rest of the transaction. */
+$creators = 0;
+foreach (['actions','actions_settings','actions_messages','actions_config'] as $file) {
+    $source = (string)file_get_contents(APP_ROOT.'/app/'.$file.'.php');
+    foreach (preg_split("/\n    case '/", $source) as $block) {
+        if (!str_contains($block, 'INSERT INTO accounts')) continue;
+        $creators++;
+        $handler = 'app/'.$file.".php, case '".substr($block, 0, (int)strpos($block, "'"))."'";
+        preg_match_all('/FROM accounts WHERE email=\?(?: FOR UPDATE)?/', $block, $found);
+        foreach ($found[0] as $lookup)
+            ok(str_contains($lookup, 'FOR UPDATE'), $handler.' locks the address it checked');
+    }
+}
+ok($creators >= 2, 'every way of creating an account was examined ('.$creators.' of them)');
+
 case_('A name interpolated into SQL cannot smuggle anything in');
 /* Identifiers cannot be bound as parameters, so sql_name() is the one backstop
    for every table, column and alias the application builds itself. */

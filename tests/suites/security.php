@@ -121,6 +121,62 @@ case_('Rate limiting actually stops');
 throws(function () { for ($i = 0; $i < 6; $i++) throttle('suite-limit', 'someone', 5); },
        'the sixth attempt over a limit of five is refused');
 
+/* A sign-in has to be counted before the password is checked, because until it
+   is checked nobody knows whose attempt this was. Nothing cleared that count
+   afterwards, so a family whose three children share one phone reached ten
+   correct sign-ins inside a quarter of an hour and was told "Zu viele
+   Versuche", with no way out but waiting. These go through handle_post(), not
+   act(), because the defect lived between the two. */
+$familyEmail = 'familie@beispiel.test';
+$familyPassword = 'Federball-2026-Halle!';
+make_account(['email' => $familyEmail, 'name' => 'Familie Sieber',
+              'password_hash' => password_hash($familyPassword, PASSWORD_DEFAULT)]);
+$ourIp = $_SERVER['REMOTE_ADDR'] ?? 'local';
+$hits = fn(string $name, string $identity) => (int)(run_counter('SELECT hits FROM rate_limits WHERE bucket=?',
+    [rate_limit_bucket($name, $identity)])->fetchColumn() ?: 0);
+$signIn = fn() => submit('login', ['email' => $familyEmail, 'password' => $familyPassword]);
+
+case_('Signing in correctly never locks the family out');
+$ipBefore = $hits('auth-ip', $ourIp);
+does_not_throw(function () use ($signIn) { for ($i = 0; $i < 12; $i++) $signIn(); },
+               'twelve correct sign-ins in a row are all let through, though the limit is ten');
+is_same(0, $hits('login', $familyEmail), 'and leave nothing counted against the address');
+is_same($ipBefore + 12, $hits('auth-ip', $ourIp),
+        'while the per-IP counter keeps all twelve: one valid login must not refresh the limit that slows guessing at every other account');
+
+case_('A sign-in clears its own counter and no other');
+throttle('forgot', $familyEmail, 10);
+is_same(1, $hits('forgot', $familyEmail), 'a reset request is counted');
+does_not_throw($signIn, 'the family signs in');
+is_same(1, $hits('forgot', $familyEmail),
+        'and the reset-request counter stands: typing an address proves nothing about who typed it, so that bucket is never cleared');
+
+case_('A sign-in that does not complete forgets nothing');
+/* The counters sit on their own connection so that a rolled-back action cannot
+   refund them, which is also why the clearing waits until the action has
+   committed. A request that authenticated and then failed for some other reason
+   must leave its attempt counted rather than forgetting one it never finished. */
+$replayed = bin2hex(random_bytes(32));
+$sent = ['email' => $familyEmail, 'password' => $familyPassword, 'request_id' => $replayed];
+does_not_throw(fn() => submit('login', $sent), 'the first submission signs in');
+is_same(0, $hits('login', $familyEmail), 'and its attempt is forgotten');
+throws(fn() => submit('login', $sent), 'sending the very same submission again is refused as a replay', 'bereits verarbeitet');
+is_same(1, $hits('login', $familyEmail), 'and that attempt stays counted, having proved nothing');
+
+case_('Wrong passwords are still counted, and still stop');
+throttle_clear('login', $familyEmail); // the suite's own clean slate, not the behaviour under test
+$outcome = ['in' => 0, 'refused' => 0, 'throttled' => 0];
+for ($i = 0; $i < 12; $i++) {
+    try { submit('login', ['email' => $familyEmail, 'password' => 'das-ist-nicht-es']); $outcome['in']++; }
+    catch (UserError $e) { str_contains($e->getMessage(), 'Zu viele') ? $outcome['throttled']++ : $outcome['refused']++; }
+}
+is_same(0, $outcome['in'], 'none of the twelve gets in');
+is_same(10, $outcome['refused'], 'the first ten are refused on the password');
+is_same(2, $outcome['throttled'], 'from the eleventh on the address is throttled before the password is looked at');
+is_same(12, $hits('login', $familyEmail), 'every one of them was counted');
+throws($signIn, 'and the right password does not reopen a throttled address until the window runs down', 'Zu viele');
+sign_out();
+
 case_('Choice validation rejects anything not offered');
 does_not_throw(fn() => choose('de', ['de','en']), 'an offered value passes');
 foreach (['fr','', 'DE','de '] as $bad) throws(fn() => choose($bad, ['de','en']), 'rejects '.test_show($bad));
