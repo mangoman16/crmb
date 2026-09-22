@@ -275,6 +275,19 @@ Skip on an ordinary code change; do all of it before a release.
   appears, then „Passwort vergessen", open the link and set a new password. You
   are signed in; sign out and sign in again with the new password and it works
   straight away, rather than being refused for the rest of the fifteen minutes.
+  *This one needs email actually working first* — SMTP set up (15.3) and the
+  mail worker running (1.4), or the link is written and never sent. If you would
+  rather not wait for mail, **Postausgang** shows the message that was queued.
+- [ ] **4.6g** The wait itself, which is the only step here that takes fifteen
+  minutes and the only one that proves the sentence „Bitte später erneut
+  versuchen" is true. Type the wrong password for one address until „Zu viele
+  Versuche" appears. Now put the phone down for **sixteen minutes** by the
+  clock — longer than fifteen, not exactly fifteen. Come back and sign in with
+  the **right** password. You are in, first try. If it still says „Zu viele
+  Versuche", the lockout never ends on its own and a family that mistyped a
+  password is shut out of her portal until somebody with a database touches it.
+  Nothing automated can check this: the suite ages the stored counter instead of
+  waiting, so the clock itself is only ever proven here.
 - [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
   once and not twice. Asking for a link ten times for one address is still
   refused afterwards — that counter is never cleared, because typing an address
@@ -288,10 +301,13 @@ Skip on an ordinary code change; do all of it before a release.
   carries attaches that child to it. Creating a trainer or administrator
   attaches nobody.
 - [ ] **4.6f** The same form with an address that already has an account says
-  „Diese Adresse hat schon ein Konto." Tap **Anlegen** twice in quick
-  succession, or submit the same address from two browser tabs at once: the
-  second one gets a sentence in plain German, never a database error and never
-  the „vorübergehend nicht verfügbar" page.
+  „Diese Adresse hat schon ein Konto." Then tap **Anlegen** twice in quick
+  succession: the second tap says **the same sentence**, word for word. Read it
+  rather than glancing at it — the wrong outcome here is not an error page but a
+  *different* sentence, „Die Eingabe ist nicht möglich: Adresse bereits vergeben
+  oder verknüpfte Daten vorhanden", which is the database complaining in the
+  portal's voice and means the two taps raced each other. Either way it must
+  never be the „vorübergehend nicht verfügbar" page.
 - [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
   the privacy notice — carries the line about the privacy notice, the necessary
   cookies and the data not being sold or passed on, above the footer links, and

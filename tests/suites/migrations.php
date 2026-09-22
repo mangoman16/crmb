@@ -2,7 +2,7 @@
 /**
  * The migrations that move data, run against data.
  *
- * Every other suite gets its database by applying all sixteen migrations to an
+ * Every other suite gets its database by applying all eighteen migrations to an
  * empty one, so the statements that carry something across have never touched a
  * row: a tariff's price into tariff_rates, its discount onto every enrolment
  * that was getting it, an address onto every child. "Nobody's next invoice
@@ -11,6 +11,12 @@
  *
  * tests/migration-data.php builds a portal as it stood before 015, applies the
  * rest, and prints what it finds. This reads that and holds it to the promise.
+ *
+ * What it does not yet hold to it: 017 backfills covered_from and covered_to on
+ * every charge that carries a period, and no case below looks at a charge. The
+ * columns are covered by the billing and invoices suites, on rows this version
+ * wrote; the statement that fills in the rows written by the previous one is
+ * proven only by its having applied. Said here rather than left to be assumed.
  *
  * It runs in another process against its own SQLite file, whichever driver the
  * rest of the run is using: the database this suite is connected to has every

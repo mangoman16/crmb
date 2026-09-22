@@ -177,6 +177,52 @@ is_same(12, $hits('login', $familyEmail), 'every one of them was counted');
 throws($signIn, 'and the right password does not reopen a throttled address until the window runs down', 'Zu viele');
 sign_out();
 
+case_('And a quarter of an hour later she gets in again');
+/* "Zu viele Versuche. Bitte später erneut versuchen." is a promise that later
+   arrives. throttle() keeps it by resetting hits to 1 once window_start falls
+   behind time() - $seconds, and nothing asserted that a locked-out address ever
+   comes back: a reset that never fired would have looked exactly like a working
+   throttle to every case above, and she would have been locked out for good.
+
+   Nothing here can move the clock - throttle() reads time() directly. What it
+   compares against is one stored number, so the window is aged by moving its
+   start backwards, which leaves the row in the state it is in after that many
+   seconds really have passed. That proves throttle()'s reset arithmetic. It
+   does not prove the clock source, and TESTING.md 4.6g walks the real wait. */
+$ageWindow = fn(string $name, string $identity, int $seconds) => run_counter(
+    'UPDATE rate_limits SET window_start = window_start - ? WHERE bucket = ?',
+    [$seconds, rate_limit_bucket($name, $identity)]);
+
+// Built here rather than inherited from the case above: this one has to start
+// from a known number of attempts whatever else has run first.
+$waitingEmail = 'wartende@beispiel.test';
+$waitingPassword = 'Schlaeger-Tasche-2026!';
+make_account(['email' => $waitingEmail, 'name' => 'Familie Wartinger',
+              'password_hash' => password_hash($waitingPassword, PASSWORD_DEFAULT)]);
+$rightPassword = fn() => submit('login', ['email' => $waitingEmail, 'password' => $waitingPassword]);
+$wrongPassword = fn() => submit('login', ['email' => $waitingEmail, 'password' => 'falsch-getippt']);
+// The per-IP bucket is aged too, so that how much traffic the rest of this
+// suite sent from the same address cannot decide whether this case passes.
+$ageWindow('auth-ip', $ourIp, 901);
+for ($i = 0; $i < 11; $i++) { try { $wrongPassword(); } catch (UserError $e) {} }
+is_same(11, $hits('login', $waitingEmail), 'eleven attempts stand against the address');
+throws($rightPassword, 'the right password is refused while the window is still open', 'Zu viele');
+
+// The negative first. Without it a throttle() that reset on every single call
+// would pass the rest of this case, and the limit would stop nobody.
+$ageWindow('login', $waitingEmail, 600);
+throws($rightPassword, 'ten minutes in is not yet later, and it is still refused', 'Zu viele');
+is_same(13, $hits('login', $waitingEmail), 'and those refusals are counted too, rather than sitting still');
+
+$ageWindow('login', $waitingEmail, 400); // 1000 seconds in total, past the quarter of an hour
+throws($wrongPassword, 'once the window has run down the password is looked at again',
+       'Anmeldung nicht möglich');
+is_same(1, $hits('login', $waitingEmail),
+        'and the counter starts the new window at one, rather than carrying the old thirteen over');
+does_not_throw($rightPassword, 'so the family signs in with the same password that was refused a moment ago');
+is_same(0, $hits('login', $waitingEmail), 'and that sign-in clears the counter behind it');
+sign_out();
+
 case_('Choice validation rejects anything not offered');
 does_not_throw(fn() => choose('de', ['de','en']), 'an offered value passes');
 foreach (['fr','', 'DE','de '] as $bad) throws(fn() => choose($bad, ['de','en']), 'rejects '.test_show($bad));
