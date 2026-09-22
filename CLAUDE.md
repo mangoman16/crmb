@@ -4,6 +4,66 @@ A self-hosted CRM for one badminton coach and her students. It is used by a
 trainer who is not technical, on a phone, with real families' data in it. That
 is the whole design constraint, and it decides most arguments.
 
+## This session is the project manager
+
+The work on this project is split across eleven agents in `.claude/agents/`, each with a
+narrow remit and a tool list that matches it. **The main session does not do the
+specialist work itself.** It breaks a request into tasks, delegates, and puts the results
+together. Doing a specialist's job in the main session is how a boundary quietly stops
+being a boundary.
+
+| Agent | Does | May write |
+| --- | --- | --- |
+| `architect` | structure, boundaries, conventions, dependencies | `docs/decisions/` only |
+| `ui-ux-designer` | specifies a screen or flow before it is built; measures | nothing |
+| `database-engineer` | migrations, the runner, the SQLite translation, backups | `database/`, `app/schema.php` |
+| `backend-dev` | PHP in `app/`, `bin/`, `public/` | code |
+| `frontend-dev` | `views/`, `app/ui.php`, `app.css`, `app.js` | code |
+| `qa-tester` | runs the suites, writes the missing ones, walks `TESTING.md` | `tests/`, `TESTING.md` |
+| `mobile-tester` | measures at 320 and 390, both roles, light and dark | nothing |
+| `code-reviewer` | the conventions below, applied to a diff | nothing |
+| `security-reviewer` | injection, escaping, authorisation, secrets, uploads | nothing |
+| `devops-engineer` | install, update, release, console, CI if ever adopted | delivery files |
+| `docs-writer` | README, INSTALL, UPDATING, VALIDATION, CHANGELOG, … | documents |
+
+The stack, the conventions and the commands each agent needs are the rest of this file —
+they are not repeated in the agent prompts, and they should not be repeated here either.
+
+### The workflow
+
+1. **The project manager breaks the request into tasks and shows the plan** before any of
+   it starts.
+2. **`architect`** approves the approach if the change touches structure: a new file in
+   `app/`, anything crossing the view/action boundary, the schema, or a dependency.
+3. **`ui-ux-designer`** specifies the screen if the change is visible to anyone.
+4. **`database-engineer`, `backend-dev`, `frontend-dev`** implement, in that order where
+   more than one is involved — the schema exists before the code that reads it.
+5. **`qa-tester` and `mobile-tester`** test. Neither reports a result it did not watch.
+6. **`code-reviewer` and `security-reviewer`** review. **Any `FAIL` goes back to the
+   implementer**, not to the project manager to argue with.
+7. **`docs-writer`** brings the documents back in line with what is now true.
+8. **The project manager summarises and proposes the commit message.**
+
+A step whose agent has nothing to do says so and takes no turn. A step is not skipped
+because the change looks small — the 36-byte truncation of `app/actions_config.php` looked
+small too.
+
+### Git
+
+- **Work on a feature branch.** Never push to `main` directly.
+- **Small commits with clear messages**, one change each, in the style already in the log:
+  a subject line that says what changed for the operator, then prose explaining why.
+- **Never commit secrets.** `config/config.php` holds the database password and the mail
+  credentials; `.gitignore` already covers it and `/.env`, and it stays that way. A new
+  file that holds a credential goes into `.gitignore` in the commit that creates it.
+
+### Stop and ask
+
+Stop and ask the owner whenever a decision is **ambiguous**, **destructive**, or **changes
+the database schema**. Say what you would do and why, and wait. She has no staging copy,
+no shell and no way to undo a migration that has already run against her families' data —
+the cost of asking is a minute and the cost of guessing is hers to carry.
+
 ## Leave the code better than you found it — without being asked
 
 Code quality is the priority here, above speed of delivery. When you touch a
