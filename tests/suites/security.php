@@ -188,7 +188,7 @@ case_('And a quarter of an hour later she gets in again');
    compares against is one stored number, so the window is aged by moving its
    start backwards, which leaves the row in the state it is in after that many
    seconds really have passed. That proves throttle()'s reset arithmetic. It
-   does not prove the clock source, and TESTING.md 4.6g walks the real wait. */
+   does not prove the clock source, and TESTING.md 4.6c walks the real wait. */
 $ageWindow = fn(string $name, string $identity, int $seconds) => run_counter(
     'UPDATE rate_limits SET window_start = window_start - ? WHERE bucket = ?',
     [$seconds, rate_limit_bucket($name, $identity)]);

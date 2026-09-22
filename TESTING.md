@@ -266,19 +266,19 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **4.6** Wrong password repeatedly (more than ten times for one address,
   within fifteen minutes) is refused with „Zu viele Versuche", and a correct
   password immediately afterwards is refused too — that is the point.
-- [ ] **4.6d** The same address signs in **correctly** twelve times in a row —
+- [ ] **4.6a** The same address signs in **correctly** twelve times in a row —
   sign out, sign in, twelve times, which is one afternoon of three children
   sharing a phone. All twelve work. A correct password must never produce „Zu
   viele Versuche": the attempt is counted before the password can be checked,
   and a sign-in that succeeds clears that count again.
-- [ ] **4.6e** Wrong password for one address until „Zu viele Versuche"
+- [ ] **4.6b** Wrong password for one address until „Zu viele Versuche"
   appears, then „Passwort vergessen", open the link and set a new password. You
   are signed in; sign out and sign in again with the new password and it works
   straight away, rather than being refused for the rest of the fifteen minutes.
   *This one needs email actually working first* — SMTP set up (15.3) and the
   mail worker running (1.4), or the link is written and never sent. If you would
   rather not wait for mail, **Postausgang** shows the message that was queued.
-- [ ] **4.6g** The wait itself, which is the only step here that takes fifteen
+- [ ] **4.6c** The wait itself, which is the only step here that takes fifteen
   minutes and the only one that proves the sentence „Bitte später erneut
   versuchen" is true. Type the wrong password for one address until „Zu viele
   Versuche" appears. Now put the phone down for **sixteen minutes** by the
@@ -288,19 +288,32 @@ Skip on an ordinary code change; do all of it before a release.
   password is shut out of her portal until somebody with a database touches it.
   Nothing automated can check this: the suite ages the stored counter instead of
   waiting, so the clock itself is only ever proven here.
+- [ ] **4.6d** Not a step to perform — a symptom to recognise. „Zu viele
+  Versuche" for an address where nobody typed a wrong password ten times, and
+  for **more than one family at the same time**, is not the lockout above:
+  everyone who reaches the portal through the same internet address — one
+  shared connection at the hosting, or one mobile network — shares a single
+  budget of attempts, and attempts that are already being refused spend it too.
+  Waiting a quarter of an hour clears it. If it keeps coming back, it is the
+  connection and not the portal — a question for the hosting, not something to
+  go looking for in the accounts.
 - [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
   once and not twice. Asking for a link ten times for one address is still
   refused afterwards — that counter is never cleared, because typing an address
   proves nothing about who typed it.
-- [ ] **4.6a** **Konten → + Konto direkt anlegen (ohne E-Mail)** as an
+- [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
+  the privacy notice — carries the line about the privacy notice, the necessary
+  cookies and the data not being sold or passed on, above the footer links, and
+  it reads at 320px without the page scrolling sideways.
+- [ ] **4.8** **Konten → + Konto direkt anlegen (ohne E-Mail)** as an
   administrator: a name, an address and a password of at least 12 characters.
   The new account signs in straight away with **no SMTP configured at all**, and
   a weak password is refused here exactly as everywhere else.
-- [ ] **4.6b** A trainer is not offered that form and cannot post to it.
-- [ ] **4.6c** Creating one with role *Schüler* at an address a child already
+- [ ] **4.8a** A trainer is not offered that form and cannot post to it.
+- [ ] **4.8b** Creating one with role *Schüler* at an address a child already
   carries attaches that child to it. Creating a trainer or administrator
   attaches nobody.
-- [ ] **4.6f** The same form with an address that already has an account says
+- [ ] **4.8c** The same form with an address that already has an account says
   „Diese Adresse hat schon ein Konto." Then tap **Anlegen** twice in quick
   succession: the second tap says **the same sentence**, word for word. Read it
   rather than glancing at it — the wrong outcome here is not an error page but a
@@ -308,11 +321,7 @@ Skip on an ordinary code change; do all of it before a release.
   oder verknüpfte Daten vorhanden", which is the database complaining in the
   portal's voice and means the two taps raced each other. Either way it must
   never be the „vorübergehend nicht verfügbar" page.
-- [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
-  the privacy notice — carries the line about the privacy notice, the necessary
-  cookies and the data not being sold or passed on, above the footer links, and
-  it reads at 320px without the page scrolling sideways.
-- [ ] **4.8** Suspending an account in **Konten** stops that person signing in.
+- [ ] **4.9** Suspending an account in **Konten** stops that person signing in.
 
 ---
 
@@ -806,12 +815,12 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **21.2** **Einstellungen → System**: take a backup before an update. The
   file exists and is not empty. Import it into an empty database in the hosting
   panel once, deliberately, so you know the route works before you need it.
-- [ ] **21.7** After deleting an account or a child that had a picture, an
-  attachment or a proof, the file goes too — the nightly maintenance sweeps
-  anything no record points at. `storage/uploads` should not grow for ever.
 - [ ] **21.3** An update that could not back up first refuses to run.
 - [ ] **21.4** After any update, **Einstellungen → System** shows the same
   version for the files and for the database.
+- [ ] **21.7** After deleting an account or a child that had a picture, an
+  attachment or a proof, the file goes too — the nightly maintenance sweeps
+  anything no record points at. `storage/uploads` should not grow for ever.
 
 ---
 
@@ -825,17 +834,17 @@ Do this last, on a real phone, not a resized desktop window.
   tap target smaller than a fingertip. `node tests/mobile.mjs` answers this for
   every page at once; do the walk anyway for the two or three screens you use
   most, because it cannot tell you that something is ugly.
-- [ ] **22.5** On the attendance screen at 320 px, the three statuses read as
+- [ ] **22.3** On the attendance screen at 320 px, the three statuses read as
   words — not "Entschuldi / gt" — and the last child in the list can be reached
   without the save bar sitting on top of them.
-- [ ] **22.6** **Mein Konto → Farbe**: the eight dots show eight colours. If they
+- [ ] **22.4** **Mein Konto → Farbe**: the eight dots show eight colours. If they
   are grey, a style has been written inline again and the browser is refusing
   it.
-- [ ] **22.7** The pinned bar shows your picture or initials on a phone, not an
+- [ ] **22.5** The pinned bar shows your picture or initials on a phone, not an
   empty square.
-- [ ] **22.3** Add the portal to the home screen. It opens without browser
+- [ ] **22.6** Add the portal to the home screen. It opens without browser
   chrome and with its own icon.
-- [ ] **22.4** In dark mode, every screen you touched above is still readable.
+- [ ] **22.7** In dark mode, every screen you touched above is still readable.
 
 ---
 
