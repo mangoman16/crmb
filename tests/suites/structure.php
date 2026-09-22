@@ -495,5 +495,76 @@ ok(str_contains($refusal, 'x y'), 'and which name it was');
 case_('Callers route their identifiers through it');
 throws(fn() => charge_paid_sql('c WHERE 1=1 --'), 'charge_paid_sql checks its alias');
 throws(fn() => payment_counts_sql('p; DROP TABLE payments'), 'payment_counts_sql checks its alias');
-throws(fn() => lock_row('students; DROP TABLE students', 1), 'lock_row checks its table');
+/* Inside a transaction, because lock_row() refuses at depth 0 before it ever
+   looks at the name. Called bare it threw the refusal about the transaction and
+   the assertion passed on that, so the allowlist it claimed to be checking was
+   never reached: the message is read here rather than just the fact of a throw. */
+$lockRefusal = '';
+try { transactional(fn() => lock_row('students; DROP TABLE students', 1)); }
+catch (Throwable $e) { $lockRefusal = $e->getMessage(); }
+ok(str_contains($lockRefusal, 'as a SQL table'), 'lock_row checks its table: '.$lockRefusal);
 does_not_throw(fn() => charge_paid_sql('ch2'), 'a digit in an alias is fine, which the old table check wrongly refused');
+
+/**
+ * The names of the calls whose brackets are still open at the point where
+ * $callee is called.
+ *
+ * Tokenised, because the thing being asked about is nesting and a regular
+ * expression cannot count brackets. A '(' that follows something other than a
+ * function name - fn() =>, function () use (...) - is pushed as nothing, so it
+ * still closes correctly without pretending to be a call.
+ */
+function enclosing_calls_of(string $php, string $callee): array {
+    $tokens = array_values(array_filter(token_get_all("<?php\n".$php),
+        fn($t) => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+    $open = [];
+    foreach ($tokens as $i => $token) {
+        if (is_array($token) && $token[0] === T_STRING && $token[1] === $callee && ($tokens[$i + 1] ?? null) === '(')
+            return array_values(array_filter($open, fn($n) => $n !== null));
+        if ($token === '(') {
+            $before = $tokens[$i - 1] ?? null;
+            $open[] = (is_array($before) && $before[0] === T_STRING) ? $before[1] : null;
+        } elseif ($token === ')') array_pop($open);
+    }
+    return [];
+}
+
+case_('The suite reaches an action the same way a request does');
+/* act() dispatched actions with no transaction open. Every FOR UPDATE in every
+   handler the suites exercise was therefore locking nothing, and twenty-two
+   green suites were describing a weaker portal than the one that ships. It was
+   a refactor that noticed, not a test.
+
+   The behaviour is checked in the transactions suite. This is the general
+   version of it: whatever handle_post() wraps around dispatch_action() in the
+   running portal, act() wraps the same thing in the same order, so the next
+   wrapper somebody adds to one of them fails here by name instead of quietly
+   putting the suites back in a situation the portal is never in. */
+$handlePost = named_blocks_of(APP_ROOT.'/app/actions.php')['handle_post'] ?? '';
+$harness    = named_blocks_of(TEST_ROOT.'/harness.php');
+ok($handlePost !== '', 'handle_post() was found in app/actions.php');
+ok(($harness['act'] ?? '') !== '' && ($harness['submit'] ?? '') !== '',
+   'act() and submit() were found in tests/harness.php');
+
+$requestChain = enclosing_calls_of($handlePost, 'dispatch_action');
+/* Read before it is compared to anything. Two empty lists match each other
+   perfectly, and a rule that compared them would report agreement about a call
+   it had failed to find - which is the shape of the defect it exists to catch. */
+is_same(['transactional'], $requestChain,
+        'a real request calls dispatch_action() inside transactional() and nothing else');
+
+$harnessOnly = [
+    // Each one names why it is allowed to sit in the chain, so an exemption
+    // cannot outlive its reason: these open nothing and hold nothing.
+    'without_session_id_warning' => 'swallows the session_regenerate_id warning a command-line run cannot avoid',
+];
+$actChain = enclosing_calls_of($harness['act'], 'dispatch_action');
+foreach (array_keys($harnessOnly) as $allowed)
+    ok(in_array($allowed, $actChain, true), 'act() still goes through '.$allowed.', which '.$harnessOnly[$allowed]);
+is_same($requestChain, array_values(array_diff($actChain, array_keys($harnessOnly))),
+        'and act() puts the handler inside the same calls, in the same order');
+
+ok(str_contains($harness['submit'], 'handle_post()'),
+   'submit() calls handle_post() itself rather than a second description of it');
+is_same([], enclosing_calls_of($harness['submit'], 'dispatch_action'),
+        'and never reaches dispatch_action() around it, which would be that second description');

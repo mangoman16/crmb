@@ -11,6 +11,50 @@
 $admin = make_account(['role'=>'admin','name'=>'Admin']);
 sign_in_as($admin);
 
+case_('The suite dispatches an action into the transaction a real request opens');
+/* The sentence above this file used to be a description rather than a check.
+   act() called dispatch_action() with nothing open, so every FOR UPDATE in
+   every handler all twenty-two suites exercise was locking nothing, and the
+   whole run was green against a weaker portal than the one that ships. A
+   refactor found it; no test did. This is that test.
+
+   account_invite is what the probe dispatches because account_using_email()
+   inside it refuses outright when no transaction is open, rather than quietly
+   handing back an unlocked row - which turns "was a transaction open" into
+   something a suite can ask instead of something it has to trust.
+
+   The case builds the portal state it needs: a released privacy notice and an
+   SMTP host, because inviting refuses without them and a refusal here would
+   look exactly like the defect. */
+set_setting('privacy_ready', true);
+set_setting('smtp', ['host'=>'mail.example.test','port'=>587,
+                     'from_email'=>'portal@example.test','from_name'=>'Portal']);
+test_load_actions();
+
+/* First the measurement itself, so the two passes underneath cannot be vacuous.
+   If account_using_email() ever stops refusing, this fails and says so instead
+   of letting the rest of the case report a transaction that was never there. */
+$_POST = ['name'=>'Ohne Transaktion', 'email'=>'bare@beispiel.test', 'role'=>'student', 'locale'=>'de'];
+throws(fn() => without_session_id_warning(fn() => dispatch_action('account_invite')),
+       'dispatching with nothing open is refused, which is what makes this case able to tell',
+       'outside a transaction');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['bare@beispiel.test']),
+        'and wrote no account on the way out');
+
+does_not_throw(fn() => act('account_invite',
+    ['name'=>'Mit act', 'email'=>'act@beispiel.test', 'role'=>'student', 'locale'=>'de']),
+    'act() gets the same handler through, so act() opened one');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['act@beispiel.test']),
+        'and the account it wrote is committed, not left inside a transaction nobody closed');
+
+does_not_throw(fn() => submit('account_invite',
+    ['name'=>'Mit submit', 'email'=>'submit@beispiel.test', 'role'=>'student', 'locale'=>'de']),
+    'and so does submit(), which goes the whole way through handle_post()');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['submit@beispiel.test']),
+        'with its account committed too');
+
+is_same(0, tx_depth(), 'and neither of them left a transaction open behind it');
+
 case_('A failing action leaves nothing behind');
 $before = (int)scalar('SELECT COUNT(*) FROM students');
 throws(function () {

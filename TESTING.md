@@ -219,6 +219,25 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **3.4c** `php bin/console.php demo:fill` prints the three addresses and
   the password too. (It used to say „the password printed above" and print no
   password, which left three accounts nobody could sign in to.)
+- [ ] **3.4d** Two tabs on `setup.php`, and the honest limit of what one person
+  can prove here. Open the setup page in two tabs, fill both in completely with
+  **different** administrator addresses, then submit the first and afterwards
+  the second. The second tab answers **„Schon eingerichtet — Dieses Portal ist
+  fertig installiert."**, and **Konten** afterwards lists **exactly one**
+  administrator: yours. What must never happen is two administrators, or a page
+  of database words instead of that sentence.
+  > This walk is sequential, and what was fixed is the *simultaneous* case: two
+  > submissions reaching the database in the same instant, where both used to
+  > count the administrators, both counted none, and both wrote one. Sequentially
+  > the second tab is refused whichever way the guard is written, so passing this
+  > step proves the outcome and **not** the lock. One person with one browser
+  > cannot press two buttons in the same millisecond, and a step that pretended
+  > otherwise would be a step she cannot perform. The lock itself was measured
+  > with two database connections against MariaDB 10.11.14; no manual walk
+  > replaces that. With a second person and a second device, both tapping
+  > **Installieren** on a count of three is worth one try, and the only thing to
+  > read is the administrator count in **Konten**. **Two administrators after an
+  > install is the symptom**, whenever it appears and however it was produced.
 - [ ] **3.5** Open `setup.php` again. It answers 403 and creates nothing.
 - [ ] **3.6** `bash bin/update.sh --check` on an installed copy reports the file
   version, the database version and whether anything is pending, and changes
@@ -297,6 +316,28 @@ Skip on an ordinary code change; do all of it before a release.
   Waiting a quarter of an hour clears it. If it keeps coming back, it is the
   connection and not the portal — a question for the hosting, not something to
   go looking for in the accounts.
+- [ ] **4.6e** Spelling the address differently must not buy a fresh ten
+  guesses. **Only meaningful on MariaDB or MySQL.** On the test suite's SQLite
+  file this step proves nothing at all — see the note below before you run it.
+  Take a family address with an accented letter available in it, say
+  `familie@beispiel.at`. Type the **wrong** password ten times at `familie@…`
+  until „Zu viele Versuche" appears. Now type the same address **with an
+  accent** — `famílie@…` — and any password at all. It must say **„Zu viele
+  Versuche"** as well. If it says „Anmeldung nicht möglich" instead, the
+  accented spelling has started its own fresh ten, and whoever is guessing at
+  that family's password has as many sets of ten as they can invent spellings.
+  > Why the engine decides this: the portal's database compares addresses under
+  > `utf8mb4_unicode_ci`, which reads `i` and `í`, upper and lower case, `ss`
+  > and `ß` as the same letter, so both spellings find the one family and the
+  > attempt is counted against that family. The SQLite translation the default
+  > suite runs on compares the bytes, finds two unrelated addresses, and cannot
+  > show the fault either way — which is why `php tests/run.php` prints
+  > *„two spellings of one address sharing a throttle bucket (needs the MySQL
+  > collation)"* in its own footer. That line is the reason this step exists.
+  > Walk it against the portal on the real server, or after
+  > `tests/mariadb-local.sh`, and never against the SQLite run.
+  > Afterwards either wait the quarter of an hour or sign in once correctly to
+  > clear the count — a sign-in that works empties that counter, which is 4.6a.
 - [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
   once and not twice. Asking for a link ten times for one address is still
   refused afterwards — that counter is never cleared, because typing an address
@@ -321,6 +362,21 @@ Skip on an ordinary code change; do all of it before a release.
   oder verknüpfte Daten vorhanden", which is the database complaining in the
   portal's voice and means the two taps raced each other. Either way it must
   never be the „vorübergehend nicht verfügbar" page.
+- [ ] **4.8d** The same question asked from the *invitation* side. **Konten →
+  „+ Konto einladen"**, an address that already has an account — the one from
+  4.8 will do — then **„Einladung senden"**. It says **„Diese Adresse hat schon
+  ein Konto."**: word for word the sentence the direct-creation form gives at
+  4.8c, because it is now literally the same sentence in the code. Read it
+  rather than glancing at it. Inviting used to write the row without looking
+  first, so this path answered with „Die Eingabe ist nicht möglich: Adresse
+  bereits vergeben oder verknüpfte Daten vorhanden" — the database complaining
+  in the portal's voice, about an address it declined to name. Then check three
+  things: **Konten** still lists that address **once**; its **role is
+  unchanged**, so a refused invitation has not quietly turned a trainer into a
+  family; and **Postausgang** holds **no new invitation** to it, because a
+  second invitation replaces a password that already works. Tap **„Einladung
+  senden"** twice in quick succession too: the second tap gives the same
+  sentence, never the database one.
 - [ ] **4.9** Suspending an account in **Konten** stops that person signing in.
 
 ---
