@@ -241,6 +241,10 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **3.10** Switch **Wartungsmodus** on from **Einstellungen → System**.
   Everybody else sees the closed page; you still get in, with the red strip at
   the top offering the way out.
+- [ ] **3.11** Re-count the fact table in `PROJECT.md` — tables, migrations,
+  settings, suites, undo entities and the lines of code — against the tree
+  you are about to release. Not a test, but it belongs to whoever cuts the
+  release: those counts have gone stale twice by being nobody's job.
 
 ---
 
