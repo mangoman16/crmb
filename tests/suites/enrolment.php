@@ -17,10 +17,18 @@ ok(str_contains(class_day_label($days[1], $class), 'Turnsaal Ost'), 'and a day w
 ok(str_contains(class_schedule($class, $days), '|'), 'the whole pattern reads as one line');
 
 case_('An impossible day is refused by name');
+$patternBefore = class_days($course);
 throws(fn() => act('class_save', ['id'=>$course, 'name'=>'Kindertraining',
     'day_weekday'=>['1'], 'day_location'=>['']] + time_post('day_starts_at', ['18:00']) + time_post('day_ends_at', ['16:00'])),
     'an end before the start', 'Montag');
 is_same(2, count(class_days($course)), 'and nothing was saved');
+/* Counting them is not enough. class_save replaces the whole pattern rather
+   than reconciling it, so a refusal arriving after the delete-and-reinsert had
+   started would leave two rows that are not these two - same count, different
+   days, different ids. Compared row for row so that cannot pass.
+   That the refusal comes before the write at all is asserted in the structure
+   suite: inside a transaction this assertion holds either way. */
+is_same($patternBefore, class_days($course), 'and it is the pattern that was there, row for row');
 
 case_('A double-tapped day is one day');
 act('class_save', ['id'=>$course, 'name'=>'Kindertraining',
@@ -129,9 +137,18 @@ is_same(1, pending_request_count(), 'the request is waiting');
 is_same(null, enrolment($course, $student), 'and the child is not in the course yet');
 
 case_('Asking twice for the same course is refused rather than doubled');
+$firstRequest = (int)scalar("SELECT id FROM enrolment_requests WHERE student_id=? AND class_id=? AND state='pending'",
+                            [$student, $course]);
 throws(fn() => act('enrolment_request', ['student_id'=>$student, 'class_id'=>$course, 'kind'=>'join', 'tariff_id'=>(string)$monthly]),
        'a second request', 'wartet schon');
 is_same(1, pending_request_count(), 'still just the one');
+// Named rather than counted: the count stays at one whether the row waiting is
+// the one she sent or a second one written over the top of it.
+is_same($firstRequest, (int)scalar("SELECT id FROM enrolment_requests WHERE student_id=? AND class_id=? AND state='pending'",
+                                   [$student, $course]),
+        'and it is the request she actually sent, not a replacement');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM enrolment_requests WHERE student_id=? AND class_id=?', [$student, $course]),
+        'with no second row written for this course at all, pending or otherwise');
 
 case_('Approving it is what enrols them, on the tariff they asked for');
 sign_in_as($trainer);
@@ -162,6 +179,14 @@ act('enrolment_decide', ['id'=>$id, 'decision'=>'approve', 'note'=>'']);
 throws(fn() => act('enrolment_decide', ['id'=>$id, 'decision'=>'decline', 'note'=>'']),
        'the second decision is refused', 'schon entschieden');
 is_same((int)class_tariffs($course)[1]['id'], (int)enrolment($course, $student)['tariff_id'], 'the tariff did change, once');
+/* "Once" is the part the line above cannot see: applying the same tariff a
+   second time looks identical. These two can tell the difference - a second
+   decision would either write a second membership row or move the request off
+   'approved'. */
+is_same(1, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND student_id=?', [$course, $student]),
+        'on the one membership row, not a second one beside it');
+is_same('approved', (string)scalar('SELECT state FROM enrolment_requests WHERE id=?', [$id]),
+        'and the refused second decision did not overwrite the first one');
 
 case_('The trainer does not have to ask herself');
 $other = make_student(['first_name'=>'Direkt', 'joined_on'=>'2026-01-01']);

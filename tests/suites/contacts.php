@@ -73,6 +73,12 @@ is_same(1, count(student_contacts($sid)), 'the ordinary one goes');
 throws(fn() => act('contact_delete', ['student_id'=>(string)$sid, 'id'=>(string)$maria]),
        'the last one does not', 'mindestens eine Kontaktperson');
 is_same(1, count(student_contacts($sid)), 'and is still there');
+// Which one, not how many. contact_delete promotes the next contact after it
+// deletes, so a count of one would also describe a child left with the wrong
+// person, or with the right person no longer marked as the standard.
+is_same('Maria Hofer', (string)student_contacts($sid)[0]['owner_name'], 'and it is Maria, the one the refusal protected');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM contacts WHERE student_id=? AND is_primary=1', [$sid]),
+        'still marked as the standard, so the promotion that follows a delete did not half-run');
 
 case_('Removing the standard contact promotes the next one');
 act('contact_add', ['student_id'=>(string)$sid, 'owner_name'=>'Josef Hofer',
@@ -158,6 +164,18 @@ $fourth = make_student(['first_name'=>'Viertes']);
 throws(fn() => act('student_invite', ['student_id'=>(string)$fourth, 'email'=>'die-trainerin@beispiel.test', 'name'=>'']),
        'and a management address is refused', 'Verwaltung');
 is_same(null, student($fourth)['account_id'], 'leaving the child unattached rather than half-attached');
+/* student_invite writes the child's address and bumps its revision in the same
+   UPDATE that attaches the account, so an untouched revision is the assertion
+   that says nothing about this child was rewritten - not just the one column
+   the line above reads. */
+is_same(1, (int)scalar('SELECT revision FROM students WHERE id=?', [$fourth]),
+        'the record was not rewritten at all: its revision is the one it was created with');
+ok((int)scalar('SELECT revision FROM students WHERE id=?', [$third]) > 1,
+   'while the child who really was attached has a revision that moved, so that is a measurement and not a constant');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['die-trainerin@beispiel.test']),
+        'and no second account was made for the trainer’s address');
+is_same('trainer', (string)scalar('SELECT role FROM accounts WHERE email=?', ['die-trainerin@beispiel.test']),
+        'which is still hers, not turned into a family login');
 
 case_('Example data leaves no child without somebody to ring or somewhere to write');
 $before = array_map(fn($s)=>(int)$s['id'], rows('SELECT id FROM students'));

@@ -568,3 +568,296 @@ ok(str_contains($harness['submit'], 'handle_post()'),
    'submit() calls handle_post() itself rather than a second description of it');
 is_same([], enclosing_calls_of($harness['submit'], 'dispatch_action'),
         'and never reaches dispatch_action() around it, which would be that second description');
+
+/**
+ * Every call in a stretch of PHP, in the order the tokens run, with the two
+ * things a rule about ordering needs to know about each one: whether it is a
+ * method call, and whether its first argument is a statement that writes.
+ *
+ * Tokenised rather than matched, because the question is "which of these comes
+ * first" and a regular expression cannot answer that across a nested call.
+ */
+function action_tokens(string $php): array {
+    return array_values(array_filter(token_get_all("<?php\n".$php),
+        fn($t) => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+}
+
+function action_calls_in(string $php): array {
+    $tokens = action_tokens($php);
+    $calls = [];
+    foreach ($tokens as $i => $token) {
+        if (!is_array($token) || $token[0] !== T_STRING || ($tokens[$i + 1] ?? null) !== '(') continue;
+        // Literals joined with '.' are put back together, the way the database
+        // receives them, so SQL split over several lines still reads as SQL.
+        $literal = null;
+        for ($j = $i + 2; $j < count($tokens); $j++) {
+            $u = $tokens[$j];
+            if (is_array($u) && $u[0] === T_CONSTANT_ENCAPSED_STRING) { $literal = ($literal ?? '').substr($u[1], 1, -1); continue; }
+            if ($u === '.') continue;
+            break;
+        }
+        $previous = $tokens[$i - 1] ?? null;
+        $calls[] = [
+            'name'  => $token[1],
+            'index' => $i,
+            // Upper case and a table name, both required: a case-insensitive
+            // match on the keyword alone reads t('Update: die neuen Dateien …')
+            // as a write and puts an imaginary one ahead of the real thing.
+            'dml'   => $literal !== null
+                       && preg_match('/^(INSERT INTO|REPLACE INTO|DELETE FROM|UPDATE)\s+`?[a-z_][a-z0-9_]*`?[\s(]/', $literal) === 1,
+            'method'=> is_array($previous) && in_array($previous[0],
+                       [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_DOUBLE_COLON, T_NEW, T_FUNCTION], true),
+        ];
+    }
+    return $calls;
+}
+
+/** name => body, for every named function in one file, by matching its braces. */
+function defined_functions_in(string $path): array {
+    $tokens = array_values(array_filter(token_get_all((string)file_get_contents($path)),
+        fn($t) => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+    $out = [];
+    foreach ($tokens as $i => $token) {
+        if (!is_array($token) || $token[0] !== T_FUNCTION) continue;
+        $name = $tokens[$i + 1] ?? null;
+        if (!is_array($name) || $name[0] !== T_STRING) continue;       // a closure has no name to record
+        $depth = 0; $body = ''; $open = false;
+        for ($j = $i; $j < count($tokens); $j++) {
+            $text = is_array($tokens[$j]) ? $tokens[$j][1] : $tokens[$j];
+            if ($text === '{') { $depth++; $open = true; }
+            if ($open) $body .= $text.' ';
+            if ($text === '}' && --$depth === 0) break;
+        }
+        $out[$name[1]] = $body;
+    }
+    return $out;
+}
+
+/**
+ * The first call in $calls that writes through the main connection.
+ *
+ * "Writes" is derived rather than listed: a call is one if its own first
+ * argument is an INSERT/UPDATE/DELETE, or if it reaches a function that has
+ * one. A hand-kept list of write helpers would stop matching the code the first
+ * time somebody adds a helper, and it would do it silently - which is exactly
+ * the shape of failure this rule exists to prevent.
+ */
+function first_main_write(array $calls, array $writers): ?array {
+    foreach ($calls as $call) {
+        // The counter is a second connection on purpose, so its write is not
+        // the main connection's and does not belong in this ordering at all.
+        if ($call['name'] === 'run_counter') continue;
+        if ($call['dml']) return $call;
+        if (!$call['method'] && isset($writers[$call['name']])) return $call;
+    }
+    return null;
+}
+
+case_('A throttle is counted before its action writes anything');
+/* throttle() counts on a second connection, deliberately, so a refused attempt
+   is not refunded by the rollback of the action it guarded. That second
+   connection is also why the order matters: once the action's transaction has
+   written a row on the main connection, a statement sent down the counter
+   connection is waiting on locks that only the main connection can release, and
+   the main connection is waiting on that statement to return. Nothing times out
+   and nothing rolls back - the request stops.
+
+   Every one of these is the first statement of its case today, and they are
+   correct today. This rule is the lock on that, because the suites cannot see
+   it: act() reaches five of the six with a transaction already open and the run
+   is green either way. */
+
+$counterOnly = [
+    // Named with what must still be true of them, so the exemption cannot
+    // outlive its reason: these write, but never on the main connection.
+    'throttle'       => 'counts the attempt',
+    'throttle_clear' => 'forgets the attempts once the action has committed',
+];
+foreach ($counterOnly as $name => $why) {
+    $body = defined_functions_in(APP_ROOT.'/app/auth.php')[$name] ?? '';
+    ok($body !== '', $name.'() was found in app/auth.php, where it '.$why);
+    $calls = action_calls_in($body);
+    ok((bool)array_filter($calls, fn($c) => $c['name'] === 'run_counter'),
+       $name.'() goes through run_counter(), which is what keeps it off the main connection');
+    ok(!array_filter($calls, fn($c) => $c['dml'] && $c['name'] !== 'run_counter'),
+       'and writes nothing on the main connection, so excluding it here is still honest');
+}
+
+/* Which functions write, worked out by following the calls rather than by
+   listing the answers. run(), one(), rows() and scalar() all hand a statement
+   to the main connection, but the statement is their caller's, so none of them
+   is a writer in itself - the caller that supplies the INSERT is. */
+$functionBodies = [];
+foreach (glob(APP_ROOT.'/app/*.php') as $file) $functionBodies += defined_functions_in($file);
+$functionCalls = array_map('action_calls_in', $functionBodies);
+$writers = [];
+do {
+    $grew = false;
+    foreach ($functionCalls as $name => $calls) {
+        if (isset($writers[$name]) || isset($counterOnly[$name])) continue;
+        if (first_main_write($calls, $writers) === null) continue;
+        $writers[$name] = true; $grew = true;
+    }
+} while ($grew);
+
+/* The derivation is read before it is used. A rule that asked "does a write
+   come after the throttle" would pass perfectly on a set of writers that turned
+   out to be empty, and would go on passing for ever. These are named rather
+   than counted for the same reason the account rule is: a count stays large
+   while the entries that matter drop out of it. */
+foreach (['audit' => 'writes the change log', 'set_setting' => 'writes the settings table',
+          'notify' => 'writes a notification row', 'record_consent' => 'writes the consent log',
+          'send_account_token' => 'writes an auth token', 'request_contact' => 'writes a contact request',
+          'direct_thread' => 'creates the conversation', 'notify_payment' => 'queues mail',
+          'queue_mail' => 'writes the outbox'] as $name => $what)
+    ok(isset($writers[$name]), $name.'() is recognised as writing on the main connection, because it '.$what);
+foreach (['run' => 'hands over whatever statement its caller gave it',
+          'one' => 'reads', 'rows' => 'reads', 'scalar' => 'reads',
+          'throttle' => 'writes on the counter connection, not this one'] as $name => $why)
+    ok(!isset($writers[$name]), $name.'() is not counted as a main-connection write, because it '.$why);
+
+/* Named rather than counted. A seventh throttle added to a handler fails here
+   under its own name and has to be looked at; a total would simply become
+   seven and nobody would know which one was new. */
+$throttled = [
+    'app/actions_messages.php message_send'   => 'a family writing a message',
+    'app/actions_messages.php contact_request'=> 'a family asking to write to somebody',
+    'app/actions_config.php payment_remind'   => 'the reminder run, which sends mail',
+    'app/actions_config.php feedback_send'    => 'a problem report, which can carry a file',
+    'app/actions_settings.php smtp_test'      => 'the SMTP test, which talks to the mail server',
+    'app/actions_settings.php email_change'   => 'a change of address, which checks a password',
+    // Not a dispatcher case: the request's own throttles, before the
+    // transaction is opened at all. Same ordering, same reason, so it is held
+    // to the same rule rather than left as the one place nobody checks.
+    'app/actions.php handle_post'             => 'the login and account-security limits',
+];
+$found = [];
+foreach (['actions', 'actions_settings', 'actions_messages', 'actions_config'] as $unit) {
+    $path = APP_ROOT.'/app/'.$unit.'.php';
+    foreach (named_blocks_of($path) as $name => $block) {
+        $calls = action_calls_in($block);
+        $throttles = array_values(array_filter($calls, fn($c) => $c['name'] === 'throttle' && !$c['method']));
+        if (!$throttles) continue;
+        $where = 'app/'.$unit.'.php '.$name;
+        $found[] = $where;
+        ok(isset($throttled[$where]), $where.' throttles, and this rule knows about it');
+
+        $write = first_main_write($calls, $writers);
+        /* Read before it is compared. Without this, a handler whose writes the
+           derivation failed to recognise - or a handler emptied by a bad edit -
+           reports that its throttle comes first, having found nothing to come
+           first of. */
+        ok($write !== null,
+           $where.' writes something on the main connection for the throttle to come before'
+           .($write ? ': '.$write['name'].'()' : ''));
+        if ($write === null) continue;
+        ok($write['name'] !== 'throttle', $where.': the write found is not the throttle itself');
+        is_same(true, $throttles[0]['index'] < $write['index'],
+                $where.': throttle() is counted before '.$write['name'].'()'
+                .' — '.($throttled[$where] ?? 'not a handler this rule knows'));
+    }
+}
+foreach (array_keys($throttled) as $where)
+    ok(in_array($where, $found, true), 'the rule reached '.$where);
+
+/** Where the first string literal containing $fragment sits in the token run. */
+function refusal_index_in(string $php, string $fragment): ?int {
+    foreach (action_tokens($php) as $i => $token)
+        if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING && str_contains($token[1], $fragment))
+            return $i;
+    return null;
+}
+
+/** Where the first call to $callee sits in the same token run. */
+function call_index_in(string $php, string $callee): ?int {
+    foreach (action_calls_in($php) as $call)
+        if ($call['name'] === $callee && !$call['method']) return $call['index'];
+    return null;
+}
+
+case_('A handler that refuses a change does so before it writes, not after');
+/* Six assertions in the enrolment, contacts and security suites were written to
+   prove this, and they did prove it: act() ran in autocommit, so a handler that
+   wrote first and checked afterwards left the half-written row behind for them
+   to find. act() now opens a transaction, the way a real request does, and the
+   rollback puts that row back whether the handler checked first or not. The
+   assertions are still true and still worth having - they describe what the
+   trainer sees after a refusal - but they no longer measure the ordering, so
+   the ordering is asserted here instead, once, rather than three times over in
+   three suites that would drift apart.
+
+   Textual order is execution order for straight-line code, which all of these
+   are; student_invite is the one exception, and there the refusal sits in the
+   branch taken when the address is already known while the account INSERT sits
+   in the other, so the two cannot both run and the write that is common to both
+   paths still comes after. */
+$orderings = [
+    'app/actions_config.php class_save' => [
+        // The refusal is in class_days_from_post(), checked separately below,
+        // so what matters here is that class_save calls it before it writes.
+        'call'    => 'class_days_from_post',
+        'guards'  => 'a meeting day whose end is before its start',
+        'suite'   => 'enrolment.php "and nothing was saved"',
+    ],
+    'app/enrolment.php request_enrolment' => [
+        'refusal' => 'wartet schon',
+        'guards'  => 'a second request for a course that already has one waiting',
+        'suite'   => 'enrolment.php "still just the one"',
+    ],
+    'app/enrolment.php decide_request' => [
+        'refusal' => 'wurde schon entschieden',
+        'guards'  => 'a decision taken twice',
+        'suite'   => 'enrolment.php "the tariff did change, once"',
+    ],
+    'app/actions.php contact_delete' => [
+        'refusal' => 'mindestens eine Kontaktperson',
+        'guards'  => 'removing the only person left to ring',
+        'suite'   => 'contacts.php "and is still there"',
+    ],
+    'app/actions.php student_invite' => [
+        'refusal' => 'Konto der Verwaltung',
+        'guards'  => 'handing a family a login that belongs to the management',
+        'suite'   => 'contacts.php "leaving the child unattached rather than half-attached"',
+    ],
+    'app/actions.php account_invite' => [
+        'refusal' => 'schon ein Konto',
+        'guards'  => 'inviting an address that already has an account',
+        'suite'   => 'security.php "the address still has exactly one account"',
+    ],
+];
+foreach ($orderings as $where => $rule) {
+    [$file, $name] = explode(' ', $where);
+    $block = named_blocks_of(APP_ROOT.'/'.$file)[$name] ?? '';
+    ok($block !== '', $where.' was found, so this rule has something to read');
+    if ($block === '') continue;
+
+    $anchor = isset($rule['call'])
+        ? call_index_in($block, $rule['call'])
+        : refusal_index_in($block, $rule['refusal']);
+    $anchorName = $rule['call'] ?? $rule['refusal'];
+    /* Read before it is compared, the same way the account rule reads its
+       lookups. A refusal whose wording changed would otherwise be "not found",
+       and "not found" compares happily against a write it also did not find. */
+    ok($anchor !== null, $where.' still refuses '.$rule['guards'].', by '.$anchorName);
+
+    $write = first_main_write(action_calls_in($block), $writers);
+    ok($write !== null, $where.' writes something for that refusal to come before'
+       .($write ? ': '.$write['name'].'()' : ' — nothing recognised as a write, so this rule proved nothing here'));
+
+    if ($anchor === null || $write === null) continue;
+    is_same(true, $anchor < $write['index'],
+            $where.': '.$rule['guards'].' is refused before '.$write['name'].'() runs'
+            .' — the behaviour is in '.$rule['suite']);
+}
+
+case_('The day check class_save leans on is a check, not a write');
+/* class_save is only in the list above because it hands the question to
+   class_days_from_post(). That is worth something only for as long as that
+   function stays a pure check: the moment it writes, "called before the write"
+   stops meaning "nothing had been written". */
+$dayCheck = defined_functions_in(APP_ROOT.'/app/validate.php')['class_days_from_post'] ?? '';
+ok($dayCheck !== '', 'class_days_from_post() was found in app/validate.php');
+ok(refusal_index_in($dayCheck, 'Das Ende muss nach dem Beginn liegen') !== null,
+   'and it is the one that refuses an end before the start');
+is_same(null, first_main_write(action_calls_in($dayCheck), $writers),
+        'and it writes nothing itself, so calling it first really does come before every write');

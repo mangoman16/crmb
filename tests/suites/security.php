@@ -80,6 +80,32 @@ is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['zweite@b
         'the address still has exactly one account');
 is_same('trainer', (string)scalar('SELECT role FROM accounts WHERE email=?', ['zweite@beispiel.test']),
         'and the refused invitation did not change the one that was there');
+/* An invitation is a row plus a link that can set a password. The two lines
+   above would both hold if the account row were left alone and a working link
+   sent out anyway, which is the half of the write that actually hands the
+   address away. */
+is_same(0, (int)scalar('SELECT COUNT(*) FROM auth_tokens t JOIN accounts a ON a.id=t.account_id WHERE a.email=?',
+                       ['zweite@beispiel.test']),
+        'and left no invitation link behind that could set a password on it');
+/* The same measurement on an invitation that was allowed through. Without it a
+   count of nought reads exactly like a portal that issues no links at all, and
+   the assertion above would hold for ever without meaning anything.
+   Inviting needs SMTP and a released notice, which this case deliberately does
+   not have - it is the portal on its first evening. They are switched on for
+   this one pair of assertions and switched off again, so the premise the rest
+   of the case rests on is the one it started with. */
+set_setting('smtp', ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B']);
+set_setting('privacy_ready', true);
+does_not_throw(fn() => act('account_invite', ['name'=>'Eingeladene Familie', 'email'=>'eingeladen@beispiel.test',
+    'role'=>'student', 'locale'=>'de']), 'an address with no account is invited');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM auth_tokens t JOIN accounts a ON a.id=t.account_id WHERE a.email=?',
+                       ['eingeladen@beispiel.test']),
+        'and that one does leave a link, so the nought above is a measurement rather than a habit');
+set_setting('smtp', []);
+set_setting('privacy_ready', false);
+throws(fn() => act('account_invite', ['name'=>'Noch jemand', 'email'=>'nochjemand@beispiel.test',
+    'role'=>'student', 'locale'=>'de']),
+    'and the first-evening portal is back, so what follows reads what it expects', 'SMTP');
 // A family account with nothing attached signs in to an empty portal, which
 // looks like a broken login rather than a missing link. Inviting from the
 // child's page joins the two by address; this way in has to agree.

@@ -338,6 +338,33 @@ Skip on an ordinary code change; do all of it before a release.
   > `tests/mariadb-local.sh`, and never against the SQLite run.
   > Afterwards either wait the quarter of an hour or sign in once correctly to
   > clear the count — a sign-in that works empties that counter, which is 4.6a.
+- [ ] **4.6f** A limit that trips **inside** an action must refuse, not hang.
+  **Only meaningful on MariaDB or MySQL** — it needs two real connections, and
+  the SQLite file the default suite runs on cannot show it. Sign in as any
+  family, open **Mein Konto → „E-Mail-Adresse ändern"**, and send a
+  confirmation link to a new address **six times in a row**, giving the correct
+  current password each time. The sixth must come back with **„Zu viele
+  Versuche. Bitte später erneut versuchen."** within a second or so, and the
+  address at the top of the page must still be the old one.
+  > What this is watching for: the attempt counter is written on a **second**
+  > database connection on purpose, so that a refused attempt is not handed
+  > back by the rollback of the action it was guarding. That second connection
+  > is also why the order inside the handler matters. Every one of these
+  > counters is taken before the action writes anything. If one were ever moved
+  > below a write, the action's own transaction would be holding rows on the
+  > first connection while the second connection waited for them, and the
+  > second connection is the one the first is waiting on to return. Nothing
+  > times out and nothing rolls back: the page simply never finishes loading,
+  > and the only visible symptom is a spinner. A browser tab that hangs here —
+  > rather than a sentence in German — is that fault, and it is worth stopping
+  > the release for.
+  > The ordering itself is locked by the `structure` suite, which names all six
+  > places it applies (sending a message, asking to write to somebody, the
+  > payment reminder run, a problem report, the SMTP test and this address
+  > change). This step is the half no suite can reach: that the portal actually
+  > answers under a real engine with real connections.
+  > Afterwards, wait the hour or use a different account — this counter is
+  > deliberately not cleared by anything you can do from the portal.
 - [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
   once and not twice. Asking for a link ten times for one address is still
   refused afterwards — that counter is never cleared, because typing an address
