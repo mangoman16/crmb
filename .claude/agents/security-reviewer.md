@@ -36,9 +36,13 @@ never assert that tests pass — attribute the claim, or make its absence a find
    repointable, and must expire.
 7. **Uploads.** Type, size, where they land, and whether the name a family chose can
    escape the directory or be served back as something executable.
-8. **Rate limiting.** It exists on sign-in — ten per address per fifteen minutes. Check
-   that anything new that can be guessed at is covered, and note where the limit counts
-   successes as well as failures.
+8. **Rate limiting.** Sign-in is ten attempts per fifteen minutes counted against the
+   **account row** the typed address resolves to, not against the string: the database
+   folds case, accents, ss against ß and ligatures alike, so counting the string gave ten
+   guesses per spelling and unlimited spellings. A successful sign-in clears that bucket,
+   a wrong password does not, and the per-IP bucket (sixty per fifteen minutes) is never
+   cleared. Check that anything new that can be guessed at is covered, and that any new
+   bucket keys on what the database compares rather than on what was typed.
 9. **What leaves the server.** Mail, PDFs, QR codes. Who is in the To: line, and whether a
    document names someone it should not.
 
