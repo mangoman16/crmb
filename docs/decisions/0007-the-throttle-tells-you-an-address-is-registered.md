@@ -14,6 +14,14 @@ many typed spellings. Measured on MariaDB 10.11.14 by the implementer of `bcfa79
 recorded in `VALIDATION.md`; a first measurement said the opposite and was discarded
 because the client character set was wrong.
 
+One near-miss belongs here so it is not undone by accident. A trailing space is *not* a
+spelling this portal has to worry about, but the reason is PHP, not the database:
+`post()` (`app/core.php:151`) trims, and `attempted_email()` is `mb_strtolower(post('email'))`,
+so the space never reaches SQL. `utf8mb4_unicode_ci` is a PAD SPACE collation and would
+have folded it too — but the modern `utf8mb4_0900_*` family is NO PAD and would not. The
+trim is therefore doing real work that a reader may assume the collation is doing, and
+removing it on that assumption would open a variant of exactly the hole `bcfa796` closed.
+
 Before `bcfa796`, `handle_post()` counted a sign-in attempt against the typed PHP string.
 Ten guesses per spelling, and nobody is short of spellings — the ten-per-address limit was
 worth nothing, and what remained was `throttle('auth-ip',$ip,60)`: sixty unauthenticated
@@ -161,13 +169,25 @@ with `COLLATE utf8mb4_unicode_ci`, resolve an unknown address to a row in it wit
 `=`, and count against that row's id. The *engine* folds, with its own rules, and no
 engine-specific function is named — it works on MariaDB and MySQL alike, and the SQLite
 translation runs the same code path (folding by bytes, which is exactly how it already
-treats `accounts.email`, so the suite would be no more dishonest than it is today). It has
-the stability `WEIGHT_STRING` lacks, for a structural reason `database-engineer` should
-confirm rather than take from me: a *named* collation's comparison cannot quietly change,
-because indexes are built on it and changing it would corrupt them — which is why engines
-add `utf8mb4_0900_ai_ci` rather than redefine `utf8mb4_unicode_ci`. And the key is a row
-id, so even a future engine that folded differently would start a new row rather than
-orphan every bucket that already exists.
+treats `accounts.email`, so the suite would be no more dishonest than it is today).
+
+It has the stability `WEIGHT_STRING` lacks, and the evidence is MySQL's catalogue rather
+than reasoning about indexes. `utf8mb4_unicode_ci` is built on UCA **4.0.0** weight keys
+and still is: when MySQL moved to newer Unicode it *added* names instead of redefining
+that one — `utf8mb4_unicode_520_ci` for UCA 5.2.0, then in 8.0 the whole `utf8mb4_0900_*`
+family for UCA 9.0.0, which also became the new `utf8mb4` default. The UCA version is in
+the name precisely because the existing name keeps its weights. That is MySQL's consistent
+documented practice across the 5.x-to-8.0 transition, **not a stability guarantee written
+as a contract**, and MariaDB's practice has not been separately checked here. The key is
+also a row id rather than a weight, so even an engine that one day folded differently would
+start a new row rather than orphan every bucket that already exists.
+
+The same catalogue carries the trap: the 8.0 family is **NO PAD** where
+`utf8mb4_unicode_ci` and its generation are **PAD SPACE**, so trailing spaces are
+insignificant under the collation this project uses and significant under the modern
+default. That is not an exception to the pattern — it is two differently *named*
+collations behaving differently, which is the pattern — but it is what makes the column's
+collation a decision with weight rather than a formality (see Consequences).
 
 It is not recommended because it is heavier than the problem: a migration and a schema
 change, which under `CLAUDE.md` the owner must be asked about anyway; a write on the
@@ -213,16 +233,25 @@ If the recommendation stands (leave it open):
   — reopens the question rather than inheriting the answer.
 - Nothing in `app/` changes, no migration is written, and `TESTING.md` 4.6e continues to
   cover the half that is fixed.
+- The trim in `post()` stays, and stays understood as load-bearing for the trailing-space
+  spelling (Context).
 
 If the owner chooses to close it, by the identity table:
 
 - It is a schema change, so it is her decision twice over — once here and once under the
   "stop and ask" rule, and she has no way to undo a migration that has run.
-- `database-engineer` owns the migration, the collation on that column, the pruning, and
-  the question of whether the SQLite translation can exercise the fold or must declare it
-  uncovered; `backend-dev` owns the change in `attempted_identity()`. The change is not
-  finished until either the default suite exercises the rule or the run declares that it
-  cannot, as it already does for the fold.
+- **The collation on that column is named deliberately, in the migration, with the reason
+  written down, and it matches `accounts.email` — PAD behaviour included.** Inheriting the
+  server default is the failure mode this option exists to remove, coming back through the
+  door marked "default": on a newer MySQL that default is `utf8mb4_0900_ai_ci`, which is
+  NO PAD and a different UCA version, so the throttle would fold addresses by one rule
+  while the accounts table resolved them by another — two spellings one bucket apart
+  again, with a migration's worth of confidence that they could not be.
+- `database-engineer` owns the migration, that collation, the pruning, and the question of
+  whether the SQLite translation can exercise the fold or must declare it uncovered;
+  `backend-dev` owns the change in `attempted_identity()`. The change is not finished until
+  either the default suite exercises the rule or the run declares that it cannot, as it
+  already does for the fold.
 - The new unauthenticated write needs the `structure` rule about counting a throttle before
   its action writes to be re-read against it, and probably extended — that rule and the one
   about a handler refusing before it writes are the precedent for how such a rule is
