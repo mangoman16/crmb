@@ -20,6 +20,7 @@ function icon(string $name): string {
         'camera'=>'<path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.5"/>',
         'eye'=>'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
         'mic'=>'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+        'help'=>'<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.2-2.8 4"/><path d="M12 17.3v.01"/>',
     ];
     return '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'.($paths[$name]??$paths['arrow']).'</svg>';
 }
@@ -83,8 +84,9 @@ function select_field(string $name,string $label,array $options,mixed $value='',
     $value=held_input($name,$value);
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
     echo '<div class="field"><label for="'.e($id).'">'.e($label).($required?' *':'').'</label><select id="'.e($id).'" name="'.e($name).($multiple?'[]':'').'" '.($required?'required ':'').($multiple?'multiple size="4"':'').'>';
-    if(!$multiple)echo '<option value="">'.e(t('Auswählen','Select')).'</option>';
-    foreach($options as $k=>$v)echo '<option value="'.e($k).'" '.(($multiple?in_array((string)$k,array_map('strval',is_array($value)?$value:[]),true):(string)$k===(string)$value)?'selected':'').'>'.e($v).'</option>';
+    if(!$multiple) echo select_options(['' => t('Auswählen','Select')]+$options,$value);
+    else foreach($options as $k=>$v)
+        echo '<option value="'.e($k).'" '.(in_array((string)$k,array_map('strval',is_array($value)?$value:[]),true)?'selected':'').'>'.e($v).'</option>';
     echo '</select></div>';
 }
 function check_field(string $name,string $label,bool $value=false): void {
@@ -118,7 +120,19 @@ function default_field(string $name,string $label,mixed $value,string $defaultVa
     if($defaultValue!=='') echo '<button type="button" class="chip default-reset" hidden>'.e(t('Standard übernehmen','Use the default')).'</button>';
     echo '</p></div>';
 }
-function submit_button(string $label='',string $class='primary'): void { echo '<button class="button '.e($class).'" type="submit">'.e($label?:t('Speichern','Save')).'</button>'; }
+/**
+ * The button that sends a form.
+ *
+ * $name and $value are for the rare form that does two things - "test the
+ * connection" and "send a test email" ask the same questions and differ in one
+ * word - so that it stays one form with one set of fields rather than two forms
+ * whose fields have to be kept in step.
+ */
+function submit_button(string $label='',string $class='primary',string $name='',string $value=''): void {
+    echo '<button class="button '.e($class).'" type="submit"'
+        .($name!==''?' name="'.e($name).'" value="'.e($value).'"':'').'>'
+        .e($label?:t('Speichern','Save')).'</button>';
+}
 function page_head(string $title,string $description='',string $action=''): void { echo '<div class="page-heading"><div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>'; }
 function link_button(string $label,string $page,array $params=[],string $class='primary'): string { return '<a class="button '.e($class).'" href="'.e(url($page,$params)).'">'.e($label).'</a>'; }
 function empty_state(string $title,string $body='',string $action=''): void { echo '<div class="empty"><div class="empty-icon">'.icon('users').'</div><h2>'.e($title).'</h2>'.($body?'<p>'.e($body).'</p>':'').$action.'</div>'; }
@@ -156,4 +170,237 @@ function render_filters(array $f,string $target='students'): void {
     input('value',t('Wert entspricht','Value equals'),$f['value']??'');echo '</div></details>';
     check_field('overdue',t('Nur überfällige Beiträge','Overdue charges only'),!empty($f['overdue']));
     submit_button(t('Filtern','Filter'),'secondary');echo '</form>';
+}
+
+/**
+ * The main menu, as sections rather than one long list.
+ *
+ * An administrator has thirteen destinations. In a row they made the panel
+ * taller than a laptop window at 110% zoom, and a menu you have to scroll is a
+ * menu whose last three entries nobody finds. So the six that clearly belong to
+ * a subject sit inside it, and only the section you are working in is open.
+ *
+ * What stays at the top level is what she reaches for without thinking:
+ * Übersicht, Schüler, Nachrichten, Neuigkeiten, and the lists under Verwaltung.
+ *
+ * Returns an ordered list of entries, each either
+ *   ['route'=>…, 'icon'=>…, 'label'=>…, 'count'=>int]   a destination, or
+ *   ['section'=>…, 'icon'=>…, 'label'=>…, 'items'=>[…]] a section of them.
+ */
+function nav_entries(array $user): array {
+    $staff=is_staff($user); $admin=is_admin($user);
+    $entry=fn(string $route,string $symbol,string $label,int $count=0)=>
+        ['route'=>$route,'icon'=>$symbol,'label'=>$label,'count'=>$count];
+    $out=[$entry('dashboard','home',t('Übersicht','Overview')),
+          $entry('students','users',t('Schüler','Students'))];
+    if($staff) {
+        $out[]=['section'=>'training','icon'=>'calendar','label'=>t('Training','Training'),'items'=>[
+            $entry('classes','calendar',t('Kurse','Courses'),pending_request_count()),
+            $entry('attendance','check',t('Anwesenheit','Attendance'))]];
+        $out[]=['section'=>'money','icon'=>'wallet','label'=>t('Geld','Money'),'items'=>[
+            $entry('payments','wallet',t('Beiträge','Payments')),
+            $entry('invoices','news',t('Rechnungen','Invoices'))]];
+    }
+    $out[]=$entry('messages','mail',t('Nachrichten','Messages'),unread_count($user));
+    $out[]=$entry('news','news',t('Neuigkeiten','News'));
+    if($staff) {
+        $out[]=$entry('manage','settings',t('Verwaltung','Management'));
+        $system=[$entry('accounts','lock',t('Konten','Accounts')),
+                 $entry('outbox','mail',t('Postausgang','Outbox'))];
+        if($admin) {
+            $system[]=$entry('history','calendar',t('Änderungen','Changes'));
+            $system[]=$entry('settings','settings',t('Einstellungen','Settings'));
+        }
+        $out[]=['section'=>'system','icon'=>'lock','label'=>t('System','System'),'items'=>$system];
+    }
+    return $out;
+}
+
+/**
+ * Whether a menu entry is the page being looked at.
+ *
+ * Three pages have no entry of their own because they are opened from one:
+ * a single student, a new message, and the page that is not there.
+ */
+function nav_is_current(string $route,string $page): bool {
+    return $route===$page
+        || ($route==='students' && $page==='student')
+        || ($route==='messages' && $page==='compose');
+}
+
+/** One menu row: the link, its label, and the number waiting behind it. */
+function nav_link(array $item,string $page): string {
+    $count=(int)($item['count']??0);
+    return '<a href="'.e(url($item['route'])).'" '.(nav_is_current($item['route'],$page)?'aria-current="page"':'').'>'
+        .icon($item['icon']).'<span>'.e($item['label']).'</span>'
+        .($count?'<span class="count" aria-label="'.e($count.' '.t('wartet','waiting')).'">'.e((string)$count).'</span>':'')
+        .'</a>';
+}
+
+/**
+ * The main menu as markup.
+ *
+ * The open section is decided here rather than in the browser, so the menu is
+ * already showing where you are on the first paint and without JavaScript. The
+ * name attribute makes the browser close the other sections when one is opened,
+ * which is what keeps the panel one section tall; a browser too old for it
+ * simply lets two stand open.
+ */
+function sidebar_nav(array $user,string $page): string {
+    $html='<nav aria-label="'.e(t('Hauptmenü','Main menu')).'">';
+    foreach(nav_entries($user) as $entry) {
+        if(isset($entry['route'])) {$html.=nav_link($entry,$page);continue;}
+        $open=false; $waiting=0; $inner='';
+        foreach($entry['items'] as $item) {
+            $open=$open || nav_is_current($item['route'],$page);
+            $waiting+=(int)($item['count']??0);
+            $inner.=nav_link($item,$page);
+        }
+        $html.='<details class="nav-section" name="nav-section"'.($open?' open':'').'>'
+            .'<summary>'.icon($entry['icon']).'<span>'.e($entry['label']).'</span>'
+            // Shown by the stylesheet only while the section is closed: the count
+            // is on the entry itself once you can see the entry.
+            .($waiting?'<span class="count section-count" aria-label="'.e($waiting.' '.t('wartet','waiting')).'">'.e((string)$waiting).'</span>':'')
+            .'<span class="chevron" aria-hidden="true">'.icon('arrow').'</span></summary>'
+            .'<div class="nav-sub">'.$inner.'</div></details>';
+    }
+    return $html.'</nav>';
+}
+
+/**
+ * The fields of one contact person.
+ *
+ * One copy for adding and for editing. They were written out twice and drifted:
+ * the same box was "Name" on one form and "Wem gehört der Kontakt?" on the
+ * other, which reads as a question about ownership rather than a request for
+ * the person's name - and "Beziehung, z. B. Mutter" put the example inside the
+ * label, where it stays on screen after the box has been filled in.
+ *
+ * $standard says whether this contact is, or would become, the one invoices and
+ * reminders are sent to, which is the only reason the email address is required.
+ */
+function contact_fields(array $contact=[], bool $standard=false): void {
+    echo '<div class="grid two">';
+    input('owner_name',t('Name der Kontaktperson','Name of the contact'),$contact['owner_name']??'','text',true,
+          '',t('z. B. Maria Hofer','e.g. Maria Hofer'));
+    input('relation_label',t('Beziehung zum Kind','Relationship to the child'),$contact['relation_label']??'','text',true,
+          '',t('z. B. Mutter','e.g. mother'));
+    input('phone',t('Telefonnummer','Phone number'),$contact['phone']??'','tel',false,
+          t('Das Wichtigste an einem Notfallkontakt.','The thing that makes an emergency contact useful.'));
+    input('email',t('E-Mail-Adresse (optional)','Email address (optional)'),$contact['email']??'','email',false,
+          t('Nur als Notiz. Rechnungen und Einladungen gehen an die Adresse des Kindes.','A note only. Invoices and invitations go to the child’s own address.'));
+    echo '</div>';
+}
+
+/**
+ * The choices in the minute box: every five minutes, plus whatever is stored.
+ *
+ * Training starts at half past, not at 17:37, so twelve choices are a wheel you
+ * can flick rather than one you have to aim at. A time already in the database
+ * that is not on the grid is kept in the list, or saving an unrelated change
+ * would quietly move it.
+ */
+function minute_options(string $current=''): array {
+    $out=[];
+    for($m=0;$m<60;$m+=5) $out[]=sprintf('%02d',$m);
+    if($current!=='' && !in_array($current,$out,true)) { $out[]=$current; sort($out); }
+    return array_combine($out,$out);
+}
+
+/**
+ * A time of day, as an hour box and a minute box.
+ *
+ * Not <input type="time">: that one renders in the language of the phone or the
+ * computer rather than of the page, so a device set to English shows "05:30 PM"
+ * however the portal is set - and a trainer reading 17:30 off a hall timetable
+ * should not have to translate it. Two boxes are the same 24-hour time on every
+ * device, and on a phone they are the same native wheel the picker would have
+ * been.
+ *
+ * Posts as <name>_h and <name>_m; posted_time() puts them back together.
+ */
+function time_field(string $name,string $label,string $value='',bool $required=false,string $hint=''): void {
+    [$hour,$minute]=time_parts($value);
+    $hour=(string)held_input($name.'_h',$hour); $minute=(string)held_input($name.'_m',$minute);
+    $blank=$required?[]:['' => '–'];
+    $hours=[]; for($h=0;$h<24;$h++) $hours[sprintf('%02d',$h)]=sprintf('%02d',$h);
+    echo '<div class="field"><label for="'.e($name).'_h">'.e($label).($required?' <span aria-hidden="true">*</span>':'').'</label>'
+        .'<div class="time-field">'
+        .'<select name="'.e($name).'_h" id="'.e($name).'_h" aria-label="'.e($label.' – '.t('Stunde','hour')).'">'
+        .select_options($blank+$hours,$hour).'</select>'
+        .'<span class="time-colon" aria-hidden="true">:</span>'
+        .'<select name="'.e($name).'_m" aria-label="'.e($label.' – '.t('Minute','minute')).'">'
+        .select_options($blank+minute_options($minute),$minute).'</select>'
+        .'</div>'.($hint?'<small>'.e($hint).'</small>':'').'</div>';
+}
+
+/** The two boxes of a repeating row, without the label a single field carries. */
+function time_cells(string $name,string $label,string $value=''): string {
+    [$hour,$minute]=time_parts($value);
+    $hours=['' => '–']; for($h=0;$h<24;$h++) $hours[sprintf('%02d',$h)]=sprintf('%02d',$h);
+    return '<span class="time-field">'
+        .'<select name="'.e($name).'_h[]" aria-label="'.e($label.' – '.t('Stunde','hour')).'">'.select_options($hours,$hour).'</select>'
+        .'<span class="time-colon" aria-hidden="true">:</span>'
+        .'<select name="'.e($name).'_m[]" aria-label="'.e($label.' – '.t('Minute','minute')).'">'
+        .select_options(['' => '–']+minute_options($minute),$minute).'</select></span>';
+}
+
+/** The <option> list of a select, escaped. */
+function select_options(array $options,mixed $value): string {
+    $out='';
+    foreach($options as $key=>$label)
+        $out.='<option value="'.e((string)$key).'" '.((string)$key===(string)$value?'selected':'').'>'.e((string)$label).'</option>';
+    return $out;
+}
+
+/**
+ * One line of a paper form: a label, and either boxes to write in or a value.
+ *
+ * Boxes, one per character, because that is what a form somebody fills in with a
+ * biro looks like: block capitals, one letter per box, legible to whoever types
+ * it back in afterwards. The alternative - a ruled line - produces handwriting
+ * nobody can read and a date that might be 03/04 or 04/03.
+ *
+ * $value fills it in instead, for the sheet she prints out and hands back after
+ * entering somebody's details herself. Marked aria-hidden because a screen
+ * reader reading out twenty-four empty boxes is nobody's idea of a form; the
+ * label and the value carry the meaning.
+ */
+function print_field(string $label, int $boxes = 18, string $value = '', string $hint = '', bool $wide = false): void {
+    echo '<div class="print-field'.($wide?' print-wide':'').'"><span class="print-label">'.e($label)
+        .($hint!==''?' <small>('.e($hint).')</small>':'').'</span>';
+    if ($value !== '') echo '<span class="print-value">'.e($value).'</span>';
+    else {
+        echo '<span class="print-boxes" aria-hidden="true">';
+        for ($i = 0; $i < max(1, $boxes); $i++) echo '<span></span>';
+        echo '</span>';
+    }
+    echo '</div>';
+}
+
+/** A tick box on a paper form, ticked when the portal already knows the answer. */
+function print_tick(string $label, ?bool $ticked = null): void {
+    echo '<div class="print-tick"><span class="print-box">'.($ticked ? '&#10003;' : '').'</span>'
+        .'<span>'.e($label).'</span></div>';
+}
+
+/** A line to sign on, with what it is for underneath it. */
+function print_signature(string $label): void {
+    echo '<div class="print-sign"><span class="print-rule"></span><small>'.e($label).'</small></div>';
+}
+
+/**
+ * The list of things still to do on a record that has just been created.
+ *
+ * Numbered, because it is a sequence rather than a list of complaints, and
+ * shown at the top of the record: the bottom of a page is where things go to
+ * be forgotten. Disappears the moment there is nothing left on it.
+ */
+function next_steps_card(array $steps): void {
+    if (!$steps) return;
+    echo '<section class="card next-steps"><h2>'.e(t('Noch zu tun','Still to do')).'</h2><ol>';
+    foreach ($steps as $step)
+        echo '<li><a href="'.e(url($step['page'],$step['params'])).'">'.e($step['what']).'</a>'
+            .'<small>'.e($step['why']).'</small></li>';
+    echo '</ol></section>';
 }

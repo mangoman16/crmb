@@ -50,8 +50,13 @@ if ($state->failures) {
     foreach ($state->failures as $f) echo "  - ".$f."\n";
 }
 
-if (test_driver() === 'sqlite' && test_unsupported()) {
-    echo "\nNot covered by the sqlite driver (run with CRM_TEST_DRIVER=mysql to cover these):\n";
+// Printed on every driver, not just sqlite: a suite that has to reach outside
+// the run's own database says so here, and on mysql that note is the only place
+// it would appear.
+if (test_unsupported()) {
+    echo test_driver() === 'sqlite'
+        ? "\nNot covered by the sqlite driver (run with CRM_TEST_DRIVER=mysql to cover these):\n"
+        : "\nNot covered by this run:\n";
     foreach (array_unique(test_unsupported()) as $u) echo "  - ".$u."\n";
 }
 

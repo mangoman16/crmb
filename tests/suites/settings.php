@@ -68,3 +68,65 @@ is_same(true, (bool)setting('privacy_ready'), 'and the notice is released');
 does_not_throw(fn() => $save('Entwurf', 'Draft', false), 'an incomplete draft still saves');
 is_same('Entwurf', setting('privacy_de'), 'and the text is actually stored');
 is_same(false, (bool)setting('privacy_ready'), 'with the release tick cleared');
+
+// ---------------------------------------------------------------------------
+case_('The connection test answers while she waits, and says which step failed');
+/* It used to queue a message and send her to the outbox to look for it. A wrong
+   port, a blocked outgoing connection and a rejected password all looked the
+   same from there - nothing arrived, and nothing said why. */
+sign_in_as(make_account(['role'=>'admin', 'email'=>'chefin@example.test']));
+set_setting('smtp', []);
+$result = smtp_check();
+is_same(false, $result['ok'], 'nothing is configured yet, so it fails');
+ok(str_contains($result['summary'], 'Absenderadresse'), 'and it says what is missing, rather than "could not connect"');
+ok(str_contains($result['transcript'], 'kein Server eingetragen'), 'the transcript starts with what it was working from');
+does_not_throw(fn() => smtp_check(), 'a failing test is an answer, never an exception');
+
+$target = act('smtp_test', ['mode'=>'connect']);
+is_same(['settings', ['tab'=>'smtp']], $target, 'the button comes back to the SMTP tab, not to the outbox');
+$stored = setting('smtp_last_test', []);
+is_same(false, $stored['ok'], 'the outcome is kept, so the page can show it after the redirect');
+ok($stored['at'] !== '', 'with the time it was run');
+is_same(0, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE category='test'"),
+        'and nothing was queued: the test is the connection, not a message in a list');
+
+case_('Nothing in a transcript is a password');
+/* The transcript is shown on a screen, stored in the settings table and copied
+   into support emails. AUTH LOGIN sends the user name and the password as two
+   lines of base64, which is not encryption, it is spelling. */
+$smtp = ['host'=>'mail.example.test', 'port'=>587, 'username'=>'portal@example.test',
+         'password'=>seal('hunter2-and-then-some'), 'encryption'=>'tls',
+         'from_email'=>'portal@example.test', 'from_name'=>'Badminton'];
+$conversation = "CLIENT -> SERVER: AUTH LOGIN\n"
+    ."SERVER -> CLIENT: 334 VXNlcm5hbWU6\n"
+    ."CLIENT -> SERVER: ".base64_encode('portal@example.test')."\n"
+    ."SERVER -> CLIENT: 334 UGFzc3dvcmQ6\n"
+    ."CLIENT -> SERVER: ".base64_encode('hunter2-and-then-some')."\n"
+    ."SERVER -> CLIENT: 235 authenticated\n"
+    ."CLIENT -> SERVER: MAIL FROM:<portal@example.test>\n";
+$clean = smtp_redact($conversation, $smtp);
+ok(!str_contains($clean, base64_encode('hunter2-and-then-some')), 'the password is not in the AUTH exchange');
+ok(!str_contains($clean, base64_encode('portal@example.test')), 'nor is the user name');
+ok(!str_contains($clean, 'hunter2-and-then-some'), 'and not in the clear anywhere');
+ok(str_contains($clean, '235 authenticated'), 'what the server answered is still readable');
+ok(str_contains($clean, 'MAIL FROM:<portal@example.test>'), 'and so is the rest of the conversation');
+// AUTH PLAIN puts both on the command line, where a rule written for AUTH LOGIN
+// would walk straight past them.
+$plain = smtp_redact("CLIENT -> SERVER: AUTH PLAIN ".base64_encode("\0portal\0hunter2-and-then-some"), $smtp);
+ok(!str_contains($plain, base64_encode("\0portal\0hunter2-and-then-some")), 'AUTH PLAIN is redacted on its own line');
+ok(str_contains($plain, 'AUTH PLAIN'), 'though it still says which mechanism was used');
+// A password that turns up outside the AUTH exchange - inside an error message,
+// say - must go too, whatever the line looks like.
+ok(!str_contains(smtp_redact('SMTP ERROR: hunter2-and-then-some rejected', $smtp), 'hunter2-and-then-some'),
+   'and a password quoted back in an error message goes with it');
+
+case_('A mail library’s failure is translated into something to change');
+is_same(t('Benutzername oder Passwort hat der Server nicht angenommen.', 'The server did not accept the user name or the password.'),
+        smtp_explain('SMTP Error: Could not authenticate.'), 'a refused sign-in is a password');
+ok(str_contains(smtp_explain('535 5.7.8 Authentication credentials invalid'), 'Passwort'), 'and so is a 535');
+ok(str_contains(smtp_explain('stream_socket_enable_crypto(): certificate verify failed'), 'STARTTLS'),
+   'a TLS failure names the setting that is usually wrong');
+ok(str_contains(smtp_explain('SMTP Error: Could not connect to SMTP host.'), 'Port'),
+   'a silent server sends her to the port');
+ok(str_contains(smtp_explain('550 5.7.1 Relay access denied'), 'Absender'), 'a refused relay is the sender address');
+is_same('Etwas ganz anderes', smtp_explain('Etwas ganz anderes'), 'and anything unrecognised is passed through unchanged');

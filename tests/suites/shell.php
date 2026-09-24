@@ -183,3 +183,79 @@ $thread = (int)scalar('SELECT MAX(id) FROM threads');
 $beforeFamily = unread_notifications($family);
 act('message_send', ['thread_id'=>(string)$thread, 'body'=>'Ich bringe zwei mit.']);
 is_same($beforeFamily + 1, unread_notifications($family), 'the family is told');
+
+// ---------------------------------------------------------------------------
+case_('The main menu holds every destination, once, for the people who may open it');
+/* Thirteen entries in one column made the panel 958px tall, which is taller than
+   a 1920x1080 screen at 110% zoom: the last three were below the fold and the
+   menu scrolled. Six of them now sit inside sections. What must stay true is
+   that nothing was dropped on the way, and that nobody is offered a page the
+   router will refuse them. */
+function menu_routes(array $user): array {
+    $routes = [];
+    foreach (nav_entries($user) as $entry) {
+        if (isset($entry['route'])) { $routes[] = $entry['route']; continue; }
+        foreach ($entry['items'] as $item) $routes[] = $item['route'];
+    }
+    return $routes;
+}
+$adminUser = one('SELECT * FROM accounts WHERE id=?', [$admin]);
+$trainerUser = one('SELECT * FROM accounts WHERE id=?', [$trainer]);
+$familyUser = one('SELECT * FROM accounts WHERE id=?', [$family]);
+
+$adminRoutes = menu_routes($adminUser);
+is_same(array_values(array_unique($adminRoutes)), $adminRoutes, 'no destination is offered twice');
+foreach (['dashboard','students','classes','attendance','payments','invoices','messages','news',
+          'manage','accounts','outbox','history','settings'] as $route)
+    ok(in_array($route, $adminRoutes, true), 'an administrator can still reach '.$route);
+
+$trainerRoutes = menu_routes($trainerUser);
+foreach (['history','settings'] as $route)
+    ok(!in_array($route, $trainerRoutes, true), 'a trainer is not offered '.$route.', which the router refuses her');
+ok(in_array('classes', $trainerRoutes, true), 'but she is offered the courses');
+
+is_same(['dashboard','students','messages','news'], menu_routes($familyUser), 'a family sees four pages and no sections');
+foreach (nav_entries($familyUser) as $entry)
+    ok(isset($entry['route']), 'and nothing is folded away from them');
+
+case_('Every menu entry names an icon that exists and a page the router allows');
+$router = (string)file_get_contents(APP_ROOT.'/public/index.php');
+preg_match("/\\\$allowed=\[([^\]]*)\]/", $router, $m);
+$allowed = array_map(fn($p) => trim($p, " '"), explode(',', $m[1] ?? ''));
+$fallback = icon('a name that is not an icon');
+foreach ([$adminUser, $trainerUser, $familyUser] as $who)
+    foreach (nav_entries($who) as $entry) {
+        $parts = isset($entry['route']) ? [$entry] : array_merge([$entry], $entry['items']);
+        foreach ($parts as $part) {
+            ok(icon($part['icon']) !== $fallback, $part['label'].' has a real icon, not the arrow fallback');
+            if (isset($part['route'])) ok(in_array($part['route'], $allowed, true), $part['route'].' is a page the router allows');
+        }
+    }
+
+case_('The section you are working in is the one standing open');
+sign_in_as($admin);
+$menu = sidebar_nav($adminUser, 'attendance');
+ok(preg_match('/<summary>[^<]*(<svg.*?<\/svg>)?<span>Training<\/span>.*?<\/details>/s', $menu) === 1, 'the menu has a Training section');
+// Anwesenheit is inside Training, so Training is open and the other two are not.
+is_same(1, substr_count($menu, '<details class="nav-section" name="nav-section" open>'), 'exactly one section stands open');
+$open = substr($menu, (int)strpos($menu, 'name="nav-section" open'));
+$open = substr($open, 0, (int)strpos($open, '</details>'));
+ok(str_contains($open, 'page=attendance'), 'and it is the one holding the page being looked at');
+ok(str_contains($open, '<span>Training</span>'), 'which is Training, not another one');
+foreach (['dashboard'=>'', 'payments'=>'Geld', 'settings'=>'System'] as $page => $section) {
+    $html = sidebar_nav($adminUser, $page);
+    is_same($section === '' ? 0 : 1, substr_count($html, 'name="nav-section" open'),
+            $page === 'dashboard' ? 'a page outside every section leaves them all shut' : $section.' opens for '.$page);
+}
+is_same(1, substr_count(sidebar_nav($adminUser, 'student'), 'aria-current="page"'), 'one student marks the students entry');
+is_same(1, substr_count(sidebar_nav($adminUser, 'compose'), 'aria-current="page"'), 'and a new message marks Nachrichten');
+
+case_('What is waiting is shown on the section while the section is shut');
+$course = make_class(['name'=>'Kindertraining']);
+$kid = make_student(['first_name'=>'Lena', 'last_name'=>'Hofer', 'account_id'=>$family]);
+fixture('enrolment_requests', ['class_id'=>$course, 'student_id'=>$kid, 'kind'=>'join', 'state'=>'pending',
+                               'message'=>'', 'requested_by'=>$family, 'created_at'=>now()]);
+is_same(1, pending_request_count(), 'one request is waiting');
+$shut = sidebar_nav($adminUser, 'dashboard');
+ok(str_contains($shut, 'class="count section-count"'), 'the Training section carries the number while it is shut');
+ok(substr_count($shut, 'class="count'), 'and the entry inside it carries it too, for when the section opens');

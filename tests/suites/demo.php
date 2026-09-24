@@ -8,6 +8,17 @@ is_same(0, demo_counts()['students'], 'and the count agrees');
 
 case_('Filling writes a portal worth looking at');
 $result = demo_fill();
+// The console said "the password printed above" and printed no password, so
+// the three accounts it had just made could not be signed in to at all. It is
+// generated once and never stored in the clear, so the fill is the only moment
+// anybody can be told it.
+ok(($result['password'] ?? '') !== '', 'the fill hands back the password it set');
+ok(str_contains((string)file_get_contents(APP_ROOT.'/bin/console.php'), "\$result['password']"),
+   'and the console prints it rather than pointing at nothing');
+foreach (['trainerin@beispiel.test', 'familie.hofer@beispiel.test', 'familie.berger@beispiel.test'] as $who)
+    ok(password_verify((string)$result['password'],
+        (string)scalar('SELECT password_hash FROM accounts WHERE email=?', [$who])),
+        $who.' signs in with exactly that password');
 ok($result['students'] >= 10, 'enough children that a list is a list');
 ok($result['courses'] >= 3, 'more than one course');
 ok($result['charges'] > 0, 'and some money to look at');
@@ -31,10 +42,12 @@ ok((int)scalar('SELECT COUNT(*) FROM (SELECT student_id FROM class_students GROU
    'somebody in more than one course');
 ok((int)scalar('SELECT COUNT(*) FROM (SELECT class_id FROM class_days GROUP BY class_id HAVING COUNT(*)>1) x') >= 1,
    'a course that meets more than once a week');
-ok((int)scalar('SELECT COUNT(*) FROM (SELECT class_id FROM tariffs GROUP BY class_id HAVING COUNT(*)>1) x') >= 1,
-   'a course offering more than one tariff');
+ok((int)scalar('SELECT COUNT(*) FROM (SELECT tariff_id FROM tariff_rates GROUP BY tariff_id HAVING COUNT(*)>1) x') >= 1,
+   'a tariff that can be paid in more than one way');
 ok((int)scalar('SELECT COUNT(*) FROM tariffs WHERE interval_months>1') >= 1, 'a tariff that is not monthly');
-ok((int)scalar('SELECT COUNT(*) FROM tariffs WHERE discount_months<>0') >= 1, 'and one with a welcome discount');
+ok((int)scalar('SELECT COUNT(*) FROM tariff_discounts') >= 1, 'a discount template ready to be given');
+ok((int)scalar('SELECT COUNT(*) FROM class_students WHERE discount_months<>0') >= 1, 'and one family who has been given one');
+ok((int)scalar('SELECT COUNT(*) FROM class_students WHERE interval_months>0') >= 1, 'and one paying on a longer interval than the usual');
 ok((int)scalar('SELECT COUNT(*) FROM students WHERE birth_date < ?', [date('Y-m-d', strtotime('-18 years'))]) >= 1, 'an adult');
 ok((int)scalar('SELECT COUNT(*) FROM students WHERE birth_date > ?', [date('Y-m-d', strtotime('-12 years'))]) >= 1, 'a child under twelve');
 ok((int)scalar('SELECT COUNT(*) FROM contacts') >= $result['students'], 'every child has somebody to ring');

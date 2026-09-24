@@ -5,6 +5,8 @@
  *
  *   node tests/mobile.mjs --base http://127.0.0.1:8099/index.php \
  *        --admin ui@example.test --family familie@example.test --password '...'
+ *        [--family-password '...']   when the family's password differs, as the
+ *                                    example data's three accounts do
  *
  * It needs Playwright and a Chromium, and a portal with example data in it
  * (Einstellungen → System → Beispieldaten anlegen). Nothing is written: every
@@ -37,10 +39,14 @@ const BASE = arg('base', 'http://127.0.0.1:8099/index.php');
 const CHROME = arg('chromium', process.env.CHROMIUM_PATH || '');
 const ACCOUNTS = { admin: arg('admin'), family: arg('family') };
 const PASSWORD = arg('password');
+// The example data gives its three accounts a password of their own, which is
+// not the administrator's, so a portal filled at install could only ever be
+// checked as one of the two roles. One flag rather than two runs.
+const FAMILY_PASSWORD = arg('family-password', PASSWORD);
 const WIDTHS = [320, 390];
 
 if (!ACCOUNTS.admin || !PASSWORD) {
-    console.error('Usage: node tests/mobile.mjs --admin <email> --password <password> [--family <email>] [--base <url>]');
+    console.error('Usage: node tests/mobile.mjs --admin <email> --password <password> [--family <email>] [--family-password <password>] [--base <url>]');
     process.exit(2);
 }
 
@@ -135,7 +141,7 @@ const run = async () => {
         const door = await session.newPage();
         await door.goto(BASE + '?page=login');
         await door.fill('input[name=email]', email);
-        await door.fill('input[name=password]', PASSWORD);
+        await door.fill('input[name=password]', role === 'family' ? FAMILY_PASSWORD : PASSWORD);
         await door.click('form button[type=submit]');
         await door.waitForLoadState('networkidle');
         if (!await door.$('.mobile-nav')) {

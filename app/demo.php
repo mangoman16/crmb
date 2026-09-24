@@ -96,18 +96,19 @@ function demo_fill(bool $force = false): array {
 
         // --- courses, and the tariffs that belong to them --------------------
         // Three courses with different shapes on purpose: one meeting twice a
-        // week, one with a cheaper half-year tariff beside the monthly one, one
-        // with a free first month. The cases that are worth looking at are the
+        // week, one tariff that can be paid four different ways, one with a
+        // discount template ready to give. The cases worth looking at are the
         // ones that are not all the same.
         $courses = []; $tariffs = [];
         $plan = [
             ['Kindertraining', 'Sporthalle Nord', [[1,'16:00:00','17:30:00',''],[4,'16:00:00','17:30:00','']],
-             [['Monatsbeitrag', 4500, 1, 1, 'prorate', 1, 'percent', 100],
-              ['Halbjahr im Voraus', 24000, 6, 1, 'prorate', 0, 'percent', 0]]],
+             [['Beitrag', [1 => 3700, 3 => 9900, 6 => 16200, 12 => 25200], 1, 1, 'prorate',
+               [['Erster Monat gratis', 1, 'percent', 100], ['Geschwisterrabatt', -1, 'percent', 20]]]]],
             ['Jugendtraining', 'Sporthalle Nord', [[3,'17:00:00','18:30:00','']],
-             [['Monatsbeitrag', 5500, 1, 15, 'prorate', 3, 'percent', 30]]],
+             [['Monatsbeitrag', [1 => 5500], 1, 15, 'prorate',
+               [['Die ersten 3 Monate halber Preis', 3, 'percent', 50]]]]],
             ['Erwachsene', 'Sporthalle Süd', [[5,'19:00:00','21:00:00','']],
-             [['Quartalsbeitrag', 18000, 3, 1, 'full', 0, 'percent', 0]]],
+             [['Quartalsbeitrag', [3 => 18000, 12 => 66000], 3, 1, 'full', []]]],
         ];
         foreach ($plan as $i => [$name,$where,$days,$prices]) {
             run('INSERT INTO classes (name,description,location,trainer_id,capacity,sort_order,archived,created_at,is_demo)'
@@ -119,12 +120,19 @@ function demo_fill(bool $force = false): array {
                 run('INSERT INTO class_days (class_id,weekday,starts_at,ends_at,location,sort_order) VALUES (?,?,?,?,?,?)',
                     [$classId, $weekday, $from, $to, $place, $order * 10]);
             $tariffs[$classId] = [];
-            foreach ($prices as $order => [$tName,$price,$interval,$dueDay,$firstPeriod,$giftMonths,$giftKind,$giftValue]) {
-                run('INSERT INTO tariffs (class_id,name,description,price_cents,period,interval_months,due_day,grace_days,'
-                    .'first_period,discount_months,discount_kind,discount_value,due_days,sort_order,archived,is_demo)'
-                    ." VALUES (?,?,'',?,'recurring',?,?,7,?,?,?,?,7,?,0,1)",
-                    [$classId, $tName, $price, $interval, $dueDay, $firstPeriod, $giftMonths, $giftKind, $giftValue, $order * 10]);
-                $tariffs[$classId][] = (int)db()->lastInsertId();
+            foreach ($prices as $order => [$tName,$rates,$interval,$dueDay,$firstPeriod,$templates]) {
+                run('INSERT INTO tariffs (class_id,name,description,period,interval_months,due_day,grace_days,'
+                    .'first_period,due_days,sort_order,archived,is_demo)'
+                    ." VALUES (?,?,'','recurring',?,?,7,?,7,?,0,1)",
+                    [$classId, $tName, $interval, $dueDay, $firstPeriod, $order * 10]);
+                $tariffId = (int)db()->lastInsertId();
+                foreach ($rates as $months => $cents)
+                    run('INSERT INTO tariff_rates (tariff_id,interval_months,price_cents) VALUES (?,?,?)',
+                        [$tariffId, $months, $cents]);
+                foreach ($templates as $n => [$dName,$dMonths,$dKind,$dValue])
+                    run('INSERT INTO tariff_discounts (tariff_id,name,months,kind,value,sort_order) VALUES (?,?,?,?,?,?)',
+                        [$tariffId, $dName, $dMonths, $dKind, $dValue, $n * 10]);
+                $tariffs[$classId][] = $tariffId;
             }
         }
 
@@ -144,11 +152,17 @@ function demo_fill(bool $force = false): array {
             // tariff at all, which is what the billing preview has to be able to
             // explain rather than skip silently.
             $price = $i === 4 ? 4000 : ($i === 9 ? 5000 : null);
-            run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,'
+            // The address the portal writes to. For a child that is a parent's,
+            // which is why two of them share one: siblings on one login is the
+            // ordinary case, not an exception the demo should hide.
+            $writeTo = $i === 0 ? 'familie.hofer@beispiel.test'
+                     : ($i === 1 ? 'familie.berger@beispiel.test'
+                     : ($age < 18 ? 'eltern.' : '') . mb_strtolower($n[1]) . '@beispiel.test');
+            run('INSERT INTO students (account_id,first_name,last_name,email,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,'
                 .'price_cents,price_note,billing_paused,billing_note,internal_notes,revision,created_at,updated_at,is_demo)'
-                .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,1)',
+                .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,1)',
                 [$i === 0 ? $accounts['familie.hofer@beispiel.test'] : ($i === 1 ? $accounts['familie.berger@beispiel.test'] : null),
-                 $n[0], $n[1], $birth->format('Y-m-d'), $joined->format('Y-m-d'),
+                 $n[0], $n[1], $writeTo, $birth->format('Y-m-d'), $joined->format('Y-m-d'),
                  $status === 'ended' ? $today->modify('-30 days')->format('Y-m-d') : null,
                  $status,
                  // Spread across the levels, so a list filtered by one is not empty.
@@ -165,21 +179,35 @@ function demo_fill(bool $force = false): array {
             $students[] = ['id' => $id, 'course' => $courses[$course], 'age' => $age, 'index' => $i];
             $counts['students']++;
 
-            // Every child has somebody to ring. That is the point of the list.
+            // Every child has somebody to ring. That is the point of the list -
+            // and one of them has no email address at all, because the
+            // grandmother who answers the telephone is exactly the case the old
+            // "the contact we write to" rule could not express.
             run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email,is_primary) VALUES (?,?,?,?,?,1)',
                 [$id, ($age < 18 ? 'Elternteil ' : '') . $n[1],
                  $age < 18 ? 'Erziehungsberechtigt' : 'Selbst',
-                 '+43 660 ' . (1000000 + $i * 13), mb_strtolower($n[1]) . '@beispiel.test']);
+                 '+43 660 ' . (1000000 + $i * 13),
+                 $i === 3 ? '' : mb_strtolower($n[1]) . '@beispiel.test']);
+            if ($i === 3)
+                run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email,is_primary) VALUES (?,?,?,?,?,0)',
+                    [$id, 'Oma ' . $n[1], 'Großmutter', '+43 660 ' . (2000000 + $i * 13), '']);
 
-            // Most take the first tariff their course offers; one takes the
-            // half-year one, so a longer billing period is there to look at.
+            // Everybody is on the first tariff their course offers; one pays it
+            // half-yearly and one quarterly, so a longer billing period is there
+            // to look at. One child has the standing sibling discount, because a
+            // discount that lives on the agreement rather than on the price list
+            // is the thing worth seeing on a demo portal.
             $offered = $tariffs[$courses[$course]];
-            $chosen = $i === 7 ? null : $offered[$i === 3 && count($offered) > 1 ? 1 : 0];
-            run('INSERT INTO class_students (class_id,student_id,joined_on,left_on,tariff_id,price_cents,price_note,due_day)'
-                .' VALUES (?,?,?,?,?,?,?,0)',
+            $chosen = $i === 7 ? null : $offered[0];
+            $interval = $i === 3 ? 6 : ($i === 5 ? 3 : 0);
+            [$dMonths, $dValue, $dNote] = $i === 4 ? [-1, 20, 'Geschwisterrabatt'] : [0, 0, ''];
+            run('INSERT INTO class_students (class_id,student_id,joined_on,left_on,tariff_id,price_cents,price_note,due_day,'
+                .'interval_months,discount_months,discount_kind,discount_value,discount_note)'
+                ." VALUES (?,?,?,?,?,?,?,0,?,?,'percent',?,?)",
                 [$courses[$course], $id, $joined->format('Y-m-d'),
                  $status === 'ended' ? $today->modify('-30 days')->format('Y-m-d') : null, $chosen,
-                 $price, $price !== null ? 'Geschwisterermäßigung' : '']);
+                 $price, $price !== null ? 'Sonderpreis' : '',
+                 $interval, $dMonths, $dValue, $dNote]);
             // Two of them train in two courses, because a child in more than one
             // is the case the attendance and billing screens get wrong.
             if ($i === 2 || $i === 6)
@@ -191,9 +219,10 @@ function demo_fill(bool $force = false): array {
         // --- charges and payments -------------------------------------------
         foreach ($students as $s) {
             if ($s['index'] === 7) continue;                       // no tariff, no charges
-            $amount = (int)(scalar('SELECT COALESCE(cs.price_cents, t.price_cents) FROM class_students cs'
-                .' LEFT JOIN tariffs t ON t.id=cs.tariff_id WHERE cs.student_id=? AND cs.class_id=?',
-                [$s['id'], $s['course']]) ?: 0);
+            // Through the same accessor the billing screen uses, so demo charges
+            // are the amount the portal would really ask for.
+            $enrolment = enrolment((int)$s['course'], (int)$s['id']);
+            $amount = $enrolment ? (int)(enrolment_price($enrolment)['cents'] ?? 0) : 0;
             if ($amount <= 0) continue;
             for ($back = 2; $back >= 0; $back--) {
                 $month = $today->modify('first day of this month')->modify('-' . $back . ' months');
@@ -284,6 +313,11 @@ function demo_clear(): array {
         run('DELETE FROM charges WHERE student_id IN (SELECT id FROM students WHERE is_demo=1)');
         run('DELETE FROM students WHERE is_demo=1');
         run('DELETE FROM classes WHERE is_demo=1');
+        // Spelled out rather than left to ON DELETE CASCADE: the rates and the
+        // discount templates of a demo tariff are demo data too, and a cascade
+        // is a promise of the engine rather than of this file.
+        run('DELETE FROM tariff_rates WHERE tariff_id IN (SELECT id FROM tariffs WHERE is_demo=1)');
+        run('DELETE FROM tariff_discounts WHERE tariff_id IN (SELECT id FROM tariffs WHERE is_demo=1)');
         run('DELETE FROM tariffs WHERE is_demo=1');
         run('DELETE FROM news WHERE is_demo=1');
         run('DELETE FROM mail_jobs WHERE account_id IN (SELECT id FROM accounts WHERE is_demo=1)');

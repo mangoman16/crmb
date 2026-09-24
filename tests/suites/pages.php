@@ -25,7 +25,7 @@ $course = make_class(['name'=>'Kindertraining', 'location'=>'Halle Nord', 'capac
     'days'=>[['weekday'=>1,'starts_at'=>'16:00:00','ends_at'=>'17:30:00','location'=>'Halle Nord'],
              ['weekday'=>4,'starts_at'=>'17:00:00','ends_at'=>'18:30:00','location'=>'Halle Süd']]]);
 $tariff = make_tariff(['class_id'=>$course, 'name'=>'Monatsbeitrag', 'price_cents'=>4500,
-                       'interval_months'=>1, 'discount_months'=>1, 'discount_value'=>100]);
+                       'interval_months'=>1, 'rates'=>[1=>4500, 3=>12000, 12=>45000]]);
 $lena = make_student(['first_name'=>'Lena', 'last_name'=>'Hofer', 'account_id'=>$family,
                       'birth_date'=>'2015-04-02', 'joined_on'=>'2026-01-01']);
 $tobi = make_student(['first_name'=>'Tobias', 'last_name'=>'Hofer', 'account_id'=>$family,
@@ -60,11 +60,15 @@ fixture('feedback', ['account_id'=>$family, 'page'=>'payments', 'message'=>'Der 
 notify($trainer, 'message', 'Neue Nachricht', 'Familie Hofer', 'messages', ['id'=>$thread]);
 request_enrolment($lena, make_class(['name'=>'Zweiter Kurs', 'days'=>[]]), 'join', null, 'Dürfen wir?');
 sign_in_as($admin);
-// An invoice needs the operator's own details; the invoices suite checks those
-// rules, this one only needs a document to exist so the pages have one to show.
+// An invoice needs the operator's own details and somewhere to send the money;
+// the invoices suite checks those rules, this one only needs a document to exist
+// so the pages have one to show.
 foreach (['org_name'=>'Badminton Beispiel', 'org_street'=>'Hauptstraße 1', 'org_zip'=>'1010',
           'org_city'=>'Wien', 'org_country'=>'Österreich', 'org_email'=>'buero@beispiel.test'] as $k => $v)
     set_setting($k, $v);
+set_setting('default_payment_profile', fixture('payment_profiles', ['name'=>'Vereinskonto',
+    'recipient'=>'Badminton Beispiel', 'iban'=>'AT05 5100 0805 1317 6900', 'bic'=>'', 'currency'=>'EUR',
+    'note'=>'', 'qr_template'=>'', 'archived'=>0, 'created_at'=>now()]));
 $invoice = create_invoice($lena, [$charge]);
 
 // ---------------------------------------------------------------------------
@@ -88,6 +92,7 @@ $staffPages = [
     'payments'   => [[], ['period'=>'2026-09']],
     'invoices'   => [[], ['state'=>'open'], ['state'=>'overdue'], ['state'=>'paid'], ['state'=>'all']],
     'accounts'   => [[]],
+    'print'      => [[], ['id'=>$lena]],
     'outbox'     => [[], ['p'=>1]],
     'compose'    => [[], ['course'=>$course]],
     'manage'     => [[], ['tab'=>'levels'], ['tab'=>'ages'], ['tab'=>'members'], ['tab'=>'tariffs'],
@@ -135,6 +140,11 @@ $bare = make_student(['first_name'=>'Neu', 'last_name'=>'Angelegt', 'birth_date'
 foreach ([[], ['tab'=>'contacts'], ['tab'=>'absence'], ['tab'=>'attendance'], ['tab'=>'classes'],
           ['tab'=>'invoices'], ['tab'=>'payments']] as $tab)
     does_not_throw(fn() => render_view('student', ['id'=>$bare] + $tab), 'a bare record: '.json_encode($tab));
+// A child with no account is the one whose page carries the invitation form, so
+// it is the one the nested-form rule below has to see.
+$bareHtml = render_view('student', ['id'=>$bare]);
+ok(str_contains($bareHtml, 'Zugang einladen'), 'a child with no account is offered one');
+is_same(1, deepest_form_nesting($bareHtml), 'and that form is not inside the record’s own form');
 
 case_('An id that does not exist is refused rather than half-rendered');
 foreach (['student'=>['id'=>999999], 'classes'=>['id'=>999999], 'messages'=>['id'=>999999]] as $page => $query)
@@ -160,3 +170,94 @@ try { student($lena); } catch (Throwable $e) {
 }
 ok(str_contains((string)file_get_contents(APP_ROOT.'/public/index.php'), 'NotFound'),
    'and the router is what turns that into the right page');
+
+// ---------------------------------------------------------------------------
+case_('No page puts one form inside another');
+/* A form inside a form is markup the browser throws away: it keeps the outer
+   one and drops the inner, so the button that says "Bild speichern" quietly
+   submits the whole student record instead. Nothing on the page looks wrong,
+   which is why it survived on the student page until somebody counted the tags.
+
+   Counted rather than parsed, because the rule is about the tags themselves:
+   a form opened and not closed is the same bug seen from the other side. */
+function deepest_form_nesting(string $html): int {
+    $depth = 0; $deepest = 0;
+    foreach (preg_split('/(<form\b[^>]*>|<\/form\s*>)/i', $html, -1, PREG_SPLIT_DELIM_CAPTURE) as $piece) {
+        if (preg_match('/^<form\b/i', $piece)) { $depth++; $deepest = max($deepest, $depth); }
+        elseif (preg_match('/^<\/form/i', $piece)) $depth--;
+    }
+    return $depth === 0 ? $deepest : 99;   // 99: unbalanced, which is worse
+}
+is_same(1, deepest_form_nesting('<form></form><form></form>'), 'two forms in a row are one deep');
+is_same(2, deepest_form_nesting('<form><form></form></form>'), 'one inside another is two');
+is_same(99, deepest_form_nesting('<form>'), 'and a form never closed is reported, not counted as fine');
+
+sign_in_as($admin);
+foreach ($pages + $staffPages + $adminPages as $page => $variants)
+    foreach ($variants as $query) {
+        $depth = deepest_form_nesting(render_view($page, $query));
+        ok($depth <= 1, $page.' '.json_encode($query).' has no form inside a form (depth '.$depth.')');
+    }
+sign_in_as($family);
+foreach ($pages as $page => $variants)
+    foreach ($variants as $query) {
+        if ($page === 'students' && isset($query['saved'])) continue;
+        $depth = deepest_form_nesting(render_view($page, $query));
+        ok($depth <= 1, 'as a family, '.$page.' '.json_encode($query).' has no form inside a form (depth '.$depth.')');
+    }
+
+// ---------------------------------------------------------------------------
+case_('What goes on paper is exactly what the portal can hold');
+/* A blank form that asks for something with nowhere to go produces a family who
+   wrote it down and a trainer with nowhere to type it - and a filled sheet that
+   leaves something out is a sheet nobody can check. So both are the same
+   layout, and this is the rule that keeps them so. */
+sign_in_as($trainer);
+fixture('field_definitions', ['label'=>'Verein bisher', 'label_en'=>'Previous club', 'field_type'=>'text',
+                              'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
+                              'visibility'=>'view', 'sort_order'=>5, 'archived'=>0]);
+fixture('field_definitions', ['label'=>'Nur intern', 'label_en'=>'', 'field_type'=>'text',
+                              'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
+                              'visibility'=>'internal', 'sort_order'=>6, 'archived'=>0]);
+$blank = render_view('print');
+// Every one of these is on a real club's own anmeldeformular. The address and
+// the telephone were the two it asked for that the portal had nowhere to put.
+foreach (['Vorname', 'Nachname', 'Geburtsdatum', 'E-Mail-Adresse', 'Anschrift', 'Telefonnummer',
+          'Notfallkontakte', 'Verein bisher'] as $asked)
+    ok(str_contains($blank, $asked), 'the blank form asks for '.$asked);
+// A blank form does not know who is filling it in, and half a club's members are
+// adults: it must not tell them it is meant for a child.
+ok(!str_contains($blank, '>Kind<'), 'and it is not headed "Kind", because an adult joins too');
+ok(str_contains($blank, 'bei Minderjährigen'), 'the guardian signs where that applies, not always');
+ok(!str_contains($blank, 'Nur intern'), 'and not for a field marked internal, which is hers and not theirs');
+ok(substr_count($blank, 'sheet-contact') >= 2, 'with room for two people to ring, not one');
+ok(str_contains($blank, 'print-boxes'), 'in boxes, one letter each');
+ok(!str_contains($blank, 'print-value'), 'and nothing filled in');
+ok(str_contains($blank, 'nicht verkauft'), 'saying what happens to what they write down');
+// The fee block a club's own form has. Without it a parent has filled in a page
+// that never says what they are agreeing to pay.
+ok(str_contains($blank, 'Beitrag'), 'and what it costs is on it');
+ok(str_contains($blank, 'Monatsbeitrag'), 'with the tariff named');
+ok(str_contains($blank, '45,00'), 'and its price, taken from the price list so the paper cannot drift');
+ok(!str_contains($blank, 'fällig am'), 'but not the day of the month, which is not what a tick decides');
+// The course name goes above the list, not on every line: four tariffs meant
+// four repetitions of the same words, and the sheet ran onto a second page.
+// One course here, so its name is not repeated above the list at all; with two
+// it appears once each. Either way, never once per tariff.
+ok(substr_count($blank, 'Monatsbeitrag') <= 1, 'and the tariff itself appears once');
+is_same(0, substr_count($blank, 'Kindertraining · Monatsbeitrag'), 'the course is not glued to every tariff line');
+
+run('UPDATE students SET address=?, phone=? WHERE id=?',
+    ['Hauptstraße 5, 7000 Eisenstadt', '+43 660 1234567', $lena]);
+$sheet = render_view('print', ['id'=>$lena]);
+ok(str_contains($sheet, 'print-value'), 'the data sheet has values on it');
+ok(str_contains($sheet, 'Hauptstraße 5, 7000 Eisenstadt'), 'with the address on it to be checked');
+ok(str_contains($sheet, '+43 660 1234567'), 'and the number to ring them on');
+ok(str_contains($sheet, 'Lena'), 'the child’s name among them');
+ok(str_contains($sheet, 'Maria Hofer'), 'and the person to ring');
+ok(str_contains($sheet, 'Unterschrift'), 'with somewhere to sign that it was checked');
+is_same(0, deepest_form_nesting($blank), 'and no form at all on it: it is printed, not submitted');
+
+case_('And it is staff-only, because it carries a family’s details');
+sign_in_as($family);
+throws(fn() => render_view('print', ['id'=>$lena]), 'a family does not open the print view', 'Zugriff');

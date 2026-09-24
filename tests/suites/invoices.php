@@ -34,7 +34,7 @@ $charge = fixture('charges', ['student_id'=>$student, 'label'=>'Beitrag Septembe
     'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
 throws(fn() => create_invoice($student, [$charge]), 'with no details, no invoice', 'Betreiber');
 
-case_('With the details in place, it can be issued');
+case_('Once the operator has said who they are');
 set_setting('org_name', 'Badmintonschule Hofer');
 set_setting('org_street', 'Turnweg 3');
 set_setting('org_zip', '4020');
@@ -42,7 +42,44 @@ set_setting('org_city', 'Linz');
 set_setting('org_country', 'Österreich');
 set_setting('org_email', 'kontakt@beispiel.test');
 set_setting('org_tax_mode', 'small');
-is_same([], invoice_issuer_problems(), 'nothing is missing now');
+is_same([t('Beim Zahlungsempfänger „', 'The payment recipient “') . 'Vereinskonto'
+         . t('“ fehlt die IBAN – einzutragen unter „Verwaltung → Zahlungsempfänger“.', '” has no IBAN — add it under “Manage → Payment recipients”.')], invoice_issuer_problems(),
+        'only one thing is still missing, and it is not about the operator');
+
+case_('And until there is somewhere to send the money');
+/* Not a corner case: the installer seeds a recipient called "Vereinskonto" with
+   the SEPA payload ready and the account number blank, and makes it the default,
+   so this is the state every portal starts in. Left alone it produced a
+   finished-looking invoice with nowhere to pay it. */
+$house = payment_profile((int)setting('default_payment_profile'));
+ok($house !== null, 'a fresh portal has a payment recipient');
+is_same('', trim((string)$house['iban']), 'and it is waiting for her account number');
+ok(in_array(t('Beim Zahlungsempfänger „', 'The payment recipient “') . $house['name']
+            . t('“ fehlt die IBAN – einzutragen unter „Verwaltung → Zahlungsempfänger“.', '” has no IBAN — add it under “Manage → Payment recipients”.'), invoice_issuer_problems(), true),
+   'which the invoices page says before there is a family waiting for the document');
+throws(fn() => create_invoice($student, [$charge]), 'and an invoice nobody could pay is refused', 'fehlt die IBAN');
+// She fills it in on the recipient that is already the default, which is what
+// the message tells her to do: a charge remembers the recipient it was written
+// for, so changing the course afterwards would change nothing.
+run('UPDATE payment_profiles SET iban=? WHERE id=?', ['AT055100080513176900', (int)$house['id']]);
+payment_cache_clear();
+is_same([], invoice_issuer_problems(), 'and then nothing is missing');
+
+case_('A second recipient without one is caught too, where the settings cannot see it');
+/* The check above reads the default. A course may collect into another account,
+   and the charge remembers the one it was written for - so this is the case the
+   invoices page cannot warn about in advance. */
+$cash = fixture('payment_profiles', ['name'=>'Turnierkasse', 'recipient'=>'Bar', 'iban'=>'', 'bic'=>'',
+    'currency'=>'EUR', 'note'=>'', 'qr_template'=>'', 'archived'=>0, 'created_at'=>now()]);
+$cashCharge = fixture('charges', ['student_id'=>$student, 'payment_profile_id'=>$cash,
+    'label'=>'Turniergebühr', 'amount_cents'=>1500, 'gross_cents'=>1500, 'discount_cents'=>0,
+    'discount_note'=>'', 'period_from'=>null, 'period_to'=>null, 'covered_from'=>null, 'covered_to'=>null,
+    'due_on'=>'2026-09-01', 'overdue_on'=>null, 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+payment_cache_clear();
+throws(fn() => create_invoice($student, [$cashCharge]), 'named, so she knows which one to fix', 'Turnierkasse');
+run('UPDATE charges SET cancelled=1 WHERE id=?', [$cashCharge]);
+
+case_('With the details in place, it can be issued');
 // Issued today rather than on a fixed day in 2026: an invoice dated in the past
 // turns overdue the moment the calendar passes its due date, and the assertion
 // further down that it "starts open" would then fail on an ordinary Tuesday for
@@ -65,6 +102,57 @@ $second = invoice(create_invoice($student, [fixture('charges', ['student_id'=>$s
     'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()])], $issuedOn));
 is_same(2, (int)$second['sequence'], 'the next one follows it');
 ok($second['number'] !== $invoice['number'], 'with a different number');
+
+case_('A part period is stated as the part, not as the whole one');
+/* The bill for somebody who joined on the 16th was right to the cent and said
+   "01.09. – 30.09." underneath it. § 11 Abs 1 Z 3 lit d UStG asks for the
+   Zeitraum of the supply, and a family keeps this document. */
+$late = fixture('charges', ['student_id'=>$student, 'label'=>'Beitrag September', 'amount_cents'=>2250,
+    'gross_cents'=>2250, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>'2026-09-01',
+    'period_to'=>'2026-09-30', 'covered_from'=>'2026-09-16', 'covered_to'=>'2026-09-30',
+    'due_on'=>'2026-09-16', 'overdue_on'=>'2026-09-23', 'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+$partial = invoice(create_invoice($student, [$late], $issuedOn, 14));
+is_same('2026-09-16', $partial['supplied_from'], 'the supply starts the day they joined');
+is_same('2026-09-30', $partial['supplied_to'], 'and ends with the month');
+$partialPdf = $pdfText(invoice_pdf($partial));
+ok(str_contains($partialPdf, fmt_date('2026-09-16')), 'and the document says so where the family reads it');
+ok(!str_contains($partialPdf, fmt_date('2026-09-01')),
+   'and nowhere claims a fortnight they were not a member for');
+
+case_('And the account number is printed the way it is read');
+/* Grouped in fours on the two pages that show it and run together on the one
+   document somebody copies it from, which is twenty characters with no place to
+   keep your finger. */
+is_same('AT05 5100 0805 1317 6900', iban_groups('AT055100080513176900'), 'four at a time');
+is_same('AT05 5100 0805 1317 6900', iban_groups('AT05 5100 0805 1317 6900'), 'and an already-spaced one is not doubled up');
+$banked = invoice(create_invoice($student, [fixture('charges', ['student_id'=>$student, 'label'=>'Beitrag November',
+    'amount_cents'=>4500, 'gross_cents'=>4500, 'discount_cents'=>0, 'discount_note'=>'',
+    'period_from'=>'2026-11-01', 'period_to'=>'2026-11-30', 'due_on'=>'2026-11-01', 'overdue_on'=>'2026-11-08',
+    'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()])], $issuedOn));
+ok(str_contains($pdfText(invoice_pdf($banked)), 'AT05 5100 0805 1317 6900'),
+   'and the invoice carries it in groups, not as one twenty-character run');
+
+case_('Above 400 € the recipient’s address has to be on it');
+/* § 11 Abs 1 Z 3 lit b UStG wants the recipient's name and address; Abs 6 lets
+   a Kleinbetragsrechnung up to 400 € gross leave both out, which is most of a
+   club's invoices. So the address is asked for where it matters rather than
+   made compulsory on a monthly fee. */
+$big = fixture('charges', ['student_id'=>$student, 'label'=>'Jahresbeitrag und Anmeldung',
+    'amount_cents'=>40100, 'gross_cents'=>40100, 'discount_cents'=>0, 'discount_note'=>'',
+    'period_from'=>'2026-01-01', 'period_to'=>'2026-12-31', 'covered_from'=>'2026-01-01',
+    'covered_to'=>'2026-12-31', 'due_on'=>'2026-01-01', 'overdue_on'=>'2026-01-08',
+    'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+throws(fn() => create_invoice($student, [$big], $issuedOn), 'over the threshold it is refused', 'Anschrift');
+$under = fixture('charges', ['student_id'=>$student, 'label'=>'Beitrag Dezember',
+    'amount_cents'=>40000, 'gross_cents'=>40000, 'discount_cents'=>0, 'discount_note'=>'',
+    'period_from'=>'2026-12-01', 'period_to'=>'2026-12-31', 'covered_from'=>'2026-12-01',
+    'covered_to'=>'2026-12-31', 'due_on'=>'2026-12-01', 'overdue_on'=>'2026-12-08',
+    'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+does_not_throw(fn() => create_invoice($student, [$under], $issuedOn), 'at exactly 400 € it is not');
+run('UPDATE students SET address=? WHERE id=?', ['Hauptstraße 5, 7000 Eisenstadt', $student]);
+$addressed = invoice(create_invoice($student, [$big], $issuedOn));
+ok(str_contains($pdfText(invoice_pdf($addressed)), 'Hauptstraße 5, 7000 Eisenstadt'),
+   'and with it filled in the document carries it, under the name');
 
 case_('The same charge cannot be invoiced twice');
 throws(fn() => create_invoice($student, [$charge]), 'a charge already on an invoice', 'schon eine Rechnung');

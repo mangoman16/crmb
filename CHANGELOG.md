@@ -2,6 +2,310 @@
 
 ## 0.6.0 — unreleased
 
+### Signing in correctly no longer counts against her
+
+- **A sign-in that works no longer spends one of the ten attempts.** Ten are
+  allowed per account per quarter of an hour, and each one is counted before the password is
+  checked, because at that moment nobody knows yet whether it is the right one —
+  but nothing ever undid the count afterwards. A family whose children share one
+  phone reached ten correct sign-ins inside fifteen minutes by using the portal
+  exactly as intended, and was answered with „Zu viele Versuche. Bitte später
+  erneut versuchen." — a sentence about attacks, shown to a parent who had done
+  nothing but sign in, with no way back but waiting. A sign-in that succeeds now
+  empties that account's count. A wrong password still counts, which is the
+  attempt the limit exists for.
+- **A one-time link opened out of the mailbox proves the same thing**, so an
+  accepted invitation, an opened reset link and a confirmed change of address
+  clear the count too. Without that, the reset sent to a locked-out family let
+  them in once and left them locked out of the next sign-in until the quarter of
+  an hour ran down.
+- **The attempts are counted against the account, not against the spelling that
+  was typed.** The database compares addresses under a collation that treats
+  upper and lower case, accents, ß and ss, ligatures and full-width letters as
+  the same, so `familie@beispiel.at` and `familie@beispiel.át` are one account
+  row and two different words to the portal. Every spelling used to get its own ten guesses, which
+  means somebody guessing passwords spelled the address differently and carried
+  on, with nothing but the limit per internet connection left in the way — and
+  behind that sign-in are children's birth dates, health notes and parents' bank
+  details. The address is now looked up first and the attempt counted against
+  the account it finds; an address with no account is counted as what was typed,
+  which is all there is. Measured on MariaDB 10.11.14 rather than assumed.
+- **What that deliberately does not close:** ten failed attempts on one spelling
+  and then one on another are refused straight away, which tells whoever is
+  trying that both reach the same account — eleven requests to learn that an
+  address is registered here. Closing it means keying the count on the
+  database's own sort key, which differs between engines, is missing from the
+  translation the test suite runs on, and is being withdrawn upstream. It is
+  accepted and written down rather than quietly left out.
+- **That the lockout ends was never actually checked.** „Bitte später erneut
+  versuchen" is a promise that later arrives, and a count that never reset would
+  have looked exactly like a working limit to every test there was: it would
+  refuse people, which is the visible half, and never let them back in, which is
+  the half nobody was watching. The quarter of an hour is now tested from both
+  sides — ten minutes in is not yet later, sixteen minutes in is. The clock
+  itself is still walked by hand, because the suite ages the stored counter
+  rather than waiting.
+- **Two limits are never cleared, on purpose.** The sixty attempts a quarter of
+  an hour from one internet connection stand, because one valid account must not
+  be able to refresh the limit that slows guessing at every other one; and
+  „Passwort vergessen" stands, because typing an address proves nothing about
+  who typed it and clearing it would hand anybody an unlimited mailer pointed at
+  one family's inbox. Families sharing one connection therefore share that
+  budget; TESTING.md 4.6d describes what that looks like from her side.
+
+### An account created twice, from two directions
+
+- **Inviting somebody whose address already has one now says so plainly.** The
+  invite form wrote the row and left the database to refuse it, so what came
+  back was the catch-all „Die Eingabe ist nicht möglich: Adresse bereits
+  vergeben oder verknüpfte Daten vorhanden." — one sentence covering two quite
+  different causes. It now says „Diese Adresse hat schon ein Konto.", which is
+  what the other way of creating an account has always said.
+- **Two setup pages open at once cannot both create the first administrator.**
+  The guard counted the administrators inside the transaction that writes the
+  row, and a plain count takes no locks — measured with two connections on
+  MariaDB 10.11.14: both pages saw an empty portal and it ended with two
+  administrators. The count now locks, so the second page waits and the portal
+  ends with one.
+- **The test suite had been dispatching actions with no transaction open**, so
+  every row lock the portal takes while it writes — the locks that stop two
+  submissions doing the same thing twice — had been holding nothing at all
+  throughout. It now dispatches the way a real request does, which is what makes
+  the two items above testable rather than merely written.
+
+### The documents were describing a portal that had moved
+
+- PROJECT.md's status table rated skill assessment „Built, tested" with high
+  confidence. Migration 008 dropped its four tables and there are no such
+  screens. A status table is read by somebody deciding what to rely on, so its
+  figures were counted again rather than remembered: six migrations against
+  eighteen, 31 tables against 42, 23 settings against 52, and a header two
+  releases behind.
+- Three documents were still saying six migrations, and README.md said the
+  update guard compares ten tables before and after when it compares nineteen —
+  the number somebody reads to decide whether an update is safe to run.
+- The by-hand list printed section 4 as 4.6, 4.6d, 4.6e, 4.6g, 4.7, 4.6a, and so
+  sent anybody working down the page backwards at item seven. It runs in order
+  now.
+- `docs/decisions/` writes down the structural decisions that had only ever been
+  habits — one per file, with what was rejected and why — and CLAUDE.md now says
+  which part of the project each contributor may change.
+
+### Trying it out no longer takes a term's worth of typing
+
+- **The installer offers to fill the portal with example data.** An empty portal
+  is unrecognisable: no courses, no children, every page an empty state, and
+  anybody deciding whether to use this had to invent a term's worth of data
+  first. One tick on the setup page now gives three courses, fifteen children
+  with charges, and three sign-ins — a trainer and two families — with the
+  password printed on the finish page. Unticked, nothing but the administrator
+  is created, which is what a portal about to hold real data wants.
+- **`demo:fill` prints the password it set.** It said „the password printed
+  above" and printed no password, so the three accounts it had just made could
+  not be signed in to at all. It is generated once and never stored in the
+  clear, so the fill is the only moment anybody can be told it.
+- **An account can be created directly, with a password instead of a link.**
+  Inviting needs working SMTP and a released privacy notice, so a portal on its
+  first evening had no way to make a second account at all — not for a second
+  administrator, not for a trainer standing next to her, not for trying the
+  thing out. Administrators only, because handing out a login is more than
+  sending an invitation, and the flash says plainly that the address was not
+  confirmed. A family account made this way adopts the child at that address, so
+  it does not sign in to an empty portal.
+- **The layout check can use both roles on an example portal.** Its one
+  `--password` could not cover an administrator and the example accounts, which
+  have a password of their own; `--family-password` closes that, and the sweep
+  went from 100 screens to 120.
+- **TESTING.md opens with a twenty-minute script**: install with example data,
+  build the real club's course and price list, add a member, watch the 42 €
+  come out, issue the invoice, print both sheets, impersonate, sign in as a
+  family, make a login without email, and put it all back.
+
+### What a real club's own paperwork found
+
+The portal was set up on MariaDB with the price list, the bank account and the
+registration form of a working badminton club, and a member was put through it
+from the paper form to a printed invoice. Five things came out of that.
+
+- **A part period is now stated as the part.** A member who joined on 12 November
+  and was charged seven weeks of a yearly fee got an invoice reading
+  „Leistungszeitraum 01.01. – 31.12." The amount had always been right and the
+  sentence under it had not, on a document a family keeps and § 11 Abs 1 Z 3
+  lit d UStG asks the period of. A charge now records what it covers beside the
+  billing period it belongs to; the period still decides what has been billed,
+  so nobody is billed twice by the change.
+- **An invoice with nowhere to pay it is refused.** The installer leaves a
+  recipient called „Vereinskonto" ready with the account number blank, and makes
+  it the default — so a fresh portal produced a finished-looking invoice with no
+  IBAN on it, and the first anybody knew was the phone call. **Rechnungen** now
+  names it among the things still missing, and issuing refuses and says which
+  recipient to fix. Not a corner case: it is the state every portal starts in.
+- **The IBAN is printed in groups of four on the invoice**, as it already was on
+  the two pages that show it. Twenty characters in one run is what somebody has
+  to copy into a banking app.
+- **Amounts in a box she types in are written with a comma.** 19,80 € came back
+  as 19.80 on a German form, next to a list that said 19,80 €.
+- **The names in a „these children still need something" notice are buttons.**
+  As a comma-separated sentence they were 17px tall and touching, which on a
+  phone is a third of the minimum this project measures against, twice over.
+
+### And the four things that form asked for and the portal could not hold
+
+- **A member has an address and a telephone number of their own.** The paper form
+  asks six things and the portal held four. The address had nowhere to go at all,
+  and a number could only be recorded by inventing an emergency contact — which
+  for an adult member means listing yourself as the person to ring if something
+  happens to you. One line for the address, the way the form asks it.
+- **Above 400 € an invoice carries the recipient's address**, and is refused
+  until there is one. § 11 Abs 1 Z 3 lit b UStG wants the name and the address;
+  Abs 6 lets a Kleinbetragsrechnung up to 400 € gross leave both out, which is
+  most of a club's invoices — so it is asked for where it matters rather than
+  made compulsory on a monthly fee.
+- **„Anteilig nach vollen Monaten" is a way of charging a part period.** What a
+  club form means by „aliquot": the month somebody joins in is theirs entirely.
+  Their own worked example is 42 € for November and December of a 252 € year;
+  pro rata by days — the only rule the portal had — would have been 34,52 €, and
+  42 € is the number the family signed.
+- **The printables carry the price list and no longer address everybody as a
+  child.** A blank form now has the fee as lines to tick, taken from the courses
+  so paper and portal cannot drift; the heading and the signature line say
+  „bei Minderjährigen" rather than assuming one. Still one sheet of A4 with four
+  tariffs on it — measured with a real 14mm-margin PDF after the first version
+  ran to two pages.
+- „ZVR-, Firmenbuch- oder GISA-Nummer": a registered club in Austria has a
+  ZVR-Zahl and neither of the other two, and it goes on everything it sends out.
+- The skip link („Zum Inhalt") is parked off the top of the screen rather than
+  hidden, so it printed across the signature line of both sheets.
+
+### Creating something asks for the basics, and then says what is left
+
+- **The form that creates a child now asks for four things**: a name, a date of
+  birth, the email address, and whether they are a member. Not the level, not
+  the tariff, not the internal notes, and not the custom fields she has added
+  herself — a form of twenty boxes is a form somebody abandons in the middle of
+  a training session.
+- **And then the child's page says what is still to do**, numbered, at the top:
+  an emergency contact, an address or an invitation, a course, a tariff. Each
+  one is a link to where it is done, and each disappears when it is. A child
+  with no course is a child nobody bills, and four days later nobody remembers
+  which of fifteen children that was.
+- A newly created course says the same: a training day, and a tariff.
+
+### Two things to print
+
+- **A blank registration form**, for a parent standing in the hall with a biro.
+  One letter per box, in block capitals, because a ruled line produces
+  handwriting nobody can read back and a date that might be 03/04 or 04/03.
+- **A data sheet** for a child whose details the trainer typed in herself, to
+  hand back for checking and signing.
+- Both are the same layout on purpose: what is asked for on paper is exactly
+  what the portal stores — including her own custom fields, and never the ones
+  she marked internal. Nothing is collected that has nowhere to go.
+- Both fit on one sheet of A4, which was measured by generating the PDF and
+  counting its pages. A screenshot said the form fitted; the printer said two.
+
+### Signing in belongs to the child, and a contact is somebody to ring
+
+- **One row was answering two questions.** "Who do I ring when she falls over"
+  and "who does the portal write to" were both the standard contact, and they
+  came apart in practice: the grandmother who should be rung has no email, the
+  father who reads the invoices is never in the hall. The form could not answer
+  either without lying about the other.
+- **The address is on the child now.** For a child that is a parent's address,
+  which is why it is a field rather than a second person: whoever reads the
+  invoices is whoever holds the login. **Zugang einladen** on the child's page
+  creates the account and sends the invitation there; a second child at the same
+  address joins the same account, which is how siblings share a login without a
+  second concept for it.
+- **Contacts are emergency contacts.** They need a phone number and no longer
+  need an email address. Nothing is sent to them.
+- An invitation is not sent twice to an account that has already set a password:
+  that link would have replaced a password that works.
+- The **Schüler** list names the two gaps separately, because they are filled in
+  in two different places.
+- Nobody is signed out by the update: every account keeps its own address and
+  its own password, and the new field is filled from whatever the portal was
+  already writing to.
+- **A form inside a form** on the student page meant the browser was throwing
+  the inner one away: „Bild speichern" was submitting the whole record. Every
+  page is now counted for that, for every role.
+
+### One tariff, several ways to pay it
+
+- **Four prices for the same thing used to be four tariffs.** "252 € im Jahr,
+  162 € im Halbjahr, 99 € im Quartal, 37 € im Monat" meant four rows with the
+  same name and four places to change the price when it goes up. A tariff now
+  carries a price per interval, and the enrolment says which of them a child is
+  on — chosen from a list that shows what each one costs, so the interval and
+  its price are never looked up separately.
+- **The welcome discount moved off the price list and onto the agreement.** It
+  sat on the tariff, which made "three months at half price for this one child"
+  into a tariff nobody else could be put on. The tariff now carries only the
+  *shapes* of discount she gives — „Erster Monat gratis", „Geschwisterrabatt,
+  dauerhaft −20 %" — and the child carries the one that family actually got,
+  under a name that goes on their invoice. Changing a template changes nothing
+  for a family who already has one.
+- **A tariff can be copied**, with its prices and its templates, because four
+  intervals and three templates is twenty minutes of typing to get a second
+  tariff that differs in one number — and twenty minutes of typing is where a
+  wrong price comes from.
+- Nobody's next invoice changes because of the update: every tariff's price
+  becomes its first rate, every discount becomes a template *and* is copied onto
+  every enrolment that was getting it. That sentence, and "nobody is signed out"
+  above it, are now checked rather than asserted: the suite builds a portal as it
+  stood before the update, applies the rest, and reads back the prices, the
+  discounts and the addresses.
+- **Everything she builds by hand can be copied** — a course with its training
+  days and its whole price list, a tariff, a level, an age group, a payment
+  recipient, an email template, a custom field, a news item. What comes with a
+  copy is written down rather than followed from the foreign keys, because a
+  course's training days belong to it and the children enrolled in it do not.
+
+### A menu that fits, and a mail test that answers
+
+- **The menu on the left scrolled.** Thirteen destinations in one column are
+  958px tall, and a 1920x1080 screen at 110% zoom leaves 873px, so the last
+  three were below the fold. Six of them now sit inside three sections —
+  **Training**, **Geld** and **System** — and only the section you are working
+  in is open, which the browser keeps true by shutting the others. 715px at a
+  full window, 541px at the zoom it was reported at. The count of what is
+  waiting moves up to the section while the section is shut.
+- **„Testmail vormerken" was not a test.** It queued a message and sent the
+  operator to the outbox to look for it, where a blocked port, a wrong
+  certificate and a rejected password all looked the same: nothing arrived.
+  **Einstellungen → SMTP → Verbindung testen** now opens the connection while
+  she waits, sends to any address she types in, and writes down every step —
+  and says which one failed in a sentence she can act on, with the server's own
+  words underneath. The user name and the password are taken back out of the
+  transcript, because the whole point of it is to be forwarded to a host.
+- The sign-in page no longer explains which address to use. It asks for an email
+  address and a password, which is what the form already said.
+- **„Etwas funktioniert hier nicht" was under the last card**, which meant it
+  was only ever found by somebody who scrolled to the bottom of a page they had
+  already given up on. On a desktop screen it is a button in the bottom right
+  corner now. On a phone it stays at the end of the page and the **Mehr** menu
+  carries a link down to it: the bottom of a phone screen already holds the menu
+  bar and the sticky **Speichern** button, and a third thing floating over those
+  is how a Save button becomes unreachable.
+- **„Wem gehört der Kontakt?"** asked about ownership when it wanted a name —
+  and the same box said „Name" on the edit form next to it. The two forms had
+  been written out twice and drifted; they are one fieldset now, and it asks for
+  „Name der Kontaktperson".
+- **A time of day was shown in the language of the device, not of the portal.**
+  `<input type="time">` ignores the page and follows the phone or the computer,
+  so on a device set to English every training time read "04:00 PM" however the
+  portal was set — and a trainer copying 16:00 off a hall timetable should not
+  have to translate it. Times are an hour box and a minute box now: 24 hours on
+  every device, every five minutes, and a time already stored that is not on
+  that grid keeps its place in the list rather than being quietly moved. An hour
+  with no minute is refused instead of being stored as "on the hour".
+- **Every signed-out page says what happens to the data**: the privacy notice
+  applies, only the cookies the portal needs to work are set, there is no
+  analytics and no advertising, and nothing is sold or passed to anybody else.
+  The same paragraph is in the shipped privacy draft under *Empfänger* —
+  a portal installed before this keeps its own edited notice, so add the
+  sentence there by hand if you want it.
+
 Her half of the portal: what she runs day to day, in the words she uses for it,
 after a round of testing that produced a list of about forty things.
 

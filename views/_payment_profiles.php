@@ -14,14 +14,15 @@ $sepa="BCD\n002\n1\nSCT\n{bic}\n{recipient}\n{iban}\n{currency}{amount}\n\n{refe
         <div class="section-heading"><h2><?=e(t('Zahlungsempfänger','Payment profiles'))?></h2><?=link_button(t('+ Neu','+ New'),'manage',['tab'=>'payments'],'secondary')?></div>
         <?php foreach(payment_profiles(true) as $row):?>
         <a class="editor-list-item <?=$editProfile===(int)$row['id']?'selected':''?>" href="<?=e(url('manage',['tab'=>'payments','edit'=>$row['id']]))?>">
-            <span><strong><?=e($row['name'])?></strong><small class="mono"><?=e($row['iban']!==''?trim(chunk_split($row['iban'],4,' ')):t('Keine IBAN hinterlegt','No IBAN set'))?></small></span>
+            <span><strong><?=e($row['name'])?></strong><small class="mono"><?=e($row['iban']!==''?iban_groups($row['iban']):t('Keine IBAN hinterlegt','No IBAN set'))?></small></span>
             <?php if($row['archived'])badge(t('Archiviert','Archived'));else echo icon('arrow');?>
         </a>
         <?php endforeach ?>
         <p class="muted"><?=e(t('Ein Kurs kann einen eigenen Empfänger haben. Ohne eigenen wird der Standard aus „Vorgaben“ verwendet.','A class can have its own recipient. Without one, the default from “Defaults” is used.'))?></p>
     </section>
     <section class="card">
-        <h2><?=e($profile?t('Empfänger bearbeiten','Edit profile'):t('Empfänger anlegen','Create profile'))?></h2>
+        <div class="section-heading"><h2><?=e($profile?t('Empfänger bearbeiten','Edit profile'):t('Empfänger anlegen','Create profile'))?></h2>
+        <?php if($profile)duplicate_button('payment_profiles',$editProfile);?></div>
         <?php start_form('profile_save',['id'=>$editProfile]);?>
         <div class="grid two"><?php
         input('name',t('Bezeichnung','Label'),$profile['name']??'','text',true);

@@ -18,6 +18,7 @@ $expected = [
     'app/groups.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
     'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
+    'app/duplicate.php' => 80,
     'app/backup.php' => 100, 'public/setup.php' => 180,
 ];
 foreach ($expected as $file => $minLines) {
@@ -33,8 +34,12 @@ foreach (['actions','actions_settings','actions_messages','actions_config'] as $
     if (preg_match_all("/case '([a-z_]+)':/", (string)file_get_contents(APP_ROOT.'/app/'.$file.'.php'), $m))
         $dispatched = array_merge($dispatched, $m[1]);
 $offered = [];
-foreach (glob(APP_ROOT.'/views/*.php') as $view)
-    if (preg_match_all("/start_form\('([a-z_]+)'/", (string)file_get_contents($view), $m))
+// app/ as well as views/, because a form can be written out by a shared helper:
+// duplicate_button() offers the same action from eight different lists, and the
+// point of this rule is "every handler is reachable", not "every handler is
+// spelled out in a view".
+foreach (array_merge(glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/app/*.php')) as $file)
+    if (preg_match_all("/start_form\('([a-z_]+)'/", (string)file_get_contents($file), $m))
         $offered = array_merge($offered, $m[1]);
 $offered = array_values(array_unique($offered));
 ok(count($offered) > 20, 'the views offer a realistic number of actions ('.count($offered).')');
@@ -44,6 +49,18 @@ foreach ($offered as $action)
 case_('Every dispatched action is reachable from the interface');
 foreach (array_unique($dispatched) as $action)
     ok(in_array($action, $offered, true), 'the handler "'.$action.'" is offered by some view');
+
+case_('The installer offers the example data and actually fills it');
+/* An empty portal is unrecognisable: no courses, no children, every page an
+   empty state. The offer has to be on the form and the call has to be in the
+   handler - a checkbox that posts a value nothing reads is worse than none. */
+$setup = (string)file_get_contents(APP_ROOT.'/public/setup.php');
+ok(str_contains($setup, 'name="demo_fill"'), 'the setup form has the box');
+ok(str_contains($setup, 'demo_fill()'), 'and the handler calls the function behind it');
+ok(str_contains($setup, "isset(\$_POST['demo_fill'])"), 'reading what that box posts');
+// A fill that fails must not fail the install: the portal is up either way.
+ok(preg_match('/try \{ \$demo = demo_fill\(\); \}\s*catch/', $setup) === 1,
+   'and a failed fill is caught, because the portal is installed either way');
 
 case_('Every page the router allows has a view file');
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
@@ -78,6 +95,7 @@ $expected = [
     'download' => 'everyone',   // decides per file, inside serve_download()
     'accounts' => 'staff', 'payments' => 'staff', 'compose' => 'staff', 'outbox' => 'staff',
     'classes' => 'staff', 'manage' => 'staff', 'invoices' => 'staff', 'attendance' => 'staff',
+    'print' => 'staff',
     'settings' => 'admin', 'history' => 'admin',
 ];
 $list = function (string $pattern) use ($router): array {
@@ -189,6 +207,7 @@ function printable_parts(string $expr): array {
    mb_substr() or looking a code up in a settings array does not make it safe. */
 $escaping = ['e',                                                   // escapes
              'icon','link_button','qr_svg','progress_chart','avatar', // build their own markup and escape inside
+             'sidebar_nav','time_cells','select_options',           // build their own markup and escape inside
              'money','number_format','count','ceil','floor','round','array_sum','plural',  // numbers
              'fmt_date','fmt_datetime',                             // formatted dates
              'role_label','entity_label'];                          // fixed sets in code
@@ -352,6 +371,114 @@ is_same('COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=
        .' AND p.confirmed_at IS NOT NULL AND p.voided=0),0)',
         charge_paid_sql(), 'unchanged from the hand-written version it replaced');
 
+/**
+ * The named pieces of one PHP file: one entry per function and per action
+ * handler, so a rule can name the handler that is wrong rather than the file it
+ * sits in.
+ */
+function named_blocks_of(string $path): array {
+    $blocks = []; $name = basename($path).' (file)'; $buffer = '';
+    foreach (file($path) as $line) {
+        if (preg_match('/^\s*function\s+([a-z_][a-z0-9_]*)\s*\(/i', $line, $m)
+         || preg_match("/^\s*case\s+'([a-z0-9_]+)'\s*:/", $line, $m)) {
+            $blocks[$name] = ($blocks[$name] ?? '').$buffer;
+            $buffer = ''; $name = $m[1];
+        }
+        $buffer .= $line;
+    }
+    $blocks[$name] = ($blocks[$name] ?? '').$buffer;
+    return $blocks;
+}
+
+/**
+ * The SQL a stretch of PHP hands to the database.
+ *
+ * Tokenised rather than matched with a regular expression: a statement written
+ * with double quotes can hold an apostrophe - WHERE state='active' - and a
+ * regex that stops at the first quote reads half a statement and believes it.
+ * Literals joined with '.' are put back together the way the database receives
+ * them, whitespace is collapsed and the spaces around '=' are dropped, so a
+ * rule reads the statement rather than the way somebody happened to type it.
+ */
+function sql_statements_in(string $php): array {
+    $out = []; $current = null;
+    foreach (token_get_all("<?php\n".$php) as $token) {
+        if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) continue;
+        if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING) {
+            $current = ($current ?? '').substr($token[1], 1, -1);
+            continue;
+        }
+        if ($token === '.') continue;                       // the next literal continues this one
+        if ($current !== null) { $out[] = $current; $current = null; }
+    }
+    if ($current !== null) $out[] = $current;
+    return array_map(fn($sql) => (string)preg_replace('/\s*=\s*/', '=',
+                                 (string)preg_replace('/\s+/', ' ', trim($sql))), $out);
+}
+
+case_('A handler that makes an account holds the address while it checks it');
+/* Two people creating the same account at the same moment both looked, both
+   found nothing and both wrote; the second one met the UNIQUE index instead of
+   the sentence that explains the problem, and she was told to check her hosting
+   because she had tapped twice. Whoever writes an account looks the address up
+   through account_using_email() first, which is the one lookup that holds what
+   it found.
+
+   The rule asserts once per handler rather than once per lookup it happens to
+   find: the version before this one only ever spoke about lookups that existed,
+   so account_invite - which had none, and had the race - passed it in silence
+   while the line underneath announced that every handler had been examined. */
+$exempt = [
+    // Each exemption names something that must still be in the handler, so it
+    // cannot quietly outlive the reason it was granted.
+    'app/auth.php create_admin_account' => [
+        "FROM accounts WHERE role='admin' FOR UPDATE",
+        'guards on the administrator count and holds every row that scan touched'],
+    'app/demo.php demo_fill' => [
+        'if (demo_present())',
+        'writes three fixed addresses nobody typed, and refuses to run a second time'],
+];
+$examined = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/public/*.php')) as $path) {
+    foreach (named_blocks_of($path) as $name => $block) {
+        $sql = sql_statements_in($block);
+        if (!array_filter($sql, fn($s) => str_contains($s, 'INSERT INTO accounts'))) continue;
+        $handler = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+        $examined[] = $handler;
+        $flat = (string)preg_replace('/\s*=\s*/', '=', (string)preg_replace('/[ \t]+/', ' ', $block));
+        if (isset($exempt[$handler])) {
+            [$stillThere, $why] = $exempt[$handler];
+            ok(str_contains($flat, $stillThere), $handler.' is exempt because it '.$why);
+            continue;
+        }
+        $lookups = array_values(array_filter($sql, fn($s) => (bool)preg_match('/FROM accounts\b[^|]* WHERE (?:\w+\.)?email=\?/', $s)));
+        ok(str_contains($block, 'account_using_email(') || $lookups !== [],
+           $handler.' looks the address up before it writes one');
+        foreach ($lookups as $lookup)
+            ok(str_contains($lookup, 'FOR UPDATE'), $handler.' holds the address it checked: '.$lookup);
+    }
+}
+/* Named rather than counted: a count says "three of them" whether or not the
+   three are the ones that matter, and a handler that stops inserting - or a
+   file truncated to nothing - would just make the count smaller. */
+foreach (['app/actions.php account_invite', 'app/actions.php account_create',
+          'app/actions.php student_invite', 'app/auth.php create_admin_account',
+          'app/demo.php demo_fill'] as $known)
+    ok(in_array($known, $examined, true), 'the rule reached '.$known);
+foreach (array_diff($examined, ['app/actions.php account_invite', 'app/actions.php account_create',
+                                'app/actions.php student_invite', 'app/auth.php create_admin_account',
+                                'app/demo.php demo_fill']) as $new)
+    ok(false, $new.' creates accounts too and nobody has said so here - add it to the list above');
+
+case_('The lookup every account-creating handler shares actually holds');
+$lock = sql_statements_in(named_blocks_of(APP_ROOT.'/app/auth.php')['account_using_email'] ?? '');
+ok(in_array('SELECT * FROM accounts WHERE email=? FOR UPDATE', $lock, true),
+   'account_using_email() reads the row FOR UPDATE');
+throws(fn() => account_using_email('nobody@example.test'),
+       'and refuses outside a transaction, where it would hold nothing');
+does_not_throw(fn() => transactional(fn() => account_using_email('nobody@example.test')),
+               'inside one it answers');
+
 case_('A name interpolated into SQL cannot smuggle anything in');
 /* Identifiers cannot be bound as parameters, so sql_name() is the one backstop
    for every table, column and alias the application builds itself. */
@@ -368,5 +495,369 @@ ok(str_contains($refusal, 'x y'), 'and which name it was');
 case_('Callers route their identifiers through it');
 throws(fn() => charge_paid_sql('c WHERE 1=1 --'), 'charge_paid_sql checks its alias');
 throws(fn() => payment_counts_sql('p; DROP TABLE payments'), 'payment_counts_sql checks its alias');
-throws(fn() => lock_row('students; DROP TABLE students', 1), 'lock_row checks its table');
+/* Inside a transaction, because lock_row() refuses at depth 0 before it ever
+   looks at the name. Called bare it threw the refusal about the transaction and
+   the assertion passed on that, so the allowlist it claimed to be checking was
+   never reached: the message is read here rather than just the fact of a throw. */
+$lockRefusal = '';
+try { transactional(fn() => lock_row('students; DROP TABLE students', 1)); }
+catch (Throwable $e) { $lockRefusal = $e->getMessage(); }
+ok(str_contains($lockRefusal, 'as a SQL table'), 'lock_row checks its table: '.$lockRefusal);
 does_not_throw(fn() => charge_paid_sql('ch2'), 'a digit in an alias is fine, which the old table check wrongly refused');
+
+/**
+ * The names of the calls whose brackets are still open at the point where
+ * $callee is called.
+ *
+ * Tokenised, because the thing being asked about is nesting and a regular
+ * expression cannot count brackets. A '(' that follows something other than a
+ * function name - fn() =>, function () use (...) - is pushed as nothing, so it
+ * still closes correctly without pretending to be a call.
+ */
+function enclosing_calls_of(string $php, string $callee): array {
+    $tokens = array_values(array_filter(token_get_all("<?php\n".$php),
+        fn($t) => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+    $open = [];
+    foreach ($tokens as $i => $token) {
+        if (is_array($token) && $token[0] === T_STRING && $token[1] === $callee && ($tokens[$i + 1] ?? null) === '(')
+            return array_values(array_filter($open, fn($n) => $n !== null));
+        if ($token === '(') {
+            $before = $tokens[$i - 1] ?? null;
+            $open[] = (is_array($before) && $before[0] === T_STRING) ? $before[1] : null;
+        } elseif ($token === ')') array_pop($open);
+    }
+    return [];
+}
+
+case_('The suite reaches an action the same way a request does');
+/* act() dispatched actions with no transaction open. Every FOR UPDATE in every
+   handler the suites exercise was therefore locking nothing, and twenty-two
+   green suites were describing a weaker portal than the one that ships. It was
+   a refactor that noticed, not a test.
+
+   The behaviour is checked in the transactions suite. This is the general
+   version of it: whatever handle_post() wraps around dispatch_action() in the
+   running portal, act() wraps the same thing in the same order, so the next
+   wrapper somebody adds to one of them fails here by name instead of quietly
+   putting the suites back in a situation the portal is never in. */
+$handlePost = named_blocks_of(APP_ROOT.'/app/actions.php')['handle_post'] ?? '';
+$harness    = named_blocks_of(TEST_ROOT.'/harness.php');
+ok($handlePost !== '', 'handle_post() was found in app/actions.php');
+ok(($harness['act'] ?? '') !== '' && ($harness['submit'] ?? '') !== '',
+   'act() and submit() were found in tests/harness.php');
+
+$requestChain = enclosing_calls_of($handlePost, 'dispatch_action');
+/* Read before it is compared to anything. Two empty lists match each other
+   perfectly, and a rule that compared them would report agreement about a call
+   it had failed to find - which is the shape of the defect it exists to catch. */
+is_same(['transactional'], $requestChain,
+        'a real request calls dispatch_action() inside transactional() and nothing else');
+
+$harnessOnly = [
+    // Each one names why it is allowed to sit in the chain, so an exemption
+    // cannot outlive its reason: these open nothing and hold nothing.
+    'without_session_id_warning' => 'swallows the session_regenerate_id warning a command-line run cannot avoid',
+];
+$actChain = enclosing_calls_of($harness['act'], 'dispatch_action');
+foreach (array_keys($harnessOnly) as $allowed)
+    ok(in_array($allowed, $actChain, true), 'act() still goes through '.$allowed.', which '.$harnessOnly[$allowed]);
+is_same($requestChain, array_values(array_diff($actChain, array_keys($harnessOnly))),
+        'and act() puts the handler inside the same calls, in the same order');
+
+ok(str_contains($harness['submit'], 'handle_post()'),
+   'submit() calls handle_post() itself rather than a second description of it');
+is_same([], enclosing_calls_of($harness['submit'], 'dispatch_action'),
+        'and never reaches dispatch_action() around it, which would be that second description');
+
+/**
+ * Every call in a stretch of PHP, in the order the tokens run, with the two
+ * things a rule about ordering needs to know about each one: whether it is a
+ * method call, and whether its first argument is a statement that writes.
+ *
+ * Tokenised rather than matched, because the question is "which of these comes
+ * first" and a regular expression cannot answer that across a nested call.
+ */
+function action_tokens(string $php): array {
+    return array_values(array_filter(token_get_all("<?php\n".$php),
+        fn($t) => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+}
+
+function action_calls_in(string $php): array {
+    $tokens = action_tokens($php);
+    $calls = [];
+    foreach ($tokens as $i => $token) {
+        if (!is_array($token) || $token[0] !== T_STRING || ($tokens[$i + 1] ?? null) !== '(') continue;
+        // Literals joined with '.' are put back together, the way the database
+        // receives them, so SQL split over several lines still reads as SQL.
+        $literal = null;
+        for ($j = $i + 2; $j < count($tokens); $j++) {
+            $u = $tokens[$j];
+            if (is_array($u) && $u[0] === T_CONSTANT_ENCAPSED_STRING) { $literal = ($literal ?? '').substr($u[1], 1, -1); continue; }
+            if ($u === '.') continue;
+            break;
+        }
+        $previous = $tokens[$i - 1] ?? null;
+        $calls[] = [
+            'name'  => $token[1],
+            'index' => $i,
+            // Upper case and a table name, both required: a case-insensitive
+            // match on the keyword alone reads t('Update: die neuen Dateien …')
+            // as a write and puts an imaginary one ahead of the real thing.
+            'dml'   => $literal !== null
+                       && preg_match('/^(INSERT INTO|REPLACE INTO|DELETE FROM|UPDATE)\s+`?[a-z_][a-z0-9_]*`?[\s(]/', $literal) === 1,
+            'method'=> is_array($previous) && in_array($previous[0],
+                       [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_DOUBLE_COLON, T_NEW, T_FUNCTION], true),
+        ];
+    }
+    return $calls;
+}
+
+/** name => body, for every named function in one file, by matching its braces. */
+function defined_functions_in(string $path): array {
+    $tokens = array_values(array_filter(token_get_all((string)file_get_contents($path)),
+        fn($t) => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+    $out = [];
+    foreach ($tokens as $i => $token) {
+        if (!is_array($token) || $token[0] !== T_FUNCTION) continue;
+        $name = $tokens[$i + 1] ?? null;
+        if (!is_array($name) || $name[0] !== T_STRING) continue;       // a closure has no name to record
+        $depth = 0; $body = ''; $open = false;
+        for ($j = $i; $j < count($tokens); $j++) {
+            $text = is_array($tokens[$j]) ? $tokens[$j][1] : $tokens[$j];
+            if ($text === '{') { $depth++; $open = true; }
+            if ($open) $body .= $text.' ';
+            if ($text === '}' && --$depth === 0) break;
+        }
+        $out[$name[1]] = $body;
+    }
+    return $out;
+}
+
+/**
+ * The first call in $calls that writes through the main connection.
+ *
+ * "Writes" is derived rather than listed: a call is one if its own first
+ * argument is an INSERT/UPDATE/DELETE, or if it reaches a function that has
+ * one. A hand-kept list of write helpers would stop matching the code the first
+ * time somebody adds a helper, and it would do it silently - which is exactly
+ * the shape of failure this rule exists to prevent.
+ */
+function first_main_write(array $calls, array $writers): ?array {
+    foreach ($calls as $call) {
+        // The counter is a second connection on purpose, so its write is not
+        // the main connection's and does not belong in this ordering at all.
+        if ($call['name'] === 'run_counter') continue;
+        if ($call['dml']) return $call;
+        if (!$call['method'] && isset($writers[$call['name']])) return $call;
+    }
+    return null;
+}
+
+case_('A throttle is counted before its action writes anything');
+/* throttle() counts on a second connection, deliberately, so a refused attempt
+   is not refunded by the rollback of the action it guarded. That second
+   connection is also why the order matters: once the action's transaction has
+   written a row on the main connection, a statement sent down the counter
+   connection is waiting on locks that only the main connection can release, and
+   the main connection is waiting on that statement to return. Nothing times out
+   and nothing rolls back - the request stops.
+
+   Every one of these is the first statement of its case today, and they are
+   correct today. This rule is the lock on that, because the suites cannot see
+   it: act() reaches five of the six with a transaction already open and the run
+   is green either way. */
+
+$counterOnly = [
+    // Named with what must still be true of them, so the exemption cannot
+    // outlive its reason: these write, but never on the main connection.
+    'throttle'       => 'counts the attempt',
+    'throttle_clear' => 'forgets the attempts once the action has committed',
+];
+foreach ($counterOnly as $name => $why) {
+    $body = defined_functions_in(APP_ROOT.'/app/auth.php')[$name] ?? '';
+    ok($body !== '', $name.'() was found in app/auth.php, where it '.$why);
+    $calls = action_calls_in($body);
+    ok((bool)array_filter($calls, fn($c) => $c['name'] === 'run_counter'),
+       $name.'() goes through run_counter(), which is what keeps it off the main connection');
+    ok(!array_filter($calls, fn($c) => $c['dml'] && $c['name'] !== 'run_counter'),
+       'and writes nothing on the main connection, so excluding it here is still honest');
+}
+
+/* Which functions write, worked out by following the calls rather than by
+   listing the answers. run(), one(), rows() and scalar() all hand a statement
+   to the main connection, but the statement is their caller's, so none of them
+   is a writer in itself - the caller that supplies the INSERT is. */
+$functionBodies = [];
+foreach (glob(APP_ROOT.'/app/*.php') as $file) $functionBodies += defined_functions_in($file);
+$functionCalls = array_map('action_calls_in', $functionBodies);
+$writers = [];
+do {
+    $grew = false;
+    foreach ($functionCalls as $name => $calls) {
+        if (isset($writers[$name]) || isset($counterOnly[$name])) continue;
+        if (first_main_write($calls, $writers) === null) continue;
+        $writers[$name] = true; $grew = true;
+    }
+} while ($grew);
+
+/* The derivation is read before it is used. A rule that asked "does a write
+   come after the throttle" would pass perfectly on a set of writers that turned
+   out to be empty, and would go on passing for ever. These are named rather
+   than counted for the same reason the account rule is: a count stays large
+   while the entries that matter drop out of it. */
+foreach (['audit' => 'writes the change log', 'set_setting' => 'writes the settings table',
+          'notify' => 'writes a notification row', 'record_consent' => 'writes the consent log',
+          'send_account_token' => 'writes an auth token', 'request_contact' => 'writes a contact request',
+          'direct_thread' => 'creates the conversation', 'notify_payment' => 'queues mail',
+          'queue_mail' => 'writes the outbox'] as $name => $what)
+    ok(isset($writers[$name]), $name.'() is recognised as writing on the main connection, because it '.$what);
+foreach (['run' => 'hands over whatever statement its caller gave it',
+          'one' => 'reads', 'rows' => 'reads', 'scalar' => 'reads',
+          'throttle' => 'writes on the counter connection, not this one'] as $name => $why)
+    ok(!isset($writers[$name]), $name.'() is not counted as a main-connection write, because it '.$why);
+
+/* Named rather than counted. A seventh throttle added to a handler fails here
+   under its own name and has to be looked at; a total would simply become
+   seven and nobody would know which one was new. */
+$throttled = [
+    'app/actions_messages.php message_send'   => 'a family writing a message',
+    'app/actions_messages.php contact_request'=> 'a family asking to write to somebody',
+    'app/actions_config.php payment_remind'   => 'the reminder run, which sends mail',
+    'app/actions_config.php feedback_send'    => 'a problem report, which can carry a file',
+    'app/actions_settings.php smtp_test'      => 'the SMTP test, which talks to the mail server',
+    'app/actions_settings.php email_change'   => 'a change of address, which checks a password',
+    // Not a dispatcher case: the request's own throttles, before the
+    // transaction is opened at all. Same ordering, same reason, so it is held
+    // to the same rule rather than left as the one place nobody checks.
+    'app/actions.php handle_post'             => 'the login and account-security limits',
+];
+$found = [];
+foreach (['actions', 'actions_settings', 'actions_messages', 'actions_config'] as $unit) {
+    $path = APP_ROOT.'/app/'.$unit.'.php';
+    foreach (named_blocks_of($path) as $name => $block) {
+        $calls = action_calls_in($block);
+        $throttles = array_values(array_filter($calls, fn($c) => $c['name'] === 'throttle' && !$c['method']));
+        if (!$throttles) continue;
+        $where = 'app/'.$unit.'.php '.$name;
+        $found[] = $where;
+        ok(isset($throttled[$where]), $where.' throttles, and this rule knows about it');
+
+        $write = first_main_write($calls, $writers);
+        /* Read before it is compared. Without this, a handler whose writes the
+           derivation failed to recognise - or a handler emptied by a bad edit -
+           reports that its throttle comes first, having found nothing to come
+           first of. */
+        ok($write !== null,
+           $where.' writes something on the main connection for the throttle to come before'
+           .($write ? ': '.$write['name'].'()' : ''));
+        if ($write === null) continue;
+        ok($write['name'] !== 'throttle', $where.': the write found is not the throttle itself');
+        is_same(true, $throttles[0]['index'] < $write['index'],
+                $where.': throttle() is counted before '.$write['name'].'()'
+                .' — '.($throttled[$where] ?? 'not a handler this rule knows'));
+    }
+}
+foreach (array_keys($throttled) as $where)
+    ok(in_array($where, $found, true), 'the rule reached '.$where);
+
+/** Where the first string literal containing $fragment sits in the token run. */
+function refusal_index_in(string $php, string $fragment): ?int {
+    foreach (action_tokens($php) as $i => $token)
+        if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING && str_contains($token[1], $fragment))
+            return $i;
+    return null;
+}
+
+/** Where the first call to $callee sits in the same token run. */
+function call_index_in(string $php, string $callee): ?int {
+    foreach (action_calls_in($php) as $call)
+        if ($call['name'] === $callee && !$call['method']) return $call['index'];
+    return null;
+}
+
+case_('A handler that refuses a change does so before it writes, not after');
+/* Six assertions in the enrolment, contacts and security suites were written to
+   prove this, and they did prove it: act() ran in autocommit, so a handler that
+   wrote first and checked afterwards left the half-written row behind for them
+   to find. act() now opens a transaction, the way a real request does, and the
+   rollback puts that row back whether the handler checked first or not. The
+   assertions are still true and still worth having - they describe what the
+   trainer sees after a refusal - but they no longer measure the ordering, so
+   the ordering is asserted here instead, once, rather than three times over in
+   three suites that would drift apart.
+
+   Textual order is execution order for straight-line code, which all of these
+   are; student_invite is the one exception, and there the refusal sits in the
+   branch taken when the address is already known while the account INSERT sits
+   in the other, so the two cannot both run and the write that is common to both
+   paths still comes after. */
+$orderings = [
+    'app/actions_config.php class_save' => [
+        // The refusal is in class_days_from_post(), checked separately below,
+        // so what matters here is that class_save calls it before it writes.
+        'call'    => 'class_days_from_post',
+        'guards'  => 'a meeting day whose end is before its start',
+        'suite'   => 'enrolment.php "and nothing was saved"',
+    ],
+    'app/enrolment.php request_enrolment' => [
+        'refusal' => 'wartet schon',
+        'guards'  => 'a second request for a course that already has one waiting',
+        'suite'   => 'enrolment.php "still just the one"',
+    ],
+    'app/enrolment.php decide_request' => [
+        'refusal' => 'wurde schon entschieden',
+        'guards'  => 'a decision taken twice',
+        'suite'   => 'enrolment.php "the tariff did change, once"',
+    ],
+    'app/actions.php contact_delete' => [
+        'refusal' => 'mindestens eine Kontaktperson',
+        'guards'  => 'removing the only person left to ring',
+        'suite'   => 'contacts.php "and is still there"',
+    ],
+    'app/actions.php student_invite' => [
+        'refusal' => 'Konto der Verwaltung',
+        'guards'  => 'handing a family a login that belongs to the management',
+        'suite'   => 'contacts.php "leaving the child unattached rather than half-attached"',
+    ],
+    'app/actions.php account_invite' => [
+        'refusal' => 'schon ein Konto',
+        'guards'  => 'inviting an address that already has an account',
+        'suite'   => 'security.php "the address still has exactly one account"',
+    ],
+];
+foreach ($orderings as $where => $rule) {
+    [$file, $name] = explode(' ', $where);
+    $block = named_blocks_of(APP_ROOT.'/'.$file)[$name] ?? '';
+    ok($block !== '', $where.' was found, so this rule has something to read');
+    if ($block === '') continue;
+
+    $anchor = isset($rule['call'])
+        ? call_index_in($block, $rule['call'])
+        : refusal_index_in($block, $rule['refusal']);
+    $anchorName = $rule['call'] ?? $rule['refusal'];
+    /* Read before it is compared, the same way the account rule reads its
+       lookups. A refusal whose wording changed would otherwise be "not found",
+       and "not found" compares happily against a write it also did not find. */
+    ok($anchor !== null, $where.' still refuses '.$rule['guards'].', by '.$anchorName);
+
+    $write = first_main_write(action_calls_in($block), $writers);
+    ok($write !== null, $where.' writes something for that refusal to come before'
+       .($write ? ': '.$write['name'].'()' : ' — nothing recognised as a write, so this rule proved nothing here'));
+
+    if ($anchor === null || $write === null) continue;
+    is_same(true, $anchor < $write['index'],
+            $where.': '.$rule['guards'].' is refused before '.$write['name'].'() runs'
+            .' — the behaviour is in '.$rule['suite']);
+}
+
+case_('The day check class_save leans on is a check, not a write');
+/* class_save is only in the list above because it hands the question to
+   class_days_from_post(). That is worth something only for as long as that
+   function stays a pure check: the moment it writes, "called before the write"
+   stops meaning "nothing had been written". */
+$dayCheck = defined_functions_in(APP_ROOT.'/app/validate.php')['class_days_from_post'] ?? '';
+ok($dayCheck !== '', 'class_days_from_post() was found in app/validate.php');
+ok(refusal_index_in($dayCheck, 'Das Ende muss nach dem Beginn liegen') !== null,
+   'and it is the one that refuses an end before the start');
+is_same(null, first_main_write(action_calls_in($dayCheck), $writers),
+        'and it writes nothing itself, so calling it first really does come before every write');

@@ -175,7 +175,25 @@ function plural(int $n, string $de1, string $deN, string $en1, string $enN): str
     return $n.' '.($n===1 ? t($de1,$en1) : t($deN,$enN));
 }
 function money(?int $v): string { return number_format(($v??0)/100,2,locale()==='de'?',':'.',locale()==='de'?'.':',').' €'; }
-function amount_input(?int $v): string { return $v===null ? '' : number_format($v/100,2,'.',''); }
+/**
+ * An amount as it goes back into a box she types in.
+ *
+ * With the decimal point of the machine rather than of the country, the same
+ * 19,80 € she had just typed came back as 19.80 on a German form beside a list
+ * that said 19,80 € - and a point is where a reader looks for a thousands
+ * separator. cents() takes either, so nothing is lost by writing it her way.
+ * No thousands separator at all: that is the one thing cents() refuses.
+ */
+/**
+ * An IBAN in groups of four, the way it is printed on everything else.
+ *
+ * Stored without spaces, because that is the value, and read in fours, because
+ * that is how somebody copies twenty characters into a banking app without
+ * losing their place. The rule lived in two views and was missing from the one
+ * document where it matters most - the invoice a family types the number from.
+ */
+function iban_groups(string $iban): string { return trim(chunk_split(str_replace(' ', '', $iban), 4, ' ')); }
+function amount_input(?int $v): string { return $v===null ? '' : number_format($v/100,2,locale()==='de'?',':'.',''); }
 // Stored timestamps are UTC (now()). DATE columns are calendar dates and must not be
 // shifted; DATETIME values are converted to the configured timezone before display,
 // otherwise a record written after 22:00 UTC shows the previous day in Vienna.
@@ -231,6 +249,23 @@ function audit(string $action,string $type,?int $id=null): void {
 }
 function seal(string $plain): string { $iv=random_bytes(12); $tag=''; $cipher=openssl_encrypt($plain,'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,$iv,$tag); if($cipher===false) throw new RuntimeException('Encryption failed'); return base64_encode($iv.$tag.$cipher); }
 function unseal(string $value): string { $b=base64_decode($value,true); if($b===false || strlen($b)<28) throw new RuntimeException('Invalid encrypted data'); $plain=openssl_decrypt(substr($b,28),'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,substr($b,0,12),substr($b,12,16)); if($plain===false) throw new RuntimeException('Cannot decrypt with this app key'); return $plain; }
+/**
+ * The name a copy gets: "Monatsbeitrag (Kopie)", then "(Kopie 2)".
+ *
+ * Numbered against the names already in use, because two rows reading exactly
+ * the same on a list is a choice nobody can make. The name is shortened rather
+ * than the suffix, so the part that says it is a copy never falls off the end.
+ */
+function copy_name(string $name, array $taken=[], int $max=120): string {
+    $taken = array_map('mb_strtolower', $taken);
+    for ($n = 1; $n <= 99; $n++) {
+        $tail = t(' (Kopie', ' (copy') . ($n > 1 ? ' ' . $n : '') . ')';
+        $candidate = mb_substr($name, 0, max(1, $max - mb_strlen($tail))) . $tail;
+        if (!in_array(mb_strtolower($candidate), $taken, true)) return $candidate;
+    }
+    return mb_substr($name, 0, $max);
+}
+
 function email_value(string $value): string { $v=mb_strtolower(trim($value)); if(!filter_var($v,FILTER_VALIDATE_EMAIL) || strlen($v)>254) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.')); return $v; }
 function choose(string $value,array $allowed): string { if(!in_array($value,$allowed,true)) throw new UserError(t('Ungültige Auswahl.','Invalid choice.')); return $value; }
 /**

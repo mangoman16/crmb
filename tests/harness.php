@@ -315,15 +315,29 @@ function make_student(array $over=[]): int {
     ], $over));
 }
 
+/**
+ * A tariff and its rates.
+ *
+ * 'price_cents' is a convenience for the common case of one rate at the tariff's
+ * normal interval; 'rates' takes an interval => cents map for a tariff that
+ * offers a choice. The price lives in tariff_rates, never on the tariff itself,
+ * so a suite that sets both cannot describe a tariff the application could not.
+ */
 function make_tariff(array $over=[]): int {
     static $n = 0; $n++;
-    return fixture('tariffs', array_merge([
+    $rates = $over['rates'] ?? null;
+    $price = (int)($over['price_cents'] ?? 4500);
+    unset($over['rates'], $over['price_cents']);
+    $id = fixture('tariffs', array_merge([
         'name' => 'Tarif '.$n, 'description' => '', 'class_id' => null,
-        'price_cents' => 4500, 'period' => 'recurring', 'interval_months' => 1,
+        'period' => 'recurring', 'interval_months' => 1,
         'due_day' => 1, 'grace_days' => 7, 'first_period' => 'prorate',
-        'discount_months' => 0, 'discount_kind' => 'percent', 'discount_value' => 0,
         'due_days' => 14, 'sort_order' => 0, 'archived' => 0, 'is_demo' => 0,
     ], $over));
+    $interval = (int)($over['interval_months'] ?? 1);
+    foreach ($rates ?? [$interval => $price] as $months => $cents)
+        fixture('tariff_rates', ['tariff_id' => $id, 'interval_months' => (int)$months, 'price_cents' => (int)$cents]);
+    return $id;
 }
 
 /**
@@ -449,6 +463,43 @@ function render_view(string $page, array $query = []): string {
     }
 }
 
+/**
+ * The fields one time box posts, written as the time a person would say.
+ *
+ * The form posts an hour and a minute separately, because <input type="time">
+ * renders in the language of the device rather than of the page. A suite should
+ * still read as "16:00", so it says that and this splits it.
+ *
+ *   act('x', ['a'=>1] + time_post('starts_at', '16:00'));
+ *   act('y', time_post('day_starts_at', ['16:00', '18:00', '']));
+ */
+function time_post(string $name, string|array $value): array {
+    if (is_array($value)) {
+        $hours = []; $minutes = [];
+        foreach ($value as $one) { [$h, $m] = time_parts((string)$one); $hours[] = $h; $minutes[] = $m; }
+        return [$name.'_h' => $hours, $name.'_m' => $minutes];
+    }
+    [$hour, $minute] = time_parts($value);
+    return [$name.'_h' => $hour, $name.'_m' => $minute];
+}
+
+/**
+ * The discount one family was given on one enrolment.
+ *
+ * It lives on the enrolment rather than on the tariff, because a discount on
+ * the tariff is a property of the price list: giving one child three months at
+ * half price used to mean inventing a tariff nobody else could be put on.
+ */
+function give_discount(int $classId, int $studentId, int $months, string $kind, int $value, string $note=''): void {
+    run('UPDATE class_students SET discount_months=?, discount_kind=?, discount_value=?, discount_note=?'
+        .' WHERE class_id=? AND student_id=?', [$months, $kind, $value, $note, $classId, $studentId]);
+}
+
+/** Which of its tariff's intervals this enrolment is billed on; 0 = the usual. */
+function bill_every(int $classId, int $studentId, int $months): void {
+    run('UPDATE class_students SET interval_months=? WHERE class_id=? AND student_id=?', [$months, $classId, $studentId]);
+}
+
 /** Populate $_POST for an action, including the fields handle_post() requires. */
 function post_data(array $fields): void {
     $_POST = $fields;
@@ -470,18 +521,44 @@ function test_load_actions(): void {
  * of it. The CSRF token, the throttles and the duplicate-submission claim belong
  * to handle_post() and are left out on purpose: they are the request's business,
  * not the action's, and they have their own checks in the security suite.
+ *
+ * The transaction is not left out. Every action that reaches dispatch_action()
+ * in the running portal is already inside one, and a locking read outside a
+ * transaction locks nothing - so a suite that dispatched bare would be proving
+ * the handlers work in a situation they are never in.
  */
 function act(string $action, array $fields = []): array {
     test_load_actions();
     $_POST = $fields;
-    // Signing in and out regenerate the session id, which PHP cannot do in a
-    // command-line run that has already printed a line. That is a property of
-    // the runner, not of the action being tested, so only that one warning is
-    // swallowed and everything else still reports.
+    return without_session_id_warning(fn() => transactional(fn() => dispatch_action($action)));
+}
+
+/**
+ * Run one action the way the browser does: through handle_post(), so the CSRF
+ * check, the rate limits and the duplicate-submission claim all apply.
+ *
+ * act() leaves those out on purpose. A defect that lives in the seam between
+ * the request's guards and the action itself - a throttle counted before the
+ * password is known and never cleared afterwards - is invisible to anything
+ * that exercises only one side of it.
+ */
+function submit(string $action, array $fields = []): array {
+    test_load_actions();
+    $_POST = $fields + ['action' => $action, 'csrf' => csrf(), 'request_id' => bin2hex(random_bytes(32))];
+    return without_session_id_warning(fn() => handle_post());
+}
+
+/**
+ * Signing in and out regenerate the session id, which PHP cannot do in a
+ * command-line run that has already printed a line. That is a property of the
+ * runner, not of the code under test, so only that one warning is swallowed and
+ * everything else still reports.
+ */
+function without_session_id_warning(callable $fn): mixed {
     $previous = set_error_handler(static function (int $no, string $message) use (&$previous) {
         if (str_contains($message, 'session_regenerate_id')) return true;
         return $previous ? $previous(...func_get_args()) : false;
     });
-    try { return dispatch_action($action); }
+    try { return $fn(); }
     finally { restore_error_handler(); }
 }

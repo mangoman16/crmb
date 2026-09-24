@@ -24,10 +24,14 @@ tests/mariadb-local.sh            # the same suite against a real MariaDB
 Anything else and the manual sweep below is a waste of your time — fix that
 first.
 
-The run ends by printing what its SQLite translation could **not** cover
-(foreign keys on three tables, and the MySQL-dialect backup). Those lines are
-not a warning, they are the honest edge of the measurement: `tests/mariadb-local.sh`
-is what covers them, and it is the run to quote when you say a release works.
+The run ends by printing what it could **not** cover. On SQLite that is foreign
+keys on three tables and the MySQL-dialect backup, which `tests/mariadb-local.sh`
+covers — it is the run to quote when you say a release works. On MariaDB it is
+the data carried across by migrations 015 and 016: the `migrations` suite has to
+apply the migrations in two halves with rows in between, which the run's own
+database cannot do because it has all of them applied already, so it does that in
+a second process against its own SQLite file whichever engine the run is using.
+Those lines are not a warning, they are the honest edge of the measurement.
 
 | Suite | What it holds the line on |
 |---|---|
@@ -44,6 +48,7 @@ is what covers them, and it is the run to quote when you say a release works.
 | `install` | The browser installer, migrations applying themselves, the refusals |
 | `invoices` | § 11 UStG details in the produced document, numbering, status |
 | `messaging` | Who may read a conversation and who may write to whom |
+| `migrations` | An update carries the data with it: prices, discounts, addresses |
 | `performance` | Query counts, so a page does not issue one query per row |
 | `security` | Authorisation boundaries, credentials, what must not leak |
 | `settings` | Every setting has a type and a usable default |
@@ -102,10 +107,86 @@ If you changed one thing, these six are the ones that catch a broken deploy.
 
 ---
 
+## Twenty minutes, from nothing to an invoice
+
+The script to follow when you want to see the whole thing work, in order, with
+nothing to invent as you go. Everything it needs is either created by the
+installer or typed in below. Sections 3 onwards are the exhaustive list; this is
+the path through it.
+
+**0 · Put it up.** Open `setup.php`, give it the database details, a name, an
+address and a password — and **tick „Beispieldaten anlegen"**. The finish page
+prints three sign-ins and one password for all of them; write the password down,
+it is not shown again. (From a shell: `php bin/console.php demo:fill` prints the
+same three and the password.)
+
+| You sign in as | Address | What you are testing |
+|---|---|---|
+| Administrator | the address you just chose | everything |
+| `trainerin@beispiel.test` | trainer | what a trainer may *not* see |
+| `familie.hofer@beispiel.test` | family | what a parent sees |
+| `familie.berger@beispiel.test` | family | a second family, to prove separation |
+
+**1 · Look around as the administrator.** The overview shows active children,
+outstanding money and this week's sessions. Nothing is empty, nothing says
+„Noch keine …".
+
+**2 · Make a course the way a club does.** **Kurse → + Kurs anlegen**: name it
+`Training mit TrainerIn`, a Wednesday, 18:00 to 20:00. Save.
+
+**3 · Put its real price list in.** On the course, **Tarife → + Neu**. Make
+`Erwachsene`, press **+ Weitere Zahlungsweise** once, and enter *12 Monate ·
+252* and *6 Monate · 162*. Usual interval: jährlich. Wer mittendrin einsteigt:
+**anteilig nach vollen Monaten**. Add a discount template `Partnerschule` ·
+dauerhaft · Prozent · 20. Save. The list should read
+„252,00 € jährlich · 162,00 € alle 6 Monate".
+
+**4 · Add a member.** **Schüler → + Schüler anlegen**: a name, a date of birth,
+an address to write to, aktiv. Save — the page then lists what is still to do.
+Fill in the **Anschrift** and **Telefonnummer**, and add an emergency contact.
+
+**5 · Enrol them and check the arithmetic.** On the child, **Kurse → In einen
+Kurs eintragen**, pick the course and `Erwachsene`. Open *Tarif, Zahlungsweise
+und Rabatt*, set **Dabei seit** to the 12th of last November and Zahlungsweise
+to jährlich. Save. Then **Beiträge → Beiträge anlegen** for that November: it
+should offer **42,00 €** — November and December of a 252 € year. Create it.
+
+**6 · Invoice it, and watch it refuse first.** On the child, **Rechnungen**.
+It will say what is missing: the operator's name and address under
+**Einstellungen → Betrieb**, and the IBAN on **Verwaltung → Zahlungsempfänger →
+Vereinskonto**. Fill both in, come back, and issue the invoice. Download the
+PDF: one page, the right Leistungszeitraum (12.11. – 31.12., not the whole
+year), the IBAN in groups of four, and the exemption note.
+
+**7 · Print the two sheets.** **Schüler → Leeres Formular drucken** and, on the
+child, **Datenblatt drucken**. Each is one sheet of A4 with headers and footers
+turned off in the print dialog. The blank one carries the price list as lines to
+tick.
+
+**8 · Be somebody else.** **Konten → „Portal als diese Person ansehen"** on
+Familie Berger. A red strip names whose eyes you are using; the portal shows
+their children only. **Ansicht beenden** gives you yourself back.
+
+**9 · Sign in as a family for real.** Sign out, sign in as
+`familie.hofer@beispiel.test`. Four menu entries, their own children only, their
+own charges. Try `?page=student&id=` with a number that is not theirs: it
+answers 404.
+
+**10 · Make a login without email.** Back as the administrator, **Konten → +
+Konto direkt anlegen (ohne E-Mail)**. Give it a name, an address and a password.
+Sign out, sign in as it — it works with no SMTP configured anywhere. If the
+address matches a child's, that child is attached to it.
+
+**11 · Put it back.** **Einstellungen → System → „Beispieldaten entfernen"**.
+Every invented child, course and charge goes; anything you made yourself stays.
+
+---
+
 ## Preparation for the full sweep
 
 - [ ] **2.1** **Einstellungen → System → „Beispieldaten anlegen"** on a portal
-  with no real students. It creates three courses, fifteen children aged 7 to
+  with no real students, or the box on the setup page, which does the same thing
+  at install and saves the trip. It creates three courses, fifteen children aged 7 to
   41, contacts, enrolments, charges, payments, attendance, absences, news and a
   conversation. The page then says example data is present.
 - [ ] **2.2** Press it a second time. It refuses, and says so. It does not
@@ -130,6 +211,33 @@ Skip on an ordinary code change; do all of it before a release.
   written.
 - [ ] **3.4** Correct details. `config/config.php` is written, every migration
   is recorded, exactly one administrator exists, and the sign-in page is served.
+- [ ] **3.4a** Tick **„Beispieldaten anlegen"** on the setup page. The finish
+  page reports what was made and prints three sign-ins with one password for all
+  of them. That password is shown once and never again.
+- [ ] **3.4b** The same install with the box unticked creates nothing but the
+  administrator, which is what a portal about to hold real data wants.
+- [ ] **3.4c** `php bin/console.php demo:fill` prints the three addresses and
+  the password too. (It used to say „the password printed above" and print no
+  password, which left three accounts nobody could sign in to.)
+- [ ] **3.4d** Two tabs on `setup.php`, and the honest limit of what one person
+  can prove here. Open the setup page in two tabs, fill both in completely with
+  **different** administrator addresses, then submit the first and afterwards
+  the second. The second tab answers **„Schon eingerichtet — Dieses Portal ist
+  fertig installiert."**, and **Konten** afterwards lists **exactly one**
+  administrator: yours. What must never happen is two administrators, or a page
+  of database words instead of that sentence.
+  > This walk is sequential, and what was fixed is the *simultaneous* case: two
+  > submissions reaching the database in the same instant, where both used to
+  > count the administrators, both counted none, and both wrote one. Sequentially
+  > the second tab is refused whichever way the guard is written, so passing this
+  > step proves the outcome and **not** the lock. One person with one browser
+  > cannot press two buttons in the same millisecond, and a step that pretended
+  > otherwise would be a step she cannot perform. The lock itself was measured
+  > with two database connections against MariaDB 10.11.14; no manual walk
+  > replaces that. With a second person and a second device, both tapping
+  > **Installieren** on a count of three is worth one try, and the only thing to
+  > read is the administrator count in **Konten**. **Two administrators after an
+  > install is the symptom**, whenever it appears and however it was produced.
 - [ ] **3.5** Open `setup.php` again. It answers 403 and creates nothing.
 - [ ] **3.6** `bash bin/update.sh --check` on an installed copy reports the file
   version, the database version and whether anything is pending, and changes
@@ -139,11 +247,23 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **3.8** A real update: `bash bin/update.sh` pulls, installs dependencies,
   applies migrations and prints the status. Afterwards **Einstellungen →
   System** shows the new version for both the files and the database.
+- [ ] **3.8a** The same update on a portal that has **real rows in it**, not an
+  empty database: before updating, write down one tariff's price, one child who
+  is getting a discount and the amount they pay, and the address one family
+  signs in with. Afterwards, the tariff shows that price as its first interval,
+  that child's enrolment shows the same discount with the same amount, and that
+  family signs in with the same address and the same password. (The `migrations`
+  suite checks this on SQLite; this is the same check on the engine she is
+  actually running.)
 - [ ] **3.9** Put an older package over a newer database. The portal stays
   closed and says why, instead of guessing.
 - [ ] **3.10** Switch **Wartungsmodus** on from **Einstellungen → System**.
   Everybody else sees the closed page; you still get in, with the red strip at
   the top offering the way out.
+- [ ] **3.11** Re-count the fact table in `PROJECT.md` — tables, migrations,
+  settings, suites, undo entities and the lines of code — against the tree
+  you are about to release. Not a test, but it belongs to whoever cuts the
+  release: those counts have gone stale twice by being nobody's job.
 
 ---
 
@@ -151,7 +271,9 @@ Skip on an ordinary code change; do all of it before a release.
 
 - [ ] **4.1** Sign in as the trainer. **Verwaltung**, **Kurse**,
   **Anwesenheit**, **Beiträge**, **Rechnungen**, **Konten** and **Postausgang**
-  are all in the menu.
+  are all in the menu — **Kurse** and **Anwesenheit** inside **Training**,
+  **Beiträge** and **Rechnungen** inside **Geld**, **Konten** and
+  **Postausgang** inside **System**.
 - [ ] **4.2** As the trainer, **Einstellungen** and **Änderungen** are *not* in
   the menu, and typing their addresses by hand is refused.
 - [ ] **4.3** As the administrator, everything the trainer can reach, you can
@@ -163,15 +285,148 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **4.6** Wrong password repeatedly (more than ten times for one address,
   within fifteen minutes) is refused with „Zu viele Versuche", and a correct
   password immediately afterwards is refused too — that is the point.
+- [ ] **4.6a** The same address signs in **correctly** twelve times in a row —
+  sign out, sign in, twelve times, which is one afternoon of three children
+  sharing a phone. All twelve work. A correct password must never produce „Zu
+  viele Versuche": the attempt is counted before the password can be checked,
+  and a sign-in that succeeds clears that count again.
+- [ ] **4.6b** Wrong password for one address until „Zu viele Versuche"
+  appears, then „Passwort vergessen", open the link and set a new password. You
+  are signed in; sign out and sign in again with the new password and it works
+  straight away, rather than being refused for the rest of the fifteen minutes.
+  *This one needs email actually working first* — SMTP set up (15.3) and the
+  mail worker running (1.4), or the link is written and never sent. If you would
+  rather not wait for mail, **Postausgang** shows the message that was queued.
+- [ ] **4.6c** The wait itself, which is the only step here that takes fifteen
+  minutes and the only one that proves the sentence „Bitte später erneut
+  versuchen" is true. Type the wrong password for one address until „Zu viele
+  Versuche" appears. Now put the phone down for **sixteen minutes** by the
+  clock — longer than fifteen, not exactly fifteen. Come back and sign in with
+  the **right** password. You are in, first try. If it still says „Zu viele
+  Versuche", the lockout never ends on its own and a family that mistyped a
+  password is shut out of her portal until somebody with a database touches it.
+  Nothing automated can check this: the suite ages the stored counter instead of
+  waiting, so the clock itself is only ever proven here.
+- [ ] **4.6d** Not a step to perform — a symptom to recognise. „Zu viele
+  Versuche" for an address where nobody typed a wrong password ten times, and
+  for **more than one family at the same time**, is not the lockout above:
+  everyone who reaches the portal through the same internet address — one
+  shared connection at the hosting, or one mobile network — shares a single
+  budget of attempts, and attempts that are already being refused spend it too.
+  Waiting a quarter of an hour clears it. If it keeps coming back, it is the
+  connection and not the portal — a question for the hosting, not something to
+  go looking for in the accounts.
+- [ ] **4.6e** Spelling the address differently must not buy a fresh ten
+  guesses. **Only meaningful on MariaDB or MySQL.** On the test suite's SQLite
+  file this step proves nothing at all — see the note below before you run it.
+  Take a family address with an accented letter available in it, say
+  `familie@beispiel.at`. Type the **wrong** password ten times at `familie@…`
+  until „Zu viele Versuche" appears. Now type the same address **with an
+  accent** — `famílie@…` — and any password at all. It must say **„Zu viele
+  Versuche"** as well. If it says „Anmeldung nicht möglich" instead, the
+  accented spelling has started its own fresh ten, and whoever is guessing at
+  that family's password has as many sets of ten as they can invent spellings.
+  > Why the engine decides this: the portal's database compares addresses under
+  > `utf8mb4_unicode_ci`, which reads `i` and `í`, upper and lower case, `ss`
+  > and `ß` as the same letter, so both spellings find the one family and the
+  > attempt is counted against that family. The SQLite translation the default
+  > suite runs on compares the bytes, finds two unrelated addresses, and cannot
+  > show the fault either way — which is why `php tests/run.php` prints
+  > *„two spellings of one address sharing a throttle bucket (needs the MySQL
+  > collation)"* in its own footer. That line is the reason this step exists.
+  > Walk it against the portal on the real server, or after
+  > `tests/mariadb-local.sh`, and never against the SQLite run.
+  > Afterwards either wait the quarter of an hour or sign in once correctly to
+  > clear the count — a sign-in that works empties that counter, which is 4.6a.
+- [ ] **4.6f** A limit that trips **inside** an action must refuse, not hang.
+  **Only meaningful on MariaDB or MySQL** — it needs two real connections, and
+  the SQLite file the default suite runs on cannot show it. Sign in as any
+  family, open **Mein Konto → „E-Mail-Adresse ändern"**, and send a
+  confirmation link to a new address **six times in a row**, giving the correct
+  current password each time. The sixth must come back with **„Zu viele
+  Versuche. Bitte später erneut versuchen."** within a second or so, and the
+  address at the top of the page must still be the old one.
+  > What this is watching for: the attempt counter is written on a **second**
+  > database connection on purpose, so that a refused attempt is not handed
+  > back by the rollback of the action it was guarding. That second connection
+  > is also why the order inside the handler matters. Every one of these
+  > counters is taken before the action writes anything. If one were ever moved
+  > below a write, the action's own transaction would be holding rows on the
+  > first connection while the second connection waited for them, and the
+  > second connection is the one the first is waiting on to return. Nothing
+  > times out and nothing rolls back: the page simply never finishes loading,
+  > and the only visible symptom is a spinner. A browser tab that hangs here —
+  > rather than a sentence in German — is that fault, and it is worth stopping
+  > the release for.
+  > The ordering itself is locked by the `structure` suite, which names all six
+  > places it applies (sending a message, asking to write to somebody, the
+  > payment reminder run, a problem report, the SMTP test and this address
+  > change). This step is the half no suite can reach: that the portal actually
+  > answers under a real engine with real connections.
+  > Afterwards, wait the hour or use a different account — this counter is
+  > deliberately not cleared by anything you can do from the portal.
 - [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
-  once and not twice.
-- [ ] **4.8** Suspending an account in **Konten** stops that person signing in.
+  once and not twice. Asking for a link ten times for one address is still
+  refused afterwards — that counter is never cleared, because typing an address
+  proves nothing about who typed it.
+- [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
+  the privacy notice — carries the line about the privacy notice, the necessary
+  cookies and the data not being sold or passed on, above the footer links, and
+  it reads at 320px without the page scrolling sideways.
+- [ ] **4.8** **Konten → + Konto direkt anlegen (ohne E-Mail)** as an
+  administrator: a name, an address and a password of at least 12 characters.
+  The new account signs in straight away with **no SMTP configured at all**, and
+  a weak password is refused here exactly as everywhere else.
+- [ ] **4.8a** A trainer is not offered that form and cannot post to it.
+- [ ] **4.8b** Creating one with role *Schüler* at an address a child already
+  carries attaches that child to it. Creating a trainer or administrator
+  attaches nobody.
+- [ ] **4.8c** The same form with an address that already has an account says
+  „Diese Adresse hat schon ein Konto." Then tap **Anlegen** twice in quick
+  succession: the second tap says **the same sentence**, word for word. Read it
+  rather than glancing at it — the wrong outcome here is not an error page but a
+  *different* sentence, „Die Eingabe ist nicht möglich: Adresse bereits vergeben
+  oder verknüpfte Daten vorhanden", which is the database complaining in the
+  portal's voice and means the two taps raced each other. Either way it must
+  never be the „vorübergehend nicht verfügbar" page.
+- [ ] **4.8d** The same question asked from the *invitation* side. **Konten →
+  „+ Konto einladen"**, an address that already has an account — the one from
+  4.8 will do — then **„Einladung senden"**. It says **„Diese Adresse hat schon
+  ein Konto."**: word for word the sentence the direct-creation form gives at
+  4.8c, because it is now literally the same sentence in the code. Read it
+  rather than glancing at it. Inviting used to write the row without looking
+  first, so this path answered with „Die Eingabe ist nicht möglich: Adresse
+  bereits vergeben oder verknüpfte Daten vorhanden" — the database complaining
+  in the portal's voice, about an address it declined to name. Then check three
+  things: **Konten** still lists that address **once**; its **role is
+  unchanged**, so a refused invitation has not quietly turned a trainer into a
+  family; and **Postausgang** holds **no new invitation** to it, because a
+  second invitation replaces a password that already works. Tap **„Einladung
+  senden"** twice in quick succession too: the second tap gives the same
+  sentence, never the database one.
+- [ ] **4.9** Suspending an account in **Konten** stops that person signing in.
 
 ---
 
 ## The shell: the bar, notifications, feedback, impersonation
 
+- [ ] **5.0** On a desktop screen, „Etwas funktioniert hier nicht" is a button in
+  the bottom right corner of every page. It opens upwards, stays inside the
+  window, and closing it leaves the page where it was.
+- [ ] **5.0a** On a phone it is *not* floating: it is at the end of the page,
+  reached from „Etwas funktioniert nicht" in the **Mehr** menu. Check on a form
+  page that nothing covers the sticky **Speichern** bar.
 - [ ] **5.1** Scroll a long page. The top bar stays where it is.
+- [ ] **5.1a** As the administrator, on a laptop at **110% and 125% zoom**, the
+  menu on the left has no scrollbar of its own and its last entry is above the
+  fold. Open **System**: **Training** and **Geld** shut by themselves, so the
+  menu is never taller than one open section.
+- [ ] **5.1b** Whichever page you are on, its section is already open when the
+  page loads — nothing has to be clicked to see where you are.
+- [ ] **5.1c** With a course request waiting, the number is on **Training**
+  while it is shut and on **Kurse** once it is open, never on both.
+- [ ] **5.1d** On a phone the menu is still the drawer behind **Mehr**, every
+  row is still 44pt, and each section row has one arrow, not two.
 - [ ] **5.2** Your name and role appear **once**, in the top bar — not again at
   the bottom of the menu.
 - [ ] **5.3** The bell shows a number when something is waiting. Opening it
@@ -232,6 +487,60 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **7.8** The first contact you add becomes the **Standardkontakt** without
   being asked, and it cannot be saved without an email address: that is where
   invoices and reminders go.
+- [ ] **7.8a** „Kontakt hinzufügen" and „Kontakt bearbeiten" ask for the same
+  things, in the same words: the first box is the contact person's own name, not
+  a question about whose contact it is.
+- [ ] **7.8b** A contact with a phone number and **no** email address saves.
+  That is the grandmother who answers the telephone, and she is the reason this
+  list and the portal's address are two different things now.
+- [ ] **7.8c** On the child's own page, **Zugang zum Portal** holds the address
+  the portal writes to. For a child that is a parent's address.
+- [ ] **7.8d** **Zugang einladen** on a child with no account creates one and
+  queues the invitation to that address. Check the outbox.
+- [ ] **7.8e** Invite a *second* child at the same address: one account, both
+  children on it, and — once that account has set a password — no second
+  invitation, which would have replaced a password that works.
+- [ ] **7.8f** Inviting a child at an address that belongs to a trainer or an
+  administrator is refused, and the child stays unattached.
+- [ ] **7.8g** An invoice for a child with no account is addressed to the child
+  at the child's own address, whatever email any contact has.
+- [ ] **7.8h** The **Schüler** list names two gaps separately: children with
+  nobody to ring, and children with no address.
+- [ ] **7.12** **Schüler → Leeres Formular drucken**: a registration form on
+  **one** sheet of A4, boxes one letter wide, two people to ring side by side.
+  Print it for real and check it is one page with headers and footers off.
+- [ ] **7.13** The blank form asks for exactly what the portal stores — every
+  custom field that is not marked *internal*, and nothing else. Add a custom
+  field and it appears; mark one internal and it does not.
+- [ ] **7.13a** It asks for the **address** and the **telephone number**, which
+  every club form asks for on paper.
+- [ ] **7.13b** It carries the **price list** as lines to tick, taken from the
+  courses so paper and portal cannot drift, with the course named once above the
+  list and no „fällig am" on it. With a club's four tariffs on it, it is still
+  **one page** — check the real print dialog with headers and footers off, not a
+  screenshot: this block pushed it onto a second sheet the first time.
+- [ ] **7.13c** It is not headed „Kind" and the signature line reads
+  „bei Minderjährigen …": half a club's members are adults.
+- [ ] **7.13d** A photo or video consent is added the way any other question is:
+  a checkbox under **Einstellungen → Eigene Felder**, with **Berechtigung für
+  Schüler** set to anything other than „Nur intern" — a field marked internal is
+  hers and deliberately never printed. It then appears on both printables as a
+  line to tick. Nothing is hard-coded for it, because not every club asks.
+- [ ] **7.14** **Ein Kind → Datenblatt drucken**: the same layout with the
+  values filled in, a date, and a line to sign that they were checked. Also one
+  page.
+- [ ] **7.15** Both say what happens to the data, and neither is reachable by a
+  family.
+- [ ] **7.16** **+ Schüler anlegen** asks for a name, a date of birth, an email
+  address and whether they are a member — and nothing else. Not the level, not
+  the tariff, not the internal notes, not your own custom fields.
+- [ ] **7.17** After **Anlegen und weiter**, the child's page opens with **Noch
+  zu tun** at the top: an emergency contact, an email address or an invitation,
+  a course, a tariff — in that order, each a link to where it is done.
+- [ ] **7.18** Do them one at a time and watch each disappear. When the last one
+  goes, the card goes.
+- [ ] **7.19** A course you have just created says the same: a training day and
+  a tariff. A course that has both shows no card.
 - [ ] **7.9** Add a second contact. It is an ordinary one. Tick
   „Als Standardkontakt verwenden" on it and the badge moves — there is never
   more than one.
@@ -257,14 +566,44 @@ Skip on an ordinary code change; do all of it before a release.
   otherwise.
 - [ ] **8.3** **Kurse → ein Kurs → Tarife**: every price a course can be taken
   at lives here. There is no tariff floating free of a course.
-- [ ] **8.4** A tariff has an interval: monthly, every two, three or six months,
-  or yearly. Pick a non-monthly one and check the summary sentence under it
-  describes what will actually be charged.
+- [ ] **8.4** One tariff can be paid in more than one way. Give it four prices —
+  37 € monthly, 99 € quarterly, 162 € half-yearly, 252 € yearly — and check the
+  summary sentence lists all four, with the usual interval first.
+- [ ] **8.4a** Save with a price for an interval but the **üblicher Zeitraum**
+  set to one with no price: refused, by name. That interval is what an enrolment
+  saying nothing is billed at.
+- [ ] **8.4b** Save with no price at all: refused. An empty row at the bottom is
+  ignored rather than refused.
+- [ ] **8.4c** „+ Weitere Zahlungsweise" adds an empty row; the same interval
+  twice keeps the first one rather than refusing the form.
+- [ ] **8.4d** **Kopieren** makes a copy with every price and every discount
+  template, named „… (Kopie)", and opens it. Copy it again: the second is not
+  called the same as the first.
+- [ ] **8.4e** **Kurs kopieren** on the course form brings the training days and
+  the whole price list, and brings *nobody*: the children in the original are
+  still only in the original.
+- [ ] **8.4f** The same **Kopieren** button is on a level, an age group, a
+  payment recipient, an email template, a custom field and a news item. A copied
+  news item is a draft, whatever the original was; a copy of an archived record
+  is not archived.
 - [ ] **8.5** A tariff has a due day. A child can override it; the child's page
   says which of the two applies.
-- [ ] **8.6** A tariff can carry a discount — a number of months (or unlimited)
-  at a percentage or a fixed amount off. 100 % reads as free, not as €0,00
-  hidden in a corner.
+- [ ] **8.6** A tariff carries **Rabattvorlagen** — the shapes of discount she
+  gives, like „Erster Monat gratis" or „Geschwisterrabatt, dauerhaft −20 %".
+  They are templates: changing one here changes nothing for a family who has
+  already been given it.
+- [ ] **8.6a** On a child, under **Tarif, Zahlungsweise und Rabatt**: the
+  templates of that tariff are listed above the boxes, and the boxes take the
+  discount this family actually gets, with a name that appears on the invoice.
+- [ ] **8.6b** Give one child a discount and check the child beside them on the
+  same tariff is unaffected. That is the whole reason it moved off the tariff.
+- [ ] **8.6c** Put a child on a longer interval than the tariff's usual one. The
+  agreed-price default beside it changes to that interval's price, and the next
+  charge is for that period and that amount.
+- [ ] **8.6d** Choose an interval, then delete that price from the tariff. The
+  child is billed at the tariff's usual price rather than not billed at all.
+- [ ] **8.6e** A discount of 100 % reads as „gratis", not as €0,00 hidden in a
+  corner, and „dauerhaft" says so rather than showing −1.
 - [ ] **8.7** A child in two courses is billed for both, each at its own
   tariff.
 - [ ] **8.8** Archive a course. It leaves the lists, keeps its history, and
@@ -290,6 +629,17 @@ Skip on an ordinary code change; do all of it before a release.
 
 ## Attendance
 
+- [ ] **9.x** On a device whose language is set to **English (US)**, open a
+  course and its times. Every time is 24 hours — "16:00", never "04:00 PM" —
+  because the boxes are the portal's own, not the browser's picker. Change one,
+  save, reopen: it is what you chose.
+- [ ] **9.x.1** A day with an hour but no minute is refused by name rather than
+  stored as "on the hour".
+- [ ] **9.x.2** A course whose time is not on a five-minute boundary (17:37, say)
+  still shows 37 in the minute box, and saving something else on that form does
+  not move it.
+- [ ] **9.x.3** „+ Weiterer Trainingstag" adds an empty row — the new row does
+  not inherit the time of the row above it.
 - [ ] **10.1** **Anwesenheit** in the menu opens one screen: pick a course, pick
   a date, see every child in it, one tap each, one save.
 - [ ] **10.2** The date offered is the course's own training day, not today when
@@ -316,8 +666,14 @@ Skip on an ordinary code change; do all of it before a release.
   does not charge anybody twice.
 - [ ] **11.3** A child who joined mid-period is charged the part of it they were
   there for, when the tariff says to prorate — and the amount matches the days.
+  The charge shows the days it covers, which are not the billing period.
 - [ ] **11.4** The same tariff set to „whole period" charges the whole amount,
   and set to „skip" charges nothing until the next period.
+- [ ] **11.4a** Set to „anteilig nach vollen Monaten": somebody joining on any
+  day of November on a 252 € yearly tariff is charged **42 €** for November and
+  December, and the charge covers 01.11. – 31.12. That is what a club form means
+  by „aliquot", and pro rata by days would have been 34,52 €. The month somebody
+  leaves in counts in full too.
 - [ ] **11.5** A yearly tariff produces one charge a year, not twelve.
 - [ ] **11.6** A discount of 50 % for three months produces three reduced
   charges and then the normal amount.
@@ -362,7 +718,16 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **13.1** With the business details empty, **Rechnungen** says which ones
   are missing and links straight to the form.
 - [ ] **13.2** Fill **Einstellungen → Betrieb** in: name, address, contact,
-  tax mode. Issuing becomes possible.
+  tax mode. One thing is still named as missing: the recipient the installer
+  left ready has no IBAN.
+- [ ] **13.2a** Type the account number into **Verwaltung → Zahlungsempfänger →
+  Vereinskonto**. Issuing becomes possible. (Left as it comes, a fresh portal
+  produced a finished-looking invoice with nowhere to send the money — this is
+  the state every new portal starts in, not a corner case.)
+- [ ] **13.2b** A course collecting into a second recipient that has no IBAN is
+  refused too, and the message names *that* recipient. A charge remembers the
+  recipient it was written for, so changing the course afterwards changes
+  nothing and the message must not send you there.
 - [ ] **13.3** On a child, **Rechnungen → Rechnung erstellen** from the charges
   that have not been invoiced. The charges are then no longer offered twice.
 - [ ] **13.4** Download the PDF and open it in a real PDF reader — not only in
@@ -371,6 +736,16 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **13.5** The document carries everything § 11 Abs 1 UStG asks for: who
   issued it, who it is for, what was supplied, the period, the date of issue,
   a consecutive number, and either the tax amount or the exemption note.
+- [ ] **13.5a** Invoice a member who joined part-way through a period. The line
+  states the days they were actually a member for, not the whole billing period.
+  (It said "01.01. – 31.12." for seven weeks: the amount was right and the
+  sentence under it was not, on a document a family keeps.)
+- [ ] **13.5b** The IBAN on the document is in groups of four, so it can be
+  typed into a banking app without losing your place.
+- [ ] **13.5c** An invoice whose total is **over 400 €** is refused until the
+  member has an address, and then carries it under their name. At exactly 400 €
+  it is not: up to that a Kleinbetragsrechnung may leave name and address out
+  (§ 11 Abs 6 UStG), and most of a club's invoices are under it.
 - [ ] **13.6** As a Kleinunternehmer, the § 6 Abs 1 Z 27 note is on the
   document and no VAT is shown.
 - [ ] **13.7** Switch to „mit Umsatzsteuer": the net, the rate, the tax and the
@@ -428,8 +803,18 @@ Skip on an ordinary code change; do all of it before a release.
 
 - [ ] **15.1** Publish a news item. Families see it under **Neuigkeiten**.
 - [ ] **15.2** With the newsletter ticked, an email is queued per subscriber.
-- [ ] **15.3** **Einstellungen → SMTP → Testmail**: it either arrives or the
-  error says what the server actually replied.
+- [ ] **15.3** **Einstellungen → SMTP → Verbindung testen**: with a target
+  address filled in, the page comes back with the outcome on it, not with a
+  message in a list to go and find. It arrives, or the summary says which step
+  failed — the port, the certificate, the password, the sender address.
+- [ ] **15.3a** **Nur Verbindung prüfen** connects and signs in without sending
+  anything, and no job appears in the outbox.
+- [ ] **15.3b** Open **Gespräch mit dem Server anzeigen**. The transcript is
+  fixed-width, scrolls sideways rather than wrapping, fits inside the card at
+  320px, and contains no password: the AUTH lines read `[entfernt]` or
+  `[credentials hidden]`. Read it before forwarding it to a host.
+- [ ] **15.3c** Put in a port nothing listens on: the answer is that the port is
+  usually blocked or wrong, in one sentence, rather than a mail-library error.
 - [ ] **15.4** **Postausgang** shows queued, sent and failed. A failure retries
   with a growing delay rather than hammering.
 - [ ] **15.5** An unsubscribe link at the bottom of a newsletter works without
@@ -513,12 +898,12 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **21.2** **Einstellungen → System**: take a backup before an update. The
   file exists and is not empty. Import it into an empty database in the hosting
   panel once, deliberately, so you know the route works before you need it.
-- [ ] **21.7** After deleting an account or a child that had a picture, an
-  attachment or a proof, the file goes too — the nightly maintenance sweeps
-  anything no record points at. `storage/uploads` should not grow for ever.
 - [ ] **21.3** An update that could not back up first refuses to run.
 - [ ] **21.4** After any update, **Einstellungen → System** shows the same
   version for the files and for the database.
+- [ ] **21.7** After deleting an account or a child that had a picture, an
+  attachment or a proof, the file goes too — the nightly maintenance sweeps
+  anything no record points at. `storage/uploads` should not grow for ever.
 
 ---
 
@@ -532,17 +917,17 @@ Do this last, on a real phone, not a resized desktop window.
   tap target smaller than a fingertip. `node tests/mobile.mjs` answers this for
   every page at once; do the walk anyway for the two or three screens you use
   most, because it cannot tell you that something is ugly.
-- [ ] **22.5** On the attendance screen at 320 px, the three statuses read as
+- [ ] **22.3** On the attendance screen at 320 px, the three statuses read as
   words — not "Entschuldi / gt" — and the last child in the list can be reached
   without the save bar sitting on top of them.
-- [ ] **22.6** **Mein Konto → Farbe**: the eight dots show eight colours. If they
+- [ ] **22.4** **Mein Konto → Farbe**: the eight dots show eight colours. If they
   are grey, a style has been written inline again and the browser is refusing
   it.
-- [ ] **22.7** The pinned bar shows your picture or initials on a phone, not an
+- [ ] **22.5** The pinned bar shows your picture or initials on a phone, not an
   empty square.
-- [ ] **22.3** Add the portal to the home screen. It opens without browser
+- [ ] **22.6** Add the portal to the home screen. It opens without browser
   chrome and with its own icon.
-- [ ] **22.4** In dark mode, every screen you touched above is still readable.
+- [ ] **22.7** In dark mode, every screen you touched above is still readable.
 
 ---
 

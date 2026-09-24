@@ -109,7 +109,10 @@ function schema_guarded_tables(): array {
             // consent record would miss belongs here. schema_counts() skips a
             // table that does not exist yet, so naming one early is free.
             'class_students', 'attendance', 'invoices', 'invoice_charges',
-            'payment_proofs', 'consent_log'];
+            'payment_proofs', 'consent_log',
+            // A tariff with no rates is a tariff that bills nobody, and a lost
+            // discount template is a price she has to remember again.
+            'tariff_rates', 'tariff_discounts'];
 }
 
 /**

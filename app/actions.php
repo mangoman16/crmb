@@ -1,29 +1,119 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * The address typed into the sign-in or password-reset form.
+ *
+ * One derivation, because it is both the identity an attempt is counted
+ * against and the address the account is looked up by. Two spellings of it
+ * would mean a sign-in that succeeds while its counter keeps climbing under a
+ * key nothing ever clears.
+ */
+function attempted_email(): string { return mb_strtolower(post('email')); }
+
+/**
+ * The bucket attempts at one account are counted into.
+ *
+ * Spelled in one place, for the same reason rate_limit_bucket() is: counting
+ * and clearing have to agree, and a clear that spelled the key differently
+ * would empty nothing, silently, and leave the family locked out.
+ */
+function account_identity(int $accountId): string { return 'account:'.$accountId; }
+
+/**
+ * What an attempt at an address is counted against.
+ *
+ * Not the typed string. accounts.email is compared by the database under
+ * utf8mb4_unicode_ci, which folds case, accents, ss against ß, ligatures and
+ * full-width letters alike: 'familie@beispiel.at', 'familie@beispiel.át' and
+ * the ligature spelling are one row and three different PHP strings - measured
+ * on MariaDB 10.11.14, not assumed. Counting the string therefore gave ten
+ * guesses per spelling and as many spellings as anyone cared to invent, which
+ * is a limit of ten an attacker walks straight past. The same trick minted
+ * fresh reset-request buckets, and each new link invalidates the one a family
+ * may be in the middle of using.
+ *
+ * So the address is resolved first and the attempt counted against the row the
+ * database says it is, by its own rules rather than a PHP imitation of them -
+ * no imitation of a collation reaches ligatures and full-width letters. An
+ * address with no account is counted as what was typed, which is all there is.
+ *
+ * Read here, before the action's transaction opens, because the counters are
+ * written on their own connection and that connection cannot write while a
+ * transaction that has already written is open.
+ */
+function attempted_identity(): string {
+    $id=scalar('SELECT id FROM accounts WHERE email=?',[attempted_email()]);
+    return $id ? account_identity((int)$id) : attempted_email();
+}
+
 function handle_post(): array {
     $action=post('action');
     if(!hash_equals(csrf(),post('csrf'))) throw new UserError(t('Die Sitzung ist abgelaufen. Seite neu laden.','Your session expired. Reload the page.'));
     $ip=$_SERVER['REMOTE_ADDR']??'local';
     if(in_array($action,['login','forgot','activate'],true)) {
         throttle('auth-ip',$ip,60);
-        if($action!=='activate') throttle($action,mb_strtolower(post('email')),10);
+        if($action!=='activate') throttle($action,attempted_identity(),10);
     }
     if(in_array($action,['password_change','email_change'],true)) {
         $actor=require_user();throttle('account-security',(string)$actor['id'],10);
     }
     $request=post('request_id');
     // One transaction around the whole action: it either happens or it does not.
-    return transactional(function() use ($request,$action) {
+    $result=transactional(function() use ($request,$action) {
         claim_request($request);
         return dispatch_action($action);
     });
+    forget_attempts_after_success($action);
+    return $result;
+}
+
+/**
+ * Forget the sign-in attempts counted against an address, now that the request
+ * has proved who was making them.
+ *
+ * The counting above has to happen before the password is checked, because at
+ * that moment the outcome is not known. Nothing undid it, so a family whose
+ * children share one phone reached ten correct sign-ins in a quarter of an hour
+ * and was told "Zu viele Versuche", with no way out but waiting.
+ *
+ * Two kinds of request prove who is asking, and they are exactly the two that
+ * end in sign_in(): a password typed correctly, and a one-time link opened out
+ * of the mailbox the address belongs to. Every purpose such a link carries
+ * proves it - an invitation accepted, a password reset, a changed address
+ * confirmed - so all three clear the bucket rather than 'reset' alone. Without
+ * the link half, the reset sent to a locked-out family lets them in once and
+ * leaves them locked out of the next sign-in until the window runs down.
+ *
+ * Only the bucket belonging to that proven identity is cleared. A wrong
+ * password stays counted; the per-IP limit is never cleared, because one valid
+ * account must not be able to refresh the limit that slows down guessing at all
+ * the others; and 'forgot' is never cleared either, since typing an address
+ * proves nothing about who typed it and clearing it would hand anybody an
+ * unlimited mailer pointed at one family's inbox.
+ *
+ * It runs after the transaction rather than inside the action because this is
+ * the first moment at which "the attempt succeeded" is a fact - throttle_clear()
+ * has its own reason for needing to be out here.
+ */
+function forget_attempts_after_success(string $action): void {
+    if(!in_array($action,['login','activate'],true)) return;
+    // Both branches ask the session the same question instead of reading
+    // success out of the fact that nothing threw: an action that failed threw
+    // out of handle_post() long before this line, but that is a fact about
+    // another file and this one should not depend on knowing it.
+    $who=current_user();
+    if(!$who) return;
+    // The account, not the address: that is the key the attempts were counted
+    // under, whichever of its spellings was typed at the time - an activation
+    // empties the bucket the failed sign-ins before it filled.
+    throttle_clear('login',account_identity((int)$who['id']));
 }
 
 function dispatch_action(string $action): array {
     switch($action) {
     case 'login':
-        $a=one('SELECT * FROM accounts WHERE email=? FOR UPDATE',[mb_strtolower(post('email'))]);
+        $a=one('SELECT * FROM accounts WHERE email=? FOR UPDATE',[attempted_email()]);
         $hash=$a['password_hash']??'$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
         if(!password_verify(post('password'),$hash) || !$a || $a['state']!=='active' || !$a['verified_at']) throw new UserError(t('Anmeldung nicht möglich. Zugangsdaten und Einladung prüfen.','Unable to sign in. Check your credentials and invitation.'));
         if(password_needs_rehash($hash,PASSWORD_DEFAULT)) run('UPDATE accounts SET password_hash=? WHERE id=?',[password_hash(post('password'),PASSWORD_DEFAULT),$a['id']]);
@@ -31,7 +121,7 @@ function dispatch_action(string $action): array {
     case 'logout':
         $_SESSION=[]; session_regenerate_id(true); current_user(true); return ['login',[]];
     case 'forgot':
-        $a=one("SELECT * FROM accounts WHERE email=? AND state='active' AND verified_at IS NOT NULL",[mb_strtolower(post('email'))]);
+        $a=one("SELECT * FROM accounts WHERE email=? AND state='active' AND verified_at IS NOT NULL",[attempted_email()]);
         if($a && setting('smtp',[]) && setting('privacy_ready',false)) send_account_token($a,'reset');
         flash(t('Wenn ein aktives Konto existiert, erhältst du einen Link per E-Mail.','If an active account exists, you will receive an email link.'));
         return ['forgot',[]];
@@ -75,10 +165,84 @@ function dispatch_action(string $action): array {
     case 'account_invite':
         $u=require_staff(); $role=choose(post('role','student'),assignable_roles($u));
         $email=email_value(required_text('email',254));
+        if(account_using_email($email))
+            throw new UserError(t('Diese Adresse hat schon ein Konto.','That address already has an account.'));
         run('INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,?,?,?)',[required_text('name'),$email,$role,choose(post('locale','de'),['de','en']),now()]);
         $id=(int)db()->lastInsertId();
         send_account_token(one('SELECT * FROM accounts WHERE id=?',[$id]),'invite');audit('account.invited','account',$id);
         flash(t('Konto angelegt. Die Einladung liegt im Postausgang.','Account created. The invitation is in the outbox.'));return ['accounts',[]];
+    /* A login made here and now, with a password typed rather than emailed.
+       Inviting needs working SMTP and a released privacy notice, which is right
+       for a real family and wrong for every other reason somebody needs an
+       account: trying the portal out before the mail is set up, a second
+       administrator on the day the first one loses their phone, a trainer who
+       stands next to her and can pick a password on the spot. Administrator
+       only, because handing out a login is more than inviting one. */
+    case 'account_create':
+        $u=require_admin();
+        $role=choose(post('role','student'),assignable_roles($u));
+        $email=email_value(required_text('email',254));
+        $password=(string)post('password'); strong_password($password);
+        if(account_using_email($email))
+            throw new UserError(t('Diese Adresse hat schon ein Konto.','That address already has an account.'));
+        // Active and verified: there is no link to click, and an account that
+        // cannot sign in is not what she asked for. The address is not proven
+        // to belong to anybody, which is what the invitation does, so this says
+        // so in the change log rather than pretending otherwise.
+        run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,locale,created_at)"
+            ." VALUES (?,?,?,?,'active',?,?,?)",
+            [required_text('name'),$email,password_hash($password,PASSWORD_DEFAULT),$role,now(),
+             choose(post('locale','de'),['de','en']),now()]);
+        $id=(int)db()->lastInsertId();
+        // A family account with nothing attached to it signs in and sees an
+        // empty portal, which looks like a broken login rather than a missing
+        // link. Inviting from the child's page already joins the two by address;
+        // doing it here as well means the two ways in agree.
+        $linked=0;
+        if($role==='student')
+            $linked=run('UPDATE students SET account_id=?,updated_at=?,revision=revision+1 WHERE email=? AND account_id IS NULL',
+                        [$id,now(),$email])->rowCount();
+        audit($linked?'account.created_directly_and_linked':'account.created_directly','account',$id);
+        flash(t('Konto angelegt. Es kann sich sofort mit diesem Passwort anmelden – die Adresse wurde dabei nicht bestätigt.',
+                'Account created. It can sign in with that password straight away – the address was not confirmed.')
+              .($linked?' '.plural($linked,'Kind wurde damit verknüpft.','Kinder wurden damit verknüpft.',
+                                   'child was linked to it.','children were linked to it.'):''));
+        return ['accounts',[]];
+    case 'student_invite':
+        /* The invitation goes to the child's own record rather than to one of
+           the people on their emergency list. Those are two different questions
+           - who do I ring when she falls over, who reads the invoices - and one
+           row answering both is how a grandmother with no email ended up being
+           the reason a family could not sign in.
+
+           An address that already has an account is linked rather than
+           duplicated, which is what makes "both parents" and "three siblings on
+           one login" work without a second concept. */
+        $u=require_staff();$s=student((int)post('student_id'));
+        if($s['account_id']) throw new UserError(t('Dieses Kind ist schon einem Konto zugeordnet.','This child already belongs to an account.'));
+        $email=email_value(post('email')!==''?post('email'):(string)$s['email']);
+        $name=trim(post('name'))!==''?required_text('name'):$s['first_name'].' '.$s['last_name'];
+        $existing=account_using_email($email);
+        if($existing) {
+            if($existing['role']!=='student') throw new UserError(t('Diese Adresse gehört schon zu einem Konto der Verwaltung.','That address already belongs to a management account.'));
+            $accountId=(int)$existing['id'];
+        } else {
+            run('INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,?,?,?)',
+                [$name,$email,'student',choose(post('locale','de'),['de','en']),now()]);
+            $accountId=(int)db()->lastInsertId();
+        }
+        run('UPDATE students SET account_id=?,email=?,updated_at=?,revision=revision+1 WHERE id=?',[$accountId,$email,now(),$s['id']]);
+        // An account that has already set a password is being given another
+        // child to look after, not invited again: a second invitation would
+        // reset a password that works.
+        $account=one('SELECT * FROM accounts WHERE id=?',[$accountId]);
+        if($account['state']==='invited' && !$account['verified_at']) { send_account_token($account,'invite'); $sent=true; }
+        else $sent=false;
+        audit($existing?'account.linked':'account.invited','account',$accountId);
+        flash($sent
+            ? t('Einladung liegt im Postausgang.','The invitation is in the outbox.')
+            : t('Das Kind wurde dem bestehenden Konto zugeordnet. Es kann sich wie bisher anmelden.','The child was added to the existing account. It signs in as before.'));
+        return ['student',['id'=>$s['id']]];
     case 'account_state':
         $u=require_staff();$id=(int)post('id');$mode=choose(post('mode'),['suspend','restore','delete','reinvite']);
         $a=one('SELECT * FROM accounts WHERE id=? FOR UPDATE',[$id]);
@@ -107,7 +271,10 @@ function dispatch_action(string $action): array {
             if($accountId && !one("SELECT id FROM accounts WHERE id=? AND role='student'",[$accountId])) throw new UserError(t('Schülerkonto nicht gefunden.','Student account not found.'));
             $tariffId=(int)post('tariff_id')?:null;$tariff=$tariffId?one('SELECT * FROM tariffs WHERE id=?',[$tariffId]):null;
             if($tariffId && (!$tariff || ($tariff['archived'] && $tariffId!==(int)($existing['tariff_id']??0)))) throw new UserError(t('Tarif ist nicht verfügbar.','Tariff is not available.'));
-            $price=post('price')!==''?cents(post('price')):($tariff?(int)$tariff['price_cents']:null);
+            // Through tariff_price(): a tariff has a rate per interval now, not a
+            // price column, and reading a column that no longer exists would have
+            // filed the student at no price at all rather than at the tariff's.
+            $price=post('price')!==''?cents(post('price')):tariff_price($tariffId);
             $status=post('status');if(!isset(statuses()[$status]) && !($existing && $status===$existing['status'])) throw new UserError(t('Bitte einen Status auswählen.','Please choose a status.'));
             // A child is always in a level, so an unanswered field means the
             // default rather than nothing. An age group is the opposite: blank is
@@ -116,15 +283,25 @@ function dispatch_action(string $action): array {
             $levelId=reference_or_null('levels','level_id') ?? (int)(level_default()['id'] ?? 0) ?: null;
             $ageGroupId=reference_or_null('age_groups','age_group_id');
             $join=date_value(post('joined_on'));$end=date_value(post('ended_on'));date_range($join,$end);
-            $args=[$accountId,$first,$last,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
+            // Where the portal writes to this family, which for a child is a
+            // parent's address. Optional while the record is being set up, and
+            // asked for by contact_gap() until it is there.
+            $email=post('email')!==''?email_value(post('email')):'';
+            // One line, the way the paper form asks it, because it is typed once
+            // and printed once and never sorted on. Her own number rather than an
+            // emergency contact's: for an adult member those are the same person,
+            // and listing yourself as the person to ring is not a record anybody
+            // should have to keep.
+            $address=text_limit('address',200);$phone=text_limit('phone',60);
+            $args=[$accountId,$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
             if($id) {
                 tracked('students',$id,$first.' '.$last,function() use ($args,$id) {
-                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
+                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,email=?,address=?,phone=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
                     if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
                 });
             }
             else {$id=tracked_insert('students',$first.' '.$last,function() use ($args) {
-                run('INSERT INTO students (account_id,first_name,last_name,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+                run('INSERT INTO students (account_id,first_name,last_name,email,address,phone,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
                 return (int)db()->lastInsertId();
             });}
         } else {
@@ -139,14 +316,15 @@ function dispatch_action(string $action): array {
         tracked('students',(int)$s['id'],$s['first_name'].' '.$s['last_name'],fn()=>run('DELETE FROM students WHERE id=?',[$s['id']]),'delete');
         audit('student.deleted','student',(int)$s['id']);
         flash(t('Schüler gelöscht. Das lässt sich unter „Änderungen“ rückgängig machen.','Student deleted. This can be undone under “Changes”.'));return ['students',[]];
-    /* Contacts: a child always has one, one of them is the standard one, and the
-       standard one has an email address - that is where an invoice and a
-       reminder go. The three rules live here, in the three actions that can
-       break them, rather than in the page that happens to show them. */
+    /* Contacts: a child always has one, and one of them is the one to try first.
+       They are people to ring and nothing else now - a phone number is what
+       makes one useful, and an email address on one is a convenience, not the
+       address the portal writes to. That one is on the child. The rules live
+       here, in the actions that can break them, rather than in the page that
+       happens to show them. */
     case 'contact_add':
         $s=student((int)post('student_id'));$email=contact_email();
         $standard=!student_contacts((int)$s['id']) || post('is_primary');   // the first one is it, without being asked
-        if($standard) contact_needs_email($email);
         if($standard) run('UPDATE contacts SET is_primary=0 WHERE student_id=?',[$s['id']]);
         run('INSERT INTO contacts (student_id,owner_name,relation_label,phone,email,is_primary) VALUES (?,?,?,?,?,?)',[$s['id'],required_text('owner_name'),required_text('relation_label',100),text_limit('phone',80),$email,$standard?1:0]);
         audit('contact.added','student',(int)$s['id']);return ['student',['id'=>$s['id'],'tab'=>'contacts']];
@@ -167,7 +345,6 @@ function dispatch_action(string $action): array {
         // Unticking the box does not take the standard away: another contact is
         // made the standard one instead, so the child is never left without.
         $standard=(int)$contact['is_primary']===1 || (bool)post('is_primary');
-        if($standard) contact_needs_email($email);
         if($standard) run('UPDATE contacts SET is_primary=0 WHERE student_id=?',[$s['id']]);
         run('UPDATE contacts SET owner_name=?,relation_label=?,phone=?,email=?,is_primary=? WHERE id=? AND student_id=?',[required_text('owner_name'),required_text('relation_label',100),text_limit('phone',80),$email,$standard?1:0,(int)$contact['id'],$s['id']]);
         audit('contact.updated','student',(int)$s['id']);return ['student',['id'=>$s['id'],'tab'=>'contacts']];

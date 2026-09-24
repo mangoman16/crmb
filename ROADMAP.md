@@ -107,8 +107,8 @@ These are the things that stand between "the code is good" and "her data is
 safe in it". Nothing below is optional.
 
 1. **Done for MariaDB; repeat on MySQL 8 if that is your target.**
-   All six migrations, the upgrade path and the whole suite have now run against
-   MariaDB 10.11.14 — see [AUDIT.md](AUDIT.md). Repeat any time with
+   All eighteen migrations, the upgrade path and the whole suite have now run
+   against MariaDB 10.11.14 — see [AUDIT.md](AUDIT.md). Repeat any time with
    `tests/mariadb-local.sh`, which starts a throwaway server and stops it again.
    MySQL 8.0 itself has not been tried: point
    `CRM_TEST_DRIVER=mysql CRM_CONFIG=…` at one to close that. Still outstanding

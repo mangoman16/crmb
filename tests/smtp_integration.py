@@ -59,7 +59,6 @@ try:
  db('UPDATE auth_tokens SET expires_at=? WHERE account_id=?',['2020-01-01 00:00:00',expired]);anon.request('page=activate&token='+token);ok('Link nicht mehr gültig' in anon.html,'Expired invitation rejected')
  # Force a new subscription delivery after email change.
  admin.request('page=news&new=1');admin.post('news_save',{'title':'SMTP newsletter','body':'A local delivery test.','published':'1','send_email':'1'})
- admin.request('page=settings&tab=smtp');admin.post('smtp_test')
  proc=subprocess.run([php,'-d','openssl.cafile='+str(cp),str(app/'bin/console.php'),'mail:work','100'],capture_output=True,text=True)
  ok(proc.returncode==0,'SMTP worker completes with valid STARTTLS certificate: '+proc.stdout.strip())
  count=json.loads(proc.stdout);ok(count['sent']>=2 and len(received)==count['sent'],'SMTP acceptance recorded per recipient')
@@ -85,5 +84,19 @@ try:
  finally:subprocess.run([php,str(app/'bin/console.php'),'maintenance:off'],capture_output=True,check=True)
  after=json.loads(subprocess.run([php,str(app/'bin/console.php'),'check'],capture_output=True,text=True,check=True).stdout);before=json.loads(before_counts)
  ok(before['rows']==after['rows'] and before['totals_cents']==after['totals_cents'],'Maintenance toggle preserves counts and payment totals')
+ # The connection test opens the conversation there and then and writes down
+ # every step, rather than queueing a message the operator has to go and find.
+ # Run last, because it sends outside the worker and would upset the counts above.
+ arrived=len(received)
+ test=subprocess.run([php,'-d','openssl.cafile='+str(cp),str(app/'bin/console.php'),'mail:test','trainerin@example.test'],capture_output=True,text=True)
+ report=json.loads(test.stdout)
+ ok(test.returncode==0 and report['ok'],'Connection test connects, authenticates and sends: '+report['summary'])
+ ok(len(received)==arrived+1,'and the test email really reached the server')
+ ok('235 authenticated' in report['transcript'] and '250 accepted' in report['transcript'],'The transcript carries what the server replied')
+ ok('test-smtp-secret' not in report['transcript'] and base64.b64encode(b'test-smtp-secret').decode() not in report['transcript'],'and never the password, in the clear or in base64')
+ # Without an address it proves the connection and sends nothing.
+ arrived=len(received)
+ only=json.loads(subprocess.run([php,'-d','openssl.cafile='+str(cp),str(app/'bin/console.php'),'mail:test'],capture_output=True,text=True).stdout)
+ ok(only['ok'] and only['sent_to']=='' and len(received)==arrived,'Checking the connection alone sends nothing')
  print(json.dumps({'passed':len(checks),'checks':checks},indent=2))
 finally:server.shutdown();server.server_close()

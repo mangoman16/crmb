@@ -102,3 +102,51 @@ is_same(1, history_prune(24), 'an entry older than the horizon is removed');
 is_same(1, count(history_for('students', $other)), 'and the recent one stays');
 is_same(0, history_prune(24), 'running it again removes nothing');
 is_same($auditBefore, (int)scalar('SELECT COUNT(*) FROM audit_log'), 'the audit log is untouched: it is evidence, not a convenience');
+
+// ---------------------------------------------------------------------------
+case_('A record she set up by hand can be copied, with what belongs to it');
+/* Two tariffs that differ in one number, a second course on another evening:
+   each of them is ten minutes of retyping, and retyping is where a wrong price
+   comes from. What comes with a copy is a judgement, not a foreign key. */
+sign_in_as(make_account(['role'=>'admin']));
+$course = make_class(['name'=>'Kindertraining', 'location'=>'Halle Nord', 'archived'=>1,
+    'days'=>[['weekday'=>1,'starts_at'=>'16:00:00','ends_at'=>'17:30:00','location'=>''],
+             ['weekday'=>4,'starts_at'=>'17:00:00','ends_at'=>'18:30:00','location'=>'Halle Süd']]]);
+$tariff = make_tariff(['class_id'=>$course, 'name'=>'Beitrag', 'interval_months'=>1,
+                       'rates'=>[1=>3700, 12=>25200]]);
+fixture('tariff_discounts', ['tariff_id'=>$tariff, 'name'=>'Erster Monat gratis',
+                             'months'=>1, 'kind'=>'percent', 'value'=>100, 'sort_order'=>0]);
+$kid = make_student(['first_name'=>'Lena']);
+make_enrolment($course, $kid, ['tariff_id'=>$tariff]);
+
+$copy = duplicate_record('classes', $course);
+$copied = training_class($copy);
+ok(str_contains((string)$copied['name'], 'Kopie'), 'the copy says it is one');
+is_same(0, (int)$copied['archived'], 'and is not archived, whatever the original was');
+is_same(2, count(class_days($copy)), 'both training days came with it');
+is_same('17:00:00', class_days($copy)[1]['starts_at'], 'at the times they were at');
+is_same(1, count(class_tariffs($copy, true)), 'and its price list');
+$copiedTariff = class_tariffs($copy, true)[0];
+is_same([1=>3700, 12=>25200], tariff_rates((int)$copiedTariff['id']), 'with both prices');
+is_same(1, count(tariff_discount_templates((int)$copiedTariff['id'])), 'and its discount template');
+// The children in the original course are emphatically not in the copy: that is
+// the difference between "what belongs to this record" and "what points at it".
+is_same(0, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=?', [$copy]),
+        'and nobody was enrolled in a course that did not exist a moment ago');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=?', [$course]),
+        'while the original keeps its members');
+
+case_('A copy is numbered rather than left identical');
+$second = duplicate_record('classes', $course);
+ok(training_class($second)['name'] !== $copied['name'], 'the second copy is not called the same as the first');
+ok(str_contains((string)training_class($second)['name'], '2'), 'it counts');
+
+case_('Only the records that are hers to build may be copied');
+foreach (['students', 'charges', 'payments', 'accounts', 'invoices'] as $table)
+    throws(fn() => duplicate_record($table, 1), 'a '.$table.' row cannot be copied', 'kopieren');
+// A copied news item is a draft, because the commonest reason to copy one is
+// last year's notice and the commonest mistake would be publishing it unchanged.
+$item = fixture('news', ['title'=>'Hallenzeiten', 'body'=>'Ab Oktober.', 'published'=>1,
+                         'created_at'=>now(), 'updated_at'=>now()]);
+is_same(0, (int)scalar('SELECT published FROM news WHERE id=?', [duplicate_record('news', $item)]),
+        'a copied news item is not published');

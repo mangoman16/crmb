@@ -174,7 +174,13 @@ syntax and does nothing on nginx — on nginx the `root` directive in
   single-purpose, deleted on use, and expiring (48h invite, 1h reset).
 - **Enumeration.** Login verifies against a dummy hash when no account matches,
   so the timing does not distinguish. Password reset always reports the same
-  message.
+  message. **Noted in 0.6.0, after this review:** one narrow channel is open and
+  is accepted rather than closed. The sign-in limit is now counted against the
+  account an address resolves to, so ten refused attempts under one spelling of
+  an address followed by one under another spelling of the same address are
+  refused at once — eleven requests to establish that the address belongs to an
+  account. The reasoning and the cost of closing it are in `CHANGELOG.md` under
+  0.6.0.
 - **Dependencies.** PHPMailer 7.1.1 and, added in 0.2.0, bacon/bacon-qr-code
   3.1.1 with dasprid/enum, all pinned in `composer.lock`. Composer's advisory
   check ran during the 0.2.0 install and reported **no known advisories**. This

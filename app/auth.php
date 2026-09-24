@@ -55,12 +55,35 @@ function strong_password(string $p): string {
     return $p;
 }
 /**
+ * The account already using this address, held for the rest of the transaction.
+ *
+ * Every handler that creates an account asks this first, and the answer is only
+ * worth having if nothing can put a row in behind it: two people inviting the
+ * same parent in the same moment both look, both find nothing and both write,
+ * and the second one meets the UNIQUE index instead of the sentence that names
+ * the address. FOR UPDATE holds the address - and, on an address that does not
+ * exist yet, the gap the other insert would need - until this transaction ends.
+ *
+ * Outside a transaction it would hold nothing at all, so it refuses rather than
+ * handing back a row the caller believes is safe. Same reasoning as lock_row().
+ */
+function account_using_email(string $email): ?array {
+    if(tx_depth()===0) throw new RuntimeException('account_using_email() outside a transaction holds nothing.');
+    return one('SELECT * FROM accounts WHERE email=? FOR UPDATE',[$email]);
+}
+/**
  * Create the first administrator.
  *
  * There is no web signup: this account is provisioned by whoever set the server
  * up and is trusted from the start, while every invitation it later sends is
- * confirmed by email. The guard is checked inside the transaction that writes
- * the row, so a second browser tab on the setup page cannot slip one past it.
+ * confirmed by email.
+ *
+ * The guard is a locking read inside the transaction that writes the row, so a
+ * second tab on the setup page waits for the first one to commit and then finds
+ * the administrator it made. COUNT(*) was there before and promised the same
+ * thing without doing it: a plain read takes no locks, so both tabs read zero
+ * and both wrote. Holding every row the scan touches is free here - it runs
+ * once, against a table with nothing in it yet.
  *
  * $force exists for the console, where deliberately adding another
  * administrator is sometimes the only way back into a portal.
@@ -70,17 +93,40 @@ function create_admin_account(string $name,string $email,string $password,bool $
     if($name===''||mb_strlen($name)>160) throw new UserError(t('Bitte einen Namen eingeben (höchstens 160 Zeichen).','Please enter a name of at most 160 characters.'));
     $email=email_value($email); strong_password($password);
     return transactional(function() use ($name,$email,$password,$force): int {
-        if(!$force && (int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'")>0)
+        if(!$force && rows("SELECT id FROM accounts WHERE role='admin' FOR UPDATE"))
             throw new UserError(t('Es gibt bereits einen Administrator. Weitere Konten werden im Portal unter „Konten“ eingeladen.','An administrator already exists. Invite further accounts under “Konten” in the portal.'));
         run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,created_at) VALUES (?,?,?,'admin','active',?,?)",
             [$name,$email,password_hash($password,PASSWORD_DEFAULT),now(),now()]);
         return (int)db()->lastInsertId();
     });
 }
+/**
+ * The counter a throttle counts into.
+ *
+ * Derived in one place because throttle() and throttle_clear() have to agree:
+ * a reset that spelled the key even slightly differently would clear nothing,
+ * silently, and the family it was meant to let back in would stay locked out.
+ */
+function rate_limit_bucket(string $name,string $identity): string { return hash('sha256',$name.'|'.$identity); }
 function throttle(string $name,string $identity,int $limit,int $seconds=900): void {
-    $key=hash('sha256',$name.'|'.$identity); $time=time();
+    $key=rate_limit_bucket($name,$identity); $time=time();
     run_counter('INSERT INTO rate_limits (bucket,hits,window_start) VALUES (?,1,?) ON DUPLICATE KEY UPDATE hits=IF(window_start < ?,1,hits+1),window_start=IF(window_start < ?,?,window_start)',[$key,$time,$time-$seconds,$time-$seconds,$time]);
     if((int)run_counter('SELECT hits FROM rate_limits WHERE bucket=?',[$key])->fetchColumn()>$limit) throw new UserError(t('Zu viele Versuche. Bitte später erneut versuchen.','Too many attempts. Please try again later.'));
+}
+/**
+ * Forget the attempts counted against one bucket.
+ *
+ * Written on the counter connection, like the count itself, so no rollback can
+ * put the attempts back. That connection cannot write while an action's
+ * transaction is open, which is why a caller has to clear once its action has
+ * committed rather than from inside it.
+ *
+ * Which buckets are worth clearing, and which must never be, is a question
+ * about what a request has proved rather than about counters: it is answered
+ * once, in forget_attempts_after_success() in app/actions.php.
+ */
+function throttle_clear(string $name,string $identity): void {
+    run_counter('DELETE FROM rate_limits WHERE bucket=?',[rate_limit_bucket($name,$identity)]);
 }
 function make_token(int $accountId,string $purpose,?string $email=null): string {
     run('DELETE FROM auth_tokens WHERE account_id=? AND purpose=?',[$accountId,$purpose]);

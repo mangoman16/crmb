@@ -20,11 +20,17 @@ function student(int $id): array {
  * owes. The `structure` suite fails if the condition reappears spelled out.
  */
 /**
- * The people to ring about one child, the standard one first.
+ * The people to ring about one child, the first one to try first.
  *
  * Exactly one contact per child carries is_primary; the actions below keep it
  * that way. The ordering falls back to the oldest row so that a record written
  * before that rule existed still answers with somebody rather than nothing.
+ *
+ * This is a list of people to ring, and nothing else. It used to double as the
+ * address the portal writes to, which made one row do two jobs that are not the
+ * same job - the grandmother who should be rung has no email, the father who
+ * reads the invoices is never in the hall - and the form could not say either
+ * without lying about the other. Where the portal writes is on the child.
  */
 function student_contacts(int $studentId): array {
     return rows('SELECT * FROM contacts WHERE student_id=? ORDER BY is_primary DESC, id',[$studentId]);
@@ -35,29 +41,90 @@ function primary_contact(int $studentId): ?array {
 }
 
 /**
- * What a child's contacts are still missing, in the words she would use, or ''
- * when nothing is. Every child needs somebody to ring in an emergency and an
- * address to send an invoice to, so both are stated rather than assumed.
+ * What one child's record is still missing, in the words she would use, or ''
+ * when nothing is.
+ *
+ * Two different things, said separately because they are fixed in two different
+ * places: somebody to ring in an emergency, and an address to write to.
  */
 function contact_gap(int $studentId): string {
-    $contact=primary_contact($studentId);
-    if(!$contact) return t('Für dieses Kind ist noch keine Kontaktperson eingetragen.','No contact person has been entered for this child yet.');
-    if((string)$contact['email']==='') return t('Der Standardkontakt hat noch keine E-Mail-Adresse.','The standard contact has no email address yet.');
+    $student=one('SELECT email FROM students WHERE id=?',[$studentId]);
+    if(!primary_contact($studentId))
+        return t('Für dieses Kind ist noch keine Notfall-Kontaktperson eingetragen.','No emergency contact has been entered for this child yet.');
+    if((string)($student['email']??'')==='')
+        return t('Für dieses Kind ist noch keine E-Mail-Adresse eingetragen – dorthin gehen Einladung, Rechnungen und Erinnerungen.','This child has no email address yet – that is where the invitation, the invoices and the reminders go.');
     return '';
 }
 
 /** What a contact form carries as an email: optional, but valid when given. */
 function contact_email(): string { $email=post('email'); return $email===''?'':email_value($email); }
 
-/** The standard contact is where an invoice and a reminder go, so it needs one. */
-function contact_needs_email(string $email): void {
-    if($email==='') throw new UserError(t('Der Standardkontakt braucht eine E-Mail-Adresse – dorthin gehen Rechnungen und Erinnerungen.','The standard contact needs an email address – that is where invoices and reminders go.'));
+/**
+ * The address the portal writes to for one child.
+ *
+ * The account that manages them where there is one, because that is the address
+ * they actually sign in with and changing it goes through a verification step;
+ * otherwise what is written on the child, which is what an invitation would be
+ * sent to.
+ */
+function student_email(array $student): string {
+    $account=$student['account_id']?one('SELECT email FROM accounts WHERE id=?',[(int)$student['account_id']]):null;
+    return (string)($account['email'] ?? $student['email'] ?? '');
 }
 
-/** The children she still has to ask for a contact. Ended memberships are not chased. */
+/** The children she still has to ask for something. Ended memberships are not chased. */
 function students_missing_contact(): array {
     return rows('SELECT s.id,s.first_name,s.last_name FROM students s'
-        ." WHERE s.status<>'ended' AND NOT EXISTS (SELECT 1 FROM contacts c WHERE c.student_id=s.id AND c.is_primary=1 AND c.email<>'')"
+        ." WHERE s.status<>'ended' AND NOT EXISTS (SELECT 1 FROM contacts c WHERE c.student_id=s.id)"
+        .' ORDER BY s.first_name,s.last_name');
+}
+
+/**
+ * What is still missing on one child's record, as things to do with links.
+ *
+ * Creating a child asks for a name and an address and nothing else, because a
+ * form with twenty boxes on it is a form somebody abandons. The rest is not
+ * optional, though - a child with no course is a child nobody bills - so the
+ * page says what is left rather than leaving her to remember.
+ *
+ * In the order she would do them: somebody to ring, a way to reach the family,
+ * a course, and the price they are on.
+ */
+function student_next_steps(int $studentId): array {
+    $student = one('SELECT * FROM students WHERE id=?', [$studentId]);
+    if (!$student) return [];
+    $steps = [];
+    if (!primary_contact($studentId))
+        $steps[] = ['what' => t('Notfallkontakt eintragen', 'Add an emergency contact'),
+                    'why'  => t('Wen du anrufst, wenn etwas ist.', 'Who you ring if something happens.'),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'contacts']];
+    if ((string)$student['email'] === '' && $student['account_id'] === null)
+        $steps[] = ['what' => t('E-Mail-Adresse eintragen', 'Add an email address'),
+                    'why'  => t('Dorthin gehen Einladung, Rechnungen und Erinnerungen.', 'The invitation, the invoices and the reminders go there.'),
+                    'page' => 'student', 'params' => ['id' => $studentId]];
+    elseif ($student['account_id'] === null)
+        $steps[] = ['what' => t('Zugang einladen', 'Invite them in'),
+                    'why'  => t('Damit die Familie Termine und Beiträge selbst sieht.', 'So the family can see dates and charges themselves.'),
+                    'page' => 'student', 'params' => ['id' => $studentId]];
+    // Only the courses they are still in: a child who has left every one of them
+    // needs a course again, and saying otherwise would tick the box for ever on
+    // the strength of a membership that ended in March.
+    $enrolments = array_filter(student_enrolments($studentId), fn($e) => $e['left_on'] === null);
+    if (!$enrolments)
+        $steps[] = ['what' => t('In einen Kurs eintragen', 'Put them in a course'),
+                    'why'  => t('Ohne Kurs entstehen keine Beiträge.', 'Without a course there are no charges.'),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes']];
+    elseif (array_filter($enrolments, fn($e) => $e['tariff_id'] === null))
+        $steps[] = ['what' => t('Tarif wählen', 'Choose a tariff'),
+                    'why'  => t('Eine Kursteilnahme hat noch keinen Tarif.', 'One of their courses has no tariff yet.'),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes']];
+    return $steps;
+}
+
+/** The children with nowhere to send an invitation or an invoice. */
+function students_missing_email(): array {
+    return rows('SELECT s.id,s.first_name,s.last_name FROM students s'
+        ." WHERE s.status<>'ended' AND s.email='' AND s.account_id IS NULL"
         .' ORDER BY s.first_name,s.last_name');
 }
 

@@ -18,6 +18,7 @@ if($command==='help'){
         ."php bin/console.php create-admin\n"
         ."php bin/console.php backup [reason]   Write a full SQL copy into storage/backups\n"
         ."php bin/console.php mail:work [limit]\n"
+        ."php bin/console.php mail:test [address]   Open the SMTP connection now and print every step\n"
         ."php bin/console.php billing:run [YYYY-MM]  Create the monthly charges (default: this month)\n"
         ."php bin/console.php billing:plan [YYYY-MM] Show what billing:run would do, changing nothing\n"
         ."php bin/console.php maintenance       Prune expired tokens and temporary records\n"
@@ -66,7 +67,15 @@ try{
     if($command==='demo:fill'){
         $result=demo_fill(($argv[2]??'')==='--force');
         printf("Created %d students, %d courses, %d charges, %d accounts.\n",$result['students'],$result['courses'],$result['charges'],$result['accounts']);
-        echo "Every demo account signs in with the password printed above.\n";exit;
+        // It said "the password printed above" and printed no password, so the
+        // three accounts it had just made could not be signed in to at all.
+        // Generated once and never stored in the clear, so this is the only
+        // moment it can be shown.
+        echo "\n  trainerin@beispiel.test        (trainer)\n"
+            ."  familie.hofer@beispiel.test    (family)\n"
+            ."  familie.berger@beispiel.test   (family)\n\n"
+            ."All three sign in with: ".$result['password']."\n"
+            ."Write it down: it is not shown again. Remove everything with demo:clear.\n";exit;
     }
     if($command==='demo:clear'){
         $result=demo_clear();
@@ -135,6 +144,13 @@ try{
         echo json_encode($result).PHP_EOL;exit;
     }
     if($command==='mail:work'){$result=process_mail((int)($argv[2]??25),(float)($argv[3]??0));echo json_encode($result).PHP_EOL;exit($result['failed']?1:0);}
+    if($command==='mail:test'){
+        // The same check the portal runs under Einstellungen -> SMTP, for a host
+        // that has a shell and wants the answer without opening a browser.
+        $result=smtp_check(isset($argv[2])?email_value((string)$argv[2]):null);
+        echo json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT).PHP_EOL;
+        exit($result['ok']?0:1);
+    }
     if($command==='maintenance'){
         prune_expired();
         set_setting('prune_last_run',now());

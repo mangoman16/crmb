@@ -44,7 +44,8 @@ tabs($items,$tab,'manage');
         <p class="muted"><?=e(t('Umbenennen wirkt überall sofort, weil die Schüler auf den Eintrag zeigen und nicht auf das Wort. Archivieren behält die Zuordnung bestehender Kinder.','Renaming takes effect everywhere at once, because a student points at the entry rather than at the word. Archiving keeps the children already assigned.'))?></p>
     </section>
     <section class="card">
-        <h2><?=e($level?t('Gruppe bearbeiten','Edit level'):t('Gruppe anlegen','Create level'))?></h2>
+        <div class="section-heading"><h2><?=e($level?t('Gruppe bearbeiten','Edit level'):t('Gruppe anlegen','Create level'))?></h2>
+        <?php if($level)duplicate_button('levels',$edit);?></div>
         <?php start_form('level_save',['id'=>$edit]);
         input('name',t('Name','Name'),$level['name']??'','text',true,'',t('z. B. Anfänger','e.g. Beginner'));
         input('description',t('Kurze Erklärung','Short explanation'),$level['description']??'','text',false,t('Wofür steht diese Gruppe? Wird in der Liste angezeigt.','What does this level mean? Shown in the list.'));
@@ -72,7 +73,8 @@ tabs($items,$tab,'manage');
         <?php foreach($warnings as $warning): ?><div class="notice warn"><?=e($warning)?></div><?php endforeach ?>
     </section>
     <section class="card">
-        <h2><?=e($group?t('Altersgruppe bearbeiten','Edit age group'):t('Altersgruppe anlegen','Create age group'))?></h2>
+        <div class="section-heading"><h2><?=e($group?t('Altersgruppe bearbeiten','Edit age group'):t('Altersgruppe anlegen','Create age group'))?></h2>
+        <?php if($group)duplicate_button('age_groups',$edit);?></div>
         <p class="muted"><?=e(t('Beide Grenzen zählen mit: „12 bis 17“ heißt vom zwölften Geburtstag bis zum Tag vor dem achtzehnten.','Both ends count: “12 to 17” runs from the twelfth birthday to the day before the eighteenth.'))?></p>
         <?php start_form('age_group_save',['id'=>$edit]);
         input('name',t('Name','Name'),$group['name']??'','text',true,'',t('z. B. Jugend','e.g. Youth'));?>
@@ -111,7 +113,8 @@ elseif($tab==='tariffs'): ?>
         <?php endforeach ?>
     </section>
     <section class="card">
-        <h2><?=e($template?t('Vorlage bearbeiten','Edit template'):t('Vorlage anlegen','Create template'))?></h2>
+        <div class="section-heading"><h2><?=e($template?t('Vorlage bearbeiten','Edit template'):t('Vorlage anlegen','Create template'))?></h2>
+        <?php if($template)duplicate_button('message_templates',$edit);?></div>
         <?php start_form('template_save',['id'=>$edit]);
         input('name',t('Name der Vorlage','Template name'),$template['name']??'','text',true);
         input('subject',t('Betreff','Subject'),$template['subject']??'','text',true);

@@ -1,5 +1,46 @@
 # Validation
 
+## 0.6.0 — the sign-in counter, and the collation underneath it
+
+Recorded 2026-09-22, after the change that counts a sign-in attempt against the
+account an address resolves to rather than against the address as it was typed.
+
+- **The whole suite passes on the SQLite translation: 2491 assertions, 0 failed,
+  in 26 seconds** — run and watched here, against commit `bcfa796`, which is the
+  state this section records. A second run a few minutes later, with the test
+  work still in flight in the same tree, gave 2505 assertions and 0 failed; both
+  runs were watched. That proves the PHP and not the dialect, and the run says
+  as much itself: its closing list names the four foreign keys, the
+  MySQL-dialect database copy, and "two spellings of one address sharing a
+  throttle bucket (needs the MySQL collation)" as things it could not cover.
+  The half of this change that the fix is about is therefore **not covered by
+  that number at all**.
+- **The collation itself was measured on MariaDB 10.11.14** by the implementer,
+  not reproduced independently here: `accounts.email` is compared under
+  `utf8mb4_unicode_ci`, which folds case, accents, ß against ss, ligatures and
+  full-width letters, so one account row answers to any number of typed
+  spellings and each used to get its own ten attempts. A first measurement said
+  the opposite and was discarded — the client had mangled the character — and
+  the result stated here is the one taken with the client character set right.
+- **2511 assertions, 0 failed against MariaDB 10.11.14**, reported by the
+  implementer and not independently reproduced. The security suite runs 111
+  assertions there against 107 on SQLite; the four extra ones are the collation
+  half. `tests/mariadb-local.sh` repeats the run from nothing.
+- **Every rule added in this round was broken on purpose and watched to fail**
+  before it was trusted, per the implementer's report. One of those breaks did
+  not fail at first, because the test typed no address at all; it was corrected
+  rather than counted.
+
+**Not covered here.** **MySQL 8.0 remains unverified**, as in every round before
+this one. No PDF was opened in a real reader, no mail went through a real
+provider, nothing was rendered on a real iPhone, and no real hosting account was
+used. The only figure on this page that was observed rather than reported is the
+SQLite one. One weakness is knowingly left open: ten refused attempts on one
+spelling followed by one on another are refused immediately, which tells whoever
+is trying that both spellings are the same account — eleven requests to learn
+that an address is registered. Closing it needs a key derived from the engine's
+own collation, which the test translation cannot express.
+
 ## 0.6.0 — on a phone, in a browser
 
 Executed with Chromium 141 driven by Playwright against a real installed copy,
