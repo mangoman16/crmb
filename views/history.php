@@ -47,7 +47,7 @@ else: ?>
                 <?php foreach($changes as $column=>$pair): ?>
                     <div>
                         <dt><?=e(history_field_label((string)$column))?></dt>
-                        <dd><span class="was"><?=e(history_value($pair['from']))?></span> → <?=e(history_value($pair['to']))?></dd>
+                        <dd><span class="was"><?=e(history_value($pair['from'],(string)$column))?></span> → <?=e(history_value($pair['to'],(string)$column))?></dd>
                     </div>
                 <?php endforeach ?>
                 </dl>

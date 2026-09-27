@@ -15,8 +15,12 @@ try {
     require ROOT.'/app/actions_config.php';
     require ROOT.'/app/ui.php';
     $page=is_scalar($_GET['page']??'')?(string)($_GET['page']??'dashboard'):'dashboard';
-    $allowed=['dashboard','students','student','payments','classes','accounts','messages','compose','news','outbox','manage','invoices','attendance','download','settings','history','profile','print','login','forgot','activate','unsubscribe','privacy'];
+    $allowed=['dashboard','students','student','payments','classes','accounts','messages','compose','news','outbox','manage','invoices','attendance','download','settings','history','profile','print','login','forgot','activate','unsubscribe','privacy','icon','manifest'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
+    // The trail a problem report carries. Here, before the POST branch, because
+    // that branch redirects and never comes back: recorded any later, the trail
+    // would have a hole exactly where a form was sent.
+    record_step($page);
     if($_SERVER['REQUEST_METHOD']==='POST') {
         try {
             [$target,$params]=handle_post();
@@ -48,7 +52,7 @@ try {
         $_SESSION['activation_hash']=preg_match('/^[a-f0-9]{64}$/D',$token)?hash('sha256',$token):'';
         go('activate');
     }
-    $public=in_array($page,['login','forgot','activate','unsubscribe','privacy','not_found'],true);
+    $public=in_array($page,['login','forgot','activate','unsubscribe','privacy','not_found','icon','manifest'],true);
     $user=$public?current_user():require_user();
     if($user)touch_last_seen($user);
     if(in_array($page,['accounts','payments','compose','outbox','classes','manage','invoices','attendance','print'],true))require_staff();
@@ -56,6 +60,10 @@ try {
     // rather than in a view because a view is wrapped in the layout, and the one
     // thing a PDF must not have around it is HTML.
     if($page==='download')serve_download();
+    // The icon and the manifest likewise, and public: the login page wears the
+    // icon, and an install reads the manifest before anybody signs in.
+    if($page==='icon')serve_portal_icon();
+    if($page==='manifest')serve_web_manifest();
     if(in_array($page,['settings','history'],true))require_admin();
     // Read once, like the flash message: a submission that was rejected is offered
     // back to the form that follows and then forgotten, so it cannot reappear on a

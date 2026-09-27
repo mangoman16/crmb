@@ -94,6 +94,21 @@ function dispatch_settings_or_messages(string $action): array {
         run("UPDATE mail_jobs SET status='queued',error=NULL,retry_after=NULL,attempts=0 WHERE id=?",[$j['id']]);return ['outbox',[]];
     case 'mail_run':
         require_admin();return ['outbox',['process'=>1]];
+    case 'portal_icon_save':
+        // The file is checked before the setting points at it, and the old one
+        // is deleted only after, so a refused picture leaves the icon she had.
+        // Not tracked(): removing deletes the file, and the way back is to
+        // upload it again, the same as for any other setting saved here.
+        require_admin(); $old=portal_icon(); $new='';
+        if(!post('remove')) { $new=store_upload('icon','icon')['stored_name']; check_portal_icon($new); }
+        set_setting('portal_icon',$new);
+        audit($new!==''?'portal_icon.saved':'portal_icon.removed','settings');
+        if($old!=='' && $old!==$new) delete_upload('icon',$old);
+        flash($new!==''
+            ?t('Symbol gespeichert. Im Browser erscheint es beim nächsten Seitenaufruf. Wer das Portal schon auf dem Home-Bildschirm hat, sieht es dort erst, wenn es neu hinzugefügt wird.',
+               'Icon saved. The browser shows it on the next page. Anybody who already has the portal on their home screen sees it there once they add it again.')
+            :t('Das Standard-Symbol wird wieder verwendet.','The standard icon is used again.'));
+        return ['settings',['tab'=>'portal']];
     case 'privacy_save':
         require_admin();$de=text_limit('privacy_de',30000);$en=text_limit('privacy_en',30000);
         // The text is always saved. Only the release tick is refused, and it says
@@ -102,7 +117,8 @@ function dispatch_settings_or_messages(string $action): array {
         // text, and looked from the outside as though saving had done nothing.
         if(post('privacy_ready')) foreach(['privacy_de'=>[$de,'Deutsch'],'privacy_en'=>[$en,'English']] as [$text,$which]) {
             if(mb_strlen($text)<300) throw new UserError(t('Die Fassung „','The “').$which.t('“ ist noch zu kurz, um freigegeben zu werden.','” version is still too short to be released.'));
-            if(preg_match('/\[[^\]]{1,80}\]/u',$text,$m)) throw new UserError(t('In der Fassung „','In the “').$which.t('“ steht noch ein Platzhalter: ','” version there is still a placeholder: ').$m[0]);
+            // Quoted by its start: enough to find it, and some run to 300 characters.
+            if($left=privacy_draft_placeholders($text)) throw new UserError(t('In der Fassung „','In the “').$which.t('“ steht noch ein Platzhalter: ','” version there is still a placeholder: ').mb_strimwidth($left[0],0,100,'…'));
         }
         set_setting('privacy_de',$de);set_setting('privacy_en',$en);set_setting('privacy_ready',(bool)post('privacy_ready'));
         audit('privacy.saved','settings');flash(t('Datenschutzerklärung gespeichert.','Privacy notice saved.'));return ['settings',['tab'=>'privacy']];

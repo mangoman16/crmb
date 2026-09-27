@@ -34,7 +34,7 @@ test_load_actions();
 /* First the measurement itself, so the two passes underneath cannot be vacuous.
    If account_using_email() ever stops refusing, this fails and says so instead
    of letting the rest of the case report a transaction that was never there. */
-$_POST = ['name'=>'Ohne Transaktion', 'email'=>'bare@beispiel.test', 'role'=>'student', 'locale'=>'de'];
+$_POST = ['name'=>'Ohne Transaktion', 'email'=>'bare@beispiel.test', 'role'=>'trainer', 'locale'=>'de'];
 throws(fn() => without_session_id_warning(fn() => dispatch_action('account_invite')),
        'dispatching with nothing open is refused, which is what makes this case able to tell',
        'outside a transaction');
@@ -42,13 +42,13 @@ is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['bare@bei
         'and wrote no account on the way out');
 
 does_not_throw(fn() => act('account_invite',
-    ['name'=>'Mit act', 'email'=>'act@beispiel.test', 'role'=>'student', 'locale'=>'de']),
+    ['name'=>'Mit act', 'email'=>'act@beispiel.test', 'role'=>'trainer', 'locale'=>'de']),
     'act() gets the same handler through, so act() opened one');
 is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['act@beispiel.test']),
         'and the account it wrote is committed, not left inside a transaction nobody closed');
 
 does_not_throw(fn() => submit('account_invite',
-    ['name'=>'Mit submit', 'email'=>'submit@beispiel.test', 'role'=>'student', 'locale'=>'de']),
+    ['name'=>'Mit submit', 'email'=>'submit@beispiel.test', 'role'=>'trainer', 'locale'=>'de']),
     'and so does submit(), which goes the whole way through handle_post()');
 is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['submit@beispiel.test']),
         'with its account committed too');

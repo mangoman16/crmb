@@ -1,4 +1,7 @@
-<?php page_head(t('Mein Konto','My account')); ?>
+<?php /* The login, not the person: how you sign in and how the portal looks to
+         you. A family's record - name, courses, payments - is their "Profil" in
+         the menu, and the two must not read as the same page. */
+page_head(t('Mein Konto','My account'),t('Wie du dich anmeldest und wie das Portal für dich aussieht.','How you sign in and how the portal looks for you.')); ?>
 <section class="card">
     <h2><?=e(t('Bild','Picture'))?></h2>
     <div class="avatar-editor">
@@ -12,7 +15,7 @@
         </div>
     </div>
 </section>
-<section class="card"><h2><?=e(t('Profil und Darstellung','Profile and appearance'))?></h2><?php start_form('preferences_save');?><div class="grid two"><?php
+<section class="card"><h2><?=e(t('Name und Darstellung','Name and appearance'))?></h2><?php start_form('preferences_save');?><div class="grid two"><?php
 input('name',t('Name','Name'),$user['name'],'text',true);
 select_field('locale',t('Sprache','Language'),['de'=>'Deutsch','en'=>'English'],$user['locale'],true);
 select_field('theme',t('Erscheinungsbild','Appearance'),['auto'=>t('Wie am Gerät eingestellt','Match my device'),'light'=>t('Immer hell','Always light'),'dark'=>t('Immer dunkel','Always dark')],$user['theme']??'auto',true);

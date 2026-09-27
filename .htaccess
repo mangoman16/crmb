@@ -27,3 +27,14 @@ DirectoryIndex index.php
 <Files "VERSION">
     Require all denied
 </Files>
+
+# A git checkout in public_html carries .git/, and with it every file's whole
+# history, beside other dot-files nobody should be served (.claude/, a stray
+# .env). The rewrite above already sends such a request into public/, where
+# nothing matches; this answers 404 even where mod_rewrite is off. .well-known/
+# stays reachable because the hosting panel renews the certificate through it.
+# The guard is deliberate: a directive the server does not know is a 500 on
+# every page, and a portal that is down is worse than the gap this closes.
+<IfModule mod_alias.c>
+    RedirectMatch 404 /\.(?!well-known/)
+</IfModule>

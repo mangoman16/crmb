@@ -7,24 +7,18 @@ page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in thi
     $staff?link_button(t('Leeres Formular drucken','Print a blank form'),'print',[],'secondary')
            .link_button(t('+ Schüler anlegen','+ Add student'),'student'):'');
 if($staff): ?>
-<?php /* Two different gaps, said separately because they are filled in two
-         different places and neither is found on the day it matters: somebody
-         to ring, and somewhere to write. */
-foreach([['students'=>students_missing_contact(),
-          'heading'=>plural(count(students_missing_contact()),'Kind ohne Notfallkontakt','Kinder ohne Notfallkontakt','child with nobody to ring','children with nobody to ring'),
-          'tab'=>'contacts'],
-         ['students'=>students_missing_email(),
-          'heading'=>plural(count(students_missing_email()),'Kind ohne E-Mail-Adresse','Kinder ohne E-Mail-Adresse','child with no email address','children with no email address'),
-          'tab'=>'']] as $gap): if(!$gap['students']) continue; ?>
-<div class="notice warn">
-    <strong><?=e($gap['heading'])?></strong>
-    <?php /* Each name is a button rather than a word in a sentence. As a
-             comma-separated list they were 17px tall and touching each other, so
-             on a phone the way to fix one child's record was to hit a target a
-             third of the minimum with another one beside it. */ ?>
-    <p class="gap-names"><?php foreach(array_slice($gap['students'],0,6) as $m): ?><a class="chip" href="<?=e(url('student',['id'=>$m['id']]+($gap['tab']?['tab'=>$gap['tab']]:[])))?>"><?=e($m['first_name'].' '.$m['last_name'])?></a><?php endforeach ?><?php if(count($gap['students'])>6):?><span class="muted"><?=e(t('und weitere','and more'))?></span><?php endif ?></p>
-</div>
-<?php endforeach ?>
+<?php /* Three different gaps, said separately because they are filled in
+         different places and none is found on the day it matters: somebody to
+         ring, somewhere to write, and an address of their own to sign in with.
+         All three are warnings: without a login of their own, no invoice or
+         reminder reaches the family by email. */
+$noContact=students_missing_contact();$noEmail=students_missing_email();
+students_notice($noContact,plural(count($noContact),'Kind ohne Notfallkontakt','Kinder ohne Notfallkontakt','child with nobody to ring','children with nobody to ring'),
+    '',['tab'=>'contacts'],'add-contact');
+students_notice($noEmail,plural(count($noEmail),'Kind ohne E-Mail-Adresse','Kinder ohne E-Mail-Adresse','child with no email address','children with no email address'),
+    '',[],'email');
+own_address_notice();
+?>
 <?php /* Saved filters are the "views" she asked for: a named selection she opens
          instead of rebuilding. Each chip carries what it selects underneath its
          name, because a chip called "Montag" says nothing a month later. */

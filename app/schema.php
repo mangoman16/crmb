@@ -11,9 +11,18 @@ declare(strict_types=1);
  * console runs, rather than a second implementation that drifts.
  */
 
-/** Migration files in the order they must be applied. */
-function migration_files(): array {
-    $files = glob(ROOT . '/database/migrations/*.sql') ?: [];
+/**
+ * Migration files in the order they must be applied.
+ *
+ * Every caller in the application reads the shipped directory. $dir exists for
+ * the install suite, which has to watch the fingerprint react to a new file:
+ * a file written into the real directory, even for a moment, is one the next
+ * page view applies to the live database and records in the ledger, and once
+ * the test deletes it again the ledger names a migration the files no longer
+ * have and the portal stays closed.
+ */
+function migration_files(?string $dir = null): array {
+    $files = glob(($dir ?? ROOT . '/database/migrations') . '/*.sql') ?: [];
     sort($files);
     return $files;
 }
@@ -24,9 +33,9 @@ function migration_files(): array {
  * Contents rather than names, so an edited migration is noticed and refused by
  * schema_apply() instead of being silently treated as already applied.
  */
-function schema_fingerprint(): string {
+function schema_fingerprint(?string $dir = null): string {
     $parts = [];
-    foreach (migration_files() as $file) $parts[] = basename($file) . ':' . hash_file('sha256', $file);
+    foreach (migration_files($dir) as $file) $parts[] = basename($file) . ':' . hash_file('sha256', $file);
     return hash('sha256', implode("\n", $parts));
 }
 

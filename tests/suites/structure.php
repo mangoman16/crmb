@@ -18,7 +18,7 @@ $expected = [
     'app/groups.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
     'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
-    'app/duplicate.php' => 80,
+    'app/duplicate.php' => 80, 'app/portal_icon.php' => 60,
     'app/backup.php' => 100, 'public/setup.php' => 180,
 ];
 foreach ($expected as $file => $minLines) {
@@ -57,19 +57,44 @@ case_('The installer offers the example data and actually fills it');
 $setup = (string)file_get_contents(APP_ROOT.'/public/setup.php');
 ok(str_contains($setup, 'name="demo_fill"'), 'the setup form has the box');
 ok(str_contains($setup, 'demo_fill()'), 'and the handler calls the function behind it');
-ok(str_contains($setup, "isset(\$_POST['demo_fill'])"), 'reading what that box posts');
+// Read either in setup.php itself or in install_submission(), where the rest of
+// the form is read: the check follows the read wherever it has been moved.
+$submission = defined_functions_in(APP_ROOT.'/app/install.php')['install_submission'] ?? '';
+ok(str_contains($setup, "isset(\$_POST['demo_fill'])")
+   || (str_contains($setup, 'install_submission($_POST') && preg_match("/\\\$post \\[ 'demo_fill' \\]/", $submission) === 1),
+   'reading what that box posts');
 // A fill that fails must not fail the install: the portal is up either way.
 ok(preg_match('/try \{ \$demo = demo_fill\(\); \}\s*catch/', $setup) === 1,
    'and a failed fill is caught, because the portal is installed either way');
 
-case_('Every page the router allows has a view file');
+case_('Every page the router allows has a view file, or a handler that answers it');
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
 preg_match("/\\\$allowed=\[([^\]]*)\]/", $router, $m);
 ok(isset($m[1]), 'the allow-list is found');
+/* A page that is not a page - a picture, a JSON file - is answered by one
+   function that sends it and exits, never wrapped in the layout. Each is named
+   with its handler, and the router has to call exactly that for exactly that
+   page, so an exception cannot outlive the line that made it true. No stub
+   views: an empty file would satisfy the old rule and serve nothing. */
+$answeredWithoutView = ['icon' => 'serve_portal_icon', 'manifest' => 'serve_web_manifest'];
 foreach (array_map(fn($p) => trim($p, " '"), explode(',', $m[1] ?? '')) as $page) {
     if ($page === '') continue;
-    ok(is_file(APP_ROOT.'/views/'.$page.'.php'), 'views/'.$page.'.php exists');
+    if (!isset($answeredWithoutView[$page])) {
+        ok(is_file(APP_ROOT.'/views/'.$page.'.php'), 'views/'.$page.'.php exists');
+        continue;
+    }
+    $handler = $answeredWithoutView[$page];
+    ok(function_exists($handler), $page.' is answered by '.$handler.'(), which exists');
+    $call = strpos($router, "if(\$page==='".$page."')".$handler.'();');
+    ok($call !== false, 'and the router calls it for '.$page);
+    // After the classification is applied, so the lists read below are the
+    // ones that decide who gets the answer, not a description of them.
+    ok($call !== false && $call > (int)strpos($router, '$user=$public?'),
+       'only once the router has decided who may have it');
+    ok(!is_file(APP_ROOT.'/views/'.$page.'.php'), 'with no view beside it that the router would never reach');
 }
+foreach ($answeredWithoutView as $page => $handler)
+    ok(str_contains($m[1] ?? '', "'".$page."'"), $page.' is still a page the router allows');
 
 case_('No view sets an inline style, because the browser refuses to apply it');
 // style-src is 'self', so a style attribute is not a shortcut - it is markup
@@ -90,6 +115,7 @@ case_('Every page the router allows is classified: public, everyone, staff or ad
 $expected = [
     'login' => 'public', 'forgot' => 'public', 'activate' => 'public',
     'unsubscribe' => 'public', 'privacy' => 'public',
+    'icon' => 'public', 'manifest' => 'public',   // the login page wears the icon; an install reads the manifest
     'dashboard' => 'everyone', 'students' => 'everyone', 'student' => 'everyone',
     'messages' => 'everyone', 'news' => 'everyone', 'profile' => 'everyone',
     'download' => 'everyone',   // decides per file, inside serve_download()
@@ -120,6 +146,50 @@ case_('Every migration parses into statements');
 foreach (glob(APP_ROOT.'/database/migrations/*.sql') as $file)
     ok(count(split_sql((string)file_get_contents($file))) > 0, basename($file).' contains statements');
 
+case_('A form holding a field is a row form, not an inline one');
+/* .inline-form is for a single button. Given a field as well, the button
+   stretches to the height of the field's label and help text and floats beside
+   it - the "stretched button" that had to be rebuilt on the enrolment rows.
+   .row-form is the layout that lines a field and its button up. The scan runs
+   from each start_form(...'inline-form') to the first </form> after it, across
+   lines, because a form is usually opened in one PHP block and closed in
+   another. */
+$fieldHelpers = ['input', 'select_field', 'file_field', 'time_field', 'check_field', 'default_field', 'contact_fields'];
+$stretchedForms = function (string $source) use ($fieldHelpers): array {
+    $found = [];
+    $offset = 0;
+    while (($at = strpos($source, 'start_form(', $offset)) !== false) {
+        $offset = $at + 11;
+        // The call's own arguments, up to its matching parenthesis.
+        $depth = 1; $end = $offset;
+        for ($k = $offset, $n = strlen($source); $k < $n && $depth > 0; $k++) {
+            if ($source[$k] === '(') $depth++;
+            if ($source[$k] === ')') $depth--;
+            $end = $k;
+        }
+        if (!preg_match('/[\x27"]inline-form[\x27"]/', substr($source, $offset, $end - $offset))) continue;
+        $close = strpos($source, '</form>', $end);
+        $body = substr($source, $end, ($close === false ? strlen($source) : $close) - $end);
+        if (preg_match('/(?<![\w>$:])('.implode('|', $fieldHelpers).')\s*\(/', $body, $hit))
+            $found[] = $hit[1].'() in the form opened on line '.(substr_count(substr($source, 0, $at), "\n") + 1);
+    }
+    return $found;
+};
+// Read on examples first, including a form that closes several lines later.
+foreach (["<?php start_form('x',[],'inline-form');submit_button('Go');?></form>"                        => 0,
+          "<?php start_form('x',['a'=>f(1)],'inline-form');\ninput('n','N');\n?>\n<p></p>\n</form>"   => 1,
+          "<?php start_form('x',[],'row-form');input('n','N');submit_button('Go');?></form>"            => 0,
+          "<?php start_form('x',[],'inline-form');submit_button('Go');echo '</form>';input('y','Y');"  => 0,
+          "<?php start_form('x',[],'inline-form');contact_fields(\$c);echo '</form>';"                 => 1,
+          "<?php start_form('x',[],'inline-form');\$f->input('n');default_input('n');?></form>"        => 0] as $sample => $expected)
+    is_same($expected, count($stretchedForms($sample)), 'the form scan reads '.test_show($sample).' correctly');
+$formFiles = array_merge(glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/app/*.php'));
+foreach ($formFiles as $file)
+    foreach ($stretchedForms((string)file_get_contents($file)) as $where)
+        ok(false, substr($file, strlen(APP_ROOT) + 1).': an inline-form holds '.$where
+            .'; a form with a field needs class row-form, or its button stretches beside the field');
+ok(count($formFiles) > 40, count($formFiles).' view and application files scanned for inline forms');
+
 case_('Every function called in the application is defined');
 $defined = []; $called = []; $guarded = [];
 $files = array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'),
@@ -139,21 +209,79 @@ foreach ($files as $file) {
             if ($amp === '&' || (is_array($amp) && str_contains(token_name($amp[0]), 'AMPERSAND'))) $j++;
             if (isset($tokens[$j]) && is_array($tokens[$j]) && $tokens[$j][0] === T_STRING) { $defined[strtolower($tokens[$j][1])] = true; continue; }
         }
-        if (!is_array($token) || $token[0] !== T_STRING || ($tokens[$i+1] ?? null) !== '(') continue;
+        // \shell_exec( is one token, not two, and is the same call as shell_exec(.
+        $global = is_array($token) && ($token[0] === T_STRING
+            || ($token[0] === T_NAME_FULLY_QUALIFIED && substr_count($token[1], '\\') === 1));
+        if (!$global || ($tokens[$i+1] ?? null) !== '(') continue;
         $prev = $tokens[$i-1] ?? null;
         if (is_array($prev) && in_array($prev[0], [T_NEW, T_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION,
             T_NULLSAFE_OBJECT_OPERATOR, T_ATTRIBUTE, T_STRING], true)) continue;
-        $called[strtolower($token[1])] = $file;
+        $called[strtolower(ltrim($token[1], '\\'))][basename($file)] = true;
     }
 }
 $keywords = ['array','isset','unset','list','echo','print','exit','die','include','require','include_once',
              'require_once','eval','match','fn','static','int','float','string','bool','void','catch','if',
              'for','foreach','while','switch','elseif','and','or','xor','empty'];
+// PHP 8 removes a disabled function entirely, so on a host that disables one
+// this rule is the first place the difference shows - and "undefined" alone
+// sends the reader looking for a typo that is not there.
+$disabled = array_map('strtolower', array_filter(array_map('trim', explode(',', (string)ini_get('disable_functions')))));
 foreach ($called as $name => $where) {
     if (isset($defined[$name]) || isset($guarded[$name]) || function_exists($name) || in_array($name, $keywords, true)) continue;
-    ok(false, 'undefined function '.$name.'() called in '.basename($where));
+    ok(false, 'undefined function '.$name.'() called in '.implode(', ', array_keys($where))
+        .(in_array($name, $disabled, true)
+            ? ' — but this PHP disables it (disable_functions); guard it with function_exists(\''.$name.'\')' : ''));
 }
 ok(true, count($defined).' functions defined, '.count($called).' distinct call targets, all resolved');
+
+case_('Every call that starts a shell is behind a check that it exists');
+/* Shared hosting commonly lists these in disable_functions, and PHP 8 then
+   removes them: an unguarded call is a fatal error on her host and nowhere else,
+   so the rule above only catches it on a machine that happens to disable the same
+   ones. This one does not depend on the host - each call needs a
+   function_exists() for that name in its own file, so that one file's guard
+   cannot excuse another's call. The backtick operator is shell_exec() without
+   the name, so it counts as one. */
+$shellFunctions = ['shell_exec', 'exec', 'system', 'passthru', 'proc_open', 'popen'];
+$unguardedShell = function (string $source) use ($shellFunctions): array {
+    preg_match_all('/function_exists\(\s*[\x27"]\\\\?([a-z_]+)[\x27"]/i', $source, $m);
+    $guards = array_map('strtolower', $m[1]);
+    $tokens = array_values(array_filter(token_get_all($source),
+        fn($x) => !is_array($x) || !in_array($x[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+    $found = []; $line = 1; $inBackticks = false;
+    foreach ($tokens as $i => $t) {
+        if (is_array($t)) $line = $t[2];
+        if ($t === '`') {
+            $inBackticks = !$inBackticks;
+            if ($inBackticks && !in_array('shell_exec', $guards, true)) $found[] = 'the backtick operator (shell_exec) on line '.$line;
+            continue;
+        }
+        if (!is_array($t) || ($tokens[$i + 1] ?? null) !== '(') continue;
+        if (!($t[0] === T_STRING || ($t[0] === T_NAME_FULLY_QUALIFIED && substr_count($t[1], '\\') === 1))) continue;
+        $prev = $tokens[$i - 1] ?? null;
+        if (is_array($prev) && in_array($prev[0], [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION, T_NEW], true)) continue;
+        $name = strtolower(ltrim($t[1], '\\'));
+        if (in_array($name, $shellFunctions, true) && !in_array($name, $guards, true)) $found[] = $name.'() on line '.$line;
+    }
+    return $found;
+};
+// The rule proves it can see what it is looking for before it is trusted with
+// the real files; a pass on the real files alone would look the same if it
+// could not.
+foreach (["<?php echo shell_exec('ls');"                                   => 1,
+          "<?php \\exec('ls');"                                            => 1,
+          "<?php \$listing = `ls`;"                                        => 1,
+          "<?php if (function_exists('exec')) shell_exec('ls');"           => 1,
+          "<?php if (function_exists('shell_exec')) echo shell_exec('ls');" => 0,
+          "<?php \$pdo->exec('SELECT 1'); db()->exec('SELECT 1'); Foo::system();" => 0] as $sample => $expected)
+    is_same($expected, count($unguardedShell($sample)), 'the rule reads '.test_show($sample).' correctly');
+$shellFiles = array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'),
+                          glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/database/*.php'));
+foreach ($shellFiles as $file)
+    foreach ($unguardedShell((string)file_get_contents($file)) as $call)
+        ok(false, substr($file, strlen(APP_ROOT) + 1).' calls '.$call.' without function_exists() for it in the same file: '
+            .'on a host that disables it, which shared hosting often does, PHP 8 stops there with an undefined function');
+ok(count($shellFiles) > 40, count($shellFiles).' application files read for it');
 
 case_('Nothing reaches the page unescaped');
 /* An expression is safe when every part of it that can actually be printed is
@@ -310,45 +438,314 @@ case_('Every directory beside public/ is covered by that rule');
 /* A directory added later with no .htaccess would be served in full on hosting
    without mod_rewrite. The list above is checked against what is actually there
    rather than trusted to have been kept up to date. */
-foreach (glob(APP_ROOT.'/*', GLOB_ONLYDIR) as $directory) {
-    $name = basename($directory);
-    if (in_array($name, ['public', 'vendor'], true)) continue;   // the portal, and a build artefact
-    ok(is_file($directory.'/.htaccess'), $name.'/ has a deny file');
+/* Read from the folder itself, not with glob('*'), which leaves out every name
+   starting with a dot - and the one that matters most is among those. Her
+   public_html is a git checkout, and .git/ holds every version of every file
+   ever committed. A dot-folder may be refused by a deny file of its own or by
+   the root .htaccess, but only by a rule that holds without mod_rewrite, for the
+   same reason each folder here denies itself: with mod_rewrite on, the rewrite
+   into public/ already hides it. .well-known/ is left reachable on purpose,
+   because the hosting panel renews the certificate through it. */
+/** Whether .htaccess rules refuse a URL path without relying on mod_rewrite. */
+$deniesWithoutRewrite = function (string $rules, string $path): bool {
+    // Comments are not rules, and whatever sits inside the mod_rewrite block is
+    // exactly what a server without mod_rewrite ignores.
+    $rules = preg_replace('~<IfModule\s+mod_rewrite\.c>.*?</IfModule>~is', '', preg_replace('/^\s*#.*$/m', '', $rules));
+    $matches = fn(string $pattern) => @preg_match('#'.str_replace('#', '\#', trim($pattern, '"')).'#', $path) === 1;
+    // mod_alias: RedirectMatch [status] regex, and Redirect [status] /prefix
+    preg_match_all('/^\s*RedirectMatch\s+(?:(?:\d{3}|gone|permanent|temp|seeother)\s+)?("[^"]+"|\S+)/mi', $rules, $m);
+    foreach ($m[1] as $pattern) if ($matches($pattern)) return true;
+    preg_match_all('/^\s*Redirect\s+(?:(?:\d{3}|gone|permanent|temp|seeother)\s+)?"?(\/[^\s"]*)/mi', $rules, $m);
+    foreach ($m[1] as $prefix)
+        if ($path === $prefix || str_starts_with($path, rtrim($prefix, '/').'/')) return true;
+    // core: <If "%{REQUEST_URI} =~ m#…#"> Require all denied </If>
+    preg_match_all('~<If\s+"([^"]*)"\s*>(.*?)</If>~is', $rules, $blocks, PREG_SET_ORDER);
+    foreach ($blocks as [, $expression, $inside])
+        if (str_contains($inside, 'Require all denied') && str_contains($expression, '%{REQUEST_URI}')
+            && preg_match('@=~\s*m?([#/|!])(.+?)\1@', $expression, $re) && $matches($re[2])) return true;
+    return false;
+};
+// The reader is checked on rules written the ways Apache accepts, and on the
+// ones that would not hold, before it is trusted with the real file.
+foreach (["RedirectMatch 404 /\\.git(/|$)" => true, 'RedirectMatch 404 "/\\.(?!well-known/)"' => true,
+          'Redirect 404 /.git' => true, "<If \"%{REQUEST_URI} =~ m#/\\.git#\">\n Require all denied\n</If>" => true,
+          "<IfModule mod_rewrite.c>\nRewriteRule ^\\.git - [F]\n</IfModule>" => false, 'Redirect 404 /.gitx' => false,
+          "# RedirectMatch 404 /\\.git" => false, '' => false] as $rule => $denies)
+    is_same($denies, $deniesWithoutRewrite($rule, '/.git/config'), 'the rule reader on '.test_show($rule));
+is_same(false, $deniesWithoutRewrite('RedirectMatch 404 "/\\.(?!well-known/)"', '/.well-known/acme-challenge/x'),
+        'and a rule for every dot-folder can still leave .well-known/ reachable');
+$rootRules = (string)file_get_contents(APP_ROOT.'/.htaccess');
+$rootDenies = fn(string $path): bool => $deniesWithoutRewrite($rootRules, $path);
+$folders = 0;
+foreach (scandir(APP_ROOT) ?: [] as $name) {
+    if ($name === '.' || $name === '..' || !is_dir(APP_ROOT.'/'.$name)) continue;
+    if (in_array($name, ['public', 'vendor', '.well-known'], true)) continue;   // the portal, a build artefact, the certificate
+    $folders++;
+    if ($name[0] !== '.') { ok(is_file(APP_ROOT.'/'.$name.'/.htaccess'), $name.'/ has a deny file'); continue; }
+    $own = str_contains((string)@file_get_contents(APP_ROOT.'/'.$name.'/.htaccess'), 'Require all denied');
+    ok($own || $rootDenies('/'.$name.'/config'),
+       $name.'/ is refused over the web, by a deny file of its own or by the root .htaccess without needing mod_rewrite');
 }
+ok($folders >= 8, $folders.' folders beside public/ checked, dot-folders included');
+
+case_('A test run stores nothing in the portal\'s own folder');
+/* The owner runs this suite on her hosting, and the folder it runs in may be the
+   one her portal is served from. The suites sweep uploads that no test record
+   points at and prune backups; pointed at her storage/, that is every photograph,
+   voice note, payment proof and backup she has. The harness moves all of it into
+   a folder of the run's own - checked here path by path, whatever driver and
+   whatever configuration the run was started with, because a new kind of upload
+   is a new folder. */
+$runDir = test_run_dir();
+ok(!test_path_inside($runDir, APP_ROOT), 'the run\'s own folder is outside the portal: '.$runDir);
+$stored = ['the maintenance flag' => maintenance_file(), 'the backups' => backup_dir(),
+           'the invoice proofs' => invoice_dir(), 'the schema marker' => schema_stamp_file(),
+           'the backup override' => backup_override_file()];
+$kinds = array_keys(upload_references());
+foreach (['avatar', 'proof', 'message'] as $kind)
+    ok(in_array($kind, $kinds, true), 'uploads of kind '.$kind.' are among the folders checked');
+foreach ($kinds as $kind) $stored['uploads of kind '.$kind] = upload_dir($kind);
+foreach ($stored as $what => $path) {
+    ok(test_path_inside($path, $runDir), $what.' goes into the run\'s own folder, not '.$path);
+    ok(!test_path_inside($path, APP_ROOT), $what.' is not inside the portal\'s folder');
+}
+if (test_driver() === 'sqlite')
+    ok(test_path_inside(config_path(), $runDir), 'the configuration this run wrote is in its own folder, not in tests/');
+
+case_('Every file the application stores is placed beside the maintenance flag');
+/* That is what lets the harness move all of them with one setting. A folder the
+   application named from its own root directly would not move with it, and would
+   be the one a test run still writes into her storage/. Three places name that
+   folder, for reasons that do not write through it at run time. */
+$storageNamed = [
+    'app/core.php'     => 'function maintenance_file()',  // the default every other path derives from
+    'app/install.php'  => 'is_writable(ROOT',             // the installer asking whether it could write
+    'public/setup.php' => "'maintenance_file' =>",        // the installer writing that setting itself
+];
+$seen = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/public/*.php'),
+                     glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/database/*.php')) as $file) {
+    $relative = substr($file, strlen(APP_ROOT) + 1);
+    foreach (file($file) ?: [] as $number => $line) {
+        if (!preg_match('/(?:\bROOT\b|__DIR__)[^;]*?[\x27"][^\x27"]*\bstorage\b/', $line)) continue;
+        $reason = $storageNamed[$relative] ?? null;
+        if ($reason !== null && str_contains($line, $reason)) { $seen[$relative] = true; continue; }
+        ok(false, $relative.':'.($number + 1).' names storage/ itself instead of deriving it from maintenance_file(), '
+            .'so a test run would write there: '.trim($line));
+    }
+}
+foreach (array_keys($storageNamed) as $relative)
+    ok(isset($seen[$relative]), $relative.' still names storage/ where it is expected to, so this search is still finding them');
+
+case_('No test writes to a path inside the portal\'s own folder');
+/* A page view of the live portal sees whatever a test puts there, for as long as
+   it is there: a migration file in database/migrations is applied to her
+   database on the next request. Read from the tests' own source, because the
+   write that matters lasts a moment and is gone again before any check made
+   afterwards could see it.
+   A path counts as inside the portal when it is built from APP_ROOT, TEST_ROOT,
+   ROOT, __DIR__ or __FILE__, from migration_files(), from a path written
+   relative to the portal's folder (database/…, storage/…), which is where a run
+   started inside it resolves one, or from a variable last assigned any of those.
+   A command handed to exec() and its kind is not parsed; it is refused if it
+   names one of the folders a live request reads from - database/, storage/,
+   config/ or public/ - because a shell command is a write this rule cannot see. */
+$writers = ['file_put_contents', 'touch', 'mkdir', 'rename', 'copy', 'unlink', 'rmdir', 'tempnam',
+            'symlink', 'link', 'chmod', 'fopen'];
+$roots = ['APP_ROOT', 'TEST_ROOT', 'ROOT', 'migration_files'];
+$writesChecked = 0;
+foreach (array_merge(glob(TEST_ROOT.'/*.php'), glob(TEST_ROOT.'/suites/*.php')) as $file) {
+    $tokens = array_values(array_filter(token_get_all((string)file_get_contents($file)),
+        fn($t) => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+    $inside = [];   // variable => whether it currently holds a path in the portal
+    // What these return is a name, a size or an answer, never a place to write.
+    $notAPath = ['basename', 'hash_file', 'filesize', 'filemtime', 'is_file', 'is_dir', 'file_exists', 'strlen', 'count'];
+    $holdsRoot = function (array $slice) use (&$inside, $roots, $notAPath): bool {
+        $skip = 0;
+        foreach ($slice as $k => $t) {
+            if ($skip > 0) { if ($t === '(') $skip++; if ($t === ')') $skip--; continue; }
+            if (is_array($t) && $t[0] === T_STRING && in_array(strtolower($t[1]), $notAPath, true) && ($slice[$k + 1] ?? null) === '(') {
+                $skip = -1; continue;
+            }
+            if ($skip === -1) { $skip = 1; continue; }   // the opening parenthesis of that call
+            if (!is_array($t)) continue;
+            if (in_array($t[0], [T_DIR, T_FILE], true)) return true;
+            if ($t[0] === T_STRING && in_array($t[1], $roots, true)) return true;
+            if (in_array($t[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)
+                && preg_match('#^(\./)?(app|bin|config|database|docs|public|storage|tests|views|vendor)(/|$)#', trim($t[1], '\'"'))) return true;
+            if ($t[0] === T_VARIABLE && ($inside[$t[1]] ?? false)) return true;
+        }
+        return false;
+    };
+    // The tokens up to the end of the statement or argument list, at depth zero.
+    $until = function (int $from, array $stops) use ($tokens): array {
+        $depth = 0; $out = [];
+        for ($k = $from; $k < count($tokens); $k++) {
+            $t = $tokens[$k];
+            if (in_array($t, ['(', '[', '{'], true) || (is_array($t) && in_array($t[0], [T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true))) $depth++;
+            if (in_array($t, [')', ']', '}'], true)) { if ($depth === 0) break; $depth--; }
+            if ($depth === 0 && in_array($t, $stops, true)) break;
+            $out[] = $t;
+        }
+        return $out;
+    };
+    foreach ($tokens as $i => $t) {
+        if (!is_array($t)) continue;
+        $next = $tokens[$i + 1] ?? null;
+        // $x = …;  and  $x .= …;  - in the order the file runs them.
+        if ($t[0] === T_VARIABLE && ($next === '=' || (is_array($next) && $next[0] === T_CONCAT_EQUAL))) {
+            $holds = $holdsRoot($until($i + 2, [';']));
+            $inside[$t[1]] = $next === '=' ? $holds : (($inside[$t[1]] ?? false) || $holds);
+            continue;
+        }
+        // foreach (… as $x)  and  foreach (… as $k => $x)
+        if ($t[0] === T_FOREACH) {
+            $head = $until($i + 2, []);
+            $as = array_search(true, array_map(fn($h) => is_array($h) && $h[0] === T_AS, $head), true);
+            if ($as === false) continue;
+            $holds = $holdsRoot(array_slice($head, 0, $as));
+            foreach (array_slice($head, $as + 1) as $h) if (is_array($h) && $h[0] === T_VARIABLE) $inside[$h[1]] = $holds;
+            continue;
+        }
+        if ($t[0] === T_STRING && $next === '(' && in_array(strtolower($t[1]), ['exec', 'shell_exec', 'system', 'passthru', 'proc_open', 'popen'], true)) {
+            $shellCommand = $until($i + 2, []);
+            foreach ($shellCommand as $a)
+                if (is_array($a) && in_array($a[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)
+                    && preg_match('#(^|[/\s\'"])(database|storage|config|public)(/|$)#', trim($a[1], '\'"'))) {
+                    ok(false, 'tests/'.substr($file, strlen(TEST_ROOT) + 1).':'.$t[2].' hands '.$t[1].'() a command naming '
+                        .trim($a[1], '\'"').', a folder a page view of the live portal reads from');
+                    break;
+                }
+            continue;
+        }
+        if ($t[0] !== T_STRING || !in_array(strtolower($t[1]), $writers, true) || $next !== '(') continue;
+        $prev = $tokens[$i - 1] ?? null;
+        if (is_array($prev) && in_array($prev[0], [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION, T_NEW], true)) continue;
+        $args = []; $current = []; $depth = 0;
+        foreach (array_slice($tokens, $i + 2) as $a) {
+            if (in_array($a, ['(', '['], true)) $depth++;
+            if (in_array($a, [')', ']'], true)) { if ($depth === 0) break; $depth--; }
+            if ($a === ',' && $depth === 0) { $args[] = $current; $current = []; continue; }
+            $current[] = $a;
+        }
+        $args[] = $current;
+        $name = strtolower($t[1]);
+        if ($name === 'fopen') {
+            $mode = $args[1][0] ?? null;
+            if (is_array($mode) && $mode[0] === T_CONSTANT_ENCAPSED_STRING && preg_match('/^[\x27"]r[bt]?[\x27"]$/', $mode[1])) continue;
+        }
+        // A move takes its source away as well; a copy or a link only reads its
+        // source and writes the second argument.
+        $checked = match ($name) {
+            'rename' => $args,
+            'copy', 'symlink', 'link' => [$args[1] ?? []],
+            default => [$args[0]],
+        };
+        $writesChecked++;
+        foreach ($checked as $arg)
+            if ($holdsRoot($arg)) {
+                ok(false, 'tests/'.substr($file, strlen(TEST_ROOT) + 1).':'.$t[2].' '.$name.'() writes to a path inside the portal\'s own folder, '
+                    .'where a page view of the live portal would see it');
+                break;
+            }
+    }
+}
+ok($writesChecked >= 20, 'the tests\' own writes were found and followed ('.$writesChecked.'), so a pass here is not an empty search');
+
+case_('A run refuses a database it could destroy, before it connects');
+/* The suite drops every table in the database it is given. The guards once
+   asked for the driver "mysql" while the dropping ran for anything that was not
+   "sqlite", so CRM_TEST_DRIVER=MySQL skipped every check and emptied whatever
+   the configuration named. Each refusal is watched from outside, in a run of its
+   own, against a server address where nothing listens - so a guard that gave way
+   would show as a connection attempt, never as a dropped table. */
+$boot = defined_functions_in(TEST_ROOT.'/harness.php')['test_boot'] ?? '';
+ok(str_contains($boot, "if ( \$driver === 'sqlite' )"), 'test_boot() still decides between building and dropping on "sqlite"');
+ok(preg_match("/\\\$driver\s*={2,3}\s*'mysql'/", $boot) === 0,
+   'so no guard in it asks for "mysql": each asks for "not sqlite", the exact complement of the branch that drops');
+ok(substr_count($boot, "\$driver !== 'sqlite'") >= 2, 'both guards, the name and the portal\'s own database, are written that way');
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(),
+        ['a run refusing a misspelled driver or a database name (this PHP disables exec)']));
+} else {
+    $attempt = function (string $driver, string $database): array {
+        $config = test_run_dir().'/refusal-'.bin2hex(random_bytes(4)).'.php';
+        // Port 1 on this machine: nothing answers, so the only way to reach it
+        // at all is to have got past every refusal.
+        write_run_config($config,
+            ['host' => '127.0.0.1', 'port' => 1, 'database' => $database, 'username' => 'nobody', 'password' => ''],
+            test_run_dir());
+        exec('CRM_TEST_DRIVER='.escapeshellarg($driver).' CRM_CONFIG='.escapeshellarg($config).' '
+            .escapeshellarg(PHP_BINARY).' '.escapeshellarg(TEST_ROOT.'/run.php').' no-such-suite 2>&1', $out, $code);
+        @unlink($config);
+        return ['code' => $code, 'out' => implode("\n", $out)];
+    };
+    // The control first: a run that is allowed through really does try to
+    // connect, so a refusal below is a refusal and not a run that never started.
+    $through = $attempt('mysql', 'crm_test');
+    ok($through['code'] !== 2 && str_contains($through['out'], 'SQLSTATE'),
+       'a correctly named test database gets past every refusal and tries to connect');
+    foreach ([['MySQL', 'crm_test', 'the driver spelled MySQL'], ['mariadb', 'crm_test', 'the driver called mariadb'],
+              ['mysql ', 'crm_test', 'the driver with a trailing space'],
+              ['mysql', 'badminton', 'a database whose name does not end in _test'],
+              ['mysql', 'x;dbname=badminton;y=z_test', 'a name ending in _test that carries a second dbname'],
+              ['mysql', 'crm-test', 'a name with a character a connection string could use']] as [$driver, $database, $what]) {
+        $refused = $attempt($driver, $database);
+        is_same(2, $refused['code'], 'refused: '.$what);
+        ok(str_starts_with($refused['out'], 'Refusing to run') && !str_contains($refused['out'], 'SQLSTATE'),
+           'and it said so before any connection was attempted: '.$what);
+    }
+}
+foreach (['crm_test' => true, 'konto_crm_test' => true, 'CRM_TEST' => false, 'crm_test ' => false,
+          "crm_test\n" => false, 'x;dbname=live;y=z_test' => false, '_test' => false, 'crm_testing' => false] as $name => $allowed)
+    is_same($allowed, test_database_name_allowed($name), 'the name rule on '.test_show($name));
 
 case_('The commands that identify a release work before it is configured');
 /* During an update you unpack a release and want to know which one it is
    before linking a configuration into it. These three must therefore answer
    without a database or a config file; everything else may reasonably refuse. */
 $console = escapeshellarg(APP_ROOT.'/bin/console.php');
-$bare = function (string $command) use ($console): array {
-    // An empty CRM_CONFIG is the point: the release has not been configured yet.
-    exec('CRM_CONFIG= '.escapeshellarg(PHP_BINARY).' '.$console.' '.escapeshellarg($command).' 2>&1', $out, $code);
-    return ['out' => implode("\n", $out), 'code' => $code];
-};
-$version = $bare('version');
-is_same(0, $version['code'], 'version exits cleanly');
-is_same(trim((string)file_get_contents(APP_ROOT.'/VERSION')), trim($version['out']), 'version prints what VERSION says');
+/* A configuration file that does not exist is the point: the release has not
+   been configured yet. It is named rather than left empty, because an empty
+   CRM_CONFIG falls back to config/config.php - and run from the folder the live
+   portal is served from, that is hers, so the check would neither prove what it
+   says nor be one step away from her database. */
+$unconfigured = test_run_dir().'/no-such-config.php';
+ok(!is_file($unconfigured), 'the configuration the console is pointed at really does not exist');
+if (!function_exists('exec')) {
+    // Shared hosting often lists exec in disable_functions. Said in the footer
+    // rather than aborting the rest of this suite on an undefined function.
+    test_unsupported(array_merge(test_unsupported(),
+        ['the console answering before it is configured, and its help text (this PHP disables exec)']));
+} else {
+    $bare = function (string $command) use ($console, $unconfigured): array {
+        exec('CRM_CONFIG='.escapeshellarg($unconfigured).' '.escapeshellarg(PHP_BINARY).' '.$console.' '.escapeshellarg($command).' 2>&1', $out, $code);
+        return ['out' => implode("\n", $out), 'code' => $code];
+    };
+    $version = $bare('version');
+    is_same(0, $version['code'], 'version exits cleanly');
+    is_same(trim((string)file_get_contents(APP_ROOT.'/VERSION')), trim($version['out']), 'version prints what VERSION says');
 
-$help = $bare('help');
-is_same(0, $help['code'], 'help exits cleanly');
-ok(str_contains($help['out'], 'console.php'), 'help lists the commands');
+    $help = $bare('help');
+    is_same(0, $help['code'], 'help exits cleanly');
+    ok(str_contains($help['out'], 'console.php'), 'help lists the commands');
 
-$key = $bare('key');
-is_same(0, $key['code'], 'key exits cleanly');
-ok(strlen(base64_decode(trim($key['out']), true) ?: '') === 32, 'key prints 32 bytes of base64, the length seal() needs');
+    $key = $bare('key');
+    is_same(0, $key['code'], 'key exits cleanly');
+    ok(strlen(base64_decode(trim($key['out']), true) ?: '') === 32, 'key prints 32 bytes of base64, the length seal() needs');
 
-case_('Every command the help text lists is one the console handles');
-$source = (string)file_get_contents(APP_ROOT.'/bin/console.php');
-preg_match_all('/console\.php ([a-z][a-z:-]*)/', $help['out'], $listed);
-preg_match_all('/\$command===\x27([a-z][a-z:-]*)\x27/', $source, $handled);
-foreach (array_unique($listed[1]) as $name)
-    ok(in_array($name, $handled[1], true), 'help lists "'.$name.'", and the console handles it');
-foreach (array_unique($handled[1]) as $name) {
-    // A help text that lists itself tells the reader nothing they have not
-    // just demonstrated they know.
-    if ($name === 'help') continue;
-    ok(in_array($name, $listed[1], true), 'the console handles "'.$name.'", and help lists it');
+    case_('Every command the help text lists is one the console handles');
+    $source = (string)file_get_contents(APP_ROOT.'/bin/console.php');
+    preg_match_all('/console\.php ([a-z][a-z:-]*)/', $help['out'], $listed);
+    preg_match_all('/\$command===\x27([a-z][a-z:-]*)\x27/', $source, $handled);
+    foreach (array_unique($listed[1]) as $name)
+        ok(in_array($name, $handled[1], true), 'help lists "'.$name.'", and the console handles it');
+    foreach (array_unique($handled[1]) as $name) {
+        // A help text that lists itself tells the reader nothing they have not
+        // just demonstrated they know.
+        if ($name === 'help') continue;
+        ok(in_array($name, $listed[1], true), 'the console handles "'.$name.'", and help lists it');
+    }
 }
 
 case_('The rule for what counts as paid is written once');
@@ -815,14 +1212,28 @@ $orderings = [
         'suite'   => 'contacts.php "and is still there"',
     ],
     'app/actions.php student_invite' => [
-        'refusal' => 'Konto der Verwaltung',
-        'guards'  => 'handing a family a login that belongs to the management',
-        'suite'   => 'contacts.php "leaving the child unattached rather than half-attached"',
+        // The sentence lives in own_address_needed(), so every refusal of an
+        // address that is already a login says the same thing.
+        'call'    => 'own_address_needed',
+        'guards'  => 'a second student on an address that is already a login (ADR 0010)',
+        'suite'   => 'accounts.php "and the brother was not touched at all"',
+    ],
+    'app/actions.php student_save' => [
+        // The last of the address refusals, so the ones above it come first too.
+        'refusal' => 'lässt sich erst eintragen',
+        'guards'  => 'a new address for an invited login that no invitation could reach',
+        'suite'   => 'accounts.php "nothing of the save happened"',
     ],
     'app/actions.php account_invite' => [
         'refusal' => 'schon ein Konto',
         'guards'  => 'inviting an address that already has an account',
         'suite'   => 'security.php "the address still has exactly one account"',
+    ],
+    'app/actions_settings.php portal_icon_save' => [
+        // The refusals are in check_portal_icon(), checked separately below.
+        'call'    => 'check_portal_icon',
+        'guards'  => 'a picture that is not a square PNG of at least 180 pixels',
+        'suite'   => 'uploads.php "and the icon she had is still the icon"',
     ],
 ];
 foreach ($orderings as $where => $rule) {
@@ -861,3 +1272,85 @@ ok(refusal_index_in($dayCheck, 'Das Ende muss nach dem Beginn liegen') !== null,
    'and it is the one that refuses an end before the start');
 is_same(null, first_main_write(action_calls_in($dayCheck), $writers),
         'and it writes nothing itself, so calling it first really does come before every write');
+
+case_('The icon check portal_icon_save leans on is a check, not a write');
+/* The same reasoning as the day check: portal_icon_save is in the list above
+   because check_portal_icon() refuses for it, which only means "nothing was
+   written" while that function writes nothing to the database. It does delete
+   the refused file - that is the disk, not the transaction, and it is the one
+   thing it is meant to do. */
+$iconCheck = defined_functions_in(APP_ROOT.'/app/portal_icon.php')['check_portal_icon'] ?? '';
+ok($iconCheck !== '', 'check_portal_icon() was found in app/portal_icon.php');
+ok(str_contains($iconCheck, 'IMAGETYPE_PNG') && str_contains($iconCheck, 'PORTAL_ICON_MIN_SIZE'),
+   'and it is the one that refuses a picture that is not a PNG, not square, or too small');
+is_same(null, first_main_write(action_calls_in($iconCheck), $writers),
+        'and it writes nothing to the database, so calling it first really does come before every write');
+
+case_('One place writes the trail a problem report carries, before the POST branch');
+/* ADR 0009: the recorder is called once, from the router, after the page is
+   known and before a POST can redirect away. A second call site records a step
+   twice; a call below the POST branch never sees a POST at all, and the trail
+   has a hole exactly where a form was sent - the step a report most needs. */
+$callSites = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'),
+                     glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $file)
+    foreach (action_calls_in((string)file_get_contents($file)) as $call)
+        if ($call['name'] === 'record_step' && !$call['method']) $callSites[] = substr($file, strlen(APP_ROOT) + 1);
+is_same(['public/index.php'], $callSites, 'record_step() is called exactly once, from public/index.php');
+$recorded = strpos($router, 'record_step($page);');
+ok($recorded !== false, 'with the page the router settled on');
+ok($recorded > (int)strpos($router, "\$page='not_found';"), 'after the allow-list has decided what page this is');
+ok($recorded < (int)strpos($router, "if(\$_SERVER['REQUEST_METHOD']==='POST')"), 'and before the POST branch, which redirects and never comes back');
+$writesTrail = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php')) as $file)
+    if (preg_match("/\\\$_SESSION\['steps(_account)?'\]\s*=/", (string)file_get_contents($file)))
+        $writesTrail[] = basename($file);
+is_same(['shell.php'], $writesTrail, 'and nothing but app/shell.php writes the trail into the session');
+
+case_('Only the places named here give a student a login or change the address it signs in with');
+/* One login is one student (ADR 0010). The database holds half of that - the
+   unique index refuses a second student on a login - and nothing holds the
+   other half, that a student's address and their login's are the same, except
+   that only these places write either one. A new writer fails here by name and
+   has to say why it keeps both true. Read from the SQL itself, so a statement
+   split over lines or spelled with spaces is still found. */
+$writersOf = ['account_id' => [], 'email' => []];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/public/*.php'),
+                     glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/database/*.php')) as $path) {
+    foreach (named_blocks_of($path) as $name => $block) {
+        foreach (sql_statements_in($block) as $sql) {
+            $columns = [];
+            if (preg_match('/^UPDATE `?students`? SET (.*?)(?: WHERE |$)/i', $sql, $set))
+                $columns = array_map(fn($pair) => trim(explode('=', $pair)[0], ' `'), explode(',', $set[1]));
+            elseif (preg_match('/^INSERT INTO `?students`? ?\(([^)]*)\)/i', $sql, $into))
+                $columns = array_map(fn($c) => trim($c, ' `'), explode(',', $into[1]));
+            foreach (array_keys($writersOf) as $column)
+                if (in_array($column, $columns, true)) $writersOf[$column][] = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+        }
+    }
+}
+$allowedWriters = [
+    'account_id' => [
+        'app/actions.php student_invite' => 'the one way a student gets a login: a new one, never a sibling’s',
+        'app/demo.php demo_fill'         => 'example data: two fixed logins, one student each, and the index would refuse more',
+    ],
+    'email' => [
+        'app/actions.php change_login_address' => 'moves the login and the student’s copy together',
+        'app/actions.php student_invite'       => 'writes both copies when it makes the login',
+        'app/actions.php student_save'         => 'writes the login’s own address back for a student who has one',
+        'app/demo.php demo_fill'               => 'example data, each login’s student given that login’s address',
+    ],
+];
+foreach ($allowedWriters as $column => $expected) {
+    $found = array_values(array_unique($writersOf[$column]));
+    sort($found);
+    $names = array_keys($expected);
+    sort($names);
+    /* Read before it is compared: an extraction that found nothing would
+       "agree" with a list of nothing, and the rule would prove nothing. */
+    ok(count($found) >= 2, 'students.'.$column.' writers were found in the code ('.count($found).')');
+    foreach (array_diff($found, $names) as $new)
+        ok(false, $new.' writes students.'.$column.' and is not one of the places allowed to - route it through student_invite or change_login_address');
+    foreach ($expected as $where => $why)
+        ok(in_array($where, $found, true), $where.' still writes students.'.$column.', because it '.$why);
+}

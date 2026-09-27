@@ -28,8 +28,47 @@ final class TestSqlitePdo extends PDO {
     private array $uniques = [];
     private int $prepared = 0;
 
+    public function __construct(string $dsn, ?string $username = null, ?string $password = null, ?array $options = null) {
+        parent::__construct($dsn, $username, $password, $options);
+        $this->addMysqlFunctions();
+    }
+
     /** Statements prepared so far, so a test can assert a query count. */
     public function statementsPrepared(): int { return $this->prepared; }
+
+    /**
+     * The MySQL functions the application and the migrations call.
+     *
+     * Registered by the connection itself, so every connection has the same set:
+     * tests/migration-data.php opens its own, and a copy of this list kept there
+     * would be the one nobody updates when a migration starts calling something
+     * new - found out only when that migration fails in a run that stops half way.
+     *
+     * A NULL argument makes the result NULL, because that is what MySQL does. Both
+     * SQLite's own concat() and a PHP implode() would quietly treat it as '', so a
+     * query that loses a value on the real engine would pass here.
+     */
+    private function addMysqlFunctions(): void {
+        $strict = fn(callable $f) => fn(...$a) => in_array(null, $a, true) ? null : $f($a);
+        $this->sqliteCreateFunction('CONCAT', $strict(fn($a) => implode('', $a)), -1);
+        $this->sqliteCreateFunction('GREATEST', $strict(fn($a) => max($a)), -1);
+        $this->sqliteCreateFunction('LEAST', $strict(fn($a) => min($a)), -1);
+        $this->sqliteCreateFunction('UTC_TIMESTAMP', fn() => gmdate('Y-m-d H:i:s'), 0);
+        // Advisory locks are a MySQL concept; a single-connection test always
+        // "holds" the lock, which is the behaviour the code expects.
+        $this->sqliteCreateFunction('GET_LOCK', fn($n, $t) => 1, 2);
+        $this->sqliteCreateFunction('RELEASE_LOCK', fn($n) => 1, 1);
+        // Built into SQLite since 3.38. Registered only where it is missing, so a
+        // build that has it is tested with the real one.
+        try { parent::query("SELECT json_object('a', 1)"); }
+        catch (PDOException) {
+            $this->sqliteCreateFunction('JSON_OBJECT', function (...$a) {
+                $object = [];
+                for ($i = 0; $i + 1 < count($a); $i += 2) $object[(string)$a[$i]] = $a[$i + 1];
+                return json_encode((object)$object, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            }, -1);
+        }
+    }
 
     public function prepare(string $query, array $options = []): PDOStatement|false {
         $this->prepared++;

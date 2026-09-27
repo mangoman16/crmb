@@ -47,12 +47,9 @@ if ($state === 'configured' && $stored) {
 }
 
 if ($post && $state !== 'installed' && !$blockers) {
-    foreach (array_keys($form) as $field)
-        if (isset($_POST[$field]) && is_string($_POST[$field])) $form[$field] = trim($_POST[$field]);
+    ['form' => $form, 'password' => $password, 'repeat' => $repeat, 'db_password' => $dbPassword]
+        = install_submission($_POST, $form);
     $withDemo = isset($_POST['demo_fill']);
-    $password = is_string($_POST['admin_password'] ?? null) ? (string)$_POST['admin_password'] : '';
-    $repeat   = is_string($_POST['admin_password2'] ?? null) ? (string)$_POST['admin_password2'] : '';
-    $dbPassword = is_string($_POST['db_password'] ?? null) ? (string)$_POST['db_password'] : '';
 
     $url = rtrim($form['app_url'], '/');
     if (!filter_var($url, FILTER_VALIDATE_URL) || !in_array((string)parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true))

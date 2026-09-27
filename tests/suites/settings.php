@@ -69,6 +69,28 @@ does_not_throw(fn() => $save('Entwurf', 'Draft', false), 'an incomplete draft st
 is_same('Entwurf', setting('privacy_de'), 'and the text is actually stored');
 is_same(false, (bool)setting('privacy_ready'), 'with the release tick cleared');
 
+case_('Every note in the shipped drafts counts as a placeholder, however long');
+/* The check used to stop at 80 characters, and six of the eight notes in each
+   draft are longer: a notice still saying „[Vollständiger Name …]“ could be
+   released. Counted against the drafts themselves, so a new note is covered. */
+foreach (['de', 'en'] as $lang) {
+    $draft = (string)file_get_contents(ROOT.'/docs/privacy-draft-'.$lang.'.txt');
+    is_same(8, substr_count($draft, '['), $lang.': the draft has eight notes, so the count below means something');
+    is_same(8, count(privacy_draft_placeholders($draft)), $lang.': and all eight are found');
+    ok(max(array_map('mb_strlen', privacy_draft_placeholders($draft))) > 250, $lang.': the longest among them too, at over 250 characters');
+    throws(fn() => $save($lang === 'de' ? $draft.$long : $long, $lang === 'en' ? $draft.$long : $long, true),
+           $lang.': the draft itself cannot be released', $lang === 'de' ? '[Vollständiger Name' : '[Full name');
+}
+$complete = "Verantwortlich: Badminton Hofer, Hauptstraße 1, 12345 Musterstadt, info@beispiel.test\n"
+    ."Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO, für Protokolle Art. 6 Abs. 1 lit. f DSGVO (Art. 6 (1) (f) GDPR).\n"
+    ."Beschwerden: https://www.bfdi.bund.de/DE/Home/home_node.html?view=renderKontakt#top und https://example.org/a?x[]=1\n"
+    ."Wie das Gesetz sagt: „Personenbezogene Daten müssen […] verarbeitet werden“ [1].\n"
+    ."Mehr dazu [hier](https://example.org/datenschutz). Stand: 24.09.2026\n";
+is_same([], privacy_draft_placeholders($complete), 'a finished notice with laws, links, a footnote and an elision has none');
+does_not_throw(fn() => $save($complete.$long, $complete.$long, true), 'and is released');
+is_same(['[Datum]'], privacy_draft_placeholders("Stand: [Datum]\nText [ohne\nEnde]"),
+        'a bracket left open by a typo does not swallow the next line');
+
 // ---------------------------------------------------------------------------
 case_('The connection test answers while she waits, and says which step failed');
 /* It used to queue a message and send her to the outbox to look for it. A wrong
@@ -78,7 +100,20 @@ sign_in_as(make_account(['role'=>'admin', 'email'=>'chefin@example.test']));
 set_setting('smtp', []);
 $result = smtp_check();
 is_same(false, $result['ok'], 'nothing is configured yet, so it fails');
-ok(str_contains($result['summary'], 'Absenderadresse'), 'and it says what is missing, rather than "could not connect"');
+/* smtp_check() asks for the mail library before it reads the settings, so a copy
+   without vendor/ - a Git checkout nobody ran composer in - answers that the
+   library is missing, which is the true first problem there. Each answer is held
+   to what it should say, and a run that could only check the second one says so
+   in its footer rather than passing as though it had checked the first. */
+if (class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) {
+    ok(str_contains($result['summary'], 'Absenderadresse'),
+       'and it says what is missing, rather than "could not connect" (PHPMailer is installed)');
+} else {
+    ok(str_contains($result['summary'], 'PHPMailer') && str_contains($result['summary'], 'vendor/'),
+       'and without vendor/ it says the mail library is missing, rather than "could not connect"');
+    test_unsupported(array_merge(test_unsupported(),
+        ['the SMTP test naming a missing sender address (PHPMailer is not installed: vendor/ is missing)']));
+}
 ok(str_contains($result['transcript'], 'kein Server eingetragen'), 'the transcript starts with what it was working from');
 does_not_throw(fn() => smtp_check(), 'a failing test is an answer, never an exception');
 

@@ -15,18 +15,47 @@ foreach($students as $s){
         if(isset($absentToday[$id]))$absent++;
     }
 }
-page_head(t('Hallo ','Hello ').explode(' ',$user['name'])[0],$staff?t('Übersicht über Schüler, Beiträge und Abwesenheiten.','Students, charges and absences at a glance.'):t('Deine Schüler und was noch offen ist.','Your students and anything still outstanding.'),$staff?link_button(t('+ Schüler anlegen','+ Add student'),'student'):link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]));
+// A family's login is one student's (ADR 0010), so the page is about that
+// student and greets them by their own first name, as the mails do.
+$mine=$staff?null:($students[0]??null);
+page_head(t('Hallo ','Hello ').($staff?explode(' ',$user['name'])[0]:greeting_name($user)),
+    $staff?t('Übersicht über Schüler, Beiträge und Abwesenheiten.','Students, charges and absences at a glance.'):t('Deine Termine, Beiträge und Nachrichten.','Your dates, payments and messages.'),
+    $staff?link_button(t('+ Schüler anlegen','+ Add student'),'student'):($mine?link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]):''));
+if(!$staff):
+    /* The family's page, in the order they read it: who, what is owed, when is
+       training, what is new. Every part the full width - there is one of
+       each, and nothing to put beside it. */
+    if(!$mine) {
+        empty_state(t('Hier ist noch nichts','Nothing here yet'),
+            t('Zu diesem Zugang gehört gerade keine Mitgliedschaft. Schreib deiner Trainerin, wenn das nicht stimmt.','No membership belongs to this login at the moment. Write to your coach if that is not right.'),
+            link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]));
+    } else { ?>
+<div class="card own-student"><?php student_card($mine+['due_cents'=>$overdueBy[(int)$mine['id']]??0]); ?></div>
+<div class="stats-grid single"><div class="stat"><span><?=e(t('Offen','Outstanding'))?></span><strong class="<?=$open?'due':''?>"><?=e(money($open))?></strong><small><?=e($open?t('Einzeln unter „Beiträge“ in deinem Profil','Itemised under “Payments” in your profile'):t('Alles bezahlt','All paid'))?></small><?=icon('wallet')?></div></div>
+<?php /* Uploading the proof is voluntary and nobody will chase it, so it has to
+         be offered at the moment it is easy - under the amount, on the page
+         the family lands on - rather than waiting on a tab they never open. */
+    if($open): ?>
+<div class="setup-strip">
+    <div><strong><?=e(t('Schon überwiesen?','Already transferred?'))?></strong>
+        <p><?=e(t('Du kannst den Beleg hochladen, damit die Zahlung schneller zugeordnet wird. Freiwillig – die Trainerin sieht den Eingang auch so.','You can upload the proof so the payment is matched faster. Voluntary – your coach sees the money arrive either way.'))?></p></div>
+    <?=link_button(t('Beleg hochladen','Upload the proof'),'student',['id'=>$mine['id'],'tab'=>'payments'],'secondary')?>
+</div>
+<?php endif;
+    }
+endif;
 if($user['role']==='admin' && (!setting('smtp',[]) || !setting('privacy_ready',false))): ?>
 <div class="setup-strip"><div><strong><?=e(t('Portal einrichten','Set up your portal'))?></strong><p><?=e(t('Für Einladungen fehlen noch SMTP oder die vollständige Datenschutzerklärung.','Invitations need SMTP settings and a completed privacy notice.'))?></p></div><?=link_button(t('Einrichten','Set up'),'settings',['tab'=>!setting('smtp',[])?'smtp':'privacy'],'secondary')?></div>
 <?php endif ?>
-<div class="stats-grid<?=$staff?'':' compact'?>">
-<div class="stat accent"><span><?=e($staff?t('Aktive Schüler','Active students'):t('Meine Schüler','My students'))?></span><strong><?=$staff?$active:count($students)?></strong><small><?=e($staff?t('im Training','in training'):t('mit diesem Konto','on this account'))?></small><?=icon('users')?></div>
-<div class="stat"><span><?=e($staff?t('Offene Beiträge','Outstanding charges'):t('Offen','Outstanding'))?></span><strong class="<?=!$staff&&$open?'due':''?>"><?=e(money($open))?></strong><small><?=e($staff?t('Noch nicht bestätigt','Not yet confirmed'):($open?t('Beim Schüler öffnen','Open the student'):t('Alles bezahlt','All paid')))?></small><?=icon('wallet')?></div>
 <?php if($staff): ?>
+<div class="stats-grid">
+<div class="stat accent"><span><?=e(t('Aktive Schüler','Active students'))?></span><strong><?=$active?></strong><small><?=e(t('im Training','in training'))?></small><?=icon('users')?></div>
+<div class="stat"><span><?=e(t('Offene Beiträge','Outstanding charges'))?></span><strong><?=e(money($open))?></strong><small><?=e(t('Noch nicht bestätigt','Not yet confirmed'))?></small><?=icon('wallet')?></div>
 <div class="stat"><span><?=e(t('Davon überfällig','Of which overdue'))?></span><strong class="<?=$overdue?'due':''?>"><?=e(money($overdue))?></strong><small><?=e(t('Fälligkeit überschritten','Past the due date'))?></small><?=icon('calendar')?></div>
 <div class="stat"><span><?=e(t('Heute abwesend','Absent today'))?></span><strong><?=$absent?></strong><small><?=e(t('Krank, Urlaub oder abgemeldet','Sick, away or unavailable'))?></small><?=icon('calendar')?></div>
-<?php endif ?>
 </div>
+<?php own_address_notice();
+endif ?>
 <?php
 /* The timeline: what happened, what is on today, and what is next.
    Built for the question she actually opens the portal with - "when is the next
@@ -87,20 +116,8 @@ if($timeline): ?>
     </ol>
 </section>
 <?php endif ?>
-<?php /* Uploading the proof is voluntary and nobody will chase it, so it has to
-         be offered at the moment it is easy - next to the amount, on the page
-         the family lands on - rather than waiting on a tab they never open. */
-if(!$staff && $open): ?>
-<div class="setup-strip">
-    <div><strong><?=e(t('Schon überwiesen?','Already transferred?'))?></strong>
-        <p><?=e(t('Du kannst den Beleg hochladen, damit die Zahlung schneller zugeordnet wird. Freiwillig – die Trainerin sieht den Eingang auch so.','You can upload the proof so the payment is matched faster. Voluntary – your coach sees the money arrive either way.'))?></p></div>
-    <?php foreach($students as $s): if(empty($openBy[(int)$s['id']])) continue; ?>
-        <?=link_button(count($students)>1?t('Beleg: ','Proof: ').$s['first_name']:t('Beleg hochladen','Upload the proof'),'student',['id'=>$s['id'],'tab'=>'payments'],'secondary')?>
-    <?php endforeach ?>
-</div>
-<?php endif ?>
-<div class="dashboard-grid"><section class="card"><div class="section-heading"><h2><?=e($staff?t('Schüler','Students'):t('Meine Schüler','My students'))?></h2><a href="<?=e(url('students'))?>"><?=e(t('Alle ansehen','View all'))?> <?=icon('arrow')?></a></div>
-<?php if(!$students)empty_state(t('Noch keine Schüler','No students yet'),$staff?t('Lege zuerst einen Schüler an. Ein Konto kannst du auch später zuordnen.','Add your first student. You can link an account later.'):t('Deine Trainerin ordnet diesem Konto Schüler zu.','Your coach will link students to this account.'),$staff?link_button(t('Ersten Schüler anlegen','Add first student'),'student'):'');else foreach(array_slice($students,0,6) as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0]); ?>
-</section><section class="card news-panel"><div class="section-heading"><h2><?=e(t('Neuigkeiten','News'))?></h2><?=icon('news')?></div>
+<?php if($staff): ?><div class="dashboard-grid"><section class="card"><div class="section-heading"><h2><?=e(t('Schüler','Students'))?></h2><a href="<?=e(url('students'))?>"><?=e(t('Alle ansehen','View all'))?> <?=icon('arrow')?></a></div>
+<?php if(!$students)empty_state(t('Noch keine Schüler','No students yet'),t('Lege zuerst einen Schüler an. Einen Zugang lädst du danach auf seiner Seite ein.','Add your first student. You invite them in from their own page afterwards.'),link_button(t('Ersten Schüler anlegen','Add first student'),'student'));else foreach(array_slice($students,0,6) as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0]); ?>
+</section><?php endif ?><section class="card news-panel"><div class="section-heading"><h2><?=e(t('Neuigkeiten','News'))?></h2><?=icon('news')?></div>
 <?php $items=rows('SELECT * FROM news WHERE published=1 ORDER BY updated_at DESC LIMIT 3');if(!$items):?><p class="muted"><?=e(t('Noch keine Neuigkeiten.','No news yet.'))?></p><?php else:foreach($items as $n):?><a class="news-summary" href="<?=e(url('news',['id'=>$n['id']]))?>"><small><?=e(fmt_date($n['updated_at']))?></small><h3><?=e($n['title'])?></h3><p><?=e(mb_substr($n['body'],0,140))?></p></a><?php endforeach;endif ?>
-<?php if($staff):?><div class="quick-actions"><?=link_button(t('Neuigkeit schreiben','Write news'),'news',['new'=>1],'secondary')?><?=link_button(t('Gruppe anschreiben','Message a group'),'compose',[],'secondary')?></div><?php endif ?></section></div>
+<?php if($staff):?><div class="quick-actions"><?=link_button(t('Neuigkeit schreiben','Write news'),'news',['new'=>1],'secondary')?><?=link_button(t('Gruppe anschreiben','Message a group'),'compose',[],'secondary')?></div><?php endif ?></section><?php if($staff): ?></div><?php endif ?>

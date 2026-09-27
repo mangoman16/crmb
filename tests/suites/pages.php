@@ -28,7 +28,9 @@ $tariff = make_tariff(['class_id'=>$course, 'name'=>'Monatsbeitrag', 'price_cent
                        'interval_months'=>1, 'rates'=>[1=>4500, 3=>12000, 12=>45000]]);
 $lena = make_student(['first_name'=>'Lena', 'last_name'=>'Hofer', 'account_id'=>$family,
                       'birth_date'=>'2015-04-02', 'joined_on'=>'2026-01-01']);
-$tobi = make_student(['first_name'=>'Tobias', 'last_name'=>'Hofer', 'account_id'=>$family,
+// Lena's brother, on a login of his own: one login is one student (ADR 0010).
+$tobiLogin = make_account(['role'=>'student', 'name'=>'Tobias Hofer']);
+$tobi = make_student(['first_name'=>'Tobias', 'last_name'=>'Hofer', 'account_id'=>$tobiLogin,
                       'birth_date'=>'2009-08-11', 'joined_on'=>'2026-02-01']);
 foreach ([$lena, $tobi] as $kid) {
     make_enrolment($course, $kid, ['joined_on'=>'2026-02-01', 'tariff_id'=>$tariff]);
@@ -140,11 +142,22 @@ $bare = make_student(['first_name'=>'Neu', 'last_name'=>'Angelegt', 'birth_date'
 foreach ([[], ['tab'=>'contacts'], ['tab'=>'absence'], ['tab'=>'attendance'], ['tab'=>'classes'],
           ['tab'=>'invoices'], ['tab'=>'payments']] as $tab)
     does_not_throw(fn() => render_view('student', ['id'=>$bare] + $tab), 'a bare record: '.json_encode($tab));
-// A child with no account is the one whose page carries the invitation form, so
-// it is the one the nested-form rule below has to see.
+// The access card has a state for each step (ADR 0010). With no address there
+// is nobody to invite yet, so it says what to do first and offers no button; a
+// button that could only be refused is worse than none.
 $bareHtml = render_view('student', ['id'=>$bare]);
-ok(str_contains($bareHtml, 'Zugang einladen'), 'a child with no account is offered one');
-is_same(1, deepest_form_nesting($bareHtml), 'and that form is not inside the record’s own form');
+ok(str_contains($bareHtml, e('Zugang zum Portal')), 'a child with no account has the access card');
+ok(str_contains($bareHtml, e('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')), 'which, with no address, says to enter one first');
+ok(!str_contains($bareHtml, 'value="student_invite"') && !str_contains($bareHtml, e('Einladung senden')),
+   'and offers no invitation to send');
+// With an address the invitation is offered, and that form is the one the
+// nested-form rule has to see: it sits beside the record's own form.
+$addressed = make_student(['first_name'=>'Neu', 'last_name'=>'Mitadresse', 'email'=>'neu.mitadresse@example.test', 'account_id'=>null]);
+$addressedHtml = render_view('student', ['id'=>$addressed]);
+ok(str_contains($addressedHtml, e('Einladung senden')) && str_contains($addressedHtml, 'value="student_invite"'),
+   'a child with an address and no account is offered the invitation');
+ok(!str_contains($addressedHtml, e('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')), 'without being told to enter an address');
+is_same(1, deepest_form_nesting($addressedHtml), 'and that form is not inside the record’s own form');
 
 case_('An id that does not exist is refused rather than half-rendered');
 foreach (['student'=>['id'=>999999], 'classes'=>['id'=>999999], 'messages'=>['id'=>999999]] as $page => $query)

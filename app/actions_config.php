@@ -238,8 +238,10 @@ function dispatch_config(string $action): array {
         if(!setting('smtp',[])) throw new UserError(t('Bitte zuerst SMTP einrichten.','Set up SMTP first.'));
         $only=(int)post('student_id');
         $sent=0; $skipped=0;
-        // Group by account: one parent with three children gets three lines of
-        // detail, not three separate emails.
+        // One reminder per overdue charge, to the student's own login. A student
+        // with no login - including a brother or sister taken off a shared one
+        // by the update to one login per member - is skipped and counted, until
+        // they are invited with an address of their own.
         foreach(rows('SELECT c.*, s.first_name, s.last_name, s.account_id,'
             .' '.charge_paid_sql().' AS paid'
             .' FROM charges c JOIN students s ON s.id=c.student_id'
@@ -454,7 +456,7 @@ function dispatch_config(string $action): array {
         if(isset($_FILES['screenshot']) && (int)($_FILES['screenshot']['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE)
             $screenshot=store_upload('screenshot','avatar')['stored_name'];
         run('INSERT INTO feedback (account_id,page,message,context_json,screenshot_name,created_at) VALUES (?,?,?,?,?,?)',
-            [(int)$u['id'],$page,$message,json_encode(feedback_context($page),JSON_UNESCAPED_UNICODE),$screenshot,now()]);
+            [(int)$u['id'],$page,$message,feedback_context_json(feedback_context($page)),$screenshot,now()]);
         $id=(int)db()->lastInsertId();
         foreach(rows("SELECT id FROM accounts WHERE role='admin' AND state='active'") as $admin)
             notify((int)$admin['id'],'problem',t('Jemand meldet ein Problem','Somebody reported a problem'),
@@ -464,8 +466,21 @@ function dispatch_config(string $action): array {
         return [post('return_page','dashboard'),[]];
 
     case 'feedback_state':
-        require_admin();
-        run('UPDATE feedback SET state=? WHERE id=?',[choose(post('state'),['new','seen','done']),(int)post('id')]);
+        require_admin(); $state=choose(post('state'),['new','seen','done']);
+        transactional(function() use ($state): void {
+            // Held while it is rewritten, so two taps on "Erledigt" from two
+            // tabs cannot each read the old context and write it back.
+            $report=lock_row('feedback',(int)post('id'));
+            if(!$report) throw new NotFound(t('Diese Meldung gibt es nicht mehr.','That report no longer exists.'));
+            $context=(string)$report['context_json'];
+            // Done means dealt with, and a report that is dealt with no longer
+            // needs copies of what somebody typed. Re-opening it does not bring
+            // them back; the way there is kept. Done also starts the clock after
+            // which prune_done_feedback() deletes it.
+            if($state==='done' && is_array($decoded=json_decode($context,true)))
+                $context=feedback_context_json(feedback_mark_done($decoded));
+            run('UPDATE feedback SET state=?,context_json=? WHERE id=?',[$state,$context,$report['id']]);
+        });
         return ['settings',['tab'=>'feedback']];
 
     case 'demo_data':

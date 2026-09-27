@@ -84,9 +84,13 @@ function demo_fill(bool $force = false): array {
         // Active and verified rather than invited, so trying the portal does not
         // first require working email and a released privacy notice.
         $accounts = [];
+        // Each family login is one student's own and carries that student's
+        // name (ADR 0010). The addresses stay as they were, because the settings
+        // page and the testing notes tell her to sign in with them.
+        [$first, $second] = demo_names();
         foreach ([['Trainerin Beispiel','trainerin@beispiel.test','trainer'],
-                  ['Familie Hofer','familie.hofer@beispiel.test','student'],
-                  ['Familie Berger','familie.berger@beispiel.test','student']] as [$name,$email,$role]) {
+                  [$first[0].' '.$first[1],'familie.hofer@beispiel.test','student'],
+                  [$second[0].' '.$second[1],'familie.berger@beispiel.test','student']] as [$name,$email,$role]) {
             run('INSERT INTO accounts (name,email,password_hash,role,state,verified_at,locale,created_at,is_demo)'
                 .' VALUES (?,?,?,?,?,?,?,?,1)', [$name, $email, $hash, $role, 'active', now(), 'de', now()]);
             $accounts[$email] = (int)db()->lastInsertId();
@@ -152,9 +156,11 @@ function demo_fill(bool $force = false): array {
             // tariff at all, which is what the billing preview has to be able to
             // explain rather than skip silently.
             $price = $i === 4 ? 4000 : ($i === 9 ? 5000 : null);
-            // The address the portal writes to. For a child that is a parent's,
-            // which is why two of them share one: siblings on one login is the
-            // ordinary case, not an exception the demo should hide.
+            // The address the portal writes to. The first two are the two
+            // family logins, one student each; everybody else has an address of
+            // their own and no login yet, which is what "Zugang einladen" is for.
+            // No two share one, because a shared address is exactly what the
+            // portal would ask her to fix.
             $writeTo = $i === 0 ? 'familie.hofer@beispiel.test'
                      : ($i === 1 ? 'familie.berger@beispiel.test'
                      : ($age < 18 ? 'eltern.' : '') . mb_strtolower($n[1]) . '@beispiel.test');

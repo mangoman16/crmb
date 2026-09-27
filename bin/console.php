@@ -116,9 +116,21 @@ try{
     }
     if($command==='create-admin'){
         function ask(string $label,bool $secret=false):string{
-            static $tty=null;$tty??=stream_isatty(STDIN);fwrite(STDOUT,$label.': ');
-            if($secret&&$tty)shell_exec('stty -echo');
-            try{$value=trim((string)fgets(STDIN));}finally{if($secret&&$tty){shell_exec('stty echo');fwrite(STDOUT,PHP_EOL);}}
+            // Hiding a password as it is typed means running stty. Shared hosts
+            // often list shell_exec in disable_functions, and PHP 8 removes a
+            // disabled function outright, so calling it anyway ended the prompt
+            // with a fatal error before the account existed. Without it the
+            // password is read visibly, and whoever is typing is told so first.
+            static $tty=null,$warned=false;$tty??=stream_isatty(STDIN);
+            $hide=$secret&&$tty&&function_exists('shell_exec');
+            if($secret&&$tty&&!$hide&&!$warned){$warned=true;fwrite(STDOUT,"This server does not allow hiding what you type: the password will be visible on screen.\n"
+                ."Press Ctrl+C now to stop without creating anything, or change the password after signing in\n"
+                ."(your name at the top of the page, then \"Passwort ändern\").\n");}
+            fwrite(STDOUT,$label.': ');
+            if($hide)shell_exec('stty -echo');
+            // Trimmed exactly as post() trims every field on the web, sign-in
+            // included, so a password with a stray space still signs in.
+            try{$value=trim((string)fgets(STDIN));}finally{if($hide){shell_exec('stty echo');fwrite(STDOUT,PHP_EOL);}}
             return $value;
         }
         $name=ask('Name');$email=ask('Email');$password=ask('Password (12+ characters)',true);

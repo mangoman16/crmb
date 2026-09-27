@@ -28,14 +28,38 @@ tests/mariadb-local.sh billing    # one suite
 ```
 
 It keeps its data in a temporary directory and never touches an existing
-installation. Against a database you manage yourself:
+installation.
+
+On shared hosting there is no server to start, but the hosting panel can create
+another database. Create an empty one whose name ends in `_test` (the panel adds
+the account prefix, as in `konto_crm_test`), then, in the git checkout that
+serves the portal (the release ZIP has no `tests/`):
+
+```bash
+tests/existing-database.sh            # the whole suite
+tests/existing-database.sh billing    # one suite
+```
+
+The first run asks for the database name, user, password, server and port, and
+saves them in `tests/.test-database.php` (git ignores it; delete it to use
+another database). It refuses a database that is not empty, one holding
+accounts with real email addresses, and the one the portal's own
+`config/config.php` uses. It warns when the same user can reach other
+databases: a user that can reach only the test database is safer.
+
+Against a database you manage yourself:
 
 ```bash
 CRM_TEST_DRIVER=mysql CRM_CONFIG=/path/to/test-config.php php tests/run.php
 ```
 
-The harness drops and recreates every table in that database on each run, and
-refuses to start if its name does not end in `_test`.
+The harness drops and recreates every table in that database on each run. It
+refuses to start unless `CRM_TEST_DRIVER` is exactly `mysql` (or `sqlite`), the
+name is letters, digits and underscores ending in `_test`, and it is not the
+database `config/config.php` gives the portal. Whatever that configuration says
+about `maintenance_file`, a run writes its uploads, backups and flags into a
+folder of its own under the system temp directory, prints it on its second line,
+and removes it at the end.
 
 The suite has been run against **MariaDB 10.11.14** with everything passing.
 **MySQL 8.0 has not been tried**, so do not claim it.

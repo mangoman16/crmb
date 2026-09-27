@@ -1,28 +1,262 @@
 # Testing
 
-What this portal does, and how to prove each part of it still works.
-
-Written for the administrator, to be used **after every code change and before
-every release**. The checks are in the order you would naturally walk through
-the app, and each one says what to do and what you should see. Nothing here
-needs a debugger: if a check fails, write down its number, and that number is
-enough for somebody else to reproduce it.
+What this portal does, and how to prove each part of it still works. The checks
+are in the order you would naturally walk through the app, and each one says
+what to do and what you should see.
 
 German labels are quoted the way the portal shows them, because the portal is
 German by default and searching for the English word will not find the button.
 
+## Start here
+
+**You do not have to do this whole list every time.** Most of it is for looking
+things up. Do the part that fits what just happened, and then stop.
+
+**After every update** — about ten minutes:
+
+1. Over SSH, in the Git copy of the portal (the upload ZIP leaves `tests/` out):
+   `php tests/run.php`. Its second line must read `files: /tmp/crm-test-…`: those
+   tests keep everything they write in that folder and refuse every database but a
+   `_test` one, so the live folder is safe to run them in. No such line means older
+   tests that write into the portal's own files: run those from a copy, never inside
+   the live `public_html`. The last lines must say **`0 failed`**. If not, stop, send
+   those lines to whoever made the update, and walk nothing else.
+   On the real database engine too: `tests/existing-database.sh` — see
+   [the test commands](#the-test-commands-in-detail) for the one-time setup.
+2. On your phone, walk [the five-minute sweep](#the-five-minute-sweep--after-every-update).
+3. Walk [what changed in this update](#what-changed-in-this-update--check-these). All fine: **you are done.**
+
+**When something specific changed**, the top entry of `CHANGELOG.md` names it.
+Walk the matching section as well, and no other:
+
+- signing in, passwords, accounts → [Sign in, roles and access](#sign-in-roles-and-access)
+- the top bar, the bell, the report button, colours → [The shell](#the-shell-the-bar-notifications-feedback-impersonation), [Appearance](#appearance-and-personal-preferences)
+- children, contacts, printed forms → [Students and contacts](#students-contacts-levels-and-age-groups)
+- courses, prices, joining, attendance → [Courses](#courses-dates-and-tariffs), [Enrolment](#enrolment-asked-for-and-decided), [Attendance](#attendance)
+- money → [Charges](#charges-and-billing), [Payments](#payments-and-proof), [Invoices](#invoices)
+- messages, news, email → [Messages](#messages), [News and email](#news-email-and-the-queue), [Email templates](#email-templates)
+- installing, updating, backups → [Installation and update](#installation-and-update), [Data safety](#data-safety)
+
+**The whole list** — [twenty minutes to an invoice](#twenty-minutes-from-nothing-to-an-invoice),
+then everything from [Preparation](#preparation-for-the-full-sweep) down — before an update
+you would not want to roll back, and once a term. It installs from empty and issues
+invoices: use a second copy of the portal, never the one with the families in it.
+
+**When a check fails**, note its number (1.4, say), tap „Etwas funktioniert hier
+nicht" at the bottom of that page (phone: **Mehr → Etwas funktioniert nicht**), and
+write the number and what you saw; the page goes with it by itself. Cannot sign
+in at all? Then there is no button: email the number. Carry on where you can.
+
 ---
 
-## The two commands, first
+## The five-minute sweep — after every update
+
+On your phone, as the administrator. Six checks that catch a broken update, with
+nothing to read first. Only 1.4 changes anything, and you put it back.
+
+- [ ] **1.1** Open the portal in a private tab (Safari: the tabs button, then
+  **Privat**), so you arrive signed out. The club's name is at the top and a
+  card headed **Anmelden** below it, in the portal's colours — not black text on
+  a white page, and not a blank page.
+- [ ] **1.2** Sign in. The page says **Hallo** and your first name, with
+  **Aktive Schüler** and three more figures under it, your picture or initials
+  at the top right, and no red box anywhere. Scroll down: the bar at the top
+  stays where it is.
+- [ ] **1.3** Tap **Schüler** in the bar at the bottom, then any child. Their
+  page opens with their name as the heading and the boxes under **Persönliche
+  Daten** filled in.
+- [ ] **1.4** Further down the same page, tap **Interne Notizen**, add one word
+  at the end, and tap **Schüler speichern**. A green box says **„Schüler
+  gespeichert."** and your word is there. Take the word out and save again.
+- [ ] **1.5** Tap **Mehr** at the bottom right, then **System**, then
+  **Einstellungen**. Swipe the row of tabs to the left and tap the last one,
+  **System**. Under **Installation** it says **„Dateien und Datenbank gehören zur
+  selben Version."**, and **Version der Dateien** and **Version in der
+  Datenbank** show the same number — the one at the top of the release notes.
+  A yellow box, or any other sentence, fails this check.
+- [ ] **1.6** Tap **Post** in the bar at the bottom. **Nachrichten** opens with
+  its list of **Unterhaltungen**; tap one and its messages appear. With none yet
+  it says „Noch keine Nachrichten.", and that passes too.
+
+---
+
+## What changed in this update — check these
+
+Filled in for each release and emptied again for the next. Walk these straight
+after the five-minute sweep. The ones marked **(copy)** make pretend children and
+logins: walk those on the second copy of the portal, never on the one with the
+families in it.
+
+**The sign-in page**
+
+- [ ] **U.1** Open the portal signed out. Under the sign-in form there is one
+  small line, „Mit der Anmeldung akzeptierst du die Datenschutzerklärung." —
+  the last word a link that opens the notice. The long paragraph about cookies
+  is gone, and at the bottom of every signed-out page there is only the link to
+  the Datenschutzerklärung and the version number. At 320px nothing scrolls
+  sideways.
+
+**The portal's own icon** — **Einstellungen → Portal**, card **„Symbol des Portals"**
+
+- [ ] **U.2** Choose a square PNG of at least 180 × 180 pixels (512 × 512 is
+  best) and tap **„Symbol speichern"**. Reload: the browser tab shows it, and so
+  does the tab of the sign-in page in a private window.
+- [ ] **U.3** Try three pictures that must not be taken: a PNG of 400 × 300, a
+  PNG of 120 × 120 and a JPEG. Each is refused with a sentence that says what is
+  wrong with it — not square, too small, not a PNG — and the icon you had stays.
+- [ ] **U.4** On an iPhone: **Zum Home-Bildschirm** before you change the icon,
+  again after changing it — the old home-screen icon does not change on its own,
+  it has to be removed and added again, and the card says so — and once more
+  after going back to the built-in one.
+- [ ] **U.5** On an Android phone, **Installieren** / **Zum Startbildschirm
+  hinzufügen** shows your icon and the club name.
+- [ ] **U.6** Change the club name under **Einstellungen → Portal**, then open
+  `?page=manifest`: it carries the new name. A phone may keep the old one for up
+  to a day.
+- [ ] **U.7** More than an hour after uploading, the file is still in
+  `storage/uploads/icon/` (the hourly sweep keeps it, because the setting points
+  at it).
+- [ ] **U.8** **„Standard-Symbol verwenden"** brings the built-in icon back in
+  the tab after a reload.
+
+**Rows that line up**
+
+- [ ] **U.9** On a child, **Kurse → „In einen Kurs eintragen"**, at 1280, 390
+  and 320 pixels wide: each course's name, its tariff choice and its button sit
+  on one line, the buttons all the same height as the choice beside them — no
+  button stretched taller than its row.
+- [ ] **U.10** On a desktop screen at 1280, scroll to the end of a long page
+  (a child's **Profil** with every card open): the last button or field is not
+  covered by the pinned „Etwas funktioniert hier nicht" button.
+- [ ] **U.11** A long conversation under **Nachrichten**, on a screen at least
+  761 pixels wide: the help button sits at the end of the page rather than over
+  the message box, and **„Nachricht senden"** can be clicked.
+- [ ] **U.12** On a child with two contacts, the **„Standardkontakt"** badge
+  sits beside the name it belongs to and covers nothing on the line below, at
+  1280 and at 320.
+
+**A problem report says how she got there** — read under **Einstellungen →
+Rückmeldungen**, „Technische Einzelheiten"
+
+- [ ] **U.13** As a family, on a phone: open three or four pages, then under
+  **Mein Konto → „Passwort ändern"** type a wrong current password and save, then
+  tap „Etwas funktioniert hier nicht" and send a report. As the administrator the
+  report lists those steps in order, every password as `***`, and the red message
+  the portal showed on the page after the refused save.
+- [ ] **U.14** Open a page, go on to another, press the browser's back button,
+  then report. **Adresse** still names the page the report's form was on — the
+  one you went back to — and the steps say it was shown without a new request.
+- [ ] **U.15** Open an unsubscribe link from a newsletter, then report: the
+  step shows `signature=***`, never the signature itself.
+- [ ] **U.16** Upload a picture (a profile picture will do), then report: the
+  step shows the file's size and type, never its name.
+- [ ] **U.17** Mark a report **„Erledigt"**. Every typed value in its steps now
+  reads `(gelöscht)`; the addresses stay. **„Wieder offen"** does not bring the
+  values back.
+- [ ] **U.18** Sign out, sign in as a different account on the same phone,
+  report: its steps start after the new sign-in, with nothing of the previous
+  account's.
+- [ ] **U.19** A report marked **„Erledigt"** is gone from **Rückmeldungen**
+  30 days after it was marked done: the portal's background maintenance deletes
+  it on its first run after day 30. One marked done, reopened and done again is
+  kept 30 days from the second time; one still open is never deleted. Note the
+  date you mark one done and look again a month later — no suite waits 30 days,
+  so this is where the clock itself is proven.
+
+**One login is one student** (see `docs/decisions/0010-one-account-is-one-student.md`)
+— on a child's own page, card **„Zugang zum Portal"**
+
+- [ ] **U.20** **(copy)** A new child with an address nobody uses yet: on
+  **„Zugang zum Portal"** the badge says **Kein Zugang**; tap **„Einladung
+  senden"**. The badge turns to **Eingeladen** and the invitation is in
+  **Postausgang**. Now **+ Schüler anlegen** for a brother with the **same**
+  address: saving is refused with „Jede Schülerin und jeder Schüler braucht eine
+  eigene E-Mail-Adresse. … ist schon die Anmeldung eines anderen Kontos. Bitte
+  eine andere Adresse eintragen." — and nothing is created: no brother in
+  **Schüler**, no login in **Konten**, nothing new in Postausgang. A child with
+  no address at all shows „Trag oben zuerst eine E-Mail-Adresse ein und
+  speichere." on the card, and no button.
+- [ ] **U.21** **(copy)** As the administrator, **„Ohne E-Mail anlegen (mit
+  Passwort)"** on a child, with a password of at least 12 characters: sign out
+  and sign in with that address and password. It works with no SMTP at all, and
+  lands on that child's **Profil**.
+- [ ] **U.22** **(copy)** A child invited but not signed up yet: change the
+  address on the child's page and save. The link in the first invitation no
+  longer works, and a new invitation to the new address is in Postausgang. With
+  SMTP not set up, the save is refused with a sentence and nothing changes.
+- [ ] **U.23** **(copy)** A child whose login is active: the address on the
+  child's page can't be changed there — a change is refused with „Die Adresse
+  ist die Anmeldung dieses Kontos und kann hier nicht geändert werden. …",
+  pointing to „Mein Konto". Signed in as that family, **Mein Konto →
+  „E-Mail-Adresse ändern"** and the confirmation link: afterwards the child's
+  page and **Konten** both show the new address.
+- [ ] **U.24** **(copy)** From the child's page: **„Zugang sperren"**, then
+  **„Zugang entsperren"**, **„Einladung erneut senden"** on an invited one, and
+  **„Zugang löschen"**. Each one lands back on the same child's page, not on
+  Konten.
+- [ ] **U.25** As the trainer, **Konten** offers to invite and create team
+  members only; there is no way to invite a family from there.
+- [ ] **U.26** A mail to a family — an invitation, a reminder — starts
+  „Hallo <Vorname des Kindes>,".
+- [ ] **U.27** **Änderungen** on a child whose login changed shows the login as
+  its address, or as „gelöschter Zugang" once it is gone — never a bare number.
+- [ ] **U.28** **(copy)** With example data filled in, neither the overview nor
+  the **Schüler** list shows the notice „… Kinder brauchen eine eigene
+  E-Mail-Adresse" — every example child has an address of its own. (Where two
+  children do share one from before this rule, that notice names them, each card
+  says „Diese Adresse nutzt schon … Trag oben eine eigene ein." with no button,
+  and **Noch zu tun** offers „Eigene E-Mail-Adresse eintragen", which jumps to the
+  address field.)
+- [ ] **U.28a** **(copy)** The badge on **„Zugang zum Portal"** matches the login
+  in each state — **Kein Zugang**, **Eingeladen** („Eingeladen an …, noch nicht
+  angenommen."), **Aktiv** („Meldet sich an mit …") and **Gesperrt** — and
+  **Konten** uses the same four words and colours.
+- [ ] **U.28b** **(copy)** Delete a child that has a login, after first reading
+  the warning that its login would be left over. **Konten** then shows that login
+  under **„Zugänge ohne Schüler"**, where it can be locked or deleted and nothing
+  else. With no such logins the section is not there at all.
+
+**Setup**
+
+- [ ] **U.29** **(copy)** On a fresh install, type the administrator password in
+  `setup.php` with a space at the end. Signing in with the password, with or
+  without that space, works — the installer trims it exactly as the sign-in
+  form does.
+
+**The console**
+
+- [ ] **U.30** `create-admin` on a host without `shell_exec`: check
+  [3.4e](#installation-and-update).
+
+---
+
+## The test commands, in detail
 
 ```bash
 php tests/run.php                 # the whole suite, no database server needed
-tests/mariadb-local.sh            # the same suite against a real MariaDB
+tests/existing-database.sh        # the same suite against an empty _test database you made
+tests/mariadb-local.sh            # the same suite against a throwaway MariaDB it starts itself
 ```
 
-`php tests/run.php` must end in **`0 failed`**. It takes about ten seconds.
-Anything else and the manual sweep below is a waste of your time — fix that
-first.
+`php tests/run.php` must end in **`0 failed`**. It takes under a minute.
+Anything else and the manual sweep is a waste of your time — stop and report
+that first.
+
+`tests/existing-database.sh` is the real-engine run for shared hosting. Once, in
+the hosting panel, create a new, **empty** database whose name ends in `_test`
+(the panel puts your account name in front, as in `konto_crm_test`) and a user
+for it. The first run asks for that name, the user, the password, the server and
+the port, and keeps them in `tests/.test-database.php`, readable by you alone;
+later runs just start. It refuses a name that does not end in `_test`, the
+database the portal itself uses, and any database holding an account with a real
+email address; the first time, also any that is not empty. The suite deletes
+every table in the database it is given, so those refusals are the point. Delete
+that file to use a different database. The first lines it prints name the
+database server; that is the engine the run has proven.
+
+`tests/mariadb-local.sh` starts a throwaway database server of its own, which
+needs `mariadbd` installed. Shared hosting does not have it; use
+`tests/existing-database.sh` there.
 
 The run ends by printing what it could **not** cover. On SQLite that is foreign
 keys on three tables and the MySQL-dialect backup, which `tests/mariadb-local.sh`
@@ -88,25 +322,6 @@ in with. It only ever reads: every page is opened with GET.
 
 ---
 
-## The five-minute sweep — after any code change
-
-If you changed one thing, these six are the ones that catch a broken deploy.
-
-- [ ] **1.1** Open the portal signed out. The sign-in page appears, styled — not
-  a wall of unstyled text, and not a blank page.
-- [ ] **1.2** Sign in as administrator. The overview opens with the top bar
-  pinned, your name at the right, and no red error strip.
-- [ ] **1.3** Open **Schüler** and then one child. Their details show, with no
-  empty boxes where a name should be.
-- [ ] **1.4** Change something small (a note) and save. The green confirmation
-  appears and the new value is on the page after the reload.
-- [ ] **1.5** Open **Einstellungen → System**. The version shown there matches
-  the version in `VERSION`, and the database says it is on the same one.
-- [ ] **1.6** Open **Nachrichten**. The conversation list draws, and a
-  conversation opens.
-
----
-
 ## Twenty minutes, from nothing to an invoice
 
 The script to follow when you want to see the whole thing work, in order, with
@@ -163,19 +378,21 @@ child, **Datenblatt drucken**. Each is one sheet of A4 with headers and footers
 turned off in the print dialog. The blank one carries the price list as lines to
 tick.
 
-**8 · Be somebody else.** **Konten → „Portal als diese Person ansehen"** on
-Familie Berger. A red strip names whose eyes you are using; the portal shows
-their children only. **Ansicht beenden** gives you yourself back.
+**8 · Be somebody else.** Open the child that `familie.berger@beispiel.test`
+signs in for, and on its card **„Zugang zum Portal"** choose **„Portal als …
+ansehen"**. A red strip names whose eyes you are using; the portal shows that one
+child only. **Ansicht beenden** gives you yourself back.
 
 **9 · Sign in as a family for real.** Sign out, sign in as
-`familie.hofer@beispiel.test`. Four menu entries, their own children only, their
-own charges. Try `?page=student&id=` with a number that is not theirs: it
-answers 404.
+`familie.hofer@beispiel.test`. Four menu entries — Übersicht, **Profil**,
+Nachrichten, Neuigkeiten — and **Profil** opens their one child; one login is
+one child, so there is no list of children. Their own charges only. Try
+`?page=student&id=` with a number that is not theirs: it answers 404.
 
-**10 · Make a login without email.** Back as the administrator, **Konten → +
-Konto direkt anlegen (ohne E-Mail)**. Give it a name, an address and a password.
-Sign out, sign in as it — it works with no SMTP configured anywhere. If the
-address matches a child's, that child is attached to it.
+**10 · Make a login without email.** Back as the administrator, open the child
+you added at step 4, and on **„Zugang zum Portal"** choose **„Ohne E-Mail anlegen
+(mit Passwort)"**: its address and a password. Sign out, sign in with them — it
+works with no SMTP configured anywhere, and opens that child's **Profil**.
 
 **11 · Put it back.** **Einstellungen → System → „Beispieldaten entfernen"**.
 Every invented child, course and charge goes; anything you made yourself stays.
@@ -195,7 +412,8 @@ Every invented child, course and charge goes; anything you made yourself stays.
   you need it for the family checks further down.
 
 > Never fill example data into a portal holding real students. The button
-> refuses on its own, but the rule is yours to keep as well.
+> refuses unless you tick „Mir ist klar, dass sich Beispieldaten unter die
+> echten Schüler mischen." — so the rule is yours to keep: do not tick it.
 
 ---
 
@@ -238,6 +456,17 @@ Skip on an ordinary code change; do all of it before a release.
   > **Installieren** on a count of three is worth one try, and the only thing to
   > read is the administrator count in **Konten**. **Two administrators after an
   > install is the symptom**, whenever it appears and however it was produced.
+- [ ] **3.4e** `php bin/console.php create-admin` on a host that does not allow
+  `shell_exec`, which is most shared hosting: `php -r
+  'var_dump(function_exists("shell_exec"));'` prints `bool(false)` there. Walk it on
+  the second copy, not on the portal with the families in it; a portal that already
+  has an administrator needs `create-admin --force`. After the name and the
+  address, and **before** it asks for the password, it warns „This server does not
+  allow hiding what you type: the password will be visible on screen." and says
+  how to stop. The password is then readable as you type it, twice — expected on
+  such a host. It ends with „Administrator created.", and that account signs in.
+  What must never happen is a PHP error in place of the prompt, with no account
+  made: that is what it did before.
 - [ ] **3.5** Open `setup.php` again. It answers 403 and creates nothing.
 - [ ] **3.6** `bash bin/update.sh --check` on an installed copy reports the file
   version, the database version and whether anything is pending, and changes
@@ -278,8 +507,9 @@ Skip on an ordinary code change; do all of it before a release.
   the menu, and typing their addresses by hand is refused.
 - [ ] **4.3** As the administrator, everything the trainer can reach, you can
   reach too. There is no screen she has and you do not.
-- [ ] **4.4** Sign in as a family. They see the overview, their own children,
-  **Nachrichten** and **Neuigkeiten** — and no other child.
+- [ ] **4.4** Sign in as a family. They see the overview, **Profil** — their one
+  child's page, since one login is one child — **Nachrichten** and
+  **Neuigkeiten**, and no other child.
 - [ ] **4.5** As a family, open another family's child by editing the address.
   Refused, in words, not with a blank page.
 - [ ] **4.6** Wrong password repeatedly (more than ten times for one address,
@@ -369,18 +599,20 @@ Skip on an ordinary code change; do all of it before a release.
   once and not twice. Asking for a link ten times for one address is still
   refused afterwards — that counter is never cleared, because typing an address
   proves nothing about who typed it.
-- [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
-  the privacy notice — carries the line about the privacy notice, the necessary
-  cookies and the data not being sold or passed on, above the footer links, and
-  it reads at 320px without the page scrolling sideways.
-- [ ] **4.8** **Konten → + Konto direkt anlegen (ohne E-Mail)** as an
-  administrator: a name, an address and a password of at least 12 characters.
-  The new account signs in straight away with **no SMTP configured at all**, and
-  a weak password is refused here exactly as everywhere else.
+- [ ] **4.7a** The sign-in page carries one small line under the form, „Mit der
+  Anmeldung akzeptierst du die Datenschutzerklärung.", the last word a link to the
+  notice. Every signed-out page — sign in, forgotten password, invitation, the
+  notice itself — ends with the link to the Datenschutzerklärung and the version,
+  and nothing longer. At 320px no page scrolls sideways.
+- [ ] **4.8** **Konten → „+ Teammitglied direkt anlegen (ohne E-Mail)"** as an
+  administrator: a name, an address, a role and a password of at least 12
+  characters. The new account signs in straight away with **no SMTP configured
+  at all**, and a weak password is refused here exactly as everywhere else. A
+  family's login is not made here any more: it is made on the child's own page
+  (U.20, U.21).
 - [ ] **4.8a** A trainer is not offered that form and cannot post to it.
-- [ ] **4.8b** Creating one with role *Schüler* at an address a child already
-  carries attaches that child to it. Creating a trainer or administrator
-  attaches nobody.
+- [ ] **4.8b** The role list on that form offers **Trainerin** and
+  **Administrator** only — no Schüler. Creating either attaches no child.
 - [ ] **4.8c** The same form with an address that already has an account says
   „Diese Adresse hat schon ein Konto." Then tap **Anlegen** twice in quick
   succession: the second tap says **the same sentence**, word for word. Read it
@@ -390,7 +622,7 @@ Skip on an ordinary code change; do all of it before a release.
   portal's voice and means the two taps raced each other. Either way it must
   never be the „vorübergehend nicht verfügbar" page.
 - [ ] **4.8d** The same question asked from the *invitation* side. **Konten →
-  „+ Konto einladen"**, an address that already has an account — the one from
+  „+ Teammitglied einladen"**, an address that already has an account — the one from
   4.8 will do — then **„Einladung senden"**. It says **„Diese Adresse hat schon
   ein Konto."**: word for word the sentence the direct-creation form gives at
   4.8c, because it is now literally the same sentence in the code. Read it
@@ -404,7 +636,8 @@ Skip on an ordinary code change; do all of it before a release.
   second invitation replaces a password that already works. Tap **„Einladung
   senden"** twice in quick succession too: the second tap gives the same
   sentence, never the database one.
-- [ ] **4.9** Suspending an account in **Konten** stops that person signing in.
+- [ ] **4.9** Suspending a team member in **Konten**, or a family's login with
+  **„Zugang sperren"** on the child's page, stops that person signing in.
 
 ---
 
@@ -485,23 +718,28 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **7.7** A child with no contact is named on the **Schüler** list — "1 Kind
   ohne Standardkontakt" — with a link straight to their contacts.
 - [ ] **7.8** The first contact you add becomes the **Standardkontakt** without
-  being asked, and it cannot be saved without an email address: that is where
-  invoices and reminders go.
+  being asked. It saves with only a telephone number: invoices, reminders and
+  invitations go to the child's own address, not to a contact.
 - [ ] **7.8a** „Kontakt hinzufügen" and „Kontakt bearbeiten" ask for the same
   things, in the same words: the first box is the contact person's own name, not
   a question about whose contact it is.
 - [ ] **7.8b** A contact with a phone number and **no** email address saves.
   That is the grandmother who answers the telephone, and she is the reason this
   list and the portal's address are two different things now.
-- [ ] **7.8c** On the child's own page, **Zugang zum Portal** holds the address
-  the portal writes to. For a child that is a parent's address.
-- [ ] **7.8d** **Zugang einladen** on a child with no account creates one and
-  queues the invitation to that address. Check the outbox.
-- [ ] **7.8e** Invite a *second* child at the same address: one account, both
-  children on it, and — once that account has set a password — no second
-  invitation, which would have replaced a password that works.
+- [ ] **7.8c** On the child's own page, the **E-Mail-Adresse** is where the
+  portal writes to and, once the child has a login, what it signs in with. For
+  a young child that is usually a parent's address — but each child needs one of
+  its own, so a brother or sister needs a different one.
+- [ ] **7.8d** **„Einladung senden"** on **„Zugang zum Portal"**, for a child with
+  no login, creates one and queues the invitation to that address. Check the
+  outbox.
+- [ ] **7.8e** Invite a *second* child at an address that already signs in for
+  another child: refused, with „Jede Schülerin und jeder Schüler braucht eine
+  eigene E-Mail-Adresse. …". No login is made, no invitation is queued, and the
+  first child's login is untouched. (It used to put both children on one login;
+  one login is one child now.)
 - [ ] **7.8f** Inviting a child at an address that belongs to a trainer or an
-  administrator is refused, and the child stays unattached.
+  administrator is refused the same way, and the child stays without a login.
 - [ ] **7.8g** An invoice for a child with no account is addressed to the child
   at the child's own address, whatever email any contact has.
 - [ ] **7.8h** The **Schüler** list names two gaps separately: children with
@@ -613,8 +851,8 @@ Skip on an ordinary code change; do all of it before a release.
 
 ## Enrolment, asked for and decided
 
-- [ ] **9.1** As a family, open a child and look at **Kurse**. Courses with room
-  in them are offered.
+- [ ] **9.1** As a family, open **Profil** and look at **Kurse**. Courses with
+  room in them are offered.
 - [ ] **9.2** Ask to join one. Nothing is enrolled yet; the request is waiting.
 - [ ] **9.3** As the trainer, the count beside **Kurse** in the menu shows the
   waiting request. Accept it: the child is enrolled from the date you agreed.
@@ -761,8 +999,9 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **13.12** Cancelling an invoice keeps it, marked storniert, with its
   number — it is never deleted and never renumbered.
 - [ ] **13.13** A family can download their own invoice, and nobody else's.
-- [ ] **13.14** A child whose family has no portal account: the invoice is
-  addressed to their standard contact, and can be emailed there.
+- [ ] **13.14** A child with no portal login: the invoice is addressed to the
+  child at the child's own **E-Mail-Adresse**, and can be emailed there — not to
+  a contact (7.8g).
 - [ ] **13.15** Two courses collecting into different bank accounts: putting a
   charge from each on one invoice is refused in words. One invoice carries one
   IBAN, and it has to be the right one.
@@ -949,6 +1188,8 @@ Say what you ran, not what you hope is true.
   could not cover at the end of every run.
 - `tests/mariadb-local.sh` proves **MariaDB 10.11**. **MySQL 8.0 is still
   unverified** — it is one of the two supported engines, not both.
+  `tests/existing-database.sh` proves whichever engine the hosting runs: quote the
+  „Database server:" line it prints, not what you expect it to be.
 - No automated check opens the generated PDF in Adobe Reader, sends real email
   through a real provider, or renders a page in Safari on a real iPhone. Checks
   13.4, 15.3 and 22.x exist because nothing else covers them.

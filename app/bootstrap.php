@@ -39,6 +39,9 @@ require __DIR__ . '/billing.php';
 require __DIR__ . '/duplicate.php';
 require __DIR__ . '/shell.php';
 require __DIR__ . '/uploads.php';
+// Needs upload_dir() and send_download_headers() from the line above. Nothing
+// loaded earlier calls it: only the router and the layout do, per request.
+require __DIR__ . '/portal_icon.php';
 require __DIR__ . '/pdf.php';
 require __DIR__ . '/invoices.php';
 require __DIR__ . '/demo.php';

@@ -1,4 +1,17 @@
-"""Disposable local integration test. See tests/README.md. No real mail is sent."""
+"""Disposable local integration test: drives a running portal over HTTP. No real mail is sent.
+
+What it needs, all disposable - it writes freely to the database it is given:
+  1. An empty database whose name ends in _test, and a config file for it
+     (maintenance_file outside the checkout), exported as CRM_CONFIG.
+  2. php bin/console.php migrate
+  3. An administrator coach@example.test named "Test Coach" with the password
+     below, and one custom field (id 1): a select with options "Gruppe 1" and
+     "Gruppe 2", visible to students.
+  4. The portal served locally, e.g. php -S 127.0.0.1:4173 -t public public/index.php
+  5. CRM_TEST_ALLOW_DESTRUCTIVE=1 python3 tests/integration.py
+Start from step 1 for every run: a second run against the same data fails on
+the records the first one left.
+"""
 import os, re, json, subprocess, urllib.request, urllib.parse, http.cookiejar
 from pathlib import Path
 from html.parser import HTMLParser
@@ -79,9 +92,9 @@ def run():
     if os.environ.get('CRM_TEST_ALLOW_DESTRUCTIVE')!='1':raise RuntimeError('Set CRM_TEST_ALLOW_DESTRUCTIVE=1 only for the disposable test setup.')
     if urllib.parse.urlparse(BASE).hostname not in ['127.0.0.1','localhost']:raise RuntimeError('Tests require a local application URL.')
     admin=Client();admin.login('coach@example.test')
-    assert_ok('Hallo, Test' in admin.html,'Administrator can sign in')
+    assert_ok('Hallo Test' in admin.html,'Administrator can sign in')
     assert_ok('frame-ancestors' in admin.headers.get('Content-Security-Policy',''),'CSP protects application pages')
-    outsider=Client();outsider.request('page=students');assert_ok('Willkommen zurück' in outsider.html,'Private pages require authentication')
+    outsider=Client();outsider.request('page=students');assert_ok('<h1>Anmelden</h1>' in outsider.html,'Private pages require authentication')
     # A configured local test relay; no worker is run in this suite.
     admin.request('page=settings&tab=smtp');admin.post('smtp_save',{'host':'localhost','port':'2525','username':'test-user','smtp_password':'test-smtp-secret','encryption':'tls','from_email':'noreply@example.test','from_name':'Test Badminton'})
     assert_ok('test-smtp-secret' not in admin.html,'SMTP password is not rendered')
@@ -90,12 +103,23 @@ def run():
     # Only a synthetic test notice is marked ready; production draft stays unconfigured.
     admin.request('page=settings&tab=privacy');notice='Local test notice. No personal data or real accounts. '*12
     admin.post('privacy_save',{'privacy_de':notice,'privacy_en':notice,'privacy_ready':'1'})
-    admin.request('page=settings&tab=tariffs');admin.post('tariff_save',{'name':'Junior','price':'40,00','period':'monthly','due_days':'14'})
+    # A tariff belongs to a course and is edited on the course's own Tarife tab;
+    # its prices are a list, one per way of paying.
+    admin.request('page=classes&new=1');admin.post('class_save',{'name':'Junior-Training','capacity':'0'})
+    course=int(scalar('SELECT id FROM classes WHERE name=?',['Junior-Training']))
+    admin.request('page=classes&id='+str(course)+'&tab=tariffs')
+    admin.post('tariff_save',{'name':'Junior','period':'recurring','interval_months':'1','rate_interval[]':['1'],'rate_price[]':['40,00'],'due_day':'14'})
     tariff=int(scalar('SELECT id FROM tariffs WHERE name=?',['Junior']))
+    def add_student(first,last,price='',email=''):
+        admin.request('page=student');admin.post('student_save',{'first_name':first,'last_name':last,'email':email,'status':'active','tariff_id':str(tariff),'price':price,'internal_notes':'PRIVATE_COACH_NOTE','custom[1]':'Gruppe 1'})
+        return int(scalar('SELECT id FROM students WHERE first_name=? AND last_name=?',[first,last]))
+    # One login is one student (ADR 0010): a family is invited from its student's own page,
+    # and Leon, Anna's brother, has no login of his own yet.
+    s1=add_student('Anna','Test',email='family1@example.test');s2=add_student('Leon','Test','30');s3=add_student('Mia','Other',email='family2@example.test')
     # Invitation before verification cannot log in; link is single-use.
     clients=[];ids=[]
-    for name,email in [('Family One','family1@example.test'),('Family Two','family2@example.test')]:
-        admin.request('page=accounts');admin.post('account_invite',{'name':name,'email':email,'locale':'de','role':'student'})
+    for name,email,sid in [('Family One','family1@example.test',s1),('Family Two','family2@example.test',s3)]:
+        admin.request('page=student&id='+str(sid));admin.post('student_invite',{'email':email,'name':name})
         aid=int(scalar('SELECT id FROM accounts WHERE email=?',[email]));ids.append(aid)
         client=Client();client.login(email);assert_ok('Anmeldung nicht möglich' in client.html,'Unverified account blocked: '+name)
         job=scalar('SELECT MAX(id) FROM mail_jobs WHERE account_id=?',[aid]);token=re.search(r'token=([a-f0-9]{64})',mail_body(job)).group(1)
@@ -104,14 +128,12 @@ def run():
         assert_ok('Dein Konto ist bereit' in client.html,'Email verified through invitation: '+name)
         reuse=Client();reuse.request('page=activate&token='+token);assert_ok('Link nicht mehr gültig' in reuse.html,'Invitation cannot be reused: '+name)
         clients.append(client)
-    def add_student(first,last,account,price=''):
-        admin.request('page=student');admin.post('student_save',{'first_name':first,'last_name':last,'account_id':str(account),'status':'active','tariff_id':str(tariff),'price':price,'internal_notes':'PRIVATE_COACH_NOTE','custom[1]':'Gruppe 1'})
-        return int(scalar('SELECT id FROM students WHERE first_name=? AND last_name=?',[first,last]))
-    s1=add_student('Anna','Test',ids[0]);s2=add_student('Leon','Test',ids[0],'30');s3=add_student('Mia','Other',ids[1])
     one,two=clients
-    one.request('page=students');assert_ok('Anna Test' in one.html and 'Leon Test' in one.html and 'Mia Other' not in one.html,'One account sees multiple linked students only')
+    one.request('page=students');assert_ok('Anna Test' in one.html and 'Leon Test' not in one.html and 'Mia Other' not in one.html,'One login sees its own student only, not a brother')
+    admin.request('page=student&id='+str(s2));admin.raw('student_invite',{'student_id':str(s2),'email':'family1@example.test','name':'','return_page':'student','return_id':str(s2)})
+    assert_ok('eigene E-Mail-Adresse' in admin.html and scalar('SELECT account_id FROM students WHERE id=?',[s2]) is None,'A brother at a login address is refused in words and stays unattached')
     one.request('page=student&id='+str(s1));assert_ok('PRIVATE_COACH_NOTE' not in one.html,'Internal notes never rendered to students')
-    one.request('page=student&id='+str(s3));assert_ok(one.status==403 and 'Mia Other' not in one.html,'Cross-account student access denied')
+    one.request('page=student&id='+str(s3));assert_ok(one.status==404 and 'Mia Other' not in one.html,'Cross-account student access answers 404, without saying the child exists')
     one.request('page=student&id='+str(s1));one.raw('student_save',{'id':str(s3),'first_name':'Hacked','last_name':'Other','return_page':'students'})
     assert_ok(scalar('SELECT first_name FROM students WHERE id=?',[s3])=='Mia','Cross-account student modification denied')
     one.request('page=settings');assert_ok(one.status==403,'Student cannot access administrator settings')
@@ -134,7 +156,8 @@ def run():
     assert_ok(scalar('SELECT COUNT(*) FROM payments WHERE charge_id=?',[charge])==1,'Student cannot record or confirm payments')
     admin.request('page=student&id='+str(s1)+'&tab=payments');admin.post('payment_add',{'amount':'26','paid_on':'2026-09-15','method':'Bar','confirmed':'1'})
     assert_ok(scalar('SELECT COUNT(*) FROM payments WHERE charge_id=?',[charge])==1,'Over-allocation is rejected')
-    admin.request('page=settings&tab=tariffs&edit='+str(tariff));admin.post('tariff_save',{'name':'Junior','price':'70','period':'monthly','due_days':'10'})
+    admin.request('page=classes&id='+str(course)+'&tab=tariffs&tariff='+str(tariff))
+    admin.post('tariff_save',{'name':'Junior','period':'recurring','interval_months':'1','rate_interval[]':['1'],'rate_price[]':['70'],'due_day':'10'})
     assert_ok(scalar('SELECT price_cents FROM students WHERE id=?',[s1])==4000 and scalar('SELECT price_cents FROM students WHERE id=?',[s2])==3000,'Tariff changes preserve agreed and individual prices')
     admin.request('page=settings&tab=fields&edit=1');admin.post('field_save',{'label':'Trainingsgruppe Neu','label_en':'Training group','field_type':'select','options':'Gruppe 1\nGruppe 2','visibility':'view','sort_order':'5','default_value':'Gruppe 2'})
     assert_ok(json.loads(scalar('SELECT value_json FROM field_values WHERE student_id=? AND field_id=1',[s1]))=='Gruppe 1','Renaming and changed defaults preserve custom values')
@@ -143,15 +166,15 @@ def run():
     admin.request('page=settings&tab=fields&edit=1');f=admin.form('field_save');f['archived']='1';admin.request(data=f)
     assert_ok(scalar('SELECT COUNT(*) FROM field_values WHERE field_id=1')==3,'Archiving preserves all field values')
     one.request('page=student&id='+str(s1)+'&tab=absence');one.post('absence_add',{'reason':'sick','starts_on':'2020-01-01','ends_on':'2099-12-31'})
-    admin.request('page=students&absence=sick');assert_ok('Anna Test' in admin.html and 'Leon Test' not in admin.html,'Absence filter respects student and dates')
-    admin.request('page=students&overdue=1');assert_ok('Anna Test' in admin.html and 'Leon Test' not in admin.html,'Overdue filter uses confirmed balances')
+    admin.request('page=students&absence=sick');assert_ok('<h3>Anna Test</h3>' in admin.html and '<h3>Leon Test</h3>' not in admin.html,'Absence filter respects student and dates')
+    admin.request('page=students&overdue=1');assert_ok('<h3>Anna Test</h3>' in admin.html and '<h3>Leon Test</h3>' not in admin.html,'Overdue filter uses confirmed balances')
     one.request('page=messages&new=1');one.post('message_send',{'subject':'Training question','body':'Is training happening? <script>alert(1)</script>'})
     thread=int(scalar('SELECT MAX(id) FROM threads'))
     assert_ok('&lt;script&gt;' in one.html and '<script>alert(1)' not in one.html,'Message text is escaped')
-    two.request('page=messages&id='+str(thread));assert_ok(two.status==403,'Private conversation is isolated by account')
-    admin.request('page=compose');admin.post('bulk_preview',{'student_ids[]':[str(s1),str(s2)],'subject':'Hello','body':'Hello {{first_name}}: {{outstanding}}','send_email':'1'})
-    count_before=int(scalar('SELECT COUNT(*) FROM threads'));assert_ok('1 Konten' in admin.html,'Bulk preview groups siblings into one account')
-    admin.post('bulk_send');assert_ok(int(scalar('SELECT COUNT(*) FROM threads'))==count_before+1,'Bulk sending creates one conversation per account')
+    two.request('page=messages&id='+str(thread));assert_ok(two.status==404 and 'Is training happening' not in two.html,'Private conversation is isolated by account, answered as not found')
+    admin.request('page=compose');admin.post('bulk_preview',{'student_ids[]':[str(s1),str(s2),str(s3)],'subject':'Hello','body':'Hello {{first_name}}: {{outstanding}}','send_email':'1'})
+    count_before=int(scalar('SELECT COUNT(*) FROM threads'));assert_ok('2 Empfänger' in admin.html,'Bulk preview counts one login per student, leaving out the one without a login')
+    admin.post('bulk_send');assert_ok(int(scalar('SELECT COUNT(*) FROM threads'))==count_before+2,'Bulk sending creates one conversation per student')
     one.request('page=profile');form=one.form('preferences_save');form.pop('newsletter',None);form.pop('notifications',None);one.request(data=form)
     assert_ok(scalar('SELECT newsletter FROM accounts WHERE id=?',[ids[0]])==0,'Newsletter preference saved separately')
     mail_before=scalar('SELECT COUNT(*) FROM mail_jobs WHERE category=?',['newsletter'])
@@ -162,10 +185,13 @@ def run():
     out=Path(os.environ.get('CRM_TEST_RENDER_DIR','/tmp/crm-test-render'));out.mkdir(parents=True,exist_ok=True)
     for name,query in [('dashboard','page=dashboard'),('student','page=student&id='+str(s1)),('payments','page=student&id='+str(s1)+'&tab=payments'),('fields','page=settings&tab=fields&edit=1'),('accounts','page=accounts')]:
         admin.request(query);assert_ok(admin.status==200,'View renders: '+name);(out/(name+'.html')).write_text(admin.html)
-    for route in ['messages','compose','news','outbox','profile','settings&tab=tariffs','settings&tab=templates','settings&tab=defaults','settings&tab=smtp','settings&tab=privacy']:
+    # Tabs that exist: an unknown settings tab silently shows the first one, so a
+    # stale name here would pass without rendering what it names.
+    for route in ['messages','compose','news','outbox','profile','manage','classes','classes&id='+str(course)+'&tab=tariffs',
+                  'settings&tab=organisation','settings&tab=fields','settings&tab=smtp','settings&tab=privacy','settings&tab=feedback','settings&tab=system']:
         admin.request('page='+route+'&lang=en');assert_ok(admin.status==200,'English view renders: '+route)
     admin.request('page=accounts');admin.raw('account_state',{'id':str(ids[0]),'mode':'suspend','return_page':'accounts'})
-    one.request('page=students');assert_ok('Willkommen zurück' in one.html,'Suspension invalidates an existing session')
+    one.request('page=students');assert_ok('<h1>Anmelden</h1>' in one.html,'Suspension invalidates an existing session')
     one.login('family1@example.test');assert_ok('Anmeldung nicht möglich' in one.html,'Suspended account cannot sign in')
     admin.request('page=accounts');admin.raw('account_state',{'id':str(ids[0]),'mode':'restore','return_page':'accounts'});one.login('family1@example.test');assert_ok('Anna Test' in one.html,'Restored account can sign in again')
     admin.request('page=accounts');admin.raw('account_state',{'id':str(ids[0]),'mode':'delete','confirmation':'family1@example.test','return_page':'accounts'})

@@ -2,7 +2,8 @@
 declare(strict_types=1);
 
 /**
- * Files people send: payment proofs, message attachments, profile pictures.
+ * Files people send: payment proofs, message attachments, profile pictures,
+ * and the portal's own icon.
  *
  * Three rules hold for all of them.
  *
@@ -70,6 +71,10 @@ function upload_types(string $kind): array {
     return match ($kind) {
         'avatar' => $images,
         'proof'  => $images + ['application/pdf' => 'pdf'],
+        // PNG and nothing else: an iPhone takes its home-screen icon only as a
+        // PNG, and one format for the tab, iOS and Android means no guessing
+        // which browser takes what. check_portal_icon() then reads its size.
+        'icon'   => ['image/png' => 'png'],
         // A message may carry a picture, a document or a voice note. webm and
         // mp4 are what a browser's own recorder produces; the rest are what
         // somebody's phone hands over when they pick an existing file.
@@ -156,6 +161,11 @@ function upload_references(): array {
                       "SELECT screenshot_name AS name FROM feedback WHERE screenshot_name<>''"],
         'proof'   => ['SELECT stored_name AS name FROM payment_proofs'],
         'message' => ['SELECT stored_name AS name FROM message_files'],
+        // A setting is stored as JSON, so the name sits inside quotes. Compared
+        // with the quotes still on, nothing would match and the live icon would
+        // be swept an hour after it was uploaded. REPLACE(x,y,z) is spelled the
+        // same in MariaDB, MySQL and SQLite.
+        'icon'    => ["SELECT REPLACE(setting_value,'\"','') AS name FROM settings WHERE setting_key='portal_icon'"],
     ];
 }
 

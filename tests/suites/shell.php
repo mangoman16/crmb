@@ -214,9 +214,27 @@ foreach (['history','settings'] as $route)
     ok(!in_array($route, $trainerRoutes, true), 'a trainer is not offered '.$route.', which the router refuses her');
 ok(in_array('classes', $trainerRoutes, true), 'but she is offered the courses');
 
-is_same(['dashboard','students','messages','news'], menu_routes($familyUser), 'a family sees four pages and no sections');
-foreach (nav_entries($familyUser) as $entry)
+// One login is one student (ADR 0010): the family's second entry is their own
+// student's page, called „Profil", and a login no student points to has no
+// record to show, so it gets no entry rather than one that leads nowhere.
+is_same(0, (int)scalar('SELECT COUNT(*) FROM students WHERE account_id=?', [$family]), 'this family login has no student');
+is_same(['dashboard','messages','news'], menu_routes($familyUser), 'so it sees three pages and no sections');
+is_same(null, people_nav_entry($familyUser), 'and no „Profil" entry that would lead nowhere');
+$ownLogin = make_account(['role'=>'student', 'name'=>'Familie Profil']);
+$ownStudent = make_student(['first_name'=>'Pia', 'last_name'=>'Profil', 'account_id'=>$ownLogin]);
+$otherStudent = make_student(['first_name'=>'Nicht', 'last_name'=>'Ihres']);
+$ownUser = one('SELECT * FROM accounts WHERE id=?', [$ownLogin]);
+is_same(['dashboard','student','messages','news'], menu_routes($ownUser), 'a family with a student sees four pages and no sections');
+$profile = people_nav_entry($ownUser);
+is_same(['student', ['id'=>$ownStudent], 'Profil'], [$profile['route'] ?? null, $profile['params'] ?? null, $profile['label'] ?? null],
+        'the second is „Profil", their own student\'s page');
+ok($ownStudent !== $otherStudent && ($profile['params']['id'] ?? null) !== $otherStudent, 'and never another student\'s');
+ok(str_contains(sidebar_nav($ownUser, 'dashboard'), 'href="'.e(url('student', ['id'=>$ownStudent])).'"'),
+   'the menu links there');
+foreach (nav_entries($ownUser) as $entry)
     ok(isset($entry['route']), 'and nothing is folded away from them');
+is_same(['students'], array_values(array_intersect(['students', 'student'], menu_routes($adminUser))),
+        'staff still get the list of students, not one student');
 
 case_('Every menu entry names an icon that exists and a page the router allows');
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');

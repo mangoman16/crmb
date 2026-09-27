@@ -2,6 +2,63 @@
 declare(strict_types=1);
 
 /**
+ * What she is told when an address is already somebody's login.
+ *
+ * One login belongs to one student (ADR 0010), so a brother or sister cannot
+ * be given the address a sibling already signs in with. Said the same way from
+ * every place that refuses it, and said before anything is written: the
+ * database's own unique index would refuse too, but "Integrity constraint
+ * violation" is not something she can act on.
+ */
+function own_address_needed(string $email): string {
+    return t('Jede Schülerin und jeder Schüler braucht eine eigene E-Mail-Adresse. ',
+             'Every student needs an email address of their own. ')
+        .$email.t(' ist schon die Anmeldung eines anderen Kontos. Bitte eine andere Adresse eintragen.',
+                  ' is already the login of another account. Please enter a different address.');
+}
+
+/**
+ * The role asked for on the Konten page, which grants staff logins only.
+ *
+ * A student's login is refused there by name rather than as "invalid choice":
+ * a page from before this rule still offers it, and she needs to know where
+ * to go instead.
+ */
+function staff_role_posted(): string {
+    $role=post('role');
+    if($role==='student')
+        throw new UserError(t('Ein Schülerkonto wird auf der Seite der Schülerin oder des Schülers angelegt – dort gehört es zu genau einer Person.',
+                              'A student account is created on that student’s own page – there it belongs to exactly one person.'));
+    return $role;
+}
+
+/**
+ * Change the address an account signs in with. The only place that does.
+ *
+ * Both copies change together - the login on the account and the address on
+ * its student, which is where invoices and reminders go - so the two can never
+ * disagree. Every session on the account ends (auth_version), every link
+ * already sent stops working (a link to the old mailbox must not open the
+ * account once the address has moved), and mail still waiting for the old
+ * address is not sent.
+ *
+ * Refuses an address another account already holds, with a sentence rather
+ * than the unique index's error: a family confirming a change can find that
+ * somebody took the address between asking and clicking.
+ */
+function change_login_address(int $accountId, string $email): void {
+    $email=email_value($email);
+    transactional(function() use ($accountId,$email): void {
+        $holder=account_using_email($email);
+        if($holder && (int)$holder['id']!==$accountId) throw new UserError(own_address_needed($email));
+        run('UPDATE accounts SET email=?,auth_version=auth_version+1 WHERE id=?',[$email,$accountId]);
+        run('UPDATE students SET email=?,updated_at=?,revision=revision+1 WHERE account_id=?',[$email,now(),$accountId]);
+        run('DELETE FROM auth_tokens WHERE account_id=?',[$accountId]);
+        cancel_account_mail($accountId);
+    });
+}
+
+/**
  * The address typed into the sign-in or password-reset form.
  *
  * One derivation, because it is both the identity an attempt is counted
@@ -145,8 +202,9 @@ function dispatch_action(string $action): array {
         } elseif($r['purpose']==='email') {
             $u=require_user();
             if((int)$u['id']!==(int)$r['account_id']) throw new UserError(t('Bitte mit dem zugehörigen Konto anmelden.','Please sign in to the matching account.'));
-            run('UPDATE accounts SET email=?,verified_at=?,auth_version=auth_version+1 WHERE id=?',[$r['target_email'],now(),$r['account_id']]);
-            cancel_account_mail((int)$r['account_id']);
+            change_login_address((int)$r['account_id'],(string)$r['target_email']);
+            // Confirmed from the new mailbox, which is what proves it is theirs.
+            run('UPDATE accounts SET verified_at=? WHERE id=?',[now(),$r['account_id']]);
         } else throw new UserError('Invalid token');
         run('DELETE FROM auth_tokens WHERE account_id=?',[$r['account_id']]);
         unset($_SESSION['activation_hash']);
@@ -163,7 +221,7 @@ function dispatch_action(string $action): array {
         }
         flash(t('Du wurdest für diese E-Mails abgemeldet.','You have unsubscribed from these emails.')); return ['login',[]];
     case 'account_invite':
-        $u=require_staff(); $role=choose(post('role','student'),assignable_roles($u));
+        $u=require_admin(); $role=choose(staff_role_posted(),assignable_roles($u));
         $email=email_value(required_text('email',254));
         if(account_using_email($email))
             throw new UserError(t('Diese Adresse hat schon ein Konto.','That address already has an account.'));
@@ -177,10 +235,12 @@ function dispatch_action(string $action): array {
        account: trying the portal out before the mail is set up, a second
        administrator on the day the first one loses their phone, a trainer who
        stands next to her and can pick a password on the spot. Administrator
-       only, because handing out a login is more than inviting one. */
+       only, because handing out a login is more than inviting one. A student's
+       login is made the same way from the student's page (student_invite with
+       mode=direct), because there it belongs to somebody. */
     case 'account_create':
         $u=require_admin();
-        $role=choose(post('role','student'),assignable_roles($u));
+        $role=choose(staff_role_posted(),assignable_roles($u));
         $email=email_value(required_text('email',254));
         $password=(string)post('password'); strong_password($password);
         if(account_using_email($email))
@@ -194,54 +254,52 @@ function dispatch_action(string $action): array {
             [required_text('name'),$email,password_hash($password,PASSWORD_DEFAULT),$role,now(),
              choose(post('locale','de'),['de','en']),now()]);
         $id=(int)db()->lastInsertId();
-        // A family account with nothing attached to it signs in and sees an
-        // empty portal, which looks like a broken login rather than a missing
-        // link. Inviting from the child's page already joins the two by address;
-        // doing it here as well means the two ways in agree.
-        $linked=0;
-        if($role==='student')
-            $linked=run('UPDATE students SET account_id=?,updated_at=?,revision=revision+1 WHERE email=? AND account_id IS NULL',
-                        [$id,now(),$email])->rowCount();
-        audit($linked?'account.created_directly_and_linked':'account.created_directly','account',$id);
+        audit('account.created_directly','account',$id);
         flash(t('Konto angelegt. Es kann sich sofort mit diesem Passwort anmelden – die Adresse wurde dabei nicht bestätigt.',
-                'Account created. It can sign in with that password straight away – the address was not confirmed.')
-              .($linked?' '.plural($linked,'Kind wurde damit verknüpft.','Kinder wurden damit verknüpft.',
-                                   'child was linked to it.','children were linked to it.'):''));
+                'Account created. It can sign in with that password straight away – the address was not confirmed.'));
         return ['accounts',[]];
     case 'student_invite':
-        /* The invitation goes to the child's own record rather than to one of
-           the people on their emergency list. Those are two different questions
-           - who do I ring when she falls over, who reads the invoices - and one
-           row answering both is how a grandmother with no email ended up being
-           the reason a family could not sign in.
+        /* A student's own login, made on their own page - the only place
+           students.account_id is ever set (ADR 0010). One login is one student:
+           a brother or sister gets an address of their own, never a place on
+           somebody else's login.
 
-           An address that already has an account is linked rather than
-           duplicated, which is what makes "both parents" and "three siblings on
-           one login" work without a second concept. */
-        $u=require_staff();$s=student((int)post('student_id'));
-        if($s['account_id']) throw new UserError(t('Dieses Kind ist schon einem Konto zugeordnet.','This child already belongs to an account.'));
+           The invitation goes to the address on the student rather than to one
+           of the people on their emergency list. Those are two different
+           questions - who do I ring when she falls over, who reads the invoices
+           - and one row answering both is how a grandmother with no email ended
+           up being the reason a family could not sign in.
+
+           mode=direct makes the login active on the spot with a password typed
+           here, for an administrator standing next to the family or trying the
+           portal out before mail works. It replaces account_create for
+           students. Every refusal comes before the first write. */
+        $u=require_staff();$direct=post('mode')==='direct';
+        if($direct) require_admin();
+        $s=lock_row('students',(int)student((int)post('student_id'))['id']);
+        if($s['account_id']) throw new UserError(t('Dieses Kind hat schon ein eigenes Konto. Zugang, Einladung und Adresse werden dort verwaltet.','This student already has an account of their own. Access, invitation and address are managed there.'));
         $email=email_value(post('email')!==''?post('email'):(string)$s['email']);
         $name=trim(post('name'))!==''?required_text('name'):$s['first_name'].' '.$s['last_name'];
-        $existing=account_using_email($email);
-        if($existing) {
-            if($existing['role']!=='student') throw new UserError(t('Diese Adresse gehört schon zu einem Konto der Verwaltung.','That address already belongs to a management account.'));
-            $accountId=(int)$existing['id'];
-        } else {
-            run('INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,?,?,?)',
-                [$name,$email,'student',choose(post('locale','de'),['de','en']),now()]);
-            $accountId=(int)db()->lastInsertId();
-        }
-        run('UPDATE students SET account_id=?,email=?,updated_at=?,revision=revision+1 WHERE id=?',[$accountId,$email,now(),$s['id']]);
-        // An account that has already set a password is being given another
-        // child to look after, not invited again: a second invitation would
-        // reset a password that works.
-        $account=one('SELECT * FROM accounts WHERE id=?',[$accountId]);
-        if($account['state']==='invited' && !$account['verified_at']) { send_account_token($account,'invite'); $sent=true; }
-        else $sent=false;
-        audit($existing?'account.linked':'account.invited','account',$accountId);
-        flash($sent
-            ? t('Einladung liegt im Postausgang.','The invitation is in the outbox.')
-            : t('Das Kind wurde dem bestehenden Konto zugeordnet. Es kann sich wie bisher anmelden.','The child was added to the existing account. It signs in as before.'));
+        $locale=choose(post('locale','de'),['de','en']);
+        $password=$direct?strong_password((string)post('password')):'';
+        if(account_using_email($email)) throw new UserError(own_address_needed($email));
+        if(!$direct && !account_mail_ready())
+            throw new UserError(t('Eine Einladung braucht eingerichtetes SMTP und eine freigegebene Datenschutzerklärung. Solange das fehlt, kann eine Administratorin das Konto direkt mit Passwort anlegen.',
+                                  'An invitation needs SMTP set up and a released privacy notice. Until then, an administrator can create the account directly with a password.'));
+        if($direct) run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,locale,created_at) VALUES (?,?,?,'student','active',?,?,?)",
+                        [$name,$email,password_hash($password,PASSWORD_DEFAULT),now(),$locale,now()]);
+        else run("INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,'student',?,?)",[$name,$email,$locale,now()]);
+        $accountId=(int)db()->lastInsertId();
+        // Tracked, so the student's change log says when they got their login
+        // and at which address - the one line that writes account_id is the
+        // one line worth being able to read back.
+        tracked('students',(int)$s['id'],$s['first_name'].' '.$s['last_name'],
+            fn()=>run('UPDATE students SET account_id=?,email=?,updated_at=?,revision=revision+1 WHERE id=?',[$accountId,$email,now(),$s['id']]));
+        if(!$direct) send_account_token(one('SELECT * FROM accounts WHERE id=?',[$accountId]),'invite');
+        audit($direct?'account.created_directly':'account.invited','account',$accountId);
+        flash($direct
+            ? t('Konto angelegt. ','Account created. ').$name.t(' kann sich sofort mit diesem Passwort anmelden – die Adresse wurde dabei nicht bestätigt.',' can sign in with that password straight away – the address was not confirmed.')
+            : t('Einladung liegt im Postausgang.','The invitation is in the outbox.'));
         return ['student',['id'=>$s['id']]];
     case 'account_state':
         $u=require_staff();$id=(int)post('id');$mode=choose(post('mode'),['suspend','restore','delete','reinvite']);
@@ -250,6 +308,10 @@ function dispatch_action(string $action): array {
         // Lock all administrators so concurrent requests cannot remove the last one.
         $admins=rows("SELECT id FROM accounts WHERE role='admin' AND state='active' FOR UPDATE");
         if($a['role']==='admin' && $a['state']==='active' && count($admins)<=1 && in_array($mode,['suspend','delete'],true)) throw new UserError(t('Der letzte Administrator muss erhalten bleiben.','The last administrator must remain active.'));
+        // A student's login is managed from that student's page, so that is where
+        // she lands again. Looked up now, because after a delete the foreign key
+        // has already cut the link and there is nobody left to find.
+        $studentId=$a['role']==='student'?(int)(scalar('SELECT id FROM students WHERE account_id=?',[$id])?:0):0;
         if($mode==='reinvite') {
             if($a['state']!=='invited') throw new UserError(t('Nur offene Einladungen können erneut versendet werden.','Only pending invitations can be resent.'));
             cancel_account_mail($id);send_account_token($a,'invite');
@@ -261,14 +323,16 @@ function dispatch_action(string $action): array {
                 run('DELETE FROM accounts WHERE id=?',[$id]);
             } else run('UPDATE accounts SET state=?,auth_version=auth_version+1 WHERE id=?',[$mode==='suspend'?'suspended':($a['verified_at']?'active':'invited'),$id]);
         }
-        audit('account.'.$mode,'account',$id);flash(t('Konto aktualisiert.','Account updated.'));return ['accounts',[]];
+        audit('account.'.$mode,'account',$id);flash(t('Konto aktualisiert.','Account updated.'));
+        return $studentId?['student',['id'=>$studentId]]:['accounts',[]];
     case 'student_save':
         $u=require_user();$id=(int)post('id');$existing=$id?student($id):null;
         if(!$existing) require_staff();
         $first=required_text('first_name',100);$last=required_text('last_name',100);$birth=date_value(post('birth_date'));
         if(is_staff($u)) {
-            $accountId=(int)post('account_id')?:null;
-            if($accountId && !one("SELECT id FROM accounts WHERE id=? AND role='student'",[$accountId])) throw new UserError(t('Schülerkonto nicht gefunden.','Student account not found.'));
+            // account_id is neither read nor written here: a login is given by
+            // student_invite and taken away by deleting it, nothing else
+            // (ADR 0010). A page from before that rule may still post it.
             $tariffId=(int)post('tariff_id')?:null;$tariff=$tariffId?one('SELECT * FROM tariffs WHERE id=?',[$tariffId]):null;
             if($tariffId && (!$tariff || ($tariff['archived'] && $tariffId!==(int)($existing['tariff_id']??0)))) throw new UserError(t('Tarif ist nicht verfügbar.','Tariff is not available.'));
             // Through tariff_price(): a tariff has a rate per interval now, not a
@@ -283,32 +347,74 @@ function dispatch_action(string $action): array {
             $levelId=reference_or_null('levels','level_id') ?? (int)(level_default()['id'] ?? 0) ?: null;
             $ageGroupId=reference_or_null('age_groups','age_group_id');
             $join=date_value(post('joined_on'));$end=date_value(post('ended_on'));date_range($join,$end);
-            // Where the portal writes to this family, which for a child is a
-            // parent's address. Optional while the record is being set up, and
-            // asked for by contact_gap() until it is there.
-            $email=post('email')!==''?email_value(post('email')):'';
             // One line, the way the paper form asks it, because it is typed once
             // and printed once and never sorted on. Her own number rather than an
             // emergency contact's: for an adult member those are the same person,
             // and listing yourself as the person to ring is not a record anybody
             // should have to keep.
             $address=text_limit('address',200);$phone=text_limit('phone',60);
-            $args=[$accountId,$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
+            // Where the portal writes to this student: the invitation, invoices,
+            // reminders. Optional while the record is being set up, and asked for
+            // by contact_gap() until it is there. Once the student has a login it
+            // is that login's address, and this copy is kept equal to it.
+            $posted=post('email')!==''?email_value(post('email')):'';
+            $account=$existing && $existing['account_id']?lock_row('accounts',(int)$existing['account_id']):null;
+            $readdress=false;
+            if(!$account) {
+                $email=$posted;
+                // Only a change is checked. Two members who already share an
+                // address from before the rule are listed for her to sort out
+                // (students_needing_own_address()); refusing every other edit on
+                // the page until then would help nobody.
+                if($email!=='' && $email!==mb_strtolower((string)($existing['email']??'')) && account_using_email($email))
+                    throw new UserError(own_address_needed($email));
+            } else {
+                $email=(string)$account['email'];
+                // Nothing posted means nothing to change: a login always has an
+                // address, so an empty or missing field cannot be a request to
+                // remove it.
+                if($posted!=='' && $posted!==mb_strtolower($email)) {
+                    // Refused, not ignored: a page opened before the family signed
+                    // up still shows an editable field, and a save that quietly
+                    // dropped the new address would say "saved" and mean less.
+                    if($account['state']!=='invited' || $account['verified_at'])
+                        throw new UserError(t('Die Adresse ist die Anmeldung dieses Kontos und kann hier nicht geändert werden. Wer sich damit anmeldet, ändert sie selbst unter „Mein Konto“, mit einem Bestätigungslink an die neue Adresse. Nichts wurde gespeichert.',
+                                              'The address is this account’s login and cannot be changed here. Whoever signs in with it changes it under “My account”, with a confirmation link sent to the new address. Nothing was saved.'));
+                    if(account_using_email($posted)) throw new UserError(own_address_needed($posted));
+                    if(!account_mail_ready())
+                        throw new UserError(t('Die neue Adresse lässt sich erst eintragen, wenn die Einladung dorthin verschickt werden kann: bitte zuerst SMTP und die Datenschutzerklärung einrichten. Nichts wurde gespeichert.',
+                                              'The new address can only be entered once the invitation can be sent there: please set up SMTP and the privacy notice first. Nothing was saved.'));
+                    $email=$posted; $readdress=true;
+                }
+            }
+            $args=[$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
             if($id) {
-                tracked('students',$id,$first.' '.$last,function() use ($args,$id) {
-                    $updated=run('UPDATE students SET account_id=?,first_name=?,last_name=?,email=?,address=?,phone=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
+                // The login moves inside the same tracked change, so the change
+                // log shows the new address on the student it belongs to.
+                tracked('students',$id,$first.' '.$last,function() use ($args,$id,$account,$readdress,$email) {
+                    $updated=run('UPDATE students SET first_name=?,last_name=?,email=?,address=?,phone=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
                     if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
+                    if($readdress) change_login_address((int)$account['id'],$email);
                 });
+                // The first invitation went to the old address and has just been
+                // made useless; this is the one that works.
+                if($readdress) {
+                    send_account_token(one('SELECT * FROM accounts WHERE id=?',[(int)$account['id']]),'invite');
+                    audit('account.readdressed','account',(int)$account['id']);
+                }
             }
             else {$id=tracked_insert('students',$first.' '.$last,function() use ($args) {
-                run('INSERT INTO students (account_id,first_name,last_name,email,address,phone,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+                run('INSERT INTO students (first_name,last_name,email,address,phone,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
                 return (int)db()->lastInsertId();
             });}
         } else {
             $updated=run('UPDATE students SET first_name=?,last_name=?,birth_date=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[$first,$last,$birth,now(),$id,(int)post('revision')]);
             if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
         }
-        save_custom_fields($id,!$existing);audit('student.saved','student',$id);flash(t('Schüler gespeichert.','Student saved.'));return ['student',['id'=>$id]];
+        save_custom_fields($id,!$existing);audit('student.saved','student',$id);
+        flash(t('Schüler gespeichert.','Student saved.').(($readdress??false)
+            ?' '.t('Die Einladung ist an die neue Adresse unterwegs; der Link an die alte gilt nicht mehr.','The invitation is on its way to the new address; the link sent to the old one no longer works.'):''));
+        return ['student',['id'=>$id]];
     case 'student_delete':
         require_staff();$s=student((int)post('id'));
         if(post('confirmation')!==$s['first_name'].' '.$s['last_name']) throw new UserError(t('Bitte den vollständigen Namen eingeben.','Please enter the full name.'));

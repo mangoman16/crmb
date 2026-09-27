@@ -129,19 +129,33 @@ ok(install_server_note('10.1.48-MariaDB') !== '', 'MariaDB 10.1 is called out');
 is_same('', install_server_note(''), 'and an unknown version is not guessed about');
 
 case_('The set of migrations has a fingerprint that follows their contents');
+/* On a copy, never on the shipped directory. The owner may run this suite inside
+   the folder the portal is served from, and a probe written there even for a
+   moment is a migration the next page view applies to her live database and
+   records in the ledger. Once the probe is deleted, the ledger names a file the
+   upload no longer has, and the portal refuses to open. */
 $fingerprint = schema_fingerprint();
+$shipped = migration_files();
 is_same(64, strlen($fingerprint), 'it is a sha256');
 is_same($fingerprint, schema_fingerprint(), 'and it is stable');
-$extra = APP_ROOT . '/database/migrations/zz_fingerprint_probe.sql';
+$copy = sys_get_temp_dir() . '/crm-migrations-' . getmypid();
+@mkdir($copy, 0777, true);
+foreach ($shipped as $file) copy($file, $copy . '/' . basename($file));
+is_same($fingerprint, schema_fingerprint($copy), 'a copy of the same files has the same fingerprint');
+$extra = $copy . '/zz_fingerprint_probe.sql';
 file_put_contents($extra, "CREATE TABLE fingerprint_probe (id INT);\n");
-ok(schema_fingerprint() !== $fingerprint, 'a migration added by an upload changes it, which is what triggers the update');
-ok(in_array('zz_fingerprint_probe.sql', array_map('basename', migration_files()), true), 'and the file is in the list');
+ok(schema_fingerprint($copy) !== $fingerprint, 'a migration added by an upload changes it, which is what triggers the update');
+ok(in_array('zz_fingerprint_probe.sql', array_map('basename', migration_files($copy)), true), 'and the file is in the list');
+is_same($shipped, migration_files(), 'while the shipped directory never saw the probe');
+is_same($fingerprint, schema_fingerprint(), 'so the portal’s own fingerprint did not move');
 file_put_contents($extra, "CREATE TABLE fingerprint_probe (id BIGINT);\n");
-$edited = schema_fingerprint();
+$edited = schema_fingerprint($copy);
 file_put_contents($extra, "CREATE TABLE fingerprint_probe (id INT);\n");
-ok(schema_fingerprint() !== $edited, 'editing a migration in place changes it too, rather than looking unchanged');
+ok(schema_fingerprint($copy) !== $edited, 'editing a migration in place changes it too, rather than looking unchanged');
 @unlink($extra);
-is_same($fingerprint, schema_fingerprint(), 'removing it again restores the original');
+is_same($fingerprint, schema_fingerprint($copy), 'removing it again restores the original');
+foreach (glob($copy . '/*.sql') ?: [] as $file) @unlink($file);
+@rmdir($copy);
 
 case_('Migration files are applied in name order');
 $names = array_map('basename', migration_files());
@@ -329,6 +343,24 @@ throws(fn() => create_admin_account('Zweite', 'zweite@example.test', 'korrektesP
 is_same(1, (int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'"), 'and nothing was written');
 does_not_throw(fn() => create_admin_account('Zweite', 'zweite@example.test', 'korrektesPferdBatterie', true),
                'the console can still force one, which is sometimes the only way back in');
+run('DELETE FROM accounts');
+
+case_('The password chosen at setup is the one sign-in accepts');
+/* Setup kept the spaces around the password and sign-in removed them, so an
+   administrator who typed one stray space was stored under one password and
+   checked against another, and could never sign in. */
+$sent = install_submission(['admin_name' => ' Trainerin ', 'admin_email' => ' setup@example.test ',
+                            'admin_password' => ' korrektesPferdBatterie ', 'admin_password2' => ' korrektesPferdBatterie ',
+                            'db_password' => ' vom Panel '], ['admin_name' => '', 'admin_email' => '']);
+$_POST = ['password' => ' korrektesPferdBatterie '];
+is_same(post('password'), $sent['password'], 'setup reads the password exactly as every other form does');
+is_same($sent['password'], $sent['repeat'], 'and its repetition the same way');
+is_same('Trainerin', $sent['form']['admin_name'], 'and the other fields too');
+is_same(' vom Panel ', $sent['db_password'], 'only the database password arrives as typed: the server checks it, not the portal');
+create_admin_account($sent['form']['admin_name'], $sent['form']['admin_email'], $sent['password']);
+does_not_throw(fn() => submit('login', ['email' => 'setup@example.test', 'password' => ' korrektesPferdBatterie ']),
+               'signing in with what was typed at setup works');
+sign_out();
 run('DELETE FROM accounts');
 
 case_('Waiting work happens without a cron job');

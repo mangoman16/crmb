@@ -191,8 +191,8 @@ function nav_entries(array $user): array {
     $staff=is_staff($user); $admin=is_admin($user);
     $entry=fn(string $route,string $symbol,string $label,int $count=0)=>
         ['route'=>$route,'icon'=>$symbol,'label'=>$label,'count'=>$count];
-    $out=[$entry('dashboard','home',t('Übersicht','Overview')),
-          $entry('students','users',t('Schüler','Students'))];
+    $out=[$entry('dashboard','home',t('Übersicht','Overview'))];
+    if($people=people_nav_entry($user)) $out[]=$people;
     if($staff) {
         $out[]=['section'=>'training','icon'=>'calendar','label'=>t('Training','Training'),'items'=>[
             $entry('classes','calendar',t('Kurse','Courses'),pending_request_count()),
@@ -228,10 +228,25 @@ function nav_is_current(string $route,string $page): bool {
         || ($route==='messages' && $page==='compose');
 }
 
+/**
+ * The menu's second entry, the same in the side menu and the bar at the bottom.
+ *
+ * Staff get the list of students. A family has one student and nothing to list
+ * (ADR 0010), so theirs goes straight to that student's page and is called
+ * "Profil" - the child's record. "Mein Konto" stays what it is, the login: its
+ * address, its password, how the portal looks. A login with no student has no
+ * record to show, and gets no entry rather than one that leads nowhere.
+ */
+function people_nav_entry(array $user): ?array {
+    if(is_staff($user)) return ['route'=>'students','params'=>[],'icon'=>'users','label'=>t('Schüler','Students'),'count'=>0];
+    $id=(int)(scalar('SELECT id FROM students WHERE account_id=?',[(int)$user['id']])?:0);
+    return $id?['route'=>'student','params'=>['id'=>$id],'icon'=>'users','label'=>t('Profil','Profile'),'count'=>0]:null;
+}
+
 /** One menu row: the link, its label, and the number waiting behind it. */
 function nav_link(array $item,string $page): string {
     $count=(int)($item['count']??0);
-    return '<a href="'.e(url($item['route'])).'" '.(nav_is_current($item['route'],$page)?'aria-current="page"':'').'>'
+    return '<a href="'.e(url($item['route'],$item['params']??[])).'" '.(nav_is_current($item['route'],$page)?'aria-current="page"':'').'>'
         .icon($item['icon']).'<span>'.e($item['label']).'</span>'
         .($count?'<span class="count" aria-label="'.e($count.' '.t('wartet','waiting')).'">'.e((string)$count).'</span>':'')
         .'</a>';
@@ -400,7 +415,224 @@ function next_steps_card(array $steps): void {
     if (!$steps) return;
     echo '<section class="card next-steps"><h2>'.e(t('Noch zu tun','Still to do')).'</h2><ol>';
     foreach ($steps as $step)
-        echo '<li><a href="'.e(url($step['page'],$step['params'])).'">'.e($step['what']).'</a>'
+        echo '<li><a href="'.e(url($step['page'],$step['params']).(isset($step['anchor'])?'#'.$step['anchor']:'')).'">'.e($step['what']).'</a>'
             .'<small>'.e($step['why']).'</small></li>';
     echo '</ol></section>';
+}
+
+/**
+ * A notice naming children who still need something, each name a way in.
+ *
+ * One copy for every such list - nobody to ring, no address, no address of
+ * their own - on the students list and the overview alike. Each name is a
+ * button rather than a word in a sentence: as a comma-separated list they were
+ * 17px tall and touching each other, so on a phone the way to fix one child's
+ * record was a target a third of the minimum with another one beside it.
+ *
+ * $params and $anchor say where on the child's page the name leads. $tone is
+ * 'warn' for something that costs somebody something while it waits, and ''
+ * for a plain notice.
+ */
+function students_notice(array $students,string $heading,string $body='',array $params=[],string $anchor='',string $tone='warn'): void {
+    if (!$students) return;
+    echo '<div class="notice'.($tone!==''?' '.e($tone):'').'"><strong>'.e($heading).'</strong>';
+    if ($body !== '') echo '<p>'.e($body).'</p>';
+    echo '<p class="gap-names">';
+    foreach (array_slice($students,0,6) as $m)
+        echo '<a class="chip" href="'.e(url('student',['id'=>$m['id']]+$params).($anchor!==''?'#'.$anchor:'')).'">'.e($m['first_name'].' '.$m['last_name']).'</a>';
+    if (count($students) > 6) echo '<span class="muted">'.e(t('und weitere','and more')).'</span>';
+    echo '</p></div>';
+}
+
+/**
+ * Members who share an address and so cannot have a login of their own yet
+ * (students_needing_own_address()), on the students list and the overview.
+ * A warning, because something is lost while they wait: every invoice and
+ * reminder mail goes to a login, so a student without one gets none of them,
+ * and the invoice has to reach the family some other way. The portal sends
+ * the families nothing about it (ADR 0010); this notice is the only signal.
+ */
+function own_address_notice(): void {
+    $detached = students_needing_own_address();
+    students_notice($detached,
+        plural(count($detached),'Kind braucht eine eigene E-Mail-Adresse','Kinder brauchen eine eigene E-Mail-Adresse','child needs an email address of their own','children need an email address of their own'),
+        t('Sie teilen sich eine Adresse mit einem anderen Zugang oder Kind. Bis sie einen eigenen Zugang haben, gehen Rechnungen und Zahlungserinnerungen nicht per E-Mail hinaus – Rechnungen kannst du auf der Seite des Kindes herunterladen. Einen eigenen Zugang gibt es mit einer eigenen Adresse.',
+          'They share an address with another login or child. Until they have a login of their own, invoices and payment reminders are not sent by email – you can download the invoices on the child’s page. A login of their own comes with an address of their own.'),
+        [], 'email', 'warn');
+}
+
+/**
+ * Where a login stands, as a badge: the same four words and colours on the
+ * student page and on the Konten page. $account is null for "no login yet".
+ */
+function login_state_badge(?array $account): void {
+    $state = $account['state'] ?? 'none';
+    badge(match ($state) {
+        'active'    => t('Aktiv','Active'),
+        'invited'   => t('Eingeladen','Invited'),
+        'suspended' => t('Gesperrt','Suspended'),
+        default     => t('Kein Zugang','No access'),
+    }, match ($state) { 'active' => 'green', 'invited' => 'amber', 'suspended' => 'red', default => '' });
+}
+
+/**
+ * Deleting a login, folded away, with its address typed to confirm.
+ *
+ * Its own form and a <details> of its own, so it can sit in a row of buttons
+ * without being one: the typed address is what stands between a thumb and a
+ * login that cannot be brought back.
+ */
+function login_delete_details(array $account,string $summary,string $explanation,string $button): void {
+    echo '<details class="account-delete"><summary>'.e($summary).'</summary><p>'.e($explanation).'</p>';
+    start_form('account_state',['id'=>$account['id'],'mode'=>'delete']);
+    input('confirmation',t('Zur Bestätigung die E-Mail-Adresse eingeben','Enter the email address to confirm'),'','email',true);
+    submit_button($button,'danger');
+    echo '</form></details>';
+}
+
+/** The address of a file that ships in public/assets/. */
+function asset_url(string $file): string { return rtrim((string)config('app_url'), '/') . '/assets/' . $file; }
+
+/*
+ * A problem report's way there, as Einstellungen → Rückmeldungen shows it
+ * (ADR 0009). Two shapes are stored, and both are read here rather than in the
+ * view, because the view is rendered once per report and a rule written twice
+ * - once for each shape - is the one that drifts.
+ */
+
+/**
+ * Where a report was sent from, what came before it, and the steps.
+ *
+ * Reports filed since the trail exists carry `steps` (the last requests,
+ * oldest first) and `on` (the page, record and tab the report's own form was
+ * on). Older ones carry `query` and `referer`, which were empty in every report
+ * ever filed; they get an address from the page name and no "before", because
+ * nothing was recorded that could say.
+ *
+ * The page it was sent from is the last GET that showed `on`, not simply the
+ * last step: "Zurück" shows a page without asking for it again, and then the
+ * last step is the page she went back from.
+ *
+ *   address   path and query of the page the report was sent from
+ *   before    the step before it, one line; '' when that was outside the
+ *             portal; null when the report is too old to say
+ *   steps     oldest first: time, line, flash, flash_kind
+ *   here      index of the reported page in steps, or null
+ *   recorded  whether the report carries a trail at all
+ *   typed     whether any step still holds what was typed or attached;
+ *             marking the report done deletes that (feedback_forget_typed_values())
+ */
+function report_trail(array $context): array {
+    $recorded = array_key_exists('steps', $context);
+    $steps = array_values(array_filter(is_array($context['steps'] ?? null) ? $context['steps'] : [], 'is_array'));
+    $on = is_array($context['on'] ?? null) ? $context['on'] : null;
+    $here = null;
+    for ($i = count($steps) - 1; $i >= 0 && $here === null; $i--)
+        if (($steps[$i]['method'] ?? '') === 'GET' && ($on === null || report_step_shows($steps[$i], $on))) $here = $i;
+
+    if ($here !== null) $address = report_scalar($steps[$here]['url'] ?? '');
+    elseif ($on !== null) $address = '?' . http_build_query(array_filter(['page' => report_scalar($on['page'] ?? ''),
+                                           'id' => (int)report_scalar($on['id'] ?? 0), 'tab' => report_scalar($on['tab'] ?? '')]));
+    elseif (is_array($context['query'] ?? null) && $context['query']) $address = '?' . http_build_query($context['query']);
+    else $address = '?page=' . report_scalar($context['page'] ?? '');
+
+    if (!$recorded) {
+        $referer = report_scalar($context['referer'] ?? '');
+        $before = $referer !== '' ? preg_replace('~^[a-z][a-z0-9+.-]*://[^/?#]*~i', '', $referer) : null;
+    } else {
+        $prior = $here !== null ? $here - 1 : count($steps) - 1;
+        $before = $prior >= 0 ? report_step_address($steps[$prior]) : '';
+    }
+
+    $shown = []; $typed = false;
+    foreach ($steps as $step) {
+        foreach (['fields', 'files'] as $part)
+            if (is_array($step[$part] ?? null) && array_filter($step[$part], fn($v) => $v !== null)) $typed = true;
+        $at = local_time(report_scalar($step['at'] ?? ''));
+        $flash = is_array($step['flash'] ?? null) ? $step['flash'] : [];
+        $shown[] = ['time' => $at ? $at->format('H:i:s') : '', 'line' => report_step_line($step),
+                    'flash' => report_scalar($flash['text'] ?? ''), 'flash_kind' => report_scalar($flash['kind'] ?? '')];
+    }
+    return ['address' => $address, 'before' => $before, 'steps' => $shown, 'here' => $here, 'recorded' => $recorded, 'typed' => $typed];
+}
+
+/** A stored value as text: a report is decoded JSON, so anything may be anything. */
+function report_scalar(mixed $value): string { return is_scalar($value) ? (string)$value : ''; }
+
+/** Whether a recorded request showed the page, record and tab a form was on. */
+function report_step_shows(array $step, array $on): bool {
+    parse_str((string)parse_url(report_scalar($step['url'] ?? ''), PHP_URL_QUERY), $query);
+    // The router's own default, so index.php with no page is the start page.
+    return report_scalar($query['page'] ?? 'dashboard') === report_scalar($on['page'] ?? '')
+        && (int)report_scalar($query['id'] ?? 0) === (int)report_scalar($on['id'] ?? 0)
+        && report_scalar($query['tab'] ?? '') === report_scalar($on['tab'] ?? '');
+}
+
+/** A step as an address: the path and query of a page, or the action a form sent. */
+function report_step_address(array $step): string {
+    return ($step['method'] ?? '') === 'POST'
+        ? 'POST ?action=' . report_scalar($step['action'] ?? '')
+        : report_scalar($step['url'] ?? '');
+}
+
+/**
+ * A step on one line: "GET ?page=student&id=4" or
+ * "POST ?action=enrolment_save  class_id=2 · tariff_id=5".
+ *
+ * The path is left out, because it is the same on every line; what was posted
+ * follows the action, nested fields written the way the form named them.
+ */
+function report_step_line(array $step): string {
+    if (($step['method'] ?? '') !== 'POST') {
+        $url = report_scalar($step['url'] ?? '');
+        return 'GET ' . (($q = strpos($url, '?')) !== false ? substr($url, $q) : $url);
+    }
+    $parts = array_merge(report_values(is_array($step['fields'] ?? null) ? $step['fields'] : []),
+                         report_files_text(is_array($step['files'] ?? null) ? $step['files'] : []));
+    return report_step_address($step) . ($parts ? '  ' . implode(' · ', $parts) : '');
+}
+
+/**
+ * Posted values as name=value, flattened: custom[3]=… for a nested field.
+ *
+ * null is a value deleted when the report was marked done, and says so; a key
+ * '…' is where the recorder stopped keeping fields.
+ */
+function report_values(array $values, string $prefix = ''): array {
+    $out = [];
+    foreach ($values as $key => $value) {
+        if ($key === '…') { $out[] = '…'; continue; }
+        $name = $prefix === '' ? (string)$key : $prefix . '[' . $key . ']';
+        if (is_array($value)) array_push($out, ...report_values($value, $name));
+        else $out[] = $name . '=' . ($value === null ? t('(gelöscht)', '(deleted)') : report_scalar($value));
+    }
+    return $out;
+}
+
+/**
+ * Attached files as name=size and type. Never more: the recorder keeps
+ * neither the file's name nor its content.
+ */
+function report_files_text(array $files, string $prefix = ''): array {
+    $out = [];
+    foreach ($files as $field => $file) {
+        $name = $prefix === '' ? (string)$field : $prefix . '[' . $field . ']';
+        if ($file === null) $out[] = $name . '=' . t('(gelöscht)', '(deleted)');
+        elseif (is_array($file) && array_is_list($file)) array_push($out, ...report_files_text($file, $name));
+        elseif (is_array($file)) $out[] = $name . '=' . report_file_text($file);
+    }
+    return $out;
+}
+
+/** One file: its size and type, or why there was none. */
+function report_file_text(array $file): string {
+    $error = (int)report_scalar($file['error'] ?? 0);
+    if ($error === UPLOAD_ERR_NO_FILE) return t('(keine Datei)', '(no file)');
+    // The upload's own failure is the clue, and PHP's number for it is what to look up.
+    if ($error !== UPLOAD_ERR_OK) return t('(Upload-Fehler ', '(upload error ') . $error . ')';
+    $bytes = (int)report_scalar($file['bytes'] ?? 0);
+    $size = $bytes < 1024 ? $bytes . ' B'
+          : ($bytes < 1048576 ? round($bytes / 1024) . ' kB'
+          : number_format($bytes / 1048576, 1, locale() === 'de' ? ',' : '.', '') . ' MB');
+    return trim($size . ' ' . report_scalar($file['type'] ?? ''));
 }

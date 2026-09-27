@@ -11,15 +11,6 @@ function student(int $id): array {
     if(!$s) throw new NotFound(t('Schüler nicht gefunden.','Student not found.')); return $s;
 }
 /**
- * What counts as money actually received.
- *
- * A payment counts once it has been confirmed and has not been voided. This one
- * rule decides every balance, the overdue filter and the payments screen, so it
- * is written here and nowhere else — a second copy is the one that gets
- * forgotten when the rule changes, and the two then disagree about what a family
- * owes. The `structure` suite fails if the condition reappears spelled out.
- */
-/**
  * The people to ring about one child, the first one to try first.
  *
  * Exactly one contact per child carries is_primary; the actions below keep it
@@ -60,16 +51,89 @@ function contact_gap(int $studentId): string {
 function contact_email(): string { $email=post('email'); return $email===''?'':email_value($email); }
 
 /**
- * The address the portal writes to for one child.
+ * The address the portal writes to for one student.
  *
- * The account that manages them where there is one, because that is the address
- * they actually sign in with and changing it goes through a verification step;
- * otherwise what is written on the child, which is what an invitation would be
- * sent to.
+ * Their own login's where they have one, because that is the address they
+ * actually sign in with and changing it goes through a confirmation step;
+ * otherwise what is written on the student, which is what an invitation would
+ * be sent to. The two are kept equal (change_login_address()), so preferring
+ * the login only matters for a row written before that rule.
  */
 function student_email(array $student): string {
     $account=$student['account_id']?one('SELECT email FROM accounts WHERE id=?',[(int)$student['account_id']]):null;
     return (string)($account['email'] ?? $student['email'] ?? '');
+}
+
+/**
+ * The account signing in with an address, if any - for a page to say so.
+ *
+ * A plain read. An action that is about to write an account uses
+ * account_using_email(), which holds the address until it commits.
+ */
+function account_with_address(string $email): ?array {
+    $email=mb_strtolower(trim($email));
+    return $email===''?null:one('SELECT * FROM accounts WHERE email=?',[$email]);
+}
+
+/**
+ * Why a student without a login cannot be given one at the address on their
+ * record, as SQL: the address is already somebody's login, or another current
+ * member has it too, and only the first of them could be invited with it.
+ *
+ * One condition for the list and for the single student's next step, so the
+ * two cannot disagree about who needs asking. $s is the students alias.
+ */
+function own_address_missing_sql(string $s='s'): string {
+    $s=sql_name($s,'alias');
+    return "$s.account_id IS NULL AND $s.email<>'' AND (EXISTS (SELECT 1 FROM accounts oa WHERE oa.email=$s.email)"
+        ." OR EXISTS (SELECT 1 FROM students os WHERE os.email=$s.email AND os.id<>$s.id AND os.status<>'ended'))";
+}
+
+/**
+ * Current members who need an address of their own before they can be invited.
+ *
+ * Usually brothers and sisters taken off a shared login by the update to one
+ * login per member: they keep the parent's address for their invoices, and
+ * that address is the sibling's login. Worked out from the data rather than
+ * stored, so it is in her language and disappears once it is fixed. `reason`
+ * is 'login' when the address signs somebody in, 'shared' when two members
+ * without a login have it.
+ */
+function students_needing_own_address(): array {
+    return rows('SELECT s.id,s.first_name,s.last_name,s.email,'
+        ." CASE WHEN EXISTS (SELECT 1 FROM accounts a WHERE a.email=s.email) THEN 'login' ELSE 'shared' END AS reason"
+        ." FROM students s WHERE s.status<>'ended' AND ".own_address_missing_sql('s')
+        .' ORDER BY s.first_name,s.last_name');
+}
+
+/**
+ * Who else is using this student's address, by name, when that is what stands
+ * between the student and a login of their own; '' when nothing does.
+ *
+ * The same condition as the list and the next step (own_address_missing_sql),
+ * so the student page never offers an invitation the other two say cannot be
+ * sent. A login is named before a brother or sister, because it is the login
+ * that makes the invitation fail.
+ */
+function own_address_taken_by(int $studentId): string {
+    $s=one('SELECT s.id,s.email FROM students s WHERE s.id=? AND '.own_address_missing_sql('s'),[$studentId]);
+    if(!$s) return '';
+    if($account=account_with_address((string)$s['email'])) {
+        $holder=one('SELECT first_name,last_name FROM students WHERE account_id=?',[(int)$account['id']]);
+        return $holder?$holder['first_name'].' '.$holder['last_name']:(string)$account['name'];
+    }
+    $other=one("SELECT first_name,last_name FROM students WHERE email=? AND id<>? AND status<>'ended' ORDER BY id LIMIT 1",[$s['email'],$studentId]);
+    return $other?$other['first_name'].' '.$other['last_name']:'';
+}
+
+/**
+ * Student logins that no student points to any more - left behind when the
+ * student was deleted before the login was. Without a list of their own on the
+ * Konten page they could neither be seen nor switched off (ADR 0010).
+ */
+function orphan_logins(): array {
+    return rows("SELECT a.* FROM accounts a WHERE a.role='student'"
+        .' AND NOT EXISTS (SELECT 1 FROM students s WHERE s.account_id=a.id) ORDER BY a.name,a.id');
 }
 
 /** The children she still has to ask for something. Ended memberships are not chased. */
@@ -89,6 +153,9 @@ function students_missing_contact(): array {
  *
  * In the order she would do them: somebody to ring, a way to reach the family,
  * a course, and the price they are on.
+ *
+ * Each step names the element on that page it is about ('anchor'), because a
+ * link to the page she is already on did nothing she could see.
  */
 function student_next_steps(int $studentId): array {
     $student = one('SELECT * FROM students WHERE id=?', [$studentId]);
@@ -97,15 +164,22 @@ function student_next_steps(int $studentId): array {
     if (!primary_contact($studentId))
         $steps[] = ['what' => t('Notfallkontakt eintragen', 'Add an emergency contact'),
                     'why'  => t('Wen du anrufst, wenn etwas ist.', 'Who you ring if something happens.'),
-                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'contacts']];
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'contacts'], 'anchor' => 'add-contact'];
     if ((string)$student['email'] === '' && $student['account_id'] === null)
         $steps[] = ['what' => t('E-Mail-Adresse eintragen', 'Add an email address'),
                     'why'  => t('Dorthin gehen Einladung, Rechnungen und Erinnerungen.', 'The invitation, the invoices and the reminders go there.'),
-                    'page' => 'student', 'params' => ['id' => $studentId]];
+                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
+    // Asked before "invite": an invitation to this address would be refused,
+    // and a button that can only fail is not a next step.
+    elseif ((bool)scalar('SELECT 1 FROM students s WHERE s.id=? AND '.own_address_missing_sql('s'), [$studentId]))
+        $steps[] = ['what' => t('Eigene E-Mail-Adresse eintragen', 'Enter an email address of their own'),
+                    'why'  => t('Die eingetragene Adresse hat schon ein anderes Konto oder ein anderes Kind. Jede Schülerin und jeder Schüler braucht eine eigene, um sich anzumelden.',
+                                'The address on the record already belongs to another account or another student. Every student needs their own to sign in.'),
+                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
     elseif ($student['account_id'] === null)
         $steps[] = ['what' => t('Zugang einladen', 'Invite them in'),
                     'why'  => t('Damit die Familie Termine und Beiträge selbst sieht.', 'So the family can see dates and charges themselves.'),
-                    'page' => 'student', 'params' => ['id' => $studentId]];
+                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'access'];
     // Only the courses they are still in: a child who has left every one of them
     // needs a course again, and saying otherwise would tick the box for ever on
     // the strength of a membership that ended in March.
@@ -113,11 +187,11 @@ function student_next_steps(int $studentId): array {
     if (!$enrolments)
         $steps[] = ['what' => t('In einen Kurs eintragen', 'Put them in a course'),
                     'why'  => t('Ohne Kurs entstehen keine Beiträge.', 'Without a course there are no charges.'),
-                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes']];
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'add-course'];
     elseif (array_filter($enrolments, fn($e) => $e['tariff_id'] === null))
         $steps[] = ['what' => t('Tarif wählen', 'Choose a tariff'),
                     'why'  => t('Eine Kursteilnahme hat noch keinen Tarif.', 'One of their courses has no tariff yet.'),
-                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes']];
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'courses'];
     return $steps;
 }
 
@@ -128,6 +202,15 @@ function students_missing_email(): array {
         .' ORDER BY s.first_name,s.last_name');
 }
 
+/**
+ * What counts as money actually received.
+ *
+ * A payment counts once it has been confirmed and has not been voided. This one
+ * rule decides every balance, the overdue filter and the payments screen, so it
+ * is written here and nowhere else — a second copy is the one that gets
+ * forgotten when the rule changes, and the two then disagree about what a family
+ * owes. The `structure` suite fails if the condition reappears spelled out.
+ */
 function payment_counts_sql(string $payment='p'): string {
     return sql_name($payment,'alias').'.confirmed_at IS NOT NULL AND '.sql_name($payment,'alias').'.voided=0';
 }

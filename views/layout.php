@@ -12,9 +12,20 @@ $realUser=$public?null:impersonator();
     <meta name="theme-color" content="<?=$theme==='dark'?'#101922':'#13243a'?>"<?=$theme==='auto'?' media="(prefers-color-scheme: light)"':''?>>
     <?php if($theme==='auto'): ?><meta name="theme-color" content="#101922" media="(prefers-color-scheme: dark)"><?php endif ?>
     <?php /* Home-screen install: the manifest covers modern iOS and Android, the
-             apple-* tags cover older iOS versions that ignore display:standalone. */ ?>
-    <link rel="manifest" href="<?=e(rtrim(config('app_url'),'/'))?>/manifest.webmanifest">
-    <link rel="apple-touch-icon" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/apple-touch-icon.png">
+             apple-* tags cover older iOS versions that ignore display:standalone.
+             The manifest is built per request (ADR 0008) and is fetched with the
+             session cookie: without it every fetch would start a new session. */ ?>
+    <link rel="manifest" href="<?=e(url('manifest'))?>" crossorigin="use-credentials">
+    <?php /* Her own icon when she has uploaded one, in both places it is looked
+             for; otherwise the files that ship, so a portal nobody customised
+             makes no extra request through PHP for its icon. */
+    if(($portalIcon=portal_icon_url())!==''): ?>
+    <link rel="icon" type="image/png" href="<?=e($portalIcon)?>">
+    <link rel="apple-touch-icon" href="<?=e($portalIcon)?>">
+    <?php else: ?>
+    <link rel="icon" href="<?=e(asset_url('favicon.svg'))?>" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="<?=e(asset_url('apple-touch-icon.png'))?>">
+    <?php endif ?>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -22,9 +33,8 @@ $realUser=$public?null:impersonator();
     <meta name="format-detection" content="telephone=no">
     <meta name="description" content="<?=e(setting('club_name').' – '.t('Schüler, Beiträge und Nachrichten.','students, payments and messages.'))?>">
     <title><?=e(setting('club_name','Badminton'))?></title>
-    <link rel="icon" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.css?v=<?=e(app_version())?>">
-    <script defer src="<?=e(rtrim(config('app_url'),'/'))?>/assets/app.js?v=<?=e(app_version())?>"></script>
+    <link rel="stylesheet" href="<?=e(asset_url('app.css'))?>?v=<?=e(app_version())?>">
+    <script defer src="<?=e(asset_url('app.js'))?>?v=<?=e(app_version())?>"></script>
 </head>
 <body class="<?=$public?'public-page':'app-page'?>">
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
@@ -99,11 +109,17 @@ $unreadNotes=unread_notifications((int)$user['id']);
          lived in every product she has ever used. On a phone it stays at the end
          of the page: the bottom of a phone screen already holds the menu bar and
          the sticky save button, and a third thing floating over them is how a
-         Save button becomes unreachable. The menu carries a link down to it. */ ?>
-<details class="feedback" id="feedback">
+         Save button becomes unreachable. The menu carries a link down to it.
+
+         A conversation keeps it at the end of the page on a desktop screen too:
+         its writing box is pinned to the bottom of the window as well, and the
+         help button sat on its Send button there until the thread was scrolled
+         to its very end - so a click meant for Send opened this form instead. */
+$pinnedHelp=!($page==='messages' && (int)($_GET['id']??0)>0); ?>
+<details class="feedback<?=$pinnedHelp?' is-pinned':''?>" id="feedback">
     <summary><?=icon('help')?><span><?=e(t('Etwas funktioniert hier nicht','Something is wrong on this page'))?></span></summary>
     <div class="feedback-panel">
-    <p class="muted"><?=e(t('Beschreibe kurz, was du erwartet hast und was passiert ist. Welche Seite du gerade ansiehst, welches Gerät du benutzt und welche Version das Portal hat, wird automatisch mitgeschickt – das musst du nicht wissen.','Say briefly what you expected and what happened. Which page you are on, what device you are using and which version the portal is are sent automatically – you do not have to know any of that.'))?></p>
+    <p class="muted"><?=e(t('Beschreibe kurz, was du erwartet hast und was passiert ist. Automatisch mitgeschickt werden: die Seite, die du gerade ansiehst, die Seiten davor samt dem, was du dort in Formulare eingetragen hast (ohne Passwörter), dein Gerät, deine IP-Adresse und die Version des Portals.','Say briefly what you expected and what happened. Sent along automatically: the page you are looking at, the pages before it together with what you entered in forms there (without passwords), your device, your IP address and the portal’s version.'))?></p>
     <?php start_form('feedback_send',['page'=>$page],'form',true);
     input('message',t('Was ist passiert?','What happened?'),'','textarea',true);
     file_field('screenshot',t('Bildschirmfoto (optional)','Screenshot (optional)'),'avatar',
@@ -116,19 +132,22 @@ $unreadNotes=unread_notifications((int)$user['id']);
 <?php if(!$public): ?>
 </div>
 <nav class="mobile-nav" aria-label="<?=e(t('Mobilmenü','Mobile menu'))?>">
-<?php foreach(['dashboard'=>['home',t('Übersicht','Overview')],'students'=>['users',t('Schüler','Students')],'messages'=>['mail',t('Post','Messages')],'news'=>['news',t('Neues','News')]] as $r=>[$i,$l]):?><a href="<?=e(url($r))?>" <?=$page===$r||($r==='students'&&$page==='student')?'aria-current="page"':''?>><?=icon($i)?><span><?=e($l)?></span><?php if($r==='messages'&&$unreadTotal):?><span class="count" aria-label="<?=e($unreadTotal.' '.t('ungelesen','unread'))?>"><?=$unreadTotal?></span><?php endif ?></a><?php endforeach ?>
+<?php /* The second place is the side menu's second entry: the students list for
+         staff, a family's own "Profil" - so the two menus cannot disagree. */
+$bar=[['route'=>'dashboard','params'=>[],'icon'=>'home','label'=>t('Übersicht','Overview')]];
+if($people=people_nav_entry($user))$bar[]=$people;
+$bar[]=['route'=>'messages','params'=>[],'icon'=>'mail','label'=>t('Post','Messages')];
+$bar[]=['route'=>'news','params'=>[],'icon'=>'news','label'=>t('Neues','News')];
+foreach($bar as $item):?><a href="<?=e(url($item['route'],$item['params']))?>" <?=nav_is_current($item['route'],$page)?'aria-current="page"':''?>><?=icon($item['icon'])?><span><?=e($item['label'])?></span><?php if($item['route']==='messages'&&$unreadTotal):?><span class="count" aria-label="<?=e($unreadTotal.' '.t('ungelesen','unread'))?>"><?=$unreadTotal?></span><?php endif ?></a><?php endforeach ?>
 <button type="button" id="menu-toggle" aria-controls="sidebar" aria-expanded="false"><?=icon('more')?><span><?=e(t('Mehr','More'))?></span></button>
 </nav>
 <button type="button" class="menu-backdrop" id="menu-backdrop" aria-label="<?=e(t('Menü schließen','Close menu'))?>" hidden></button>
 <?php else: ?>
-<?php /* Said on the way in rather than only in a notice nobody opens. Worded as
-         what is true, not as consent: a notice is information, and the session
-         cookie this portal sets is the one that makes signing in work, which is
-         the kind that never needed asking for. What people actually want to know
-         before typing their child's name in is on the line below. */ ?>
-<footer class="public-footer">
-    <p class="public-notice"><?=e(t('Mit der Nutzung dieses Portals gilt die Datenschutzerklärung. Es werden nur technisch notwendige Cookies gesetzt – für die Anmeldung, die Sprache und den Schutz der Formulare. Keine Analyse, keine Werbung. Deine Daten werden nicht verkauft und nicht an Dritte weitergegeben; sie werden ausschließlich intern für den Trainingsbetrieb verarbeitet.','Using this portal means the privacy notice applies. It sets only the cookies it needs to work – for signing in, for the language and to protect its forms. No analytics, no advertising. Your data is never sold and never passed to anybody else; it is used inside the club, for running the training.'))?></p>
-    <p class="public-footer-links"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><span>v<?=e(app_version())?></span></p>
-</footer><?php endif ?>
+<?php /* Only the way to the privacy notice and the version. The paragraph that
+         stood here was repeated at the foot of every public page, which is where
+         nobody reads a paragraph; the one thing it had to say is now a sentence
+         on the sign-in card. */ ?>
+<footer class="public-footer"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><span>v<?=e(app_version())?></span></footer>
+<?php endif ?>
 </body>
 </html>

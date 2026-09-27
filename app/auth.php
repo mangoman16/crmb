@@ -25,9 +25,15 @@ function role_label(string $role): string {
         default   => t('Schülerkonto','Student account'),
     };
 }
-/** Roles that may be granted, and who may grant them. Admin only for the first two. */
+/**
+ * Roles that may be granted from the Konten page, and who may grant them.
+ *
+ * Staff only, and only by an administrator. A student's account is made on
+ * that student's own page by student_invite, because it belongs to exactly one
+ * student (ADR 0010): made anywhere else it would be a login attached to nobody.
+ */
 function assignable_roles(array $actor): array {
-    return is_admin($actor) ? ['student','trainer','admin'] : ['student'];
+    return is_admin($actor) ? ['trainer','admin'] : [];
 }
 /** Record activity for the online indicator, at most once a minute per account. */
 function touch_last_seen(array $user): void {
@@ -137,12 +143,21 @@ function make_token(int $accountId,string $purpose,?string $email=null): string 
 function token_record(string $hash,bool $lock=false): ?array {
     return one('SELECT t.*,a.state,a.email,a.role,a.name FROM auth_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.token_hash=? AND t.expires_at>?'.($lock?' FOR UPDATE':''),[$hash,now()]);
 }
+/**
+ * Whether a link to sign in can be sent at all: mail is set up and there is a
+ * released privacy notice for the person to read before they agree.
+ *
+ * Asked by send_account_token() and, earlier, by the handlers that must refuse
+ * before they write anything - a changed address that cannot be told about is
+ * a family locked out of a login they never saw.
+ */
+function account_mail_ready(): bool { return (bool)setting('smtp',[]) && (bool)setting('privacy_ready',false); }
 function send_account_token(array $account,string $purpose,?string $email=null): void {
-    if(!setting('smtp',[]) || !setting('privacy_ready',false)) throw new UserError(t('Bitte zuerst SMTP und Datenschutzerklärung einrichten.','Set up SMTP and the privacy notice first.'));
+    if(!account_mail_ready()) throw new UserError(t('Bitte zuerst SMTP und Datenschutzerklärung einrichten.','Set up SMTP and the privacy notice first.'));
     $token=make_token((int)$account['id'],$purpose,$email);
     $en=$account['locale']==='en';
     $subjects=['invite'=>$en?'Your badminton invitation':'Deine Badminton-Einladung','reset'=>$en?'Reset your password':'Passwort zurücksetzen','email'=>$en?'Verify your email address':'E-Mail-Adresse bestätigen'];
-    $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n".($en?'Open this link to continue:':'Öffne diesen Link, um fortzufahren:')."\n".url('activate',['token'=>$token])."\n\n".($purpose==='invite'?($en?'Valid for 48 hours.':'48 Stunden gültig.'):($en?'Valid for one hour.':'Eine Stunde gültig.'))."\n\n".($en?'If you did not expect this email, you can ignore it.':'Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.');
+    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n".($en?'Open this link to continue:':'Öffne diesen Link, um fortzufahren:')."\n".url('activate',['token'=>$token])."\n\n".($purpose==='invite'?($en?'Valid for 48 hours.':'48 Stunden gültig.'):($en?'Valid for one hour.':'Eine Stunde gültig.'))."\n\n".($en?'If you did not expect this email, you can ignore it.':'Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.');
     queue_mail((int)$account['id'],$email??$account['email'],$subjects[$purpose],$body,'security');
 }
 function unsubscribe_signature(int $id,string $category): string { return hash_hmac('sha256',$id.'|'.$category,base64_decode(config('app_key'))); }

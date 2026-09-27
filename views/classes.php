@@ -48,7 +48,7 @@ if(!$id && !$edit && $tab==='list'):
     <?php foreach($list as $row): ?>
         <a class="class-row" href="<?=e(url('classes',['id'=>$row['id']]))?>">
             <div>
-                <h3><?=e($row['name'])?><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></h3>
+                <h3 class="badge-line"><span><?=e($row['name'])?></span><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></h3>
                 <p><?=e(class_schedule($row,$pattern[(int)$row['id']]??[]))?></p>
                 <small><?=e(plural((int)$row['tariff_count'],'Tarif','Tarife','tariff','tariffs'))?><?php if($row['trainer_name'])echo ' · '.e($row['trainer_name']);?></small>
             </div>
@@ -66,16 +66,19 @@ elseif(!$id && !$edit && $tab==='requests'): $requests=open_requests(); ?>
     <p class="muted"><?=e(t('Anmelden, abmelden und Tarifwechsel werden angefragt und erst wirksam, wenn du zustimmst.','Joining, leaving and changing tariff are asked for and only take effect once you agree.'))?></p>
     <?php if(!$requests): ?><p class="muted"><?=e(t('Im Moment wartet nichts auf eine Entscheidung.','Nothing is waiting for a decision right now.'))?></p><?php endif ?>
     <?php foreach($requests as $r): ?>
-    <div class="record-row">
+    <div class="record-row with-form">
         <div>
             <strong><a href="<?=e(url('student',['id'=>$r['student_id']]))?>"><?=e($r['first_name'].' '.$r['last_name'])?></a></strong>
             <p><?=e(request_kind_label((string)$r['kind']).' · '.$r['class_name'].($r['tariff_name']?' · '.$r['tariff_name']:''))?></p>
             <?php if($r['message']):?><p class="prewrap"><?=e($r['message'])?></p><?php endif ?>
             <small><?=e(fmt_datetime((string)$r['created_at']))?></small>
         </div>
+        <?php /* Two forms, not one form with two buttons: Enter in the reason box
+                 sends the form's first button, and a reason for saying no must
+                 never be the thing that says yes. */ ?>
         <div class="row-actions">
             <?php start_form('enrolment_decide',['id'=>$r['id'],'decision'=>'approve'],'inline-form');submit_button(t('Annehmen','Approve'));?></form>
-            <?php start_form('enrolment_decide',['id'=>$r['id'],'decision'=>'decline'],'inline-form');
+            <?php start_form('enrolment_decide',['id'=>$r['id'],'decision'=>'decline'],'row-form');
                   input('note',t('Grund (optional)','Reason (optional)'),'','text',false,'',t('Warum nicht?','Why not?'));
                   submit_button(t('Ablehnen','Decline'),'subtle danger-text');?></form>
         </div>
@@ -104,7 +107,7 @@ elseif($id && !$edit && $tab==='tariffs'):
         <?php foreach(class_tariffs($id,true) as $row): $rowRates=tariff_rates((int)$row['id']); ?>
         <a class="editor-list-item <?=$editTariff===(int)$row['id']?'selected':''?>" href="<?=e(url('classes',['id'=>$id,'tab'=>'tariffs','tariff'=>$row['id']]))?>">
             <span><strong><?=e($row['name'])?></strong><small><?=e(tariff_summary($row,$rowRates))?></small></span>
-            <span><?=e($rowRates?plural(count($rowRates),'Preis','Preise','price','prices'):t('kein Preis','no price'))?><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></span>
+            <span class="badge-line"><span><?=e($rowRates?plural(count($rowRates),'Preis','Preise','price','prices'):t('kein Preis','no price'))?></span><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></span>
         </a>
         <?php endforeach ?>
         <?php $orphans=unattached_tariffs(); if($orphans): ?>
@@ -186,7 +189,7 @@ elseif($id && !$edit && $tab==='dates'):
         <?php if(!$calendar): ?><p class="muted"><?=e(t('Für diesen Kurs ist noch kein Wochentag hinterlegt.','No weekday has been set for this course yet.'))?></p><?php endif ?>
         <?php foreach($calendar as $entry): ?>
         <a class="editor-list-item <?=$chosen===$entry['date']?'selected':''?> <?=$entry['status']==='cancelled'?'is-off':''?>" href="<?=e(url('classes',['id'=>$id,'tab'=>'dates','on'=>$entry['date']]))?>">
-            <span><strong><?=e(fmt_date($entry['date']))?><?php if($entry['date']===today())badge(t('Heute','Today'),'green');?></strong><small><?=e(session_label($entry))?></small></span>
+            <span><strong class="badge-line"><span><?=e(fmt_date($entry['date']))?></span><?php if($entry['date']===today())badge(t('Heute','Today'),'green');?></strong><small><?=e(session_label($entry))?></small></span>
             <span><?php if($entry['status']!=='planned')badge(session_statuses()[$entry['status']]??$entry['status'],$entry['status']==='cancelled'?'red':'amber'); echo icon('arrow');?></span>
         </a>
         <?php endforeach ?>

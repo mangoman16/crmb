@@ -34,6 +34,13 @@ function setting_schema(): array {
             'label' => ['Untertitel in der Kopfzeile', 'Subtitle in the header'],
             'hint'  => ['Leer lassen, wenn keiner angezeigt werden soll.', 'Leave empty to show none.'],
         ],
+        // The stored name of the portal's own icon under storage/uploads/icon/,
+        // or '' for the one that ships. Changed only through its own card in
+        // Settings, because it is a file, not something typed into a box.
+        'portal_icon' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'portal', 'internal' => true,
+            'label' => ['Eigenes Symbol des Portals', 'The portal’s own icon'],
+        ],
         'statuses' => [
             'kind' => 'map', 'group' => 'students',
             'default' => ['trial' => 'Probetraining', 'active' => 'Aktiv', 'paused' => 'Pausiert', 'ended' => 'Beendet'],

@@ -2,15 +2,17 @@
 /**
  * The migrations that move data, run against data.
  *
- * Every other suite gets its database by applying all eighteen migrations to an
+ * Every other suite gets its database by applying all the migrations to an
  * empty one, so the statements that carry something across have never touched a
  * row: a tariff's price into tariff_rates, its discount onto every enrolment
- * that was getting it, an address onto every child. "Nobody's next invoice
- * changes" and "nobody is signed out" were claims with nothing behind them, and
- * they are the two claims a trainer is trusting with her families' money.
+ * that was getting it, an address onto every child, a login holding three
+ * children keeping only one. "Nobody's next invoice changes" and "nobody is
+ * signed out" were claims with nothing behind them, and they are the two claims
+ * a trainer is trusting with her families' money.
  *
- * tests/migration-data.php builds a portal as it stood before 015, applies the
- * rest, and prints what it finds. This reads that and holds it to the promise.
+ * tests/migration-data.php builds a portal as it stood before 015 and again as
+ * it stood before 019, applies the rest, and prints what it finds. This reads
+ * that and holds it to the promise.
  *
  * What it does not yet hold to it: 017 backfills covered_from and covered_to on
  * every charge that carries a period, and no case below looks at a charge. The
@@ -18,25 +20,38 @@
  * wrote; the statement that fills in the rows written by the previous one is
  * proven only by its having applied. Said here rather than left to be assumed.
  *
- * It runs in another process against its own SQLite file, whichever driver the
- * rest of the run is using: the database this suite is connected to has every
- * migration applied already, and this has to stop half way. On MySQL that
- * leaves the dialect of these particular statements proven only by their having
- * applied during boot, which is recorded in the footer rather than glossed over.
+ * It runs in another process against a database of its own, because the one
+ * this suite is connected to has every migration applied already, and this has
+ * to stop half way. That is a SQLite file unless CRM_MIGRATION_CONFIG names the
+ * config of an empty MySQL or MariaDB database whose name ends in _test, which
+ * is how the dialect of these particular statements is proven. Without it, a run
+ * on MySQL says so in the footer rather than glossing over it.
  */
 
-$out = [];
-exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(APP_ROOT . '/tests/migration-data.php') . ' 014 2>&1', $out, $code);
-$raw = implode("\n", $out);
-is_same(0, $code, 'the migrations apply in two halves with data in between');
-$after = json_decode($raw, true);
-if (!is_array($after)) {
-    ok(false, 'the two-half run printed a result: ' . mb_substr($raw, 0, 300));
+if (!function_exists('exec')) {
+    // Shared hosting often lists exec in disable_functions. The run says what it
+    // could not do rather than stopping on an undefined function.
+    test_unsupported(array_merge(test_unsupported(),
+        ['the data moved by migrations 015, 016 and 019 (this PHP disables exec, which the run with data in between needs)']));
     return;
 }
-if (test_driver() !== 'sqlite')
+$out = [];
+$target = (string)getenv('CRM_MIGRATION_CONFIG');
+// Its SQLite file goes into this run's own folder, which is removed with it.
+exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(APP_ROOT . '/tests/migration-data.php') . ' '
+    . escapeshellarg(test_run_dir() . '/migration-data.sqlite')
+    . ($target !== '' ? ' ' . escapeshellarg('--mysql=' . $target) : '') . ' 2>&1', $out, $code);
+$raw = implode("\n", $out);
+is_same(0, $code, 'the migrations apply with data written in between');
+$after = json_decode($raw, true);
+if (!is_array($after)) {
+    ok(false, 'the run with data in between printed a result: ' . mb_substr($raw, 0, 300));
+    return;
+}
+if ($after['engine'] === 'sqlite' && test_driver() !== 'sqlite')
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved by migrations 015 and 016 (checked on sqlite, whatever driver this run used)']));
+        ['the data moved by migrations 015, 016 and 019 (checked on sqlite; set CRM_MIGRATION_CONFIG'
+         . ' to the config of an empty *_test database to check it on this engine)']));
 
 $ids = $after['ids'];
 $by = fn(array $rows, string $key, int $id) => array_values(array_filter($rows, fn($r) => (int)$r[$key] === $id));
@@ -109,3 +124,168 @@ case_('Nobody is signed out by it');
 is_same($ids['on_account'], (int)$students[$ids['on_account']]['id'], 'the child is still there');
 ok($students[$ids['on_account']]['account_id'] !== null, 'still on their account');
 is_same(null, $students[$ids['by_contact']]['account_id'], 'and one who had none still has none');
+
+// ---------------------------------------------------------------------------
+// 019: one login is one member. Read against the state straight after it, so a
+// later migration that touches students cannot make these pass or fail.
+$n = $after['nineteen'];
+$id = fn(string $key): int => (int)$ids[$key];
+$was = array_column($n['before']['students'], null, 'id');
+$now = array_column($n['after']['students'], null, 'id');
+$loginOf = fn(string $key): ?int => $now[$id($key)]['account_id'] === null ? null : (int)$now[$id($key)]['account_id'];
+$json = fn(?string $text) => $text === null ? null : json_decode($text, true);
+// The lines 019 wrote are the ones that were not there before it ran.
+$written = array_slice($n['after']['versions'], count($n['before']['versions']));
+$linesFor = fn(int $studentId): array => array_values(array_filter($written, fn($v) => (int)$v['entity_id'] === $studentId));
+$children = ['on_account', 'by_contact', 'neither', 'paul', 'emma', 'mia', 'jonas', 'lisa', 'jakob', 'sara', 'ida'];
+
+case_('019 leaves each login with the child whose record is oldest');
+is_same($id('gruber'), $loginOf('paul'), 'Paul, the lowest id on the Gruber login, keeps it though he was not written first');
+is_same(null, $loginOf('mia'), 'Mia, who was written first, is taken off it');
+is_same(null, $loginOf('emma'), 'and so is Emma');
+is_same($id('huber'), $loginOf('jonas'), 'on a login with two, the lower id keeps it');
+is_same(null, $loginOf('lisa'), 'and the other is taken off');
+is_same($id('novak'), $loginOf('jakob'), 'a login with one child keeps that child');
+is_same($id('weiss'), $loginOf('sara'), 'whatever address the child had');
+is_same($id('hofer'), $loginOf('on_account'), 'as does the child from before 015');
+is_same(null, $loginOf('ida'), 'and a child with no login is not given one');
+$perLogin = array_count_values(array_map('intval', array_filter(array_column($n['after']['students'], 'account_id'),
+    fn($account) => $account !== null)));
+is_same([], array_filter($perLogin, fn($count) => $count > 1), 'no login holds two children afterwards');
+
+case_('019 writes down which login each child was taken off');
+foreach (['mia', 'emma', 'lisa'] as $key) {
+    $lines = $linesFor($id($key));
+    is_same(1, count($lines), $key . ' has exactly one line');
+    $line = $lines[0] ?? [];
+    is_same(['account_id' => (int)$was[$id($key)]['account_id']], $json($line['before_json'] ?? null),
+            $key . '’s line says which login it was');
+    is_same(['account_id' => null], $json($line['after_json'] ?? null), 'and that there is none now');
+    is_same(['students', 'update'], [$line['entity'] ?? null, $line['operation'] ?? null],
+            'as a change to the child, which is where the history page looks');
+    ok(array_key_exists('actor_id', $line) && $line['actor_id'] === null,
+       'with nobody named as having done it, so the page says "automatisch"');
+}
+is_same('Mia Gruber', $linesFor($id('mia'))[0]['label'] ?? null, 'the line is labelled with the child’s name');
+$emma = $was[$id('emma')];
+is_same(mb_substr($emma['first_name'] . ' ' . $emma['last_name'], 0, 160), $linesFor($id('emma'))[0]['label'] ?? null,
+        'a name longer than the label is cut the way the portal cuts it, where a strict server would refuse it');
+foreach ($written as $line)
+    ok(abs(strtotime($line['created_at'] . ' UTC') - time()) < 600,
+       'each line is dated with the time of the update, in UTC: ' . $line['created_at']);
+is_same($n['before']['versions'][0] ?? null, $n['after']['versions'][0] ?? null,
+        'a line the portal wrote about Mia earlier, with no actor either, is left as it was and not taken for 019’s own');
+is_same([], array_values(array_filter(array_merge($linesFor($id('paul')), $linesFor($id('jonas'))),
+    fn($v) => array_key_exists('account_id', $json($v['before_json']) ?? []))),
+        'a child who keeps the login has no line saying it was taken off');
+is_same([], $linesFor($id('jakob')), 'a child with nothing to change has no line at all');
+is_same([], $linesFor($id('ida')), 'nor has a child with no login');
+is_same(6, count($written), 'three taken off and three addresses copied, and not one line more');
+
+case_('019 deletes nothing');
+is_same($n['before']['counts'], $n['after']['counts'],
+        'every table an update must not lose a row of has as many rows as before, so the guard stays as it is');
+ok(($n['before']['counts']['charges'] ?? 0) > 0 && ($n['before']['counts']['payments'] ?? 0) > 0,
+   'and there was a charge and a payment on a child taken off a login, to lose');
+foreach (['mia', 'emma', 'lisa'] as $key)
+    is_same($was[$id($key)]['email'], $now[$id($key)]['email'], $key . ' keeps the address on her record, for a login of her own');
+
+case_('019 gives a child who keeps a login that login’s address, to the letter');
+$loginAddress = ['paul' => 'gruber@beispiel.test', 'jonas' => 'huber@beispiel.test', 'sara' => 'weiss@beispiel.test',
+                 'jakob' => 'novak@beispiel.test', 'on_account' => 'familie@beispiel.test'];
+foreach ($loginAddress as $key => $email) is_same($email, $now[$id($key)]['email'], $key . ' has the login’s address');
+is_same('Gruber@Beispiel.test', $was[$id('paul')]['email'],
+        'Paul’s differed only in its capitals, which the tables’ collation calls equal');
+foreach (['paul', 'jonas', 'sara'] as $key) {
+    $lines = $linesFor($id($key));
+    is_same(1, count($lines), $key . ' has one line for the address');
+    is_same(['email' => $was[$id($key)]['email']], $json($lines[0]['before_json'] ?? null), 'saying what it was');
+    is_same(['email' => $loginAddress[$key]], $json($lines[0]['after_json'] ?? null), 'and what it is now');
+}
+is_same('novak@beispiel.test', $now[$id('ida')]['email'], 'a child with no login keeps her address, though it is a login’s');
+
+case_('019 raises the revision of every child it changed, once, and of no other');
+// student_save refuses a revision it did not load, so this is what stops a form
+// left open during the update from writing the old login or address back.
+$changed = ['paul', 'emma', 'mia', 'jonas', 'lisa', 'sara'];
+foreach ($children as $key) {
+    $bump = in_array($key, $changed, true) ? 1 : 0;
+    is_same((int)$was[$id($key)]['revision'] + $bump, (int)$now[$id($key)]['revision'],
+            $key . ($bump ? ' was changed, and its revision says so' : ' was not touched'));
+    if (!$bump) is_same($was[$id($key)]['updated_at'], $now[$id($key)]['updated_at'], 'nor its updated_at');
+}
+
+case_('019 puts the rule in the database');
+is_same(['exists' => true, 'unique' => true, 'columns' => ['account_id']], $n['index'],
+        'a unique index on the login a child belongs to');
+
+case_('An update of 019 that stopped partway and started again writes nothing twice');
+// That is what the next page view does after an interrupted update: it starts
+// the file again from the first statement. Times are left out of the comparison,
+// because each run writes its own.
+$without = fn(array $rows, string $column) => array_map(fn($row) => array_diff_key($row, [$column => 1]), $rows);
+is_same($n['statements'] - 1, count($n['retried']), 'it was stopped after each statement but the last');
+foreach ($n['retried'] as $stopped => $state) {
+    $when = 'stopped after statement ' . $stopped . ' of ' . $n['statements'] . ' and run from the first: ';
+    is_same($without($n['after']['students'], 'updated_at'), $without($state['students'], 'updated_at'),
+            $when . 'every child ends as it does in one run, with its revision raised once');
+    is_same($without($n['after']['versions'], 'created_at'), $without($state['versions'], 'created_at'),
+            $when . 'the change log has each line once');
+    is_same($n['after']['counts'], $state['counts'], $when . 'the same number of rows everywhere');
+    is_same($n['index'], $state['index'], $when . 'the same index');
+}
+
+case_('019 run again after it finished changes nothing');
+is_same($n['after'], $n['again'], 'the same children, revisions, times, lines and counts');
+
+case_('One login cannot hold a second child, whatever code tries it');
+// On the run's own database, so a run on MariaDB proves this on MariaDB.
+$login = make_account();
+$first = make_student(['account_id' => $login, 'email' => 'a@example.test']);
+$refusal = null;
+try { make_student(['account_id' => $login]); } catch (PDOException $e) { $refusal = $e; }
+is_same('23000', (string)$refusal?->getCode(), 'a second child written onto the login is refused by the database');
+$second = make_student();
+$refusal = null;
+try { run('UPDATE students SET account_id=? WHERE id=?', [$login, $second]); } catch (PDOException $e) { $refusal = $e; }
+is_same('23000', (string)$refusal?->getCode(), 'and so is moving a child onto a login that is taken');
+is_same([$first], array_map('intval', array_column(rows('SELECT id FROM students WHERE account_id=?', [$login]), 'id')),
+        'the login still holds its one child');
+does_not_throw(function () { foreach (range(1, 3) as $_) make_student(['account_id' => null]); },
+               'any number of children can have no login');
+does_not_throw(fn() => run('DELETE FROM accounts WHERE id=?', [$login]),
+               'and deleting a login leaves its child without one, beside the others');
+is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$first]), 'the child is still there, with no login');
+
+case_('The functions 019 calls behave on this engine as they do on MySQL');
+// On sqlite they are TestSqlitePdo's stand-ins, and a stand-in that is kinder
+// than MySQL - '' where MySQL gives NULL - lets a statement pass here that loses
+// a value on the real engine.
+is_same('Mia Gruber', scalar("SELECT CONCAT('Mia', ' ', 'Gruber')"), 'CONCAT joins');
+is_same(null, scalar("SELECT CONCAT('Mia', NULL)"), 'and gives NULL when any part is NULL, as MySQL does');
+is_same(['account_id' => null], json_decode((string)scalar("SELECT JSON_OBJECT('account_id', NULL)"), true),
+        'JSON_OBJECT writes a NULL as null');
+is_same(['email' => 'sära@beispiel.test'], json_decode((string)scalar("SELECT JSON_OBJECT('email', ?)", ['sära@beispiel.test']), true),
+        'and keeps an umlaut intact');
+is_same('C3A4', scalar('SELECT HEX(?)', ['ä']), 'HEX gives the bytes of the text, which is how 019 compares addresses');
+ok(abs(strtotime((string)scalar('SELECT UTC_TIMESTAMP()') . ' UTC') - time()) < 60, 'UTC_TIMESTAMP is now, in UTC');
+
+case_('A line 019 writes reads sensibly on the history page');
+// Written with the migration's own functions on this run's engine, whose
+// JSON_OBJECT spells its output its own way (MariaDB puts a space after the
+// colon), and read back through the real page.
+$staff = make_account(['role' => 'admin', 'name' => 'Trainerin']);
+$taken = make_student(['first_name' => 'Mia', 'last_name' => 'Gruber']);
+$keeper = make_account(['name' => 'Familie Gruber']);
+run("INSERT INTO record_versions (entity, entity_id, operation, label, before_json, after_json, actor_id, created_at)"
+    . " VALUES ('students', ?, 'update', 'Mia Gruber', JSON_OBJECT('account_id', ?), JSON_OBJECT('account_id', NULL), NULL, UTC_TIMESTAMP())",
+    [$taken, $keeper]);
+sign_in_as($staff);
+$page = render_view('history', ['entity' => 'students', 'record' => (string)$taken]);
+sign_out();
+ok(str_contains($page, 'Mia Gruber'), 'it names the child');
+ok(str_contains($page, e(t('automatisch', 'automatically'))), 'says it was done automatically, since nobody did it');
+ok(str_contains($page, e(history_field_label('account_id'))), 'names the field in her words, not as a column');
+$readable = preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($page), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+ok(str_contains($readable, history_field_label('account_id') . ' ' . history_value($keeper, 'account_id') . ' → ' . history_value(null)),
+   'and shows which login it was, and that there is none now');

@@ -121,61 +121,25 @@ is_same('Familie Hofer', $recipient['name'], 'and the name on the account');
 is_same($family, (int)$recipient['account_id'], 'and the account it belongs to');
 
 // ---------------------------------------------------------------------------
-case_('Inviting a family invites the child’s address, and links a sibling’s account');
+case_('An invitation goes to the address on the student, never to a contact’s');
+/* The rules about whose login is whose are in the accounts suite. What belongs
+   here is the line this suite holds: the address the portal writes to is on the
+   student, and an address on an emergency contact is not where anything goes. */
 set_setting('smtp', ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B']);
 set_setting('privacy_ready', true);
-$first = make_student(['first_name'=>'Erstes','last_name'=>'Kind']);
-run('UPDATE students SET email=? WHERE id=?', ['eltern@beispiel.test', $first]);
-act('student_invite', ['student_id'=>(string)$first, 'email'=>'eltern@beispiel.test', 'name'=>'Familie Kind']);
-$account = one('SELECT * FROM accounts WHERE email=?', ['eltern@beispiel.test']);
-ok($account !== null, 'an account was created');
-is_same('student', $account['role'], 'as a family account');
-is_same((int)$account['id'], (int)student($first)['account_id'], 'and the child belongs to it');
-is_same(1, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE recipient=? AND category='security'", ['eltern@beispiel.test']),
-        'with an invitation queued to the address on the child');
-
-// A second child at the same address is the same family, not a second account -
-// this is how siblings share a login without a second concept for it.
-$second = make_student(['first_name'=>'Zweites','last_name'=>'Kind']);
-run('UPDATE students SET email=? WHERE id=?', ['eltern@beispiel.test', $second]);
-act('student_invite', ['student_id'=>(string)$second, 'email'=>'eltern@beispiel.test', 'name'=>'']);
-is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['eltern@beispiel.test']),
-        'still one account');
-is_same((int)$account['id'], (int)student($second)['account_id'], 'and both children are on it');
-// A family who has not clicked the first link yet gets a fresh one, which is
-// useful. A family who has already set a password does not: that invitation
-// would replace a password that works with a link they did not ask for.
-is_same(2, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE recipient=? AND category='security'", ['eltern@beispiel.test']),
-        'an account still waiting to be activated is invited again');
-run("UPDATE accounts SET state='active', verified_at=? WHERE id=?", [now(), (int)$account['id']]);
-$third = make_student(['first_name'=>'Drittes','last_name'=>'Kind']);
-run('UPDATE students SET email=? WHERE id=?', ['eltern@beispiel.test', $third]);
-act('student_invite', ['student_id'=>(string)$third, 'email'=>'eltern@beispiel.test', 'name'=>'']);
-is_same((int)$account['id'], (int)student($third)['account_id'], 'the third child is added to the same account');
-is_same(2, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE recipient=? AND category='security'", ['eltern@beispiel.test']),
-        'and an account that already has a password is not sent another link');
-
-throws(fn() => act('student_invite', ['student_id'=>(string)$first, 'email'=>'eltern@beispiel.test', 'name'=>'']),
-       'a child already on an account cannot be invited again', 'schon einem Konto');
-// A trainer's address is not a family login, and handing one out here would
-// quietly give a family whatever that account can see.
-make_account(['role'=>'trainer', 'email'=>'die-trainerin@beispiel.test']);
-$fourth = make_student(['first_name'=>'Viertes']);
-throws(fn() => act('student_invite', ['student_id'=>(string)$fourth, 'email'=>'die-trainerin@beispiel.test', 'name'=>'']),
-       'and a management address is refused', 'Verwaltung');
-is_same(null, student($fourth)['account_id'], 'leaving the child unattached rather than half-attached');
-/* student_invite writes the child's address and bumps its revision in the same
-   UPDATE that attaches the account, so an untouched revision is the assertion
-   that says nothing about this child was rewritten - not just the one column
-   the line above reads. */
-is_same(1, (int)scalar('SELECT revision FROM students WHERE id=?', [$fourth]),
-        'the record was not rewritten at all: its revision is the one it was created with');
-ok((int)scalar('SELECT revision FROM students WHERE id=?', [$third]) > 1,
-   'while the child who really was attached has a revision that moved, so that is a measurement and not a constant');
-is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['die-trainerin@beispiel.test']),
-        'and no second account was made for the trainer’s address');
-is_same('trainer', (string)scalar('SELECT role FROM accounts WHERE email=?', ['die-trainerin@beispiel.test']),
-        'which is still hers, not turned into a family login');
+$first = make_student(['first_name'=>'Erstes','last_name'=>'Kind', 'email'=>'erstes-kind@beispiel.test']);
+fixture('contacts', ['student_id'=>$first, 'owner_name'=>'Opa Kind', 'relation_label'=>'Großvater',
+                     'phone'=>'+43 660 7654321', 'email'=>'opa-kind@beispiel.test', 'is_primary'=>1]);
+act('student_invite', ['student_id'=>(string)$first, 'email'=>'', 'name'=>'']);
+$account = one('SELECT * FROM accounts WHERE id=?', [(int)student($first)['account_id']]);
+is_same('erstes-kind@beispiel.test', $account['email'] ?? null, 'with no address typed, the one on the student is used');
+is_same('Erstes Kind', $account['name'] ?? null, 'and the student’s own name, because the login is theirs');
+is_same(1, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE recipient=? AND category='security'", ['erstes-kind@beispiel.test']),
+        'the invitation is queued to that address');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE recipient=?', ['opa-kind@beispiel.test']),
+        'and nothing to the grandfather on the emergency list');
+set_setting('smtp', []);
+set_setting('privacy_ready', false);
 
 case_('Example data leaves no child without somebody to ring or somewhere to write');
 $before = array_map(fn($s)=>(int)$s['id'], rows('SELECT id FROM students'));

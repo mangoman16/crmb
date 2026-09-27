@@ -35,7 +35,7 @@ page_head(t('Nachrichten','Messages'),
     <?php foreach($threads as $thread): $isNew=isset($unread[(int)$thread['id']]); ?>
     <a class="thread-item <?=$id===(int)$thread['id']?'selected':''?> <?=$isNew?'unread':''?>" href="<?=e(url('messages',['id'=>$thread['id']]))?>">
         <div><strong><?=e(thread_title($thread,$user))?><?php if($isNew):?> <span class="dot" aria-hidden="true"></span><span class="visually-hidden"><?=e(t('ungelesen','unread'))?></span><?php endif ?></strong><small><?=e(fmt_date($thread['updated_at']))?></small></div>
-        <h3><?=e($thread['subject'])?><?php if($thread['kind']==='direct')badge(t('Privat','Private'));?></h3>
+        <h3 class="badge-line"><span><?=e($thread['subject'])?></span><?php if($thread['kind']==='direct')badge(t('Privat','Private'));?></h3>
         <p><?=e(mb_substr((string)($thread['last_message']??''),0,90) ?: ((int)$thread['file_count']?t('Anhang','Attachment'):''))?></p>
     </a>
     <?php endforeach ?>
@@ -62,14 +62,12 @@ if($showContacts): $contacts=contacts_for($user); $requests=contact_requests_for
 
     <h3><?=e(t('An wen?','Who to?'))?></h3>
     <?php foreach($contacts as $c): ?>
-    <div class="record-row">
+    <div class="record-row with-form">
         <div class="account-identity"><?=avatar($c)?>
             <div><strong><?=e($c['name'])?></strong><small><?=e(role_label((string)$c['role']))?></small></div></div>
-        <div class="row-actions">
-            <?php start_form('message_send',['to'=>$c['id']],'inline-form');
-            input('body',t('Nachricht','Message'),'','text',true,'',t('Schreiben …','Write …'));
-            submit_button(t('Senden','Send'),'secondary');?></form>
-        </div>
+        <?php start_form('message_send',['to'=>$c['id']],'row-form');
+        input('body',t('Nachricht','Message'),'','text',true,'',t('Schreiben …','Write …'));
+        submit_button(t('Senden','Send'),'secondary');?></form>
     </div>
     <?php endforeach ?>
 
@@ -79,13 +77,11 @@ if($showContacts): $contacts=contacts_for($user); $requests=contact_requests_for
     <h3><?=e(t('Jemand anderen fragen','Ask somebody else'))?></h3>
     <p class="muted"><?=e(t('Andere Familien bekommen erst eine Nachricht von dir, wenn sie zugestimmt haben. Der Trainerin kannst du immer schreiben.','Other families only get a message from you once they have agreed. You can always write to the trainer.'))?></p>
     <?php foreach($others as $c): ?>
-    <div class="record-row">
+    <div class="record-row with-form">
         <div class="account-identity"><?=avatar($c)?><div><strong><?=e($c['name'])?></strong></div></div>
-        <div class="row-actions">
-            <?php start_form('contact_request',['to'=>$c['id']],'inline-form');
-            input('message',t('Kurz dazu','A word about it'),'','text',false,'',t('Wer bist du?','Who are you?'));
-            submit_button(t('Anfragen','Ask'),'subtle');?></form>
-        </div>
+        <?php start_form('contact_request',['to'=>$c['id']],'row-form');
+        input('message',t('Kurz dazu','A word about it'),'','text',false,'',t('Wer bist du?','Who are you?'));
+        submit_button(t('Anfragen','Ask'),'subtle');?></form>
     </div>
     <?php endforeach ?>
     <?php endif; endif ?>

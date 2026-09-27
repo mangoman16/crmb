@@ -41,9 +41,13 @@ sign_in_as($trainerId);
 throws(fn() => require_admin(), 'require_admin refuses a trainer');
 does_not_throw(fn() => require_staff(), 'require_staff accepts a trainer');
 
-case_('Only an administrator may grant a privileged role');
-is_same(['student'], assignable_roles(['role'=>'trainer']), 'a trainer may only invite parents');
-is_same(['student','trainer','admin'], assignable_roles(['role'=>'admin']), 'an admin may grant anything');
+case_('Only an administrator may grant a role, and the Konten page grants staff roles only');
+/* A student's login is made on that student's page, because it belongs to
+   exactly one student (ADR 0010). Made from the Konten page it would be a login
+   attached to nobody - and "a trainer may invite parents" was how siblings came
+   to share one. */
+is_same([], assignable_roles(['role'=>'trainer']), 'a trainer grants nothing from the Konten page');
+is_same(['trainer','admin'], assignable_roles(['role'=>'admin']), 'an administrator grants the staff roles');
 
 case_('A login made on the spot is an administrator\'s to make, and nobody else\'s');
 /* Inviting needs working SMTP and a released privacy notice, so a portal on its
@@ -64,17 +68,17 @@ ok($made['verified_at'] !== null, 'and not left waiting on a verification it wil
 ok(password_verify('Federball-2026-Halle!', $made['password_hash']), 'the password is the one that was typed');
 ok(!str_contains((string)$made['password_hash'], 'Federball'), 'and is stored as a hash, not as itself');
 throws(fn() => act('account_create', ['name'=>'Noch eine', 'email'=>'zweite@beispiel.test',
-    'password'=>'Federball-2026-Halle!', 'role'=>'student', 'locale'=>'de']),
+    'password'=>'Federball-2026-Halle!', 'role'=>'admin', 'locale'=>'de']),
     'and one address cannot have two', 'schon ein Konto');
 throws(fn() => act('account_create', ['name'=>'Schwach', 'email'=>'schwach@beispiel.test',
-    'password'=>'badminton123', 'role'=>'student', 'locale'=>'de']),
+    'password'=>'badminton123', 'role'=>'trainer', 'locale'=>'de']),
     'a guessable password is refused here too', 'erraten');
 /* Inviting wrote the row without looking first, so two people inviting the same
    parent in the same moment both wrote, and the second one met the UNIQUE index
    instead of a sentence naming the address. It now asks the same question
    account_create asks, and holds the answer while it writes. */
 throws(fn() => act('account_invite', ['name'=>'Noch eine Trainerin', 'email'=>'zweite@beispiel.test',
-    'role'=>'student', 'locale'=>'de']),
+    'role'=>'trainer', 'locale'=>'de']),
     'and an address that already has an account is not invited a second time', 'schon ein Konto');
 is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['zweite@beispiel.test']),
         'the address still has exactly one account');
@@ -96,32 +100,43 @@ is_same(0, (int)scalar('SELECT COUNT(*) FROM auth_tokens t JOIN accounts a ON a.
    of the case rests on is the one it started with. */
 set_setting('smtp', ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B']);
 set_setting('privacy_ready', true);
-does_not_throw(fn() => act('account_invite', ['name'=>'Eingeladene Familie', 'email'=>'eingeladen@beispiel.test',
-    'role'=>'student', 'locale'=>'de']), 'an address with no account is invited');
+does_not_throw(fn() => act('account_invite', ['name'=>'Eingeladene Trainerin', 'email'=>'eingeladen@beispiel.test',
+    'role'=>'trainer', 'locale'=>'de']), 'an address with no account is invited');
 is_same(1, (int)scalar('SELECT COUNT(*) FROM auth_tokens t JOIN accounts a ON a.id=t.account_id WHERE a.email=?',
                        ['eingeladen@beispiel.test']),
         'and that one does leave a link, so the nought above is a measurement rather than a habit');
 set_setting('smtp', []);
 set_setting('privacy_ready', false);
 throws(fn() => act('account_invite', ['name'=>'Noch jemand', 'email'=>'nochjemand@beispiel.test',
-    'role'=>'student', 'locale'=>'de']),
+    'role'=>'trainer', 'locale'=>'de']),
     'and the first-evening portal is back, so what follows reads what it expects', 'SMTP');
-// A family account with nothing attached signs in to an empty portal, which
-// looks like a broken login rather than a missing link. Inviting from the
-// child's page joins the two by address; this way in has to agree.
+
+case_('A student’s login is not made from the Konten page, and nothing is linked from there');
+/* account_create used to attach every unlinked child whose address matched, which
+   is one of the three ways siblings came to share a login. A student's login is
+   made on the student's page now (student_invite, with mode=direct for this). */
 $waiting = make_student(['first_name'=>'Wartend', 'last_name'=>'Hofer', 'email'=>'wartend@beispiel.test']);
-$elsewhere = make_student(['first_name'=>'Woanders', 'last_name'=>'Berger', 'email'=>'woanders@beispiel.test']);
-act('account_create', ['name'=>'Familie Wartend', 'email'=>'wartend@beispiel.test',
-    'password'=>'Federball-2026-Halle!', 'role'=>'student', 'locale'=>'de']);
-$account = one('SELECT id FROM accounts WHERE email=?', ['wartend@beispiel.test']);
-is_same((int)$account['id'], (int)scalar('SELECT account_id FROM students WHERE id=?', [$waiting]),
-        'the child at that address is linked to it');
-is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$elsewhere]),
-        'and a child at another address is not');
-act('account_create', ['name'=>'Dritte Trainerin', 'email'=>'wartend2@beispiel.test',
+set_setting('smtp', ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B']);
+set_setting('privacy_ready', true);
+throws(fn() => act('account_create', ['name'=>'Familie Wartend', 'email'=>'wartend@beispiel.test',
+    'password'=>'Federball-2026-Halle!', 'role'=>'student', 'locale'=>'de']),
+    'creating one directly is refused, and says where to go instead', 'Seite der Schülerin oder des Schülers');
+throws(fn() => act('account_invite', ['name'=>'Familie Wartend', 'email'=>'wartend@beispiel.test',
+    'role'=>'student', 'locale'=>'de']),
+    'and so is inviting one', 'Seite der Schülerin oder des Schülers');
+set_setting('smtp', []);
+set_setting('privacy_ready', false);
+is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['wartend@beispiel.test']), 'no account was written');
+is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$waiting]), 'and the student at that address was not touched');
+act('account_create', ['name'=>'Dritte Trainerin', 'email'=>'wartend@beispiel.test',
     'password'=>'Federball-2026-Halle!', 'role'=>'trainer', 'locale'=>'de']);
-is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$elsewhere]),
-        'a management account adopts nobody');
+is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$waiting]),
+        'a staff login at a student’s address adopts nobody either');
+sign_in_as($trainerId);
+throws(fn() => act('account_invite', ['name'=>'Neue Trainerin', 'email'=>'neu-trainerin@beispiel.test',
+    'role'=>'trainer', 'locale'=>'de']),
+    'inviting from the Konten page is an administrator’s to do', 'Administratoren');
+sign_in_as($adminId);
 
 case_('A conversation is scoped to its account');
 $threadA = make_thread([$parentA], ['subject'=>'A']);

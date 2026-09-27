@@ -76,12 +76,26 @@ $q60 = query_count(fn() => render_view('dashboard'));
 ok($q60 <= $q6, 'trebling the students adds no queries ('.$q6.' then '.$q60.')');
 ok($q60 < 20, 'the whole page is a flat handful of queries (took '.$q60.')');
 
-case_('A parent dashboard is batched too, not one balance per child');
-$parentAccount = make_account(['role'=>'student','name'=>'Elternteil']);
-for ($i = 0; $i < 10; $i++) make_student(['account_id'=>$parentAccount,'tariff_id'=>$tariff,'price_cents'=>4500]);
-sign_in_as($parentAccount);
-$qp = query_count(fn() => render_view('dashboard'));
-ok($qp < 20, 'ten children cost a flat handful of queries (took '.$qp.')');
+case_('A family’s dashboard does not grow a query per charge');
+/* It was "per child" while one login could hold ten of them. A login is one
+   student now (ADR 0010), so what grows on a family's page is their own
+   charges, month after month, with nobody changing anything. */
+$familyLogin = make_account(['role'=>'student','name'=>'Viele Monate']);
+$own = make_student(['account_id'=>$familyLogin,'first_name'=>'Viele','last_name'=>'Monate','tariff_id'=>$tariff,'price_cents'=>4500]);
+$bill = fn(int $from, int $to) => array_map(fn(int $n) => fixture('charges', ['student_id'=>$own,'label'=>'Monat '.$n,
+    'amount_cents'=>4500,'due_on'=>sprintf('2025-%02d-10', ($n % 12) + 1),'cancelled'=>0,'origin'=>'manual','created_at'=>now()]),
+    range($from, $to));
+$bill(0, 2);
+sign_in_as($familyLogin);
+render_view('dashboard');                       // the settings cache fills once, as in the case below
+payment_cache_clear();
+$qFew = query_count(fn() => render_view('dashboard'));
+$bill(3, 35);
+payment_cache_clear();
+$qMany = query_count(fn() => render_view('dashboard'));
+ok($qMany <= $qFew, 'three charges and thirty-six cost the same ('.$qFew.' then '.$qMany.')');
+ok($qMany < 20, 'a flat handful of queries (took '.$qMany.')');
+ok(str_contains(render_view('dashboard'), 'Viele'), 'and the page really is theirs');
 
 case_('The student list page stays flat as the roll grows');
 sign_in_as($trainer);

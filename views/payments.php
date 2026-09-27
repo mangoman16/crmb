@@ -15,7 +15,7 @@ $willSkip=array_values(array_filter($plan,fn($r)=>$r['skip']!==null));
             <p class="muted"><?=e(t('Beiträge entstehen aus den Kursen: jede Kursteilnahme, zu dem Tarif, den sie nennt. Hier ist erst einmal nur die Vorschau – angelegt wird nichts, bis du unten drückst.','Charges come from courses: one per enrolment, at the tariff it names. This is only the preview – nothing is created until you press the button below.'))?></p>
         </div>
     </div>
-    <form method="get" class="attendance-date">
+    <form method="get" class="row-form">
         <input type="hidden" name="page" value="payments">
         <?php input('period',t('Monat','Month'),$period,'month',true); ?>
         <?php submit_button(t('Monat wechseln','Change month'),'secondary'); ?>
@@ -29,7 +29,7 @@ $willSkip=array_values(array_filter($plan,fn($r)=>$r['skip']!==null));
         <summary><?=e(t('Wen betrifft das?','Who does this affect?'))?></summary>
         <?php foreach($willCreate as $r): ?>
         <div class="record-row"><div><strong><?=e($r['name'])?></strong>
-            <p><?=e($r['class_name'].' · '.($r['tariff_name']??'').' · '.money((int)$r['amount']))?><?php
+            <p class="badge-line"><span><?=e($r['class_name'].' · '.($r['tariff_name']??'').' · '.money((int)$r['amount']))?></span><?php
                if((int)$r['discount']>0)badge(t('Rabatt','Discount'),'green');
                if(!empty($r['prorated']))badge(t('Anteilig','Pro rata'),'amber');?></p>
             <small><?=e(t('Zeitraum ','Covers ').fmt_date($r['from']).'–'.fmt_date($r['to']).' · '.t('fällig am ','due ').fmt_date($r['due']))?><?php

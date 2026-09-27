@@ -120,17 +120,17 @@ function dispatch_messages(string $action): array {
     case 'bulk_send':
         $u=require_staff();$p=$_SESSION['bulk_preview']??null;
         if(!$p || time()-$p['created']>1800)throw new UserError(t('Die Vorschau ist abgelaufen. Bitte erneut erstellen.','The preview expired. Please create it again.'));
-        $grouped=[];
-        foreach($p['student_ids'] as $id) {
-            $s=student($id);if($s['account_id'] && isset($p['accounts'][(int)$s['account_id']]))$grouped[(int)$s['account_id']][]=$s;
-        }
+        // One conversation per student, with their own name and figures filled
+        // in: a login belongs to one student (ADR 0010), so there is nobody
+        // else's details to append to it.
         $count=0;
-        foreach($grouped as $accountId=>$students) {
-            $a=one("SELECT * FROM accounts WHERE id=? AND state='active' AND verified_at IS NOT NULL FOR UPDATE",[$accountId]);if(!$a)continue;
-            $subject=mb_substr(template_text($p['subject'],$students[0]),0,180);
-            $specific=preg_match('/\{\{(student_name|first_name|tariff|outstanding|paid_through)\}\}/',$p['body']);
-            $body=$specific?implode("\n\n────────\n\n",array_map(fn($s)=>template_text($p['body'],$s),$students)):template_text($p['body'],$students[0]);
-            if(strlen($body)>60000)throw new UserError(t('Nachricht für ein Konto zu lang. Bitte Auswahl verkleinern.','Message is too long for one account. Reduce the selection.'));
+        foreach($p['student_ids'] as $id) {
+            $s=student($id);
+            if(!$s['account_id'] || !isset($p['accounts'][(int)$s['account_id']])) continue;
+            $a=one("SELECT * FROM accounts WHERE id=? AND state='active' AND verified_at IS NOT NULL FOR UPDATE",[(int)$s['account_id']]);if(!$a)continue;
+            $accountId=(int)$a['id'];
+            $subject=mb_substr(template_text($p['subject'],$s),0,180);
+            $body=template_text($p['body'],$s);
             run("INSERT INTO threads (account_id,kind,subject,updated_at) VALUES (?,'staff',?,?)",[$accountId,$subject,now()]);$threadId=(int)db()->lastInsertId();
             join_thread($threadId,$accountId);
             run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',[$threadId,$u['id'],$body,now()]);

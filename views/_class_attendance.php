@@ -21,7 +21,7 @@ $dates=attendance_session_dates($id);
              here goes back to whichever one it was opened from rather than
              always landing on the course. */
     $back=current_page()==='attendance'?['page'=>'attendance','id'=>$id]:['page'=>'classes','id'=>$id,'tab'=>'attendance']; ?>
-    <form method="get" class="attendance-date">
+    <form method="get" class="row-form">
     <?php foreach($back as $key=>$value): ?>
         <input type="hidden" name="<?=e($key)?>" value="<?=e($value)?>">
     <?php endforeach ?>

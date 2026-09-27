@@ -41,7 +41,8 @@ function history_field_label(string $column): string {
         'age_group_id' => t('Altersgruppe', 'Age group'),
         'tariff_id' => t('Tarif', 'Tariff'),
         'class_id' => t('Kurs', 'Course'),
-        'account_id' => t('Zugeordnetes Konto', 'Linked account'),
+        // The student's own login (ADR 0010), not a family account they are filed under.
+        'account_id' => t('Konto (Zugang)', 'Account (login)'),
         'price_cents' => t('Vereinbarter Preis', 'Agreed price'),
         'price_note' => t('Preisvereinbarung', 'Price agreement'),
         'amount_cents' => t('Betrag', 'Amount'),
@@ -72,10 +73,6 @@ function history_field_label(string $column): string {
         'discount_value' => t('Höhe des Rabatts', 'Size of the discount'),
         'discount_kind' => t('Art des Rabatts', 'Kind of discount'),
         'discount_note' => t('Name des Rabatts', 'Name of the discount'),
-        'price_cents' => t('Preis', 'Price'),
-        'email' => t('E-Mail-Adresse', 'Email address'),
-        'account_id' => t('Zugeordnetes Konto', 'Linked account'),
-        'price_note' => t('Preisvereinbarung', 'Price agreement'),
         'title' => t('Titel', 'Title'),
         'body' => t('Text', 'Text'),
         'published' => t('Veröffentlicht', 'Published'),
@@ -243,12 +240,32 @@ function version_changes(array $version): array {
     return $out;
 }
 
-/** A stored column value as a short readable string. */
-function history_value(mixed $v): string {
+/**
+ * A stored column value as a short readable string.
+ *
+ * $column is the field it came from, for the values whose raw form means
+ * nothing to her: a login is stored as a number and read as its address.
+ */
+function history_value(mixed $v, string $column = ''): string {
     if ($v === null || $v === '') return '—';
+    if ($column === 'account_id') return history_login((int)$v);
     if (is_bool($v)) return $v ? t('ja', 'yes') : t('nein', 'no');
     $s = (string)$v;
     return mb_strlen($s) > 60 ? mb_substr($s, 0, 57).'…' : $s;
+}
+
+/**
+ * A login as the change log names it: the address it signs in with, or that
+ * it no longer exists.
+ *
+ * Looked up when the page is read rather than stored with the change, because
+ * the address can move (change_login_address()) and the line should name the
+ * login as it is now. Not memoised: a login in the log is rare, and a memo
+ * would outlive a language switch.
+ */
+function history_login(int $accountId): string {
+    $email = scalar('SELECT email FROM accounts WHERE id=?', [$accountId]);
+    return $email !== false && $email !== null ? (string)$email : t('gelöschter Zugang', 'deleted login');
 }
 
 /**

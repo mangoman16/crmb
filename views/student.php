@@ -7,7 +7,9 @@ $tabsAllowed=$staff?['details','contacts','payments','invoices','absence','class
 if(!in_array($tab,$tabsAllowed,true))$tab='details';
 page_head($id?$s['first_name'].' '.$s['last_name']:t('Neuen Schüler anlegen','Add a student'),$id?status_label($s['status']):'',
     ($id&&$staff?link_button(t('Datenblatt drucken','Print the data sheet'),'print',['id'=>$id],'secondary'):'')
-    .link_button(t('Alle Schüler','All students'),'students',[],'secondary'));
+    // A family has one student and this is their page (ADR 0010): a list of one
+    // is not somewhere to go back to.
+    .($staff?link_button(t('Alle Schüler','All students'),'students',[],'secondary'):''));
 if($id){
     $tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),
                 'invoices'=>t('Rechnungen','Invoices'),'classes'=>t('Kurse','Courses'),'absence'=>t('Abwesenheit','Absences')];
@@ -47,29 +49,34 @@ $age=student_age($s['birth_date']??null);
 input('birth_date',t('Geburtsdatum','Date of birth'),$s['birth_date'],'date',false,
     $age!==null?plural($age,'Jahr alt','Jahre alt','year old','years old').' · '.t('Altersgruppe: ','Age group: ').age_group_name($s)
                :t('Bestimmt die Altersgruppe.','Decides the age group.'));
+/* The address this student signs in with, and where the invitation and the
+   invoices go: one address, one student, one login (ADR 0010). Before there is
+   a login it is hers to type; while the invitation is open she may still
+   correct it, and saving sends the invitation again; once somebody signs in
+   with it, it is theirs, and only they change it - with a confirmation from the
+   new mailbox, so nobody can move a family's login to a mailbox of their own.
+   No box is posted then, which is what student_save expects. */
+if($staff):
+    $login=$s['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$s['account_id']]):null;
+    $firstName=$s['first_name']!==''?$s['first_name']:t('die Schülerin oder der Schüler','The student');
+    echo '<div id="email">';
+    if($login && $login['state']!=='invited') {
+        echo '<div class="field"><label>'.e(t('E-Mail-Adresse','Email address')).'</label><div class="readonly">'.e($login['email']).'</div><small>'
+            .e($firstName.t(' meldet sich damit an und ändert sie selbst unter „Mein Konto“ – mit Bestätigung aus dem neuen Postfach.',' signs in with it and changes it themselves under “My account” – confirmed from the new mailbox.'))
+            .'</small></div>';
+    } elseif($login) {
+        input('email',t('E-Mail-Adresse','Email address'),$login['email'],'email',true,
+              t('Einladung noch nicht angenommen. Änderst du die Adresse, geht die Einladung beim Speichern an die neue; der alte Link gilt dann nicht mehr.',
+                'The invitation has not been accepted yet. If you change the address, saving sends the invitation to the new one; the old link then stops working.'));
+    } else {
+        input('email',t('E-Mail-Adresse','Email address'),$s['email'],'email',false,
+              t('Damit meldet sich ','').$firstName.t(' an. Dorthin geht die Einladung, und sobald es einen Zugang gibt, auch Rechnungen und Zahlungserinnerungen. Jede Schülerin und jeder Schüler braucht eine eigene Adresse.',
+                ' signs in with this. The invitation goes here, and once there is a login, so do invoices and payment reminders. Every student needs an address of their own.'));
+    }
+    echo '</div>';
+endif;
 ?></div>
-<?php /* The address the portal writes to, and the one this family signs in with.
-         For a child that is a parent's address, which is why it is a field on
-         the child rather than a separate person: whoever reads the invoices is
-         whoever holds the login, and the people to ring in an emergency are a
-         different list with different names on it. */
-if($staff): $linked=$s['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$s['account_id']]):null; ?>
-<h3><?=e(t('Zugang zum Portal','Access to the portal'))?></h3>
-<div class="grid two"><?php
-if($linked) {
-    echo '<div class="field"><label>'.e(t('Anmeldung','Signs in as')).'</label><div class="readonly">'
-        .e($linked['name'].' · '.$linked['email']).'</div><small>'
-        .e(t('Die Adresse ändert das Konto selbst unter „Mein Konto“, mit Bestätigungslink.','The address is changed by the account itself under “My account”, with a confirmation link.'))
-        .'</small></div>';
-    input('email',t('Notiz-Adresse (ungenutzt, solange ein Konto verknüpft ist)','Noted address (unused while an account is linked)'),$s['email'],'email');
-} else {
-    input('email',t('E-Mail-Adresse','Email address'),$s['email'],'email',false,
-          t('Dorthin gehen Einladung, Rechnungen und Erinnerungen. Bei einem Kind ist das die Adresse eines Elternteils.','The invitation, the invoices and the reminders go here. For a child that is a parent’s address.'));
-}
-select_field('account_id',t('Bestehendes Konto verknüpfen','Link an existing account'),array_column(rows("SELECT id,CONCAT(name,' · ',email) AS label FROM accounts WHERE role='student' ORDER BY name"),'label','id'),$s['account_id']);
-echo '<div class="field-note">'.e(t('Nur nötig, wenn Geschwister sich ein Konto teilen sollen. Sonst legt „Zugang einladen“ das Konto an.','Only needed when siblings are to share one account. Otherwise “Zugang einladen” creates it.')).'</div>';
-?></div>
-
+<?php if($staff): ?>
 <h3><?=e(t('Anschrift und Telefon','Address and telephone'))?></h3>
 <?php /* One line for the address, the way an anmeldeformular asks it, because it
          is typed once and printed once and never sorted on. The telephone is the
@@ -126,22 +133,69 @@ else input($n,$label,$v??'',$f['field_type']==='number'?'text':$f['field_type'],
 endforeach ?></div></section><?php endif ?>
 <?php if($staff && $id):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>
 <div class="form-footer"><?php submit_button($id?t('Schüler speichern','Save student'):t('Anlegen und weiter','Create and continue'));?></div></form>
-<?php if($staff && $id && !$s['account_id']): ?>
-<?php /* Outside the student form, because it is its own decision and its own
-         POST: saving a birth date should not send anybody an email. */ ?>
-<section class="card">
-    <div class="section-heading"><h2><?=e(t('Zugang einladen','Invite them in'))?></h2></div>
-    <p class="muted"><?=e(t('Legt ein Konto an und schickt eine Einladung. Wer sich damit anmeldet, sieht dieses Kind – Termine, Beiträge und Nachrichten. Ist die Adresse schon ein Konto (Geschwister, zweiter Elternteil), wird dieses Kind einfach dazugelegt.','Creates an account and sends an invitation. Whoever signs in with it sees this child – dates, charges and messages. If the address is already an account (a sibling, a second parent), this child is simply added to it.'))?></p>
-    <?php start_form('student_invite',['student_id'=>$id]); ?>
-    <div class="grid two"><?php
-    input('email',t('E-Mail-Adresse','Email address'),$s['email'],'email',true);
-    input('name',t('Name für das Konto','Name for the account'),'','text',false,
-          t('Leer lassen für den Namen des Kindes. Bei einem Kind besser der Name des Elternteils.','Leave blank for the child’s name. For a child, the parent’s name reads better.'));
-    ?></div>
-    <?php submit_button(t('Einladung senden','Send the invitation'),'secondary');?></form>
-</section>
+<?php if($staff && $id):
+/* Everything about this student's login, in one card and in the order it
+   happens: invited, active, suspended, gone. Outside the student form, because
+   each of these is its own decision and its own POST - saving a birth date
+   should not send anybody an email - and a form inside a form is thrown away
+   by the browser. */
+$loginState=$login['state']??'none'; ?>
+<section class="card access-card" id="access">
+    <div class="badge-line access-title"><h2><?=e(t('Zugang zum Portal','Access to the portal'))?></h2><?php login_state_badge($login); ?></div>
+<?php if(!$login):
+    $takenBy=$s['email']!==''?own_address_taken_by($id):''; ?>
+    <p><?=e($firstName.t(' hat noch keinen Zugang.',' has no access yet.'))?></p>
+    <?php if($s['email']===''): ?>
+    <p class="muted"><?=e(t('Trag oben zuerst eine E-Mail-Adresse ein und speichere.','Enter an email address above first, and save.'))?></p>
+    <?php elseif($takenBy!==''): ?>
+    <div class="notice"><?=e(t('Diese Adresse nutzt schon ','This address is already used by ').$takenBy.t('. Trag oben eine eigene ein.','. Enter one of their own above.'))?></div>
+    <?php else: ?>
+    <div class="row-actions access-actions"><?php start_form('student_invite',['student_id'=>$id],'inline-form');submit_button(t('Einladung senden','Send the invitation'));?></form></div>
+    <?php if(is_admin($user)): ?>
+    <details class="access-direct"><summary><?=e(t('Ohne E-Mail anlegen (mit Passwort)','Create without email (with a password)'))?></summary>
+        <p class="muted"><?=e(t('Wenn keine Einladung möglich oder gewünscht ist: zum Ausprobieren, oder für jemanden, der neben dir steht und sein Passwort selbst eintippt. Die Adresse wird dabei nicht bestätigt.','When an invitation is not possible or not wanted: to try the portal out, or for somebody standing next to you who types their own password. The address is not confirmed this way.'))?></p>
+        <?php start_form('student_invite',['student_id'=>$id,'mode'=>'direct']);
+        input('password',t('Passwort','Password'),'','password',true,t('Mindestens 12 Zeichen. ','At least 12 characters. ').$firstName.t(' kann es später ändern.',' can change it later.'));
+        submit_button(t('Zugang anlegen','Create the access'),'secondary');?></form>
+    </details>
+    <?php endif ?>
+    <?php endif ?>
+<?php else:
+    $deleteText=t('Löscht die Anmeldung und die privaten Unterhaltungen. ','Deletes the login and the private conversations. ')
+        .$firstName.t(', Kurse, Beiträge und Rechnungen bleiben; du kannst später neu einladen. Nur vorübergehend? Dann lieber sperren.',
+                      ', the courses, charges and invoices stay; you can invite again later. Only for a while? Then suspend instead.'); ?>
+    <p><?php if($loginState==='invited') echo e(t('Eingeladen an ','Invited at ').$login['email'].t(', noch nicht angenommen.',', not accepted yet.'));
+        elseif($loginState==='active') echo e(t('Meldet sich an mit ','Signs in with ').$login['email']
+            .(!empty($login['last_seen_at'])?' · '.t('zuletzt ','last seen ').fmt_date((string)$login['last_seen_at']):'').'.');
+        else echo e(t('Gesperrt – ','Suspended – ').$firstName.t(' kann sich nicht anmelden. Daten und Nachrichten bleiben.',' cannot sign in. Details and messages stay.')); ?></p>
+    <div class="row-actions access-actions">
+    <?php if($loginState==='invited'):
+        start_form('account_state',['id'=>$login['id'],'mode'=>'reinvite'],'inline-form');submit_button(t('Einladung erneut senden','Send the invitation again'),'secondary');echo '</form>';
+        login_delete_details($login,t('Einladung zurückziehen','Withdraw the invitation'),
+            t('Der Link in der Einladung gilt dann nicht mehr. ','The link in the invitation then stops working. ')
+            .$firstName.t(', Kurse, Beiträge und Rechnungen bleiben; du kannst später neu einladen.',', the courses, charges and invoices stay; you can invite again later.'),
+            t('Einladung endgültig zurückziehen','Withdraw the invitation for good'));
+    elseif($loginState==='active'):
+        if(may_impersonate($user,$login)){start_form('impersonate',['id'=>$login['id'],'mode'=>'start'],'inline-form');submit_button(t('Portal als ','View the portal as ').$firstName.t(' ansehen',''),'secondary');echo '</form>';}
+        start_form('account_state',['id'=>$login['id'],'mode'=>'suspend'],'inline-form');submit_button(t('Zugang sperren','Suspend the access'),'secondary');echo '</form>';
+        login_delete_details($login,t('Zugang löschen','Delete the access'),$deleteText,t('Zugang endgültig löschen','Delete the access for good'));
+    else:
+        start_form('account_state',['id'=>$login['id'],'mode'=>'restore'],'inline-form');submit_button(t('Zugang entsperren','Restore the access'),'secondary');echo '</form>';
+        login_delete_details($login,t('Zugang löschen','Delete the access'),$deleteText,t('Zugang endgültig löschen','Delete the access for good'));
+    endif ?>
+    </div>
 <?php endif ?>
-<?php if($id && $staff):?><details class="danger-zone"><summary><?=e(t('Schüler löschen','Delete student'))?></summary><p><?=e(t('Nur möglich, wenn keine Beiträge vorhanden sind. Sonst die Mitgliedschaft beenden.','Only possible when no charges exist. Otherwise, end the membership.'))?></p><?php start_form('student_delete',['id'=>$id]);input('confirmation',t('Vollständigen Namen zur Bestätigung eingeben','Enter the full name to confirm'),'','text',true);submit_button(t('Schüler endgültig löschen','Permanently delete student'),'danger');?></form></details><?php endif ?>
+</section>
+<details class="danger-zone"><summary><?=e(t('Schüler löschen','Delete student'))?></summary>
+    <?php /* Said before the tap: the change log records what was deleted, but
+             nothing brings it back. */ ?>
+    <p><?=e(t('Das lässt sich nicht rückgängig machen. Die Änderungen verzeichnen zwar, was gelöscht wurde, stellen es aber nicht wieder her. Nur möglich, wenn keine Beiträge vorhanden sind – sonst die Mitgliedschaft beenden.','This cannot be undone. The change log records what was deleted, but it cannot bring it back. Only possible when no charges exist – otherwise, end the membership.'))?></p>
+    <?php /* Deleting the student leaves the login standing - the foreign key only
+             unhooks it - so it would turn up under Konten with nobody behind it. */
+    if($login): ?><p><?=e($firstName.t(' hat einen Zugang. Lösche ihn vorher, sonst bleibt er unter „Konten“ ohne Schüler übrig.',' has an access. Delete it first, or it is left under “Accounts” with no student.'))?></p><?php endif ?>
+    <?php start_form('student_delete',['id'=>$id]);input('confirmation',t('Vollständigen Namen zur Bestätigung eingeben','Enter the full name to confirm'),'','text',true);submit_button(t('Schüler endgültig löschen','Permanently delete student'),'danger');?></form>
+</details>
+<?php endif ?>
 <?php elseif($tab==='contacts'): $contacts=student_contacts($id); ?>
 <section class="card">
     <div class="section-heading"><h2><?=e(t('Notfallkontakte','Emergency contacts'))?></h2></div>
@@ -150,7 +204,7 @@ endforeach ?></div></section><?php endif ?>
     <?php if(!$contacts)echo '<p class="muted">'.e(t('Noch keine Kontakte.','No contacts yet.')).'</p>';
     foreach($contacts as $c): ?>
     <div class="record-row">
-        <div><strong><?=e($c['owner_name'])?></strong><?php if((int)$c['is_primary'])badge(t('Standardkontakt','Standard contact'),'green');?>
+        <div><div class="badge-line"><strong><?=e($c['owner_name'])?></strong><?php if((int)$c['is_primary'])badge(t('Standardkontakt','Standard contact'),'green');?></div>
             <p><?=e($c['relation_label'])?></p>
             <?php if($c['phone']):?><a href="tel:<?=e(preg_replace('/[^0-9+]/','',$c['phone']))?>"><?=e($c['phone'])?></a><?php endif ?>
             <p><?=e($c['email']?:t('Keine E-Mail-Adresse','No email address'))?></p></div>
@@ -165,7 +219,7 @@ endforeach ?></div></section><?php endif ?>
     </details>
     <?php endforeach ?>
 </section>
-<section class="card"><h2><?=e(t('Notfallkontakt hinzufügen','Add an emergency contact'))?></h2>
+<section class="card" id="add-contact"><h2><?=e(t('Notfallkontakt hinzufügen','Add an emergency contact'))?></h2>
     <?php start_form('contact_add',['student_id'=>$id]);
     // The first contact a child has is the standard one by definition, so it is
     // the one that needs an address to send an invoice to.
@@ -195,7 +249,7 @@ endforeach ?></div></section><?php endif ?>
     <?php endforeach ?>
 </section>
 <?php elseif($tab==='classes'): $mine=student_enrolments($id); $requests=student_requests($id); ?>
-<section class="card">
+<section class="card" id="courses">
     <h2><?=e(t('Kurse','Courses'))?></h2>
     <p class="muted"><?=e(t('Jede Kursteilnahme hat ihren eigenen Tarif. Ein Kind kann in mehreren Kursen sein und in jedem etwas anderes zahlen.','Each enrolment has its own tariff. A child can be in several courses and pay something different for each.'))?></p>
     <?php if(!$mine)echo '<p class="muted">'.e(t('Noch in keinem Kurs.','Not in any course yet.')).'</p>';
@@ -203,8 +257,8 @@ endforeach ?></div></section><?php endif ?>
     <div class="record-row<?=$past?' is-past':''?>">
         <div>
             <strong><a href="<?=e(url('classes',['id'=>$row['class_id']]))?>"><?=e($row['class_name'])?></a></strong>
-            <p><?=e($row['tariff_name']?:t('Kein Tarif gewählt','No tariff chosen'))?><?php
-                if($price['cents']!==null) echo ' · '.e(money($price['cents']));
+            <p class="badge-line"><span><?=e($row['tariff_name']?:t('Kein Tarif gewählt','No tariff chosen'))?><?php
+                if($price['cents']!==null) echo ' · '.e(money($price['cents']));?></span><?php
                 if($price['own']) badge(t('Eigener Preis','Own price'),'amber');
             ?></p>
             <small><?=e($past?t('Ausgetreten am ','Left on ').fmt_date($row['left_on']):t('Dabei seit ','Member since ').fmt_date($row['joined_on']))?><?php
@@ -276,25 +330,26 @@ endforeach ?></div></section><?php endif ?>
 </section>
 
 <?php $open=courses_open_to($id); if($open): ?>
-<section class="card">
+<section class="card" id="add-course">
     <h2><?=e($staff?t('In einen Kurs eintragen','Add to a course'):t('Freie Kurse','Courses you could join'))?></h2>
     <?php if(!$staff): ?><p class="muted"><?=e(t('Deine Anfrage geht an die Trainerin. Erst wenn sie zustimmt, bist du angemeldet.','Your request goes to the trainer. You are enrolled once she agrees.'))?></p><?php endif ?>
     <?php $pattern=class_days_for(array_column($open,'id'));
     foreach($open as $row): $full=course_is_full($row); $offered=class_tariffs((int)$row['id']); ?>
-    <div class="record-row">
+    <div class="record-row with-form">
         <div>
-            <strong><?=e($row['name'])?></strong>
+            <?php /* "Voll" is said of the course, so it stands by the course's
+                     name - which is also where the eye looks for why this row,
+                     alone, has nothing to press. */ ?>
+            <div class="badge-line"><strong><?=e($row['name'])?></strong><?php if($full)badge(t('Voll','Full'),'red');?></div>
             <p><?=e(class_schedule($row,$pattern[(int)$row['id']]??[]))?></p>
             <small><?=e($offered?implode(' | ',array_map(fn($x)=>$x['name'].': '.tariff_summary($x),$offered)):t('Noch kein Tarif hinterlegt','No tariff set yet'))?></small>
-            <?php if($full)badge(t('Voll','Full'),'red');?>
         </div>
-        <?php if(!$full): ?>
-        <div class="row-actions">
-            <?php start_form('enrolment_request',['student_id'=>$id,'class_id'=>$row['id'],'kind'=>'join'],'inline-form');
+        <?php if(!$full){
+            start_form('enrolment_request',['student_id'=>$id,'class_id'=>$row['id'],'kind'=>'join'],'row-form');
             if($offered) select_field('tariff_id',t('Tarif','Tariff'),array_column($offered,'name','id'),(int)$offered[0]['id']);
-            submit_button($staff?t('Eintragen','Enrol'):t('Anmeldung anfragen','Ask to join'),'secondary');?></form>
-        </div>
-        <?php endif ?>
+            submit_button($staff?t('Eintragen','Enrol'):t('Anmeldung anfragen','Ask to join'),'secondary');
+            echo '</form>';
+        } ?>
     </div>
     <?php endforeach ?>
 </section>
@@ -329,7 +384,7 @@ endforeach ?></div></section><?php endif ?>
     foreach($invoices as $inv): ?>
     <div class="record-row">
         <div>
-            <strong><?=e($inv['number'])?></strong> <?php badge(invoice_status_label($inv['status']),invoice_status_tone($inv['status'])); ?>
+            <div class="badge-line"><strong><?=e($inv['number'])?></strong><?php badge(invoice_status_label($inv['status']),invoice_status_tone($inv['status'])); ?></div>
             <p><?=e(money((int)$inv['gross_cents']))?><?php if((int)$inv['tax_cents']>0)echo ' '.e(t('inkl. ','incl. ').money((int)$inv['tax_cents']).' '.t('USt','VAT'));?>
                · <?=e(t('zahlbar bis ','payable by ').fmt_date((string)$inv['due_on']))?></p>
             <small><?=e(t('Ausgestellt am ','Issued ').fmt_date((string)$inv['issued_on']))?><?php

@@ -194,26 +194,273 @@ function stop_impersonation(): void {
 // "This is broken"
 // ---------------------------------------------------------------------------
 
+/*
+ * The last steps somebody took, so a report says how they got where it broke
+ * (ADR 0009). Kept in the session, never in the database: a GET must not write,
+ * and the trail is only ever read at the moment somebody files a report.
+ *
+ * Posted values are kept, because "what did you type?" is the question a report
+ * otherwise cannot answer. Secrets never are - see is_secret_field() - and
+ * everything is cut to a size a session file can carry into every request.
+ */
+
+/** How many steps a report carries, oldest first. */
+const REPORT_STEPS = 8;
+/** Pages that are not somewhere a person went: pictures, the icon, the manifest. */
+const REPORT_UNRECORDED_PAGES = ['download', 'icon', 'manifest'];
+
+/**
+ * Write down the request being served, for a report filed later.
+ *
+ * Called once, from public/index.php, before the POST branch: that branch
+ * redirects and never comes back, so recorded anywhere later the trail would
+ * have a hole exactly where a form was sent.
+ *
+ * Only while somebody is signed in. That leaves out the login form, with the
+ * address typed into it, and every token link opened by nobody in particular;
+ * an anonymous visitor cannot file a report anyway. The trail belongs to one
+ * account: when a different one is signed in - after an idle expiry on a shared
+ * phone, or at the start of looking through somebody else's eyes - it starts
+ * again rather than handing one person's typing to another's report.
+ *
+ * One of the two places allowed to read $_POST outside an action (ADR 0009): it
+ * copies input into the session for display and acts on none of it.
+ */
+function record_step(string $page): void {
+    if (in_array($page, REPORT_UNRECORDED_PAGES, true)) return;
+    $account = current_user();
+    if (!$account) return;
+    $method = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' ? 'POST' : 'GET';
+    $action = $method === 'POST' && is_scalar($_POST['action'] ?? null) ? (string)$_POST['action'] : '';
+    // The report itself is not a step on the way to the problem, and the
+    // steps before it are the ones it is meant to carry.
+    if ($action === 'feedback_send') return;
+
+    if ((int)($_SESSION['steps_account'] ?? 0) !== (int)$account['id']) {
+        $_SESSION['steps'] = [];
+        $_SESSION['steps_account'] = (int)$account['id'];
+    }
+    $step = ['at' => now(), 'method' => $method, 'url' => report_url()];
+    if ($method === 'POST') {
+        $step['action'] = report_text($action, 60);
+        $step['from']   = form_origin();
+        // The form token and the request id are on every form and say nothing
+        // about this one - the token would only ever read *** - and the action
+        // and where it came from have their own fields above. is_secret_field()
+        // still names csrf, for remember_input() and for any other use.
+        $step['fields'] = report_input(array_diff_key($_POST,
+            array_flip(['csrf', 'request_id', 'action', 'return_page', 'return_id', 'return_tab'])));
+        $step['files']  = report_files();
+    } elseif (is_array($_SESSION['flash'] ?? null)) {
+        // The outcome of the POST before this page, which redirected here. The
+        // layout shows it and forgets it later in this same request.
+        $step['flash'] = ['kind' => report_text((string)($_SESSION['flash']['kind'] ?? ''), 20),
+                          'text' => report_text((string)($_SESSION['flash']['message'] ?? ''))];
+    }
+    $steps = is_array($_SESSION['steps'] ?? null) ? $_SESSION['steps'] : [];
+    $steps[] = $step;
+    $_SESSION['steps'] = array_slice($steps, -REPORT_STEPS);
+}
+
+/** The trail of the account signed in now, oldest step first. */
+function recent_steps(): array {
+    $account = current_user();
+    if (!$account || (int)($_SESSION['steps_account'] ?? 0) !== (int)$account['id']) return [];
+    return array_values(is_array($_SESSION['steps'] ?? null) ? $_SESSION['steps'] : []);
+}
+
+/**
+ * Where the form being sent was: its page, record and tab.
+ *
+ * Read from the return_* fields every start_form() writes, because that is the
+ * page the form was really on - the back button can show a page without
+ * requesting it, so the last step in the trail is not always it.
+ */
+function form_origin(): array {
+    $read = fn(string $key): string => is_scalar($_POST[$key] ?? null) ? trim((string)$_POST[$key]) : '';
+    return ['page' => report_text($read('return_page'), 60), 'id' => (int)$read('return_id'),
+            'tab' => report_text($read('return_tab'), 60)];
+}
+
+/** Text as a report may keep it: valid UTF-8, and at most $max characters. */
+function report_text(string $text, int $max = 200): string {
+    $text = mb_scrub($text, 'UTF-8');
+    return mb_strlen($text) > $max ? mb_substr($text, 0, $max - 1) . '…' : $text;
+}
+
+/**
+ * Submitted values as a report may keep them.
+ *
+ * A secret is replaced by *** whatever was typed, even nothing, and at every
+ * depth, so custom[api_token] is as safe as password. Otherwise: 40 fields,
+ * 20 items per array, two levels of arrays, 200 characters per value. On top of
+ * that the fields of one step stop at 16 kB: the limits multiply out to
+ * megabytes for a form built to do so, and this sits in the session for the
+ * next eight requests. No form in the portal comes near it.
+ */
+function report_input(array $input, int $depth = 0): array {
+    $out = []; $bytes = 0;
+    foreach ($input as $key => $value) {
+        if (count($out) >= ($depth === 0 ? 40 : 20)) break;
+        // Judged on the whole name, before it is shortened: cut first, and a
+        // long name ending in "password" would lose the word that marks it.
+        $secret = is_secret_field((string)$key);
+        $key = report_text((string)$key, 60);
+        if ($secret) $kept = '***';
+        elseif (is_array($value)) $kept = $depth < 2 ? report_input($value, $depth + 1) : '…';
+        else $kept = report_text(is_scalar($value) ? (string)$value : '');
+        if ($depth === 0) {
+            $bytes += strlen((string)json_encode([$key => $kept], JSON_UNESCAPED_UNICODE));
+            if ($bytes > 16384) { $out['…'] = '…'; break; }
+        }
+        $out[$key] = $kept;
+    }
+    return $out;
+}
+
+/**
+ * What was attached to the form: size, the type the browser claimed, and PHP's
+ * error code for each file. Never the name, which is the person's own words,
+ * and never the content.
+ */
+function report_files(): array {
+    $describe = fn(mixed $size, mixed $type, mixed $error): array =>
+        ['bytes' => (int)$size, 'type' => report_text(is_scalar($type) ? (string)$type : '', 100), 'error' => (int)$error];
+    $out = [];
+    foreach (array_slice($_FILES, 0, 20, true) as $field => $file) {
+        if (!is_array($file) || !isset($file['error'])) continue;
+        $key = report_text((string)$field, 60);
+        if (!is_array($file['error'])) { $out[$key] = $describe($file['size'] ?? 0, $file['type'] ?? '', $file['error']); continue; }
+        // name="files[]": PHP turns the list inside out, one array per property.
+        foreach (array_slice(array_keys($file['error']), 0, 20) as $i)
+            $out[$key][] = $describe($file['size'][$i] ?? 0, $file['type'][$i] ?? '', is_scalar($file['error'][$i]) ? $file['error'][$i] : 0);
+    }
+    return $out;
+}
+
+/**
+ * The address of this request: the path, then the query with secrets masked.
+ *
+ * Rebuilt from $_GET rather than copied from REQUEST_URI, so an email-change
+ * token or an unsubscribe signature is never written down, not even once.
+ */
+function report_url(): string {
+    $path = explode('?', (string)($_SERVER['REQUEST_URI'] ?? ''), 2)[0];
+    $query = http_build_query(report_input($_GET), '', '&', PHP_QUERY_RFC3986);
+    // '*' is legal in a query string, so *** is written as itself rather than
+    // as %2A%2A%2A, which nobody reading a report would recognise.
+    return report_text($path . ($query !== '' ? '?' . str_replace('%2A', '*', $query) : ''), 300);
+}
+
 /**
  * Everything worth knowing about the request that was being made.
  *
  * Collected by the server rather than asked of the person: nobody reporting a
  * problem on a phone is going to find their browser version, and the answer
- * "what were you doing?" is already in the page they were on.
+ * "what were you doing?" is already in the steps that led here.
+ *
+ * There is no query string and no Referer here any more. The report is a POST
+ * to index.php, which has no query, and the portal sends no-referrer, so both
+ * were empty in every report ever filed; `on` and `steps` are what replaced them.
  */
 function feedback_context(string $page): array {
     return [
         'page'        => $page,
-        'query'       => array_map(fn($v) => is_scalar($v) ? (string)$v : '', array_slice($_GET, 0, 12)),
+        'on'          => form_origin(),
+        'steps'       => recent_steps(),
         'user_agent'  => mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 400),
         'ip'          => (string)($_SERVER['REMOTE_ADDR'] ?? ''),
-        'referer'     => mb_substr((string)($_SERVER['HTTP_REFERER'] ?? ''), 0, 400),
         'language'    => mb_substr((string)($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? ''), 0, 120),
         'locale'      => locale(),
         'version'     => app_version(),
         'php'         => PHP_VERSION,
         'at'          => now(),
     ];
+}
+
+/**
+ * A report's context as it is stored.
+ *
+ * One malformed byte in a user agent used to be enough for json_encode() to
+ * return false and the whole context to be stored as nothing; it is replaced
+ * instead, and the rest of the report survives.
+ */
+function feedback_context_json(array $context): string {
+    return json_encode($context, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}';
+}
+
+/**
+ * The context of a report once it is done: what was typed is gone, the way
+ * there stays.
+ *
+ * A report holds copies of what people typed, and a report that is dealt with
+ * no longer needs them. URLs, methods, actions and the names of the fields are
+ * kept, because "Erledigt" is sometimes wrong and the steps are what makes an
+ * old report readable; each value becomes null, which a page can tell apart
+ * from something that was sent empty. Not undoable - that is the point.
+ */
+function feedback_forget_typed_values(array $context): array {
+    foreach ((array)($context['steps'] ?? []) as $i => $step) {
+        if (!is_array($step)) continue;
+        foreach (['fields', 'files'] as $part)
+            if (isset($step[$part]) && is_array($step[$part]))
+                $context['steps'][$i][$part] = array_fill_keys(array_keys($step[$part]), null);
+    }
+    $context['values_dropped_at'] ??= now();
+    return $context;
+}
+
+/**
+ * How long a report stays once it is marked done. The owner's decision, and the
+ * privacy notice can name it, so it is a fixed rule rather than a setting: a
+ * value she could change without a screen to change it on is not a choice, it
+ * is a second place for the notice and the code to disagree.
+ */
+const FEEDBACK_DONE_KEEP_DAYS = 30;
+
+/**
+ * The context of a report being marked done: what was typed is dropped, and
+ * the clock for deleting it starts. `done_at` is written every time, so a
+ * report opened again and done again is kept for the full period from then;
+ * `values_dropped_at` keeps the first time, because that is when they went.
+ */
+function feedback_mark_done(array $context): array {
+    return ['done_at' => now()] + feedback_forget_typed_values($context);
+}
+
+/**
+ * Delete reports that were marked done more than FEEDBACK_DONE_KEEP_DAYS ago.
+ *
+ * The done time lives in context_json, so no column was needed for it. A done
+ * report that carries no done time - one marked done before this rule existed -
+ * is given one now, which keeps it for the full period from the first prune
+ * rather than guessing it was done on the day it was filed.
+ *
+ * The screenshot is not deleted here: prune_uploads() removes a picture once no
+ * row points at it, and it runs straight after this in prune_expired().
+ *
+ * Each write repeats the state and the context it read, so a report she opens
+ * again while this runs is left alone rather than deleted from under her.
+ */
+function prune_done_feedback(): int {
+    $cutoff = gmdate('Y-m-d H:i:s', time() - FEEDBACK_DONE_KEEP_DAYS * 86400);
+    return transactional(function () use ($cutoff): int {
+        $removed = 0;
+        foreach (rows("SELECT id, context_json FROM feedback WHERE state='done'") as $report) {
+            $raw = (string)$report['context_json'];
+            $context = json_decode($raw, true);
+            if (!is_array($context)) $context = [];
+            $doneAt = (string)($context['done_at'] ?? $context['values_dropped_at'] ?? '');
+            if ($doneAt === '') {
+                run("UPDATE feedback SET context_json=? WHERE id=? AND state='done' AND context_json=?",
+                    [feedback_context_json(['done_at' => now()] + $context), $report['id'], $raw]);
+            } elseif ($doneAt < $cutoff) {
+                $removed += run("DELETE FROM feedback WHERE id=? AND state='done' AND context_json=?",
+                                [$report['id'], $raw])->rowCount();
+            }
+        }
+        return $removed;
+    });
 }
 
 /** Feedback waiting to be looked at. */
