@@ -150,8 +150,8 @@ entry is highlighted:
 | Page | Owner entry | Reached from |
 | --- | --- | --- |
 | `invoices` | Geld | a „Beiträge · Rechnungen" switch at the top of both pages, and the child's payments tab |
-| `compose`, `outbox`, `news` (for staff) | Nachrichten | links at the top of Nachrichten: „Gruppe anschreiben", „Neuigkeiten", „Postausgang" |
-| `manage`, `accounts`, `history` | Einstellungen (admin) or Verwaltung (trainer) | the Einstellungen page begins with a hub of cards: Verwaltung, Konten, Postausgang, Änderungen, Einrichtung ansehen. Verwaltung links to Konten for trainers. |
+| `compose`, `outbox`, `news` (for staff) | Nachrichten | the chips at the top of Nachrichten: „Gruppe anschreiben", „Neuigkeiten", „Postausgang". `outbox` is also linked under the SMTP test result, which is where a failed send is noticed. |
+| `manage`, `accounts`, `history` | Einstellungen (admin) or Verwaltung (trainer) | the Einstellungen page begins with a hub of cards: Verwaltung, Konten, Änderungen, Einrichtung ansehen. Postausgang is **not** on the hub. Verwaltung links to Konten for trainers. |
 | `student`, `classes` detail | Schüler, Kurse | as today |
 
 `sidebar_nav()`'s section branch has nothing left to render, so it is deleted.
@@ -171,6 +171,9 @@ entry is highlighted:
   box too. They are membership dates, not prices, and **move** to „Einteilung" rather than
   disappear. The setting `default_tariff` fed only that box, so it is deleted from
   `defaults.php`. A leftover row in `settings` is harmless.
+  - The family's read-only „Mitgliedschaft" card (`views/student.php`) loses its „Tarif" and
+    „Vereinbarter Preis" rows for the same reason: they show columns that bill nobody. It
+    keeps the two dates.
 - **(9) Automatic charges.** `auto_billing` stays declared in `defaults.php` and becomes
   `internal`, so it is not listed twice. A new admin-only action, `auto_billing_save`, sits on
   the Beiträge page.
