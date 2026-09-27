@@ -75,7 +75,7 @@ does_not_throw(fn() => make_student(['first_name'=>'Auch', 'last_name'=>'Ohne'])
 case_('Inviting a student makes a login of their own, at their address');
 mail_ready(true);
 $mia = make_student(['first_name'=>'Mia', 'last_name'=>'Gruber', 'email'=>'Gruber.Familie@Beispiel.test']);
-act('student_invite', ['student_id'=>(string)$mia, 'email'=>'', 'name'=>'', 'locale'=>'de']);
+act('student_invite', ['student_id'=>(string)$mia]);
 $miaLogin = one('SELECT * FROM accounts WHERE id=?', [(int)scalar('SELECT account_id FROM students WHERE id=?', [$mia])]);
 ok($miaLogin !== null, 'a login was made and the student points at it');
 is_same('student', $miaLogin['role'] ?? null, 'a student’s login');
@@ -89,13 +89,29 @@ ok(isset($logged['account_id']), 'the student’s change log says they got a log
 is_same('gruber.familie@beispiel.test', history_value($logged['account_id']['to'], 'account_id'),
         'and names it by its address, not by a number');
 
+case_('Everything about the new login comes from the student, and a long name is cut to fit');
+/* The page offers a button, not a form. The action used to read an address, a
+   name and a language that nothing sends - a way round the student's own
+   address for anybody writing their own POST. And a name built from two
+   100-character halves is 201 characters, where a login's name holds 160:
+   MariaDB refused the insert, SQLite stored it whole. */
+$longName = make_student(['first_name'=>str_repeat('Ä', 100), 'last_name'=>str_repeat('B', 100), 'email'=>'lang@beispiel.test']);
+is_same(201, mb_strlen(student($longName)['first_name'].' '.student($longName)['last_name']), 'the name really is 201 characters');
+act('student_invite', ['student_id'=>(string)$longName, 'email'=>'anders@beispiel.test', 'name'=>'Jemand Anderes', 'locale'=>'en']);
+$longLogin = one('SELECT * FROM accounts WHERE id=?', [(int)student($longName)['account_id']]);
+is_same('lang@beispiel.test', $longLogin['email'] ?? null, 'an address posted with it is not used; the student’s is');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['anders@beispiel.test']), 'and nothing was made at it');
+is_same(TEXT_LINE_MAX, mb_strlen((string)($longLogin['name'] ?? '')), 'the name is cut to the 160 a login holds');
+is_same(str_repeat('Ä', 100).' '.str_repeat('B', 59), $longLogin['name'] ?? null, 'from the end, by characters rather than bytes');
+is_same('de', $longLogin['locale'] ?? null, 'and a posted language is not used either');
+
 case_('A brother at the same address is refused, in words, before anything is written');
 $brother = make_student(['first_name'=>'Jonas', 'last_name'=>'Gruber', 'email'=>'gruber.familie@beispiel.test']);
 $revisionBefore = (int)scalar('SELECT revision FROM students WHERE id=?', [$brother]);
 $accountsBefore = (int)scalar('SELECT COUNT(*) FROM accounts');
-throws(fn() => act('student_invite', ['student_id'=>(string)$brother, 'email'=>'', 'name'=>'']),
+throws(fn() => act('student_invite', ['student_id'=>(string)$brother]),
        'the second student at a login’s address is refused', 'eigene E-Mail-Adresse');
-throws(fn() => act('student_invite', ['student_id'=>(string)$brother, 'email'=>'', 'name'=>'']),
+throws(fn() => act('student_invite', ['student_id'=>(string)$brother]),
        'and the refusal names the address, so she knows which one', 'gruber.familie@beispiel.test');
 is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$brother]), 'he is not put on his sister’s login');
 is_same($accountsBefore, (int)scalar('SELECT COUNT(*) FROM accounts'), 'and no second login was made for the address');
@@ -104,34 +120,32 @@ is_same($revisionBefore, (int)scalar('SELECT revision FROM students WHERE id=?',
 is_same(1, links_queued_to('gruber.familie@beispiel.test'), 'nor was a second invitation sent');
 
 case_('A staff address is refused the same way, and stays staff');
-$paul = make_student(['first_name'=>'Paul', 'last_name'=>'Mayr']);
-throws(fn() => act('student_invite', ['student_id'=>(string)$paul, 'email'=>'die-trainerin@beispiel.test', 'name'=>'']),
+$paul = make_student(['first_name'=>'Paul', 'last_name'=>'Mayr', 'email'=>'die-trainerin@beispiel.test']);
+throws(fn() => act('student_invite', ['student_id'=>(string)$paul]),
        'a trainer’s address cannot become a student’s login', 'eigene E-Mail-Adresse');
 is_same('trainer', (string)scalar('SELECT role FROM accounts WHERE email=?', ['die-trainerin@beispiel.test']), 'and it is still hers');
 is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$paul]), 'and the student is left without one rather than half-attached');
+run('UPDATE students SET email=? WHERE id=?', ['paul@beispiel.test', $paul]);   // he is given one of his own
 
 case_('A student who already has a login is not given a second one');
-throws(fn() => act('student_invite', ['student_id'=>(string)$mia, 'email'=>'mia-neu@beispiel.test', 'name'=>'']),
+throws(fn() => act('student_invite', ['student_id'=>(string)$mia]),
        'inviting her again is refused', 'schon ein eigenes Konto');
-is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['mia-neu@beispiel.test']), 'and nothing was made at the new address');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['gruber.familie@beispiel.test']), 'and no second login was made');
 
 case_('Without mail, an invitation says what to do instead, and writes nothing');
 mail_ready(false);
-throws(fn() => act('student_invite', ['student_id'=>(string)$paul, 'email'=>'paul@beispiel.test', 'name'=>'']),
+throws(fn() => act('student_invite', ['student_id'=>(string)$paul]),
        'the invitation is refused', 'direkt mit Passwort');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['paul@beispiel.test']), 'and no login was left waiting without a link');
 
 case_('An administrator can make a student’s login on the spot, with a password');
-throws(fn() => act('student_invite', ['student_id'=>(string)$paul, 'mode'=>'direct', 'email'=>'paul@beispiel.test',
-                                      'name'=>'', 'password'=>'Federball-2026-Halle!']),
+throws(fn() => act('student_invite', ['student_id'=>(string)$paul, 'mode'=>'direct', 'password'=>'Federball-2026-Halle!']),
        'a trainer may not', 'Administratoren');
 sign_in_as($admin);
-throws(fn() => act('student_invite', ['student_id'=>(string)$paul, 'mode'=>'direct', 'email'=>'paul@beispiel.test',
-                                      'name'=>'', 'password'=>'badminton123']),
+throws(fn() => act('student_invite', ['student_id'=>(string)$paul, 'mode'=>'direct', 'password'=>'badminton123']),
        'a guessable password is refused', 'erraten');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['paul@beispiel.test']), 'and neither refusal wrote a login');
-act('student_invite', ['student_id'=>(string)$paul, 'mode'=>'direct', 'email'=>'paul@beispiel.test',
-                       'name'=>'', 'password'=>'Federball-2026-Halle!']);
+act('student_invite', ['student_id'=>(string)$paul, 'mode'=>'direct', 'password'=>'Federball-2026-Halle!']);
 $paulLogin = one('SELECT * FROM accounts WHERE email=?', ['paul@beispiel.test']);
 is_same((int)($paulLogin['id'] ?? 0), (int)scalar('SELECT account_id FROM students WHERE id=?', [$paul]), 'the login is his');
 is_same('active', $paulLogin['state'] ?? null, 'and works at once, without mail');
@@ -211,6 +225,39 @@ is_same((int)$miaBefore['revision'], (int)scalar('SELECT revision FROM students 
 mail_ready(true);
 throws(fn() => save_student($mia, ['email'=>'paul@beispiel.test']), 'nor can it move onto somebody else’s login', 'eigene E-Mail-Adresse');
 is_same('mia.gruber@beispiel.test', (string)scalar('SELECT email FROM students WHERE id=?', [$mia]), 'and stays where it was');
+is_same(0, address_drift(), 'the two copies agree');
+sign_in_as($trainer);
+
+case_('A staff login on a student’s record is not re-addressed from the student page');
+/* Left over from before one login per student: a student whose login is an
+   administrator's, still only invited. Re-addressing it from the student page
+   would send the administrator's invitation wherever the trainer typed - and
+   whoever opens it signs in as the administrator. */
+mail_ready(true);
+$bossLogin = make_account(['role'=>'admin', 'name'=>'Zweite Chefin', 'email'=>'zweite-chefin@beispiel.test',
+                           'state'=>'invited', 'verified_at'=>null]);
+$bossChild = make_student(['first_name'=>'Kind', 'last_name'=>'Der Chefin', 'email'=>'zweite-chefin@beispiel.test']);
+run('UPDATE students SET account_id=? WHERE id=?', [$bossLogin, $bossChild]);
+$bossAuth = (int)scalar('SELECT auth_version FROM accounts WHERE id=?', [$bossLogin]);
+sign_in_as($trainer);
+throws(fn() => save_student($bossChild, ['email'=>'trainerin-privat@beispiel.test']),
+       'the student page refuses, and says who can change it', 'Mitarbeiterkonto');
+is_same('zweite-chefin@beispiel.test', (string)scalar('SELECT email FROM accounts WHERE id=?', [$bossLogin]), 'the login is where it was');
+is_same(0, links_queued_to('trainerin-privat@beispiel.test'), 'and no invitation went to the address typed');
+is_same($bossAuth, (int)scalar('SELECT auth_version FROM accounts WHERE id=?', [$bossLogin]), 'nor did anything else happen to it');
+throws(fn() => transactional(fn() => change_login_address($bossLogin, 'trainerin-privat@beispiel.test')),
+       'the helper itself refuses it too, for whoever calls it next', 'Mitarbeiterkonto');
+mail_ready(false);
+throws(fn() => save_student($bossChild, ['email'=>'trainerin-privat@beispiel.test']),
+       'refused before anything else is checked: without mail it does not say „set up mail first“, as if that would let it through',
+       'Mitarbeiterkonto');
+mail_ready(true);
+run("UPDATE accounts SET state='active', verified_at=? WHERE id=?", [now(), $bossLogin]);   // she accepted, and signs in
+sign_in_as($bossLogin);
+does_not_throw(fn() => transactional(fn() => change_login_address($bossLogin, 'chefin-neu@beispiel.test')),
+               'while the administrator moving her own login, from the link she confirmed, still can');
+is_same('chefin-neu@beispiel.test', (string)scalar('SELECT email FROM accounts WHERE id=?', [$bossLogin]), 'and it moved');
+run('UPDATE students SET account_id=NULL WHERE id=?', [$bossChild]);
 is_same(0, address_drift(), 'the two copies agree');
 sign_in_as($trainer);
 
@@ -298,6 +345,10 @@ save_student($sibling, ['email'=>'clara@beispiel.test']);
 ok(!isset(array_column(students_needing_own_address(), null, 'id')[$sibling]), 'and once she has one, she is off the list');
 is_same($login, (int)(account_with_address(' Lena.Hofer@beispiel.test ')['id'] ?? 0), 'a page can ask who signs in with an address');
 is_same(null, account_with_address('niemand@beispiel.test'), 'and hear that nobody does');
+foreach (["\tLena.HOFER@Beispiel.test\n", ' LENA.hofer@beispiel.TEST '] as $spelling) {
+    is_same(email_value($spelling), email_normalised($spelling), 'an address is checked and looked up by one rule: '.json_encode($spelling));
+    is_same($login, (int)(account_with_address($spelling)['id'] ?? 0), 'and found however it was typed: '.json_encode($spelling));
+}
 
 // ---------------------------------------------------------------------------
 case_('A mail greets the student it belongs to, and staff by their own name');

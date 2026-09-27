@@ -244,12 +244,11 @@ function record_step(string $page): void {
     if ($method === 'POST') {
         $step['action'] = report_text($action, 60);
         $step['from']   = form_origin();
-        // The form token and the request id are on every form and say nothing
-        // about this one - the token would only ever read *** - and the action
-        // and where it came from have their own fields above. is_secret_field()
+        // The bookkeeping says nothing about this form, and the action and
+        // where it came from have their own fields above. Nor does the token,
+        // which is on every form and would only ever read ***; is_secret_field()
         // still names csrf, for remember_input() and for any other use.
-        $step['fields'] = report_input(array_diff_key($_POST,
-            array_flip(['csrf', 'request_id', 'action', 'return_page', 'return_id', 'return_tab'])));
+        $step['fields'] = report_input(array_diff_key($_POST, array_flip([...FORM_BOOKKEEPING_FIELDS, 'csrf'])));
         $step['files']  = report_files();
     } elseif (is_array($_SESSION['flash'] ?? null)) {
         // The outcome of the POST before this page, which redirected here. The
@@ -432,9 +431,10 @@ function feedback_mark_done(array $context): array {
  * Delete reports that were marked done more than FEEDBACK_DONE_KEEP_DAYS ago.
  *
  * The done time lives in context_json, so no column was needed for it. A done
- * report that carries no done time - one marked done before this rule existed -
+ * report that carries no done_at - one marked done before this rule existed -
  * is given one now, which keeps it for the full period from the first prune
- * rather than guessing it was done on the day it was filed.
+ * rather than guessing. values_dropped_at is not a done time: it is the first
+ * time only, and a report opened again and done since would be counted from it.
  *
  * The screenshot is not deleted here: prune_uploads() removes a picture once no
  * row points at it, and it runs straight after this in prune_expired().
@@ -450,7 +450,7 @@ function prune_done_feedback(): int {
             $raw = (string)$report['context_json'];
             $context = json_decode($raw, true);
             if (!is_array($context)) $context = [];
-            $doneAt = (string)($context['done_at'] ?? $context['values_dropped_at'] ?? '');
+            $doneAt = (string)($context['done_at'] ?? '');
             if ($doneAt === '') {
                 run("UPDATE feedback SET context_json=? WHERE id=? AND state='done' AND context_json=?",
                     [feedback_context_json(['done_at' => now()] + $context), $report['id'], $raw]);

@@ -86,6 +86,9 @@ if ($post && $state !== 'installed' && !$blockers) {
     if (!$errors) {
         try {
             if ($state === 'fresh') {
+                // The same keys as config/config.example.php and the suite's own
+                // tests/run-config.php; install_config_keys() names them, and the
+                // install suite holds all three to it.
                 $source = install_config_source([
                     'app_url' => $url, 'app_key' => install_app_key($configPath), 'db' => $db,
                     'timezone' => $form['timezone'],

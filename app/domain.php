@@ -71,7 +71,7 @@ function student_email(array $student): string {
  * account_using_email(), which holds the address until it commits.
  */
 function account_with_address(string $email): ?array {
-    $email=mb_strtolower(trim($email));
+    $email=email_normalised($email);
     return $email===''?null:one('SELECT * FROM accounts WHERE email=?',[$email]);
 }
 

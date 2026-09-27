@@ -71,6 +71,14 @@ case_('The example configuration and the written one describe the same file');
 $example = install_read_config(APP_ROOT . '/config/config.example.php');
 is_same(install_config_keys(), array_keys((array)$example), 'config.example.php carries the declared keys too');
 is_same(array_keys($values['db']), array_keys((array)($example['db'] ?? [])), 'including the same database keys');
+// The third copy: the file every suite run boots on. A key the installer
+// gains and the tests never write would be a key no test ever ran with.
+$runConfig = test_run_dir().'/keys-'.bin2hex(random_bytes(4)).'.php';
+write_run_config($runConfig, $values['db'], test_run_dir());
+$ran = install_read_config($runConfig);
+@unlink($runConfig);
+is_same(install_config_keys(), array_keys((array)$ran), 'and so does the configuration the suites run on');
+is_same(array_keys($values['db']), array_keys((array)($ran['db'] ?? [])), 'with the same database keys');
 
 case_('Re-running setup never invents a new encryption key');
 /* app_key decrypts the stored SMTP password and everything still in the mail

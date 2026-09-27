@@ -128,6 +128,8 @@ ok(!is_file(upload_dir('icon').'/'.$replaced), 'it is the one that was replaced'
 case_('A picture that cannot be the icon is refused, says why, and is gone');
 foreach ([[png_header(400, 300), 'quadratisch', 'a picture that is not square'],
           [png_header(120, 120), '180 × 180', 'a picture too small for the home screen'],
+          [png_header(2049, 2049), '2048 × 2048', 'a picture larger than any home screen needs'],
+          [png_header(30000, 30000), 'höchstens', 'a picture every phone would have to unpack into gigabytes'],
           ["GIF89a\x01\x00\x01\x00\x80\x00\x00", 'PNG', 'a GIF with a .png on the end'],
           ['<?php echo 1;', 'PNG', 'something that is not a picture at all']] as [$bytes, $says, $what]) {
     $name = icon_file($bytes);
@@ -135,7 +137,7 @@ foreach ([[png_header(400, 300), 'quadratisch', 'a picture that is not square'],
     ok(!is_file(upload_dir('icon').'/'.$name), 'and '.$what.' is deleted there and then');
 }
 throws(fn() => check_portal_icon(str_repeat('0', 32).'.png'), 'a file that never arrived is refused rather than trusted');
-foreach ([[180, 180], [1024, 1024]] as [$w, $h]) {
+foreach ([[180, 180], [1024, 1024], [2048, 2048]] as [$w, $h]) {
     $name = icon_file(png_header($w, $h));
     does_not_throw(fn() => check_portal_icon($name), $w.' × '.$h.' is accepted');
     ok(is_file(upload_dir('icon').'/'.$name), 'and kept');

@@ -2,12 +2,18 @@
 declare(strict_types=1);
 
 /**
- * The configuration file for one suite run against a real database.
+ * The configuration file for one suite run.
  *
- * Shared by tests/mariadb-local.sh and tests/existing-database.sh, so a key the
- * application starts to require is added once rather than in each script, and
- * no value is ever pasted into PHP source without var_export() quoting it.
- * tests/harness.php still writes its own copy for the sqlite driver.
+ * The one writer for all three callers - tests/mariadb-local.sh, tests/
+ * existing-database.php (behind existing-database.sh) and tests/harness.php for
+ * the sqlite driver - so a key the application starts to require is added once
+ * rather than in each, and no value is ever pasted into PHP source without
+ * var_export() quoting it.
+ *
+ * The same keys are written by the installer (install_config_source() in
+ * app/install.php, called from public/setup.php) and listed in
+ * config/config.example.php; install_config_keys() names them, and the install
+ * suite checks all three against it.
  *
  * $db is either the connection itself or the path of a file that returns it.
  * A path keeps a saved password in the one file that already holds it.

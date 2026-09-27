@@ -69,6 +69,12 @@ ok(!function_exists('revert_version'), 'the undo is gone rather than hidden');
 $actions = (string)file_get_contents(APP_ROOT.'/app/actions_config.php');
 ok(!str_contains($actions, 'version_revert'), 'and so is the action behind its button');
 ok(!str_contains((string)file_get_contents(APP_ROOT.'/views/history.php'), 'version_revert'), 'and the button');
+$deleted = make_student(['first_name'=>'Tim','last_name'=>'Weg']);
+act('student_delete', ['id'=>(string)$deleted, 'confirmation'=>'Tim Weg']);
+$said = (string)($_SESSION['flash']['message'] ?? '');
+ok(str_contains($said, 'wiederherstellen lässt es sich nicht'), 'deleting a student says it cannot be restored');
+ok(!str_contains($said, 'rückgängig'), 'rather than promising an undo that no longer exists');
+is_same('delete', history_for('students', $deleted)[0]['operation'] ?? null, 'and what it points at is really there');
 
 case_('A failed change records no version');
 $sid2 = make_student(['first_name'=>'Heil']);

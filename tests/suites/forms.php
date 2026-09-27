@@ -85,6 +85,18 @@ $_POST = ['csrf'=>'abc','request_id'=>'def','action'=>'x','return_page'=>'studen
 remember_input('student_save');
 is_same(['q'=>'Hofer'], $_SESSION['form_input']['fields'], 'only the field she filled in is kept');
 
+/* One list, FORM_BOOKKEEPING_FIELDS, is what remember_input() and record_step()
+   both leave out. It is only right while it is exactly what a form adds on its
+   own, so read that off a rendered form: a field start_form() gains tomorrow
+   fails here until the list names it too. */
+$GLOBALS['page'] = 'student'; $_GET = ['id'=>7, 'tab'=>'contacts'];
+ob_start(); start_form('student_save', ['id'=>7]); echo '</form>'; $rendered = (string)ob_get_clean();
+preg_match_all('/<input type="hidden" name="([^"]+)"/', $rendered, $hidden);
+$added = array_values(array_diff($hidden[1], ['id', 'csrf']));
+sort($added); $declared = FORM_BOOKKEEPING_FIELDS; sort($declared);
+is_same($declared, $added, 'the bookkeeping list is exactly what every form adds besides its token');
+$_GET = [];
+
 case_('An unticked box stays unticked when the form comes back');
 $_POST = ['return_page'=>'student','return_id'=>'0','return_tab'=>'','first_name'=>'Lena'];
 remember_input('student_save');

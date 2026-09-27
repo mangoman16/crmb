@@ -130,9 +130,9 @@ set_setting('privacy_ready', true);
 $first = make_student(['first_name'=>'Erstes','last_name'=>'Kind', 'email'=>'erstes-kind@beispiel.test']);
 fixture('contacts', ['student_id'=>$first, 'owner_name'=>'Opa Kind', 'relation_label'=>'Großvater',
                      'phone'=>'+43 660 7654321', 'email'=>'opa-kind@beispiel.test', 'is_primary'=>1]);
-act('student_invite', ['student_id'=>(string)$first, 'email'=>'', 'name'=>'']);
+act('student_invite', ['student_id'=>(string)$first]);
 $account = one('SELECT * FROM accounts WHERE id=?', [(int)student($first)['account_id']]);
-is_same('erstes-kind@beispiel.test', $account['email'] ?? null, 'with no address typed, the one on the student is used');
+is_same('erstes-kind@beispiel.test', $account['email'] ?? null, 'the one on the student is used');
 is_same('Erstes Kind', $account['name'] ?? null, 'and the student’s own name, because the login is theirs');
 is_same(1, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE recipient=? AND category='security'", ['erstes-kind@beispiel.test']),
         'the invitation is queued to that address');

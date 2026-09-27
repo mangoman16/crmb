@@ -519,8 +519,9 @@ function asset_url(string $file): string { return rtrim((string)config('app_url'
  *   steps     oldest first: time, line, flash, flash_kind
  *   here      index of the reported page in steps, or null
  *   recorded  whether the report carries a trail at all
- *   typed     whether any step still holds what was typed or attached;
- *             marking the report done deletes that (feedback_forget_typed_values())
+ *
+ * Whether the typed values are still there is not asked here: the page says so
+ * from values_dropped_at, which feedback_forget_typed_values() writes.
  */
 function report_trail(array $context): array {
     $recorded = array_key_exists('steps', $context);
@@ -544,16 +545,14 @@ function report_trail(array $context): array {
         $before = $prior >= 0 ? report_step_address($steps[$prior]) : '';
     }
 
-    $shown = []; $typed = false;
+    $shown = [];
     foreach ($steps as $step) {
-        foreach (['fields', 'files'] as $part)
-            if (is_array($step[$part] ?? null) && array_filter($step[$part], fn($v) => $v !== null)) $typed = true;
         $at = local_time(report_scalar($step['at'] ?? ''));
         $flash = is_array($step['flash'] ?? null) ? $step['flash'] : [];
         $shown[] = ['time' => $at ? $at->format('H:i:s') : '', 'line' => report_step_line($step),
                     'flash' => report_scalar($flash['text'] ?? ''), 'flash_kind' => report_scalar($flash['kind'] ?? '')];
     }
-    return ['address' => $address, 'before' => $before, 'steps' => $shown, 'here' => $here, 'recorded' => $recorded, 'typed' => $typed];
+    return ['address' => $address, 'before' => $before, 'steps' => $shown, 'here' => $here, 'recorded' => $recorded];
 }
 
 /** A stored value as text: a report is decoded JSON, so anything may be anything. */

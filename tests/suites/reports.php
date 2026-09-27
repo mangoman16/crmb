@@ -323,7 +323,7 @@ $filed = fn(string $state, array $context, string $screenshot = '') => fixture('
     'account_id'=>null, 'page'=>'dashboard', 'message'=>'Alter Bericht', 'context_json'=>feedback_context_json($context),
     'screenshot_name'=>$screenshot, 'state'=>$state, 'created_at'=>$daysAgo(45)]);
 $old       = $filed('done', ['done_at'=>$daysAgo(31), 'values_dropped_at'=>$daysAgo(31)], $oldShot = $shot());
-$oldOnlyDropped = $filed('done', ['values_dropped_at'=>$daysAgo(31)]);   // done before done_at existed
+$oldOnlyDropped = $filed('done', ['values_dropped_at'=>$daysAgo(31)]);   // done before done_at existed, perhaps more than once
 $recent    = $filed('done', ['done_at'=>$daysAgo(29)], $recentShot = $shot());
 $open      = $filed('new', [], $openShot = $shot());
 $reopened  = $filed('seen', ['done_at'=>$daysAgo(40), 'values_dropped_at'=>$daysAgo(40)]);
@@ -337,7 +337,9 @@ ok($still($old) && is_file(upload_dir('avatar').'/'.$oldShot), 'before: the 31-d
 prune_expired();
 ok(!$still($old), 'a report done 31 days ago is gone');
 ok(!is_file(upload_dir('avatar').'/'.$oldShot), 'and so is its screenshot');
-ok(!$still($oldOnlyDropped), 'counted from when its values were dropped, when that is all it has');
+ok($still($oldOnlyDropped), 'one with only the time its values were dropped is not counted from that, which is only the first time');
+ok((json_decode((string)scalar('SELECT context_json FROM feedback WHERE id=?', [$oldOnlyDropped]), true)['done_at'] ?? '') >= $daysAgo(0),
+   'it is given a done time now, like any report without one');
 ok($still($recent), 'one done 29 days ago stays');
 ok(is_file(upload_dir('avatar').'/'.$recentShot), 'with its screenshot');
 ok($still($open) && is_file(upload_dir('avatar').'/'.$openShot), 'an open report stays, however old, and its screenshot');

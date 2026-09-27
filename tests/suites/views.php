@@ -197,11 +197,9 @@ ok(str_contains($posted, 'docs[0]=1,5 MB application/pdf') && str_contains($post
    'several files under one name are each shown, including one that never came and one PHP refused');
 is_same(['Bitte ein Datum angeben.', 'error'], [$trail['steps'][3]['flash'], $trail['steps'][3]['flash_kind']],
         'the message the page showed is kept with the step that showed it');
-is_same(true, $trail['typed'], 'and the report is known to still hold what was typed');
 
 $done = feedback_mark_done($newShape);
 $after = report_trail($done);
-is_same(false, $after['typed'], 'after "Erledigt" nothing typed or attached is left');
 ok(str_contains($after['steps'][2]['line'], 'first_name=(gelöscht)') && str_contains($after['steps'][2]['line'], 'custom=(gelöscht)'),
    'the field names stay, each saying its value was deleted: '.$after['steps'][2]['line']);
 ok(str_contains($after['steps'][2]['line'], 'avatar=(gelöscht)') && !str_contains($after['steps'][2]['line'], 'image/png'),
@@ -231,4 +229,25 @@ sign_in_as($admin);
 $reportsPage = render_view('settings', ['tab' => 'feedback']);
 ok(str_contains($reportsPage, 'von außerhalb'), 'the page says „von außerhalb" for a report that came from outside');
 ok(str_contains($reportsPage, 'nicht erfasst'), 'and „nicht erfasst" for one too old to know');
+
+/* Whether a report still holds what was typed is decided by the page, from
+   values_dropped_at, so it is read off the page: one report at a time, so a
+   phrase found belongs to the report it is about. */
+$onlyReport = function (array $context, string $state) use ($admin): string {
+    run('DELETE FROM feedback');
+    run('INSERT INTO feedback (account_id,page,message,context_json,state,created_at) VALUES (?,?,?,?,?,?)',
+        [$admin, 'student', 'Nur diese Meldung', feedback_context_json($context), $state, now()]);
+    return render_view('settings', ['tab' => 'feedback']);
+};
+$droppedNote = 'Die eingetippten Werte wurden beim Erledigen gelöscht.';
+$openPage = $onlyReport($newShape, 'new');
+ok(str_contains($openPage, e('first_name=Mia')), 'an open report shows what was typed');
+ok(!str_contains($openPage, $droppedNote), 'and does not say it is gone');
+ok(str_contains($openPage, 'Beim Erledigen werden die eingetippten Werte gelöscht'), 'it says, before the tap, that „Erledigt" deletes them');
+$donePage = $onlyReport(feedback_mark_done($newShape), 'done');
+ok(!str_contains($donePage, e('first_name=Mia')) && str_contains($donePage, e('first_name=(gelöscht)')),
+   'after „Erledigt" nothing typed is on the page, only the field names');
+ok(str_contains($donePage, $droppedNote), 'and the page says the typed values were deleted');
+ok(!str_contains($donePage, 'Beim Erledigen werden'), 'rather than warning about a deletion that has happened');
+run('DELETE FROM feedback');
 sign_out();

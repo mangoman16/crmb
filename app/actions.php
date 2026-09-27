@@ -45,10 +45,17 @@ function staff_role_posted(): string {
  * Refuses an address another account already holds, with a sentence rather
  * than the unique index's error: a family confirming a change can find that
  * somebody took the address between asking and clicking.
+ *
+ * Refuses, too, to move anybody else's staff or administrator login. Only a
+ * student's login is ever re-addressed on somebody's behalf; a staff login
+ * moves only when its holder confirms the link from the new mailbox.
  */
 function change_login_address(int $accountId, string $email): void {
     $email=email_value($email);
     transactional(function() use ($accountId,$email): void {
+        $account=lock_row('accounts',$accountId);
+        if(!$account) throw new NotFound(t('Dieses Konto gibt es nicht mehr.','That account no longer exists.'));
+        if((int)(current_user()['id']??0)!==$accountId) refuse_unless_student_login($account);
         $holder=account_using_email($email);
         if($holder && (int)$holder['id']!==$accountId) throw new UserError(own_address_needed($email));
         run('UPDATE accounts SET email=?,auth_version=auth_version+1 WHERE id=?',[$email,$accountId]);
@@ -59,6 +66,20 @@ function change_login_address(int $accountId, string $email): void {
 }
 
 /**
+ * Refuse to change a login that is not a student's on somebody else's behalf.
+ *
+ * A student row linked to a trainer's or an administrator's login is left from
+ * before ADR 0010, and while that login was still only invited, the student
+ * page could move its address - and so send its invitation - somewhere the
+ * person saving chose. That is how a trainer would take over an administrator.
+ */
+function refuse_unless_student_login(array $account): void {
+    if(($account['role']??'')!=='student')
+        throw new UserError(t('Diese Adresse ist die Anmeldung eines Mitarbeiterkontos. Ändern kann sie nur, wer sich damit anmeldet, unter „Mein Konto“. Nichts wurde gespeichert.',
+                              'This address is the login of a staff account. Only whoever signs in with it can change it, under “My account”. Nothing was saved.'));
+}
+
+/**
  * The address typed into the sign-in or password-reset form.
  *
  * One derivation, because it is both the identity an attempt is counted
@@ -66,7 +87,7 @@ function change_login_address(int $accountId, string $email): void {
  * would mean a sign-in that succeeds while its counter keeps climbing under a
  * key nothing ever clears.
  */
-function attempted_email(): string { return mb_strtolower(post('email')); }
+function attempted_email(): string { return email_normalised(post('email')); }
 
 /**
  * The bucket attempts at one account are counted into.
@@ -278,9 +299,12 @@ function dispatch_action(string $action): array {
         if($direct) require_admin();
         $s=lock_row('students',(int)student((int)post('student_id'))['id']);
         if($s['account_id']) throw new UserError(t('Dieses Kind hat schon ein eigenes Konto. Zugang, Einladung und Adresse werden dort verwaltet.','This student already has an account of their own. Access, invitation and address are managed there.'));
-        $email=email_value(post('email')!==''?post('email'):(string)$s['email']);
-        $name=trim(post('name'))!==''?required_text('name'):$s['first_name'].' '.$s['last_name'];
-        $locale=choose(post('locale','de'),['de','en']);
+        // Everything about the login comes from the student: the page offers a
+        // button, not a form, and the address is edited on the student itself.
+        $email=email_value((string)$s['email']);
+        $name=rtrim(mb_substr($s['first_name'].' '.$s['last_name'],0,TEXT_LINE_MAX));
+        // German until they choose, like every page before they sign in.
+        $locale='de';
         $password=$direct?strong_password((string)post('password')):'';
         if(account_using_email($email)) throw new UserError(own_address_needed($email));
         if(!$direct && !account_mail_ready())
@@ -318,7 +342,7 @@ function dispatch_action(string $action): array {
         } else {
             run('DELETE FROM auth_tokens WHERE account_id=?',[$id]);cancel_account_mail($id);
             if($mode==='delete') {
-                if(mb_strtolower(post('confirmation'))!==$a['email']) throw new UserError(t('Zum Löschen die E-Mail-Adresse eingeben.','Enter the email address to delete the account.'));
+                if(email_normalised(post('confirmation'))!==$a['email']) throw new UserError(t('Zum Löschen die E-Mail-Adresse eingeben.','Enter the email address to delete the account.'));
                 run('DELETE FROM mail_jobs WHERE account_id=?',[$id]);
                 run('DELETE FROM accounts WHERE id=?',[$id]);
             } else run('UPDATE accounts SET state=?,auth_version=auth_version+1 WHERE id=?',[$mode==='suspend'?'suspended':($a['verified_at']?'active':'invited'),$id]);
@@ -366,14 +390,15 @@ function dispatch_action(string $action): array {
                 // address from before the rule are listed for her to sort out
                 // (students_needing_own_address()); refusing every other edit on
                 // the page until then would help nobody.
-                if($email!=='' && $email!==mb_strtolower((string)($existing['email']??'')) && account_using_email($email))
+                if($email!=='' && $email!==email_normalised((string)($existing['email']??'')) && account_using_email($email))
                     throw new UserError(own_address_needed($email));
             } else {
                 $email=(string)$account['email'];
                 // Nothing posted means nothing to change: a login always has an
                 // address, so an empty or missing field cannot be a request to
                 // remove it.
-                if($posted!=='' && $posted!==mb_strtolower($email)) {
+                if($posted!=='' && $posted!==email_normalised($email)) {
+                    refuse_unless_student_login($account);
                     // Refused, not ignored: a page opened before the family signed
                     // up still shows an editable field, and a save that quietly
                     // dropped the new address would say "saved" and mean less.
@@ -421,7 +446,9 @@ function dispatch_action(string $action): array {
         if(scalar('SELECT COUNT(*) FROM charges WHERE student_id=?',[$s['id']])) throw new UserError(t('Es sind Beiträge vorhanden. Mitgliedschaft stattdessen beenden; Zahlungsdaten bleiben erhalten.','Charges exist. End the membership instead to retain payment records.'));
         tracked('students',(int)$s['id'],$s['first_name'].' '.$s['last_name'],fn()=>run('DELETE FROM students WHERE id=?',[$s['id']]),'delete');
         audit('student.deleted','student',(int)$s['id']);
-        flash(t('Schüler gelöscht. Das lässt sich unter „Änderungen“ rückgängig machen.','Student deleted. This can be undone under “Changes”.'));return ['students',[]];
+        // The change log keeps the deleted row to read, not to restore (app/history.php).
+        flash(t('Schüler gelöscht. Unter „Änderungen“ steht, was gelöscht wurde; wiederherstellen lässt es sich nicht.',
+                'Student deleted. “Changes” shows what was deleted; it cannot be restored.'));return ['students',[]];
     /* Contacts: a child always has one, and one of them is the one to try first.
        They are people to ring and nothing else now - a phone number is what
        makes one useful, and an email address on one is a convenience, not the

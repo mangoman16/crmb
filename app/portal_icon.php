@@ -12,15 +12,23 @@ declare(strict_types=1);
  * anybody, signed in or not: the login page wears it too, and it is the club's
  * logo, not a family's data.
  *
- * Only a square PNG of at least 180 x 180 pixels is accepted, and nothing is
- * resized. An iPhone takes its home-screen icon only as a PNG; an SVG can carry
- * script and would be served from the portal's own origin; resizing would need
- * GD, which shared hosting does not promise. getimagesize() is part of PHP
- * itself and reads the header, not the picture.
+ * Only a square PNG of 180 x 180 to 2048 x 2048 pixels is accepted, and
+ * nothing is resized. An iPhone takes its home-screen icon only as a PNG; an
+ * SVG can carry script and would be served from the portal's own origin;
+ * resizing would need GD, which shared hosting does not promise. getimagesize()
+ * is part of PHP itself and reads the header, not the picture.
  */
 
 /** The smallest side accepted, in pixels: the size an iPhone draws on its home screen. */
 const PORTAL_ICON_MIN_SIZE = 180;
+/**
+ * The largest side accepted, in pixels. A PNG of a single colour compresses to
+ * almost nothing at any size, so the upload limit does not stop a picture of
+ * 30,000 x 30,000 pixels that every phone opening any page, the login included,
+ * would have to unpack into gigabytes of memory. No home screen draws more than
+ * a few hundred pixels, so a larger picture gains nothing.
+ */
+const PORTAL_ICON_MAX_SIZE = 2048;
 
 /**
  * The stored name of the icon in use, or '' for the one that ships.
@@ -64,6 +72,7 @@ function check_portal_icon(string $storedName): void {
     [$width, $height] = $size ? [(int)$size[0], (int)$size[1]] : [0, 0];
     $dimensions = $width . ' × ' . $height;
     $minimum = PORTAL_ICON_MIN_SIZE . ' × ' . PORTAL_ICON_MIN_SIZE;
+    $maximum = PORTAL_ICON_MAX_SIZE . ' × ' . PORTAL_ICON_MAX_SIZE;
     $problem = match (true) {
         !$size || $size[2] !== IMAGETYPE_PNG =>
             t('Diese Datei lässt sich nicht als PNG-Bild lesen.', 'This file cannot be read as a PNG picture.'),
@@ -74,6 +83,10 @@ function check_portal_icon(string $storedName): void {
             t('Das Bild ist nur ', 'The picture is only ') . $dimensions
             . t(' Pixel groß. Es braucht mindestens ', ' pixels. It needs at least ') . $minimum
             . t(' Pixel, sonst wird es auf dem Home-Bildschirm unscharf.', ' pixels, or it looks blurred on the home screen.'),
+        $width > PORTAL_ICON_MAX_SIZE =>
+            t('Das Bild ist ', 'The picture is ') . $dimensions
+            . t(' Pixel groß. Es darf höchstens ', ' pixels. It may be at most ') . $maximum
+            . t(' Pixel groß sein – größer wird es nicht schärfer, lädt auf dem Telefon aber langsamer.', ' pixels – larger is no sharper, only slower to load on a phone.'),
         default => '',
     };
     if ($problem === '') return;

@@ -77,7 +77,7 @@ foreach (['de', 'en'] as $lang) {
     $draft = (string)file_get_contents(ROOT.'/docs/privacy-draft-'.$lang.'.txt');
     is_same(8, substr_count($draft, '['), $lang.': the draft has eight notes, so the count below means something');
     is_same(8, count(privacy_draft_placeholders($draft)), $lang.': and all eight are found');
-    ok(max(array_map('mb_strlen', privacy_draft_placeholders($draft))) > 250, $lang.': the longest among them too, at over 250 characters');
+    ok(max([0, ...array_map('mb_strlen', privacy_draft_placeholders($draft))]) > 250, $lang.': the longest among them too, at over 250 characters');
     throws(fn() => $save($lang === 'de' ? $draft.$long : $long, $lang === 'en' ? $draft.$long : $long, true),
            $lang.': the draft itself cannot be released', $lang === 'de' ? '[Vollständiger Name' : '[Full name');
 }
@@ -90,6 +90,23 @@ is_same([], privacy_draft_placeholders($complete), 'a finished notice with laws,
 does_not_throw(fn() => $save($complete.$long, $complete.$long, true), 'and is released');
 is_same(['[Datum]'], privacy_draft_placeholders("Stand: [Datum]\nText [ohne\nEnde]"),
         'a bracket left open by a typo does not swallow the next line');
+
+case_('One long line of brackets is answered at once, and a text it cannot read is refused in words');
+/* 30,000 characters is what the field accepts. The earlier pattern looked ahead
+   past every further „[“ from every „[“, and took over a second on this line
+   with PCRE's JIT and ten without it: a request anybody on the settings page
+   could make hang. The closing „]“ matters - without one, PCRE gives up before
+   it starts, and the line would prove nothing. */
+$brackets = str_repeat('[', 29999).']';
+is_same(30000, mb_strlen($brackets), 'the line is as long as the field allows');
+$started = microtime(true);
+$found = privacy_draft_placeholders($brackets);
+$took = microtime(true) - $started;
+is_same([], $found, 'it holds no placeholder, having no letter');
+ok($took < 0.2, sprintf('and is checked in a moment, not seconds (%.4f s)', $took));
+does_not_throw(fn() => $save($brackets, $long, true), 'and saved through the page, it is answered rather than left to hang');
+throws(fn() => privacy_draft_placeholders("Stand: [Datum] \xFF"), 'a text the pattern cannot read is refused with a sentence, not a crash',
+       'nicht auf Platzhalter prüfen');
 
 // ---------------------------------------------------------------------------
 case_('The connection test answers while she waits, and says which step failed');
