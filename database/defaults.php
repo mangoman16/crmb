@@ -41,7 +41,8 @@ try{
     set_setting('payment_methods',['Überweisung','Bar']);set_setting('privacy_ready',false);
     set_setting('privacy_de',file_get_contents(ROOT.'/docs/privacy-draft-de.txt'));
     set_setting('privacy_en',file_get_contents(ROOT.'/docs/privacy-draft-en.txt'));
-    run('INSERT INTO field_definitions (label,label_en,field_type,section_name,options_json,default_json,visibility,sort_order) VALUES (?,?,?,?,?,?,?,?)',['Trainingsgruppe','Training group','select','','["Gruppe 1","Gruppe 2"]','""','view',10]);
+    // No custom field is seeded: an example field nobody has filled in shows every
+    // family an empty „Weitere Angaben" card. The trainer adds her own (ADR 0011).
     run('INSERT INTO message_templates (name,subject,body) VALUES (?,?,?)',['Zahlungserinnerung','Dein Badminton-Beitrag',"Hallo {{first_name}},\n\nbei deinen Badminton-Beiträgen sind derzeit {{outstanding}} offen. Bitte prüfe die Beiträge im Portal. Falls du bereits bezahlt hast, gib mir dort kurz Bescheid.\n\n{{portal_url}}\n\nVielen Dank!"]);
     run('INSERT INTO message_templates (name,subject,body) VALUES (?,?,?)',['Training – Information','Information zum Training',"Hallo {{first_name}},\n\n\n\nDu kannst mir direkt im Portal antworten:\n{{portal_url}}"]);
     // An empty profile with the SEPA payload already in place: the operator fills

@@ -16,6 +16,14 @@
 
 install_locale('de');
 
+case_('A new portal asks families nothing the trainer has not added herself');
+// The runner has just emptied the database and applied the seed, which is what a
+// fresh install is. A seeded example field („Trainingsgruppe") showed every family
+// an empty „Weitere Angaben" card until she found and deleted it (ADR 0011).
+is_same(0, (int)scalar('SELECT COUNT(*) FROM field_definitions'), 'the seed creates no custom field');
+ok((int)scalar('SELECT COUNT(*) FROM message_templates') > 0,
+   'while the examples she does start with are still there, so the check above ran against a seeded portal');
+
 case_('The portal address is derived from the request that asks for it');
 $request = fn(array $over = []) => $over + ['HTTP_HOST' => 'badminton.example.at', 'REQUEST_URI' => '/setup.php',
                                             'SERVER_NAME' => 'fallback.invalid', 'SERVER_PORT' => 80];

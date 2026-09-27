@@ -5,8 +5,7 @@ What it needs, all disposable - it writes freely to the database it is given:
      (maintenance_file outside the checkout), exported as CRM_CONFIG.
   2. php bin/console.php migrate
   3. An administrator coach@example.test named "Test Coach" with the password
-     below, and one custom field (id 1): a select with options "Gruppe 1" and
-     "Gruppe 2", visible to students.
+     below. The custom field it uses it creates itself: the installer seeds none.
   4. The portal served locally, e.g. php -S 127.0.0.1:4173 -t public public/index.php
   5. CRM_TEST_ALLOW_DESTRUCTIVE=1 python3 tests/integration.py
 Start from step 1 for every run: a second run against the same data fails on
@@ -110,8 +109,11 @@ def run():
     admin.request('page=classes&id='+str(course)+'&tab=tariffs')
     admin.post('tariff_save',{'name':'Junior','period':'recurring','interval_months':'1','rate_interval[]':['1'],'rate_price[]':['40,00'],'due_day':'14'})
     tariff=int(scalar('SELECT id FROM tariffs WHERE name=?',['Junior']))
+    # A new portal has no custom field (ADR 0011), so the one the students carry is added here.
+    admin.request('page=settings&tab=fields');admin.post('field_save',{'label':'Trainingsgruppe','label_en':'Training group','field_type':'select','options':'Gruppe 1\nGruppe 2','visibility':'view','sort_order':'10'})
+    field=int(scalar('SELECT id FROM field_definitions WHERE label=?',['Trainingsgruppe']))
     def add_student(first,last,price='',email=''):
-        admin.request('page=student');admin.post('student_save',{'first_name':first,'last_name':last,'email':email,'status':'active','tariff_id':str(tariff),'price':price,'internal_notes':'PRIVATE_COACH_NOTE','custom[1]':'Gruppe 1'})
+        admin.request('page=student');admin.post('student_save',{'first_name':first,'last_name':last,'email':email,'status':'active','tariff_id':str(tariff),'price':price,'internal_notes':'PRIVATE_COACH_NOTE','custom['+str(field)+']':'Gruppe 1'})
         return int(scalar('SELECT id FROM students WHERE first_name=? AND last_name=?',[first,last]))
     # One login is one student (ADR 0010): a family is invited from its student's own page,
     # and Leon, Anna's brother, has no login of his own yet.
@@ -159,12 +161,12 @@ def run():
     admin.request('page=classes&id='+str(course)+'&tab=tariffs&tariff='+str(tariff))
     admin.post('tariff_save',{'name':'Junior','period':'recurring','interval_months':'1','rate_interval[]':['1'],'rate_price[]':['70'],'due_day':'10'})
     assert_ok(scalar('SELECT price_cents FROM students WHERE id=?',[s1])==4000 and scalar('SELECT price_cents FROM students WHERE id=?',[s2])==3000,'Tariff changes preserve agreed and individual prices')
-    admin.request('page=settings&tab=fields&edit=1');admin.post('field_save',{'label':'Trainingsgruppe Neu','label_en':'Training group','field_type':'select','options':'Gruppe 1\nGruppe 2','visibility':'view','sort_order':'5','default_value':'Gruppe 2'})
-    assert_ok(json.loads(scalar('SELECT value_json FROM field_values WHERE student_id=? AND field_id=1',[s1]))=='Gruppe 1','Renaming and changed defaults preserve custom values')
-    admin.request('page=settings&tab=fields&edit=1');admin.post('field_save',{'label':'Trainingsgruppe Neu','field_type':'number','visibility':'view','sort_order':'5','default_value':'1'})
-    assert_ok(scalar('SELECT field_type FROM field_definitions WHERE id=1')=='select','Field type cannot silently convert stored data')
-    admin.request('page=settings&tab=fields&edit=1');f=admin.form('field_save');f['archived']='1';admin.request(data=f)
-    assert_ok(scalar('SELECT COUNT(*) FROM field_values WHERE field_id=1')==3,'Archiving preserves all field values')
+    admin.request('page=settings&tab=fields&edit='+str(field));admin.post('field_save',{'label':'Trainingsgruppe Neu','label_en':'Training group','field_type':'select','options':'Gruppe 1\nGruppe 2','visibility':'view','sort_order':'5','default_value':'Gruppe 2'})
+    assert_ok(json.loads(scalar('SELECT value_json FROM field_values WHERE student_id=? AND field_id=?',[s1,field]))=='Gruppe 1','Renaming and changed defaults preserve custom values')
+    admin.request('page=settings&tab=fields&edit='+str(field));admin.post('field_save',{'label':'Trainingsgruppe Neu','field_type':'number','visibility':'view','sort_order':'5','default_value':'1'})
+    assert_ok(scalar('SELECT field_type FROM field_definitions WHERE id=?',[field])=='select','Field type cannot silently convert stored data')
+    admin.request('page=settings&tab=fields&edit='+str(field));f=admin.form('field_save');f['archived']='1';admin.request(data=f)
+    assert_ok(scalar('SELECT COUNT(*) FROM field_values WHERE field_id=?',[field])==3,'Archiving preserves all field values')
     one.request('page=student&id='+str(s1)+'&tab=absence');one.post('absence_add',{'reason':'sick','starts_on':'2020-01-01','ends_on':'2099-12-31'})
     admin.request('page=students&absence=sick');assert_ok('<h3>Anna Test</h3>' in admin.html and '<h3>Leon Test</h3>' not in admin.html,'Absence filter respects student and dates')
     admin.request('page=students&overdue=1');assert_ok('<h3>Anna Test</h3>' in admin.html and '<h3>Leon Test</h3>' not in admin.html,'Overdue filter uses confirmed balances')
@@ -183,7 +185,7 @@ def run():
     one.request('page=news');assert_ok('Training update' in one.html,'Unsubscribed account can read news in app')
     # Snapshot synthetic screens for separate visual QA; no user data is involved.
     out=Path(os.environ.get('CRM_TEST_RENDER_DIR','/tmp/crm-test-render'));out.mkdir(parents=True,exist_ok=True)
-    for name,query in [('dashboard','page=dashboard'),('student','page=student&id='+str(s1)),('payments','page=student&id='+str(s1)+'&tab=payments'),('fields','page=settings&tab=fields&edit=1'),('accounts','page=accounts')]:
+    for name,query in [('dashboard','page=dashboard'),('student','page=student&id='+str(s1)),('payments','page=student&id='+str(s1)+'&tab=payments'),('fields','page=settings&tab=fields&edit='+str(field)),('accounts','page=accounts')]:
         admin.request(query);assert_ok(admin.status==200,'View renders: '+name);(out/(name+'.html')).write_text(admin.html)
     # Tabs that exist: an unknown settings tab silently shows the first one, so a
     # stale name here would pass without rendering what it names.
