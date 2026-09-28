@@ -7,7 +7,7 @@ function status_label(string $s): string { $en=['trial'=>'Trial','active'=>'Acti
 function reason_label(string $s): string { $en=['sick'=>'Sick','holiday'=>'Holiday','other'=>'Absent']; return locale()==='en' && isset($en[$s])?$en[$s]:(reasons()[$s]??$s); }
 function student(int $id): array {
     $u=require_user();
-    $s=one('SELECT s.*,t.name AS tariff_name,l.name AS level_name FROM students s LEFT JOIN tariffs t ON t.id=s.tariff_id LEFT JOIN levels l ON l.id=s.level_id WHERE s.id=?'.(is_staff($u)?'':' AND s.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
+    $s=one('SELECT s.*,l.name AS level_name FROM students s LEFT JOIN levels l ON l.id=s.level_id WHERE s.id=?'.(is_staff($u)?'':' AND s.account_id=?'),is_staff($u)?[$id]:[$id,$u['id']]);
     if(!$s) throw new NotFound(t('Schüler nicht gefunden.','Student not found.')); return $s;
 }
 /**
@@ -214,7 +214,7 @@ function student_next_steps(int $studentId): array {
     // Only the courses they are still in: a child who has left every one of them
     // needs a course again, and saying otherwise would tick the box for ever on
     // the strength of a membership that ended in March.
-    $enrolments = array_filter(student_enrolments($studentId), fn($e) => $e['left_on'] === null);
+    $enrolments = array_filter(student_enrolments($studentId), 'enrolment_is_current');
     if (!$enrolments)
         $steps[] = ['what' => t('In einen Kurs eintragen', 'Put them in a course'),
                     'why'  => t('Ohne Kurs entstehen keine Beiträge.', 'Without a course there are no charges.'),
@@ -360,11 +360,13 @@ function filtered_students(array $f,?int $accountId=null): array {
     if($accountId!==null){$where[]='s.account_id=?';$p[]=$accountId;}
     if(!empty($f['q'])){$where[]="CONCAT(s.first_name,' ',s.last_name) LIKE ?";$p[]='%'.$f['q'].'%';}
     if(!empty($f['status'])){$where[]='s.status=?';$p[]=$f['status'];}
-    if(!empty($f['tariff'])){$where[]='s.tariff_id=?';$p[]=(int)$f['tariff'];}
+    // What a child pays is decided per course (ADR 0011), so "on this tariff"
+    // means a course they are still in names it; students.tariff_id bills nobody.
+    if(!empty($f['tariff'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.tariff_id=? AND '.current_enrolment_sql().')';$p[]=(int)$f['tariff'];}
     if(!empty($f['level'])){$where[]='s.level_id=?';$p[]=(int)$f['level'];}
     // "Who is in Monday's group" is the view she builds most often, so a course
     // is a filter in its own right rather than something to be read off a card.
-    if(!empty($f['course'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.class_id=? AND cs.left_on IS NULL)';$p[]=(int)$f['course'];}
+    if(!empty($f['course'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.class_id=? AND '.current_enrolment_sql().')';$p[]=(int)$f['course'];}
     // An age group is usually not stored on the student, so filtering by one has
     // to cover both the pinned case and the dates that fall into the band. The
     // bounds become dates once here rather than a function call per row.
@@ -388,8 +390,8 @@ function filtered_students(array $f,?int $accountId=null): array {
             array_push($p,$def['id'],json_encode($def['field_type']==='checkbox'?in_array($f['value'],['1','true','yes'],true):$f['value'],JSON_UNESCAPED_UNICODE));
         }
     }
-    return rows('SELECT s.*,t.name AS tariff_name,a.name AS account_name,l.name AS level_name FROM students s'
-        .' LEFT JOIN tariffs t ON t.id=s.tariff_id LEFT JOIN accounts a ON a.id=s.account_id LEFT JOIN levels l ON l.id=s.level_id'
+    return rows('SELECT s.*,a.name AS account_name,l.name AS level_name FROM students s'
+        .' LEFT JOIN accounts a ON a.id=s.account_id LEFT JOIN levels l ON l.id=s.level_id'
         .' WHERE '.implode(' AND ',$where).' ORDER BY s.last_name,s.first_name,s.id',$p);
 }
 /**
@@ -422,11 +424,22 @@ function template_values(array $s): array {
         'first_name'   => $s['first_name'],
         'level'        => level_name(isset($s['level_id'])?(int)$s['level_id']:null),
         'age_group'    => age_group_name($s),
-        'tariff'       => $s['tariff_name']??'',
+        'tariff'       => current_tariff_names((int)$s['id']),
         'outstanding'  => money(balance((int)$s['id'])),
         'paid_through' => fmt_date($paidThrough),
         'portal_url'   => url('messages'),
     ];
+}
+
+/**
+ * The tariffs of the courses a child is in now, joined with „ + “, in the
+ * order the courses are listed; '' for a child on none. The student's own
+ * tariff column bills nobody any more, so it is not what a message may say.
+ */
+function current_tariff_names(int $studentId): string {
+    return implode(' + ', array_column(rows('SELECT t.name FROM class_students cs JOIN tariffs t ON t.id=cs.tariff_id'
+        .' JOIN classes c ON c.id=cs.class_id WHERE cs.student_id=? AND '.current_enrolment_sql()
+        .' ORDER BY c.sort_order, c.name, c.id', [$studentId]), 'name'));
 }
 
 function template_text(string $text,array $s): string {

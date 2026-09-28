@@ -549,8 +549,7 @@ function capture_error(Throwable $e, string $where = 'request'): void {
     $state['captured'] = true;
     try {
         $facts = error_facts($e);
-        error_log('CRM error (' . $where . '): ' . $facts['class'] . ' at ' . $facts['file'] . ':' . $facts['line']
-            . ($facts['sqlstate'] !== '' ? ' SQLSTATE ' . $facts['sqlstate'] . ' code ' . $facts['code'] : ' ' . $facts['message']));
+        error_log('CRM error (' . $where . '): ' . error_log_text($e) . ' at ' . $facts['file'] . ':' . $facts['line']);
         if (is_file(maintenance_file()) || !db_connected() || error_connection_lost($e)) return;
         tx_abandon_open('error');
         transactional(fn() => error_record($facts, $where === 'background' ? 'background' : 'request'));
@@ -603,7 +602,8 @@ function error_facts(Throwable $e): array {
         if (in_array($frame['function'] ?? '', ['capture_error', 'capture_fatal_error'], true)) break;
         $frames[] = ['file' => isset($frame['file']) ? error_path((string)$frame['file']) : '', 'line' => (int)($frame['line'] ?? 0),
                      'class' => (string)($frame['class'] ?? ''), 'type' => (string)($frame['type'] ?? ''),
-                     'function' => (string)($frame['function'] ?? '')];
+                     // A closure is named after where it was written, path and all.
+                     'function' => error_without_folder((string)($frame['function'] ?? ''))];
         if (count($frames) === 20) break;
     }
     $code = $pdo ? ($sqlstate !== '' ? $sqlstate : (string)$driverCode) : (string)$e->getCode();
@@ -612,12 +612,37 @@ function error_facts(Throwable $e): array {
         'class'    => get_class($e),
         'sqlstate' => $sqlstate,
         'code'     => $pdo ? $driverCode : $e->getCode(),
-        'message'  => $pdo ? '' : error_message_scrub($e->getMessage()),
+        'message'  => error_from_database($e) ? '' : error_message_scrub($e->getMessage()),
         'file'     => $file,
         'line'     => $e->getLine(),
         'frames'   => $frames,
         'previous' => $e->getPrevious() ? get_class($e->getPrevious()) : null,
     ];
+}
+
+/**
+ * Whether anything in the chain came from the database. Its message is then
+ * not kept, whoever wrapped it: a RuntimeException that quotes the PDOException
+ * it caught carries "Duplicate entry 'familie@…'" just the same.
+ */
+function error_from_database(Throwable $e): bool {
+    for ($x = $e; $x !== null; $x = $x->getPrevious())
+        if ($x instanceof PDOException || str_contains($x->getMessage(), 'SQLSTATE[')) return true;
+    return false;
+}
+
+/**
+ * One error as a log line: its class, and for a database error anywhere in the
+ * chain the SQLSTATE and code - never its message - otherwise the scrubbed
+ * message. The line every log call about an unexpected error writes.
+ */
+function error_log_text(Throwable $e): string {
+    for ($x = $e; $x !== null; $x = $x->getPrevious())
+        if ($x instanceof PDOException) {
+            [$sqlstate, $code] = pdo_error_codes($x);
+            return get_class($e) . ' SQLSTATE ' . ($sqlstate ?: '?') . ' code ' . ($code ?? '?');
+        }
+    return get_class($e) . (error_from_database($e) ? '' : ': ' . error_message_scrub($e->getMessage()));
 }
 
 /**
@@ -664,17 +689,25 @@ function error_path(string $file): string {
     return str_starts_with($file, $root) ? substr($file, strlen($root)) : basename($file);
 }
 
+/** Text with the portal's own folder taken off every path in it, resolved or as ROOT spells it. */
+function error_without_folder(string $text): string {
+    foreach (array_unique([rtrim((string)(realpath(ROOT) ?: ROOT), '/') . '/', rtrim((string)ROOT, '/') . '/', (string)ROOT]) as $folder)
+        $text = str_replace($folder, '', $text);
+    return $text;
+}
+
 /**
  * An error message as it may be kept and shown to somebody outside the club.
  *
  * Email addresses, numbers of six digits or more and runs of twenty or more
  * letters and digits - a token, a hash, an IBAN - become …, and so does any of
- * the portal's own secrets that turns up word for word. Cut to 300 characters.
- * A name in a message is not caught; that is why the text says it is scrubbed,
- * not clean.
+ * the portal's own secrets that turns up word for word, and the portal's own
+ * folder is taken off every path. Cut to 300 characters. A name in a message
+ * is not caught, which is why support_text() only passes on the messages PHP
+ * writes itself (support_text_message()).
  */
 function error_message_scrub(string $message): string {
-    $message = mb_scrub($message, 'UTF-8');
+    $message = error_without_folder(mb_scrub($message, 'UTF-8'));
     foreach (error_secrets() as $secret) $message = str_replace($secret, '…', $message);
     $message = (string)preg_replace(['/[^\s@<>()\[\]{}"\'`,;:]+@[^\s@<>()\[\]{}"\'`,;:]+/u', '/[\p{L}\p{N}]{20,}/u', '/\d{6,}/u'],
                                     '…', $message);
@@ -818,9 +851,11 @@ function prune_quiet_errors(): int {
  *
  * What the error was and where, and the way there as methods, actions and the
  * names of the fields - never what was typed into them, never a name, an email
- * address or an IP address. In the address, every value except page, id, tab
- * and what is …, because a search term can be a child's name. The page inside
- * the portal may go on showing more; this text is leaving it.
+ * address or an IP address. The message only when PHP wrote it itself
+ * (support_text_message()); any other can quote what somebody typed. In the
+ * address, every value except page, id, tab and what is …, because a search
+ * term can be a child's name. The page inside the portal may go on showing
+ * more; this text is leaving it.
  *
  * '' for a report a person wrote: that one is in their own words already.
  */
@@ -838,7 +873,7 @@ function support_text(array $entry): string {
             . ($scalar($c['sqlstate'] ?? '') !== '' ? ' SQLSTATE ' . $scalar($c['sqlstate']) : '')
             . ($scalar($c['code'] ?? '') !== '' && $scalar($c['code']) !== '0' ? ' ' . t('Code ', 'code ') . $scalar($c['code']) : ''),
     ];
-    if ($scalar($c['message'] ?? '') !== '') $lines[] = t('Meldung: ', 'Message: ') . error_message_scrub($scalar($c['message']));
+    if (support_text_message($c)) $lines[] = t('Meldung: ', 'Message: ') . error_message_scrub($scalar($c['message']));
     $lines[] = t('Ort: ', 'Where: ') . $scalar($c['file'] ?? '') . ':' . (int)($c['line'] ?? 0)
         . ' (' . ($scalar($c['where'] ?? '') === 'background' ? t('Hintergrund', 'background') : t('Seitenaufruf', 'request')) . ')';
     foreach (array_values(array_filter((array)($c['frames'] ?? []), 'is_array')) as $i => $f)
@@ -863,6 +898,18 @@ function support_text(array $entry): string {
     }
     if ($scalar($c['user_agent'] ?? '') !== '') $lines[] = t('Gerät: ', 'Device: ') . $scalar($c['user_agent']);
     return implode("\n", $lines);
+}
+
+/**
+ * Whether the stored message may leave the club: only for the errors whose
+ * wording PHP writes itself, from the code rather than from anybody's input -
+ * a wrong type, a wrong number of arguments, a plain Error, a fatal error the
+ * handler turned into an ErrorException. Any other class can carry what an
+ * application or library put into it, and a scrub does not catch a name.
+ */
+function support_text_message(array $context): bool {
+    return in_array($context['class'] ?? '', ['TypeError', 'ArgumentCountError', 'Error', 'ErrorException'], true)
+        && is_scalar($context['message'] ?? null) && (string)$context['message'] !== '';
 }
 
 /** An address with every query value but page, id, tab and what replaced by …. */

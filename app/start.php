@@ -59,7 +59,9 @@ function setup_steps(): array {
     $children = (int)scalar("SELECT COUNT(*) FROM students WHERE is_demo=0 AND status<>'ended'");
     $unpriced = null;
     foreach (billing_enrolments() as $enrolment)
-        if ((int)$enrolment['is_demo'] === 0 && $enrolment['status'] !== 'ended' && $enrolment['left_on'] === null
+        // A current enrolment, as on the child's page, of a real child who has
+        // not ended: those are the children the step is about.
+        if ((int)$enrolment['is_demo'] === 0 && $enrolment['status'] !== 'ended' && enrolment_is_current($enrolment)
             && !enrolment_has_price($enrolment)) { $unpriced = (int)$enrolment['student_id']; break; }
 
     // --- families -------------------------------------------------------------

@@ -145,7 +145,7 @@ function dispatch_settings_or_messages(string $action): array {
         require_admin();$on=post('auto_billing')==='1';
         set_setting('auto_billing',$on);audit($on?'billing.auto_on':'billing.auto_off','settings');
         flash($on?t('Monatsbeiträge werden ab jetzt automatisch angelegt: einmal im Monat, beim ersten Seitenaufruf.','Monthly charges are now created automatically: once a month, on the first page view.')
-                 :t('Monatsbeiträge werden nicht mehr automatisch angelegt. Unter „Monatsbeiträge“ legst du sie mit Vorschau selbst an.','Monthly charges are no longer created automatically. Create them under “Monthly charges”, with a preview first.'));
+                 :t('Monatsbeiträge werden nicht mehr automatisch angelegt. Du legst sie unten unter „Beiträge anlegen“ an, mit Vorschau.','Monthly charges are no longer created automatically. Create them below under “Create charges”, with a preview.'));
         return ['payments',[]];
     case 'template_save':
         require_staff();$id=(int)post('id');$subject=required_text('subject',180);$body=required_text('body',20000);

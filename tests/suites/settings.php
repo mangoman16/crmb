@@ -89,7 +89,7 @@ is_same(true, privacy_in_german_only(), 'and the page can tell that it is doing 
 $_SESSION['locale'] = 'de';
 is_same(false, privacy_in_german_only(), 'a German reader is told nothing');
 $germanOnly = notice_version();
-is_same(substr(hash('sha256', privacy_filled((string)setting('privacy_de'))), 0, 16), $germanOnly,
+is_same(substr(hash('sha256', (string)json_encode([privacy_filled((string)setting('privacy_de')), ''], JSON_UNESCAPED_UNICODE)), 0, 16), $germanOnly,
         'the version is the German text and the English text as stored - none - and never the German twice');
 does_not_throw(fn() => $save($long, $long, true), 'an English text is added later, word for word the German');
 ok(notice_version() !== $germanOnly, 'which is a new version, because it is one');

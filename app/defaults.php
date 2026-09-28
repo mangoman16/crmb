@@ -259,12 +259,6 @@ function setting_schema(): array {
         'auto_billing' => [
             'kind' => 'bool', 'default' => false, 'group' => 'system', 'internal' => true,
             'label' => ['Monatsbeiträge automatisch anlegen', 'Create the monthly charges automatically'],
-            // Said exactly: the portal has no clock of its own, it has page
-            // views. "Am 1." was not true on a month where nobody opened the
-            // portal until the 3rd, and it was not true of the moment the switch
-            // itself is turned on.
-            'hint'  => ['Einmal pro Monat, beim ersten Seitenaufruf in diesem Monat – nicht auf die Minute am 1. Wird sie mitten im Monat eingeschaltet, entstehen die Beiträge dieses Monats sofort. Aus: unter „Beiträge → Monatsbeiträge“ anlegen, mit Vorschau.',
-                        'Once a month, on the first page view in that month – not on the stroke of the 1st. Switched on mid-month, this month’s charges are created straight away. Off: create them under “Beiträge → Monatsbeiträge”, with a preview first.'],
         ],
         // The start checklist (ADR 0011), put away by the administrator. It stops
         // the landing after sign-in, the menu entry, the overview card and the

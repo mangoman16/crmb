@@ -22,7 +22,7 @@ if($tab===''):
     $hub=[['page'=>'manage','params'=>[],'what'=>t('Verwaltung','Management'),'why'=>t('Gruppen, Mitgliedschaft, E-Mail-Vorlagen, Bankkonto.','Groups, membership, email templates, bank account.')],
           ['page'=>'accounts','params'=>[],'what'=>t('Konten','Accounts'),'why'=>t('Wer außer dir das Portal verwaltet.','Who else runs the portal.')],
           ['page'=>'history','params'=>[],'what'=>t('Änderungen','Changes'),'why'=>t('Was zuletzt geändert wurde, und von wem.','What was changed lately, and by whom.')],
-          ['page'=>'start','params'=>[],'what'=>t('Einrichtung ansehen','Look at the setup'),'why'=>t('Die neun Schritte zum Start. ','The nine steps to get started. ').$setupSteps['done'].' '.t('von','of').' '.$setupSteps['total'].' '.t('erledigt.','done.'),'setup'=>true],
+          ['page'=>'start','params'=>[],'what'=>t('Einrichtung ansehen','Look at the setup'),'why'=>strtr(t('Die {total} Schritte zum Start. {done} von {total} erledigt.','The {total} steps to get started. {done} of {total} done.'),['{total}'=>$setupSteps['total'],'{done}'=>$setupSteps['done']]),'setup'=>true],
           ['page'=>'settings','params'=>['tab'=>'system','open'=>'advanced'],'anchor'=>'advanced','what'=>t('Erweitert','Advanced'),'why'=>t('Selten gebraucht: eigene Felder, Hintergrundaufgaben, wie lange Änderungen bleiben.','Rarely needed: custom fields, background work, how long changes are kept.')]]; ?>
 <section class="card settings-hub"><div class="grid two hub-grid">
 <?php foreach($hub as $item): ?>

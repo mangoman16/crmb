@@ -81,7 +81,7 @@ function run_background_tasks(): void {
             run("SELECT RELEASE_LOCK('badminton_crm_tick')");
         }
     } catch (Throwable $e) {
-        error_log('CRM background: ' . $e->getMessage());
+        error_log('CRM background: ' . error_log_text($e));
         capture_error($e, 'background');
     }
 }
@@ -93,7 +93,7 @@ function tick_work(): void {
         catch (Throwable $e) {
             // Logged here with the job's name, which capture_error() does not
             // know, and for the refusals and second errors it does not write down.
-            error_log('CRM background (' . $name . '): ' . $e->getMessage());
+            error_log('CRM background (' . $name . '): ' . error_log_text($e));
             capture_error($e, 'background');
         }
     }

@@ -430,8 +430,9 @@ is_same(['student', ['id'=>$own]], students_list_instead(one('SELECT * FROM acco
 $lonely = make_account(['role'=>'student']);
 is_same(['dashboard', []], students_list_instead(one('SELECT * FROM accounts WHERE id=?', [$lonely])),
         'a family login no student points to goes to the overview');
-is_same(null, students_list_instead(one('SELECT * FROM accounts WHERE id=?', [$trainer])), 'a trainer stays on the list');
-is_same(null, students_list_instead(one('SELECT * FROM accounts WHERE id=?', [$admin])), 'and so does an administrator');
+// Accounts of this case's own: the suite's trainer and administrator may be gone by now.
+is_same(null, students_list_instead(one('SELECT * FROM accounts WHERE id=?', [make_account(['role'=>'trainer'])])), 'a trainer stays on the list');
+is_same(null, students_list_instead(one('SELECT * FROM accounts WHERE id=?', [make_account(['role'=>'admin'])])), 'and so does an administrator');
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
 $redirect = strpos($router, "if(\$page==='students' && (\$instead=students_list_instead(\$user)))go(\$instead[0],\$instead[1]);");
 ok($redirect !== false && $redirect > (int)strpos($router, '$user=$public?') && $redirect < (int)strpos($router, "require ROOT.'/views/'"),

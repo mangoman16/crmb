@@ -274,9 +274,11 @@ function nav_entries(array $user): array {
  *   print                     → students (the child's page links to it)
  *   download                  → payments for staff (invoices), Profil for a family
  *
- * '' for a page that belongs to no entry: profile (the account in the top bar,
- * and „Konto" on a family's phone bar), privacy (Mein Konto and the side menu's
- * foot) and the pages shown to nobody signed in.
+ *   profile                   → '' for staff (the account in the top bar); a
+ *                               family's „Konto" on the phone bar
+ *
+ * '' for a page that belongs to no entry: profile for staff, privacy (Mein
+ * Konto and the side menu's foot) and the pages shown to nobody signed in.
  */
 function nav_owner(string $page,?array $user=null): string {
     $user??=current_user();
@@ -524,9 +526,15 @@ function next_steps_card(array $steps, string $heading = '', int $start = 1, arr
         if (!$step['done'] && !empty($step['blocked'])) {
             $waiting = [];
             foreach ($step['blocked_by'] as $key) if (isset($numbers[$key]) && !($numbers[$key]['done'] ?? false)) $waiting[] = $numbers[$key]['n'];
-            echo '<p class="step-blocked">'.e(count($waiting) === 1
-                ? t('Geht, sobald Schritt ','Possible once step ').$waiting[0].t(' erledigt ist.',' is done.')
-                : t('Geht, sobald Schritt ','Possible once steps ').implode(', ', array_slice($waiting, 0, -1)).t(' und ',' and ').end($waiting).t(' erledigt sind.',' are done.')).'</p>';
+            // Whole sentences with the numbers dropped in, so each language
+            // keeps its own word order; a step blocked by nothing numbered here
+            // still says why it has no button.
+            $list = count($waiting) > 1 ? implode(', ', array_slice($waiting, 0, -1)).t(' und ',' and ').end($waiting) : (string)($waiting[0] ?? '');
+            echo '<p class="step-blocked">'.e(match (true) {
+                $waiting === []     => t('Geht, sobald die Schritte davor erledigt sind.','Possible once the steps before it are done.'),
+                count($waiting) === 1 => strtr(t('Geht, sobald Schritt {n} erledigt ist.','Possible once step {n} is done.'), ['{n}' => $list]),
+                default             => strtr(t('Geht, sobald Schritt {n} erledigt sind.','Possible once steps {n} are done.'), ['{n}' => $list]),
+            }).'</p>';
         }
         echo '</div>';
         if ($step['done'] || empty($step['blocked']))

@@ -78,7 +78,7 @@ is_same($family, $c['account'], 'and which account, for the page inside the port
 is_same(2, count($c['steps']), 'the steps that led there');
 is_same($admins, $told(), 'and every administrator is told, once');
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
-ok(preg_match('/\} catch\(Throwable \$ex\) \{.*?http_response_code\(503\);\s*if\(function_exists\(\'capture_error\'\)\)capture_error\(\$ex\);.*?echo \'<!doctype html>.*?vorübergehend nicht verfügbar/s', $router) === 1,
+ok(preg_match('/\} catch\(Throwable \$ex\) \{.*?http_response_code\(503\);.*?if\(function_exists\(\'capture_error\'\)\)capture_error\(\$ex\);.*?echo \'<!doctype html>.*?vorübergehend nicht verfügbar/s', $router) === 1,
    'the router captures in its last catch and still sends the friendly page after it');
 
 case_('A second error in the same request is not written down');
@@ -321,6 +321,37 @@ is_same(['ErrorException', 'app/mail.php', 397, []], [$c['class'] ?? null, $c['f
 ok(str_contains((string)($c['message'] ?? ''), 'Maximum execution time'), 'saying what it was');
 ok(preg_match('/boot_http\(\);\s*(?:\/\/[^\n]*\n\s*)*register_shutdown_function\(capture_fatal_error\(\.\.\.\)\);/', $router) === 1,
    'and the router registers the handler straight after boot_http()');
+
+case_('A database error wrapped in another keeps nothing of either message');
+/* The class names what broke; a wrapper that quotes the database's refusal - or
+   says whose record it was - would carry both into a text that leaves the club. */
+run('DELETE FROM feedback');
+sign_in_as($admin);
+$request('student');
+$inner = new PDOException("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'lena.hofer@beispiel.test' for key 'email'");
+$inner->errorInfo = ['23000', 1062, "Duplicate entry 'lena.hofer@beispiel.test' for key 'email'"];
+$logLine = $logged(fn() => capture_error(new RuntimeException('Lena Hofer konnte nicht gespeichert werden: '.$inner->getMessage(), 0, $inner)));
+$entry = one('SELECT * FROM feedback WHERE account_id IS NULL');
+foreach (['lena.hofer@beispiel.test', 'Lena Hofer', 'Duplicate entry'] as $never) {
+    is_same(false, str_contains((string)$entry['context_json'], $never), 'not in the stored context: '.$never);
+    is_same(false, str_contains(support_text($entry), $never), 'not in the text for support: '.$never);
+    is_same(false, str_contains($logLine, $never), 'not in the log: '.$never);
+}
+ok(str_contains($logLine, 'SQLSTATE 23000') && str_contains($logLine, '1062'), 'the log says what it was by its codes');
+run('DELETE FROM feedback');
+$request('student');
+$request('student', [], 'GET');
+$capture(function () { $typed = fn(int $n): int => $n; return $typed('zwölf'); });
+$entry = one('SELECT * FROM feedback WHERE account_id IS NULL');
+$text = support_text($entry);
+ok(str_contains($text, t('Meldung: ', 'Message: ')) && str_contains($text, 'must be of type int'), 'a TypeError’s own wording is passed on');
+is_same(false, str_contains($text, (string)realpath(APP_ROOT)) || str_contains((string)$entry['context_json'], (string)realpath(APP_ROOT)),
+        'without the portal’s folder in any path');
+run('DELETE FROM feedback');
+$request('students');
+$capture(fn() => $boom('Kaputt bei Familie Hofer'));
+is_same(false, str_contains(support_text(one('SELECT * FROM feedback WHERE account_id IS NULL')), 'Hofer'),
+        'while any other message is kept in the portal and left out of the text for support');
 
 case_('A message is scrubbed of addresses, numbers, tokens and the portal’s own secrets');
 $scrubbed = error_message_scrub('Mail an eltern@beispiel.test mit IBAN AT611904300234573201 und Token '

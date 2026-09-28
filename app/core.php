@@ -393,7 +393,10 @@ function privacy_filled(string $stored): string { return strtr($stored, privacy_
  * English reader of a German-only notice agreed to the version with no English.
  */
 function notice_version(): string {
-    return substr(hash('sha256', privacy_filled((string)setting('privacy_de')) . privacy_filled((string)setting('privacy_en'))), 0, 16);
+    // As a pair rather than run together, so no German text and English text
+    // can add up to the same string as a different pair.
+    return substr(hash('sha256', (string)json_encode([privacy_filled((string)setting('privacy_de')),
+                                                      privacy_filled((string)setting('privacy_en'))], JSON_UNESCAPED_UNICODE)), 0, 16);
 }
 // Appearance follows the signed-in account; signed-out pages follow the device.
 function appearance(?array $user): array {

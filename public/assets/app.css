@@ -762,7 +762,7 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 .next-steps ol{margin:0;padding-left:20px;display:grid;gap:10px}
 .next-steps li{color:var(--teal-ink)}
 .next-steps a{font-weight:650}
-.next-steps small{display:block;color:var(--ink-2);margin-top:2px}
+.next-steps small{display:block;color:var(--ink-2);margin-top:4px}
 
 /* ---------------------------------------------------------------------------
    What a record row is made of, each part written once.
@@ -889,7 +889,6 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 /* A next step is the way to the thing it names, so it is a target a thumb can
    hit: as a line of text it was 17px tall at 320 and 390px. */
 .next-steps a{display:inline-flex;align-items:center;min-height:44px}
-.next-steps small{margin-top:0}
 /* Where a next step or a name in a notice lands. Clear of the top bar, which
    stays pinned over the page and would otherwise cover the heading it jumped to. */
 #email,#access,#add-contact,#add-course,#courses,#demo,#icon,#advanced,#auto-charges{scroll-margin-top:96px}
@@ -935,7 +934,7 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 .next-steps.is-checklist{background:var(--surface);border-color:var(--border)}
 .next-steps.is-checklist h2{color:var(--ink);font-size:1.05rem;margin-bottom:6px}
 .next-steps.is-checklist ol{list-style:none;padding:0;gap:0}
-.step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px 14px;align-items:center;padding:16px 0;border-top:1px solid var(--border);color:var(--ink)}
+.step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px 14px;align-items:center;padding:16px 0;border-top:1px solid var(--border)}
 .step:first-child{border-top:0}
 .next-steps li.step{color:var(--ink)}
 .step-mark{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--border-strong);color:var(--ink-2);font-weight:650;font-size:.9375rem;align-self:start}
@@ -943,7 +942,6 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 .step.is-done .step-mark svg{width:18px;height:18px}
 .step-text{min-width:0}
 .step-text strong{overflow-wrap:anywhere}
-.next-steps .step-text small{display:block;margin-top:4px;color:var(--muted)}
 .step.is-blocked .step-text strong{color:var(--muted)}
 .step-blocked{margin:6px 0 0;font-size:.875rem;color:var(--muted)}
 .next-steps a.step-button{min-height:44px;font-weight:620;white-space:nowrap}
