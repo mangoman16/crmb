@@ -18,12 +18,6 @@ $admin   = make_account(['role'=>'admin',   'name'=>'Chefin']);
 $trainer = make_account(['role'=>'trainer', 'name'=>'Trainerin', 'email'=>'die-trainerin@beispiel.test']);
 sign_in_as($trainer);
 
-/** Mail as a portal on its first evening has it (false) or as a set-up one does (true). */
-function mail_ready(bool $on): void {
-    set_setting('smtp', $on ? ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B'] : []);
-    set_setting('privacy_ready', $on);
-}
-
 /**
  * Linked students whose address is not their login's, byte for byte.
  *
@@ -137,6 +131,24 @@ mail_ready(false);
 throws(fn() => act('student_invite', ['student_id'=>(string)$paul]),
        'the invitation is refused', 'direkt mit Passwort');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['paul@beispiel.test']), 'and no login was left waiting without a link');
+
+case_('Mail that is saved but never tested is not mail that works');
+/* The invite button and the checklist's invitations step ask one rule. An
+   invitation queued behind a server that never answered would sit in the
+   outbox while the family waits, so the refusal says to test first, and where. */
+mail_ready(true);
+set_setting('smtp_last_test', []);
+is_same(false, account_mail_ready(), 'a saved server with no passing test is not ready');
+throws(fn() => act('student_invite', ['student_id'=>(string)$paul]),
+       'the invitation is refused', 'E-Mail-Versand zuerst testen');
+ok(str_contains(account_mail_missing(), '„Einstellungen → SMTP“') && !str_contains(account_mail_missing(), 'Datenschutz'),
+   'the sentence points at the SMTP tab, and only at what is actually missing');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['paul@beispiel.test']), 'and nothing was written');
+set_setting('smtp_last_test', ['ok'=>false, 'summary'=>'', 'transcript'=>'', 'sent_to'=>'', 'at'=>now()]);
+is_same(false, account_mail_ready(), 'nor is one whose last test failed');
+setup_cache_clear();
+is_same(true, array_column(setup_steps(), 'blocked', 'key')['invite'], 'and the checklist holds invitations up for the same reason');
+mail_ready(false);
 
 case_('An administrator can make a student’s login on the spot, with a password');
 throws(fn() => act('student_invite', ['student_id'=>(string)$paul, 'mode'=>'direct', 'password'=>'Federball-2026-Halle!']),
@@ -406,3 +418,21 @@ foreach (['familie.hofer@beispiel.test' => 'Lena Hofer', 'familie.berger@beispie
 }
 is_same(0, address_drift(), 'each of those students has their login’s address');
 is_same([], students_needing_own_address(), 'and no example student would be refused an invitation');
+
+case_('A family opening the students list is sent to their own student instead');
+/* An old bookmark to ?page=students. The list is the trainer's; a family has
+   one student (ADR 0010). The page's classification does not change - the
+   structure suite pins that - only where a family lands. */
+$ownLogin = make_account(['role'=>'student']);
+$own = make_student(['first_name'=>'Eigene', 'last_name'=>'Seite', 'account_id'=>$ownLogin]);
+is_same(['student', ['id'=>$own]], students_list_instead(one('SELECT * FROM accounts WHERE id=?', [$ownLogin])),
+        'a family goes to their own student’s page');
+$lonely = make_account(['role'=>'student']);
+is_same(['dashboard', []], students_list_instead(one('SELECT * FROM accounts WHERE id=?', [$lonely])),
+        'a family login no student points to goes to the overview');
+is_same(null, students_list_instead(one('SELECT * FROM accounts WHERE id=?', [$trainer])), 'a trainer stays on the list');
+is_same(null, students_list_instead(one('SELECT * FROM accounts WHERE id=?', [$admin])), 'and so does an administrator');
+$router = (string)file_get_contents(APP_ROOT.'/public/index.php');
+$redirect = strpos($router, "if(\$page==='students' && (\$instead=students_list_instead(\$user)))go(\$instead[0],\$instead[1]);");
+ok($redirect !== false && $redirect > (int)strpos($router, '$user=$public?') && $redirect < (int)strpos($router, "require ROOT.'/views/'"),
+   'the router redirects there once it knows who is asking, before any page is drawn');

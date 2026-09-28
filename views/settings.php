@@ -6,13 +6,33 @@
  * email templates and bank details. Those are the trainer's daily business and
  * live under Verwaltung, where she can reach them without an administrator.
  */
-$tab=(string)($_GET['tab']??'portal');
-$items=['portal'=>t('Portal','Portal'),'organisation'=>t('Betrieb','Business'),'fields'=>t('Eigene Felder','Custom fields'),
+$tab=(string)($_GET['tab']??'');
+// „Eigene Felder" is still a tab one can be on, reached from „Erweitert" on the
+// System tab; it is not in the row, because hardly anybody needs it.
+$items=['portal'=>t('Portal','Portal'),'organisation'=>t('Betrieb','Business'),
         'smtp'=>'SMTP','privacy'=>t('Datenschutz','Privacy'),
         'feedback'=>t('Rückmeldungen','Reports').(unread_feedback()?' ('.unread_feedback().')':''),
         'system'=>t('System','System')];
-if(!isset($items[$tab]))$tab='portal';$edit=(int)($_GET['edit']??0);
-page_head(t('Einstellungen','Settings'),t('Technische Verwaltung des Portals. Die Listen für den Trainingsalltag stehen unter „Verwaltung“.','Technical administration of the portal. The lists for day-to-day training are under “Verwaltung”.'));
+if($tab!=='' && $tab!=='fields' && !isset($items[$tab]))$tab='portal';$edit=(int)($_GET['edit']??0);
+page_head(t('Einstellungen','Settings'));
+/* Opened from the menu, with no tab asked for: the pages that have no menu entry
+   of their own start here (nav_owner()), then the tabs. */
+if($tab===''):
+    $setupSteps=setup_progress();$setupHidden=(bool)setting('setup_hidden');
+    $hub=[['page'=>'manage','params'=>[],'what'=>t('Verwaltung','Management'),'why'=>t('Gruppen, Mitgliedschaft, E-Mail-Vorlagen, Bankkonto.','Groups, membership, email templates, bank account.')],
+          ['page'=>'accounts','params'=>[],'what'=>t('Konten','Accounts'),'why'=>t('Wer außer dir das Portal verwaltet.','Who else runs the portal.')],
+          ['page'=>'history','params'=>[],'what'=>t('Änderungen','Changes'),'why'=>t('Was zuletzt geändert wurde, und von wem.','What was changed lately, and by whom.')],
+          ['page'=>'start','params'=>[],'what'=>t('Einrichtung ansehen','Look at the setup'),'why'=>t('Die neun Schritte zum Start. ','The nine steps to get started. ').$setupSteps['done'].' '.t('von','of').' '.$setupSteps['total'].' '.t('erledigt.','done.'),'setup'=>true],
+          ['page'=>'settings','params'=>['tab'=>'system','open'=>'advanced'],'anchor'=>'advanced','what'=>t('Erweitert','Advanced'),'why'=>t('Selten gebraucht: eigene Felder, Hintergrundaufgaben, wie lange Änderungen bleiben.','Rarely needed: custom fields, background work, how long changes are kept.')]]; ?>
+<section class="card settings-hub"><div class="grid two hub-grid">
+<?php foreach($hub as $item): ?>
+    <div class="hub-item">
+        <a class="editor-list-item" href="<?=e(url($item['page'],$item['params']).(isset($item['anchor'])?'#'.$item['anchor']:''))?>"><span><strong><?=e($item['what'])?></strong><small><?=e($item['why'])?></small></span><?=icon('arrow')?></a>
+        <?php if(!empty($item['setup']) && $setupHidden){start_form('setup_visibility',['hidden'=>'0'],'inline-form hub-action');submit_button(t('Wieder anzeigen','Show again'),'secondary');echo '</form>';} ?>
+    </div>
+<?php endforeach ?>
+</div></section>
+<?php endif;
 tabs($items,$tab,'settings');
 // Plain statements rather than extra branches, because PHP will not parse a
 // braced if as the last statement of an alternative-syntax elseif branch.
@@ -56,7 +76,7 @@ submit_button(t('Nur Verbindung prüfen','Only test the connection'),'secondary'
 </div></form>
 <?php if($test): ?>
 <div class="test-result">
-    <div class="section-heading"><h3><?=e(t('Letzter Test','Last test'))?></h3><?php badge(!empty($test['ok'])?t('Erfolgreich','Worked'):t('Fehlgeschlagen','Failed'),!empty($test['ok'])?'green':'red');?></div>
+    <div class="section-heading"><h3><?=e(t('Letzter Test','Last test'))?></h3><?php $tested=smtp_tested_ok();badge($tested?t('Erfolgreich','Worked'):t('Fehlgeschlagen','Failed'),$tested?'green':'red');?></div>
     <p><?=e((string)($test['summary']??''))?></p>
     <p class="muted"><?=e(fmt_datetime((string)($test['at']??now())))?></p>
     <?php if(($test['transcript']??'')!==''): ?>
@@ -65,10 +85,13 @@ submit_button(t('Nur Verbindung prüfen','Only test the connection'),'secondary'
         <p class="muted"><?=e(t('Benutzername und Passwort sind hier entfernt. Den Rest kannst du deinem Hoster schicken.','The user name and the password are removed here. The rest can go to your host.'))?></p>
     </details>
     <?php endif ?>
+    <?php /* A failed send is noticed here, so the list of what went out and
+             what did not is one tap away. */ ?>
+    <p class="test-outbox"><a href="<?=e(url('outbox'))?>"><?=e(t('Postausgang ansehen','Open the outbox'))?></a></p>
 </div>
 <?php endif ?>
 </section>
 <?php elseif($tab==='privacy'): ?>
 <section class="card"><h2><?=e(t('Datenschutzerklärung','Privacy notice'))?></h2><p class="muted"><?=e(t('Den Entwurf an das tatsächliche Hosting und den E-Mail-Dienst anpassen. Beide Sprachfassungen sind öffentlich vor der Anmeldung erreichbar.','Adapt the draft to the actual hosting and email service. Both languages are accessible before sign-in.'))?></p>
-<div class="notice"><?=e(t('Name und Anschrift kommen aus „Betrieb“ und müssen hier nicht getippt werden. Diese Platzhalter werden beim Anzeigen ersetzt: ','The name and address come from “Betrieb” and do not have to be typed here. These placeholders are filled in when the notice is shown: '))?><code><?=e(implode(' ',array_keys(privacy_placeholders())))?></code></div><?php start_form('privacy_save');input('privacy_de','Deutsch',setting('privacy_de',''),'textarea',true);input('privacy_en','English',setting('privacy_en',''),'textarea',true);check_field('privacy_ready',t('Beide Fassungen sind vervollständigt und zur Verwendung freigegeben.','Both versions are complete and approved for use.'),(bool)setting('privacy_ready',false));submit_button();?></form></section>
+<div class="notice"><?=e(t('Name und Anschrift kommen aus „Betrieb“ und müssen hier nicht getippt werden. Diese Platzhalter werden beim Anzeigen ersetzt: ','The name and address come from “Betrieb” and do not have to be typed here. These placeholders are filled in when the notice is shown: '))?><code><?=e(implode(' ',array_keys(privacy_placeholders())))?></code></div><?php start_form('privacy_save');input('privacy_de','Deutsch',setting('privacy_de',''),'textarea',true);input('privacy_en',t('English (freiwillig)','English (optional)'),setting('privacy_en',''),'textarea',false,t('Leer lassen, wenn es keine englische Fassung gibt. Wer das Portal auf Englisch nutzt, sieht dann die deutsche, mit einem Hinweis darauf.','Leave it empty if there is no English version. Whoever uses the portal in English then sees the German one, with a note saying so.'));check_field('privacy_ready',t('Die Datenschutzerklärung ist vollständig und zur Verwendung freigegeben.','The privacy notice is complete and approved for use.'),(bool)setting('privacy_ready',false));submit_button();?></form></section>
 <?php endif ?>

@@ -372,8 +372,11 @@ function test_reset(): void {
     setting_cache_clear();
     // Request-scoped memos outlive a request here, because a test run is one
     // process. Emptying them keeps every suite measuring a cold page, the way
-    // a real first request would be.
+    // a real first request would be - and lets each suite capture its own
+    // error, since a request captures only one.
     payment_cache_clear();
+    setup_cache_clear();
+    error_capture_reset();
 }
 
 function test_has_table(string $name): bool {
@@ -486,6 +489,18 @@ function make_enrolment(int $classId, int $studentId, array $over=[]): int {
         'left_on' => null, 'tariff_id' => null, 'price_cents' => null, 'price_note' => '', 'due_day' => 0,
     ], $over));
     return $classId;
+}
+
+/**
+ * Mail as a portal on its first evening has it (false), or as a set-up one does
+ * (true): a saved server, a connection test that passed, and a released notice.
+ * The one fixture for it, because account_mail_ready() asks all three, and a
+ * suite that set two of them by hand would be testing a portal that refuses.
+ */
+function mail_ready(bool $on): void {
+    set_setting('smtp', $on ? ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B'] : []);
+    set_setting('smtp_last_test', $on ? ['ok'=>true, 'summary'=>'', 'transcript'=>'', 'sent_to'=>'', 'at'=>now()] : []);
+    set_setting('privacy_ready', $on);
 }
 
 /** Pretend a given account is signed in, for code that calls current_user(). */

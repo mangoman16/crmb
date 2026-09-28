@@ -5,6 +5,10 @@ ini_set('display_errors','0');
 try {
     require __DIR__.'/../app/bootstrap.php';
     boot_http();
+    // A timeout or running out of memory ends the script where no catch can
+    // see it. Registered before the background work below, so it looks at the
+    // page's own fatal error rather than being queued behind that work (ADR 0012).
+    register_shutdown_function(capture_fatal_error(...));
     // Registered rather than called at the end of the file: most requests leave
     // through go(), which redirects and exits, and the mail queue has to be
     // worked on those too.
@@ -15,12 +19,15 @@ try {
     require ROOT.'/app/actions_config.php';
     require ROOT.'/app/ui.php';
     $page=is_scalar($_GET['page']??'')?(string)($_GET['page']??'dashboard'):'dashboard';
-    $allowed=['dashboard','students','student','payments','classes','accounts','messages','compose','news','outbox','manage','invoices','attendance','download','settings','history','profile','print','login','forgot','activate','unsubscribe','privacy','icon','manifest'];
+    $allowed=['dashboard','start','students','student','payments','classes','accounts','messages','compose','news','outbox','manage','invoices','attendance','download','settings','history','profile','print','login','forgot','activate','unsubscribe','privacy','icon','manifest'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
     // The trail a problem report carries. Here, before the POST branch, because
     // that branch redirects and never comes back: recorded any later, the trail
     // would have a hole exactly where a form was sent.
     record_step($page);
+    // The way back to the start checklist, kept in the session for the same
+    // reason: a save's redirect has to find it there (ADR 0011).
+    note_setup_return($page);
     if($_SERVER['REQUEST_METHOD']==='POST') {
         try {
             [$target,$params]=handle_post();
@@ -36,10 +43,15 @@ try {
         } catch(UserError $ex) {flash($ex->getMessage(),'error');remember_input(post('action'));}
         catch(PDOException $ex) {
             remember_input(post('action'));
-            error_log('CRM database action: '.$ex->getCode());
+            // A form sent twice is handled, not broken: the second copy is told
+            // so. Anything else the database refused is written down for the
+            // administrators (ADR 0012), and the person is told in a sentence.
             if($ex->getCode()==='23000' && str_contains($ex->getMessage(),'form_requests'))
                 flash(t('Diese Eingabe wurde bereits verarbeitet.','This submission has already been processed.'),'error');
-            else flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: Adresse bereits vergeben oder verknüpfte Daten vorhanden.','Cannot save: email already used or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
+            else {
+                capture_error($ex);
+                flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: Adresse bereits vergeben oder verknüpfte Daten vorhanden.','Cannot save: email already used or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
+            }
         }
         $fallback=post('return_page',current_user()?'dashboard':'login');
         if(!in_array($fallback,$allowed,true))$fallback='dashboard';
@@ -56,6 +68,9 @@ try {
     $user=$public?current_user():require_user();
     if($user)touch_last_seen($user);
     if(in_array($page,['accounts','payments','compose','outbox','classes','manage','invoices','attendance','print'],true))require_staff();
+    // A family's list is their own student; an old bookmark to the students list
+    // opens that page instead. Not a change of who may open it.
+    if($page==='students' && ($instead=students_list_instead($user)))go($instead[0],$instead[1]);
     // A download is not a page: it answers with a file and leaves. Handled here
     // rather than in a view because a view is wrapped in the layout, and the one
     // thing a PDF must not have around it is HTML.
@@ -64,7 +79,7 @@ try {
     // icon, and an install reads the manifest before anybody signs in.
     if($page==='icon')serve_portal_icon();
     if($page==='manifest')serve_web_manifest();
-    if(in_array($page,['settings','history'],true))require_admin();
+    if(in_array($page,['settings','history','start'],true))require_admin();
     // Read once, like the flash message: a submission that was rejected is offered
     // back to the form that follows and then forgotten, so it cannot reappear on a
     // page she opens tomorrow.
@@ -85,6 +100,12 @@ try {
         .'<a class="button" href="'.e(url('dashboard')).'">'.e(t('Zur Übersicht','Back to overview')).'</a></div>';
     $page='error';$public=true;$user=null;require ROOT.'/views/layout.php';
 } catch(Throwable $ex) {
-    if(ob_get_level())ob_end_clean();http_response_code(503);error_log('CRM: '.$ex->getMessage());header('Content-Type: text/html; charset=utf-8');
+    // capture_error() logs the error, writes it down for the administrators and
+    // cannot throw, so the friendly page below is sent whatever happens there.
+    // This catch also sees a configuration that stopped app/bootstrap.php before
+    // app/shell.php was loaded; then there is nothing to write with, only the log.
+    if(ob_get_level())ob_end_clean();http_response_code(503);
+    if(function_exists('capture_error'))capture_error($ex);else error_log('CRM: '.$ex->getMessage());
+    header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Badminton</title><p>Die Anwendung ist vorübergehend nicht verfügbar. Bitte Installation und Serverprotokoll prüfen.</p><p>The application is temporarily unavailable. Please check installation and server logs.</p></html>';
 }

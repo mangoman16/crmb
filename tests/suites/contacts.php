@@ -125,8 +125,7 @@ case_('An invitation goes to the address on the student, never to a contact’s'
 /* The rules about whose login is whose are in the accounts suite. What belongs
    here is the line this suite holds: the address the portal writes to is on the
    student, and an address on an emergency contact is not where anything goes. */
-set_setting('smtp', ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B']);
-set_setting('privacy_ready', true);
+mail_ready(true);
 $first = make_student(['first_name'=>'Erstes','last_name'=>'Kind', 'email'=>'erstes-kind@beispiel.test']);
 fixture('contacts', ['student_id'=>$first, 'owner_name'=>'Opa Kind', 'relation_label'=>'Großvater',
                      'phone'=>'+43 660 7654321', 'email'=>'opa-kind@beispiel.test', 'is_primary'=>1]);
@@ -138,8 +137,7 @@ is_same(1, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE recipient=? AND cat
         'the invitation is queued to that address');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE recipient=?', ['opa-kind@beispiel.test']),
         'and nothing to the grandfather on the emergency list');
-set_setting('smtp', []);
-set_setting('privacy_ready', false);
+mail_ready(false);
 
 case_('Example data leaves no child without somebody to ring or somewhere to write');
 $before = array_map(fn($s)=>(int)$s['id'], rows('SELECT id FROM students'));

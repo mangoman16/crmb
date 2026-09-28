@@ -29,8 +29,8 @@ const PRUNE_INTERVAL = 86400;
 
 /**
  * Remove expired tokens, old rate-limit counters, spent form identifiers,
- * problem reports long since dealt with, and uploaded files nothing points at
- * any more.
+ * problem reports long since dealt with, errors nothing has repeated for a
+ * month, and uploaded files nothing points at any more.
  *
  * Deliberately narrow: nothing here removes a student, a payment or a message.
  * The files it does remove are the ones whose record has already gone - a photo
@@ -46,6 +46,7 @@ function prune_expired(): void {
     // audit log next to it does not, because that one is evidence.
     history_prune((int)setting('history_months'));
     prune_done_feedback();
+    prune_quiet_errors();
     prune_uploads();
 }
 
@@ -81,6 +82,7 @@ function run_background_tasks(): void {
         }
     } catch (Throwable $e) {
         error_log('CRM background: ' . $e->getMessage());
+        capture_error($e, 'background');
     }
 }
 
@@ -88,7 +90,12 @@ function run_background_tasks(): void {
 function tick_work(): void {
     foreach (['mail' => tick_mail(...), 'prune' => tick_prune(...), 'billing' => tick_billing(...)] as $name => $job) {
         try { $job(); }
-        catch (Throwable $e) { error_log('CRM background (' . $name . '): ' . $e->getMessage()); }
+        catch (Throwable $e) {
+            // Logged here with the job's name, which capture_error() does not
+            // know, and for the refusals and second errors it does not write down.
+            error_log('CRM background (' . $name . '): ' . $e->getMessage());
+            capture_error($e, 'background');
+        }
     }
 }
 

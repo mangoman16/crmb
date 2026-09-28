@@ -26,9 +26,7 @@ case_('The suite dispatches an action into the transaction a real request opens'
    The case builds the portal state it needs: a released privacy notice and an
    SMTP host, because inviting refuses without them and a refusal here would
    look exactly like the defect. */
-set_setting('privacy_ready', true);
-set_setting('smtp', ['host'=>'mail.example.test','port'=>587,
-                     'from_email'=>'portal@example.test','from_name'=>'Portal']);
+mail_ready(true);
 test_load_actions();
 
 /* First the measurement itself, so the two passes underneath cannot be vacuous.

@@ -361,9 +361,25 @@ function privacy_draft_placeholders(string $text): array {
     return $matches[0];
 }
 
+/**
+ * The notice as a reader in $locale sees it, with the operator's details filled in.
+ *
+ * Only the German text is required (ADR 0011). A reader of the English page
+ * while there is no English text is shown the German one rather than nothing,
+ * and the page says so - privacy_in_german_only() is how it knows.
+ */
 function privacy_text(?string $locale=null): string {
-    return strtr((string)setting(($locale ?? locale())==='en' ? 'privacy_en' : 'privacy_de'), privacy_placeholders());
+    $english = ($locale ?? locale())==='en' && !privacy_in_german_only($locale);
+    return privacy_filled((string)setting($english ? 'privacy_en' : 'privacy_de'));
 }
+
+/** Whether an English reader is being shown the German notice, for want of an English one. */
+function privacy_in_german_only(?string $locale=null): bool {
+    return ($locale ?? locale())==='en' && trim((string)setting('privacy_en'))==='';
+}
+
+/** A stored notice with the placeholders replaced by who is responsible. */
+function privacy_filled(string $stored): string { return strtr($stored, privacy_placeholders()); }
 
 /**
  * Which version of the notice somebody agreed to.
@@ -371,9 +387,13 @@ function privacy_text(?string $locale=null): string {
  * Hashed after substitution, so moving house changes the notice and the people
  * who agreed to the old wording are recorded as having agreed to the old
  * wording - which is the point of storing a version at all.
+ *
+ * The English text as stored, never the German copy privacy_text() falls back
+ * to: adding a translation later is a new version, because it is one, and an
+ * English reader of a German-only notice agreed to the version with no English.
  */
 function notice_version(): string {
-    return substr(hash('sha256', privacy_text('de') . privacy_text('en')), 0, 16);
+    return substr(hash('sha256', privacy_filled((string)setting('privacy_de')) . privacy_filled((string)setting('privacy_en'))), 0, 16);
 }
 // Appearance follows the signed-in account; signed-out pages follow the device.
 function appearance(?array $user): array {

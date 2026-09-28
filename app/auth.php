@@ -144,16 +144,36 @@ function token_record(string $hash,bool $lock=false): ?array {
     return one('SELECT t.*,a.state,a.email,a.role,a.name FROM auth_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.token_hash=? AND t.expires_at>?'.($lock?' FOR UPDATE':''),[$hash,now()]);
 }
 /**
- * Whether a link to sign in can be sent at all: mail is set up and there is a
- * released privacy notice for the person to read before they agree.
+ * Whether a link to sign in can be sent at all: mail has been tested and works
+ * (smtp_tested_ok()), and there is a released privacy notice for the person to
+ * read before they agree.
+ *
+ * Tested, not merely saved: an invitation queued behind a server that never
+ * answered sits in the outbox unsent while the family waits for it. The same
+ * rule decides the invitations step of the start checklist, so the button and
+ * the checklist cannot disagree (ADR 0011).
  *
  * Asked by send_account_token() and, earlier, by the handlers that must refuse
  * before they write anything - a changed address that cannot be told about is
  * a family locked out of a login they never saw.
  */
-function account_mail_ready(): bool { return (bool)setting('smtp',[]) && (bool)setting('privacy_ready',false); }
+function account_mail_ready(): bool { return account_mail_missing()===''; }
+
+/**
+ * What is in the way of sending a link, as the sentences that say what to do,
+ * or '' when nothing is. Every refusal quotes this, so each one names the step
+ * that is actually missing and where to take it.
+ */
+function account_mail_missing(): string {
+    $missing=[];
+    if(!smtp_tested_ok()) $missing[]=t('E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP“ die Verbindung prüfen.',
+                                       'Test sending email first: check the connection under “Settings → SMTP”.');
+    if(!setting('privacy_ready',false)) $missing[]=t('Die Datenschutzerklärung unter „Einstellungen → Datenschutz“ freigeben.',
+                                                     'Release the privacy notice under “Settings → Privacy”.');
+    return implode(' ',$missing);
+}
 function send_account_token(array $account,string $purpose,?string $email=null): void {
-    if(!account_mail_ready()) throw new UserError(t('Bitte zuerst SMTP und Datenschutzerklärung einrichten.','Set up SMTP and the privacy notice first.'));
+    if(!account_mail_ready()) throw new UserError(account_mail_missing());
     $token=make_token((int)$account['id'],$purpose,$email);
     $en=$account['locale']==='en';
     $subjects=['invite'=>$en?'Your badminton invitation':'Deine Badminton-Einladung','reset'=>$en?'Reset your password':'Passwort zurücksetzen','email'=>$en?'Verify your email address':'E-Mail-Adresse bestätigen'];

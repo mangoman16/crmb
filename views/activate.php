@@ -5,6 +5,6 @@
 <?php else: ?><span class="eyebrow"><?=e($r['name'])?></span><h1><?=e($r['purpose']==='invite'?t('Konto einrichten','Set up your account'):($r['purpose']==='email'?t('E-Mail bestätigen','Verify email'):t('Neues Passwort','New password')))?></h1>
 <?php start_form('activate');if($r['purpose']!=='email'){input('password',t('Passwort','Password'),'','password',true,t('Mindestens 12 Zeichen.','At least 12 characters.'));input('password_confirm',t('Passwort wiederholen','Repeat password'),'','password',true);}else echo '<p>'.e($r['target_email']).'</p>';
 if($r['purpose']==='invite'): ?>
-<p><a href="<?=e(url('privacy'))?>" target="_blank" rel="noopener"><?=e(t('Datenschutzerklärung lesen','Read the privacy notice'))?></a></p>
+<p><a href="<?=e(url('privacy'))?>" target="_blank" rel="noopener"><?=e(privacy_in_german_only()?t('Datenschutzerklärung lesen','Read the privacy notice (in German)'):t('Datenschutzerklärung lesen','Read the privacy notice'))?></a></p>
 <?php check_field('privacy_seen',t('Ich habe die Datenschutzhinweise gelesen.','I have read the privacy notice.'));check_field('newsletter',t('Ich möchte Neuigkeiten zusätzlich per E-Mail erhalten. Freiwillig, jederzeit abmeldbar.','I would also like news by email. Optional; unsubscribe at any time.'));check_field('notifications',t('Bei neuen privaten Nachrichten per E-Mail benachrichtigen.','Email me about new private messages.'),true);endif;submit_button($r['purpose']==='invite'?t('Konto aktivieren','Activate account'):t('Bestätigen','Confirm'));?></form>
 <?php endif ?></div>

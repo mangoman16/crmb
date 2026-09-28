@@ -1,17 +1,35 @@
 'use strict';
-const menu = document.getElementById('menu-toggle');
+// „Mehr" is a link to #sidebar, which the stylesheet opens without JavaScript.
+// Here it becomes the button it stands for: it slides the menu in and out and
+// leaves the address alone, and the backdrop and „Menü schließen" close it.
+let menu = document.getElementById('menu-toggle');
 const backdrop = document.getElementById('menu-backdrop');
+const menuClose = document.getElementById('menu-close');
+if (menu && menu.tagName === 'A') {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = menu.id;
+  button.setAttribute('aria-controls', 'sidebar');
+  button.setAttribute('aria-expanded', 'false');
+  button.append(...menu.childNodes);
+  menu.replaceWith(button);
+  menu = button;
+}
+if (backdrop) backdrop.hidden = true;
 function closeMenu() {
   document.body.classList.remove('menu-open');
   if (menu) menu.setAttribute('aria-expanded', 'false');
   if (backdrop) backdrop.hidden = true;
+  // Opened as #sidebar before this script ran (or by a bookmarked address):
+  // dropping the fragment is what closes it then.
+  if (location.hash === '#sidebar') history.replaceState(null, '', location.pathname + location.search);
 }
 menu?.addEventListener('click', () => {
   const open = document.body.classList.toggle('menu-open');
   menu.setAttribute('aria-expanded', String(open));
   if (backdrop) backdrop.hidden = !open;
 });
-backdrop?.addEventListener('click', closeMenu);
+[backdrop, menuClose].forEach(link => link?.addEventListener('click', event => { event.preventDefault(); closeMenu(); }));
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
 document.querySelectorAll('[data-select-all]').forEach(control => {
   control.addEventListener('change', () => {
@@ -173,3 +191,34 @@ document.querySelectorAll('.composer textarea').forEach(box => {
   box.addEventListener('input', grow);
   grow();
 });
+
+// Betrieb: the tax rate and the UID number only matter with VAT, so they wait
+// until „Mit Umsatzsteuer“ is picked. Without JavaScript every field shows.
+const taxMode = document.querySelector('select[name="set_org_tax_mode"]');
+if (taxMode) {
+  const vatFields = ['set_org_vat_rate', 'set_org_vat_id']
+    .map(name => document.querySelector('[name="' + name + '"]')?.closest('.field'))
+    .filter(Boolean);
+  const syncTax = () => { vatFields.forEach(field => { field.hidden = taxMode.value !== 'vat'; }); };
+  taxMode.addEventListener('change', syncTax);
+  syncTax();
+}
+
+// „Für den Support kopieren“: the text is in a read-only box that can be
+// selected and copied by hand; this adds one button where the browser offers
+// a clipboard, and says „Kopiert“ for a moment afterwards.
+if (navigator.clipboard) {
+  document.querySelectorAll('[data-copy-from]').forEach(button => {
+    const box = document.getElementById(button.dataset.copyFrom);
+    const status = button.parentElement?.querySelector('[data-copy-status]');
+    if (!box) return;
+    button.hidden = false;
+    button.addEventListener('click', () => {
+      navigator.clipboard.writeText(box.value).then(() => {
+        if (!status) return;
+        status.hidden = false;
+        window.setTimeout(() => { status.hidden = true; }, 2500);
+      }, () => { box.focus(); box.select(); });
+    });
+  });
+}

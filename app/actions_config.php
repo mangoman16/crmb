@@ -458,9 +458,8 @@ function dispatch_config(string $action): array {
         run('INSERT INTO feedback (account_id,page,message,context_json,screenshot_name,created_at) VALUES (?,?,?,?,?,?)',
             [(int)$u['id'],$page,$message,feedback_context_json(feedback_context($page)),$screenshot,now()]);
         $id=(int)db()->lastInsertId();
-        foreach(rows("SELECT id FROM accounts WHERE role='admin' AND state='active'") as $admin)
-            notify((int)$admin['id'],'problem',t('Jemand meldet ein Problem','Somebody reported a problem'),
-                mb_substr($message,0,200),'settings',['tab'=>'feedback']);
+        notify_admins('problem',t('Jemand meldet ein Problem','Somebody reported a problem'),
+            mb_substr($message,0,200),'settings',['tab'=>'feedback']);
         audit('feedback.sent','feedback',$id);
         flash(t('Danke! Die Meldung ist angekommen.','Thank you. Your report has arrived.'));
         return [post('return_page','dashboard'),[]];
@@ -485,10 +484,14 @@ function dispatch_config(string $action): array {
 
     case 'demo_data':
         require_admin(); $mode=choose(post('mode'),['fill','clear']);
+        // Back to the checklist when that is where she came from: filling or
+        // clearing example data is something the checklist offers on the way
+        // to a real portal, and the System tab would lose her place (ADR 0011).
+        $back=post('from')==='start' || setup_return_active() ? ['start',[]] : ['settings',['tab'=>'system']];
         if($mode==='clear') {
             $removed=demo_clear(); unset($_SESSION['demo_password']);
             flash(t('Beispieldaten entfernt: ','Example data removed: ').plural($removed['students'],'Schüler','Schüler','student','students').'.');
-            return ['settings',['tab'=>'system']];
+            return $back;
         }
         $result=demo_fill(post('confirm')!=='');
         // Held in the session rather than the database: it is only ever needed by
@@ -499,7 +502,7 @@ function dispatch_config(string $action): array {
             .plural($result['students'],'Schüler','Schüler','student','students').', '
             .plural($result['courses'],'Kurs','Kurse','course','courses').'. '
             .t('Das Passwort für die Beispielkonten steht unten.','The password for the example accounts is below.'));
-        return ['settings',['tab'=>'system']];
+        return $back;
 
     case 'maintenance_toggle':
         require_admin(); $on=post('mode')==='on';

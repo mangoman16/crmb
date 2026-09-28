@@ -104,6 +104,7 @@ $adminPages = [
     'settings'   => [[], ['tab'=>'portal'], ['tab'=>'organisation'], ['tab'=>'fields'], ['tab'=>'smtp'],
                      ['tab'=>'privacy'], ['tab'=>'feedback'], ['tab'=>'system']],
     'history'    => [[], ['entity'=>'students','id'=>$lena]],
+    'start'      => [[]],
 ];
 
 case_('Every page an administrator can open, opens');

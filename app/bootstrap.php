@@ -47,6 +47,11 @@ require __DIR__ . '/invoices.php';
 require __DIR__ . '/demo.php';
 require __DIR__ . '/messaging.php';
 require __DIR__ . '/mail.php';
+// The start checklist asks the course, billing, invoice, mail and account rules
+// above whether each step is done, so it comes after all of them. Nothing loaded
+// earlier calls it: only the router, the actions, app/ui.php and the views do,
+// at request time (ADR 0011).
+require __DIR__ . '/start.php';
 require __DIR__ . '/tick.php';
 if (is_file(ROOT . '/vendor/autoload.php')) { require ROOT . '/vendor/autoload.php'; }
 require __DIR__ . '/qr.php';

@@ -80,14 +80,14 @@ function input(string $name,string $label,mixed $value='',string $type='text',bo
     else echo '<input id="'.e($id).'" name="'.e($name).'" type="'.e($type).'" value="'.e($value).'"'.$ph.' '.($required?'required ':'').($type==='password'?'autocomplete="new-password" minlength="12" maxlength="72"':'').($type==='number'?' step="any"':'').'>';
     if($hint)echo '<small>'.e($hint).'</small>';echo '</div>';
 }
-function select_field(string $name,string $label,array $options,mixed $value='',bool $required=false,bool $multiple=false): void {
+function select_field(string $name,string $label,array $options,mixed $value='',bool $required=false,bool $multiple=false,string $hint=''): void {
     $value=held_input($name,$value);
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
     echo '<div class="field"><label for="'.e($id).'">'.e($label).($required?' *':'').'</label><select id="'.e($id).'" name="'.e($name).($multiple?'[]':'').'" '.($required?'required ':'').($multiple?'multiple size="4"':'').'>';
     if(!$multiple) echo select_options(['' => t('Auswählen','Select')]+$options,$value);
     else foreach($options as $k=>$v)
         echo '<option value="'.e($k).'" '.(in_array((string)$k,array_map('strval',is_array($value)?$value:[]),true)?'selected':'').'>'.e($v).'</option>';
-    echo '</select></div>';
+    echo '</select>'.($hint!==''?'<small>'.e($hint).'</small>':'').'</div>';
 }
 function check_field(string $name,string $label,bool $value=false): void {
     // An unticked box sends nothing at all, so "held, and absent" means unticked
@@ -136,21 +136,62 @@ function submit_button(string $label='',string $class='primary',string $name='',
 function page_head(string $title,string $description='',string $action=''): void { echo '<div class="page-heading"><div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>'; }
 function link_button(string $label,string $page,array $params=[],string $class='primary'): string { return '<a class="button '.e($class).'" href="'.e(url($page,$params)).'">'.e($label).'</a>'; }
 function empty_state(string $title,string $body='',string $action=''): void { echo '<div class="empty"><div class="empty-icon">'.icon('users').'</div><h2>'.e($title).'</h2>'.($body?'<p>'.e($body).'</p>':'').$action.'</div>'; }
-function tabs(array $items,string $active,string $page,array $params=[]): void { echo '<nav class="tabs" aria-label="'.e(t('Bereiche','Sections')).'">';foreach($items as $key=>$label)echo '<a '.($key===$active?'aria-current="page"':'').' href="'.e(url($page,['tab'=>$key]+$params)).'">'.e($label).'</a>';echo '</nav>'; }
+/**
+ * A row of tabs. An item is a label, which opens $page with tab=<key>, or
+ * ['label'=>…, 'page'=>…, 'params'=>[…]], which opens a page of its own - the
+ * „Beiträge · Rechnungen" switch is two pages that read as one.
+ */
+function tabs(array $items,string $active,string $page,array $params=[]): void {
+    echo '<nav class="tabs" aria-label="'.e(t('Bereiche','Sections')).'">';
+    foreach($items as $key=>$item) {
+        $href=is_array($item)?url($item['page'],$item['params']??[]):url($page,['tab'=>$key]+$params);
+        echo '<a '.($key===$active?'aria-current="page"':'').' href="'.e($href).'">'.e(is_array($item)?$item['label']:$item).'</a>';
+    }
+    echo '</nav>';
+}
+/** Beiträge and Rechnungen, one of Geld's two pages each (ADR 0011). */
+function money_switch(string $active): void {
+    tabs(['payments'=>['label'=>t('Beiträge','Payments'),'page'=>'payments'],
+          'invoices'=>['label'=>t('Rechnungen','Invoices'),'page'=>'invoices']],$active,$active);
+}
 function badge(string $text,string $style=''): void {echo '<span class="badge '.e($style).'">'.e($text).'</span>';}
 /**
  * One student in a list.
  *
- * $s['due_cents'] may be supplied by a caller that resolved every balance in one
- * query; without it the card falls back to looking up its own, which is correct
- * but costs a query per card.
+ * $s['due_cents'] and $s['course_price'] may be supplied by a caller that
+ * resolved every card in one query (balances(), course_prices_by_student());
+ * without them the card looks up its own, which is correct but costs queries
+ * per card.
  */
 function student_card(array $s): void {
     $due=array_key_exists('due_cents',$s)?(int)$s['due_cents']:balance((int)$s['id'],true);
-    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s,'','student').'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$s['level_name']??'',age_group_name($s),$s['tariff_name']?:t('Kein Tarif','No tariff')]))).'</p></div><div class="student-card-status">';
+    $price=array_key_exists('course_price',$s)?(string)$s['course_price']:course_price_label(student_enrolments((int)$s['id']));
+    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s,'','student').'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$s['level_name']??'',age_group_name($s),$price]))).'</p></div><div class="student-card-status">';
     badge(status_label($s['status']),$s['status']==='active'?'green':'');
     if($due)echo '<span class="due">'.e(money($due)).' '.e(t('überfällig','overdue')).'</span>';
     echo '</div>'.icon('arrow').'</a>';
+}
+/**
+ * What a child pays, from the courses they are in now: the price is the
+ * course's (ADR 0011), so a list that said „Kein Tarif" from the child's own,
+ * unused tariff was saying something about nothing. $enrolments are rows as
+ * student_enrolments() and billing_enrolments() give them.
+ */
+function course_price_label(array $enrolments): string {
+    $current=array_filter($enrolments,fn($row)=>$row['left_on']===null);
+    if(!$current) return t('in keinem Kurs','in no course');
+    $prices=[];
+    foreach($current as $row) {
+        $cents=enrolment_price($row)['cents'];
+        if($cents!==null) $prices[]=money($cents).' '.billing_interval_label((int)($row['interval_months']??1));
+    }
+    return $prices?implode(' + ',$prices):t('Kurs ohne Preis','course without a price');
+}
+/** course_price_label() for every child at once, id => label: one query for a whole list. */
+function course_prices_by_student(): array {
+    $by=[];
+    foreach(billing_enrolments() as $row) $by[(int)$row['student_id']][]=$row;
+    return array_map('course_price_label',$by);
 }
 function render_filters(array $f,string $target='students'): void {
     // A GET form is never rejected, so it has no held submission to offer back.
@@ -173,63 +214,97 @@ function render_filters(array $f,string $target='students'): void {
 }
 
 /**
- * The main menu, as sections rather than one long list.
+ * The main menu: one flat list, no sections (ADR 0011).
  *
- * An administrator has thirteen destinations. In a row they made the panel
- * taller than a laptop window at 110% zoom, and a menu you have to scroll is a
- * menu whose last three entries nobody finds. So the six that clearly belong to
- * a subject sit inside it, and only the section you are working in is open.
+ * Seven entries for staff, because a section hides what it holds and seven fit
+ * on a phone. Every page that has no entry of its own is reached from the page
+ * that owns it (nav_owner()), and that entry is the one highlighted there.
  *
- * What stays at the top level is what she reaches for without thinking:
- * Übersicht, Schüler, Nachrichten, Neuigkeiten, and the lists under Verwaltung.
+ *   administrator  (Einrichtung, while unfinished) · Übersicht · Schüler · Kurse
+ *                  · Anwesenheit · Geld · Nachrichten · Einstellungen
+ *   trainer        the same, with Verwaltung last: Einstellungen is an
+ *                  administrator's page, Verwaltung is what she can open
+ *   family         Übersicht · Profil · Nachrichten · Neuigkeiten
  *
- * Returns an ordered list of entries, each either
- *   ['route'=>…, 'icon'=>…, 'label'=>…, 'count'=>int]   a destination, or
- *   ['section'=>…, 'icon'=>…, 'label'=>…, 'items'=>[…]] a section of them.
+ * Each entry is ['route'=>…, 'params'=>[…], 'icon'=>…, 'label'=>…, 'count'=>int].
  */
 function nav_entries(array $user): array {
-    $staff=is_staff($user); $admin=is_admin($user);
     $entry=fn(string $route,string $symbol,string $label,int $count=0)=>
-        ['route'=>$route,'icon'=>$symbol,'label'=>$label,'count'=>$count];
-    $out=[$entry('dashboard','home',t('Übersicht','Overview'))];
-    if($people=people_nav_entry($user)) $out[]=$people;
-    if($staff) {
-        $out[]=['section'=>'training','icon'=>'calendar','label'=>t('Training','Training'),'items'=>[
-            $entry('classes','calendar',t('Kurse','Courses'),pending_request_count()),
-            $entry('attendance','check',t('Anwesenheit','Attendance'))]];
-        $out[]=['section'=>'money','icon'=>'wallet','label'=>t('Geld','Money'),'items'=>[
-            $entry('payments','wallet',t('Beiträge','Payments')),
-            $entry('invoices','news',t('Rechnungen','Invoices'))]];
+        ['route'=>$route,'params'=>[],'icon'=>$symbol,'label'=>$label,'count'=>$count];
+    if(!is_staff($user)) {
+        $out=[$entry('dashboard','home',t('Übersicht','Overview'))];
+        if($people=people_nav_entry($user)) $out[]=$people;
+        $out[]=$entry('messages','mail',t('Nachrichten','Messages'),unread_count($user));
+        $out[]=$entry('news','news',t('Neuigkeiten','News'));
+        return $out;
     }
+    $admin=is_admin($user);
+    $out=[];
+    if($admin && setup_unfinished()) $out[]=$entry('start','check',t('Einrichtung','Setup'));
+    $out[]=$entry('dashboard','home',t('Übersicht','Overview'));
+    $out[]=people_nav_entry($user);
+    $out[]=$entry('classes','calendar',t('Kurse','Courses'),pending_request_count());
+    $out[]=$entry('attendance','check',t('Anwesenheit','Attendance'));
+    $out[]=$entry('payments','wallet',t('Geld','Money'));
     $out[]=$entry('messages','mail',t('Nachrichten','Messages'),unread_count($user));
-    $out[]=$entry('news','news',t('Neuigkeiten','News'));
-    if($staff) {
-        $out[]=$entry('manage','settings',t('Verwaltung','Management'));
-        $system=[$entry('accounts','lock',t('Konten','Accounts')),
-                 $entry('outbox','mail',t('Postausgang','Outbox'))];
-        if($admin) {
-            $system[]=$entry('history','calendar',t('Änderungen','Changes'));
-            $system[]=$entry('settings','settings',t('Einstellungen','Settings'));
-        }
-        $out[]=['section'=>'system','icon'=>'lock','label'=>t('System','System'),'items'=>$system];
-    }
+    $out[]=$admin?$entry('settings','settings',t('Einstellungen','Settings'))
+                 :$entry('manage','settings',t('Verwaltung','Management'));
     return $out;
 }
 
 /**
- * Whether a menu entry is the page being looked at.
+ * The route of the menu entry that stands for $page, for $user.
  *
- * Three pages have no entry of their own because they are opened from one:
- * a single student, a new message, and the page that is not there.
+ * The one table of which page belongs where. A page with an entry of its own
+ * is its own owner; a page without one names the entry it is reached from,
+ * and that entry is highlighted while it is open:
+ *
+ *   invoices                  → payments (Geld): the „Beiträge · Rechnungen" switch
+ *   compose, outbox           → messages: the links at the top of Nachrichten
+ *   news                      → messages for staff (same links); a family's own entry
+ *   manage, accounts, history → settings for an administrator (the hub at the top
+ *                               of Einstellungen); manage for a trainer, whose
+ *                               Verwaltung links to Team und Zugänge
+ *   start                     → itself while it is in the menu; settings once hidden
+ *                               („Einrichtung ansehen" on the hub)
+ *   student                   → students for staff (the list); a family's Profil
+ *   students                  → itself for staff; a family's Profil, because a
+ *                               family's list holds their one child and no menu
+ *                               entry of theirs leads to it (ADR 0010)
+ *   print                     → students (the child's page links to it)
+ *   download                  → payments for staff (invoices), Profil for a family
+ *
+ * '' for a page that belongs to no entry: profile (the account in the top bar,
+ * and „Konto" on a family's phone bar), privacy (Mein Konto and the side menu's
+ * foot) and the pages shown to nobody signed in.
  */
-function nav_is_current(string $route,string $page): bool {
-    return $route===$page
-        || ($route==='students' && $page==='student')
-        || ($route==='messages' && $page==='compose');
+function nav_owner(string $page,?array $user=null): string {
+    $user??=current_user();
+    if(!$user) return '';
+    $staff=is_staff($user); $admin=is_admin($user);
+    return match($page) {
+        'invoices'                    => 'payments',
+        'compose','outbox'            => 'messages',
+        'news'                        => $staff?'messages':'news',
+        'manage','accounts','history' => $admin?'settings':'manage',
+        'start'                       => $admin && setup_unfinished()?'start':'settings',
+        'student'                     => $staff?'students':'student',
+        'print'                       => 'students',
+        'download'                    => $staff?'payments':'student',
+        'students'                    => $staff?'students':'student',
+        'dashboard','classes','attendance','payments','messages','settings' => $page,
+        'profile'                     => $staff?'':'profile',
+        default                       => '',
+    };
+}
+
+/** Whether a menu entry is the one standing for the page being looked at. */
+function nav_is_current(string $route,string $page,?array $user=null): bool {
+    return $route!=='' && $route===nav_owner($page,$user);
 }
 
 /**
- * The menu's second entry, the same in the side menu and the bar at the bottom.
+ * The menu's "people" entry, the same in the side menu and the bar at the bottom.
  *
  * Staff get the list of students. A family has one student and nothing to list
  * (ADR 0010), so theirs goes straight to that student's page and is called
@@ -243,42 +318,48 @@ function people_nav_entry(array $user): ?array {
     return $id?['route'=>'student','params'=>['id'=>$id],'icon'=>'users','label'=>t('Profil','Profile'),'count'=>0]:null;
 }
 
+/**
+ * The bar along the bottom of a phone: four places and, for staff, „Mehr",
+ * which the layout adds as the button that opens the side menu.
+ *
+ *   staff   Übersicht · Schüler · Nachrichten · Anwesenheit (· Mehr)
+ *   family  Übersicht · Profil · Nachrichten · Neues · Konto
+ *
+ * A family has no „Mehr": everything in their side menu is already on the
+ * bar, and the privacy notice and the version are on „Mein Konto".
+ * 'short' is the label the bar prints, 'label' the full name a screen reader
+ * says; at five to a 320px screen „Nachrichten" does not fit.
+ */
+function mobile_nav_entries(array $user): array {
+    $entry=fn(string $route,string $symbol,string $label,string $short='',int $count=0)=>
+        ['route'=>$route,'params'=>[],'icon'=>$symbol,'label'=>$label,'short'=>$short!==''?$short:$label,'count'=>$count];
+    $messages=$entry('messages','mail',t('Nachrichten','Messages'),t('Post','Messages'),unread_count($user));
+    if(is_staff($user))
+        return [$entry('dashboard','home',t('Übersicht','Overview')),
+                people_nav_entry($user)+['short'=>t('Schüler','Students')],
+                $messages,
+                $entry('attendance','check',t('Anwesenheit','Attendance'),t('Anwesend','Attendance'))];
+    $out=[$entry('dashboard','home',t('Übersicht','Overview'))];
+    if($people=people_nav_entry($user)) $out[]=$people+['short'=>$people['label']];
+    $out[]=$messages;
+    $out[]=$entry('news','news',t('Neuigkeiten','News'),t('Neues','News'));
+    $out[]=$entry('profile','lock',t('Mein Konto','My account'),t('Konto','Account'));
+    return $out;
+}
+
 /** One menu row: the link, its label, and the number waiting behind it. */
-function nav_link(array $item,string $page): string {
+function nav_link(array $item,string $page,?array $user=null): string {
     $count=(int)($item['count']??0);
-    return '<a href="'.e(url($item['route'],$item['params']??[])).'" '.(nav_is_current($item['route'],$page)?'aria-current="page"':'').'>'
+    return '<a href="'.e(url($item['route'],$item['params']??[])).'" '.(nav_is_current($item['route'],$page,$user)?'aria-current="page"':'').'>'
         .icon($item['icon']).'<span>'.e($item['label']).'</span>'
         .($count?'<span class="count" aria-label="'.e($count.' '.t('wartet','waiting')).'">'.e((string)$count).'</span>':'')
         .'</a>';
 }
 
-/**
- * The main menu as markup.
- *
- * The open section is decided here rather than in the browser, so the menu is
- * already showing where you are on the first paint and without JavaScript. The
- * name attribute makes the browser close the other sections when one is opened,
- * which is what keeps the panel one section tall; a browser too old for it
- * simply lets two stand open.
- */
+/** The main menu as markup. */
 function sidebar_nav(array $user,string $page): string {
     $html='<nav aria-label="'.e(t('Hauptmenü','Main menu')).'">';
-    foreach(nav_entries($user) as $entry) {
-        if(isset($entry['route'])) {$html.=nav_link($entry,$page);continue;}
-        $open=false; $waiting=0; $inner='';
-        foreach($entry['items'] as $item) {
-            $open=$open || nav_is_current($item['route'],$page);
-            $waiting+=(int)($item['count']??0);
-            $inner.=nav_link($item,$page);
-        }
-        $html.='<details class="nav-section" name="nav-section"'.($open?' open':'').'>'
-            .'<summary>'.icon($entry['icon']).'<span>'.e($entry['label']).'</span>'
-            // Shown by the stylesheet only while the section is closed: the count
-            // is on the entry itself once you can see the entry.
-            .($waiting?'<span class="count section-count" aria-label="'.e($waiting.' '.t('wartet','waiting')).'">'.e((string)$waiting).'</span>':'')
-            .'<span class="chevron" aria-hidden="true">'.icon('arrow').'</span></summary>'
-            .'<div class="nav-sub">'.$inner.'</div></details>';
-    }
+    foreach(nav_entries($user) as $entry) $html.=nav_link($entry,$page,$user);
     return $html.'</nav>';
 }
 
@@ -405,19 +486,70 @@ function print_signature(string $label): void {
 }
 
 /**
- * The list of things still to do on a record that has just been created.
+ * A numbered list of things to do, each leading to where it is done.
  *
- * Numbered, because it is a sequence rather than a list of complaints, and
- * shown at the top of the record: the bottom of a page is where things go to
- * be forgotten. Disappears the moment there is nothing left on it.
+ * On a record that has just been created it is what is still missing, in the
+ * order she would do it, at the top of the record: the bottom of a page is
+ * where things go to be forgotten. It disappears the moment nothing is left.
+ *
+ * The start checklist (ADR 0011) is the same list with a state on every step:
+ * a step carrying 'done' is shown whether or not it is done - with its number
+ * or a tick, the word „Erledigt" (a tick alone says nothing to a screen
+ * reader, or to anybody unsure what a tick means here), and a button rather
+ * than a linked title: „Eintragen", filled for the one to do next ('next'),
+ * or „Ändern" once done. A step with 'blocked' has no button, and says which
+ * steps it waits for; $numbers maps each key to the number it is shown with,
+ * so "Schritt 7 und 8" is worked out rather than written down.
+ *
+ * $heading is the card's title and $start the number of its first step, so one
+ * list can be shown as several groups.
  */
-function next_steps_card(array $steps): void {
+function next_steps_card(array $steps, string $heading = '', int $start = 1, array $numbers = []): void {
     if (!$steps) return;
-    echo '<section class="card next-steps"><h2>'.e(t('Noch zu tun','Still to do')).'</h2><ol>';
-    foreach ($steps as $step)
-        echo '<li><a href="'.e(url($step['page'],$step['params']).(isset($step['anchor'])?'#'.$step['anchor']:'')).'">'.e($step['what']).'</a>'
-            .'<small>'.e($step['why']).'</small></li>';
+    $checklist = array_key_exists('done', $steps[0]);
+    echo '<section class="card next-steps'.($checklist ? ' is-checklist' : '').'"><h2>'.e($heading !== '' ? $heading : t('Noch zu tun','Still to do')).'</h2>'
+        .'<ol'.($start !== 1 ? ' start="'.$start.'"' : '').'>';
+    foreach (array_values($steps) as $i => $step) {
+        $href = url($step['page'], $step['params']).(!empty($step['anchor']) ? '#'.$step['anchor'] : '');
+        if (!$checklist) {
+            echo '<li><a href="'.e($href).'">'.e($step['what']).'</a><small>'.e($step['why']).'</small></li>';
+            continue;
+        }
+        $state = $step['done'] ? 'is-done' : (!empty($step['blocked']) ? 'is-blocked' : 'is-open');
+        echo '<li class="step '.$state.'">'
+            .'<span class="step-mark">'.($step['done'] ? icon('check').'<span class="visually-hidden">'.e((string)($start + $i)).'</span>' : e((string)($start + $i))).'</span>'
+            .'<div class="step-text"><p class="badge-line"><strong>'.e($step['what']).'</strong>';
+        if ($step['done']) badge(t('Erledigt','Done'),'green');
+        echo '</p><small>'.e($step['why']).'</small>';
+        if (!$step['done'] && !empty($step['blocked'])) {
+            $waiting = [];
+            foreach ($step['blocked_by'] as $key) if (isset($numbers[$key]) && !($numbers[$key]['done'] ?? false)) $waiting[] = $numbers[$key]['n'];
+            echo '<p class="step-blocked">'.e(count($waiting) === 1
+                ? t('Geht, sobald Schritt ','Possible once step ').$waiting[0].t(' erledigt ist.',' is done.')
+                : t('Geht, sobald Schritt ','Possible once steps ').implode(', ', array_slice($waiting, 0, -1)).t(' und ',' and ').end($waiting).t(' erledigt sind.',' are done.')).'</p>';
+        }
+        echo '</div>';
+        if ($step['done'] || empty($step['blocked']))
+            echo '<a class="button '.($step['done'] || empty($step['next']) ? 'secondary' : 'primary').' step-button" href="'.e($href).'">'
+                .e($step['done'] ? t('Ändern','Change') : t('Eintragen','Fill in'))
+                .'<span class="visually-hidden">: '.e($step['what']).'</span></a>';
+        echo '</li>';
+    }
     echo '</ol></section>';
+}
+
+/**
+ * The password for the example accounts, just after they were made.
+ *
+ * Held in the session by demo_data and nowhere else, and shown wherever the
+ * fill returns to - the System tab or the checklist - because its message
+ * says the password is shown below it.
+ */
+function demo_password_notice(): void {
+    if (empty($_SESSION['demo_password']) || !demo_present()) return;
+    echo '<div class="notice">'.e(t('Passwort für alle Beispielkonten','Password for every example account')).': <strong class="mono">'.e((string)$_SESSION['demo_password']).'</strong><br>'
+        .e(t('Es wird nur hier gezeigt und nirgends gespeichert. Konten: trainerin@beispiel.test, familie.hofer@beispiel.test, familie.berger@beispiel.test','Shown only here and stored nowhere. Accounts: trainerin@beispiel.test, familie.hofer@beispiel.test, familie.berger@beispiel.test'))
+        .'</div>';
 }
 
 /**

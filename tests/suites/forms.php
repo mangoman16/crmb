@@ -28,14 +28,17 @@ ok(str_contains($html, 'maria.hofer@'), 'and the value that was refused, so it c
 
 case_('And on the full form, which has the boxes the short one leaves out');
 $existing = make_student(['first_name'=>'Tobias', 'last_name'=>'Hofer']);
+// The refused value used to be a price with a euro sign. The price box is gone
+// from this form (ADR 0011), so it is a date typed the way it is said instead -
+// „Dabei seit“ stays on the form, wherever on it it ends up.
 $reject('student_save', ['return_page'=>'student','return_id'=>(string)$existing,'return_tab'=>'',
     'id'=>(string)$existing, 'revision'=>'1',
     'first_name'=>'Tobias','last_name'=>'Hofer','birth_date'=>'','status'=>'active',
-    'price'=>'45,50 €',                       // the euro sign is what gets it refused
-    'price_note'=>'Geschwisterermäßigung','internal_notes'=>'Trainiert seit Herbst']);
+    'joined_on'=>'1.9.2025',                  // not a date the form sends, which is what gets it refused
+    'phone'=>'+43 660 7654321','internal_notes'=>'Trainiert seit Herbst']);
 $html = render_view('student', ['id'=>$existing]);
-ok(str_contains($html, '45,50 €'), 'the value that was refused');
-ok(str_contains($html, 'Geschwisterermäßigung'), 'and the note beside it');
+ok(str_contains($html, '1.9.2025'), 'the value that was refused');
+ok(str_contains($html, '+43 660 7654321'), 'and the one typed beside it');
 ok(str_contains($html, 'Trainiert seit Herbst'), 'and the long text nobody wants to type twice');
 
 case_('A new child is asked the few things that cannot wait');
@@ -66,7 +69,7 @@ ok(!str_contains($html, 'value="Lena"'), 'so the same page is empty again');
 
 case_('It is never offered to a different form, page or record');
 $reject('student_save', ['return_page'=>'student','return_id'=>'0','return_tab'=>'',
-    'first_name'=>'Lena','last_name'=>'Hofer','status'=>'active','price'=>'45,50 €']);
+    'first_name'=>'Lena','last_name'=>'Hofer','status'=>'active','joined_on'=>'1.9.2025']);
 $other = make_student(['first_name'=>'Jonas','last_name'=>'Berger']);
 $html = render_view('student', ['id'=>$other]);
 ok(!str_contains($html, 'value="Lena"'), 'another student keeps their own name');
@@ -111,21 +114,34 @@ unset($GLOBALS['page'], $GLOBALS['crm_held_input']); $_GET = []; form_context(''
 
 case_('A default is shown rather than only referred to');
 // "Leave blank to use the tariff's default price" never said what that price
-// was, so the only way to find out was to save and look.
-$student = make_student(['tariff_id'=>$tariff, 'price_cents'=>null]);
-$html = render_view('student', ['id'=>$student]);
-ok(str_contains($html, '45,00'), 'the tariff price is printed next to the field');
-ok(str_contains($html, 'is-default'), 'and the field is marked as following the default');
+// was, so the only way to find out was to save and look. The child's own
+// „Tarif und Beitrag" box is gone (ADR 0011); the agreed price lives on the
+// enrolment now, on the child's Kurse tab, under „Mehr Möglichkeiten".
+$course = make_class(['name'=>'Kindertraining']);
+run('UPDATE tariffs SET class_id=? WHERE id=?', [$course, $tariff]);
+$student = make_student(['first_name'=>'Mia', 'last_name'=>'Standard']);
+make_enrolment($course, $student, ['tariff_id'=>$tariff]);
+/** The enrolment's „Mehr Möglichkeiten", as the child's Kurse tab draws it. */
+$moreOptions = function (int $student): string {
+    $html = render_view('student', ['id'=>$student, 'tab'=>'classes']);
+    return preg_match('~<details class="more-options"[^>]*>.*?</details>~s', $html, $m) ? $m[0] : '';
+};
+$more = $moreOptions($student);
+ok(str_contains($more, 'name="price"'), 'the agreed price is one of the „Mehr Möglichkeiten"');
+ok(str_contains($more, '45,00'), 'the tariff price is printed next to the field');
+ok(str_contains($more, 'is-default'), 'and the field is marked as following the default');
+ok(preg_match('~^<details class="more-options"\s*>~', $more) === 1, 'and with nothing of her own set, the section stays shut');
 
 case_('A price of her own is marked as hers, with the default still visible');
-run('UPDATE students SET price_cents=4000 WHERE id=?', [$student]);
-$html = render_view('student', ['id'=>$student]);
+run('UPDATE class_students SET price_cents=4000 WHERE class_id=? AND student_id=?', [$course, $student]);
+$more = $moreOptions($student);
 // With a comma, because the form is in German and the list beside it says
 // 45,00 €. A point in the box is where a reader looks for a thousands separator.
-ok(str_contains($html, 'value="40,00"'), 'her own price is in the box, written the way she types it');
-ok(!str_contains($html, 'value="40.00"'), 'and not with the decimal point of the machine');
-ok(str_contains($html, '45,00'), 'the tariff price is still named, so the difference is visible');
-ok(!str_contains($html, 'with-default is-default'), 'and the field is no longer marked as following the default');
+ok(str_contains($more, 'value="40,00"'), 'her own price is in the box, written the way she types it');
+ok(!str_contains($more, 'value="40.00"'), 'and not with the decimal point of the machine');
+ok(str_contains($more, '45,00'), 'the tariff price is still named, so the difference is visible');
+ok(!str_contains($more, 'with-default is-default'), 'and the field is no longer marked as following the default');
+ok(preg_match('~^<details class="more-options"\s+open\s*>~', $more) === 1, 'and the section opens by itself, so nothing she set is hidden');
 
 // ---------------------------------------------------------------------------
 case_('A time of day is 24 hours on every device, because the page decides it');
@@ -169,20 +185,41 @@ ok(str_contains(select_options($withOdd,'37'),'value="37" selected'), 'and it is
 is_same($every5, minute_options('30'), 'and a time already on the grid adds nothing');
 
 // ---------------------------------------------------------------------------
-case_('A student saved with a tariff and no price of their own follows the tariff');
-/* The tariff carries a rate per interval now rather than a price column, and
-   reading the column that used to be there would have filed the child at no
-   price at all - silently, because an undefined key is a warning, not a stop. */
+case_('Saving a child writes no tariff and no price, whatever is posted');
+/* What a child pays is decided per course, on the enrolment, and that is what
+   billing reads (ADR 0011). The box on the child's own page is gone, and a
+   form without it would have blanked the three columns on every save - so the
+   save neither reads nor writes them, and a page from before that still posts
+   the box changes nothing. */
 sign_in_as(make_account(['role'=>'admin']));
 $course = make_class(['name'=>'Kindertraining']);
 $priced = make_tariff(['class_id'=>$course, 'name'=>'Beitrag', 'interval_months'=>3,
                        'rates'=>[1=>3700, 3=>9900]]);
 act('student_save', ['first_name'=>'Preis', 'last_name'=>'Folger', 'birth_date'=>'', 'joined_on'=>today(),
-                     'ended_on'=>'', 'status'=>'active', 'tariff_id'=>(string)$priced, 'price'=>'',
-                     'price_note'=>'', 'internal_notes'=>'', 'revision'=>'1']);
+                     'ended_on'=>'', 'status'=>'active', 'tariff_id'=>(string)$priced, 'price'=>'12,00',
+                     'price_cents'=>'1200', 'price_note'=>'Sonderpreis', 'internal_notes'=>'', 'revision'=>'1']);
 $saved = one("SELECT * FROM students WHERE first_name='Preis'");
-is_same(9900, (int)$saved['price_cents'], 'the price of the tariff at its usual interval');
-is_same(9900, tariff_price($priced), 'which is what tariff_price says it is');
+is_same(null, $saved['tariff_id'], 'a new child gets no tariff from the posted one');
+is_same(null, $saved['price_cents'], 'nor a price from the posted one');
+is_same('', (string)$saved['price_note'], 'nor the note beside it');
+$kept = make_student(['first_name'=>'Alt', 'last_name'=>'Preis', 'tariff_id'=>$priced, 'price_cents'=>4200,
+                      'price_note'=>'Vereinbart 2024', 'joined_on'=>'2024-09-01']);
+act('student_save', ['id'=>(string)$kept, 'revision'=>'1', 'first_name'=>'Alt', 'last_name'=>'Preis',
+                     'birth_date'=>'', 'joined_on'=>'2024-10-01', 'ended_on'=>'2027-06-30', 'status'=>'active',
+                     'tariff_id'=>'', 'price'=>'', 'price_cents'=>'', 'price_note'=>'', 'internal_notes'=>'']);
+$after = one('SELECT * FROM students WHERE id=?', [$kept]);
+is_same($priced, (int)$after['tariff_id'], 'a blank tariff posted by a form without the box leaves the stored one');
+is_same(4200, (int)$after['price_cents'], 'and the stored price');
+is_same('Vereinbart 2024', (string)$after['price_note'], 'and the stored note');
+act('student_save', ['id'=>(string)$kept, 'revision'=>'2', 'first_name'=>'Alt', 'last_name'=>'Preis',
+                     'birth_date'=>'', 'joined_on'=>'2024-10-01', 'ended_on'=>'2027-06-30', 'status'=>'active',
+                     'tariff_id'=>'999', 'price'=>'1,00', 'price_cents'=>'100', 'price_note'=>'Neu', 'internal_notes'=>'']);
+$after = one('SELECT * FROM students WHERE id=?', [$kept]);
+is_same([$priced, 4200, 'Vereinbart 2024'], [(int)$after['tariff_id'], (int)$after['price_cents'], (string)$after['price_note']],
+        'and a page from before that posts other values changes none of the three');
+is_same(['2024-10-01', '2027-06-30'], [$after['joined_on'], $after['ended_on']],
+        'while „Dabei seit“ and „Mitgliedschaft bis“ are still saved');
+is_same(9900, tariff_price($priced), 'what a tariff costs is still read from its rate at the usual interval');
 is_same(null, tariff_price(null), 'and no tariff is no price');
 is_same(null, tariff_price(999999), 'as is a tariff that is not there');
 

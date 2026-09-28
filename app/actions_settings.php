@@ -75,6 +75,9 @@ function dispatch_settings_or_messages(string $action): array {
         $port=(int)post('port');if($port<1 || $port>65535)throw new UserError('Invalid SMTP port');
         $s=['host'=>$host,'port'=>$port,'username'=>text_limit('username',254),'password'=>post('smtp_password')!==''?seal(post('smtp_password')):($old['password']??''),'encryption'=>choose(post('encryption'),['tls','ssl']),'from_email'=>email_value(post('from_email')),'from_name'=>required_text('from_name',120)];
         if(post('clear_password'))$s['password']='';
+        // The last test was of the old settings, and smtp_tested_ok() would go
+        // on calling mail working on the strength of it.
+        if(smtp_settings_changed($old,$s))set_setting('smtp_last_test',[]);
         set_setting('smtp',$s);audit('smtp.saved','settings');flash(t('SMTP-Einstellungen gespeichert.','SMTP settings saved.'));return ['settings',['tab'=>'smtp']];
     case 'smtp_test':
         // Run while she waits, rather than queued: she pressed the button to find
@@ -115,13 +118,35 @@ function dispatch_settings_or_messages(string $action): array {
         // which version and which placeholder is in the way: "complete both and
         // replace the placeholders" sent an operator hunting through two walls of
         // text, and looked from the outside as though saving had done nothing.
-        if(post('privacy_ready')) foreach(['privacy_de'=>[$de,'Deutsch'],'privacy_en'=>[$en,'English']] as [$text,$which]) {
+        // Only the German text is required (ADR 0011); an English reader is shown
+        // it, with a line saying so. An English text that is there is checked the
+        // same way, because a half-translated notice is not one to release.
+        if(post('privacy_ready')) foreach(['Deutsch'=>$de]+($en!==''?['English'=>$en]:[]) as $which=>$text) {
             if(mb_strlen($text)<300) throw new UserError(t('Die Fassung „','The “').$which.t('“ ist noch zu kurz, um freigegeben zu werden.','” version is still too short to be released.'));
             // Quoted by its start: enough to find it, and some run to 300 characters.
             if($left=privacy_draft_placeholders($text)) throw new UserError(t('In der Fassung „','In the “').$which.t('“ steht noch ein Platzhalter: ','” version there is still a placeholder: ').mb_strimwidth($left[0],0,100,'…'));
         }
         set_setting('privacy_de',$de);set_setting('privacy_en',$en);set_setting('privacy_ready',(bool)post('privacy_ready'));
         audit('privacy.saved','settings');flash(t('Datenschutzerklärung gespeichert.','Privacy notice saved.'));return ['settings',['tab'=>'privacy']];
+    case 'setup_visibility':
+        // The start checklist is put away or brought back, never ticked: what is
+        // done is read from the data on every visit (ADR 0011). Hiding it is
+        // offered once everything is done, showing it again under Einstellungen.
+        require_admin();$hidden=choose(post('hidden'),['0','1'])==='1';
+        set_setting('setup_hidden',$hidden);audit($hidden?'setup.hidden':'setup.shown','settings');
+        flash($hidden?t('Die Einrichtung ist ausgeblendet. Unter „Einstellungen“ lässt sie sich wieder ansehen.','The setup checklist is hidden. You can look at it again under “Settings”.')
+                     :t('Die Einrichtung wird wieder angezeigt.','The setup checklist is shown again.'));
+        return $hidden?['dashboard',[]]:['start',[]];
+    case 'auto_billing_save':
+        // On the Beiträge page, beside the charges it would create, rather than
+        // among the settings. Administrator only, as it was there: charges
+        // written without anybody looking are a decision about the whole portal.
+        // A box left unticked posts nothing, and nothing means off.
+        require_admin();$on=post('auto_billing')==='1';
+        set_setting('auto_billing',$on);audit($on?'billing.auto_on':'billing.auto_off','settings');
+        flash($on?t('Monatsbeiträge werden ab jetzt automatisch angelegt: einmal im Monat, beim ersten Seitenaufruf.','Monthly charges are now created automatically: once a month, on the first page view.')
+                 :t('Monatsbeiträge werden nicht mehr automatisch angelegt. Unter „Monatsbeiträge“ legst du sie mit Vorschau selbst an.','Monthly charges are no longer created automatically. Create them under “Monthly charges”, with a preview first.'));
+        return ['payments',[]];
     case 'template_save':
         require_staff();$id=(int)post('id');$subject=required_text('subject',180);$body=required_text('body',20000);
         preg_match_all('/\{\{[^}]+\}\}/',$subject.$body,$matches);

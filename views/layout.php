@@ -39,10 +39,12 @@ $realUser=$public?null:impersonator();
 <body class="<?=$public?'public-page':'app-page'?>">
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
 <?php if(!$public):
-$unreadTotal=unread_count($user);
 $unreadNotes=unread_notifications((int)$user['id']);
 ?>
 <aside class="sidebar" id="sidebar">
+    <?php /* The way out of the side menu on a phone. A link, so it works without
+             JavaScript: „Mehr" opens the menu as #sidebar, and this leaves it. */
+    if(is_staff($user)): ?><a class="menu-close" id="menu-close" href="#main"><?=e(t('Menü schließen','Close menu'))?></a><?php endif ?>
     <a class="brand" href="<?=e(url('dashboard'))?>"><span class="brand-mark">B<span></span></span><span><?=e(setting('club_name','Badminton'))?><small><?=e(is_staff($user)?t('Verwaltung','Management'):t('Mein Portal','My portal'))?></small></span></a>
     <?=sidebar_nav($user,$page)?>
     <?php /* The account used to be here as well as in the top bar. One of the two
@@ -98,6 +100,12 @@ $unreadNotes=unread_notifications((int)$user['id']);
 <?php if(!$public && is_admin($user) && is_file(maintenance_file())): ?>
 <div class="flash error" role="status"><?=e(t('Wartungsmodus ist aktiv – für alle anderen ist das Portal geschlossen.','Maintenance mode is on – the portal is closed for everyone else.'))?> <a href="<?=e(url('settings',['tab'=>'system']))?>"><?=e(t('Beenden','Switch off'))?></a></div>
 <?php endif ?>
+<?php /* The way back to the checklist (ADR 0011), after she left it to do one of
+         its steps. The flag is in the session, so it outlives the redirect after
+         a save; it goes once she is back, or once there is nothing left to do. */
+if(!$public && is_staff($user) && setup_return_active() && setup_unfinished()): $setup=setup_progress(); ?>
+<nav class="setup-return" aria-label="<?=e(t('Einrichtung','Setup'))?>"><a href="<?=e(url('start'))?>"><span aria-hidden="true">←</span> <?=e(t('Zurück zur Einrichtung','Back to the setup').' ('.$setup['done'].' '.t('von','of').' '.$setup['total'].' '.t('erledigt','done').')')?></a></nav>
+<?php endif ?>
 <?php if(isset($_SESSION['flash'])):$f=$_SESSION['flash'];unset($_SESSION['flash']);?><div class="flash <?=e($f['kind'])?>" role="status"><?=e($f['message'])?></div><?php endif ?>
 <?=$content?>
 <?php if(!$public): ?>
@@ -132,16 +140,17 @@ $pinnedHelp=!($page==='messages' && (int)($_GET['id']??0)>0); ?>
 <?php if(!$public): ?>
 </div>
 <nav class="mobile-nav" aria-label="<?=e(t('Mobilmenü','Mobile menu'))?>">
-<?php /* The second place is the side menu's second entry: the students list for
-         staff, a family's own "Profil" - so the two menus cannot disagree. */
-$bar=[['route'=>'dashboard','params'=>[],'icon'=>'home','label'=>t('Übersicht','Overview')]];
-if($people=people_nav_entry($user))$bar[]=$people;
-$bar[]=['route'=>'messages','params'=>[],'icon'=>'mail','label'=>t('Post','Messages')];
-$bar[]=['route'=>'news','params'=>[],'icon'=>'news','label'=>t('Neues','News')];
-foreach($bar as $item):?><a href="<?=e(url($item['route'],$item['params']))?>" <?=nav_is_current($item['route'],$page)?'aria-current="page"':''?>><?=icon($item['icon'])?><span><?=e($item['label'])?></span><?php if($item['route']==='messages'&&$unreadTotal):?><span class="count" aria-label="<?=e($unreadTotal.' '.t('ungelesen','unread'))?>"><?=$unreadTotal?></span><?php endif ?></a><?php endforeach ?>
-<button type="button" id="menu-toggle" aria-controls="sidebar" aria-expanded="false"><?=icon('more')?><span><?=e(t('Mehr','More'))?></span></button>
+<?php foreach(mobile_nav_entries($user) as $item):?><a href="<?=e(url($item['route'],$item['params']))?>" <?=nav_is_current($item['route'],$page,$user)?'aria-current="page"':''?>><?=icon($item['icon'])?><?php
+    // The bar prints the short word; a screen reader hears the entry's full name.
+    if($item['short']!==$item['label']):?><span aria-hidden="true"><?=e($item['short'])?></span><span class="visually-hidden"><?=e($item['label'])?></span><?php else:?><span><?=e($item['label'])?></span><?php endif ?><?php if($item['count']):?><span class="count" aria-label="<?=e($item['count'].' '.t('ungelesen','unread'))?>"><?=e((string)$item['count'])?></span><?php endif ?></a><?php endforeach ?>
+<?php /* A link to the side menu, so the entries that are not on the bar - Kurse,
+         Geld, Einstellungen - are reachable without JavaScript (the stylesheet
+         opens #sidebar when it is the target). app.js turns it into a button
+         that slides the menu in and out without touching the address. */
+if(is_staff($user)): ?><a href="#sidebar" id="menu-toggle" aria-controls="sidebar"><?=icon('more')?><span><?=e(t('Mehr','More'))?></span></a>
+<?php endif ?>
 </nav>
-<button type="button" class="menu-backdrop" id="menu-backdrop" aria-label="<?=e(t('Menü schließen','Close menu'))?>" hidden></button>
+<a class="menu-backdrop" id="menu-backdrop" href="#main" aria-label="<?=e(t('Menü schließen','Close menu'))?>"></a>
 <?php else: ?>
 <?php /* Only the way to the privacy notice and the version. The paragraph that
          stood here was repeated at the foot of every public page, which is where

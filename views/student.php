@@ -1,7 +1,6 @@
 <?php
 $id=(int)($_GET['id']??0);$staff=is_staff($user);if(!$id)require_staff();
-$defaultTariff=setting('default_tariff',null);
-$s=$id?student($id):['id'=>0,'first_name'=>'','last_name'=>'','email'=>'','birth_date'=>'','joined_on'=>today(),'ended_on'=>'','status'=>setting('default_status','active'),'account_id'=>null,'level_id'=>(int)(level_default()['id']??0),'age_group_id'=>null,'tariff_id'=>$defaultTariff,'price_cents'=>null,'price_note'=>'','internal_notes'=>''];
+$s=$id?student($id):['id'=>0,'first_name'=>'','last_name'=>'','email'=>'','birth_date'=>'','joined_on'=>today(),'ended_on'=>'','status'=>setting('default_status','active'),'account_id'=>null,'level_id'=>(int)(level_default()['id']??0),'age_group_id'=>null,'internal_notes'=>''];
 $tab=(string)($_GET['tab']??'details');
 $tabsAllowed=$staff?['details','contacts','payments','invoices','absence','classes','attendance']:['details','contacts','payments','invoices','absence','classes'];
 if(!in_array($tab,$tabsAllowed,true))$tab='details';
@@ -106,23 +105,27 @@ input('joined_on',t('Dabei seit','Member since'),$s['joined_on'],'date');
 <p class="muted"><?=e(t('Leistungsgruppe, Kurs, Tarif, Kontakte und alles Weitere trägst du gleich auf der Seite des Kindes ein – sie steht dann auch als Liste „Noch zu tun“ dort.','The level, the course, the tariff, the contacts and everything else are entered on the child’s own page next – it lists them there as “Still to do”.'))?></p>
 </section>
 <?php endif ?>
-<?php if($staff && $id):?><section class="card"><h2><?=e(t('Einteilung','Grouping'))?></h2>
-<p class="muted"><?=e(t('Drei verschiedene Dinge, die leicht durcheinandergehen: wie weit das Kind ist, wie alt es ist, und ob es gerade dabei ist.','Three different things that are easy to confuse: how far along the child is, how old they are, and whether they are currently taking part.'))?></p>
+<?php if($staff && $id):
+/* What the child is in the club, in the order it is asked: whether and since
+   when they are a member, then how far along and how old. The prices went to
+   the course (ADR 0011) - a tariff on the child billed nobody - and the two
+   dates came here with the status they belong to. Inside the student form, so
+   „Schüler speichern" keeps saving them. */ ?>
+<section class="card"><h2><?=e(t('Einteilung','Grouping'))?></h2>
+<p class="muted"><?=e(t('Drei verschiedene Dinge, die leicht durcheinandergehen: wie weit das Kind ist, wie alt es ist, und ob und seit wann es dabei ist.','Three different things that are easy to confuse: how far along the child is, how old they are, and whether and since when they are taking part.'))?></p>
 <div class="grid three"><?php
-select_field('level_id',t('Leistungsgruppe','Level'),array_column(rows('SELECT id,name FROM levels WHERE archived=0 OR id=? ORDER BY sort_order,name',[$s['level_id']??0]),'name','id'),$s['level_id']);
-echo '<div class="field-note">'.e(t('Du wählst sie. Neue Kinder starten in ','You choose it. New children start in ').(level_default()['name']??'–').'.').'</div>';
-select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),array_column(age_groups(),'name','id'),$s['age_group_id']);
-echo '<div class="field-note">'.e($s['age_group_id']?t('Fest eingestellt. Leer lassen, damit sie sich wieder aus dem Geburtsdatum ergibt.','Pinned. Clear it to let the date of birth decide again.'):t('Leer = ergibt sich aus dem Geburtsdatum: ','Empty = worked out from the date of birth: ').age_group_name($s)).'</div>';
-select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$s['status'],true);
-echo '<div class="field-note">'.e(t('Probetraining, aktiv, pausiert oder beendet.','On trial, active, paused or ended.')).'</div>';
+select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$s['status'],true,false,
+    t('Probetraining, aktiv, pausiert oder beendet.','On trial, active, paused or ended.'));
+input('joined_on',t('Dabei seit','Member since'),$s['joined_on'],'date',false,
+    t('Im Verein. Wann das Kind in einen Kurs kam, steht beim Kurs.','In the club. When the child joined a course is shown with the course.'));
+input('ended_on',t('Mitgliedschaft bis','Membership until'),$s['ended_on'],'date',false,
+    t('Leer lassen, solange kein Ende feststeht.','Leave it empty while no end is fixed.'));
+select_field('level_id',t('Leistungsgruppe','Level'),array_column(rows('SELECT id,name FROM levels WHERE archived=0 OR id=? ORDER BY sort_order,name',[$s['level_id']??0]),'name','id'),$s['level_id'],false,false,
+    t('Du wählst sie. Neue Kinder starten in ','You choose it. New children start in ').(level_default()['name']??'–').'.');
+select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),array_column(age_groups(),'name','id'),$s['age_group_id'],false,false,
+    $s['age_group_id']?t('Fest eingestellt. Leer lassen, damit sie sich wieder aus dem Geburtsdatum ergibt.','Pinned. Clear it to let the date of birth decide again.'):t('Leer = ergibt sich aus dem Geburtsdatum: ','Empty = worked out from the date of birth: ').age_group_name($s));
 ?></div></section>
-<section class="card"><h2><?=e(t('Tarif und Beitrag','Tariff and fee'))?></h2><div class="grid two">
-<?php select_field('tariff_id',t('Tarif','Tariff'),array_column(rows('SELECT id,name FROM tariffs WHERE archived=0 OR id=? ORDER BY name',[$s['tariff_id']??0]),'name','id'),$s['tariff_id']);$tariffPrice=tariff_price($s['tariff_id']?(int)$s['tariff_id']:null);
-default_field('price',t('Vereinbarter Preis (€)','Agreed price (€)'),amount_input($s['price_cents']===null?null:(int)$s['price_cents']),
-    $tariffPrice!==null?amount_input($tariffPrice):'',
-    $tariffPrice!==null?money($tariffPrice).' · '.($s['tariff_name']??''):t('kein Tarif gewählt','no tariff chosen'),
-    'text', t('Leer lassen, um den Preis des Tarifs zu übernehmen.','Leave blank to follow the tariff’s price.'));input('price_note',t('Preisvereinbarung / Rabatt','Price agreement / discount'),$s['price_note']);input('joined_on',t('Dabei seit','Member since'),$s['joined_on'],'date');input('ended_on',t('Mitgliedschaft bis','Membership until'),$s['ended_on'],'date'); ?>
-</div></section><?php elseif($id):?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Tarif','Tariff'))?></dt><dd><?=e($s['tariff_name']?:'–')?></dd></div><div><dt><?=e(t('Vereinbarter Preis','Agreed price'))?></dt><dd><?=$s['price_cents']!==null?e(money((int)$s['price_cents'])):'–'?></dd></div><div><dt><?=e(t('Dabei seit','Member since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div></dl></section><?php endif ?>
+<?php elseif($id):?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Dabei seit','Member since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div></dl></section><?php endif ?>
 <?php $fields=$id?array_filter(field_definitions(),fn($f)=>$staff || $f['visibility']!=='internal'):[];if($fields): ?><section class="card"><h2><?=e(t('Weitere Angaben','Additional details'))?></h2><div class="grid two">
 <?php $lastSection='';foreach($fields as $f):$v=$id?field_value($id,(int)$f['id']):json_decode($f['default_json'],true);$label=field_label($f);$n='custom['.$f['id'].']';
 if($f['section_name'] && $f['section_name']!==$lastSection){echo '<h3 class="full">'.e($f['section_name']).'</h3>';$lastSection=$f['section_name'];}
@@ -290,6 +293,16 @@ $loginState=$login['state']??'none'; ?>
             .($chosenRates?' – '.billing_interval_label((int)$row['tariff_interval']).' '.money((int)($chosenRates[(int)$row['tariff_interval']]??0)):'')];
         foreach($chosenRates as $months=>$cents) $intervalOptions[$months]=billing_interval_label((int)$months).' – '.money((int)$cents);
         select_field('interval_months',t('Zahlungsweise','How it is paid'),$intervalOptions,(int)$row['enrolment_interval'],true);
+        ?></div>
+        <?php /* The tariff and how it is paid are what almost every child needs;
+                 an own price, another payment day, the dates and a discount are
+                 the exceptions, and wait here. A closed <details> still posts
+                 its fields, so saving is the same either way (ADR 0011). Open
+                 when this child already has one of them, so nothing set is
+                 hidden. */
+        $special=$row['price_cents']!==null||(int)$row['due_day']>0||(int)$row['discount_value']>0; ?>
+        <details class="more-options" <?=$special?'open':''?>><summary><?=e(t('Mehr Möglichkeiten','More options'))?></summary>
+        <div class="grid two"><?php
         $tariffPrice=$row['tariff_price']!==null?(int)$row['tariff_price']:null;
         default_field('price',t('Vereinbarter Preis (€)','Agreed price (€)'),amount_input($row['price_cents']===null?null:(int)$row['price_cents']),
             $tariffPrice!==null?amount_input($tariffPrice):'',
@@ -322,8 +335,9 @@ $loginState=$login['state']??'none'; ?>
               t('Prozent, oder Betrag in € je Monat.','Per cent, or an amount in € per month.'));
         ?></div>
         <?php input('discount_note',t('Name des Rabatts','What to call it'),$row['discount_note'],'text',false,
-              t('Steht so auf der Rechnung, z. B. „Geschwisterrabatt“.','This is what appears on the invoice, e.g. “sibling discount”.'));
-        submit_button();?></form>
+              t('Steht so auf der Rechnung, z. B. „Geschwisterrabatt“.','This is what appears on the invoice, e.g. “sibling discount”.')); ?>
+        </details>
+        <?php submit_button();?></form>
     </details>
     <?php endif ?>
     <?php endforeach ?>

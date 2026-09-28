@@ -98,15 +98,13 @@ is_same(0, (int)scalar('SELECT COUNT(*) FROM auth_tokens t JOIN accounts a ON a.
    not have - it is the portal on its first evening. They are switched on for
    this one pair of assertions and switched off again, so the premise the rest
    of the case rests on is the one it started with. */
-set_setting('smtp', ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B']);
-set_setting('privacy_ready', true);
+mail_ready(true);
 does_not_throw(fn() => act('account_invite', ['name'=>'Eingeladene Trainerin', 'email'=>'eingeladen@beispiel.test',
     'role'=>'trainer', 'locale'=>'de']), 'an address with no account is invited');
 is_same(1, (int)scalar('SELECT COUNT(*) FROM auth_tokens t JOIN accounts a ON a.id=t.account_id WHERE a.email=?',
                        ['eingeladen@beispiel.test']),
         'and that one does leave a link, so the nought above is a measurement rather than a habit');
-set_setting('smtp', []);
-set_setting('privacy_ready', false);
+mail_ready(false);
 throws(fn() => act('account_invite', ['name'=>'Noch jemand', 'email'=>'nochjemand@beispiel.test',
     'role'=>'trainer', 'locale'=>'de']),
     'and the first-evening portal is back, so what follows reads what it expects', 'SMTP');
@@ -116,16 +114,14 @@ case_('A student’s login is not made from the Konten page, and nothing is link
    is one of the three ways siblings came to share a login. A student's login is
    made on the student's page now (student_invite, with mode=direct for this). */
 $waiting = make_student(['first_name'=>'Wartend', 'last_name'=>'Hofer', 'email'=>'wartend@beispiel.test']);
-set_setting('smtp', ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B']);
-set_setting('privacy_ready', true);
+mail_ready(true);
 throws(fn() => act('account_create', ['name'=>'Familie Wartend', 'email'=>'wartend@beispiel.test',
     'password'=>'Federball-2026-Halle!', 'role'=>'student', 'locale'=>'de']),
     'creating one directly is refused, and says where to go instead', 'Seite der Schülerin oder des Schülers');
 throws(fn() => act('account_invite', ['name'=>'Familie Wartend', 'email'=>'wartend@beispiel.test',
     'role'=>'student', 'locale'=>'de']),
     'and so is inviting one', 'Seite der Schülerin oder des Schülers');
-set_setting('smtp', []);
-set_setting('privacy_ready', false);
+mail_ready(false);
 is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['wartend@beispiel.test']), 'no account was written');
 is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$waiting]), 'and the student at that address was not touched');
 act('account_create', ['name'=>'Dritte Trainerin', 'email'=>'wartend@beispiel.test',

@@ -2,6 +2,7 @@
 $overdue=!empty($_GET['overdue']);
 $period=preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D',(string)($_GET['period']??''))?(string)$_GET['period']:billing_current_period();
 page_head(t('Beiträge','Payments'),t('Offene Beträge nach bestätigten Zahlungseingängen.','Outstanding amounts after confirmed payments.'));
+money_switch('payments');
 // Monthly charges: always shown as a preview first. Nothing is created until the
 // button below is pressed, and pressing it twice is harmless.
 $plan=billing_plan($period);
@@ -14,6 +15,32 @@ $willSkip=array_values(array_filter($plan,fn($r)=>$r['skip']!==null));
             <h2><?=e(t('Beiträge anlegen','Create charges'))?></h2>
             <p class="muted"><?=e(t('Beiträge entstehen aus den Kursen: jede Kursteilnahme, zu dem Tarif, den sie nennt. Hier ist erst einmal nur die Vorschau – angelegt wird nichts, bis du unten drückst.','Charges come from courses: one per enrolment, at the tariff it names. This is only the preview – nothing is created until you press the button below.'))?></p>
         </div>
+    </div>
+    <?php /* Whether the monthly charges make themselves, beside the charges they
+             would make (ADR 0011). What switching it on does is said before the
+             tap, with the number, because it acts at once. */
+    $auto=(bool)setting('auto_billing');$current=billing_current_period();
+    $monthName=fn(string $p)=>billing_month_name($p).' '.substr($p,0,4);
+    $lastRun=(string)setting('billing_last_period','');
+    if($auto) $status=$lastRun!==''?t('Automatisch – zuletzt ','Automatic – last done for ').$monthName($lastRun).'.'
+                                   :t('Automatisch – beim nächsten Aufruf des Portals zum ersten Mal.','Automatic – for the first time on the portal’s next page view.');
+    else {
+        $pending=$lastRun===$current?0:count(array_filter($period===$current?$plan:billing_plan($current),fn($r)=>$r['skip']===null));
+        $status=is_admin($user)
+            ?($pending?($pending===1?t('Schaltest du es jetzt ein, entsteht sofort ','If you switch it on now, '):t('Schaltest du es jetzt ein, entstehen sofort ','If you switch it on now, '))
+                .plural($pending,'Beitrag','Beiträge','charge','charges')
+                .($pending===1?t(' für ',' is created straight away for '):t(' für ',' are created straight away for ')).$monthName($current)
+                .($period===$current?t(' – die Vorschau steht darunter.',' – the preview is below.'):'.')
+                      :t('Schaltest du es jetzt ein, entstehen die Beiträge ab dem nächsten Monat von selbst.','If you switch it on now, the charges make themselves from next month on.'))
+            :t('Nicht automatisch – die Beiträge werden unten mit Vorschau angelegt.','Not automatic – the charges are created below, with a preview.');
+    } ?>
+    <div class="auto-charges" id="auto-charges">
+        <p class="auto-charges-status"><?=e($status)?></p>
+        <?php if(is_admin($user)): start_form('auto_billing_save',[],'form auto-charges-form');
+            check_field('auto_billing',t('Jeden Monat automatisch anlegen','Create them every month automatically'),$auto); ?>
+            <small class="auto-charges-hint"><?=e(t('Beim ersten Aufruf des Portals im Monat, nicht auf die Minute am 1.','On the first page view of the month, not on the stroke of the 1st.'))?></small>
+            <?php submit_button(t('Speichern','Save'),'secondary'); ?></form>
+        <?php endif ?>
     </div>
     <form method="get" class="row-form">
         <input type="hidden" name="page" value="payments">

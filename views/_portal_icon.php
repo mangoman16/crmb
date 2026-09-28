@@ -11,7 +11,7 @@ $iconUrl=portal_icon_url(); $ownIcon=$iconUrl!=='';
 $clubName=(string)setting('club_name','Badminton');
 $iconMin=PORTAL_ICON_MIN_SIZE.' × '.PORTAL_ICON_MIN_SIZE;
 ?>
-<section class="card">
+<section class="card" id="icon">
     <h2><?=e(t('Symbol des Portals','Portal icon'))?></h2>
     <p class="muted icon-intro"><?=e(t('Erscheint im Browser-Tab und auf dem Home-Bildschirm.','Shown in the browser tab and on the home screen.'))?></p>
     <div class="avatar-editor">

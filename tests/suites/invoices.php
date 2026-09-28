@@ -34,6 +34,33 @@ $charge = fixture('charges', ['student_id'=>$student, 'label'=>'Beitrag Septembe
     'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
 throws(fn() => create_invoice($student, [$charge]), 'with no details, no invoice', 'Betreiber');
 
+case_('Each problem says what it is about, so the start checklist asks rather than re-spells');
+/* ADR 0011: „Name und Anschrift“ and „Bankkonto“ are ticked by this function's
+   keys. A page that prints the problems only loops over the values. */
+is_same(['name', 'address', 'iban'], array_keys($problems), 'a fresh portal lacks a name, an address and an IBAN');
+set_setting('org_tax_mode', 'vat');
+set_setting('org_vat_rate', 0);
+$vatProblem = invoice_issuer_problems()['tax'] ?? '';
+ok(str_contains($vatProblem, t('Steuersatz', 'tax rate')) && str_contains($vatProblem, 'UID'),
+   'two tax problems at once are one entry naming both, because they are fixed in one place');
+set_setting('org_tax_mode', 'small');
+set_setting('org_vat_rate', 20);
+ok(!isset(invoice_issuer_problems()['tax']), 'a small business with its exemption note has none');
+$seeded = (int)setting('default_payment_profile');
+set_setting('default_payment_profile', 0);
+payment_cache_clear();
+ok(str_contains(invoice_issuer_problems()['iban'] ?? '', 'kein Standard-Zahlungsempfänger')
+   || str_contains(invoice_issuer_problems()['iban'] ?? '', 'No default payment recipient'),
+   'no default recipient at all is the bank problem too: a course without its own would bill into nothing');
+run('UPDATE payment_profiles SET archived=1 WHERE id=?', [$seeded]);
+set_setting('default_payment_profile', $seeded);
+payment_cache_clear();
+ok(str_contains(invoice_issuer_problems()['iban'] ?? '', 'kein Standard-Zahlungsempfänger')
+   || str_contains(invoice_issuer_problems()['iban'] ?? '', 'No default payment recipient'),
+   'and so is an archived one, which resolves to none everywhere else');
+run('UPDATE payment_profiles SET archived=0 WHERE id=?', [$seeded]);
+payment_cache_clear();
+
 case_('Once the operator has said who they are');
 set_setting('org_name', 'Badmintonschule Hofer');
 set_setting('org_street', 'Turnweg 3');
@@ -42,7 +69,7 @@ set_setting('org_city', 'Linz');
 set_setting('org_country', 'Österreich');
 set_setting('org_email', 'kontakt@beispiel.test');
 set_setting('org_tax_mode', 'small');
-is_same([t('Beim Zahlungsempfänger „', 'The payment recipient “') . 'Vereinskonto'
+is_same(['iban' => t('Beim Zahlungsempfänger „', 'The payment recipient “') . 'Vereinskonto'
          . t('“ fehlt die IBAN – einzutragen unter „Verwaltung → Zahlungsempfänger“.', '” has no IBAN — add it under “Manage → Payment recipients”.')], invoice_issuer_problems(),
         'only one thing is still missing, and it is not about the operator');
 
@@ -57,7 +84,8 @@ is_same('', trim((string)$house['iban']), 'and it is waiting for her account num
 ok(in_array(t('Beim Zahlungsempfänger „', 'The payment recipient “') . $house['name']
             . t('“ fehlt die IBAN – einzutragen unter „Verwaltung → Zahlungsempfänger“.', '” has no IBAN — add it under “Manage → Payment recipients”.'), invoice_issuer_problems(), true),
    'which the invoices page says before there is a family waiting for the document');
-throws(fn() => create_invoice($student, [$charge]), 'and an invoice nobody could pay is refused', 'fehlt die IBAN');
+// Refused by the check of the recipient these charges resolve to, which names it.
+throws(fn() => create_invoice($student, [$charge]), 'and an invoice nobody could pay is refused', 'Vereinskonto');
 // She fills it in on the recipient that is already the default, which is what
 // the message tells her to do: a charge remembers the recipient it was written
 // for, so changing the course afterwards would change nothing.
@@ -296,3 +324,21 @@ throws(fn() => create_invoice($splitStudent, [$chargeA, $chargeB]),
        'the two together are refused, with what to do instead', 'getrennte Rechnungen');
 does_not_throw(fn() => create_invoice($splitStudent, [$chargeA]), 'separately, each one is fine');
 does_not_throw(fn() => create_invoice($splitStudent, [$chargeB]), 'and so is the other');
+
+case_('No default recipient stops an invoice only when the charges have no recipient of their own');
+/* The start checklist still asks for a default („Bankkonto“). An invoice is a
+   different question: it needs somewhere to pay these charges, and a course
+   with its own recipient is that. */
+set_setting('default_payment_profile', 0);
+payment_cache_clear();
+ok(isset(invoice_issuer_problems()['iban']), 'the checklist is told no default is chosen');
+$ownCourse = make_class(['name'=>'Eigenes Konto', 'payment_profile_id'=>$profileA]);
+$ownCharge = fixture('charges', ['student_id'=>$splitStudent, 'class_id'=>$ownCourse, 'label'=>'Kurs mit eigenem Konto',
+    'amount_cents'=>2500, 'gross_cents'=>2500, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>null,
+    'period_to'=>null, 'due_on'=>today(), 'overdue_on'=>today(), 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+does_not_throw(fn() => create_invoice($splitStudent, [$ownCharge]), 'a charge from a course with its own recipient is invoiced');
+$nowhere = fixture('charges', ['student_id'=>$splitStudent, 'label'=>'Ohne Kurs',
+    'amount_cents'=>1000, 'gross_cents'=>1000, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>null,
+    'period_to'=>null, 'due_on'=>today(), 'overdue_on'=>today(), 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+throws(fn() => create_invoice($splitStudent, [$nowhere]), 'one with neither is refused, in a sentence',
+       t('kein Zahlungsempfänger hinterlegt', 'no payment recipient'));

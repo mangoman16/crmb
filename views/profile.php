@@ -41,4 +41,13 @@ check_field('payment_notices',t('Erinnerung, wenn ein Beitrag offen ist','Remind
 submit_button();?></form></section>
 <section class="card"><details><summary><?=e(t('E-Mail-Adresse ändern','Change email address'))?></summary><?php start_form('email_change');input('email',t('Neue E-Mail-Adresse','New email address'),'','email',true);input('password',t('Aktuelles Passwort','Current password'),'','password',true);submit_button(t('Bestätigungslink senden','Send verification link'));?></form></details></section>
 <section class="card"><details><summary><?=e(t('Passwort ändern','Change password'))?></summary><?php start_form('password_change');input('current_password',t('Aktuelles Passwort','Current password'),'','password',true);input('password',t('Neues Passwort','New password'),'','password',true);input('password_confirm',t('Passwort wiederholen','Repeat password'),'','password',true);submit_button();?></form></details></section>
+<?php /* The foot of the side menu holds these, and on a phone a family has no
+         „Mehr" to open it with (ADR 0011), so they are here as well. */ ?>
+<section class="card help-card"><h2><?=e(t('Datenschutz und Hilfe','Privacy and help'))?></h2>
+    <ul class="link-list">
+        <li><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?><?=icon('arrow')?></a></li>
+        <li><a href="#feedback"><?=e(t('Etwas funktioniert nicht','Something is wrong'))?><?=icon('arrow')?></a></li>
+    </ul>
+    <p class="muted version-line"><?=e(t('Version ','Version ').app_version())?></p>
+</section>
 <?php start_form('logout',[],'inline-form');submit_button(t('Abmelden','Sign out'),'secondary');?></form>

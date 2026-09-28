@@ -344,6 +344,32 @@ function smtp_check(?string $recipient=null): array {
             'sent_to'=>$ok&&$recipient!==null?$recipient:'','at'=>now()];
 }
 
+/**
+ * Whether mail has been shown to work: a server is saved and the last
+ * connection test against it succeeded.
+ *
+ * The one answer to "are emails going out?" - the start checklist ticks
+ * „E-Mails verschicken“ by it and the SMTP tab shows it as green (ADR 0011).
+ * A test is only about the settings it ran with, which is why smtp_save
+ * forgets it when they change: a green result for yesterday's server says
+ * nothing about today's.
+ */
+function smtp_tested_ok(): bool {
+    return (bool)setting('smtp', []) && !empty(setting('smtp_last_test', [])['ok']);
+}
+
+/**
+ * Whether two saved SMTP configurations would talk to a server differently.
+ *
+ * The password is compared as she typed it, not as stored: sealing it again
+ * gives new bytes for the same password, and re-saving the form without
+ * touching it must not throw away a test that still holds.
+ */
+function smtp_settings_changed(array $old, array $new): bool {
+    $plain = static fn(array $s): array => ['password' => smtp_password($s)] + $s;
+    return $plain($old) != $plain($new);
+}
+
 function process_mail(int $limit=25, float $budget=0.0): array {
     if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
     if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');

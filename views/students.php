@@ -2,7 +2,7 @@
 $staff=is_staff($user);$f=filters_from($_GET);
 if($staff && !empty($_GET['saved'])){$saved=one('SELECT * FROM saved_filters WHERE id=?',[(int)$_GET['saved']]);if($saved)$f=json_decode($saved['criteria_json'],true);}
 $all=filtered_students($f,$staff?null:(int)$user['id']);$pageNum=max(1,(int)($_GET['p']??1));$visible=array_slice($all,($pageNum-1)*50,50);
-$overdueBy=balances(true);
+$overdueBy=balances(true);$coursePrices=course_prices_by_student();
 page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in this selection'),
     $staff?link_button(t('Leeres Formular drucken','Print a blank form'),'print',[],'secondary')
            .link_button(t('+ Schüler anlegen','+ Add student'),'student'):'');
@@ -45,5 +45,5 @@ endif ?>
 </details></div>
 <div class="list-toolbar"><span><?=e(t('Nach Nachnamen sortiert','Sorted by last name'))?></span><?=link_button(t('Auswahl anschreiben','Message this selection'),'compose',$f,'secondary')?></div>
 <?php endif ?>
-<div class="card"><?php if(!$all)empty_state(t('Keine Schüler gefunden.','No students found.'),t('Passe die Filter an oder lege einen Schüler an.','Adjust the filters or add a student.'));else foreach($visible as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0]);?></div>
+<div class="card"><?php if(!$all)empty_state(t('Keine Schüler gefunden.','No students found.'),t('Passe die Filter an oder lege einen Schüler an.','Adjust the filters or add a student.'));else foreach($visible as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0,'course_price'=>$coursePrices[(int)$s['id']]??course_price_label([])]);?></div>
 <?php if(count($all)>50):?><nav class="pagination"><?php if($pageNum>1)echo link_button(t('Zurück','Previous'),'students',$f+['p'=>$pageNum-1],'secondary');?><span><?=$pageNum?> / <?=ceil(count($all)/50)?></span><?php if($pageNum*50<count($all))echo link_button(t('Weiter','Next'),'students',$f+['p'=>$pageNum+1],'secondary');?></nav><?php endif ?>

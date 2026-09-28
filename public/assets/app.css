@@ -38,7 +38,7 @@ html[data-text=largest]{font-size:21px}
 .thread-item.unread strong{color:var(--ink)}
 .thread-item.unread p{color:var(--ink-2);font-weight:600}
 .thread-item .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--teal);vertical-align:middle;margin-left:2px}
-.sidebar nav a .count,.sidebar nav summary .count,.mobile-nav a .count{background:var(--teal);color:#0b1218;font-size:.75rem;font-weight:700;min-width:20px;height:20px;border-radius:10px;display:inline-grid;place-items:center;padding:0 5px;line-height:1}
+.sidebar nav a .count,.mobile-nav a .count{background:var(--teal);color:#0b1218;font-size:.75rem;font-weight:700;min-width:20px;height:20px;border-radius:10px;display:inline-grid;place-items:center;padding:0 5px;line-height:1}
 .sidebar nav a{position:relative}
 .sidebar nav a .count{margin-left:auto}
 .mobile-nav a{position:relative}
@@ -470,41 +470,10 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 .text-link,.auth-card>a{display:inline-flex;align-items:center;min-height:44px}
 
 /* ---------------------------------------------------------------------------
-   The main menu, as sections.
-
-   An administrator has thirteen destinations, and in one column they made the
-   panel 958px tall: a 1920x1080 screen at 110% zoom leaves 873px, so the last
-   three were below the fold and the panel scrolled - which is how a menu loses
-   its bottom. Six of them now sit inside two sections, and <details name> makes
-   the browser close the others when one opens, so the panel is never taller
-   than one open section: 715px at a full window, 541px at the zoom this was
-   reported at. The panel keeps overflow-y:auto as a last resort - at some zoom
-   level nothing fits, and a scrollbar is better than a link nobody can reach.
+   The main menu: one flat list of at most eight entries (ADR 0011). The
+   sections that once folded thirteen destinations away are gone, and with them
+   their rules; the heights below keep all eight on a 1366x768 laptop at 110%.
    --------------------------------------------------------------------------- */
-/* Deliberately not display:grid or flex: Chromium and WebKit hide a shut
-   section's contents through the default display of <details>, so overriding it
-   leaves every section standing open. The gaps are margins for that reason. */
-.sidebar nav details{margin:0}
-.sidebar nav summary{display:flex;gap:13px;align-items:center;color:var(--nav-ink);border-radius:10px;padding:12px 14px;font-size:.9375rem;font-weight:400;line-height:1.5;min-height:46px;margin:0;list-style:none}
-.sidebar nav summary::-webkit-details-marker{display:none}
-/* Below 760px every flex summary in the portal is given a drawn triangle at the
-   start of its row. The menu already says the same thing with the chevron at
-   the end, beside where the section will open, so it does not need both. */
-.sidebar nav summary:before{display:none}
-.sidebar nav details[open]>summary{margin-bottom:0}
-.sidebar nav summary:hover{background:var(--nav-hover)}
-.sidebar nav .chevron{margin-left:auto;display:flex;color:var(--nav-ink-2);transition:transform .15s ease}
-.sidebar nav details[open]>summary .chevron{transform:rotate(90deg)}
-.sidebar nav .chevron svg{width:16px;height:16px}
-/* Indented and hung off a rule, so a glance says these four belong to the row
-   above them rather than to the menu. */
-.sidebar nav .nav-sub{display:grid;gap:7px;margin:7px 0 4px 18px;padding-left:11px;border-left:1px solid var(--on-navy-faint)}
-/* The number of things waiting belongs on the entry itself. It moves up to the
-   section only while the section is shut and the entry cannot be seen. */
-.sidebar nav details[open]>summary .section-count{display:none}
-.sidebar nav summary .count{margin-left:auto}
-.sidebar nav summary .count+.chevron{margin-left:9px}
-
 /* Desktop: the panel is a fixed column next to the page, not a drawer, so its
    rows are aimed at with a pointer. 40px there buys the four rows that a shut
    section saves; the drawer below 760px keeps its 46px, because that one is
@@ -512,9 +481,7 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 @media(min-width:761px){
   .sidebar{padding:24px 20px 14px}
   .sidebar nav{margin-top:24px;gap:4px}
-  .sidebar nav a,.sidebar nav summary{min-height:40px;padding:9px 13px}
-  .sidebar nav .nav-sub{gap:4px;margin-top:4px}
-  .sidebar nav .nav-sub a{min-height:37px;padding:7px 12px;font-size:.875rem}
+  .sidebar nav a{min-height:40px;padding:9px 13px}
   .sidebar-bottom{padding-top:16px}
   .sidebar-meta{margin-top:0}
 }
@@ -531,17 +498,14 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
   .brand small{display:none}
   .brand-mark{width:38px;height:38px;font-size:26px}
   .sidebar nav{margin-top:14px;gap:3px}
-  .sidebar nav .nav-sub{gap:3px;margin-top:3px;margin-bottom:2px}
-  .sidebar nav a,.sidebar nav summary{min-height:36px;padding:7px 12px;font-size:.875rem}
-  .sidebar nav .nav-sub a{min-height:33px;padding:6px 11px}
+  .sidebar nav a{min-height:36px;padding:7px 12px;font-size:.875rem}
   .sidebar-bottom{padding-top:10px}
   .sidebar-meta a{min-height:36px}
 }
 @media(min-width:761px) and (max-height:620px){
   .sidebar{padding:14px 15px 9px}
   .sidebar nav{margin-top:12px}
-  .sidebar nav a,.sidebar nav summary{min-height:33px;padding:5px 12px}
-  .sidebar nav .nav-sub a{min-height:31px;padding:4px 11px}
+  .sidebar nav a{min-height:33px;padding:5px 12px}
   .sidebar-bottom{padding-top:9px}
 }
 
@@ -928,7 +892,7 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
 .next-steps small{margin-top:0}
 /* Where a next step or a name in a notice lands. Clear of the top bar, which
    stays pinned over the page and would otherwise cover the heading it jumped to. */
-#email,#access,#add-contact,#add-course,#courses{scroll-margin-top:96px}
+#email,#access,#add-contact,#add-course,#courses,#demo,#icon,#advanced,#auto-charges{scroll-margin-top:96px}
 /* An address is one long word to a browser. */
 .readonly{overflow-wrap:anywhere}
 .access-title{margin-bottom:10px}
@@ -945,4 +909,118 @@ html[data-theme=dark][data-accent=slate] {--teal:#9fb6cb;--teal-ink:#c0d0de;--te
      side they wrapped at different points in every language and state. */
   .access-actions>.inline-form{flex:1 1 100%}
   .access-card .button{width:100%}
+}
+
+/* ---------------------------------------------------------------------------
+   Getting a new portal going (ADR 0011): the checklist, the card on the
+   overview, and the way back to the checklist from the page a step leads to.
+   --------------------------------------------------------------------------- */
+/* Slim, above the page, and one thing only: the way back. 44px, because it is
+   a thumb's target on the phone she does the setup on. */
+.setup-return{margin:0 0 18px}
+.setup-return a{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 14px;border-radius:10px;
+                background:var(--teal-soft);border:1px solid var(--teal-border);color:var(--teal-ink);font-weight:620;font-size:.9375rem}
+.setup-return a:hover{text-decoration:none;filter:brightness(.97)}
+.setup-progress{margin:-8px 0 22px;max-width:520px}
+.setup-progress p{margin-bottom:8px}
+/* The bar is the element meant for it, so it needs no width set per page (a
+   style attribute is refused by the portal's own security policy anyway). */
+.setup-progress progress{appearance:none;-webkit-appearance:none;display:block;width:100%;height:10px;border:0;border-radius:6px;background:var(--surface-3);overflow:hidden;color:var(--teal)}
+.setup-progress progress::-webkit-progress-bar{background:var(--surface-3);border-radius:6px}
+.setup-progress progress::-webkit-progress-value{background:var(--teal);border-radius:6px}
+.setup-progress progress::-moz-progress-bar{background:var(--teal);border-radius:6px}
+.setup-demo,.setup-done{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px}
+.setup-demo p,.setup-done p{flex:1 1 16rem;margin:0}
+/* A checklist is not a warning: the plain card, with its steps in rows. */
+.next-steps.is-checklist{background:var(--surface);border-color:var(--border)}
+.next-steps.is-checklist h2{color:var(--ink);font-size:1.05rem;margin-bottom:6px}
+.next-steps.is-checklist ol{list-style:none;padding:0;gap:0}
+.step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px 14px;align-items:center;padding:16px 0;border-top:1px solid var(--border);color:var(--ink)}
+.step:first-child{border-top:0}
+.next-steps li.step{color:var(--ink)}
+.step-mark{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--border-strong);color:var(--ink-2);font-weight:650;font-size:.9375rem;align-self:start}
+.step.is-done .step-mark{background:var(--teal-soft);border-color:var(--teal-border);color:var(--teal-ink)}
+.step.is-done .step-mark svg{width:18px;height:18px}
+.step-text{min-width:0}
+.step-text strong{overflow-wrap:anywhere}
+.next-steps .step-text small{display:block;margin-top:4px;color:var(--muted)}
+.step.is-blocked .step-text strong{color:var(--muted)}
+.step-blocked{margin:6px 0 0;font-size:.875rem;color:var(--muted)}
+.next-steps a.step-button{min-height:44px;font-weight:620;white-space:nowrap}
+.link-list{list-style:none;margin:0;padding:0}
+.link-list li+li{border-top:1px solid var(--border)}
+.link-list a{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:8px 0;font-weight:600}
+.link-list a svg{color:var(--muted-2);width:17px}
+.setup-card p{margin-bottom:14px}
+@media(max-width:760px){
+  /* Under the words, the width of the card: a thumb aims at a row, not a word. */
+  .step{grid-template-columns:32px minmax(0,1fr)}
+  .next-steps a.step-button{grid-column:1/-1;width:100%;white-space:normal}
+  .setup-return a{display:flex;width:100%}
+  .setup-card .row-actions .button{flex:1 1 9rem}
+}
+
+/* ---------------------------------------------------------------------------
+   Pages that have no menu entry of their own, reached from the one that owns
+   them (nav_owner()): the hub on Einstellungen, the links on Nachrichten.
+   --------------------------------------------------------------------------- */
+.settings-hub .hub-grid{gap:0 24px}
+.hub-item{min-width:0;border-top:1px solid var(--border)}
+.hub-item .editor-list-item{border-top:0;min-height:44px}
+.hub-item .editor-list-item small{font-size:.875rem;overflow-wrap:anywhere}
+.hub-item .editor-list-item svg{color:var(--muted-2);width:17px}
+.hub-action{margin:4px 0 16px}
+@media(min-width:761px){.hub-grid>.hub-item:nth-child(-n+2){border-top:0}}
+@media(max-width:760px){.hub-grid>.hub-item:first-child{border-top:0}}
+.page-links{display:flex;flex-wrap:wrap;gap:8px;margin:-10px 0 22px}
+.page-links .chip{min-height:44px}
+.test-outbox{margin-top:10px}
+.test-outbox a{display:inline-flex;align-items:center;min-height:44px}
+.advanced-settings{margin:18px 0 6px;border-top:1px solid var(--border);padding-top:6px}
+.advanced-settings>.muted{font-size:.875rem;margin-bottom:14px}
+.advanced-link a{display:inline-flex;align-items:center;min-height:44px;font-weight:600}
+.help-card .version-line{margin-top:12px;font-size:.875rem}
+
+/* Beiträge: whether the monthly charges make themselves, first in the card. */
+.auto-charges{padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--border)}
+.auto-charges-status{margin:0 0 6px;font-size:.9375rem;color:var(--ink-2)}
+.auto-charges-form .check{margin:8px 0 4px}
+.auto-charges-hint{display:block;margin:0 0 10px 29px}
+.auto-charges-form>.button{margin-top:0}
+/* „Mehr Möglichkeiten": what most prices and most children never need. */
+.more-options{margin:14px 0 18px;border-top:1px solid var(--border);padding-top:6px}
+.more-options>.grid,.more-options>h3{margin-top:12px}
+.more-options>.button{margin:12px 0 6px}
+.rate-note{font-size:.875rem;margin:8px 0 4px}
+details.why{margin-top:14px}
+
+/* An automatic error entry (ADR 0012): the text for whoever helps her. */
+.support-copy{margin:16px 0}
+.support-copy label{display:block;font-size:.875rem;font-weight:620;color:var(--ink-2)}
+.support-copy small{display:block;margin:4px 0 8px}
+.support-text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8125rem;line-height:1.55;min-height:150px;white-space:pre-wrap;overflow-wrap:anywhere}
+.support-copy .row-actions{margin-top:8px}
+.copy-status{font-size:.875rem;color:var(--teal-ink);font-weight:600}
+
+/* The phone bar has five fixed places - 59px each at 320 - so its words stop
+   growing with the text size where they would no longer fit: at the largest
+   size „Übersicht" was 67px and ran into „Schüler". 12px is still the minimum
+   anywhere, the icons keep their size, and the rest of the page grows as asked. */
+@media(max-width:760px){.mobile-nav a,.mobile-nav button{font-size:min(.75rem,14px)}}
+@media(max-width:379px){.mobile-nav a,.mobile-nav button{font-size:12px}}
+/* A notice can hold a list of file names or an address - one long word to a
+   browser. At 320px „19 Datenbankänderungen warten noch: 001_initial.sql, …"
+   was 365px wide and zoomed the whole System tab out to 402. */
+.notice{overflow-wrap:anywhere}
+
+/* The side menu on a phone without JavaScript: „Mehr" links to #sidebar, and
+   this opens it; „Menü schließen" and the backdrop link back to #main. With
+   JavaScript, app.js does the same with .menu-open and leaves the address
+   alone. On a desktop screen the menu is always there and needs neither. */
+.menu-close{display:none}
+@media(max-width:760px){
+  .sidebar:target{transform:translateX(0)}
+  .sidebar:target~.menu-backdrop{display:block;position:fixed;inset:0;border:0;background:var(--backdrop);z-index:50}
+  .menu-close{display:flex;align-items:center;align-self:flex-end;min-height:44px;margin:-18px -8px 6px 0;padding:0 8px;color:var(--nav-ink);font-size:.9375rem;font-weight:600}
+  .menu-close:hover{text-decoration:none;color:#fff}
 }

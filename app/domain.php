@@ -136,6 +136,37 @@ function orphan_logins(): array {
         .' AND NOT EXISTS (SELECT 1 FROM students s WHERE s.account_id=a.id) ORDER BY a.name,a.id');
 }
 
+/** The student a login belongs to (ADR 0010), or 0 when it belongs to none. */
+function login_student_id(int $accountId): int {
+    return (int)(scalar('SELECT id FROM students WHERE account_id=?', [$accountId]) ?: 0);
+}
+
+/**
+ * Where a family is sent instead of the students list, or null for staff.
+ *
+ * The list is the trainer's; a family has one student, so an old bookmark to
+ * it opens that student's own page, and a login nobody points to any more
+ * opens the overview. The page stays open to everyone in the router - this
+ * decides where a family lands, not who may look.
+ */
+function students_list_instead(array $account): ?array {
+    if (is_staff($account)) return null;
+    $own = login_student_id((int)$account['id']);
+    return $own ? ['student', ['id' => $own]] : ['dashboard', []];
+}
+
+/**
+ * The courses that count as hers: running (not archived) and not example data.
+ *
+ * One definition for every place that asks "is there a real course yet?" - the
+ * start checklist and the overview - so the two cannot disagree about it.
+ */
+function real_course_ids(): array {
+    return array_map('intval', array_column(rows('SELECT id FROM classes WHERE archived=0 AND is_demo=0'
+        .' ORDER BY sort_order, name, id'), 'id'));
+}
+function real_course_exists(): bool { return real_course_ids() !== []; }
+
 /** The children she still has to ask for something. Ended memberships are not chased. */
 function students_missing_contact(): array {
     return rows('SELECT s.id,s.first_name,s.last_name FROM students s'
@@ -188,10 +219,17 @@ function student_next_steps(int $studentId): array {
         $steps[] = ['what' => t('In einen Kurs eintragen', 'Put them in a course'),
                     'why'  => t('Ohne Kurs entstehen keine Beiträge.', 'Without a course there are no charges.'),
                     'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'add-course'];
-    elseif (array_filter($enrolments, fn($e) => $e['tariff_id'] === null))
-        $steps[] = ['what' => t('Tarif wählen', 'Choose a tariff'),
-                    'why'  => t('Eine Kursteilnahme hat noch keinen Tarif.', 'One of their courses has no tariff yet.'),
-                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'courses'];
+    // enrolment_has_price() is the rule billing skips by, so this step appears
+    // exactly when a charge would not. Which words it uses is the only thing
+    // decided here: no tariff at all, or a tariff that comes to nothing.
+    elseif ($unpriced = array_filter($enrolments, fn($e) => !enrolment_has_price($e)))
+        $steps[] = array_filter($unpriced, fn($e) => $e['tariff_id'] === null)
+            ? ['what' => t('Tarif wählen', 'Choose a tariff'),
+               'why'  => t('Eine Kursteilnahme hat noch keinen Tarif.', 'One of their courses has no tariff yet.'),
+               'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'courses']
+            : ['what' => t('Preis eintragen', 'Enter a price'),
+               'why'  => t('Eine Kursteilnahme hat einen Tarif ohne Preis, dafür entstehen keine Beiträge.', 'One of their courses is on a tariff with no price, so it bills nothing.'),
+               'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'courses'];
     return $steps;
 }
 

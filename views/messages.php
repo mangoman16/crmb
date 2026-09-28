@@ -22,9 +22,16 @@ $waiting=pending_contact_count((int)$user['id']);
 
 page_head(t('Nachrichten','Messages'),
     t('Nur die Beteiligten lesen mit.','Only the people in a conversation can read it.'),
-    ($staff?link_button(t('An eine Gruppe schreiben','Write to a group'),'compose',[],'secondary'):'')
-    .link_button(t('Neue Nachricht','New message'),'messages',['contacts'=>1]));
-?>
+    link_button(t('Neue Nachricht','New message'),'messages',['contacts'=>1]));
+/* The pages that belong to Nachrichten without a menu entry of their own
+   (nav_owner()): writing to a group, the news, and what went out by email. */
+if($staff): ?>
+<nav class="page-links" aria-label="<?=e(t('Mehr zu Nachrichten','More about messages'))?>">
+    <a class="chip" href="<?=e(url('compose'))?>"><?=e(t('Gruppe anschreiben','Message a group'))?></a>
+    <a class="chip" href="<?=e(url('news'))?>"><?=e(t('Neuigkeiten','News'))?></a>
+    <a class="chip" href="<?=e(url('outbox'))?>"><?=e(t('Postausgang','Outbox'))?></a>
+</nav>
+<?php endif ?>
 <div class="messages-grid">
 <aside class="card thread-list">
     <div class="section-heading">

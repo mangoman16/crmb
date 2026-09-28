@@ -19,6 +19,13 @@ declare(strict_types=1);
  *   list      one value per line
  *   map       code => label pairs
  *   choice    one of options
+ *   reference the id of one row in 'table', or 0 for none. The table must be
+ *             one setting_reference_tables() names; the form offers its rows
+ *             through setting_reference_options().
+ *
+ * 'advanced' => true marks a setting most portals never need to touch. The form
+ * gathers those under one „Erweitert“ heading instead of leaving them among the
+ * ones a new portal has to answer (ADR 0011).
  */
 function setting_schema(): array {
     static $schema;
@@ -55,17 +62,13 @@ function setting_schema(): array {
             'kind' => 'choice', 'default' => 'active', 'options' => 'statuses', 'group' => 'students',
             'label' => ['Standardstatus für neue Schüler', 'Default status for new students'],
         ],
-        'default_tariff' => [
-            'kind' => 'int', 'default' => 0, 'min' => 0, 'group' => 'students',
-            'label' => ['Standardtarif (0 = keiner)', 'Default tariff (0 = none)'],
-        ],
         'payment_methods' => [
             'kind' => 'list', 'default' => ['Überweisung', 'Bar'], 'max_items' => 30, 'group' => 'payments',
             'label' => ['Zahlungsarten', 'Payment methods'],
         ],
         'default_payment_profile' => [
-            'kind' => 'int', 'default' => 0, 'min' => 0, 'group' => 'payments',
-            'label' => ['Standard-Zahlungsempfänger (0 = keiner)', 'Default payment profile (0 = none)'],
+            'kind' => 'reference', 'table' => 'payment_profiles', 'default' => 0, 'group' => 'payments',
+            'label' => ['Standard-Zahlungsempfänger', 'Default payment recipient'],
             'hint'  => ['Wird verwendet, wenn Beitrag und Kurs keinen eigenen haben.', 'Used when neither the charge nor the class names one.'],
         ],
         'payment_reference_template' => [
@@ -202,7 +205,7 @@ function setting_schema(): array {
             'label' => ['Farbauswahl', 'Colour choices'],
         ],
         'history_months' => [
-            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 240, 'group' => 'system',
+            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 240, 'group' => 'system', 'advanced' => true,
             'label' => ['Änderungen aufbewahren (Monate)', 'Keep changes for (months)'],
             'hint'  => ['Ältere Einträge im Änderungsprotokoll werden beim nächtlichen Aufräumen entfernt. Das Prüfprotokoll ist davon nicht betroffen.',
                         'Older entries in the change log are removed during the nightly cleanup. The audit log is not affected.'],
@@ -246,13 +249,15 @@ function setting_schema(): array {
             'label' => ['Vorgaben angelegt', 'Defaults created'],
         ],
         'auto_background' => [
-            'kind' => 'bool', 'default' => true, 'group' => 'system',
+            'kind' => 'bool', 'default' => true, 'group' => 'system', 'advanced' => true,
             'label' => ['Wartende Aufgaben beim Seitenaufruf erledigen', 'Do waiting work while pages are served'],
             'hint'  => ['E-Mails werden dann auch ohne Cronjob verschickt. Nur ausschalten, wenn ein Cronjob eingerichtet ist.',
                         'Email is then sent without a cron job. Switch this off only if a cron job is set up.'],
         ],
+        // Internal because it is switched on the Beiträge page, where the charges
+        // it creates are listed, by auto_billing_save - not a second time here.
         'auto_billing' => [
-            'kind' => 'bool', 'default' => false, 'group' => 'system',
+            'kind' => 'bool', 'default' => false, 'group' => 'system', 'internal' => true,
             'label' => ['Monatsbeiträge automatisch anlegen', 'Create the monthly charges automatically'],
             // Said exactly: the portal has no clock of its own, it has page
             // views. "Am 1." was not true on a month where nobody opened the
@@ -260,6 +265,13 @@ function setting_schema(): array {
             // itself is turned on.
             'hint'  => ['Einmal pro Monat, beim ersten Seitenaufruf in diesem Monat – nicht auf die Minute am 1. Wird sie mitten im Monat eingeschaltet, entstehen die Beiträge dieses Monats sofort. Aus: unter „Beiträge → Monatsbeiträge“ anlegen, mit Vorschau.',
                         'Once a month, on the first page view in that month – not on the stroke of the 1st. Switched on mid-month, this month’s charges are created straight away. Off: create them under “Beiträge → Monatsbeiträge”, with a preview first.'],
+        ],
+        // The start checklist (ADR 0011), put away by the administrator. It stops
+        // the landing after sign-in, the menu entry, the overview card and the
+        // way back; the checklist itself is never ticked by hand.
+        'setup_hidden' => [
+            'kind' => 'bool', 'default' => false, 'group' => 'system', 'internal' => true,
+            'label' => ['Einrichtung ausgeblendet', 'Setup checklist hidden'],
         ],
         'tick_last_run' => [
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
@@ -341,6 +353,40 @@ function setting_validate(string $key, array $spec, mixed $raw): mixed {
         case 'choice':
             $allowed = array_keys((array)setting($spec['options']));
             return choose(trim((string)$raw), $allowed);
+        case 'reference':
+            $v = trim((string)$raw);
+            if ($v === '' || $v === '0') return 0;
+            // Only a row the form could have offered: archived ones are left out
+            // there, and a default pointing at one would quietly resolve to none.
+            if (!preg_match('/^\d{1,18}$/D', $v) || !isset(setting_reference_options($spec)[(int)$v]))
+                throw new UserError(setting_label($spec).': '.t('Die Auswahl ist nicht verfügbar.', 'That selection is not available.'));
+            return (int)$v;
     }
     throw new RuntimeException('Setting '.$key.' is not editable through the form.');
+}
+
+/**
+ * The tables a 'reference' setting may point into, with the column that names a
+ * row. An allowlist, as tracked_entities() is: the table name is interpolated,
+ * and a declaration in this file is not a reason to trust whatever it says.
+ */
+function setting_reference_tables(): array {
+    return ['payment_profiles' => 'name'];
+}
+
+/**
+ * The rows a 'reference' setting may choose from, as id => name.
+ *
+ * The one list the form offers and setting_validate() accepts, so the two
+ * cannot disagree about which rows count. Archived rows are not offered.
+ */
+function setting_reference_options(array $spec): array {
+    $table = (string)($spec['table'] ?? '');
+    $column = setting_reference_tables()[$table] ?? null;
+    if ($column === null) throw new RuntimeException('Setting refers to a table that is not allowed: '.$table);
+    $out = [];
+    foreach (rows('SELECT id, '.sql_name($column, 'column').' AS label FROM '.sql_name($table, 'table')
+        .' WHERE archived=0 ORDER BY '.sql_name($column, 'column').', id') as $row)
+        $out[(int)$row['id']] = (string)$row['label'];
+    return $out;
 }

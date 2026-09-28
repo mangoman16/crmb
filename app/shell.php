@@ -38,6 +38,19 @@ function notify_staff(string $kind, string $title, string $body = '', string $pa
     return $sent;
 }
 
+/**
+ * Tell every active administrator. Used for what only they can deal with: a
+ * problem somebody reported, and an error nobody had to (ADR 0012).
+ */
+function notify_admins(string $kind, string $title, string $body = '', string $page = '', array $params = []): int {
+    $sent = 0;
+    foreach (rows("SELECT id FROM accounts WHERE role='admin' AND state='active'") as $a) {
+        notify((int)$a['id'], $kind, $title, $body, $page, $params);
+        $sent++;
+    }
+    return $sent;
+}
+
 /** The pane's contents: newest first, read and unread together. */
 function notifications_for(int $accountId, int $limit = 30): array {
     return rows('SELECT * FROM notifications WHERE account_id=? ORDER BY id DESC LIMIT ' . max(1, min(100, $limit)), [$accountId]);
@@ -424,7 +437,12 @@ const FEEDBACK_DONE_KEEP_DAYS = 30;
  * `values_dropped_at` keeps the first time, because that is when they went.
  */
 function feedback_mark_done(array $context): array {
-    return ['done_at' => now()] + feedback_forget_typed_values($context);
+    // Written in place rather than put first: an automatic entry is recognised
+    // by how its context begins (ADR 0012), and marking it done must not change
+    // that, or the next repeat of the error would open a second entry.
+    $context = feedback_forget_typed_values($context);
+    $context['done_at'] = now();
+    return $context;
 }
 
 /**
@@ -452,8 +470,9 @@ function prune_done_feedback(): int {
             if (!is_array($context)) $context = [];
             $doneAt = (string)($context['done_at'] ?? '');
             if ($doneAt === '') {
+                // Appended, for the reason feedback_mark_done() gives.
                 run("UPDATE feedback SET context_json=? WHERE id=? AND state='done' AND context_json=?",
-                    [feedback_context_json(['done_at' => now()] + $context), $report['id'], $raw]);
+                    [feedback_context_json($context + ['done_at' => now()]), $report['id'], $raw]);
             } elseif ($doneAt < $cutoff) {
                 $removed += run("DELETE FROM feedback WHERE id=? AND state='done' AND context_json=?",
                                 [$report['id'], $raw])->rowCount();
@@ -470,3 +489,389 @@ function open_feedback(int $limit = 50): array {
 }
 
 function unread_feedback(): int { return (int)scalar("SELECT COUNT(*) FROM feedback WHERE state='new'"); }
+
+// ---------------------------------------------------------------------------
+// Errors nobody had to report (ADR 0012)
+// ---------------------------------------------------------------------------
+
+/*
+ * When the portal breaks, it writes the error down itself, with the steps the
+ * person took before it, and the administrators find it under Einstellungen →
+ * Rückmeldungen with a text to copy for whoever helps her. The owner is not
+ * technical enough to read a server log, and until this the log was the only
+ * place an error went.
+ *
+ * Stored in the feedback table rather than a table of its own, so the list, the
+ * unread count, the notification and the deletion are the ones reports already
+ * have. An automatic entry has no account - it gathers everybody who hit the
+ * error - and a context that begins with ERROR_CONTEXT_PREFIX. A person's
+ * report begins with {"page": and can never match, whatever was typed into it.
+ */
+
+/** How an automatic entry's stored context begins, and nothing else's does. */
+const ERROR_CONTEXT_PREFIX = '{"kind":"error","fingerprint":"';
+
+/** Days an automatic entry is kept after the error was last seen, whatever its state. */
+const ERROR_KEEP_DAYS = 30;
+
+/**
+ * Automatic entries not marked done, at most. An error that fires on every page
+ * with a different line each time must not fill the table; past this, entries
+ * already there still count up and anything new goes to the log only.
+ */
+const ERROR_OPEN_MAX = 50;
+
+/** Bytes of context one automatic entry may hold. Step values go first, then steps. */
+const ERROR_CONTEXT_MAX = 65536;
+
+/**
+ * Write an unexpected error down for the administrators. Never throws.
+ *
+ * $where is 'request' for a page or a form, 'background' for the work done
+ * after a page was sent. Called from exactly the places ADR 0012 names - the
+ * router's two catches, the two in app/tick.php, and capture_fatal_error() -
+ * and the structure suite holds it to that.
+ *
+ * A refusal is not an error: a UserError, NotFound and every "Kein Zugriff" are
+ * answers the portal meant to give. One capture per request, because the second
+ * error in a request is nearly always the first one's consequence.
+ *
+ * The log line comes first, so the error is in the log even when writing it
+ * down fails. Nothing is written to the database during maintenance, when no
+ * connection was ever opened, or when the connection is the thing that broke:
+ * there is nothing to write with, and opening a connection now would be the
+ * worst moment to find that out.
+ */
+function capture_error(Throwable $e, string $where = 'request'): void {
+    if ($e instanceof UserError) return;
+    $state =& error_capture_state();
+    if ($state['captured']) return;
+    $state['captured'] = true;
+    try {
+        $facts = error_facts($e);
+        error_log('CRM error (' . $where . '): ' . $facts['class'] . ' at ' . $facts['file'] . ':' . $facts['line']
+            . ($facts['sqlstate'] !== '' ? ' SQLSTATE ' . $facts['sqlstate'] . ' code ' . $facts['code'] : ' ' . $facts['message']));
+        if (is_file(maintenance_file()) || !db_connected() || error_connection_lost($e)) return;
+        tx_abandon_open('error');
+        transactional(fn() => error_record($facts, $where === 'background' ? 'background' : 'request'));
+    } catch (Throwable $failed) {
+        try { error_log('CRM: the error above could not be written down: ' . get_class($failed)); } catch (Throwable) {}
+    }
+}
+
+/**
+ * Whether this request has captured its error yet, by reference.
+ *
+ * A request is one process here and captures once; the test harness is one
+ * process for many requests, and empties it with error_capture_reset().
+ */
+function &error_capture_state(): array { static $state = ['captured' => false]; return $state; }
+function error_capture_reset(): void { $state =& error_capture_state(); $state = ['captured' => false]; }
+
+/**
+ * A fatal error - a timeout, the memory running out - which no catch can see.
+ *
+ * Registered as a shutdown function by public/index.php. $error is what
+ * error_get_last() says, and is a parameter so a test can hand it a fatal error
+ * without having one. A warning is not captured: at this volume they are noise.
+ */
+function capture_fatal_error(?array $error = null): void {
+    $error ??= error_get_last();
+    if (!$error || !in_array((int)($error['type'] ?? 0), [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) return;
+    capture_error(new ErrorException((string)($error['message'] ?? ''), 0, (int)$error['type'],
+                                     (string)($error['file'] ?? ''), (int)($error['line'] ?? 0)));
+}
+
+/**
+ * What an error is, without anything a family typed or the database echoed.
+ *
+ * A PDOException's message is not kept at all: MariaDB puts values into it -
+ * "Duplicate entry 'familie@…'" - and a mask that misses one engine's wording
+ * would leak an address into a support email. Its SQLSTATE, its code and where
+ * it was thrown say what it was. Stack frames keep where and what was called,
+ * never the arguments.
+ */
+function error_facts(Throwable $e): array {
+    $pdo = $e instanceof PDOException;
+    [$sqlstate, $driverCode] = $pdo ? pdo_error_codes($e) : ['', null];
+    $file = error_path($e->getFile());
+    $frames = [];
+    foreach ($e->getTrace() as $frame) {
+        // An error made by the handler itself - a fatal error, which has no
+        // trace of its own - has only the handler and whatever called it
+        // outward from here, and none of that is about the error.
+        if (in_array($frame['function'] ?? '', ['capture_error', 'capture_fatal_error'], true)) break;
+        $frames[] = ['file' => isset($frame['file']) ? error_path((string)$frame['file']) : '', 'line' => (int)($frame['line'] ?? 0),
+                     'class' => (string)($frame['class'] ?? ''), 'type' => (string)($frame['type'] ?? ''),
+                     'function' => (string)($frame['function'] ?? '')];
+        if (count($frames) === 20) break;
+    }
+    $code = $pdo ? ($sqlstate !== '' ? $sqlstate : (string)$driverCode) : (string)$e->getCode();
+    return [
+        'fingerprint' => sha1(get_class($e) . '|' . $code . '|' . $file . ':' . $e->getLine()),
+        'class'    => get_class($e),
+        'sqlstate' => $sqlstate,
+        'code'     => $pdo ? $driverCode : $e->getCode(),
+        'message'  => $pdo ? '' : error_message_scrub($e->getMessage()),
+        'file'     => $file,
+        'line'     => $e->getLine(),
+        'frames'   => $frames,
+        'previous' => $e->getPrevious() ? get_class($e->getPrevious()) : null,
+    ];
+}
+
+/**
+ * The SQLSTATE and the driver's own error number of a database error.
+ *
+ * errorInfo when the driver filled it in; otherwise read off the code and the
+ * message's "SQLSTATE[HY000] [2002]" prefix, which is how a failed connect
+ * reports itself. Only the codes are read from the message, never kept.
+ */
+function pdo_error_codes(PDOException $e): array {
+    $info = is_array($e->errorInfo) ? $e->errorInfo : [];
+    $sqlstate = is_string($info[0] ?? null) ? $info[0] : '';
+    $driver = isset($info[1]) && is_numeric($info[1]) ? (int)$info[1] : null;
+    $code = $e->getCode();
+    if ($sqlstate === '' && is_string($code) && preg_match('/^[0-9A-Z]{5}$/D', $code)) $sqlstate = $code;
+    if (preg_match('/^SQLSTATE\[([0-9A-Z]{5})\](?:[^\[]{0,40}\[(\d+)\]|: [^:]{0,60}: (\d+))?/', $e->getMessage(), $m)) {
+        if ($sqlstate === '') $sqlstate = $m[1];
+        if ($driver === null && (($m[2] ?? '') !== '' || ($m[3] ?? '') !== '')) $driver = (int)(($m[2] ?? '') !== '' ? $m[2] : $m[3]);
+    }
+    if ($driver === null && is_int($code) && $code > 0) $driver = $code;
+    return [$sqlstate, $driver];
+}
+
+/**
+ * Whether the error is the database connection itself going away: SQLSTATE
+ * class 08, or MySQL's "can't connect" (2002, 2003) and "gone away" (2006,
+ * 2013). Asked of the whole chain, because a wrapper can carry one inside.
+ */
+function error_connection_lost(Throwable $e): bool {
+    for ($x = $e; $x !== null; $x = $x->getPrevious()) {
+        if (!$x instanceof PDOException) continue;
+        [$sqlstate, $driver] = pdo_error_codes($x);
+        if (str_starts_with($sqlstate, '08') || in_array($driver, [2002, 2003, 2006, 2013], true)) return true;
+    }
+    return false;
+}
+
+/** A file as the portal names it: relative to its own folder, or only its name. */
+function error_path(string $file): string {
+    // ROOT is spelled with a "/.." in it, and a thrown error's file never is.
+    static $root;
+    $root ??= rtrim((string)(realpath(ROOT) ?: ROOT), '/') . '/';
+    if ($file === '') return '';
+    return str_starts_with($file, $root) ? substr($file, strlen($root)) : basename($file);
+}
+
+/**
+ * An error message as it may be kept and shown to somebody outside the club.
+ *
+ * Email addresses, numbers of six digits or more and runs of twenty or more
+ * letters and digits - a token, a hash, an IBAN - become …, and so does any of
+ * the portal's own secrets that turns up word for word. Cut to 300 characters.
+ * A name in a message is not caught; that is why the text says it is scrubbed,
+ * not clean.
+ */
+function error_message_scrub(string $message): string {
+    $message = mb_scrub($message, 'UTF-8');
+    foreach (error_secrets() as $secret) $message = str_replace($secret, '…', $message);
+    $message = (string)preg_replace(['/[^\s@<>()\[\]{}"\'`,;:]+@[^\s@<>()\[\]{}"\'`,;:]+/u', '/[\p{L}\p{N}]{20,}/u', '/\d{6,}/u'],
+                                    '…', $message);
+    return mb_substr($message, 0, 300);
+}
+
+/**
+ * The secrets a message could quote back: the database password, the app key
+ * and the SMTP password. The last is read only over a connection that is
+ * already open, never by opening one. Anything shorter than four characters is
+ * left alone, because replacing every "a" would ruin the message and hide
+ * nothing.
+ */
+function error_secrets(): array {
+    $secrets = [(string)(config('db')['password'] ?? ''), (string)config('app_key')];
+    if (db_connected()) {
+        try { $secrets[] = smtp_password((array)setting('smtp', [])); } catch (Throwable) {}
+    }
+    return array_values(array_filter($secrets, fn(string $s) => mb_strlen($s) >= 4));
+}
+
+/**
+ * Write one occurrence: count up the entry for the same error, open it again if
+ * it was done, or start a new one. Runs inside capture_error()'s transaction.
+ *
+ * The same error is the same class, SQLSTATE or code, and place. Every write
+ * repeats the context it read, so two requests failing at once cost at worst a
+ * count, or a second entry - accepted, as the ADR says.
+ */
+function error_record(array $facts, string $where): void {
+    $found = one('SELECT id, state, context_json FROM feedback WHERE account_id IS NULL AND context_json LIKE ? ORDER BY id LIMIT 1',
+                 [ERROR_CONTEXT_PREFIX . $facts['fingerprint'] . '"%']);
+    $page = $where === 'background' ? '' : mb_substr(current_page(), 0, 60);
+    $short = substr((string)strrchr('\\' . $facts['class'], '\\'), 1);
+    $message = $where === 'background'
+        ? t('Fehler bei der Arbeit im Hintergrund: ', 'Error in the background work: ') . $short
+        : t('Fehler auf Seite ', 'Error on page ') . $page . ': ' . $short;
+    $previous = $found ? json_decode((string)$found['context_json'], true) : null;
+    $context = error_context($facts, $where, $page,
+        (int)(is_array($previous) ? ($previous['count'] ?? 0) : 0) + 1,
+        is_array($previous) && is_string($previous['first_seen'] ?? null) ? $previous['first_seen'] : now());
+    $title = null;
+    if ($found) {
+        // Done, and back: that is news. Otherwise a count going up is not.
+        $reopened = $found['state'] === 'done';
+        $written = run('UPDATE feedback SET state=?, page=?, message=?, context_json=? WHERE id=? AND context_json=?',
+            [$reopened ? 'new' : $found['state'], $page, $message, error_context_json($context), $found['id'], $found['context_json']])->rowCount();
+        if ($reopened && $written) $title = t('Ein Fehler ist wieder aufgetreten', 'An error has happened again');
+    } else {
+        $open = (int)scalar("SELECT COUNT(*) FROM feedback WHERE account_id IS NULL AND state<>'done' AND context_json LIKE ?",
+                            [ERROR_CONTEXT_PREFIX . '%']);
+        if ($open >= ERROR_OPEN_MAX) { error_log('CRM: ' . ERROR_OPEN_MAX . ' errors are already waiting; this one is only in the log.'); return; }
+        run("INSERT INTO feedback (account_id,page,message,context_json,screenshot_name,state,created_at) VALUES (NULL,?,?,?,'','new',?)",
+            [$page, $message, error_context_json($context), now()]);
+        $title = t('Ein Fehler ist aufgetreten', 'An error has happened');
+    }
+    if ($title !== null) notify_admins('problem', $title, $message, 'settings', ['tab' => 'feedback']);
+}
+
+/**
+ * One occurrence as it is stored. The order of the first two keys is what makes
+ * an automatic entry recognisable, so they are always written first.
+ *
+ * The request and the trail are this occurrence's; an earlier one's are
+ * replaced, and with them any done_at or dropped values, because the steps
+ * written now carry values again. A background error belongs to no request,
+ * so it has neither. Never the IP address.
+ */
+function error_context(array $facts, string $where, string $page, int $count, string $firstSeen): array {
+    $account = $where === 'background' ? null : current_user();
+    return [
+        'kind' => 'error', 'fingerprint' => $facts['fingerprint'],
+        'count' => $count, 'first_seen' => $firstSeen, 'last_seen' => now(), 'where' => $where,
+        'class' => $facts['class'], 'sqlstate' => $facts['sqlstate'], 'code' => $facts['code'],
+        'message' => $facts['message'], 'file' => $facts['file'], 'line' => $facts['line'],
+        'frames' => $facts['frames'], 'previous' => $facts['previous'],
+        'page' => $page,
+        'method' => $where === 'background' ? '' : report_text((string)($_SERVER['REQUEST_METHOD'] ?? ''), 10),
+        'url' => $where === 'background' ? '' : report_url(),
+        'role' => $account['role'] ?? null, 'account' => isset($account['id']) ? (int)$account['id'] : null,
+        'steps' => $where === 'background' ? [] : recent_steps(),
+        'user_agent' => $where === 'background' ? '' : report_text((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 400),
+        'version' => app_version(), 'php' => PHP_VERSION,
+    ];
+}
+
+/**
+ * An automatic entry's context as it is stored, at most ERROR_CONTEXT_MAX bytes:
+ * what was typed goes first, then the steps, then the frames. The start of it
+ * never changes.
+ */
+function error_context_json(array $context): string {
+    $json = feedback_context_json($context);
+    if (strlen($json) <= ERROR_CONTEXT_MAX) return $json;
+    $context = feedback_forget_typed_values($context);
+    unset($context['values_dropped_at']);
+    $context['trimmed'] = 'values';
+    if (strlen($json = feedback_context_json($context)) <= ERROR_CONTEXT_MAX) return $json;
+    $context['steps'] = []; $context['trimmed'] = 'steps';
+    if (strlen($json = feedback_context_json($context)) <= ERROR_CONTEXT_MAX) return $json;
+    $context['frames'] = []; $context['user_agent'] = ''; $context['trimmed'] = 'frames';
+    return feedback_context_json($context);
+}
+
+/**
+ * The stored context of a Rückmeldungen row if the portal wrote it itself, or
+ * null for a report a person sent. The one test for "automatic": no account,
+ * and a context that begins the way only error_context() begins one.
+ */
+function automatic_error_context(array $row): ?array {
+    if (($row['account_id'] ?? null) !== null) return null;
+    $raw = (string)($row['context_json'] ?? '');
+    if (!str_starts_with($raw, ERROR_CONTEXT_PREFIX)) return null;
+    $context = json_decode($raw, true);
+    return is_array($context) ? $context : null;
+}
+
+/**
+ * Delete automatic entries nothing has repeated for ERROR_KEEP_DAYS, whatever
+ * their state. A done one may go sooner, by the rule every report has; this is
+ * the one for errors nobody looked at. A person's report is never touched here.
+ * Each delete repeats the context it read, so one that counted up meanwhile stays.
+ */
+function prune_quiet_errors(): int {
+    $cutoff = gmdate('Y-m-d H:i:s', time() - ERROR_KEEP_DAYS * 86400);
+    return transactional(function () use ($cutoff): int {
+        $removed = 0;
+        foreach (rows('SELECT id, account_id, context_json FROM feedback WHERE account_id IS NULL AND context_json LIKE ?',
+                      [ERROR_CONTEXT_PREFIX . '%']) as $row) {
+            $lastSeen = (string)(automatic_error_context($row)['last_seen'] ?? '');
+            if ($lastSeen !== '' && $lastSeen < $cutoff)
+                $removed += run('DELETE FROM feedback WHERE id=? AND account_id IS NULL AND context_json=?',
+                                [$row['id'], $row['context_json']])->rowCount();
+        }
+        return $removed;
+    });
+}
+
+/**
+ * The text an administrator copies for whoever helps her, outside the club.
+ *
+ * What the error was and where, and the way there as methods, actions and the
+ * names of the fields - never what was typed into them, never a name, an email
+ * address or an IP address. In the address, every value except page, id, tab
+ * and what is …, because a search term can be a child's name. The page inside
+ * the portal may go on showing more; this text is leaving it.
+ *
+ * '' for a report a person wrote: that one is in their own words already.
+ */
+function support_text(array $entry): string {
+    $c = automatic_error_context($entry);
+    if ($c === null) return '';
+    $scalar = static fn(mixed $v): string => is_scalar($v) ? (string)$v : '';
+    $lines = [
+        t('Automatisch erfasster Fehler im Badminton-Portal', 'Error recorded automatically by the badminton portal'),
+        t('Version: ', 'Version: ') . $scalar($c['version'] ?? '') . ' · PHP ' . $scalar($c['php'] ?? ''),
+        t('Zuerst: ', 'First: ') . fmt_datetime($scalar($c['first_seen'] ?? '')) . ' · '
+            . t('zuletzt: ', 'last: ') . fmt_datetime($scalar($c['last_seen'] ?? '')) . ' · '
+            . t('Anzahl: ', 'count: ') . (int)($c['count'] ?? 0),
+        t('Fehler: ', 'Error: ') . $scalar($c['class'] ?? '')
+            . ($scalar($c['sqlstate'] ?? '') !== '' ? ' SQLSTATE ' . $scalar($c['sqlstate']) : '')
+            . ($scalar($c['code'] ?? '') !== '' && $scalar($c['code']) !== '0' ? ' ' . t('Code ', 'code ') . $scalar($c['code']) : ''),
+    ];
+    if ($scalar($c['message'] ?? '') !== '') $lines[] = t('Meldung: ', 'Message: ') . error_message_scrub($scalar($c['message']));
+    $lines[] = t('Ort: ', 'Where: ') . $scalar($c['file'] ?? '') . ':' . (int)($c['line'] ?? 0)
+        . ' (' . ($scalar($c['where'] ?? '') === 'background' ? t('Hintergrund', 'background') : t('Seitenaufruf', 'request')) . ')';
+    foreach (array_values(array_filter((array)($c['frames'] ?? []), 'is_array')) as $i => $f)
+        $lines[] = '  #' . $i . ' ' . $scalar($f['file'] ?? '') . ':' . (int)($f['line'] ?? 0) . ' '
+            . $scalar($f['class'] ?? '') . $scalar($f['type'] ?? '') . $scalar($f['function'] ?? '') . '()';
+    if ($scalar($c['url'] ?? '') !== '')
+        $lines[] = t('Zuletzt aufgerufen: ', 'Last request: ') . $scalar($c['method'] ?? '') . ' ' . support_url($scalar($c['url']));
+    $steps = array_values(array_filter((array)($c['steps'] ?? []), 'is_array'));
+    if ($steps) {
+        $lines[] = t('Schritte davor:', 'Steps before it:');
+        foreach ($steps as $step) {
+            if (($step['method'] ?? '') === 'POST') {
+                $names = array_keys(array_diff_key(is_array($step['fields'] ?? null) ? $step['fields'] : [], ['…' => 1]));
+                $files = array_keys(is_array($step['files'] ?? null) ? $step['files'] : []);
+                $lines[] = '  POST ?action=' . $scalar($step['action'] ?? '')
+                    . ($names ? '  ' . t('Felder: ', 'fields: ') . implode(', ', array_map('strval', $names)) : '')
+                    . ($files ? '  ' . t('Dateien: ', 'files: ') . implode(', ', array_map('strval', $files)) : '');
+            } else {
+                $lines[] = '  GET ' . support_url($scalar($step['url'] ?? ''));
+            }
+        }
+    }
+    if ($scalar($c['user_agent'] ?? '') !== '') $lines[] = t('Gerät: ', 'Device: ') . $scalar($c['user_agent']);
+    return implode("\n", $lines);
+}
+
+/** An address with every query value but page, id, tab and what replaced by …. */
+function support_url(string $url): string {
+    [$path, $query] = array_pad(explode('?', $url, 2), 2, '');
+    parse_str($query, $values);
+    $kept = [];
+    foreach ($values as $key => $value)
+        $kept[] = rawurlencode((string)$key) . '=' . (in_array($key, ['page', 'id', 'tab', 'what'], true) && is_scalar($value)
+            ? rawurlencode((string)$value) : '…');
+    return $path . ($kept ? '?' . implode('&', $kept) : '');
+}

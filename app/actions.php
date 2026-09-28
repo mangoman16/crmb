@@ -195,12 +195,12 @@ function dispatch_action(string $action): array {
         $hash=$a['password_hash']??'$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
         if(!password_verify(post('password'),$hash) || !$a || $a['state']!=='active' || !$a['verified_at']) throw new UserError(t('Anmeldung nicht möglich. Zugangsdaten und Einladung prüfen.','Unable to sign in. Check your credentials and invitation.'));
         if(password_needs_rehash($hash,PASSWORD_DEFAULT)) run('UPDATE accounts SET password_hash=? WHERE id=?',[password_hash(post('password'),PASSWORD_DEFAULT),$a['id']]);
-        sign_in($a); return ['dashboard',[]];
+        sign_in($a); return landing_after_sign_in($a);
     case 'logout':
         $_SESSION=[]; session_regenerate_id(true); current_user(true); return ['login',[]];
     case 'forgot':
         $a=one("SELECT * FROM accounts WHERE email=? AND state='active' AND verified_at IS NOT NULL",[attempted_email()]);
-        if($a && setting('smtp',[]) && setting('privacy_ready',false)) send_account_token($a,'reset');
+        if($a && account_mail_ready()) send_account_token($a,'reset');
         flash(t('Wenn ein aktives Konto existiert, erhältst du einen Link per E-Mail.','If an active account exists, you will receive an email link.'));
         return ['forgot',[]];
     case 'activate':
@@ -229,9 +229,10 @@ function dispatch_action(string $action): array {
         } else throw new UserError('Invalid token');
         run('DELETE FROM auth_tokens WHERE account_id=?',[$r['account_id']]);
         unset($_SESSION['activation_hash']);
-        sign_in(one('SELECT * FROM accounts WHERE id=?',[$r['account_id']]));
+        $signed=one('SELECT * FROM accounts WHERE id=?',[$r['account_id']]);
+        sign_in($signed);
         audit('account.verified','account',(int)$r['account_id']);
-        flash(t('Dein Konto ist bereit.','Your account is ready.')); return ['dashboard',[]];
+        flash(t('Dein Konto ist bereit.','Your account is ready.')); return landing_after_sign_in($signed);
     case 'unsubscribe':
         $id=(int)post('account');$category=post('category');
         if(!valid_unsubscribe($id,$category,post('signature'))) throw new UserError(t('Ungültiger Abmeldelink.','Invalid unsubscribe link.'));
@@ -251,7 +252,7 @@ function dispatch_action(string $action): array {
         send_account_token(one('SELECT * FROM accounts WHERE id=?',[$id]),'invite');audit('account.invited','account',$id);
         flash(t('Konto angelegt. Die Einladung liegt im Postausgang.','Account created. The invitation is in the outbox.'));return ['accounts',[]];
     /* A login made here and now, with a password typed rather than emailed.
-       Inviting needs working SMTP and a released privacy notice, which is right
+       Inviting needs tested SMTP and a released privacy notice, which is right
        for a real family and wrong for every other reason somebody needs an
        account: trying the portal out before the mail is set up, a second
        administrator on the day the first one loses their phone, a trainer who
@@ -308,8 +309,8 @@ function dispatch_action(string $action): array {
         $password=$direct?strong_password((string)post('password')):'';
         if(account_using_email($email)) throw new UserError(own_address_needed($email));
         if(!$direct && !account_mail_ready())
-            throw new UserError(t('Eine Einladung braucht eingerichtetes SMTP und eine freigegebene Datenschutzerklärung. Solange das fehlt, kann eine Administratorin das Konto direkt mit Passwort anlegen.',
-                                  'An invitation needs SMTP set up and a released privacy notice. Until then, an administrator can create the account directly with a password.'));
+            throw new UserError(t('Eine Einladung lässt sich noch nicht verschicken. ','An invitation cannot be sent yet. ').account_mail_missing()
+                .t(' Bis dahin kann eine Administratorin das Konto direkt mit Passwort anlegen.',' Until then, an administrator can create the account directly with a password.'));
         if($direct) run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,locale,created_at) VALUES (?,?,?,'student','active',?,?,?)",
                         [$name,$email,password_hash($password,PASSWORD_DEFAULT),now(),$locale,now()]);
         else run("INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,'student',?,?)",[$name,$email,$locale,now()]);
@@ -335,7 +336,7 @@ function dispatch_action(string $action): array {
         // A student's login is managed from that student's page, so that is where
         // she lands again. Looked up now, because after a delete the foreign key
         // has already cut the link and there is nobody left to find.
-        $studentId=$a['role']==='student'?(int)(scalar('SELECT id FROM students WHERE account_id=?',[$id])?:0):0;
+        $studentId=$a['role']==='student'?login_student_id($id):0;
         if($mode==='reinvite') {
             if($a['state']!=='invited') throw new UserError(t('Nur offene Einladungen können erneut versendet werden.','Only pending invitations can be resent.'));
             cancel_account_mail($id);send_account_token($a,'invite');
@@ -357,12 +358,12 @@ function dispatch_action(string $action): array {
             // account_id is neither read nor written here: a login is given by
             // student_invite and taken away by deleting it, nothing else
             // (ADR 0010). A page from before that rule may still post it.
-            $tariffId=(int)post('tariff_id')?:null;$tariff=$tariffId?one('SELECT * FROM tariffs WHERE id=?',[$tariffId]):null;
-            if($tariffId && (!$tariff || ($tariff['archived'] && $tariffId!==(int)($existing['tariff_id']??0)))) throw new UserError(t('Tarif ist nicht verfügbar.','Tariff is not available.'));
-            // Through tariff_price(): a tariff has a rate per interval now, not a
-            // price column, and reading a column that no longer exists would have
-            // filed the student at no price at all rather than at the tariff's.
-            $price=post('price')!==''?cents(post('price')):tariff_price($tariffId);
+            //
+            // Nor are tariff_id, price_cents and price_note (ADR 0011). What a
+            // child pays is decided per course, on the enrolment, and that is
+            // what billing reads; the student's own columns bill nobody. They
+            // keep whatever they hold, because a page from before still posts
+            // the old box, and a form without it would blank them on every save.
             $status=post('status');if(!isset(statuses()[$status]) && !($existing && $status===$existing['status'])) throw new UserError(t('Bitte einen Status auswählen.','Please choose a status.'));
             // A child is always in a level, so an unanswered field means the
             // default rather than nothing. An age group is the opposite: blank is
@@ -407,17 +408,18 @@ function dispatch_action(string $action): array {
                                               'The address is this account’s login and cannot be changed here. Whoever signs in with it changes it under “My account”, with a confirmation link sent to the new address. Nothing was saved.'));
                     if(account_using_email($posted)) throw new UserError(own_address_needed($posted));
                     if(!account_mail_ready())
-                        throw new UserError(t('Die neue Adresse lässt sich erst eintragen, wenn die Einladung dorthin verschickt werden kann: bitte zuerst SMTP und die Datenschutzerklärung einrichten. Nichts wurde gespeichert.',
-                                              'The new address can only be entered once the invitation can be sent there: please set up SMTP and the privacy notice first. Nothing was saved.'));
+                        throw new UserError(t('Die neue Adresse lässt sich erst eintragen, wenn die Einladung dorthin verschickt werden kann. ',
+                                              'The new address can only be entered once the invitation can be sent there. ')
+                            .account_mail_missing().t(' Nichts wurde gespeichert.',' Nothing was saved.'));
                     $email=$posted; $readdress=true;
                 }
             }
-            $args=[$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,$ageGroupId,$tariffId,$price,text_limit('price_note'),text_limit('internal_notes',12000),now()];
+            $args=[$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,$ageGroupId,text_limit('internal_notes',12000),now()];
             if($id) {
                 // The login moves inside the same tracked change, so the change
                 // log shows the new address on the student it belongs to.
                 tracked('students',$id,$first.' '.$last,function() use ($args,$id,$account,$readdress,$email) {
-                    $updated=run('UPDATE students SET first_name=?,last_name=?,email=?,address=?,phone=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,tariff_id=?,price_cents=?,price_note=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
+                    $updated=run('UPDATE students SET first_name=?,last_name=?,email=?,address=?,phone=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
                     if(!$updated->rowCount())throw new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
                     if($readdress) change_login_address((int)$account['id'],$email);
                 });
@@ -429,7 +431,7 @@ function dispatch_action(string $action): array {
                 }
             }
             else {$id=tracked_insert('students',$first.' '.$last,function() use ($args) {
-                run('INSERT INTO students (first_name,last_name,email,address,phone,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,price_cents,price_note,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+                run('INSERT INTO students (first_name,last_name,email,address,phone,birth_date,joined_on,ended_on,status,level_id,age_group_id,internal_notes,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...$args,now()]);
                 return (int)db()->lastInsertId();
             });}
         } else {

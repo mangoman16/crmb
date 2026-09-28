@@ -35,7 +35,7 @@ run('UPDATE students SET level_id=(SELECT id FROM levels WHERE is_default=1 ORDE
 if(setting('defaults_initialized',false))return;
 db()->beginTransaction();
 try{
-    set_setting('club_name','Badminton');set_setting('default_status','active');set_setting('default_tariff',null);
+    set_setting('club_name','Badminton');set_setting('default_status','active');
     set_setting('statuses',['trial'=>'Probetraining','active'=>'Aktiv','paused'=>'Pausiert','ended'=>'Beendet']);
     set_setting('absence_reasons',['sick'=>'Krank','holiday'=>'Urlaub','other'=>'Abwesend']);
     set_setting('payment_methods',['Überweisung','Bar']);set_setting('privacy_ready',false);

@@ -18,7 +18,7 @@ $expected = [
     'app/groups.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
     'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
-    'app/duplicate.php' => 80, 'app/portal_icon.php' => 60,
+    'app/duplicate.php' => 80, 'app/portal_icon.php' => 60, 'app/start.php' => 100,
     'app/backup.php' => 100, 'public/setup.php' => 180,
 ];
 foreach ($expected as $file => $minLines) {
@@ -123,6 +123,7 @@ $expected = [
     'classes' => 'staff', 'manage' => 'staff', 'invoices' => 'staff', 'attendance' => 'staff',
     'print' => 'staff',
     'settings' => 'admin', 'history' => 'admin',
+    'start' => 'admin',   // the setup checklist: administrator decisions only (ADR 0011)
 ];
 $list = function (string $pattern) use ($router): array {
     preg_match($pattern, $router, $found);
@@ -1354,3 +1355,47 @@ foreach ($allowedWriters as $column => $expected) {
     foreach ($expected as $where => $why)
         ok(in_array($where, $found, true), $where.' still writes students.'.$column.', because it '.$why);
 }
+
+case_('Unexpected errors are written down from exactly the places ADR 0012 names');
+/* capture_error() is a writer outside an action, like the background work, and
+   it is only safe where the ADR put it: after the router has given up on a
+   request, after a background job has failed, and from the fatal-error
+   handler. Called from anywhere else it would record refusals, run twice in a
+   request or write in the middle of somebody else's transaction. A new caller
+   fails here by name. */
+$captures = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'),
+                     glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/database/*.php')) as $path)
+    foreach (named_blocks_of($path) as $block => $php)
+        foreach (action_calls_in($php) as $call)
+            if (!$call['method'] && in_array($call['name'], ['capture_error', 'capture_fatal_error'], true))
+                $captures[$call['name']][] = substr($path, strlen(APP_ROOT) + 1).' '.$block;
+$expected = ['app/shell.php capture_fatal_error', 'app/tick.php run_background_tasks', 'app/tick.php tick_work',
+             'public/index.php index.php (file)', 'public/index.php index.php (file)'];
+$found = $captures['capture_error'] ?? [];
+sort($found);
+is_same($expected, $found,
+        'capture_error() is called in the router’s last catch and its database catch, the two catches of the background work, and the fatal-error handler - nowhere else');
+is_same(['public/index.php index.php (file)'], $captures['capture_fatal_error'] ?? [],
+        'and the fatal-error handler is registered once, by the router');
+$final = substr($router, (int)strrpos($router, '} catch(Throwable $ex) {'));
+ok(str_contains($final, 'capture_error($ex);') && strpos($final, 'capture_error($ex);') < strpos($final, "echo '<!doctype html>"),
+   'the last catch captures before it sends the friendly page, which capture_error() cannot stop');
+
+case_('The router’s last catch works before the application has loaded');
+/* That catch also sees a configuration that stops app/bootstrap.php at its first
+   check - a wrong app key, a malformed app_url - before a single file of the
+   application is loaded. Anything it calls from app/ has to be behind a
+   function_exists() for that name, or the friendly page becomes a fatal error:
+   capture_error() was, until this rule. Built-in functions are always there. */
+$lastCatch = substr($router, (int)strrpos($router, '} catch(Throwable $ex) {'));
+preg_match_all("/function_exists\\('([a-z_][a-z0-9_]*)'\\)/", $lastCatch, $guardedHere);
+$fromTheApp = [];
+foreach (action_calls_in($lastCatch) as $call) {
+    if ($call['method'] || !function_exists($call['name'])) continue;
+    if ((new ReflectionFunction($call['name']))->isInternal()) continue;
+    if (!in_array($call['name'], $guardedHere[1], true)) $fromTheApp[] = $call['name'].'()';
+}
+ok(str_contains($lastCatch, 'capture_error('), 'the last catch was found, and it captures');
+is_same([], array_values(array_unique($fromTheApp)),
+        'and everything it calls from the application is behind function_exists(), so a portal stopped before loading still gets its page');

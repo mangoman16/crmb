@@ -46,7 +46,7 @@ $inMaintenance=is_file(maintenance_file());
     <?php endforeach ?>
     <?php endif ?>
 </section>
-<section class="card">
+<section class="card" id="demo">
     <h2><?=e(t('Beispieldaten','Example data'))?></h2>
     <p class="muted"><?=e(t('Füllt das Portal mit erfundenen Kindern, Kursen, Beiträgen und Nachrichten, damit sich alles ausprobieren lässt, bevor echte Familien darin stehen. Beispieldaten sind in der Datenbank gekennzeichnet und lassen sich vollständig wieder entfernen.','Fills the portal with made-up children, courses, charges and messages, so everything can be tried out before real families are in it. Example data is marked as such in the database and can be removed again completely.'))?></p>
     <?php $demo=demo_counts(); if(demo_present()): ?>
@@ -55,10 +55,7 @@ $inMaintenance=is_file(maintenance_file());
             <div><dt><?=e(t('Beispielkurse','Example courses'))?></dt><dd><?=(int)$demo['courses']?></dd></div>
             <div><dt><?=e(t('Beispielkonten','Example accounts'))?></dt><dd><?=(int)$demo['accounts']?></dd></div>
         </dl>
-        <?php if(!empty($_SESSION['demo_password'])): ?>
-        <div class="notice"><?=e(t('Passwort für alle Beispielkonten','Password for every example account'))?>: <strong class="mono"><?=e((string)$_SESSION['demo_password'])?></strong><br>
-            <?=e(t('Es wird nur hier gezeigt und nirgends gespeichert. Konten: trainerin@beispiel.test, familie.hofer@beispiel.test, familie.berger@beispiel.test','Shown only here and stored nowhere. Accounts: trainerin@beispiel.test, familie.hofer@beispiel.test, familie.berger@beispiel.test'))?></div>
-        <?php endif ?>
+        <?php demo_password_notice(); ?>
         <?php start_form('demo_data',['mode'=>'clear']);submit_button(t('Beispieldaten entfernen','Remove example data'),'danger');?></form>
     <?php else: ?>
         <?php $real=(int)scalar('SELECT COUNT(*) FROM students'); if($real): ?>

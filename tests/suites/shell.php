@@ -185,95 +185,222 @@ act('message_send', ['thread_id'=>(string)$thread, 'body'=>'Ich bringe zwei mit.
 is_same($beforeFamily + 1, unread_notifications($family), 'the family is told');
 
 // ---------------------------------------------------------------------------
-case_('The main menu holds every destination, once, for the people who may open it');
-/* Thirteen entries in one column made the panel 958px tall, which is taller than
-   a 1920x1080 screen at 110% zoom: the last three were below the fold and the
-   menu scrolled. Six of them now sit inside sections. What must stay true is
-   that nothing was dropped on the way, and that nobody is offered a page the
-   router will refuse them. */
-function menu_routes(array $user): array {
-    $routes = [];
-    foreach (nav_entries($user) as $entry) {
-        if (isset($entry['route'])) { $routes[] = $entry['route']; continue; }
-        foreach ($entry['items'] as $item) $routes[] = $item['route'];
-    }
-    return $routes;
-}
+case_('The main menu is one flat list for each kind of person');
+/* ADR 0011: seven entries and no sections. A section hid what it held, and a list
+   of seven fits on a phone. Everything that lost its entry is reached from the
+   entry it belongs to - the case after next holds that for every page. */
+function menu_routes(array $user): array { return array_column(nav_entries($user), 'route'); }
 $adminUser = one('SELECT * FROM accounts WHERE id=?', [$admin]);
 $trainerUser = one('SELECT * FROM accounts WHERE id=?', [$trainer]);
 $familyUser = one('SELECT * FROM accounts WHERE id=?', [$family]);
+$setupShown = function (bool $shown): void { set_setting('setup_hidden', !$shown); setup_cache_clear(); };
 
-$adminRoutes = menu_routes($adminUser);
-is_same(array_values(array_unique($adminRoutes)), $adminRoutes, 'no destination is offered twice');
-foreach (['dashboard','students','classes','attendance','payments','invoices','messages','news',
-          'manage','accounts','outbox','history','settings'] as $route)
-    ok(in_array($route, $adminRoutes, true), 'an administrator can still reach '.$route);
-
-$trainerRoutes = menu_routes($trainerUser);
-foreach (['history','settings'] as $route)
-    ok(!in_array($route, $trainerRoutes, true), 'a trainer is not offered '.$route.', which the router refuses her');
-ok(in_array('classes', $trainerRoutes, true), 'but she is offered the courses');
+$setupShown(true);
+ok(setup_unfinished(), 'a portal with nothing set up has its checklist unfinished');
+is_same(['start','dashboard','students','classes','attendance','payments','messages','settings'], menu_routes($adminUser),
+        'an administrator sees „Einrichtung" first while it is unfinished, then the seven');
+$setupShown(false);
+is_same(['dashboard','students','classes','attendance','payments','messages','settings'], menu_routes($adminUser),
+        'and the seven alone once it is hidden');
+is_same([t('Übersicht','Overview'), t('Schüler','Students'), t('Kurse','Courses'), t('Anwesenheit','Attendance'),
+         t('Geld','Money'), t('Nachrichten','Messages'), t('Einstellungen','Settings')],
+        array_column(nav_entries($adminUser), 'label'), 'named the way the portal names them');
+is_same(['dashboard','students','classes','attendance','payments','messages','manage'], menu_routes($trainerUser),
+        'a trainer\'s seventh is Verwaltung, the page she can open, not Einstellungen');
+foreach (['history','settings','start'] as $route)
+    ok(!in_array($route, menu_routes($trainerUser), true), 'a trainer is not offered '.$route.', which the router refuses her');
+foreach ([$adminUser, $trainerUser, $familyUser] as $who)
+    foreach (nav_entries($who) as $entry)
+        ok(isset($entry['route']) && !isset($entry['items']), 'nothing is folded into a section: '.$entry['label']);
+ok(!str_contains(sidebar_nav($adminUser, 'attendance'), 'nav-section'), 'and the side menu draws no section at all');
+is_same(array_values(array_unique(menu_routes($adminUser))), menu_routes($adminUser), 'no destination is offered twice');
 
 // One login is one student (ADR 0010): the family's second entry is their own
 // student's page, called „Profil", and a login no student points to has no
 // record to show, so it gets no entry rather than one that leads nowhere.
 is_same(0, (int)scalar('SELECT COUNT(*) FROM students WHERE account_id=?', [$family]), 'this family login has no student');
-is_same(['dashboard','messages','news'], menu_routes($familyUser), 'so it sees three pages and no sections');
+is_same(['dashboard','messages','news'], menu_routes($familyUser), 'so it sees three pages');
 is_same(null, people_nav_entry($familyUser), 'and no „Profil" entry that would lead nowhere');
 $ownLogin = make_account(['role'=>'student', 'name'=>'Familie Profil']);
-$ownStudent = make_student(['first_name'=>'Pia', 'last_name'=>'Profil', 'account_id'=>$ownLogin]);
+$ownStudent = make_student(['first_name'=>'Pia', 'last_name'=>'Profil', 'account_id'=>$ownLogin, 'email'=>'profil@example.test']);
 $otherStudent = make_student(['first_name'=>'Nicht', 'last_name'=>'Ihres']);
 $ownUser = one('SELECT * FROM accounts WHERE id=?', [$ownLogin]);
-is_same(['dashboard','student','messages','news'], menu_routes($ownUser), 'a family with a student sees four pages and no sections');
+is_same(['dashboard','student','messages','news'], menu_routes($ownUser), 'a family with a student sees four pages');
 $profile = people_nav_entry($ownUser);
 is_same(['student', ['id'=>$ownStudent], 'Profil'], [$profile['route'] ?? null, $profile['params'] ?? null, $profile['label'] ?? null],
         'the second is „Profil", their own student\'s page');
 ok($ownStudent !== $otherStudent && ($profile['params']['id'] ?? null) !== $otherStudent, 'and never another student\'s');
-ok(str_contains(sidebar_nav($ownUser, 'dashboard'), 'href="'.e(url('student', ['id'=>$ownStudent])).'"'),
-   'the menu links there');
-foreach (nav_entries($ownUser) as $entry)
-    ok(isset($entry['route']), 'and nothing is folded away from them');
-is_same(['students'], array_values(array_intersect(['students', 'student'], menu_routes($adminUser))),
-        'staff still get the list of students, not one student');
+ok(str_contains(sidebar_nav($ownUser, 'dashboard'), 'href="'.e(url('student', ['id'=>$ownStudent])).'"'), 'the menu links there');
 
-case_('Every menu entry names an icon that exists and a page the router allows');
+case_('The bar along the bottom of a phone');
+/* Four places for staff and „Mehr" for the rest; five for a family and no „Mehr",
+   because everything on their side menu is on the bar already. The short word
+   is what fits five to a 320px screen; the full one is what a screen reader says. */
+$bar = fn(array $who) => [array_column(mobile_nav_entries($who), 'route'), array_column(mobile_nav_entries($who), 'short')];
+foreach (['administrator' => $adminUser, 'trainer' => $trainerUser] as $role => $who)
+    is_same([['dashboard','students','messages','attendance'], ['Übersicht','Schüler','Post','Anwesend']], $bar($who),
+            'staff ('.$role.'): Übersicht, Schüler, Post, Anwesend');
+is_same([['dashboard','student','messages','news','profile'], ['Übersicht','Profil','Post','Neues','Konto']], $bar($ownUser),
+        'a family: Übersicht, Profil, Post, Neues, Konto');
+is_same(['dashboard','messages','news','profile'], array_column(mobile_nav_entries($familyUser), 'route'),
+        'and a login with no student simply has no Profil');
+is_same('Mein Konto', array_column(mobile_nav_entries($ownUser), 'label', 'route')['profile'] ?? null,
+        '„Konto" is read out as „Mein Konto"');
+/** A whole page as the browser gets it: the view inside the layout. */
+function shell_page(string $page, array $query = []): string {
+    $content = render_view($page, $query);
+    $public = false; $user = current_user(); $restore = $_GET; $_GET = $query; $GLOBALS['page'] = $page;
+    ob_start(); require APP_ROOT.'/views/layout.php'; $html = (string)ob_get_clean(); $_GET = $restore;
+    return $html;
+}
+sign_in_as($trainer);
+ok(str_contains(shell_page('dashboard'), 'id="menu-toggle"'), 'staff have „Mehr", which opens the side menu');
+sign_in_as($ownLogin);
+$familyFrame = shell_page('dashboard');
+ok(!str_contains($familyFrame, 'id="menu-toggle"'), 'a family has no „Mehr"');
+ok(str_contains($familyFrame, 'href="'.e(url('profile')).'"'), 'their Konto is on the bar instead');
+
+// ---------------------------------------------------------------------------
+case_('Every page a person may open is on their menu, or reached from the entry it belongs to');
+/* ADR 0011. Taking pages off the menu is only a simplification if every one of
+   them can still be found. For each page the router lets a person open, one of:
+   - it is an entry of their side menu or phone bar, and that entry is the one
+     highlighted while it is open;
+   - it belongs to no entry (nav_owner() is ''), and the frame of every page links
+     to it: the account in the top bar, the privacy notice at the foot;
+   - it belongs to one of their entries, and that entry's page links to it,
+     directly or through a page that belongs to the same entry (Geld → Rechnungen
+     → a PDF), with exactly that entry highlighted.
+   Who may open what is read from the router, not listed again here. */
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
-preg_match("/\\\$allowed=\[([^\]]*)\]/", $router, $m);
-$allowed = array_map(fn($p) => trim($p, " '"), explode(',', $m[1] ?? ''));
-$fallback = icon('a name that is not an icon');
-foreach ([$adminUser, $trainerUser, $familyUser] as $who)
-    foreach (nav_entries($who) as $entry) {
-        $parts = isset($entry['route']) ? [$entry] : array_merge([$entry], $entry['items']);
-        foreach ($parts as $part) {
-            ok(icon($part['icon']) !== $fallback, $part['label'].' has a real icon, not the arrow fallback');
-            if (isset($part['route'])) ok(in_array($part['route'], $allowed, true), $part['route'].' is a page the router allows');
+$routerList = function (string $pattern) use ($router): array {
+    preg_match($pattern, $router, $found);
+    return array_values(array_filter(array_map(fn($p) => trim($p, " '"), explode(',', $found[1] ?? ''))));
+};
+$allowed    = $routerList("/\\\$allowed=\[([^\]]*)\]/");
+$publicOnly = $routerList("/\\\$public=in_array\(\\\$page,\[([^\]]*)\]/");
+$staffOnly  = $routerList("/in_array\(\\\$page,\[([^\]]*)\],true\)\)require_staff/");
+$adminOnly  = $routerList("/in_array\(\\\$page,\[([^\]]*)\],true\)\)require_admin/");
+ok($allowed && $publicOnly && $staffOnly && $adminOnly, 'the router\'s four lists were found');
+// A page the router sends somewhere else for some people - a family's old
+// bookmark to the students list opens their own student - is reachable for them
+// when it lands on one of their own entries. Read from the router, like the lists.
+preg_match_all('/if\(\$page===\x27(\w+)\x27 && \(\$instead=(\w+)\(\$user\)\)\)go\(\$instead\[0\],\$instead\[1\]\)/', $router, $found, PREG_SET_ORDER);
+$redirects = [];
+foreach ($found as [, $page, $function]) $redirects[$page] = $function;
+is_same(['students' => 'students_list_instead'], $redirects, 'the router sends a family\'s students list elsewhere, and nothing else');
+
+// Data enough for every link to be drawn: a course, a family's child with a
+// charge and an issued invoice, which is what puts a PDF link on the page.
+sign_in_as($admin);
+foreach (['org_name'=>'Badmintonschule Profil', 'org_street'=>'Turnweg 3', 'org_zip'=>'4020', 'org_city'=>'Linz',
+          'org_country'=>'Österreich', 'org_email'=>'kontakt@example.test', 'org_tax_mode'=>'small'] as $key => $value)
+    set_setting($key, $value);
+run('UPDATE payment_profiles SET iban=? WHERE id=?', ['AT055100080513176900', (int)setting('default_payment_profile')]);
+payment_cache_clear();
+make_class(['name'=>'Profilkurs']);
+$profileCharge = fixture('charges', ['student_id'=>$ownStudent, 'label'=>'Beitrag September', 'amount_cents'=>4500,
+    'gross_cents'=>4500, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>'2026-09-01', 'period_to'=>'2026-09-30',
+    'due_on'=>'2026-09-01', 'overdue_on'=>'2026-09-08', 'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+create_invoice($ownStudent, [$profileCharge]);
+
+$signedOutOnly = array_intersect($publicOnly, ['login','forgot','activate','unsubscribe','icon','manifest','not_found']);
+/** The links on a page: [page, query] for each, the page the router would open. */
+$linksOn = function (string $html): array {
+    preg_match_all('/href="([^"]*)"/', $html, $m);
+    $out = [];
+    foreach ($m[1] as $href) {
+        $href = html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        if (!str_contains($href, 'index.php') && !str_starts_with($href, '?')) continue;
+        parse_str((string)parse_url($href, PHP_URL_QUERY), $query);
+        $out[] = [(string)($query['page'] ?? 'dashboard'), $query];
+    }
+    return $out;
+};
+$reaches = function (array $who, string $owner, array $ownerParams, string $target) use ($linksOn): bool {
+    $queue = [[$owner, $ownerParams, 0]]; $seen = [];
+    while ($queue) {
+        [$page, $query, $depth] = array_shift($queue);
+        $key = $page.'?'.http_build_query($query);
+        if (isset($seen[$key])) continue;
+        $seen[$key] = true;
+        try { $html = render_view($page, $query); } catch (Throwable) { continue; }
+        foreach ($linksOn($html) as [$linked, $linkedQuery]) {
+            if ($linked === $target) return true;
+            // Only pages that belong to the same entry: the way there has to
+            // stay under the entry that is highlighted.
+            if ($depth < 2 && !in_array($linked, ['download', 'print'], true) && nav_owner($linked, $who) === $owner)
+                $queue[] = [$linked, $linkedQuery, $depth + 1];
         }
     }
-
-case_('The section you are working in is the one standing open');
-sign_in_as($admin);
-$menu = sidebar_nav($adminUser, 'attendance');
-ok(preg_match('/<summary>[^<]*(<svg.*?<\/svg>)?<span>Training<\/span>.*?<\/details>/s', $menu) === 1, 'the menu has a Training section');
-// Anwesenheit is inside Training, so Training is open and the other two are not.
-is_same(1, substr_count($menu, '<details class="nav-section" name="nav-section" open>'), 'exactly one section stands open');
-$open = substr($menu, (int)strpos($menu, 'name="nav-section" open'));
-$open = substr($open, 0, (int)strpos($open, '</details>'));
-ok(str_contains($open, 'page=attendance'), 'and it is the one holding the page being looked at');
-ok(str_contains($open, '<span>Training</span>'), 'which is Training, not another one');
-foreach (['dashboard'=>'', 'payments'=>'Geld', 'settings'=>'System'] as $page => $section) {
-    $html = sidebar_nav($adminUser, $page);
-    is_same($section === '' ? 0 : 1, substr_count($html, 'name="nav-section" open'),
-            $page === 'dashboard' ? 'a page outside every section leaves them all shut' : $section.' opens for '.$page);
+    return false;
+};
+$people = ['an administrator, setup unfinished' => [$admin, true], 'an administrator, setup hidden' => [$admin, false],
+           'a trainer' => [$trainer, false], 'a family' => [$ownLogin, false]];
+$checkedPairs = 0;
+foreach ($people as $who => [$accountId, $setupOpen]) {
+    $setupShown($setupOpen);
+    sign_in_as($accountId);
+    $user = current_user();
+    $entries = [];
+    foreach (array_merge(nav_entries($user), mobile_nav_entries($user)) as $entry) $entries[$entry['route']] ??= $entry['params'] ?? [];
+    $frameLinks = array_column($linksOn(shell_page('dashboard')), 0);
+    foreach ($allowed as $page) {
+        if (in_array($page, $signedOutOnly, true)) continue;
+        if (in_array($page, $staffOnly, true) && !is_staff($user)) continue;
+        if (in_array($page, $adminOnly, true) && !is_admin($user)) continue;
+        $checkedPairs++;
+        $owner = nav_owner($page, $user);
+        $instead = isset($redirects[$page]) && function_exists($redirects[$page]) ? $redirects[$page]($user) : null;
+        if ($instead !== null) {
+            [$landing, $landingParams] = $instead;
+            ok(isset($entries[$landing]) && $entries[$landing] == $landingParams,
+               $page.' sends '.$who.' to '.$landing.' '.json_encode($landingParams).', one of their own entries');
+        } elseif (isset($entries[$page])) {
+            is_same($page, $owner, $page.' is on the menu of '.$who.', and its own entry is the one highlighted');
+        } elseif ($owner === '') {
+            ok(in_array($page, $frameLinks, true), $page.' belongs to no entry for '.$who.', and the frame of every page links to it');
+        } else {
+            ok(isset($entries[$owner]), $page.' belongs to '.$owner.', which is on the menu of '.$who);
+            ok(isset($entries[$owner]) && $reaches($user, $owner, $entries[$owner], $page),
+               $page.' is linked from '.$owner.' for '.$who.', or from a page that belongs to it');
+        }
+        if ($owner !== '')
+            is_same([$owner], array_values(array_filter(array_keys($entries), fn($route) => nav_is_current($route, $page, $user))),
+                    'while '.$page.' is open, only '.$owner.' is highlighted for '.$who);
+    }
 }
-is_same(1, substr_count(sidebar_nav($adminUser, 'student'), 'aria-current="page"'), 'one student marks the students entry');
-is_same(1, substr_count(sidebar_nav($adminUser, 'compose'), 'aria-current="page"'), 'and a new message marks Nachrichten');
+ok($checkedPairs >= 50, $checkedPairs.' pages checked across four kinds of person');
+is_same(['student', ['id'=>$ownStudent]], students_list_instead($ownUser), 'a family with a student is sent to that student\'s page');
+is_same(['dashboard', []], students_list_instead($familyUser), 'one with no student to the overview');
+foreach ([$adminUser, $trainerUser] as $staffUser)
+    is_same(null, students_list_instead($staffUser), 'and staff are not sent anywhere: the list is theirs');
+// A family's phone has no side menu, so its way to the notice is Konto.
+sign_in_as($ownLogin);
+ok(in_array('privacy', array_column($linksOn(render_view('profile')), 0), true) && str_contains(render_view('profile'), e('Datenschutz und Hilfe')),
+   'on a family\'s phone the privacy notice is under Konto, in „Datenschutz und Hilfe"');
+$setupShown(true);
 
-case_('What is waiting is shown on the section while the section is shut');
+case_('Every menu entry names an icon that exists and a page the router allows');
+$fallback = icon('a name that is not an icon');
+foreach ([$adminUser, $trainerUser, $ownUser] as $who)
+    foreach (array_merge(nav_entries($who), mobile_nav_entries($who)) as $entry) {
+        ok(icon($entry['icon']) !== $fallback, $entry['label'].' has a real icon, not the arrow fallback');
+        ok(in_array($entry['route'], $allowed, true), $entry['route'].' is a page the router allows');
+    }
+
+case_('What is waiting is shown on the entry it belongs to');
 $course = make_class(['name'=>'Kindertraining']);
 $kid = make_student(['first_name'=>'Lena', 'last_name'=>'Hofer', 'account_id'=>$family]);
 fixture('enrolment_requests', ['class_id'=>$course, 'student_id'=>$kid, 'kind'=>'join', 'state'=>'pending',
                                'message'=>'', 'requested_by'=>$family, 'created_at'=>now()]);
 is_same(1, pending_request_count(), 'one request is waiting');
-$shut = sidebar_nav($adminUser, 'dashboard');
-ok(str_contains($shut, 'class="count section-count"'), 'the Training section carries the number while it is shut');
-ok(substr_count($shut, 'class="count'), 'and the entry inside it carries it too, for when the section opens');
+is_same(1, array_column(nav_entries($adminUser), 'count', 'route')['classes'] ?? null, 'the number is on Kurse itself');
+// Each entry's own number on its own link, and a link with nothing waiting
+// carries none - read from the drawn menu, so a count put on the wrong entry
+// shows even when another entry legitimately has one (unread messages here).
+preg_match_all('~<a href="[^"]*page=(\w+)[^"]*"[^>]*>(.*?)</a>~s', sidebar_nav($adminUser, 'dashboard'), $links, PREG_SET_ORDER);
+$drawn = [];
+foreach ($links as [, $route, $inside])
+    $drawn[$route] = preg_match('~<span class="count"[^>]*>(\d+)</span>~', $inside, $n) ? (int)$n[1] : 0;
+is_same(array_column(nav_entries($adminUser), 'count', 'route'), $drawn, 'the side menu draws each number on its own entry and nowhere else');
