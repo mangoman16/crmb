@@ -115,26 +115,36 @@ tests/e2e.sh                          # the working tree as it is now
 CRM_E2E_REF=HEAD tests/e2e.sh         # exactly one commit, whatever the tree holds
 CRM_E2E_PHP=php8.5 tests/e2e.sh       # another PHP on the same machine
 tests/e2e.sh --stop-after "7 mail"    # stop once that step has run
+CRM_E2E_VERBOSE=1 tests/e2e.sh        # list every check that passed, not only the failures
 ```
 
 What the owner does on her first evening and what a family does the next
 morning, pressed through the real forms in Chromium at 390px, against a real
 MariaDB, with nothing reaching into the application from the side. No step
-calls an action directly: if a form has no button, the walk cannot press it,
-which is how it found the tariff form of fd0d179 that every suite here passed.
+calls an action directly, and there is no fallback: a form without a visible
+button stops the walk there, as it would stop her. That is how it found the
+tariff form of fd0d179 that every suite here passed.
 
 It walks `setup.php`, signing in to „Dein Portal einrichten“ at 0 of 9, each of
 the nine steps from its own button and back through „Zurück zur Einrichtung“
-with the tick checked every time, up to 9 of 9 and „Alles eingerichtet“. Then
-the family opens the invitation link out of the captured mail, sets a password,
+with the tick checked every time, up to 9 of 9 and „Alles eingerichtet“. One
+child joins the course on the day of the run and the other part-way through
+the month (its „Dabei seit“ set to a day before today); both charges must cover
+from the day they joined, be due no earlier than that day or the day they were
+written, and not be overdue on the day they appear, and the family's card must
+name the same period as the invoice. Then the family opens the invitation link out of the captured mail, sets a password,
 sees their child under „Profil“ and the charge under „Beiträge“, uploads a
 payment proof and sends „Etwas funktioniert hier nicht“. Then the trainer sees
 the charge and the proof, records the payment as confirmed, issues an invoice
-and checks the PDF, and reads the report with its trail. Last, a table is
-renamed under the running portal: the family must see only the friendly page,
-Rückmeldungen must show it once with „2×“ and a support text holding no names,
-and the table is put back. Every page a role opened is then opened again at
-320px.
+and checks the PDF, and reads the report with its trail; the report must bring
+the family back to the same child and tab. Last, the news table is renamed under
+the running portal and the family opens Neuigkeiten three times: they must see
+only the friendly page, Rückmeldungen must show it once with „3×“, one
+notification and a support text holding no name, address or IP; marked
+„Erledigt“ and broken once more it must be new again at „4×“, with a second
+notification. The table is put back each time. Every page a role opened is then opened again at
+320px. The checks that stand for a numbered one in `TESTING.md` (U.20, U.31,
+U.33, U.34, U.39–U.43, U.46, U.52, U.53, U.56) say so there.
 
 On every page it records, and fails on: an HTTP 5xx the walk did not provoke,
 a JavaScript error or failed request, a warning, notice or deprecation in PHP's

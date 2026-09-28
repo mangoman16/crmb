@@ -207,16 +207,26 @@ are the only ones it has proven. **Notes** at the end are things the design
 intends that are worth a decision; they do not fail it. Details:
 [tests/README.md](tests/README.md#the-first-evening-end-to-end-in-a-browser).
 
+**Last walked:** 91520db on 28.09.2026, `RESULT: PASS`, 279 checks, against
+MariaDB 10.11.14 with PHP 8.4.19 and again with 8.5.11 (`php -S`), in Chromium
+at 390px and 320px. The U.x checks it walked are marked below where they stand:
+ticked when the walk covers the whole check and it is one for whoever makes the
+release, annotated when it covers part, or when the check is yours to do on your
+own phone.
+
 It stands in for a phone, not for these, which stay by hand when the change
 touches them:
 
 - [ ] **T.1** The invoice PDF the run saves (`invoice.pdf` in its work folder,
   printed at the end) opened in Preview or Adobe Reader and on the iPhone: one
   page, the address block, the amount, the IBAN in groups of four.
+  *Not done. At 91520db the walk parsed `invoice.pdf`, and pypdf (strict) read one page with Leistungszeitraum 14.09.2026 – 30.09.2026 and 19,83 €. That is a parser, not a reader.*
 - [ ] **T.2** The invitation through the real mail provider, opened on an
   iPhone in Mail: the link opens „Konto einrichten" in Safari, not a blank page.
+  *Not done. At 91520db the walk received the invitation through a local SMTP sink, not a real provider.*
 - [ ] **T.3** On the iPhone, as the family: the bell at the top right shows the
   bell alone. (Chromium draws a small ▸ above it; check whether Safari does.)
+  *Not done. No iPhone here; Chromium at 91520db still draws the ▸.*
 
 ---
 
@@ -1146,6 +1156,7 @@ Rückmeldungen**, „Technische Einzelheiten"
   step shows `signature=***`, never the signature itself.
 - [ ] **U.16** Upload a picture (a profile picture will do), then report: the
   step shows the file's size and type, never its name.
+  *Also walked by `tests/e2e.sh` with a payment proof instead of a picture: size and type, no name. Passed at 91520db.*
 - [ ] **U.17** Mark a report **„Erledigt"**. Every typed value in its steps now
   reads `(gelöscht)`; the addresses stay. **„Wieder offen"** does not bring the
   values back.
@@ -1172,6 +1183,7 @@ Rückmeldungen**, „Technische Einzelheiten"
   **Schüler**, no login in **Konten**, nothing new in Postausgang. A child with
   no address at all shows „Trag oben zuerst eine E-Mail-Adresse ein und
   speichere." on the card, and no button.
+  *`tests/e2e.sh` at 91520db walks the first half and it passed: no address, „Kein Zugang“ and the sentence with no button; the invitation, „Eingeladen an …“, Postausgang. The brother with the same address is still by hand.*
 - [ ] **U.21** **(release)** As the administrator, **„Ohne E-Mail anlegen (mit
   Passwort)"** on a child, with a password of at least 12 characters: sign out
   and sign in with that address and password. It works with no SMTP at all, and
@@ -1194,6 +1206,7 @@ Rückmeldungen**, „Technische Einzelheiten"
   members only; there is no way to invite a family from there.
 - [ ] **U.26** A mail to a family — an invitation, a reminder — starts
   „Hallo <Vorname des Kindes>,".
+  *The invitation part is walked by `tests/e2e.sh` („Hallo Jonas,“), passed at 91520db. The reminder is still by hand.*
 - [ ] **U.27** **Änderungen** on a child whose login changed shows the login as
   its address, or as „gelöschter Zugang" once it is gone — never a bare number.
 - [ ] **U.28** **(release)** With example data filled in, neither the overview nor
@@ -1230,25 +1243,30 @@ Rückmeldungen**, „Technische Einzelheiten"
   land on **„Einrichtung"**, „0 von 9 erledigt". Sign out and in again: you land there
   again. Sign in as a trainer, and as a family: both land on the overview, and
   `?page=start` answers „Nur für Administratoren."
+  *`tests/e2e.sh` at 91520db walks the administrator (0 von 9, and again after signing in a second time) and the family (`?page=start` refused) and passed. The trainer is still by hand.*
 - [ ] **U.32** **(release)** Fill in the example data (**Einstellungen → System**):
   „Ersten Kurs anlegen", „Preis für jeden Kurs", „Kinder eintragen", „Beiträge"
   and „Familien einladen" all stay undone. Example data never ticks a step.
-- [ ] **U.33** **(release)** From the checklist, open „Name und Anschrift", fill it in and
+- [x] **U.33** **(release)** From the checklist, open „Name und Anschrift", fill it in and
   save. The page the save returns to still offers the way back to the
   checklist, and so does any page you open next; opening the checklist ticks the
   step and the way back is gone.
-- [ ] **U.34** **(release)** Save SMTP and run **„Nur Verbindung prüfen"** successfully:
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
+- [x] **U.34** **(release)** Save SMTP and run **„Nur Verbindung prüfen"** successfully:
   „E-Mails verschicken" is ticked. Change the server name and save: the step is
   undone again and the SMTP tab shows no last test until you test again.
   Re-saving without changing anything keeps the tick.
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
 - [ ] **U.35** **(release)** **Einstellungen → Datenschutz** with the English box empty:
   releasing is accepted. Open the notice with `&lang=en`: the German text is
   shown, with the line „This privacy notice is only available in German. …" Put a short English
   text in and release: refused, naming „English". Put a full English text in:
   released, and the version number under the notice has changed.
+  *`tests/e2e.sh` at 91520db releases with the English box empty and the family sees the German notice with the line under `&lang=en`: passed. The short and full English texts are still by hand.*
 - [ ] **U.36** **(release)** As the administrator, switch **„Monatsbeiträge automatisch
   anlegen"** on and off on the **Beiträge** page. A trainer is not offered it. Under **Einstellungen → System** it is no
   longer listed.
+  *`tests/e2e.sh` at 91520db switches it on from the Beiträge page: passed. Off, the trainer and the System tab are still by hand.*
 - [ ] **U.37** **(release)** On an existing child whose record still has a tariff and an agreed
   price from before, save the child's page twice with other changes. **Änderungen**
   shows neither the tariff nor the price changing.
@@ -1258,22 +1276,27 @@ Rückmeldungen**, „Technische Einzelheiten"
   undone.
 - [ ] **U.39** With every step done, **„Ausblenden"**: signing in lands on the
   overview. **„Wieder anzeigen"** brings the checklist back.
+  *Also walked by `tests/e2e.sh` in Chromium, passed at 91520db; on the phone it is still yours.*
 
 **Errors that report themselves** (see `docs/decisions/0012-unexpected-errors-report-themselves.md`)
 
-- [ ] **U.40** **(release)** In the hosting panel's phpMyAdmin, on the copy's
+- [x] **U.40** **(release)** In the hosting panel's phpMyAdmin, on the copy's
   database only, rename the table `news` to `news_x`. Signed in as a family, open
   **Neuigkeiten**: the page „Die Anwendung ist vorübergehend nicht verfügbar"
   appears, nothing technical. Open it twice more. Rename the table back.
-- [ ] **U.41** **(release)** As the administrator: one notification, and under **Einstellungen →
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
+- [x] **U.41** **(release)** As the administrator: one notification, and under **Einstellungen →
   Rückmeldungen** one new entry „Fehler auf Seite news: PDOException", seen three
   times — not three entries, and only one notification.
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
 - [ ] **U.42** **(release)** Copy the entry's text for support and paste it into a note. It says
   what broke, where, the version and the device, and the pages visited — and no
   name, no email address, no IP address and nothing anybody typed. A search
   (`q=…`) shows as `…`.
-- [ ] **U.43** **(release)** Mark it **„Erledigt"**, then repeat U.40 once: the same entry is new
+  *`tests/e2e.sh` at 91520db reads the support text: what broke, where, the version, the device and the pages; no name, email address, IP address or typed note: passed. A search showing as `…` is still by hand.*
+- [x] **U.43** **(release)** Mark it **„Erledigt"**, then repeat U.40 once: the same entry is new
   again, counted four times, with a new notification.
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
 - [ ] **U.44** **(release)** Note the date. An entry nothing has repeated is gone from
   Rückmeldungen 30 days after it was last seen, whatever its state; a report a
   person wrote is not affected by that.
@@ -1287,11 +1310,13 @@ Rückmeldungen**, „Technische Einzelheiten"
   **Schüler** stays marked, so you always see where you are.
 - [ ] **U.46** On your phone, the bar at the bottom reads **Übersicht, Schüler,
   Post, Anwesend, Mehr**. **Mehr** opens the same seven.
+  *`tests/e2e.sh` reads the bar at 390px in Chromium, passed at 91520db. „Mehr“ opening the seven is still by hand.*
 - [ ] **U.47** **(release)** As a trainer, the seventh entry is **Verwaltung**, not
   Einstellungen, and the phone bar is the same as yours.
 - [ ] **U.48** On a child that has a login, **„Portal als … ansehen"**, on your
   phone: the family's bar reads **Übersicht, Profil, Post, Neues, Konto**, with no
   **Mehr**. **Konto** opens their **Mein Konto**. **Ansicht beenden** afterwards.
+  *`tests/e2e.sh` reads the family's bar signed in as the family, not through „Portal als … ansehen“, passed at 91520db.*
 - [ ] **U.49** **Einstellungen** opens with cards above the tabs: **Verwaltung**,
   **Konten**, **Änderungen**, **Einrichtung ansehen** and **Erweitert**. Each card
   opens its page, and **Einstellungen** stays marked in the menu. Postausgang is
@@ -1306,6 +1331,7 @@ Rückmeldungen**, „Technische Einzelheiten"
   Datenschutzerklärung, „Etwas funktioniert nicht", the version and **Abmelden**.
   On a family's phone (U.48) this is the only way to the privacy notice, so check
   it there too.
+  *`tests/e2e.sh` checks it as the family, passed at 91520db. As yourself it is still by hand.*
 
 **Fewer fields at first**
 
@@ -1314,6 +1340,7 @@ Rückmeldungen**, „Technische Einzelheiten"
   tab, the agreed price, the payment day, the dates and the discount wait there
   too — and the box opens by itself on a child that already has one of them set.
   Nothing has to be opened to save.
+  *`tests/e2e.sh` saves a new tariff without opening „Mehr Möglichkeiten“, passed at 91520db. The child's Kurse tab is still by hand.*
 - [ ] **U.54** **Einstellungen → Betrieb**, the Umsatzsteuer choice: with
   „Kleinunternehmer (keine Umsatzsteuer)" there is no „Steuersatz in Prozent" and
   no „UID-Nummer"; pick „Mit Umsatzsteuer" and both appear. **Leave without
@@ -1325,6 +1352,7 @@ Rückmeldungen**, „Technische Einzelheiten"
   (**Mein Konto → Datenschutz und Hilfe**). With no English text written, you see
   the German one with „This privacy notice is only available in German. …" above
   it. Switch back to **DE**.
+  *Also walked by `tests/e2e.sh` as the family, passed at 91520db.*
 - [ ] **U.57** **(release)** On the copy, save SMTP and do not test it. **„Einladung
   senden"** on a child is refused with „Eine Einladung lässt sich noch nicht
   verschicken. E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP" die

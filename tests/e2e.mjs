@@ -51,6 +51,9 @@ const ADMIN = { name: 'Sabine Berger', email: 'trainerin@example.test', password
 const FAMILY = { name: 'Familie Huber', email: 'huber@example.test', password: 'E2e-Family-Pass-2026' };
 const CHILDREN = [{ first: 'Lena', last: 'Huber', born: '2015-04-12' }, { first: 'Jonas', last: 'Huber', born: '2013-09-30' }];
 const COURSE = 'Kinder Anfänger';
+// The child the family will be invited for (step 9 picks the first by name)
+// joined part-way through this month; the other one joins on the day of the run.
+const MID_JOINER = 'Jonas';
 const IBAN = 'AT611904300234573201';
 
 // --- results ------------------------------------------------------------------
@@ -180,6 +183,48 @@ const newPhone = async (browser, role, width = 390) => {
     return { ctx, page };
 };
 
+/** A child's charges, with every date the rules below need. */
+function chargesOf(studentId) {
+    return sql(`SELECT c.id, c.amount_cents, c.due_on, COALESCE(c.overdue_on, c.due_on), c.period_from, c.period_to,
+                       COALESCE(c.covered_from, c.period_from), COALESCE(c.covered_to, c.period_to), DATE(c.created_at),
+                       (SELECT cs.joined_on FROM class_students cs WHERE cs.student_id=c.student_id AND cs.class_id=c.class_id LIMIT 1)
+                FROM charges c WHERE c.student_id=${studentId} AND c.cancelled=0 ORDER BY c.id`)
+        .split('\n').filter(Boolean).map(l => { const v = l.split('\t');
+            return { id: +v[0], cents: +v[1], due: v[2], overdue: v[3], from: v[4], to: v[5], coveredFrom: v[6], coveredTo: v[7], created: v[8], joined: v[9] }; });
+}
+/** What a charge for somebody who joined part-way through must say (fixed after fd0d179). */
+function chargeRules(c, who) {
+    const today = todayVienna();
+    ok(c.coveredFrom === (c.joined > c.from ? c.joined : c.from), `${who}'s charge covers from the day they joined (${fmtDate(c.joined)})`, `covers from ${c.coveredFrom}, calendar period from ${c.from}`);
+    ok(c.coveredTo === lastOfMonth(c.coveredFrom), `${who}'s charge covers to the month's end`, c.coveredTo);
+    ok(c.due >= c.coveredFrom, `${who}'s charge is not due before the first day it covers`, `due ${c.due}, covers from ${c.coveredFrom}`);
+    ok(c.due >= c.created, `${who}'s charge is not due before the day it was written`, `due ${c.due}, written ${c.created}`);
+    ok(c.overdue > today, `${who}'s charge is not overdue on the day it appears`, `overdue from ${c.overdue}, today ${today}`);
+    // 35 € for the whole month, prorated by the days covered.
+    const days = (Date.parse(c.coveredTo) - Date.parse(c.coveredFrom)) / 864e5 + 1, month = Number(lastOfMonth(c.coveredFrom).slice(8, 10));
+    ok(Math.abs(c.cents - Math.round(3500 * days / month)) <= 1, `${who}'s charge is ${days} of ${month} days of 35 €`, `${fmtEuro(c.cents)}, expected about ${fmtEuro(Math.round(3500 * days / month))}`);
+}
+
+/** The phone bar as it reads: each entry's visible word, not the full name a
+ *  screen reader hears from its visually hidden twin. */
+const barWords = (page) => page.evaluate(() => [...document.querySelectorAll('.mobile-nav a, .mobile-nav button')].map(a =>
+    [...a.querySelectorAll('span')].filter(s => !s.classList.contains('visually-hidden') && !s.classList.contains('count')).map(s => s.textContent.trim()).join(' ')).join(' '));
+const barLink = (page, word) => page.locator('.mobile-nav a').filter({ has: page.locator('span:not(.visually-hidden):not(.count)', { hasText: new RegExp('^' + word + '$') }) });
+
+/** Sign in on the page that is open, the way she does. */
+async function signIn(page, who) {
+    if (!/page=login/.test(page.url())) await page.goto(BASE + '/index.php?page=login');
+    await look(page, who === ADMIN ? 'admin' : 'family');
+    await page.fill('input[name=email]', who.email); await page.fill('input[name=password]', who.password);
+    await submit(page, page.locator('main form button[type=submit]'));
+    await look(page, who === ADMIN ? 'admin' : 'family');
+}
+/** Mein Konto → Abmelden. */
+async function signOut(page) {
+    await page.goto(BASE + '/index.php?page=profile');
+    await submit(page, page.locator('form:has(input[name=action][value=logout]) button'));
+}
+
 /** Press a button and wait for the page it leads to. */
 async function submit(page, locator) {
     await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), locator.click()]);
@@ -290,15 +335,18 @@ step('admin signs in', async ({ browser }) => {
     S.admin = await newPhone(browser, 'admin');
     const page = S.admin.page;
     await page.goto(BASE + '/index.php');
-    await look(page, 'admin');
-    await page.fill('input[name=email]', ADMIN.email); await page.fill('input[name=password]', ADMIN.password);
-    await submit(page, page.locator('main form button[type=submit]'));
-    await look(page, 'admin');
+    await signIn(page, ADMIN);
     must(label(page.url()) === '?page=start', 'the admin lands on the checklist', page.url());
     ok((await page.locator('h1').innerText()).includes('Dein Portal einrichten'), 'heading „Dein Portal einrichten“');
     const p = await progress(page);
     ok(p && p[0] === 0 && p[1] === 9, '0 von 9 erledigt on a fresh portal', JSON.stringify(p));
     ok(await page.locator('li.step.is-done').count() === 0, 'nothing ticked on a fresh portal');
+    // U.46: the phone's bar.
+    ok(await barWords(page) === 'Übersicht Schüler Post Anwesend Mehr', 'the phone bar reads Übersicht, Schüler, Post, Anwesend, Mehr', await barWords(page));
+    // U.31: signing out and in again lands on the checklist again.
+    await signOut(page);
+    await signIn(page, ADMIN);
+    ok(label(page.url()) === '?page=start', 'signing in again lands on the checklist again', page.url());
 });
 
 step('1 organisation', async () => {
@@ -311,10 +359,21 @@ step('1 organisation', async () => {
     await f.locator('[name=set_org_city]').fill('Wien');
     await f.locator('[name=set_org_email]').fill(ADMIN.email);
     await f.locator('[name=set_org_tax_mode]').selectOption('small');
-    await submit(page, f.locator('button[type=submit]'));
+    await save(page, f, 'the organisation form');
     await look(page, 'admin');
     ok(!/fehlgeschlagen|error/i.test(await flash(page)), 'organisation saved', await flash(page));
+    // U.33: the way back stays on the page the save returns to and on any page
+    // opened next; opening the checklist ends it.
+    ok(await page.locator('nav.setup-return').count() === 1, 'the page the save returns to offers the way back');
+    await submit(page, barLink(page, 'Übersicht'));
+    await look(page, 'admin');
+    ok(await page.locator('nav.setup-return').count() === 1, 'and so does the next page opened from the menu');
     await backAndTick(page, 'organisation', 1);
+    await submit(page, barLink(page, 'Übersicht'));
+    await look(page, 'admin');
+    ok(await page.locator('nav.setup-return').count() === 0, 'once the checklist was opened, the way back is gone');
+    await page.goto(BASE + '/index.php?page=start');
+    await look(page, 'admin');
 });
 
 step('2 bank', async () => {
@@ -350,21 +409,35 @@ step('3 course', async () => {
     await backAndTick(page, 'first_course', 3);
 });
 
-/** Save a form with its own button, or - when it has none - record that and
- *  submit it the way no person can, so the walk can reach what comes after. */
+/** Save a form with its own visible button, as a thumb would. A form without
+ *  one stops the walk there: nobody can get past it either. (fd0d179 shipped the
+ *  tariff form like that; this walk found it by pressing buttons.) */
 async function save(page, form, what) {
     const button = form.locator('button[type=submit], input[type=submit], button:not([type])').filter({ visible: true });
-    if (ok(await button.count() > 0, `${what} has a visible save button`, `on ${label(page.url())}; the page reads: ${(await form.innerText()).replace(/\s+/g, ' ').slice(-120)}`))
-        return submit(page, button.last());
-    console.log(`   (workaround: submitting „${what}“ with requestSubmit() to reach the steps after it)`);
-    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), form.evaluate(f => f.requestSubmit())]);
+    must(await button.count() > 0, `${what} has a visible save button`, `on ${label(page.url())}; the page reads: ${(await form.innerText()).replace(/\s+/g, ' ').slice(-120)}`);
+    return submit(page, button.last());
 }
+
+/** Two URLs name the same page when their query parameters are the same, in any order. */
+const samePage = (a, b) => {
+    const q = (u) => [...new URL(u).searchParams].filter(([k]) => k !== 'from').map(([k, v]) => k + '=' + v).sort().join('&');
+    return q(a) === q(b);
+};
+/** The portal's today, which is Vienna's, not UTC's. */
+const todayVienna = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' });
+const fmtDate = (iso) => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
+const fmtEuro = (cents) => (cents / 100).toFixed(2).replace('.', ',') + ' €';
+const lastOfMonth = (iso) => { const d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7), 0)); return d.toISOString().slice(0, 10); };
 
 step('4 price', async () => {
     const page = S.admin.page;
     await openStep(page, 'course_prices');
     ok(label(page.url()).includes('tab=tariffs'), 'step 4 opens the course\'s tariffs', page.url());
     const f = page.locator('form:has(input[name=action][value=tariff_save])');
+    // U.53: the name and the price are shown, the rest waits shut under „Mehr
+    // Möglichkeiten“, and nothing has to be opened to save.
+    ok(await f.locator('details.more-options').count() === 1 && !(await f.locator('details.more-options').getAttribute('open') !== null),
+       'the rest of a new tariff waits shut under „Mehr Möglichkeiten“');
     await f.locator('[name=name]').fill('Monatsbeitrag');
     await f.locator('[name="rate_interval[]"]').first().selectOption('1');
     await f.locator('[name="rate_price[]"]').first().fill('35,00');
@@ -376,6 +449,12 @@ step('4 price', async () => {
 
 step('5 children', async () => {
     const page = S.admin.page;
+    // A day strictly between the 1st and today, so the charge covers part of the
+    // month and is written after the day it would naively be due. On the 1st and
+    // 2nd of a month there is none; said, not skipped quietly.
+    const today = todayVienna(), day = Number(today.slice(8, 10));
+    S.midJoin = day >= 3 ? today.slice(0, 8) + String(Math.floor((1 + day) / 2)).padStart(2, '0') : null;
+    note(S.midJoin, 'no mid-month join date before today exists on the 1st or 2nd; the earlier-joiner checks run with today only');
     for (const [i, child] of CHILDREN.entries()) {
         await openStep(page, 'students');
         // With a child already there, the step leads to the list, and a new
@@ -397,17 +476,22 @@ step('5 children', async () => {
         const id = Number(sql(`SELECT id FROM students WHERE first_name='${child.first}' AND last_name='${child.last}'`));
         must(id > 0, `${child.first} is stored`, await flash(page));
         S.children = [...(S.children || []), id];
-        if (i === 0) {
-            // ADR 0011 decides that a child in no course does not hold the step
-            // up (tests/suites/start.php pins it). The step's own sentence says
-            // „Jedes Kind in einem Kurs mit Preis“, so it is worth seeing.
-            const bar = (await page.locator('nav.setup-return').innerText().catch(() => '')).match(/(\d+) von 9/);
-            note(bar && bar[1] === '4', 'step 5 ticks while the only child is in no course (ADR 0011, by design)',
-               `the bar reads ${bar && bar[0]} while ${child.first}'s page says: ${(await page.locator('.next-steps').first().innerText().catch(() => '')).replace(/\s+/g, ' ')}`);
-        }
-        // Into the course, from the child's own „Kurse“ tab.
-        await submit(page, page.locator('a[href*="tab=classes"]').first());
+        // „Jedes Kind in einem Kurs mit Preis“: a child waiting for a course
+        // holds the step up, and the step leads straight to that child.
+        const bar = (await page.locator('nav.setup-return').innerText().catch(() => '')).match(/(\d+) von 9/);
+        ok(bar && bar[1] === '4', `step 5 is not ticked while ${child.first} is in no course`,
+           `the bar reads ${bar && bar[0]}`);
+        await submit(page, page.locator('nav.setup-return a'));
         await look(page, 'admin');
+        ok(!/is-done/.test(await stepItem(page, 'students').getAttribute('class') || ''), `„Kinder eintragen“ is open again while ${child.first} has no course`);
+        await openStep(page, 'students');
+        const u = new URL(page.url());
+        ok(u.searchParams.get('id') === String(id) && u.searchParams.get('tab') === 'classes',
+           `the step leads to ${child.first}'s „Kurse“ tab`, page.url());
+        if (!(u.searchParams.get('id') === String(id) && u.searchParams.get('tab') === 'classes')) {
+            await page.goto(BASE + `/index.php?page=student&id=${id}&tab=classes`);
+            await look(page, 'admin');
+        }
         const row = page.locator('#add-course .record-row', { hasText: COURSE });
         must(await row.count() === 1, `${COURSE} is offered on ${child.first}'s Kurse tab`, await mainText(page));
         await save(page, row.locator('form'), `„Eintragen“ for ${child.first}`);
@@ -416,6 +500,18 @@ step('5 children', async () => {
            `${child.first} is in ${COURSE}`, await flash(page));
         ok(sql(`SELECT COUNT(*) FROM class_students WHERE student_id=${id} AND tariff_id IS NOT NULL`) === '1',
            `${child.first}'s place has the tariff`, sql(`SELECT * FROM class_students WHERE student_id=${id}`));
+        if (child.first === MID_JOINER && S.midJoin) {
+            // Joined part-way through the month: the enrolment's own „Dabei
+            // seit“, under „Tarif, Zahlungsweise und Rabatt → Mehr Möglichkeiten“.
+            const form = page.locator('form:has(input[name=action][value=enrolment_save])');
+            await page.locator('summary', { hasText: 'Tarif, Zahlungsweise und Rabatt' }).first().click();
+            await form.locator('details.more-options > summary').click();
+            await form.locator('[name=joined_on]').fill(S.midJoin);
+            await save(page, form, `„Tarif, Zahlungsweise und Rabatt“ for ${child.first}`);
+            await look(page, 'admin');
+            ok(sql(`SELECT joined_on FROM class_students WHERE student_id=${id} AND class_id=${S.classId}`) === S.midJoin,
+               `${child.first} joined ${COURSE} on ${fmtDate(S.midJoin)}, part-way through the month`, await flash(page));
+        }
         await backAndTick(page, 'students', 5);
     }
 });
@@ -447,6 +543,28 @@ step('7 mail', async () => {
     await save(page, f, 'the SMTP form');
     await look(page, 'admin');
     ok(!/fehl|error/i.test(await flash(page)), 'SMTP saved', await flash(page));
+    // U.34: „Nur Verbindung prüfen“ ticks the step; changing the server undoes
+    // it until the next passing test; saving unchanged keeps it.
+    const barCount = async () => Number(((await page.locator('nav.setup-return').innerText().catch(() => '')).match(/(\d+) von 9/) || [])[1]);
+    const test = () => page.locator('form:has(input[name=action][value=smtp_test])');
+    await submit(page, test().locator('button[value=connect]'));
+    await look(page, 'admin');
+    ok(await barCount() === 7, '„Nur Verbindung prüfen“ passing ticks the step (7 von 9)', `${await barCount()}; ${(await mainText(page)).slice(0, 300)}`);
+    ok((await page.locator('.mail-test .test-result').innerText().catch(() => '')).includes('Erfolgreich'), 'the SMTP tab shows the last test as „Erfolgreich“');
+    const smtpForm = () => page.locator('form:has(input[name=action][value=smtp_save])');
+    await save(page, smtpForm(), 'the SMTP form, unchanged');
+    await look(page, 'admin');
+    ok(await barCount() === 7, 'saving the SMTP form unchanged keeps the tick', await barCount());
+    await smtpForm().locator('[name=host]').fill('localhost');
+    await save(page, smtpForm(), 'the SMTP form with another server');
+    await look(page, 'admin');
+    ok(await barCount() === 6, 'another server undoes the step until it is tested', await barCount());
+    ok(await page.locator('.mail-test .test-result').count() === 0 && !(await mainText(page)).includes('Letzter Test'),
+       'and the SMTP tab shows no last test', (await page.locator('.mail-test').innerText()).replace(/\s+/g, ' ').slice(-200));
+    await smtpForm().locator('[name=host]').fill('127.0.0.1');
+    await save(page, smtpForm(), 'the SMTP form, server put back');
+    await look(page, 'admin');
+    ok(await barCount() === 6, 'and putting the old one back is still untested', await barCount());
     const before = mails().length;
     const t = page.locator('form:has(input[name=action][value=smtp_test])');
     await t.locator('[name=test_email]').fill(ADMIN.email);
@@ -494,7 +612,11 @@ step('9 invite', async () => {
     S.childName = sql(`SELECT first_name FROM students WHERE id=${S.invitedChild}`);
     // The child has no address yet: the access card says to enter one above first.
     const card = page.locator('#access');
-    ok((await card.innerText()).includes('E-Mail-Adresse'), 'the access card asks for an address first', await card.innerText());
+    // U.20: no address yet - „Kein Zugang“, the sentence, and no button.
+    const empty = (await card.innerText()).replace(/\s+/g, ' ');
+    ok(empty.includes('Kein Zugang') && empty.includes('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')
+       && await card.locator('form:has(input[name=action][value=student_invite])').count() === 0,
+       'with no address the card says „Kein Zugang“ and „Trag oben zuerst eine E-Mail-Adresse ein und speichere.“, with no button', empty);
     const f = page.locator('form:has(input[name=action][value=student_save])');
     await f.locator('[name=email]').fill(FAMILY.email);
     await save(page, f, 'the child form');
@@ -503,12 +625,32 @@ step('9 invite', async () => {
     must(await invite.count() === 1, '„Einladung senden“ is offered once the address is saved', await page.locator('#access').innerText());
     await save(page, invite, '„Einladung senden“');
     await look(page, 'admin');
-    ok(/eingeladen|Einladung/i.test(await flash(page) + await page.locator('#access').innerText()), 'the access card shows the invitation', await page.locator('#access').innerText());
+    const invited = (await page.locator('#access').innerText()).replace(/\s+/g, ' ');
+    ok(invited.includes('Eingeladen') && invited.includes(`Eingeladen an ${FAMILY.email}, noch nicht angenommen.`),
+       'the card turns to „Eingeladen“: „Eingeladen an …, noch nicht angenommen.“', invited);
     S.familyId = Number(sql(`SELECT account_id FROM students WHERE id=${S.invitedChild}`));
     ok(S.familyId > 0 && sql(`SELECT state FROM accounts WHERE id=${S.familyId}`) === 'invited', 'an invited account exists for the family');
+    // U.20: and the invitation is in Postausgang.
+    await page.goto(BASE + '/index.php?page=outbox');
+    await look(page, 'admin');
+    ok((await mainText(page)).includes(FAMILY.email), 'the invitation is in „Postausgang“', (await mainText(page)).slice(0, 300));
+    await page.goto(BASE + `/index.php?page=student&id=${S.invitedChild}`);
     await backAndTick(page, 'invite', 9);
     ok((await mainText(page)).includes('Alles eingerichtet'), '„Alles eingerichtet“ once all nine are done', await mainText(page));
     ok(await page.locator('li.step.is-done').count() === 9, 'all nine steps ticked');
+    // U.39: „Ausblenden“, and signing in lands on the overview; „Wieder
+    // anzeigen“ brings the checklist back.
+    await save(page, page.locator('form:has(input[name=action][value=setup_visibility])'), '„Ausblenden“');
+    await look(page, 'admin');
+    ok(setting('setup_hidden') === 'true' || setting('setup_hidden') === '1', 'the checklist is hidden', setting('setup_hidden'));
+    await signOut(page);
+    await signIn(page, ADMIN);
+    ok(label(page.url()) === '?page=dashboard', 'with it hidden, signing in lands on the overview', page.url());
+    await page.goto(BASE + '/index.php?page=start');
+    await look(page, 'admin');
+    await save(page, page.locator('form:has(input[name=action][value=setup_visibility])'), '„Wieder anzeigen“');
+    await look(page, 'admin');
+    ok(!(setting('setup_hidden') === 'true' || setting('setup_hidden') === '1'), '„Wieder anzeigen“ brings it back', setting('setup_hidden'));
 });
 
 step('family accepts the invitation', async ({ browser }) => {
@@ -520,6 +662,8 @@ step('family accepts the invitation', async ({ browser }) => {
         async () => { await admin.goto(BASE + '/index.php?page=dashboard'); });
     must(invite, 'the invitation reaches the family\'s inbox within 150 s', JSON.stringify(sql("SELECT id,status,category,attempts,error FROM mail_jobs")));
     console.log(`   invitation: „${invite.subject}“`);
+    // U.26: the family is greeted by the child's first name.
+    ok(invite.body.includes(`Hallo ${S.childName},`), `the invitation starts „Hallo ${S.childName},“`, invite.body.slice(0, 120));
     const link = (invite.body.match(/https?:\/\/\S+token=[a-f0-9]{64}/) || [])[0];
     must(link, 'the invitation carries a link with a token', invite.body.slice(0, 500));
     ok(link.startsWith(BASE), 'the link points at this portal', link);
@@ -541,8 +685,38 @@ step('family accepts the invitation', async ({ browser }) => {
 
 step('family: Profil and charges', async () => {
     const page = S.family.page;
+    // U.46/U.48: the family's bar.
+    ok(await barWords(page) === 'Übersicht Profil Post Neues Konto', 'the family\'s bar reads Übersicht, Profil, Post, Neues, Konto', await barWords(page));
+    // U.31: the checklist is the administrator's alone.
+    page.__expect4xx = true;
+    const start = await page.goto(BASE + '/index.php?page=start');
+    ok(start.status() === 403 && (await mainText(page)).includes('Nur für Administratoren'), '?page=start answers „Nur für Administratoren“ to a family',
+       `${start.status()} ${(await mainText(page)).slice(0, 120)}`);
+    page.__expect4xx = false;
+    // U.52: Mein Konto ends with „Datenschutz und Hilfe“. (The refusal page has
+    // no bar; back to the overview first, as she would.)
+    await page.goto(BASE + '/index.php?page=dashboard');
+    await submit(page, barLink(page, 'Konto'));
+    await look(page, 'family');
+    // The card, and „Abmelden“ straight under it as the last thing on the page.
+    const ending = await page.evaluate(() => {
+        const cards = [...document.querySelectorAll('main section.card')];
+        const last = cards[cards.length - 1];
+        const after = last?.nextElementSibling;
+        return { card: (last?.innerText || '').replace(/\s+/g, ' '), next: after ? (after.innerText || '').trim() : '', laterCards: after ? [...document.querySelectorAll('main section.card')].filter(c => after.compareDocumentPosition(c) & 4).length : -1 };
+    });
+    ok(/^Datenschutz und Hilfe/.test(ending.card) && /Datenschutzerklärung/.test(ending.card) && /Etwas funktioniert nicht/.test(ending.card) && /Version \d/.test(ending.card)
+       && ending.next === 'Abmelden' && ending.laterCards === 0,
+       'Mein Konto ends with „Datenschutz und Hilfe“ (the notice, the report, the version) and „Abmelden“', JSON.stringify(ending));
+    // U.56: with no English notice, English readers get the German one and are told so.
+    await page.goto(BASE + '/index.php?page=privacy&lang=en');
+    await look(page, 'family');
+    ok((await mainText(page)).includes('This privacy notice is only available in German'), 'in English the German notice is shown, with the line saying so', (await mainText(page)).slice(0, 200));
+    await page.goto(BASE + '/index.php?page=dashboard&lang=de');
+    await look(page, 'family');
+    ok((await mainText(page)).includes('Hallo'), 'and back in German', (await mainText(page)).slice(0, 80));
     // The bottom bar a phone shows; the sidebar copy sits off-canvas at this width.
-    const profil = page.locator('.mobile-nav a', { hasText: /^Profil$/ });
+    const profil = barLink(page, 'Profil');
     must(await profil.count() === 1, 'the family menu has „Profil“');
     await submit(page, profil);
     await look(page, 'family');
@@ -554,17 +728,27 @@ step('family: Profil and charges', async () => {
 
     await submit(page, page.locator('main a[href*="tab=payments"]').filter({ visible: true }).first());
     await look(page, 'family');
-    const charges = sql(`SELECT id, amount_cents, due_on, period_from, period_to FROM charges WHERE student_id=${S.invitedChild} AND cancelled=0`).split('\n').filter(Boolean).map(l => l.split('\t'));
-    must(charges.length > 0, 'automatic charges created a charge for the invited child', sql('SELECT * FROM charges'));
-    S.charge = { id: Number(charges[0][0]), cents: Number(charges[0][1]), due: charges[0][2], from: charges[0][3], to: charges[0][4] };
-    const euros = (S.charge.cents / 100).toFixed(2).replace('.', ',') + ' €';
+    const all = chargesOf(S.invitedChild);
+    must(all.length === 1, 'automatic charges created one charge for the invited child', sql('SELECT id,student_id,label,amount_cents,due_on FROM charges'));
+    S.charge = all[0];
+    const euros = fmtEuro(S.charge.cents);
     const text = await mainText(page);
     ok(text.includes(euros), `„Beiträge“ shows the charge of ${euros}`, text.slice(0, 400));
-    console.log(`   charge: ${euros}, due ${S.charge.due}, covers ${S.charge.from}..${S.charge.to}; the page says: ${(text.match(/Beitrag \S+ Fällig am [^€]*€[^Z]*Zeitraum [0-9.]+ – [0-9.]+/) || [''])[0]}`);
-    const today = new Date().toISOString().slice(0, 10);
-    note(S.charge.due >= today, `a charge created today is already overdue (due ${S.charge.due})`, text.match(/Überfällig [0-9,]+ €/)?.[0] || '');
-    S.joined = sql(`SELECT joined_on FROM class_students WHERE student_id=${S.invitedChild} AND class_id=${S.classId}`);
-    note(!(S.charge.from < S.joined), `the charge says it covers ${S.charge.from}..${S.charge.to} although the child joined on ${S.joined}`, text.match(/Zeitraum [0-9.]+ – [0-9.]+/)?.[0] || '');
+    const shown = (text.match(/Zeitraum (\d\d\.\d\d\.\d{4} – \d\d\.\d\d\.\d{4})/) || [])[1] || '';
+    console.log(`   ${S.childName}: ${euros}, joined ${S.charge.joined}, covers ${S.charge.coveredFrom}..${S.charge.coveredTo}, due ${S.charge.due}, overdue from ${S.charge.overdue}, written ${S.charge.created}; the card says „Fällig am ${(text.match(/Fällig am (\S+)/) || [])[1]}“, „Zeitraum ${shown}“`);
+    chargeRules(S.charge, S.childName);
+    // What the family reads on the card.
+    ok(text.includes('Fällig am ' + fmtDate(S.charge.due)), `the card says „Fällig am ${fmtDate(S.charge.due)}“`, (text.match(/Fällig am \S+/) || [''])[0]);
+    ok(/Überfällig 0,00 €/.test(text), 'the family is not told anything is overdue on the day it appears', (text.match(/Überfällig [0-9,]+ €/) || [''])[0]);
+    ok(await page.locator('.charge-card .badge.red').count() === 0, 'no red badge on a charge that is not late');
+    S.periodOnCard = shown;
+    ok(shown === `${fmtDate(S.charge.coveredFrom)} – ${fmtDate(S.charge.coveredTo)}`, 'the card names the span the money is for, from the day the child joined',
+       `card „${shown}“, covered ${S.charge.coveredFrom}..${S.charge.coveredTo}, calendar period ${S.charge.from}..${S.charge.to}`);
+    // The sibling is not the family's to see, but the same rules hold for them.
+    const sibling = S.children.find(id => id !== S.invitedChild);
+    const theirs = chargesOf(sibling);
+    if (ok(theirs.length === 1, 'the sibling has one charge too', theirs.length))
+        chargeRules(theirs[0], CHILDREN.find(c => c.first !== S.childName).first);
     ok(text.includes(IBAN.replace(/(.{4})/g, '$1 ').trim()), 'the IBAN for the transfer is shown');
     ok(await page.locator('main img[src*="qr"], main svg, main img[alt*="QR" i], main .qr').count() > 0, 'a QR code for the bank app is shown');
 });
@@ -599,14 +783,15 @@ step('family reports a problem', async () => {
     const text = await flash(page);
     ok(/Danke|gesendet|angekommen|erhalten/i.test(text), 'the family is told the report arrived', text || await mainText(page));
     ok(sql("SELECT COUNT(*) FROM feedback WHERE message LIKE '%Beleg ist hochgeladen%'") === '1', 'the report is stored once');
-    ok(page.url() === from.replace(/#.*/, '') && !(await mainText(page)).includes('Kein Zugriff'),
-       'after the report the family is back on the page they reported from',
-       `sent from ${label(from)}, landed on ${label(page.url())}: ${(await mainText(page)).slice(0, 120)}`);
+    ok(samePage(page.url(), from) && page.__status === 200 && !(await mainText(page)).includes('Kein Zugriff'),
+       'after the report the family is back on the page they reported from - same child, same tab',
+       `sent from ${from.replace(BASE, '')}, landed on ${page.url().replace(BASE, '')} (HTTP ${page.__status}): ${(await mainText(page)).slice(0, 120)}`);
+    ok((await mainText(page)).includes('Zahlungsbeleg'), 'and it is the „Beiträge“ tab again, with the proof card', (await mainText(page)).slice(0, 200));
 });
 
 step('admin: charge, proof, payment confirmed', async () => {
     const page = S.admin.page;
-    const euros = (S.charge.cents / 100).toFixed(2).replace('.', ',') + ' €';
+    const euros = fmtEuro(S.charge.cents);
     await page.goto(BASE + '/index.php?page=payments');
     await look(page, 'admin');
     const list = await mainText(page);
@@ -636,11 +821,12 @@ step('admin: charge, proof, payment confirmed', async () => {
     ok(pay === `${S.charge.cents}\t1\t0`, 'one confirmed payment of the full amount is recorded', pay + ' ' + await flash(page));
     ok(sql('SELECT COUNT(*) FROM payments') === '1', 'and no other charge got one');
     const after = await mainText(page);
-    ok(!/Überfällig 3,50|Offen 3,50/.test(after), 'the charge no longer shows as open', after.slice(0, 400));
+    ok(after.includes('Offen 0,00 €') && after.includes('Bezahlt'), 'the charge shows as paid, nothing open', after.slice(0, 400));
+    const rest = Number(sql(`SELECT SUM(amount_cents) FROM charges WHERE cancelled=0 AND id<>${S.charge.id}`));
     await page.goto(BASE + '/index.php?page=dashboard');
     await look(page, 'admin');
-    ok((await mainText(page)).includes('Offene Beiträge ' + (S.charge.cents * (CHILDREN.length - 1) / 100).toFixed(2).replace('.', ',') + ' €'),
-       'the dashboard\'s open total dropped by the payment', (await mainText(page)).slice(0, 300));
+    ok((await mainText(page)).includes('Offene Beiträge ' + fmtEuro(rest)),
+       `the dashboard's open total is the sibling's ${fmtEuro(rest)} alone`, (await mainText(page)).slice(0, 300));
 });
 
 step('admin issues an invoice', async () => {
@@ -665,7 +851,16 @@ step('admin issues an invoice', async () => {
     const problems = pdfProblems(pdf);
     ok(!problems.length, 'the invoice is a well-formed PDF', problems.join('; '));
     const text = pdfText(pdf);
-    ok(text.includes('3,50') || text.includes('3.50'), 'the PDF names the amount', text.slice(0, 300));
+    ok(text.includes(fmtEuro(S.charge.cents).replace(' €', '')), `the PDF names the amount ${fmtEuro(S.charge.cents)}`, text.slice(0, 300));
+    // The same span on the invoice as on the family's card, and the right one.
+    // Two dates after the word, whatever the PDF made of the dash between them.
+    const m = text.match(/Leistungszeitraum\D{0,20}?(\d\d\.\d\d\.\d{4})\D{1,16}?(\d\d\.\d\d\.\d{4})/);
+    const onInvoice = m ? `${m[1]} – ${m[2]}` : '';
+    const norm = (t) => t;
+    console.log(`   invoice Leistungszeitraum „${onInvoice}“, the family's card „${S.periodOnCard}“`);
+    ok(onInvoice !== '' && norm(onInvoice) === S.periodOnCard, 'the invoice\'s Leistungszeitraum is the period on the family\'s card',
+       `invoice „${onInvoice}“, card „${S.periodOnCard}“`);
+    ok(S.periodOnCard === `${fmtDate(S.charge.coveredFrom)} – ${fmtDate(S.charge.coveredTo)}`, 'and both are the days the child was in the course', S.periodOnCard);
     console.log(`   invoice ${S.invoice.number}: ${pdf.length} bytes, saved as ${path.join(WORK, 'invoice.pdf')}`);
 });
 
@@ -694,54 +889,83 @@ step('admin reads the problem report', async () => {
     ok(/tab=payments|Beiträge/.test(all), 'the trail shows the Beiträge tab it came from', all.slice(0, 800));
     ok(/Beleg|proof_upload|hochladen/i.test(all), 'the trail shows the proof upload just before', all.slice(0, 800));
     ok(all.includes('iPhone'), 'the device is recorded', all.slice(-300));
+    // U.16: an upload in the trail shows its size and type, never its name.
+    ok(/proof=\d+ B application\/pdf/.test(all) && !all.includes('beleg.pdf'), 'the uploaded proof appears by size and type, not by name',
+       (all.match(/proof=[^·]*/) || [''])[0]);
     console.log('   report as shown: ' + all.slice(0, 700));
 });
 
-step('an unexpected error', async () => {
+/** The family opens Neuigkeiten $times times while the news table is gone (U.40). */
+async function breakNews(times) {
     const family = S.family.page;
-    const admin = S.admin.page;
-    const before = Number(sql("SELECT COUNT(*) FROM feedback"));
-    // Something the portal cannot foresee: a table gone from under it.
+    const seen = [];
     sql('RENAME TABLE news TO news_e2e_away');
     S.renamed = true;
-    const seen = [];
     family.__expect5xx = true;
     try {
-        for (let i = 0; i < 2; i++) {
-            const res = await family.goto(BASE + '/index.php?page=dashboard');
+        for (let i = 0; i < times; i++) {
+            const res = await family.goto(BASE + '/index.php?page=news');
             seen.push({ status: res.status(), text: (await family.locator('body').innerText()).replace(/\s+/g, ' ') });
             S.expected5xx = (S.expected5xx || 0) + (res.status() >= 500 ? 1 : 0);
         }
     } finally {
-        family.__expect5xx = false;
         sql('RENAME TABLE news_e2e_away TO news');
         S.renamed = false;
+        family.__expect5xx = false;
     }
+    return seen;
+}
+
+step('an unexpected error', async () => {
+    const family = S.family.page;
+    const admin = S.admin.page;
+    const adminId = Number(sql(`SELECT id FROM accounts WHERE email='${ADMIN.email}'`));
+    const told = () => Number(sql(`SELECT COUNT(*) FROM notifications WHERE account_id=${adminId} AND kind='problem'`));
+    const toldBefore = told();
+    const before = Number(sql('SELECT COUNT(*) FROM feedback'));
+    // Something the portal cannot foresee: a table gone from under it.
+    const seen = await breakNews(3);
     console.log(`   the family saw: HTTP ${seen[0].status} „${seen[0].text.slice(0, 160)}“`);
-    ok(seen.every(v => v.status === 503), 'the broken page answers 503, twice', seen.map(v => v.status).join(','));
+    ok(seen.every(v => v.status === 503), 'Neuigkeiten answers 503, three times', seen.map(v => v.status).join(','));
     ok(seen.every(v => v.text.includes('vorübergehend nicht verfügbar')), 'the family sees the friendly page');
     const leaks = seen.map(v => v.text.match(/SQLSTATE|news_e2e|news|PDO|Exception|\.php|Stack|#0 /g)).flat().filter(Boolean);
     ok(!leaks.length, 'and nothing technical: no SQL, no file names, no exception', [...new Set(leaks)].join(', '));
     const rows = Number(sql('SELECT COUNT(*) FROM feedback')) - before;
-    ok(rows === 1, 'the two failures are written down once, not twice', `${rows} new rows`);
+    ok(rows === 1, 'the three failures are written down once, not three times', `${rows} new rows`);
+    ok(told() - toldBefore === 1, 'and the administrator is told once, not three times', `${told() - toldBefore} notifications`);
 
-    const list = await reports(admin);
-    const auto = list.filter({ hasText: 'Automatisch erfasst' });
+    // U.41/U.42 as the administrator sees them.
+    let list = await reports(admin);
+    let auto = list.filter({ hasText: 'Automatisch erfasst' });
     must(await auto.count() === 1, 'Rückmeldungen lists it as „Automatisch erfasst“', await mainText(admin));
-    const head = (await auto.locator('summary').first().innerText()).replace(/\s+/g, ' ');
-    ok(/\b2×/.test(head), 'with a count of 2×', head);
+    let whole = (await auto.innerText()).replace(/\s+/g, ' ');
+    ok(whole.includes('Fehler auf Seite news: PDOException'), 'titled „Fehler auf Seite news: PDOException“', whole.slice(0, 200));
+    ok(/\b3×/.test(whole), 'seen 3×', whole.slice(0, 200));
     const support = auto.locator('textarea.support-text');
     must(await support.count() === 1, 'with a „Für den Support kopieren“ text');
     const text = await support.inputValue();
     console.log('   support text:\n' + text.split('\n').map(l => '     | ' + l).join('\n'));
-    ok(/news|PDOException|SQLSTATE/.test(text), 'the support text says what failed', text.slice(0, 300));
-    const personal = [FAMILY.email, FAMILY.name, S.childName, 'Huber', ADMIN.email, 'Hallenweg'].filter(x => text.includes(x));
-    ok(!personal.length, 'the support text holds no names or addresses', personal.join(', '));
+    ok(/PDOException/.test(text) && /42S02/.test(text), 'the support text says what failed', text.slice(0, 300));
+    ok(/Version/.test(text) && /iPhone/.test(text) && /page=news/.test(text), 'where, the version, the device and the pages visited', text.slice(0, 400));
+    const personal = [FAMILY.email, FAMILY.name, S.childName, 'Huber', ADMIN.email, 'Hallenweg', '127.0.0.1', 'Überwiesen am Montag'].filter(x => text.includes(x));
+    ok(!personal.length, 'no name, no email address, no IP address, nothing anybody typed', personal.join(', '));
     const tab = await admin.locator('a', { hasText: /^Rückmeldungen/ }).filter({ visible: true }).first().innerText();
     ok(/\(\d+\)/.test(tab), 'the tab counts it', tab);
+
+    // U.43: marked „Erledigt“, the same error is news again, counted on.
+    await save(admin, auto.locator('form:has(input[name=state][value=done])'), '„Erledigt“ on the error');
+    await look(admin, 'admin');
+    await breakNews(1);
+    list = await reports(admin);
+    auto = list.filter({ hasText: 'Automatisch erfasst' });
+    ok(await auto.count() === 1, 'still one entry after it happened again');
+    whole = (await auto.first().innerText()).replace(/\s+/g, ' ');
+    ok(/\b4×/.test(whole) && /\bNeu\b/.test(whole), 'new again, counted 4×', whole.slice(0, 200));
+    ok(told() - toldBefore === 2, 'with a new notification', `${told() - toldBefore} notifications in all`);
+
     // The portal is fine again once the table is back.
-    const res = await family.goto(BASE + '/index.php?page=dashboard');
-    ok(res.status() === 200, 'the family\'s dashboard works again after the table is restored', res.status());
+    const res = await family.goto(BASE + '/index.php?page=news');
+    ok(res.status() === 200, 'Neuigkeiten works again after the table is restored', res.status());
 });
 
 step('320px spot-check', async ({ browser }) => {
@@ -801,6 +1025,7 @@ const server5xx = webLog.filter(l => /\[5\d\d\]:/.test(l));
 const failed = results.filter(r => !r.ok);
 console.log(`\n==== ${process.env.CRM_E2E_SOURCE} · ${process.env.CRM_E2E_ENGINE} · PHP ${process.env.CRM_E2E_PHP_VERSION} · ${Math.round((Date.now() - started) / 1000)}s`);
 console.log(`Checks: ${results.length - failed.length} passed, ${failed.length} failed`);
+if (process.env.CRM_E2E_VERBOSE) for (const r of results.filter(r => r.ok)) console.log(`  ok   [${r.step}] ${r.name}`);
 for (const f of failed) console.log(`  FAIL [${f.step}] ${f.name}${f.detail ? '\n       ' + f.detail.slice(0, 400) : ''}`);
 console.log(`\nPHP warnings/notices/deprecations in the error log: ${phpProblems.length}`);
 for (const l of [...new Set(phpProblems.map(l => l.replace(/^\[[^\]]*\] /, '')))]) console.log('  ' + l.slice(0, 400));
