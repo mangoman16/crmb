@@ -74,8 +74,14 @@ It holds:
   - **Erster Kurs** and **Preis für jeden Kurs**: at least one active real course, and
     `class_next_steps()` is empty for each active real course. Courses are few, so one call
     per course is fine.
-  - **Kinder eintragen**: at least one active real child, and none of them has an enrolment
-    that billing would skip for want of a price.
+  - **Kinder eintragen**: done when all three of these hold:
+    - there is at least one real child whose membership has not ended;
+    - every such child is in at least one current course;
+    - every one of those current courses has a price.
+
+    *Changed after the end-to-end walk:* the first wording ("none of them has an enrolment
+    that billing would skip") ticked this step for a child in no course at all, because a
+    child with no enrolment has no enrolment to skip.
     - That rule is named once, as `enrolment_has_price(array $row): bool` in
       `app/billing.php`. `billing_plan()`, `student_next_steps()` and `setup_steps()` all
       use it. The wizard runs it over `billing_enrolments()`, which is one query and gains
