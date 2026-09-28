@@ -342,3 +342,24 @@ $nowhere = fixture('charges', ['student_id'=>$splitStudent, 'label'=>'Ohne Kurs'
     'period_to'=>null, 'due_on'=>today(), 'overdue_on'=>today(), 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
 throws(fn() => create_invoice($splitStudent, [$nowhere]), 'one with neither is refused, in a sentence',
        t('kein Zahlungsempfänger hinterlegt', 'no payment recipient'));
+
+case_('A child who joins mid-month is due no earlier than the charge, and every page shows the same period');
+/* Seen in a real browser: joined on the 28th, charged 3,50 € for three days,
+   due on the 1st and „Überfällig“ on its first day; the family's page said
+   01.09–30.09 while the invoice said 28.09–30.09. */
+$midTariff = make_tariff(['class_id'=>$ownCourse, 'price_cents'=>3100, 'interval_months'=>1, 'due_day'=>1,
+                          'grace_days'=>7, 'first_period'=>'prorate']);
+$joiner = make_student(['first_name'=>'Neu', 'last_name'=>'Dabei', 'joined_on'=>today()]);
+make_enrolment($ownCourse, $joiner, ['joined_on'=>today(), 'tariff_id'=>$midTariff]);
+billing_run(billing_current_period());
+$fresh = one('SELECT * FROM charges WHERE student_id=?', [$joiner]);
+ok($fresh !== null, 'the charge is written');
+ok($fresh['due_on'] >= today(), 'due no earlier than the day it is written');
+ok(charge_overdue_sql() !== '' && $fresh['overdue_on'] > today(), 'so not overdue on its first day');
+is_same([today(), billing_month_end(today())], charge_supplied($fresh), 'it covers from the day they joined');
+$joinerInvoice = invoice(create_invoice($joiner, [(int)$fresh['id']]));
+$line = json_decode((string)$joinerInvoice['snapshot_json'], true)['lines'][0]['period'];
+is_same(charge_period_text($fresh), fmt_date($line[0]).' – '.fmt_date($line[1]), 'the family’s page and the invoice give the same period');
+ok(str_contains(charge_reference($fresh, ['first_name'=>'Neu', 'last_name'=>'Dabei']), fmt_date(today())) || !str_contains((string)setting('payment_reference_template'), '{period}'),
+   'and so does the bank reference, where it names one');
+

@@ -116,6 +116,13 @@ set_setting('smtp_last_test', ['ok'=>true, 'summary'=>'ok', 'transcript'=>'', 's
 act('smtp_save', ['smtp_password'=>'ein-ganz-anderes-passwort'] + $smtpForm);
 is_same(false, smtp_tested_ok(), 'a different password is untested too');
 
+case_('A mail server’s reply that is not valid UTF-8 is stored, not a 503');
+/* A broken server answered in bytes that are not UTF-8; the test result is
+   stored as it came, and refusing it ended the SMTP test in a 503. */
+does_not_throw(fn() => set_setting('smtp_last_test', ['ok'=>false, 'summary'=>"Antwort: \xC3\x28 \xFF kaputt",
+    'transcript'=>"220 \xFE\xFF mail\n", 'sent_to'=>'', 'at'=>now()]), 'a reply with invalid bytes is stored');
+ok(str_contains((string)(setting('smtp_last_test', [])['summary'] ?? ''), 'kaputt'), 'and read back, the readable part intact');
+
 case_('A reference setting offers and accepts only rows that can be chosen');
 $reference = setting_schema()['default_payment_profile'];
 is_same(['reference', 'payment_profiles'], [$reference['kind'], $reference['table']], 'the default recipient is a reference to a recipient');

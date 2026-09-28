@@ -96,6 +96,34 @@ foreach (array_map(fn($p) => trim($p, " '"), explode(',', $m[1] ?? '')) as $page
 foreach ($answeredWithoutView as $page => $handler)
     ok(str_contains($m[1] ?? '', "'".$page."'"), $page.' is still a page the router allows');
 
+case_('No PHP is left outside its tags, where it prints as text instead of running');
+/* fd0d179 shipped the tariff form with `submit_button();?>` one line below the
+   `?>` that had already closed the block. PHP printed it as text, the form had
+   no button, and the checklist's step 4 - „Preis für jeden Kurs“ - could not be
+   done by anybody. Every suite stayed green, because they post to actions
+   directly and never press a button; tests/e2e.sh found it by pressing one.
+   Inline HTML is what the tokenizer says is outside PHP. A closing tag inside
+   it has nothing to close, and a call to one of the application's own
+   functions inside it was meant to run. */
+$appFunctions = [];
+foreach (glob(APP_ROOT.'/app/*.php') as $file) {
+    preg_match_all('/^function\s+&?(\w+)\s*\(/m', (string)file_get_contents($file), $found);
+    $appFunctions = array_merge($appFunctions, $found[1]);
+}
+ok(count($appFunctions) > 300, 'the application\'s functions were found to look for ('.count($appFunctions).')');
+$callPattern = '/\b(?:'.implode('|', array_map('preg_quote', $appFunctions)).')\s*\([^\n]*\)\s*;/';
+$templates = array_merge(glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'));
+ok(count($templates) > 30, 'the views were found to read ('.count($templates).')');
+foreach ($templates as $file) {
+    $stray = [];
+    foreach (token_get_all((string)file_get_contents($file)) as $token) {
+        if (!is_array($token) || $token[0] !== T_INLINE_HTML) continue;
+        if (preg_match('/\?>/', $token[1])) $stray[] = 'line '.$token[2].': a ?> with nothing to close';
+        if (preg_match($callPattern, $token[1], $call)) $stray[] = 'line '.$token[2].': '.$call[0].' printed, not called';
+    }
+    is_same([], $stray, basename($file).' has no PHP printed as text');
+}
+
 case_('No view sets an inline style, because the browser refuses to apply it');
 // style-src is 'self', so a style attribute is not a shortcut - it is markup
 // that silently does nothing. The colour picker spent a release with eight grey

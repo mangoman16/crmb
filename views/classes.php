@@ -178,7 +178,7 @@ elseif($id && !$edit && $tab==='tariffs'):
               t('Kleine Zahl zuerst. Nur dafür da, in welcher Reihenfolge die Tarife dieses Kurses erscheinen.','Lowest number first. This only decides the order the tariffs of this course are listed in.'));
         check_field('archived',t('Archivieren (bestehende Anmeldungen bleiben)','Archive (existing enrolments stay)'),(bool)$tf['archived']); ?>
         </details>
-        submit_button();?></form>
+        <?php submit_button();?></form>
     </section>
 </div>
 <?php

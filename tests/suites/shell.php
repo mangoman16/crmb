@@ -141,6 +141,24 @@ unset($GLOBALS['page']);
 case_('And the administrator is told, because nobody watches a table');
 ok(unread_notifications($admin) > 0, 'a notification went to the administrator');
 
+case_('After a report they are back on the page they reported from');
+/* Found by tests/e2e.sh at fd0d179: a family reporting from their child's
+   „Beiträge“ tab was sent to ?page=student with no id, and read „Danke! Die
+   Meldung ist angekommen.“ above „Kein Zugriff“. Every page that needs an id -
+   a child, a course, a thread - did the same. The form carries return_id and
+   return_tab like every start_form(); the redirect has to use them. */
+sign_in_as($family);
+[$target, $params] = act('feedback_send', ['message'=>'Der Beleg ist weg.', 'page'=>'student',
+    'return_page'=>'student', 'return_id'=>'7', 'return_tab'=>'payments']);
+is_same('student', $target, 'the same page');
+is_same(7, (int)($params['id'] ?? 0), 'the same child, not a page without one');
+is_same('payments', $params['tab'] ?? '', 'and the same tab');
+[$target, $params] = act('feedback_send', ['message'=>'Die Liste ist leer.', 'page'=>'news',
+    'return_page'=>'news', 'return_id'=>'0', 'return_tab'=>'']);
+is_same(['news', []], [$target, $params], 'a page without an id gets none made up for it');
+sign_in_as($admin);
+run("UPDATE feedback SET state='done' WHERE message IN ('Der Beleg ist weg.','Die Liste ist leer.')");
+
 case_('Reports can be worked through');
 is_same(1, unread_feedback(), 'one is new');
 sign_in_as($admin);

@@ -63,6 +63,11 @@ function setup_steps(): array {
         // not ended: those are the children the step is about.
         if ((int)$enrolment['is_demo'] === 0 && $enrolment['status'] !== 'ended' && enrolment_is_current($enrolment)
             && !enrolment_has_price($enrolment)) { $unpriced = (int)$enrolment['student_id']; break; }
+    // „Jedes Kind in einem Kurs“: a child in no course is billed nothing, so the
+    // step is not done while one is waiting for a course.
+    $courseless = (int)(scalar("SELECT id FROM students s WHERE s.is_demo=0 AND s.status<>'ended'"
+        .' AND NOT EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND '.current_enrolment_sql().')'
+        .' ORDER BY s.first_name, s.last_name, s.id LIMIT 1') ?: 0);
 
     // --- families -------------------------------------------------------------
     $invited = (bool)scalar("SELECT COUNT(*) FROM students s JOIN accounts a ON a.id=s.account_id"
@@ -98,12 +103,12 @@ function setup_steps(): array {
         ['key' => 'students',
          'what' => t('Kinder eintragen', 'Enter the children'),
          'why'  => t('Jedes Kind in einem Kurs mit Preis, damit seine Beiträge entstehen.', 'Each child in a course with a price, so their charges are created.'),
-         // Straight to the child whose course has no price; with nobody yet,
-         // to the form for the first one.
-         'page' => $unpriced ? 'student' : ($children ? 'students' : 'student'),
-         'params' => $unpriced ? ['id' => $unpriced, 'tab' => 'classes'] : [],
-         'anchor' => $unpriced ? 'courses' : null,
-         'done' => $children > 0 && $unpriced === null,
+         // Straight to the child whose course has no price, or who has no
+         // course; with nobody yet, to the form for the first one.
+         'page' => $unpriced || $courseless ? 'student' : ($children ? 'students' : 'student'),
+         'params' => $unpriced ? ['id' => $unpriced, 'tab' => 'classes'] : ($courseless ? ['id' => $courseless, 'tab' => 'classes'] : []),
+         'anchor' => $unpriced ? 'courses' : ($courseless ? 'add-course' : null),
+         'done' => $children > 0 && $unpriced === null && $courseless === 0,
          'blocked_by' => []],
         ['key' => 'billing',
          'what' => t('Beiträge', 'Charges'),

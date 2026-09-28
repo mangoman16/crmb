@@ -316,14 +316,24 @@ $row = null;
 foreach (billing_plan('2026-05') as $r) if ((int)$r['student_id'] === $mayJoiner) $row = $r;
 is_same(null, $row['skip'], 'the child who joined in the second month of the quarter is billed');
 is_same('2026-04-01', $row['from'], 'for the quarter the join falls into');
-is_same('2026-05-01', $row['due'], 'but the money is due in the month the charge is written, not before it existed');
-ok($row['overdue'] >= '2026-05-01', 'so it cannot be overdue on the day it is created');
+is_same('2026-05-10', $row['due'], 'but the money is due no earlier than the first day it covers');
+ok($row['overdue'] > $row['due'], 'so it cannot be overdue on the day it is created');
+billing_run('2026-05');
+$written = one('SELECT due_on, overdue_on FROM charges WHERE student_id=?', [$mayJoiner]);
+is_same(today(), $written['due_on'], 'and a month run after that day is due the day the charge is written');
+is_same(billing_overdue_date(today(), 7), $written['overdue_on'], 'and late only once the grace has passed from then');
 
-case_('Joining in the first month of a period still uses the period’s own day');
+case_('Joining part-way through the first month is due from the day they joined');
+/* Decided with the owner: a charge is never due before the day it covers from.
+   „Überfällig“ on the day a charge appears was the defect. */
 $aprilJoiner = make_student(['first_name'=>'April', 'joined_on'=>'2026-04-20']);
 make_enrolment($quarterCourse, $aprilJoiner, ['joined_on'=>'2026-04-20', 'tariff_id'=>$quarterTariff]);
 foreach (billing_plan('2026-04') as $r) if ((int)$r['student_id'] === $aprilJoiner)
-    is_same('2026-04-01', $r['due'], 'the normal case is unchanged');
+    is_same('2026-04-20', $r['due'], 'due from the day they joined, not the 1st');
+$fullMonth = make_student(['first_name'=>'Ganz', 'joined_on'=>'2026-01-01']);
+make_enrolment($quarterCourse, $fullMonth, ['joined_on'=>'2026-01-01', 'tariff_id'=>$quarterTariff]);
+foreach (billing_plan('2026-04') as $r) if ((int)$r['student_id'] === $fullMonth)
+    is_same(['2026-04-01', '2026-04-08'], [$r['due'], $r['overdue']], 'a whole period is unchanged: due on the period’s own day');
 
 case_('Leaving part-way through is charged by the days, whatever the joining rule says');
 // The rule on a tariff answers "what happens to somebody who joins mid-period".

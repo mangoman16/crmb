@@ -145,6 +145,17 @@ function charge_supplied(array $charge): array {
     return [$from ?: null, $to ?: null];
 }
 
+/**
+ * The span a charge paid for, as it is written for a person: "28.09.2026 –
+ * 30.09.2026", or '' for a charge with none. Every place that shows a family
+ * the period - the charge on their page, the bank reference - says what the
+ * invoice says, because all of them read charge_supplied().
+ */
+function charge_period_text(array $charge, string $between = ' – '): string {
+    [$from, $to] = charge_supplied($charge);
+    return $from && $to ? fmt_date($from) . $between . fmt_date($to) : '';
+}
+
 /** Charges of one student that no live invoice covers yet. */
 function uninvoiced_charges(int $studentId): array {
     return rows('SELECT c.*, ' . charge_paid_sql() . ' AS paid FROM charges c'

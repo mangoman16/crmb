@@ -108,6 +108,66 @@ Most cover a part of the domain — `billing`, `attendance`, `settings`,
   edit once reduced a dispatch file to 36 bytes while every other test stayed
   green — nothing else was reading it.
 
+## The first evening, end to end, in a browser
+
+```bash
+tests/e2e.sh                          # the working tree as it is now
+CRM_E2E_REF=HEAD tests/e2e.sh         # exactly one commit, whatever the tree holds
+CRM_E2E_PHP=php8.5 tests/e2e.sh       # another PHP on the same machine
+tests/e2e.sh --stop-after "7 mail"    # stop once that step has run
+```
+
+What the owner does on her first evening and what a family does the next
+morning, pressed through the real forms in Chromium at 390px, against a real
+MariaDB, with nothing reaching into the application from the side. No step
+calls an action directly: if a form has no button, the walk cannot press it,
+which is how it found the tariff form of fd0d179 that every suite here passed.
+
+It walks `setup.php`, signing in to „Dein Portal einrichten“ at 0 of 9, each of
+the nine steps from its own button and back through „Zurück zur Einrichtung“
+with the tick checked every time, up to 9 of 9 and „Alles eingerichtet“. Then
+the family opens the invitation link out of the captured mail, sets a password,
+sees their child under „Profil“ and the charge under „Beiträge“, uploads a
+payment proof and sends „Etwas funktioniert hier nicht“. Then the trainer sees
+the charge and the proof, records the payment as confirmed, issues an invoice
+and checks the PDF, and reads the report with its trail. Last, a table is
+renamed under the running portal: the family must see only the friendly page,
+Rückmeldungen must show it once with „2×“ and a support text holding no names,
+and the table is put back. Every page a role opened is then opened again at
+320px.
+
+On every page it records, and fails on: an HTTP 5xx the walk did not provoke,
+a JavaScript error or failed request, a warning, notice or deprecation in PHP's
+error log, anything wider than the screen, a tap target under 44px (the rules
+of `mobile.mjs`), PHP source printed as text — and a page without `app.css`
+applied, because a sweep of unstyled pages once reported clean. Things seen
+that the design intends but that are worth a decision are printed as **Notes**
+and do not fail the run.
+
+It needs `mariadbd`, `python3`, `openssl`, `node` and Playwright's Chromium
+(`PLAYWRIGHT_PATH`, as for `mobile.mjs`). Each run copies the portal into a
+fresh `$TMPDIR/crm-e2e-<port>` - what an upload does - and starts its own
+MariaDB, an SMTP sink (`e2e_smtp.py`, STARTTLS with a certificate made for the
+run) and `php -S` on ports `CRM_E2E_PORT` (8765), +1 and +2. It refuses to start
+if any of them is taken: a server left from an earlier run would answer instead
+of this one's, about files this run has replaced. `CRM_E2E_KEEP=1` leaves all
+three running afterwards to look around; stop them before the next run.
+
+Mail is not sent by a command. Like on her host, the queue is worked by the
+background task after page views, at most once a minute, so the invitation takes
+up to a minute to arrive and the walk waits for it. A full run takes about two
+minutes.
+
+To prove the checks can fail, `CRM_E2E_AFTER_COPY` runs a command inside the
+copy, never the checkout - for example
+`CRM_E2E_AFTER_COPY=': > public/assets/app.css'` must fail on every page with
+„app.css applied“, and `echo ".setup-progress{min-width:600px}" >>
+public/assets/app.css` must report the checklist as wider than the screen.
+
+What it does not prove: Safari (it is Chromium with an iPhone's size and user
+agent), a real mail provider, the PDF in a reader other than a parser, Apache or
+a host's PHP settings (it is `php -S`), and MySQL.
+
 ## The other two suites
 
 `integration.py` and `smtp_integration.py` drive a running server over HTTP and

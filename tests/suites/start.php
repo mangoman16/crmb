@@ -75,7 +75,10 @@ make_class(['name'=>'Archiviert', 'days'=>[], 'archived'=>1]);
 is_same(true, $done()['course_prices'], 'an archived course without either asks for nothing');
 
 $kid = make_student(['first_name'=>'Lena', 'last_name'=>'Hofer']);
-is_same(true, $done()['students'], 'a child who is in no course yet does not hold the step up');
+$waiting = $steps()['students'];
+is_same(false, $waiting['done'], 'a child in no course yet holds the step up: „Jedes Kind in einem Kurs“');
+is_same(['student', ['id'=>$kid, 'tab'=>'classes', 'from'=>'start'], 'add-course'],
+        [$waiting['page'], $waiting['params'], $waiting['anchor'] ?? null], 'and the step leads to putting that child in one');
 make_enrolment($course, $kid, ['tariff_id'=>null]);
 $children = $steps()['students'];
 is_same(false, $children['done'], 'a child in a course without a tariff does');

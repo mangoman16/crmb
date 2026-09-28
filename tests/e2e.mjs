@@ -1,0 +1,822 @@
+/**
+ * The owner's first evening, driven in Chromium at 390px against a real server.
+ *
+ *   tests/e2e.sh                       starts everything this needs, then runs it
+ *   tests/e2e.sh --stop-after <step>   stop once the named step has run
+ *
+ * Run through tests/e2e.sh, which provides a fresh copy of the portal behind
+ * `php -S`, a throwaway MariaDB and an SMTP sink, and passes their addresses in
+ * CRM_E2E_* variables. On its own this file has nothing to talk to.
+ *
+ * What it walks, through the real forms and buttons, as she and a family would:
+ *   1. public/setup.php, then signing in lands on „Dein Portal einrichten“, 0 of 9
+ *   2. each of the nine steps from its own button, back via „Zurück zur
+ *      Einrichtung“, and the tick after each, up to 9 of 9 and „Alles eingerichtet“
+ *   3. the family: invitation link from the captured mail, password, dashboard,
+ *      Profil, the charge, a payment proof, „Etwas funktioniert nicht“
+ *   4. the trainer: the charge and the payment, confirming it, an invoice PDF,
+ *      the problem report with its trail
+ *   5. an unexpected error (a table renamed underneath the portal): the family
+ *      sees only the friendly page, Rückmeldungen shows it with a count
+ *
+ * And throughout, on every page opened: HTTP 500s, JavaScript errors, PHP
+ * warnings in the server's error log, anything wider than the screen, tap
+ * targets under 44px - and whether app.css was applied at all, because a sweep
+ * of unstyled pages once reported clean.
+ */
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import zlib from 'node:zlib';
+import path from 'node:path';
+
+const playwrightFrom = process.env.PLAYWRIGHT_PATH || '/opt/node22/lib/node_modules/playwright/index.mjs';
+let chromium;
+try { ({ chromium } = await import(playwrightFrom)); }
+catch { try { ({ chromium } = await import('playwright')); }
+        catch { console.error('Playwright not found. Set PLAYWRIGHT_PATH to its index.mjs.'); process.exit(2); } }
+
+const env = (k) => { const v = process.env[k]; if (!v) { console.error(`${k} is not set: run this through tests/e2e.sh`); process.exit(2); } return v; };
+const BASE = env('CRM_E2E_BASE');
+const WORK = env('CRM_E2E_WORK');
+const SOCKET = env('CRM_E2E_SOCKET');
+const DB = env('CRM_E2E_DB');
+const DB_PORT = env('CRM_E2E_DB_PORT');
+const SMTP_PORT = env('CRM_E2E_SMTP_PORT');
+const MAILDIR = path.join(WORK, 'mail');
+const SHOTS = path.join(WORK, 'shots');
+const ERROR_LOG = path.join(WORK, 'php-error.log');
+const STOP_AFTER = (() => { const i = process.argv.indexOf('--stop-after'); return i > 0 ? process.argv[i + 1] : ''; })();
+
+const ADMIN = { name: 'Sabine Berger', email: 'trainerin@example.test', password: 'E2e-Admin-Pass-2026' };
+const FAMILY = { name: 'Familie Huber', email: 'huber@example.test', password: 'E2e-Family-Pass-2026' };
+const CHILDREN = [{ first: 'Lena', last: 'Huber', born: '2015-04-12' }, { first: 'Jonas', last: 'Huber', born: '2013-09-30' }];
+const COURSE = 'Kinder Anfänger';
+const IBAN = 'AT611904300234573201';
+
+// --- results ------------------------------------------------------------------
+const results = [];       // {step, ok, name, detail}
+const layout = new Map(); // "problem|page" -> {page, width, role, problem}
+const browserErrors = []; // {step, page, text}
+let current = '';
+const ok = (cond, name, detail = '') => { results.push({ step: current, ok: !!cond, name, detail: cond ? '' : String(detail) }); if (!cond) console.log(`   FAIL ${name}${detail ? ' - ' + String(detail).slice(0, 300) : ''}`); return !!cond; };
+/** Seen, worth a decision, but what the design says - printed, not failed. */
+const notes = [];
+const note = (cond, name, detail = '') => { if (!cond) { notes.push({ step: current, name, detail: String(detail) }); console.log(`   NOTE ${name}`); } };
+const must = (cond, name, detail = '') => { if (!ok(cond, name, detail)) throw new Error('cannot continue: ' + name); };
+
+// --- the database and the mailbox, read the way a person cannot ---------------
+const sql = (query) => execFileSync('mariadb', ['--socket=' + SOCKET, '-uroot', '--default-character-set=utf8mb4', '-N', '-B', DB, '-e', query], { encoding: 'utf8' }).trim();
+const setting = (key) => sql(`SELECT setting_value FROM settings WHERE setting_key='${key}'`);
+const mails = () => fs.readdirSync(MAILDIR).filter(f => f.endsWith('.eml')).sort().map(f => {
+    const raw = fs.readFileSync(path.join(MAILDIR, f), 'utf8');
+    return { file: f, raw, to: (raw.match(/^X-E2E-Rcpt: (.*)$/m) || [])[1] || '', subject: decodeSubject(raw), body: decodeBody(raw) };
+});
+function decodeSubject(raw) {
+    const m = raw.match(/^Subject: (.*(?:\r?\n[ \t].*)*)/m); if (!m) return '';
+    return m[1].replace(/\r?\n[ \t]/g, '').replace(/=\?utf-8\?([BQ])\?([^?]*)\?=/gi, (_, enc, t) =>
+        enc.toUpperCase() === 'B' ? Buffer.from(t, 'base64').toString('utf8')
+            : Buffer.from(t.replace(/_/g, ' ').replace(/=([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))), 'latin1').toString('utf8'));
+}
+function decodeBody(raw) {
+    // Quoted-printable or base64, single part or the first text part: whatever
+    // PHPMailer chose, a link in it has to come out the way a mail client shows it.
+    const text = raw.replace(/=\r?\n/g, '');
+    const qp = /Content-Transfer-Encoding: quoted-printable/i.test(raw);
+    const b64 = raw.match(/Content-Transfer-Encoding: base64\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)/i);
+    if (b64) return Buffer.from(b64[1].replace(/\s/g, ''), 'base64').toString('utf8');
+    return qp ? Buffer.from(text.replace(/=([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))), 'latin1').toString('utf8') : text;
+}
+const waitFor = async (what, fn, seconds, poke) => {
+    const until = Date.now() + seconds * 1000;
+    for (;;) {
+        const v = await fn(); if (v) return v;
+        if (Date.now() > until) return null;
+        if (poke) await poke();
+        await new Promise(r => setTimeout(r, 2000));
+    }
+};
+
+// --- what is checked on every page --------------------------------------------
+/** Same rules as tests/mobile.mjs, so the two cannot disagree about a page. */
+const inspect = ({ expected }) => {
+    const vw = window.innerWidth;
+    const found = [];
+    const name = (el) => (el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+        + (typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : '')).slice(0, 64);
+    const inScroller = (el) => {
+        for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+            const s = getComputedStyle(p);
+            if (s.overflowX === 'auto' || s.overflowX === 'scroll' || s.position === 'fixed') return true;
+        }
+        return false;
+    };
+    for (const el of document.querySelectorAll('body *')) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        const s = getComputedStyle(el);
+        if (s.visibility === 'hidden' || s.display === 'none') continue;
+        if (r.right > vw + 1 && s.position !== 'fixed' && !inScroller(el))
+            found.push(`wider than the screen: ${name(el)} ends at ${Math.round(r.right)}px of ${vw}`);
+    }
+    for (const el of document.querySelectorAll('a[href], button, input[type=submit], summary, .segmented label, .chip')) {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        if (r.width === 0 || r.height === 0 || s.visibility === 'hidden') continue;
+        if (r.height < 44) found.push(`tap target under 44px: ${name(el)} "${(el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30)}" ${Math.round(r.height)}px`);
+    }
+    if (vw > expected + 1) found.push(`the page zoomed out to fit: needs ${vw}px on a ${expected}px screen`);
+    if (document.documentElement.scrollWidth > vw + 1) found.push(`the page scrolls sideways: ${document.documentElement.scrollWidth}px on ${vw}`);
+    // The measurement is only worth anything on a styled page.
+    const sheet = [...document.styleSheets].find(s => (s.href || '').includes('app.css'));
+    let rules = 0; try { rules = sheet ? sheet.cssRules.length : 0; } catch { rules = -1; }
+    // PHP that reached the page as text: a call left outside its <?php block.
+    const leaked = (document.body.innerText.match(/[\w\]\)]\s*;\s*\?>|<\?(php|=)|\b[a-z_]+\([^()]{0,80}\);\s*\?>/g) || []);
+    return { found, leaked, styled: !!sheet && rules !== 0, title: document.title };
+};
+
+const label = (url) => {
+    const u = new URL(url);
+    if (u.pathname.endsWith('setup.php')) return 'setup.php';
+    const q = [...u.searchParams].filter(([k]) => !['csrf', 'token', 'id', 'from', 'edit', 'signature', 'account'].includes(k)).map(([k, v]) => `${k}=${v}`).join('&');
+    return '?' + (q || 'page=dashboard');
+};
+
+/** Opened, measured and noted: every page this walk looks at goes through here. */
+async function look(page, role, width = 390) {
+    await page.waitForLoadState('networkidle').catch(() => {});
+    const r = await page.evaluate(inspect, { expected: width });
+    const where = label(page.url());
+    // Only pages that answered: one that failed is already reported where it failed.
+    if (width === 390 && (role === 'admin' || role === 'family') && (page.__status || 200) < 400) (S.visited[role] ||= new Set()).add(page.url().replace(/#.*/, ''));
+    if (!r.styled) ok(false, `app.css applied on ${where}`, 'the stylesheet did not load, so nothing measured on this page means anything');
+    if (r.leaked.length && !S.leakSeen?.has(where + width)) (S.leakSeen ||= new Set()).add(where + width) && ok(false, `no PHP source printed on ${where}`, r.leaked.join(' / '));
+    for (const f of r.found) {
+        const key = `${f}|${where}|${width}`;
+        if (!layout.has(key)) layout.set(key, { page: where, width, role, problem: f, step: current });
+    }
+    return r;
+}
+
+function watch(page, role) {
+    page.on('console', m => { if (m.type() === 'error' && !(page.__expect4xx && /status of 4\d\d/.test(m.text())) && !(page.__expect5xx && /status of 5\d\d/.test(m.text()))) browserErrors.push({ step: current, role, page: label(page.url()), text: 'console: ' + m.text() }); });
+    page.on('pageerror', e => browserErrors.push({ step: current, role, page: label(page.url()), text: 'JavaScript error: ' + e.message }));
+    page.on('response', r => {
+        const s = r.status();
+        if (r.request().isNavigationRequest() && r.frame() === page.mainFrame()) page.__status = s;
+        if (s >= 500 && !page.__expect5xx) browserErrors.push({ step: current, role, page: label(r.url()), text: `HTTP ${s} ${r.request().method()} ${r.url().replace(BASE, '')}` });
+        else if (s >= 400 && s < 500 && s !== 404 && !page.__expect4xx) browserErrors.push({ step: current, role, page: label(r.url()), text: `HTTP ${s} ${r.url().replace(BASE, '')}` });
+    });
+    page.on('requestfailed', r => browserErrors.push({ step: current, role, page: label(page.url()), text: `request failed: ${r.url().replace(BASE, '')} ${r.failure()?.errorText || ''}` }));
+}
+
+const newPhone = async (browser, role, width = 390) => {
+    const ctx = await browser.newContext({
+        viewport: { width, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'de-AT',
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    });
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(20000);
+    watch(page, role);
+    return { ctx, page };
+};
+
+/** Press a button and wait for the page it leads to. */
+async function submit(page, locator) {
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), locator.click()]);
+}
+const flash = async (page) => (await page.locator('.flash, .notice.error, .notice.success, [role=alert], [role=status]').allInnerTexts().catch(() => [])).join(' | ').replace(/\s+/g, ' ').trim();
+const mainText = async (page) => (await page.locator('main').innerText().catch(async () => await page.locator('body').innerText())).replace(/\s+/g, ' ');
+
+// --- the checklist -------------------------------------------------------------
+const STEP_NAMES = { organisation: 'Name und Anschrift', bank: 'Bankkonto', first_course: 'Ersten Kurs anlegen',
+    course_prices: 'Preis für jeden Kurs', students: 'Kinder eintragen', billing: 'Beiträge', mail: 'E-Mails verschicken',
+    privacy: 'Datenschutzerklärung', invite: 'Familien einladen' };
+const stepItem = (page, key) => page.locator('li.step', { has: page.locator('strong', { hasText: new RegExp('^' + STEP_NAMES[key] + '$') }) });
+
+async function progress(page) {
+    const m = (await page.locator('.setup-progress').innerText()).match(/(\d+) von (\d+) erledigt/);
+    return m ? [Number(m[1]), Number(m[2])] : null;
+}
+/** From the checklist, the step's own button. */
+async function openStep(page, key) {
+    must(label(page.url()) === '?page=start', `on the checklist before step ${STEP_NAMES[key]}`, page.url());
+    const item = stepItem(page, key);
+    must(await item.count() === 1, `step „${STEP_NAMES[key]}“ is listed`);
+    await submit(page, item.locator('a.step-button'));
+    await look(page, 'admin');
+    ok(await page.locator('nav.setup-return').count() === 1, `„Zurück zur Einrichtung“ shows on ${label(page.url())}`);
+}
+/** Back through the bar, and the tick for the step just done. */
+async function backAndTick(page, key, expectDone) {
+    const bar = page.locator('nav.setup-return a');
+    if (await bar.count()) await submit(page, bar);
+    else { ok(expectDone === 9, `„Zurück zur Einrichtung“ still there after ${STEP_NAMES[key]}`, `on ${label(page.url())}: ${await flash(page)}`); await page.goto(BASE + '/index.php?page=start'); }
+    await look(page, 'admin');
+    ok(label(page.url()) === '?page=start', `the bar leads back to the checklist after ${STEP_NAMES[key]}`, page.url());
+    const item = stepItem(page, key);
+    const cls = await item.getAttribute('class');
+    ok(/is-done/.test(cls || ''), `„${STEP_NAMES[key]}“ is ticked`, `class="${cls}", ${(await item.innerText()).replace(/\s+/g, ' ')}`);
+    const [done, total] = await progress(page) || [];
+    ok(done === expectDone && total === 9, `checklist reads ${expectDone} von 9 erledigt`, `reads ${done} von ${total}`);
+}
+
+/** The smallest PDF a reader opens: one page, one line of text. */
+function minimalPdf(line) {
+    const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+        null, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+    const stream = `BT /F1 12 Tf 20 70 Td (${line}) Tj ET`;
+    objs[3] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+    let out = '%PDF-1.4\n'; const offs = [];
+    objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const xref = out.length;
+    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+    return out + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+}
+
+/** What a PDF reader would trip over first, found without one. */
+function pdfProblems(buf) {
+    const p = [];
+    const s = buf.toString('latin1');
+    if (!s.startsWith('%PDF-1.') && !s.startsWith('%PDF-2.')) p.push('no %PDF- header: ' + JSON.stringify(s.slice(0, 20)));
+    if (!/%%EOF\s*$/.test(s)) p.push('does not end in %%EOF');
+    const sx = s.match(/startxref\s+(\d+)\s+%%EOF\s*$/);
+    if (!sx) p.push('no startxref');
+    else { const at = s.slice(Number(sx[1]), Number(sx[1]) + 20); if (!/^(xref|\d+ \d+ obj)/.test(at)) p.push('startxref points at ' + JSON.stringify(at)); }
+    if (!/\/Type\s*\/Page[^s]/.test(s)) p.push('no page object');
+    for (const m of s.matchAll(/(\d+) 0 obj/g)) if (!s.includes(`${m[1]} 0 obj`)) p.push('object missing');
+    return p;
+}
+/** The text a reader would show, as far as uncompressed and Flate streams give it up. */
+function pdfText(buf) {
+    const s = buf.toString('latin1'); let out = '';
+    for (const m of s.matchAll(/stream\r?\n/g)) {
+        const start = m.index + m[0].length; const end = s.indexOf('endstream', start);
+        const raw = buf.subarray(start, end);
+        let data; try { data = zlib.inflateSync(raw).toString('latin1'); } catch { data = raw.toString('latin1'); }
+        for (const t of data.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj|\[((?:[^\]])*)\]\s*TJ/g))
+            out += (t[1] ?? t[2].replace(/\)\s*-?\d+(\.\d+)?\s*\(/g, '').replace(/^\(|\)$/g, '')) + ' ';
+    }
+    return out;
+}
+
+// --- the walk ------------------------------------------------------------------
+const steps = [];
+const step = (name, fn) => steps.push({ name, fn });
+const S = { visited: {} }; // what one step leaves for the next
+
+step('install', async ({ browser }) => {
+    const { ctx, page } = await newPhone(browser, 'install');
+    await page.goto(BASE + '/setup.php');
+    await look(page, 'install');
+    await page.fill('#db_host', '127.0.0.1'); await page.fill('#db_port', DB_PORT);
+    await page.fill('#db_name', DB); await page.fill('#db_user', 'crm'); await page.fill('#db_password', 'e2e-db-pass');
+    await page.fill('#admin_name', ADMIN.name); await page.fill('#admin_email', ADMIN.email);
+    await page.fill('#admin_password', ADMIN.password); await page.fill('#admin_password2', ADMIN.password);
+    await submit(page, page.locator('button[type=submit]'));
+    await look(page, 'install');
+    must((await mainText(page)).includes('Das Portal ist eingerichtet'), 'setup.php says „Das Portal ist eingerichtet“', await mainText(page));
+    ok(fs.existsSync(path.join(WORK, 'site/config/config.php')), 'setup.php wrote config/config.php');
+    // Refused with 403 on purpose once an administrator exists.
+    page.__expect4xx = true;
+    const again = await page.goto(BASE + '/setup.php');
+    page.__expect4xx = false;
+    ok(again.status() === 403, 'setup.php answers 403 once installed', again.status());
+    ok(!(await mainText(page)).includes('Datenbankserver'), 'setup.php does not offer to install a second time');
+    await ctx.close();
+});
+
+step('admin signs in', async ({ browser }) => {
+    S.admin = await newPhone(browser, 'admin');
+    const page = S.admin.page;
+    await page.goto(BASE + '/index.php');
+    await look(page, 'admin');
+    await page.fill('input[name=email]', ADMIN.email); await page.fill('input[name=password]', ADMIN.password);
+    await submit(page, page.locator('main form button[type=submit]'));
+    await look(page, 'admin');
+    must(label(page.url()) === '?page=start', 'the admin lands on the checklist', page.url());
+    ok((await page.locator('h1').innerText()).includes('Dein Portal einrichten'), 'heading „Dein Portal einrichten“');
+    const p = await progress(page);
+    ok(p && p[0] === 0 && p[1] === 9, '0 von 9 erledigt on a fresh portal', JSON.stringify(p));
+    ok(await page.locator('li.step.is-done').count() === 0, 'nothing ticked on a fresh portal');
+});
+
+step('1 organisation', async () => {
+    const page = S.admin.page;
+    await openStep(page, 'organisation');
+    const f = page.locator('form:has(input[name=action][value=defaults_registry_save])');
+    await f.locator('[name=set_org_name]').fill('Badmintonschule Sabine Berger');
+    await f.locator('[name=set_org_street]').fill('Hallenweg 7');
+    await f.locator('[name=set_org_zip]').fill('1100');
+    await f.locator('[name=set_org_city]').fill('Wien');
+    await f.locator('[name=set_org_email]').fill(ADMIN.email);
+    await f.locator('[name=set_org_tax_mode]').selectOption('small');
+    await submit(page, f.locator('button[type=submit]'));
+    await look(page, 'admin');
+    ok(!/fehlgeschlagen|error/i.test(await flash(page)), 'organisation saved', await flash(page));
+    await backAndTick(page, 'organisation', 1);
+});
+
+step('2 bank', async () => {
+    const page = S.admin.page;
+    await openStep(page, 'bank');
+    const f = page.locator('form:has(input[name=action][value=profile_save])');
+    await f.locator('[name=recipient]').fill('Sabine Berger');
+    await f.locator('[name=iban]').fill(IBAN);
+    await submit(page, f.locator('button[type=submit]'));
+    await look(page, 'admin');
+    ok(sql("SELECT REPLACE(iban,' ','') FROM payment_profiles WHERE id=1") === IBAN, 'the IBAN is stored', sql('SELECT iban FROM payment_profiles'));
+    await backAndTick(page, 'bank', 2);
+});
+
+step('3 course', async () => {
+    const page = S.admin.page;
+    await openStep(page, 'first_course');
+    const f = page.locator('form:has(input[name=action][value=class_save])');
+    await f.locator('[name=name]').fill(COURSE);
+    await f.locator('[name=location]').fill('Sporthalle Nord');
+    const trainer = f.locator('[name=trainer_id]');
+    if (await trainer.count()) await trainer.selectOption({ index: 1 });
+    await f.locator('[name="day_weekday[]"]').first().selectOption('2');
+    await f.locator('[name="day_starts_at_h[]"]').first().selectOption('16');
+    await f.locator('[name="day_starts_at_m[]"]').first().selectOption('00');
+    await f.locator('[name="day_ends_at_h[]"]').first().selectOption('17');
+    await f.locator('[name="day_ends_at_m[]"]').first().selectOption('30');
+    await submit(page, f.locator('button[type=submit]:has-text("Speichern")'));
+    await look(page, 'admin');
+    S.classId = Number(sql(`SELECT id FROM classes WHERE name='${COURSE}'`));
+    must(S.classId > 0, 'the course is stored', await flash(page));
+    ok(sql(`SELECT COUNT(*) FROM class_days WHERE class_id=${S.classId}`) === '1', 'with one training day (Dienstag)');
+    await backAndTick(page, 'first_course', 3);
+});
+
+/** Save a form with its own button, or - when it has none - record that and
+ *  submit it the way no person can, so the walk can reach what comes after. */
+async function save(page, form, what) {
+    const button = form.locator('button[type=submit], input[type=submit], button:not([type])').filter({ visible: true });
+    if (ok(await button.count() > 0, `${what} has a visible save button`, `on ${label(page.url())}; the page reads: ${(await form.innerText()).replace(/\s+/g, ' ').slice(-120)}`))
+        return submit(page, button.last());
+    console.log(`   (workaround: submitting „${what}“ with requestSubmit() to reach the steps after it)`);
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }), form.evaluate(f => f.requestSubmit())]);
+}
+
+step('4 price', async () => {
+    const page = S.admin.page;
+    await openStep(page, 'course_prices');
+    ok(label(page.url()).includes('tab=tariffs'), 'step 4 opens the course\'s tariffs', page.url());
+    const f = page.locator('form:has(input[name=action][value=tariff_save])');
+    await f.locator('[name=name]').fill('Monatsbeitrag');
+    await f.locator('[name="rate_interval[]"]').first().selectOption('1');
+    await f.locator('[name="rate_price[]"]').first().fill('35,00');
+    await save(page, f, 'the tariff form');
+    await look(page, 'admin');
+    ok(sql(`SELECT COUNT(*) FROM tariffs WHERE class_id=${S.classId} AND archived=0`) === '1', 'the tariff is stored', await flash(page));
+    await backAndTick(page, 'course_prices', 4);
+});
+
+step('5 children', async () => {
+    const page = S.admin.page;
+    for (const [i, child] of CHILDREN.entries()) {
+        await openStep(page, 'students');
+        // With a child already there, the step leads to the list, and a new
+        // child starts from its „Neu“ link.
+        if (label(page.url()) === '?page=students') {
+            const add = page.locator('main a[href*="page=student"]:not([href*="id="])').first();
+            must(await add.count() === 1, 'the list of children offers a new one', await mainText(page));
+            await submit(page, add);
+            await look(page, 'admin');
+        }
+        const f = page.locator('form:has(input[name=action][value=student_save])');
+        await f.locator('[name=first_name]').fill(child.first);
+        await f.locator('[name=last_name]').fill(child.last);
+        await f.locator('[name=birth_date]').fill(child.born);
+        const status = f.locator('[name=status]');
+        if (await status.count()) await status.selectOption('active');
+        await save(page, f, 'the new child form');
+        await look(page, 'admin');
+        const id = Number(sql(`SELECT id FROM students WHERE first_name='${child.first}' AND last_name='${child.last}'`));
+        must(id > 0, `${child.first} is stored`, await flash(page));
+        S.children = [...(S.children || []), id];
+        if (i === 0) {
+            // ADR 0011 decides that a child in no course does not hold the step
+            // up (tests/suites/start.php pins it). The step's own sentence says
+            // „Jedes Kind in einem Kurs mit Preis“, so it is worth seeing.
+            const bar = (await page.locator('nav.setup-return').innerText().catch(() => '')).match(/(\d+) von 9/);
+            note(bar && bar[1] === '4', 'step 5 ticks while the only child is in no course (ADR 0011, by design)',
+               `the bar reads ${bar && bar[0]} while ${child.first}'s page says: ${(await page.locator('.next-steps').first().innerText().catch(() => '')).replace(/\s+/g, ' ')}`);
+        }
+        // Into the course, from the child's own „Kurse“ tab.
+        await submit(page, page.locator('a[href*="tab=classes"]').first());
+        await look(page, 'admin');
+        const row = page.locator('#add-course .record-row', { hasText: COURSE });
+        must(await row.count() === 1, `${COURSE} is offered on ${child.first}'s Kurse tab`, await mainText(page));
+        await save(page, row.locator('form'), `„Eintragen“ for ${child.first}`);
+        await look(page, 'admin');
+        ok(sql(`SELECT COUNT(*) FROM class_students WHERE student_id=${id} AND class_id=${S.classId} AND left_on IS NULL`) === '1',
+           `${child.first} is in ${COURSE}`, await flash(page));
+        ok(sql(`SELECT COUNT(*) FROM class_students WHERE student_id=${id} AND tariff_id IS NOT NULL`) === '1',
+           `${child.first}'s place has the tariff`, sql(`SELECT * FROM class_students WHERE student_id=${id}`));
+        await backAndTick(page, 'students', 5);
+    }
+});
+
+step('6 charges', async () => {
+    const page = S.admin.page;
+    await openStep(page, 'billing');
+    const f = page.locator('form:has(input[name=action][value=auto_billing_save])');
+    const box = f.locator('[name=auto_billing]');
+    await box.check();
+    await save(page, f, 'automatic charges');
+    await look(page, 'admin');
+    const stored = setting('auto_billing');
+    ok(stored === '1' || stored === 'true', 'automatic charges are on', `auto_billing=${stored}; ${await flash(page)}`);
+    await backAndTick(page, 'billing', 6);
+});
+
+step('7 mail', async () => {
+    const page = S.admin.page;
+    await openStep(page, 'mail');
+    const f = page.locator('form:has(input[name=action][value=smtp_save])');
+    await f.locator('[name=host]').fill('127.0.0.1');
+    await f.locator('[name=port]').fill(SMTP_PORT);
+    await f.locator('[name=encryption]').selectOption('tls');
+    await f.locator('[name=username]').fill('e2e-user');
+    await f.locator('[name=smtp_password]').fill('e2e-smtp-secret');
+    await f.locator('[name=from_email]').fill('noreply@example.test');
+    await f.locator('[name=from_name]').fill('Badmintonschule Sabine Berger');
+    await save(page, f, 'the SMTP form');
+    await look(page, 'admin');
+    ok(!/fehl|error/i.test(await flash(page)), 'SMTP saved', await flash(page));
+    const before = mails().length;
+    const t = page.locator('form:has(input[name=action][value=smtp_test])');
+    await t.locator('[name=test_email]').fill(ADMIN.email);
+    await submit(page, t.locator('button[value=send]'));
+    await look(page, 'admin');
+    const said = await mainText(page);
+    ok(/Testmail an .* verschickt/.test(said), 'the test reports „Testmail … verschickt“', (said.match(/.{0,200}(Fehlgeschlagen|verschickt|Verbindung).{0,200}/) || [said.slice(0, 300)])[0]);
+    const got = mails().slice(before);
+    ok(got.some(m => m.to.includes(ADMIN.email) && m.subject.includes('Test')), 'the test mail arrived at the SMTP sink', JSON.stringify(got.map(m => [m.to, m.subject])));
+    ok(!JSON.stringify(sql("SELECT setting_value FROM settings WHERE setting_key='smtp_last_test'")).includes('e2e-smtp-secret'), 'the stored transcript does not hold the SMTP password');
+    await backAndTick(page, 'mail', 7);
+});
+
+step('8 privacy', async () => {
+    const page = S.admin.page;
+    await openStep(page, 'privacy');
+    const f = page.locator('form:has(input[name=action][value=privacy_save])');
+    const draft = await f.locator('[name=privacy_de]').inputValue();
+    const holes = draft.match(/\[[^\[\]\r\n]*\p{L}[^\[\]\r\n]*\](?!\()/gu) || [];
+    ok(holes.length > 0, 'the German draft has placeholders to fill', 'none found');
+    const answers = {
+        'Vollständiger Name': 'Badmintonschule Sabine Berger, Hallenweg 7, 1100 Wien, trainerin@example.test',
+        'Datum': '28.09.2026',
+    };
+    const filled = draft.replace(/\[[^\[\]\r\n]*\p{L}[^\[\]\r\n]*\](?!\()/gu, (hole) => {
+        for (const [start, text] of Object.entries(answers)) if (hole.startsWith('[' + start)) return text;
+        return 'Für den Testbetrieb festgelegt: nur die im Portal sichtbaren Angaben, Hosting in Österreich, Löschung nach 30 Tagen.';
+    });
+    await f.locator('[name=privacy_de]').fill(filled);
+    await f.locator('[name=privacy_en]').fill('');   // „Leer lassen, wenn es keine englische Fassung gibt.“
+    await f.locator('[name=privacy_ready]').check();
+    await save(page, f, 'the privacy form');
+    await look(page, 'admin');
+    ok(setting('privacy_ready') === '1' || setting('privacy_ready') === 'true', 'the privacy notice is released', `privacy_ready=${setting('privacy_ready')}; ${await flash(page)}`);
+    await backAndTick(page, 'privacy', 8);
+});
+
+step('9 invite', async () => {
+    const page = S.admin.page;
+    ok(!/is-blocked/.test(await stepItem(page, 'invite').getAttribute('class')), 'step 9 is open once 7 and 8 are done');
+    await openStep(page, 'invite');
+    const u = new URL(page.url());
+    S.invitedChild = Number(u.searchParams.get('id'));
+    must(u.searchParams.get('page') === 'student' && S.invitedChild > 0, 'step 9 leads to a child without access', page.url());
+    S.childName = sql(`SELECT first_name FROM students WHERE id=${S.invitedChild}`);
+    // The child has no address yet: the access card says to enter one above first.
+    const card = page.locator('#access');
+    ok((await card.innerText()).includes('E-Mail-Adresse'), 'the access card asks for an address first', await card.innerText());
+    const f = page.locator('form:has(input[name=action][value=student_save])');
+    await f.locator('[name=email]').fill(FAMILY.email);
+    await save(page, f, 'the child form');
+    await look(page, 'admin');
+    const invite = page.locator('#access form:has(input[name=action][value=student_invite]):not(:has(input[name=mode]))');
+    must(await invite.count() === 1, '„Einladung senden“ is offered once the address is saved', await page.locator('#access').innerText());
+    await save(page, invite, '„Einladung senden“');
+    await look(page, 'admin');
+    ok(/eingeladen|Einladung/i.test(await flash(page) + await page.locator('#access').innerText()), 'the access card shows the invitation', await page.locator('#access').innerText());
+    S.familyId = Number(sql(`SELECT account_id FROM students WHERE id=${S.invitedChild}`));
+    ok(S.familyId > 0 && sql(`SELECT state FROM accounts WHERE id=${S.familyId}`) === 'invited', 'an invited account exists for the family');
+    await backAndTick(page, 'invite', 9);
+    ok((await mainText(page)).includes('Alles eingerichtet'), '„Alles eingerichtet“ once all nine are done', await mainText(page));
+    ok(await page.locator('li.step.is-done').count() === 9, 'all nine steps ticked');
+});
+
+step('family accepts the invitation', async ({ browser }) => {
+    // She has no shell and no cron: the queue is worked by the background task
+    // that runs after page views, at most once a minute. So wait, while she
+    // keeps using the portal, exactly as it would happen for her.
+    const admin = S.admin.page;
+    const invite = await waitFor('the invitation mail', () => mails().find(m => m.to.includes(FAMILY.email)), 150,
+        async () => { await admin.goto(BASE + '/index.php?page=dashboard'); });
+    must(invite, 'the invitation reaches the family\'s inbox within 150 s', JSON.stringify(sql("SELECT id,status,category,attempts,error FROM mail_jobs")));
+    console.log(`   invitation: „${invite.subject}“`);
+    const link = (invite.body.match(/https?:\/\/\S+token=[a-f0-9]{64}/) || [])[0];
+    must(link, 'the invitation carries a link with a token', invite.body.slice(0, 500));
+    ok(link.startsWith(BASE), 'the link points at this portal', link);
+    S.family = await newPhone(browser, 'family');
+    const page = S.family.page;
+    await page.goto(link);
+    await look(page, 'family');
+    const f = page.locator('form:has(input[name=action][value=activate])');
+    must(await f.count() === 1, 'the link opens „Konto einrichten“', await mainText(page));
+    await f.locator('[name=password]').fill(FAMILY.password);
+    await f.locator('[name=password_confirm]').fill(FAMILY.password);
+    await f.locator('[name=privacy_seen]').check();
+    await save(page, f, '„Konto aktivieren“');
+    await look(page, 'family');
+    ok(label(page.url()) === '?page=dashboard', 'the family lands on their dashboard', page.url() + ' ' + await flash(page));
+    ok(sql(`SELECT state FROM accounts WHERE id=${S.familyId}`) === 'active', 'the account is active');
+    ok((await mainText(page)).includes(S.childName), `the dashboard names ${S.childName}`, await mainText(page));
+});
+
+step('family: Profil and charges', async () => {
+    const page = S.family.page;
+    // The bottom bar a phone shows; the sidebar copy sits off-canvas at this width.
+    const profil = page.locator('.mobile-nav a', { hasText: /^Profil$/ });
+    must(await profil.count() === 1, 'the family menu has „Profil“');
+    await submit(page, profil);
+    await look(page, 'family');
+    ok(new URL(page.url()).searchParams.get('id') === String(S.invitedChild), `„Profil“ opens ${S.childName}'s page`, page.url());
+    ok((await page.locator('h1').innerText()).includes(S.childName), `„Profil“ shows ${S.childName}`, await page.locator('h1').innerText());
+    // Only their own child: the sibling was not invited and is not theirs to see.
+    const other = CHILDREN.map(c => c.first).find(n => n !== S.childName);
+    ok(!(await mainText(page)).includes(other), `the family does not see ${other}`);
+
+    await submit(page, page.locator('main a[href*="tab=payments"]').filter({ visible: true }).first());
+    await look(page, 'family');
+    const charges = sql(`SELECT id, amount_cents, due_on, period_from, period_to FROM charges WHERE student_id=${S.invitedChild} AND cancelled=0`).split('\n').filter(Boolean).map(l => l.split('\t'));
+    must(charges.length > 0, 'automatic charges created a charge for the invited child', sql('SELECT * FROM charges'));
+    S.charge = { id: Number(charges[0][0]), cents: Number(charges[0][1]), due: charges[0][2], from: charges[0][3], to: charges[0][4] };
+    const euros = (S.charge.cents / 100).toFixed(2).replace('.', ',') + ' €';
+    const text = await mainText(page);
+    ok(text.includes(euros), `„Beiträge“ shows the charge of ${euros}`, text.slice(0, 400));
+    console.log(`   charge: ${euros}, due ${S.charge.due}, covers ${S.charge.from}..${S.charge.to}; the page says: ${(text.match(/Beitrag \S+ Fällig am [^€]*€[^Z]*Zeitraum [0-9.]+ – [0-9.]+/) || [''])[0]}`);
+    const today = new Date().toISOString().slice(0, 10);
+    note(S.charge.due >= today, `a charge created today is already overdue (due ${S.charge.due})`, text.match(/Überfällig [0-9,]+ €/)?.[0] || '');
+    S.joined = sql(`SELECT joined_on FROM class_students WHERE student_id=${S.invitedChild} AND class_id=${S.classId}`);
+    note(!(S.charge.from < S.joined), `the charge says it covers ${S.charge.from}..${S.charge.to} although the child joined on ${S.joined}`, text.match(/Zeitraum [0-9.]+ – [0-9.]+/)?.[0] || '');
+    ok(text.includes(IBAN.replace(/(.{4})/g, '$1 ').trim()), 'the IBAN for the transfer is shown');
+    ok(await page.locator('main img[src*="qr"], main svg, main img[alt*="QR" i], main .qr').count() > 0, 'a QR code for the bank app is shown');
+});
+
+step('family uploads a payment proof', async () => {
+    const page = S.family.page;
+    const f = page.locator('form:has(input[name=action][value=proof_upload])');
+    must(await f.count() === 1, '„Zahlungsbeleg“ upload is offered');
+    const proof = path.join(WORK, 'beleg.pdf');
+    fs.writeFileSync(proof, minimalPdf('Ueberweisung Beitrag'));
+    await f.locator('[name=proof]').setInputFiles(proof);
+    await f.locator('[name=note]').fill('Überwiesen am Montag');
+    await save(page, f, '„Beleg hochladen“');
+    await look(page, 'family');
+    ok(!/fehl|nicht erlaubt|error/i.test(await flash(page)), 'the proof was accepted', await flash(page));
+    S.payments = sql(`SELECT COUNT(*) FROM payments p JOIN charges c ON c.id=p.charge_id WHERE c.student_id=${S.invitedChild}`);
+    console.log(`   after the upload: ${await flash(page)} | payments rows for the child: ${S.payments} | proofs: ${sql('SELECT COUNT(*) FROM payment_proofs')}`);
+});
+
+step('family reports a problem', async () => {
+    const page = S.family.page;
+    // At the foot of every page: „Etwas funktioniert hier nicht“, a disclosure.
+    const link = page.locator('#feedback summary');
+    must(await link.count() === 1, '„Etwas funktioniert hier nicht“ is on the page');
+    ok((await link.innerText()).includes('Etwas funktioniert'), 'it is labelled „Etwas funktioniert hier nicht“', await link.innerText());
+    await link.click();
+    const from = page.url();
+    const f = page.locator('form:has(input[name=action][value=feedback_send])');
+    await f.locator('[name=message]').fill('Der Beleg ist hochgeladen, aber ich sehe nicht, ob er angekommen ist.');
+    await save(page, f, 'the problem report');
+    await look(page, 'family');
+    const text = await flash(page);
+    ok(/Danke|gesendet|angekommen|erhalten/i.test(text), 'the family is told the report arrived', text || await mainText(page));
+    ok(sql("SELECT COUNT(*) FROM feedback WHERE message LIKE '%Beleg ist hochgeladen%'") === '1', 'the report is stored once');
+    ok(page.url() === from.replace(/#.*/, '') && !(await mainText(page)).includes('Kein Zugriff'),
+       'after the report the family is back on the page they reported from',
+       `sent from ${label(from)}, landed on ${label(page.url())}: ${(await mainText(page)).slice(0, 120)}`);
+});
+
+step('admin: charge, proof, payment confirmed', async () => {
+    const page = S.admin.page;
+    const euros = (S.charge.cents / 100).toFixed(2).replace('.', ',') + ' €';
+    await page.goto(BASE + '/index.php?page=payments');
+    await look(page, 'admin');
+    const list = await mainText(page);
+    ok(list.includes(`${CHILDREN.find(c => c.first === S.childName).first} Huber`) && list.includes(euros), `„Geld“ lists ${S.childName}'s open ${euros}`, list.slice(-600));
+    // The child's Beiträge tab: the charge, the proof the family sent, and the
+    // place to record the money as received.
+    await page.goto(BASE + `/index.php?page=student&id=${S.invitedChild}&tab=payments`);
+    await look(page, 'admin');
+    const tab = await mainText(page);
+    ok(tab.includes('beleg.pdf') && tab.includes('Überwiesen am Montag'), 'the family\'s proof and note are shown to the trainer', tab.slice(0, 600));
+    const proofLink = page.locator('main a', { hasText: 'beleg.pdf' });
+    if (ok(await proofLink.count() > 0, 'the proof opens from a link')) {
+        const res = await page.request.get(new URL(await proofLink.first().getAttribute('href'), page.url()).href);
+        const body = await res.body();
+        ok(res.status() === 200 && body.subarray(0, 5).toString() === '%PDF-', 'the proof downloads as the PDF the family sent', `${res.status()} ${res.headers()['content-type']} ${body.subarray(0, 20)}`);
+    }
+    const summary = page.locator('summary', { hasText: 'Zahlung erfassen' });
+    must(await summary.count() === 1, '„+ Zahlung erfassen“ is offered on the charge');
+    await summary.click();
+    const f = page.locator(`form:has(input[name=action][value=payment_add]):has(input[name=charge_id][value="${S.charge.id}"])`);
+    if (!(await f.locator('[name=amount]').inputValue())) await f.locator('[name=amount]').fill(euros.replace(' €', ''));
+    const confirmed = f.locator('[name=confirmed]');
+    if (await confirmed.count()) await confirmed.check();
+    await save(page, f, '„Zahlung erfassen“');
+    await look(page, 'admin');
+    const pay = sql(`SELECT amount_cents, confirmed_at IS NOT NULL, voided FROM payments WHERE charge_id=${S.charge.id}`);
+    ok(pay === `${S.charge.cents}\t1\t0`, 'one confirmed payment of the full amount is recorded', pay + ' ' + await flash(page));
+    ok(sql('SELECT COUNT(*) FROM payments') === '1', 'and no other charge got one');
+    const after = await mainText(page);
+    ok(!/Überfällig 3,50|Offen 3,50/.test(after), 'the charge no longer shows as open', after.slice(0, 400));
+    await page.goto(BASE + '/index.php?page=dashboard');
+    await look(page, 'admin');
+    ok((await mainText(page)).includes('Offene Beiträge ' + (S.charge.cents * (CHILDREN.length - 1) / 100).toFixed(2).replace('.', ',') + ' €'),
+       'the dashboard\'s open total dropped by the payment', (await mainText(page)).slice(0, 300));
+});
+
+step('admin issues an invoice', async () => {
+    const page = S.admin.page;
+    await page.goto(BASE + `/index.php?page=student&id=${S.invitedChild}&tab=invoices`);
+    await look(page, 'admin');
+    const f = page.locator('form:has(input[name=action][value=invoice_create])');
+    must(await f.count() === 1, '„Rechnung ausstellen“ is offered');
+    await f.locator(`[name="charge_ids[]"][value="${S.charge.id}"]`).check();
+    await save(page, f, '„Rechnung ausstellen“');
+    await look(page, 'admin');
+    const inv = sql(`SELECT id, number FROM invoices WHERE student_id=${S.invitedChild}`).split('\t');
+    must(inv.length === 2 && Number(inv[0]) > 0, 'the invoice is stored', await flash(page));
+    S.invoice = { id: Number(inv[0]), number: inv[1] };
+    ok((await mainText(page)).includes(S.invoice.number), `the tab lists invoice ${S.invoice.number}`);
+    const link = page.locator('main a[href*="page=download"]').filter({ hasText: /PDF|Rechnung|herunterladen|öffnen/i }).first();
+    must(await link.count() === 1, 'the invoice has a PDF link', await mainText(page));
+    const res = await page.request.get(new URL(await link.getAttribute('href'), page.url()).href);
+    const pdf = await res.body();
+    fs.writeFileSync(path.join(WORK, 'invoice.pdf'), pdf);
+    ok(res.status() === 200 && /application\/pdf/.test(res.headers()['content-type'] || ''), 'the PDF answers 200 application/pdf', `${res.status()} ${res.headers()['content-type']}`);
+    const problems = pdfProblems(pdf);
+    ok(!problems.length, 'the invoice is a well-formed PDF', problems.join('; '));
+    const text = pdfText(pdf);
+    ok(text.includes('3,50') || text.includes('3.50'), 'the PDF names the amount', text.slice(0, 300));
+    console.log(`   invoice ${S.invoice.number}: ${pdf.length} bytes, saved as ${path.join(WORK, 'invoice.pdf')}`);
+});
+
+const reports = async (page) => {
+    await page.goto(BASE + '/index.php?page=settings&tab=feedback');
+    await look(page, 'admin');
+    return page.locator('details.mail-item');
+};
+
+step('admin reads the problem report', async () => {
+    const page = S.admin.page;
+    await page.goto(BASE + '/index.php?page=settings');
+    const tab = page.locator('a', { hasText: /^Rückmeldungen/ }).filter({ visible: true }).first();
+    ok(/Rückmeldungen \(1\)/.test(await tab.innerText()), 'the „Rückmeldungen“ tab counts one unread report', await tab.innerText());
+    await submit(page, tab);
+    await look(page, 'admin');
+    const item = (await reports(page)).filter({ hasText: 'Beleg ist hochgeladen' });
+    must(await item.count() === 1, 'the family\'s report is listed', await mainText(page));
+    const head = await item.locator('summary').first().innerText();
+    ok(head.includes(FAMILY.name) || head.includes(S.childName), 'it says who sent it', head);
+    const trail = item.locator('details.report-trail');
+    await trail.locator('summary').click();
+    const all = (await item.innerText()).replace(/\s+/g, ' ');
+    ok(/Technische Einzelheiten \(\d+ Schritte?\)/.test(all), 'the trail counts its steps', all.slice(0, 600));
+    ok(all.includes('hier gemeldet'), 'the trail marks where it was reported', all.slice(0, 600));
+    ok(/tab=payments|Beiträge/.test(all), 'the trail shows the Beiträge tab it came from', all.slice(0, 800));
+    ok(/Beleg|proof_upload|hochladen/i.test(all), 'the trail shows the proof upload just before', all.slice(0, 800));
+    ok(all.includes('iPhone'), 'the device is recorded', all.slice(-300));
+    console.log('   report as shown: ' + all.slice(0, 700));
+});
+
+step('an unexpected error', async () => {
+    const family = S.family.page;
+    const admin = S.admin.page;
+    const before = Number(sql("SELECT COUNT(*) FROM feedback"));
+    // Something the portal cannot foresee: a table gone from under it.
+    sql('RENAME TABLE news TO news_e2e_away');
+    S.renamed = true;
+    const seen = [];
+    family.__expect5xx = true;
+    try {
+        for (let i = 0; i < 2; i++) {
+            const res = await family.goto(BASE + '/index.php?page=dashboard');
+            seen.push({ status: res.status(), text: (await family.locator('body').innerText()).replace(/\s+/g, ' ') });
+            S.expected5xx = (S.expected5xx || 0) + (res.status() >= 500 ? 1 : 0);
+        }
+    } finally {
+        family.__expect5xx = false;
+        sql('RENAME TABLE news_e2e_away TO news');
+        S.renamed = false;
+    }
+    console.log(`   the family saw: HTTP ${seen[0].status} „${seen[0].text.slice(0, 160)}“`);
+    ok(seen.every(v => v.status === 503), 'the broken page answers 503, twice', seen.map(v => v.status).join(','));
+    ok(seen.every(v => v.text.includes('vorübergehend nicht verfügbar')), 'the family sees the friendly page');
+    const leaks = seen.map(v => v.text.match(/SQLSTATE|news_e2e|news|PDO|Exception|\.php|Stack|#0 /g)).flat().filter(Boolean);
+    ok(!leaks.length, 'and nothing technical: no SQL, no file names, no exception', [...new Set(leaks)].join(', '));
+    const rows = Number(sql('SELECT COUNT(*) FROM feedback')) - before;
+    ok(rows === 1, 'the two failures are written down once, not twice', `${rows} new rows`);
+
+    const list = await reports(admin);
+    const auto = list.filter({ hasText: 'Automatisch erfasst' });
+    must(await auto.count() === 1, 'Rückmeldungen lists it as „Automatisch erfasst“', await mainText(admin));
+    const head = (await auto.locator('summary').first().innerText()).replace(/\s+/g, ' ');
+    ok(/\b2×/.test(head), 'with a count of 2×', head);
+    const support = auto.locator('textarea.support-text');
+    must(await support.count() === 1, 'with a „Für den Support kopieren“ text');
+    const text = await support.inputValue();
+    console.log('   support text:\n' + text.split('\n').map(l => '     | ' + l).join('\n'));
+    ok(/news|PDOException|SQLSTATE/.test(text), 'the support text says what failed', text.slice(0, 300));
+    const personal = [FAMILY.email, FAMILY.name, S.childName, 'Huber', ADMIN.email, 'Hallenweg'].filter(x => text.includes(x));
+    ok(!personal.length, 'the support text holds no names or addresses', personal.join(', '));
+    const tab = await admin.locator('a', { hasText: /^Rückmeldungen/ }).filter({ visible: true }).first().innerText();
+    ok(/\(\d+\)/.test(tab), 'the tab counts it', tab);
+    // The portal is fine again once the table is back.
+    const res = await family.goto(BASE + '/index.php?page=dashboard');
+    ok(res.status() === 200, 'the family\'s dashboard works again after the table is restored', res.status());
+});
+
+step('320px spot-check', async ({ browser }) => {
+    // Every page either of them opened at 390, once more at 320 with the same
+    // session. GET only, so nothing is changed by looking.
+    for (const role of ['admin', 'family']) {
+        if (!S[role]) continue;
+        const state = await S[role].ctx.storageState();
+        const ctx = await browser.newContext({ viewport: { width: 320, height: 700 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'de-AT', storageState: state });
+        const page = await ctx.newPage();
+        watch(page, role);
+        const urls = [...(S.visited[role] || [])].filter(u => !/page=(activate|login|download)|setup\.php/.test(u));
+        for (const u of urls) {
+            const res = await page.goto(u);
+            ok(res.status() < 400, `${role} opens ${label(u)} at 320px`, res.status());
+            await look(page, role, 320);
+        }
+        console.log(`   ${role}: ${urls.length} pages at 320px`);
+        await ctx.close();
+    }
+});
+
+// --- run ------------------------------------------------------------------------
+const browser = await chromium.launch();
+const started = Date.now();
+for (const s of steps) {
+    current = s.name;
+    console.log(`-- ${s.name}`);
+    try { await s.fn({ browser }); }
+    catch (e) {
+        ok(false, `step „${s.name}“ ran to the end`, e.message.split('\n')[0]);
+        for (const who of ['admin', 'family']) if (S[who]) await S[who].page.screenshot({ path: path.join(SHOTS, `${s.name.replace(/\W+/g, '_')}-${who}.png`), fullPage: true }).catch(() => {});
+    }
+    if (process.env.CRM_E2E_DUMP && s.name === STOP_AFTER) {
+        for (const who of ['admin', 'family']) if (S[who]) {
+            console.log(`\n==== ${who} is on ${S[who].page.url()}\n` + await mainText(S[who].page));
+            console.log(await S[who].page.evaluate(() => [...document.forms].map(f => 'FORM ' + (f.querySelector('[name=action]')?.value || f.method) + ' :: '
+                + [...f.elements].filter(e => e.name && e.name !== 'csrf' && e.name !== 'request_id').map(e => e.name + '(' + e.type + (e.type === 'hidden' ? '=' + e.value : '') + ')').join(' ')
+                + ' || ' + [...f.querySelectorAll('button')].map(b => b.innerText.trim()).join(' | ')).join('\n')));
+        }
+    }
+    if (s.name === STOP_AFTER) break;
+}
+await browser.close();
+if (S.renamed) { try { sql('RENAME TABLE news_e2e_away TO news'); } catch {} }
+
+// --- the server's side of it ------------------------------------------------------
+const phpLog = fs.existsSync(ERROR_LOG) ? fs.readFileSync(ERROR_LOG, 'utf8').split('\n').filter(Boolean) : [];
+const phpProblems = phpLog.filter(l => /PHP (Warning|Notice|Deprecated|Fatal|Parse|Strict|Recoverable)/i.test(l));
+// The provoked error is logged by capture_error() on purpose; anything else is not.
+const expectedLog = (l) => /CRM error \(request\): PDOException .*42S02/.test(l) && S.expected5xx;
+const phpOther = phpLog.filter(l => !phpProblems.includes(l) && !expectedLog(l));
+const webLog = fs.readFileSync(path.join(WORK, 'web.log'), 'utf8').split('\n');
+const server5xx = webLog.filter(l => /\[5\d\d\]:/.test(l));
+
+// --- report -------------------------------------------------------------------------
+const failed = results.filter(r => !r.ok);
+console.log(`\n==== ${process.env.CRM_E2E_SOURCE} · ${process.env.CRM_E2E_ENGINE} · PHP ${process.env.CRM_E2E_PHP_VERSION} · ${Math.round((Date.now() - started) / 1000)}s`);
+console.log(`Checks: ${results.length - failed.length} passed, ${failed.length} failed`);
+for (const f of failed) console.log(`  FAIL [${f.step}] ${f.name}${f.detail ? '\n       ' + f.detail.slice(0, 400) : ''}`);
+console.log(`\nPHP warnings/notices/deprecations in the error log: ${phpProblems.length}`);
+for (const l of [...new Set(phpProblems.map(l => l.replace(/^\[[^\]]*\] /, '')))]) console.log('  ' + l.slice(0, 400));
+if (phpOther.length) { console.log(`Other lines in the PHP error log: ${phpOther.length}`); for (const l of [...new Set(phpOther.map(l => l.replace(/^\[[^\]]*\] /, '')))].slice(0, 30)) console.log('  ' + l.slice(0, 300)); }
+console.log(`\nHTTP 5xx in the server log: ${server5xx.length} (${S.expected5xx || 0} of them provoked on purpose)`);
+for (const l of server5xx) console.log('  ' + l.slice(0, 200));
+console.log(`\nBrowser: console errors, JS errors, failed requests, unexpected 4xx/5xx: ${browserErrors.length}`);
+for (const b of browserErrors) console.log(`  [${b.step}] ${b.role} ${b.page}: ${b.text.slice(0, 300)}`);
+console.log(`\nLayout (overflow, tap targets under 44px): ${layout.size}`);
+for (const l of [...layout.values()].sort((a, b) => (a.page + a.width).localeCompare(b.page + b.width))) console.log(`  ${l.role} ${l.width}px ${l.page}: ${l.problem}`);
+const box = mails();
+console.log(`\nMail captured by the SMTP sink: ${box.length}`);
+for (const m of box) console.log(`  ${m.file} to ${m.to}: „${m.subject}“`);
+console.log(`\nNotes (by design or needing a decision, not counted): ${notes.length}`);
+for (const n of notes) console.log(`  [${n.step}] ${n.name}${n.detail ? '\n       ' + n.detail.slice(0, 300) : ''}`);
+console.log(`\nScreenshots of failed steps: ${SHOTS}`);
+const bad = failed.length + phpProblems.length + phpOther.length + browserErrors.length + layout.size + Math.max(0, server5xx.length - (S.expected5xx || 0));
+console.log(bad ? `\nRESULT: FAIL (${bad} problems)` : '\nRESULT: PASS');
+process.exit(bad ? 1 : 0);

@@ -273,8 +273,11 @@ function setting(string $key, mixed $default=null): mixed {
 }
 /** Drop the whole settings cache. Used by the test harness between cases. */
 function setting_cache_clear(): void { $cache=&setting_cache(); $cache=[]; }
+// Invalid UTF-8 is substituted rather than refused: a broken mail server's
+// reply is stored in smtp_last_test as it came, and refusing it turned a failed
+// connection test into a 503.
 function set_setting(string $key, mixed $value): void {
-    run('INSERT INTO settings (setting_key,setting_value,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)',[$key,json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),now()]);
+    run('INSERT INTO settings (setting_key,setting_value,updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),updated_at=VALUES(updated_at)',[$key,json_encode($value,JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE|JSON_THROW_ON_ERROR),now()]);
     $cache=&setting_cache(); unset($cache[$key]);
 }
 /**

@@ -459,8 +459,13 @@ function billing_plan(string $period): array {
         // supply, so it has to survive as far as the charge.
         $entry['covered_from'] = $money['covered_from'] ?? $entry['from'];
         $entry['covered_to']   = $money['covered_to']   ?? $entry['to'];
-        $entry['due'] = billing_due_date($dueFrom, $dueDay);
-        $entry['overdue'] = billing_overdue_date($entry['due'], (int)$tariff['grace_days']);
+        // Nor before the first day it covers: a child who joined on the 28th was
+        // billed due on the 1st and shown „Überfällig“ the day the charge
+        // appeared. billing_run() adds the other half - never before the day it
+        // is written. A full month is unchanged: it covers from the 1st.
+        $entry['due'] = max(billing_due_date($dueFrom, $dueDay), $entry['covered_from']);
+        $entry['grace'] = (int)$tariff['grace_days'];
+        $entry['overdue'] = billing_overdue_date($entry['due'], $entry['grace']);
         $rows[] = $entry;
     }
     return $rows;
@@ -479,6 +484,13 @@ function billing_run(string $period): array {
     $created = 0; $skipped = 0; $total = 0;
     foreach (billing_plan($period) as $entry) {
         if ($entry['skip'] !== null) { $skipped++; continue; }
+        // A charge is never due before the day it is written: a month run late,
+        // or a child entered after the due day, is due today, and late only
+        // once its grace has passed from then.
+        if ($entry['due'] < today()) {
+            $entry['due'] = today();
+            $entry['overdue'] = billing_overdue_date($entry['due'], $entry['grace']);
+        }
         try {
             run('INSERT INTO charges (student_id,class_id,tariff_id,payment_profile_id,label,origin,billing_key,'
                 .'amount_cents,gross_cents,discount_cents,discount_note,period_from,period_to,'

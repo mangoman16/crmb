@@ -462,7 +462,12 @@ function dispatch_config(string $action): array {
             mb_substr($message,0,200),'settings',['tab'=>'feedback']);
         audit('feedback.sent','feedback',$id);
         flash(t('Danke! Die Meldung ist angekommen.','Thank you. Your report has arrived.'));
-        return [post('return_page','dashboard'),[]];
+        // Back to the page the report was sent from, record and tab included:
+        // the page name alone opened ?page=student with no id, which is „Kein
+        // Zugriff“. form_origin() is what the report itself recorded; the router
+        // refuses a page it does not know, so nothing is trusted beyond that.
+        $on=form_origin();
+        return [$on['page']!==''?$on['page']:'dashboard',array_filter(['id'=>$on['id']?:null,'tab'=>$on['tab']!==''?$on['tab']:null],fn($v)=>$v!==null)];
 
     case 'feedback_state':
         require_admin(); $state=choose(post('state'),['new','seen','done']);

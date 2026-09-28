@@ -189,6 +189,35 @@ in with. It only ever reads: every page is opened with GET.
 > role. If it reports that it could not sign in, wait fifteen minutes or clear
 > `rate_limits`.
 
+### The first evening, end to end (release)
+
+```bash
+tests/e2e.sh                        # the working tree
+CRM_E2E_REF=HEAD tests/e2e.sh       # one commit exactly
+```
+
+It installs a fresh copy through `setup.php` against its own MariaDB, walks the
+nine steps of „Dein Portal einrichten" through their own buttons to „Alles
+eingerichtet", invites a family and follows the link out of the captured mail,
+has the family upload a proof and send „Etwas funktioniert hier nicht", confirms
+the payment, issues an invoice and parses its PDF, and breaks a table on purpose
+to check the friendly page and Rückmeldungen. It must end in **`RESULT: PASS`**;
+its first lines name the commit, the MariaDB and the PHP it ran on, and those
+are the only ones it has proven. **Notes** at the end are things the design
+intends that are worth a decision; they do not fail it. Details:
+[tests/README.md](tests/README.md#the-first-evening-end-to-end-in-a-browser).
+
+It stands in for a phone, not for these, which stay by hand when the change
+touches them:
+
+- [ ] **T.1** The invoice PDF the run saves (`invoice.pdf` in its work folder,
+  printed at the end) opened in Preview or Adobe Reader and on the iPhone: one
+  page, the address block, the amount, the IBAN in groups of four.
+- [ ] **T.2** The invitation through the real mail provider, opened on an
+  iPhone in Mail: the link opens „Konto einrichten" in Safari, not a blank page.
+- [ ] **T.3** On the iPhone, as the family: the bell at the top right shows the
+  bell alone. (Chromium draws a small ▸ above it; check whether Safari does.)
+
 ---
 
 ## Twenty minutes, from nothing to an invoice
