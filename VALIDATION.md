@@ -1,5 +1,57 @@
 # Validation
 
+## 0.6.0 — one login per student, the start checklist, errors that report themselves
+
+Recorded 2026-09-28 against commit `645b059`. Every figure in this list was run
+and watched for this record, not taken from a commit message. All ran on a
+clean working tree except the MariaDB run on PHP 8.5.11, which ran after the
+documents in this change had been edited — including the two privacy drafts,
+which every suite seeds its database from.
+
+- **The whole suite on the SQLite translation: 3813 assertions, 0 failed** —
+  39.4 seconds on PHP 8.4.19 and 39.9 seconds on PHP 8.5.11. Its closing list
+  names what that driver cannot cover: the foreign keys on `charges`,
+  `students`, `class_students` and `tariffs`, the MySQL-dialect backup, and two
+  spellings of one address sharing a sign-in count.
+- **The whole suite against MariaDB 10.11.14 (`10.11.14-MariaDB-0ubuntu0.24.04.1`),
+  started by `tests/mariadb-local.sh`: 3832 assertions, 0 failed**, in 45.9
+  seconds on PHP 8.4.19 and 44.8 seconds on PHP 8.5.11. The harness builds
+  that database by running every
+  statement of all nineteen migration files, so all nineteen apply there. The
+  run's own closing line says what it did not reach: **the data that
+  migrations 015, 016 and 019 carry across is checked on SQLite only.** For 019
+  that is the separation of shared logins — nobody deleted, a change-log line
+  per child, the address copied byte for byte — so its SQL is proven on
+  MariaDB and its effect on rows is not.
+- **The browser walk, `tests/e2e.sh` with `CRM_E2E_REF=HEAD`: `RESULT: PASS`,
+  279 checks, 0 failed**, on PHP 8.4.19 (104 seconds) and again on PHP 8.5.11
+  (105 seconds), both against MariaDB 10.11.14 under `php -S`, in Chromium at
+  390px with a 320px pass over every page each role opened (31 for the
+  administrator, 7 for the family). Both runs reported no PHP warning, notice
+  or deprecation; no JavaScript error, failed request or unexpected 4xx/5xx;
+  no layout failure; four 503s, all four provoked on purpose; two mails
+  captured — the SMTP test and the family's invitation; and no notes.
+- Each suite run printed its own work folder under `/tmp` on its second line.
+  After all of them the checkout held nothing new: `git status --ignored`
+  listed only the documents edited for this record, plus `vendor/` and
+  `tests/__pycache__/`, which were there before the first run.
+
+Reported by the implementers and **not** reproduced here: that each rule added
+in this round was broken on purpose and watched to fail, and the layout
+measurements at 1280px named in commit `77b406a`.
+
+**Not covered here.** **MySQL 8.0 remains unverified.** The browser walk is
+Chromium with an iPhone's size and user agent, not Safari on an iPhone; its
+mail server is a sink on the same machine, not a real provider; its invoice
+PDF was read by a parser, not opened in a reader; its web server is `php -S`,
+which reads no `.htaccess` — so the new rule that answers 404 for hidden
+folders such as `.git` is checked only by the structure suite reading the
+file, not by any Apache. `tests/existing-database.sh` was not run: it asks for
+its database interactively, and no hosting-panel database was available. Both
+30-day deletions — a problem report after it is done, an automatic error after
+it last happened — are tested by ageing the stored dates; nobody has waited 30
+days (TESTING.md U.19, U.44). No real hosting account has been used.
+
 ## 0.6.0 — the sign-in counter, and the collation underneath it
 
 Recorded 2026-09-22, after the change that counts a sign-in attempt against the

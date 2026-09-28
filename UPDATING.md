@@ -9,6 +9,46 @@ of this document explains what that first page view actually does, what happens
 when it fails, and how to run the same thing deliberately on a server that has a
 shell.
 
+## Updating an existing portal to 0.6.0
+
+A portal installed fresh from this version can skip this section: its start
+checklist covers all of it. A portal that already has families in it changes
+in three ways the moment the new files are opened.
+
+**Brothers and sisters on one login are separated.** From this version one
+login belongs to one student, and migration 019 makes the database hold to
+that. On a login that holds several children, the child whose record was
+created first keeps it. Each of the others is taken off it and keeps everything
+else: their record, their courses, charges, invoices and payments, and the
+address on their record. Nothing is deleted, so the check that compares the
+nineteen guarded tables before and after passes unchanged. Each child taken
+off a login gets a line under **Änderungen** saying which login it was on. The
+update sends the families no message. Those children cannot sign in until they
+have an email address of their own and a login of their own, invited or
+created on their own page; until then the overview and the **Schüler** list
+name them under „… Kinder brauchen eine eigene E-Mail-Adresse“. A shared login
+cannot be restored once the update has run, because the database now refuses
+it: the way back is the backup the update writes first.
+
+**After the update, press „Nur Verbindung prüfen“ once.** Invitations,
+password-reset links and address confirmations are now only sent when the last
+test under **Einstellungen → SMTP** passed; before, a saved SMTP setting was
+enough. If the last test there failed, or was never run, then until it passes:
+„Einladung senden“ is refused with a sentence saying so, and a family who taps
+„Passwort vergessen?“ receives nothing. Open **Einstellungen → SMTP**, press
+**„Nur Verbindung prüfen“**, and wait for the green **Erfolgreich**. Changing
+the SMTP settings later clears the result, and the test has to pass again.
+
+**The number under the privacy notice changes once.** It is now worked out
+from the German and the English text as a pair, so every portal shows a new
+**Fassung** after this update although the text is the same. Nobody is asked to
+acknowledge it again: the number is recorded, never compared. The English text
+is optional from this version; a notice already released in both languages
+keeps both.
+
+Everything else in this version is either new or moved to another place in the
+menu; [CHANGELOG.md](CHANGELOG.md) lists it.
+
 ## What the first page view after an upload does
 
 Each request compares the migration files on disk against what the database
@@ -34,9 +74,12 @@ left to do. Then, inside that lock and **before the database is touched at all**
 4. Each unrecorded migration is then applied in name order and recorded with the
    checksum of the file it came from. A migration that was edited after being
    applied is refused **by name**, because the checksum no longer matches.
-5. **Is everything still there?** Rows in `accounts`, `students`, `contacts`,
-   `field_values`, `absences`, `charges`, `payments`, `threads`, `messages` and
-   `news` are counted before and after. A count that fell stops the update. Counts
+5. **Is everything still there?** Rows in nineteen tables are counted before
+   and after: `accounts`, `students`, `contacts`, `field_values`, `absences`,
+   `charges`, `payments`, `threads`, `messages`, `message_files`, `news`,
+   `class_students`, `attendance`, `invoices`, `invoice_charges`,
+   `payment_proofs`, `consent_log`, `tariff_rates` and `tariff_discounts` — the
+   list in `schema_guarded_tables()`. A count that fell stops the update. Counts
    do not prove an update was correct, but a count that fell proves it was not —
    and this catches it while the backup is still the newest thing that happened.
 6. The seeded defaults are refreshed for anything new, and the page is served.
@@ -160,9 +203,10 @@ Schema changes do need a migration. Add a new numbered file in
 leave a NULL the new code has to guess about.
 
 A migration must not reduce the row count of any table in
-`schema_guarded_tables()`. The update refuses one that does, on purpose: every
-migration in this project so far only adds, so a count going down means something
-went wrong rather than something being cleaned up. A future release that
+`schema_guarded_tables()`. The update refuses one that does, on purpose: no
+migration in this project so far has removed a row from a guarded table — 019
+takes children off a shared login but deletes none of them — so a count going
+down means something went wrong rather than something being cleaned up. A future release that
 genuinely has to remove rows — merging duplicates, say — needs that guard
 widened deliberately, in the same commit, with the reason written down.
 

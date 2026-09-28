@@ -2,6 +2,237 @@
 
 ## 0.6.0 — unreleased
 
+### Before you upload this over a portal that has families in it
+
+A portal installed fresh from this version can skip this. An existing one
+changes in three ways the first time it is opened, and
+[UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) has them in full.
+Migration 019 takes every child but the first off a login they shared; nothing
+is deleted, each change is written under **Änderungen**, and those children
+need an address of their own and an invitation before they can sign in on
+their own. Invitations and „Passwort vergessen?“ links wait until **„Nur
+Verbindung prüfen“** under **Einstellungen → SMTP** has passed once. And the
+version number printed under the privacy notice changes once although the text
+does not; nobody is asked to acknowledge it again.
+
+### One login is one student
+
+- **A student's email address is their login.** Brothers and sisters each need
+  an address of their own. Access is invited, suspended, sent again or deleted
+  on the student's own page, in a card „Zugang zum Portal“ whose badge says
+  **Kein Zugang**, **Eingeladen**, **Aktiv** or **Gesperrt**. An address that is
+  already somebody's login is refused with „Jede Schülerin und jeder Schüler
+  braucht eine eigene E-Mail-Adresse.“ before anything is written, and a unique
+  index in the database refuses it too, so no later mistake in the code can put
+  two children on one login again (ADR 0010).
+- **Migration 019 separates the logins that were shared.** The child whose
+  record was created first keeps the login; the others keep their record,
+  courses, charges, invoices, payments and address, and get a line under
+  **Änderungen** saying which login they were on. The overview and the
+  **Schüler** list name the children who now need an address of their own.
+- **Konten is the team's page now**, „Team und Zugänge“: trainers and
+  administrators. A student login that no student points to any more is listed
+  there under „Zugänge ohne Schüler“, to lock or delete. A family's menu has
+  **Profil**, which goes straight to their child's page; **Mein Konto** keeps
+  the sign-in settings. Every mail to a family opens with the child's first
+  name.
+- **An address can be changed by the trainer only while the invitation is
+  still open**: the old link stops working and a new one goes to the new
+  address. Once the family has signed up, the address is theirs to change under
+  **Mein Konto**, confirmed from the new mailbox. Only a student's login can be
+  re-addressed this way; a trainer's or administrator's pending invitation
+  cannot.
+- **„Ohne E-Mail anlegen (mit Passwort)“** on a child's page lets an
+  administrator create that child's login directly, for a portal whose mail is
+  not working yet.
+- **Deleting a student no longer promises an undo** that was removed earlier in
+  this release. The message now says that **Änderungen** shows what was deleted
+  and that it cannot be restored.
+
+### A new portal walks her through its setup
+
+- **„Dein Portal einrichten“** lists the nine things a portal needs before
+  families come: name and address, bank account, a first course, a price for
+  every course, the children, charges, email, the privacy notice and the
+  invitations. Each step links to the screen that already does the job, and
+  each is ticked from the data itself on every visit, never by hand — so a
+  course that loses its price un-ticks its step. Example data never ticks
+  anything (ADR 0011).
+- An administrator lands there at every sign-in until it is finished, the
+  overview shows how many steps are left, and after saving a step the page
+  offers „← Zurück zur Einrichtung“. Once everything is done the list can be
+  hidden, and **Einstellungen → Einrichtung ansehen** brings it back. Trainers
+  and families never see it.
+- **„Kinder eintragen“ means every child is in a course with a price.** The
+  first version ticked it for a child in no course at all, because a child
+  with no enrolment has no unpriced enrolment either; the browser walk below
+  caught it.
+
+### A menu of seven, and fewer boxes at first
+
+- **The menu is one list of seven**: Übersicht, Schüler, Kurse, Anwesenheit,
+  Geld, Nachrichten, Einstellungen — for a trainer, Verwaltung in place of
+  Einstellungen — with „Einrichtung“ above them while the checklist is
+  unfinished. Nothing folds open or shut. The rest is reached from where it
+  belongs: **Rechnungen** by a „Beiträge · Rechnungen“ switch under Geld;
+  „Gruppe anschreiben“, „Neuigkeiten“ and „Postausgang“ from the top of
+  Nachrichten; Verwaltung, Konten, Änderungen, Einrichtung ansehen and Erweitert
+  as cards at the top of Einstellungen. The entry a page belongs to stays
+  marked while it is open.
+- **The phone bar** reads Übersicht, Schüler, Post, Anwesend, Mehr for the
+  trainer, and Übersicht, Profil, Post, Neues, Konto for a family. „Mehr“ opens
+  the menu without JavaScript. A family's way to the privacy notice and the
+  version is at the end of **Mein Konto**, under „Datenschutz und Hilfe“.
+- **The price box on a child's page is gone.** Its tariff and agreed price
+  billed nobody: what bills is the price of the course the child is in. The
+  stored values are kept and a save no longer changes them. The **Schüler**
+  list's „Tarif“ filter and the `{{tariff}}` placeholder in email templates now
+  read the child's current courses, so neither can name a price that bills
+  nobody. „Dabei seit“ and „Mitgliedschaft bis“ moved to „Einteilung“.
+  Automatic monthly charges are switched on and off on the **Beiträge** page,
+  by an administrator.
+- **Forms ask for less before they are saved.** A course's price form shows the
+  name and the amounts; everything else waits under „Mehr Möglichkeiten“, as
+  do the rarer course fields on a child's page. The default payment recipient
+  is chosen from a list rather than typed as a number. The VAT rate and UID
+  number only appear once „Mit Umsatzsteuer“ is picked — with JavaScript off,
+  all of them show. Rarely needed settings, custom fields among them, sit under
+  „Erweitert“.
+- **A new portal no longer starts with an empty „Trainingsgruppe“ field**, which
+  every family saw as „Weitere Angaben: Trainingsgruppe –“. A portal that
+  already has it keeps it.
+
+### Only the German privacy notice has to be released
+
+- **The English text is optional.** When there is one it is checked the same
+  way as the German, because a half-translated notice is not one to release.
+  Somebody using the portal in English is shown the German text under „This
+  privacy notice is only available in German. If anything in it is unclear,
+  please ask your coach.“
+- **The sign-in page carries one small line** about the notice instead of the
+  long paragraph that sat on every public page.
+- **The drafts describe what the portal actually does now**: the host's server
+  logs and their 30 days, what a problem report and an automatically recorded
+  error hold and when each is deleted, and one login per student. The release
+  check finds a placeholder of any length — six of the eight in each draft had
+  been too long for it — and reads a line in linear time, so a long line of
+  brackets cannot make the settings page hang.
+
+### Invitations wait for a mail test that passed
+
+- **Invitations, password-reset links and address confirmations are only sent
+  once the last test under Einstellungen → SMTP passed.** Before, a saved SMTP
+  setting was enough, and an invitation behind a server that never answered sat
+  unsent in the outbox while the family waited. Changing the SMTP settings
+  clears the result; saving them unchanged keeps it. The checklist's email step
+  and the invite button read the same rule, so they cannot disagree.
+- A mail server that answered with broken characters could turn the test into
+  an error page. It now shows the answer.
+- **Issuing an invoice is refused only when a charge really has nowhere to be
+  paid**, and the refusal names the recipient that lacks an IBAN, or says that
+  none is chosen.
+
+### A problem report says how she got there
+
+- **„Etwas funktioniert hier nicht“ now records the exact address**, the one
+  before it and the last eight steps, with the form fields that were sent —
+  never a password, a token or a file name; of an upload only its size and
+  type (ADR 0009). Before, two of those fields had been empty in every report
+  ever filed.
+- **A report sent from a child's page brings the family back to that page and
+  tab.** It used to land them on „Kein Zugriff“.
+- **Marking a report „Erledigt“ removes what was typed**, and a done report is
+  deleted, screenshot and all, 30 days after it was last marked done. A report
+  that is still open is never deleted. Nobody has waited the 30 days: the
+  suite ages the stored date, and TESTING.md U.19 is where the clock is proven.
+
+### Errors report themselves
+
+- **An unexpected error is written down for the administrators** under
+  **Einstellungen → Rückmeldungen**, marked „Automatisch erfasst“, with the
+  steps that led to it. The person who hit it sees the friendly page, as
+  before. The same error again counts up on the same entry instead of adding
+  one, and a notification goes out only for a new error or one that came back
+  after being marked done (ADR 0012).
+- **„Für den Support kopieren“** gives a block of plain text for whoever helps
+  her: what broke and where, the version, the device, and the pages visited
+  with the names of the fields, never what was typed into them. No names, no
+  email addresses, no IP address, search terms shown as „…“, and the portal's
+  own folder on the server taken off every path. A database's own error
+  message is never kept, because it can quote a family's address.
+- An entry is deleted 30 days after the error last happened. At most fifty
+  are kept open. Nothing is written while the portal is in maintenance or when
+  the database connection is the thing that broke; the server's error log gets
+  the class and code either way, never a database message.
+
+### The portal's own icon
+
+- **Einstellungen → Portal, „Symbol des Portals“** takes a square PNG from 180
+  to 2048 pixels and shows it in the browser tab, on an iPhone home screen and
+  in an Android install, which now also carries the club's name. Anything else
+  is refused with a sentence saying what is wrong with it, and „Standard-Symbol
+  verwenden“ goes back to the built-in one. The icon lives in `storage/`, so an
+  update cannot overwrite it (ADR 0008). An iPhone keeps an icon already on the
+  home screen until it is removed and added again.
+
+### What the first walk in a real browser found
+
+A new robot, `tests/e2e.sh`, does the first evening the way she would: install,
+all nine setup steps through their own buttons at phone width, a family invited
+through a mail server running on the same machine, signed in, paying and reporting
+a problem, an invoice issued and an error provoked. The whole PHP suite had
+passed on every one of these:
+
+- **The price form on a course had no save button** — a function call was
+  printed as text — so step 4 of the checklist could not be done at all.
+- **The privacy link on the invitation page was too small to tap.**
+- **A child joining on the 28th got a charge due on the 1st**, overdue on the
+  day it was made. A charge is now never due before the first day it covers or
+  before the day it is written, and the bank reference uses the period the
+  invoice shows.
+- **The family's charge card said „01.09.2026 – 30.09.2026“** while the invoice
+  for the same charge said „28.09.2026 – 30.09.2026“. Both now read the same
+  span.
+- The report that landed on „Kein Zugriff“, step 5 ticking for a child in no
+  course, and the mail test that broke on an odd character, all described above.
+
+### Smaller things
+
+- The course rows under „In einen Kurs eintragen“, the lines with a name and a
+  badge, and the pinned help button no longer stretch, crowd or cover controls
+  — measured at 320, 390 and 1280 pixels, light and dark.
+- The console no longer crashes on a host that switches off `shell_exec`.
+- `setup.php` trims the administrator's password the way the sign-in form
+  does, so a space typed at the end cannot lock her out of the first account.
+
+### Tests that cannot touch the live portal, and hidden folders
+
+- **The tests write only into a temporary folder of their own**, print it on
+  their second line and remove it afterwards. Before, the install suite briefly
+  wrote a migration into the portal's own folder, and a run against a real
+  database with a copied configuration could have deleted the portal's uploads
+  and backups.
+- **`tests/existing-database.sh`** runs the whole suite on shared hosting,
+  against an empty database made in the hosting panel whose name ends in
+  `_test`. It refuses the portal's own database, a database that is not empty
+  the first time, and one holding a real email address.
+- **The `.htaccess` at the top answers 404 for hidden folders** such as `.git`,
+  `.claude` or a stray `.env`, even where `mod_rewrite` is off; `.well-known/`
+  stays reachable for certificate renewal. The rule needs `mod_alias`, and is
+  wrapped so a server without it still serves the portal. The structure suite
+  reads the rule; no real Apache has been asked.
+
+### What this was checked on
+
+The whole suite: 3813 assertions, 0 failed, on the SQLite translation under PHP
+8.4.19 and 8.5.11; 3832, 0 failed, against MariaDB 10.11.14, with all nineteen
+migrations applying there. The data that migrations 015, 016 and 019 carry
+across is checked on SQLite only, as that run says at its end. The browser walk
+passed, 279 checks, against MariaDB 10.11.14 on PHP 8.4.19 and 8.5.11, with no
+PHP warning, JavaScript error or layout failure. **MySQL 8.0 was not tried**,
+nor Safari on a real iPhone, a real mail provider, a PDF reader rather than a
+parser, or a real hosting account. VALIDATION.md has the details.
+
 ### Signing in correctly no longer counts against her
 
 - **A sign-in that works no longer spends one of the ten attempts.** Ten are

@@ -128,9 +128,10 @@ needs `mariadbd` installed. Shared hosting does not have it; use
 `tests/existing-database.sh` there.
 
 The run ends by printing what it could **not** cover. On SQLite that is foreign
-keys on three tables and the MySQL-dialect backup, which `tests/mariadb-local.sh`
-covers — it is the run to quote when you say a release works. On MariaDB it is
-the data carried across by migrations 015 and 016: the `migrations` suite has to
+keys on four tables, the MySQL-dialect backup and two spellings of one address
+sharing a sign-in count, which `tests/mariadb-local.sh` covers — it is the run
+to quote when you say a release works. On MariaDB it is the data carried across
+by migrations 015, 016 and 019: the `migrations` suite has to
 apply the migrations in two halves with rows in between, which the run's own
 database cannot do because it has all of them applied already, so it does that in
 a second process against its own SQLite file whichever engine the run is using.
