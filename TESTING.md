@@ -139,6 +139,7 @@ Those lines are not a warning, they are the honest edge of the measurement.
 
 | Suite | What it holds the line on |
 |---|---|
+| `accounts` | One login is one student: invitations, own addresses, the access card's states |
 | `attendance` | Statuses, the suggested training day, the summary figures |
 | `billing` | Charge periods, intervals, discounts, proration, due and overdue dates |
 | `contacts` | Somebody to ring, one standard contact, and an address to invoice |
@@ -146,6 +147,7 @@ Those lines are not a warning, they are the honest edge of the measurement.
 | `demo` | Example data fills, is recognisable, and comes out again completely |
 | `pages` | Every page opens for every role with data behind it, warnings included |
 | `enrolment` | Timetables, joining and leaving, who decides |
+| `errors` | Unexpected errors written down once, counted, told to the administrators, and passed on without personal data |
 | `forms` | A rejected form comes back filled in; defaults are visible as defaults |
 | `groups` | Levels and age groups, and the difference between them |
 | `history` | The change log records what differed, and only that |
@@ -154,9 +156,11 @@ Those lines are not a warning, they are the honest edge of the measurement.
 | `messaging` | Who may read a conversation and who may write to whom |
 | `migrations` | An update carries the data with it: prices, discounts, addresses |
 | `performance` | Query counts, so a page does not issue one query per row |
+| `reports` | A problem report's trail of steps, and nothing in it that must never be kept |
 | `security` | Authorisation boundaries, credentials, what must not leak |
 | `settings` | Every setting has a type and a usable default |
 | `shell` | Notifications, impersonation, avatars, themes, feedback |
+| `start` | The start checklist: each tick read from the data, example data never counting, the way on and back |
 | `structure` | That no file has been silently destroyed, every value is escaped, every page classified |
 | `transactions` | A failed write leaves nothing behind |
 | `uploads` | Limits, allowed kinds, and files swept once their record has gone |
