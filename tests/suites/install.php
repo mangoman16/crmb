@@ -379,6 +379,20 @@ does_not_throw(fn() => submit('login', ['email' => 'setup@example.test', 'passwo
 sign_out();
 run('DELETE FROM accounts');
 
+case_('The page after installing points to the checklist rather than listing steps');
+/* It listed two steps - the mail settings and "both" privacy drafts - after the
+   checklist had taken them over: only the German draft is required, invitations
+   need a passed mail test, and there are nine steps (ADR 0011). The page is read
+   as source because it can only be rendered by installing; the title is read
+   from the checklist itself, so renaming one without the other fails here. */
+$setupPage = (string)file_get_contents(APP_ROOT.'/public/setup.php');
+preg_match("/page_head\(t\('([^']+)','([^']+)'\)/", (string)file_get_contents(APP_ROOT.'/views/start.php'), $title);
+ok(isset($title[2]), 'the checklist\'s title is found on the checklist');
+ok(str_contains($setupPage, '„'.($title[1] ?? '?').'“') && str_contains($setupPage, '“'.($title[2] ?? '?').'”'),
+   'the finished page names the checklist by that title, in both languages');
+foreach (['zwei Schritte', 'two steps', 'beide Entwürfe', 'both drafts'] as $stale)
+    ok(!str_contains($setupPage, $stale), 'and no longer says '.test_show($stale));
+
 case_('Waiting work happens without a cron job');
 /* On hosting with no cron line, a queued invitation that nothing ever picks up
    is the difference between a working portal and a dead one. */

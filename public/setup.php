@@ -193,10 +193,12 @@ header('X-Robots-Tag: noindex');
 </div>
 <?php endif ?>
 <div class="card setup-step">
-    <h2><?=install_e(install_t('Die nächsten zwei Schritte', 'The next two steps'))?></h2>
+    <h2><?=install_e(install_t('Wie es weitergeht', 'What comes next'))?></h2>
+    <?php /* The checklist owns what is left and how many steps that is (ADR 0011).
+             This page used to list them itself and was wrong within a release. */ ?>
     <p class="muted"><?=install_e(install_t(
-        'Einladungen bleiben gesperrt, bis beides erledigt ist: unter Einstellungen → SMTP den E-Mail-Versand eintragen, und unter Einstellungen → Datenschutz beide Entwürfe vervollständigen und freigeben.',
-        'Invitations stay disabled until both are done: enter the email details under Einstellungen → SMTP, and complete and approve both drafts under Einstellungen → Datenschutz.'))?></p>
+        'Nach der Anmeldung zeigt dir die Liste „Dein Portal einrichten“ Schritt für Schritt, was noch fehlt.',
+        'Once you are signed in, the “Set up your portal” checklist shows you what is left, step by step.'))?></p>
     <p class="muted"><?=install_e(install_t(
         'Updates brauchen keinen weiteren Schritt: die neuen Dateien hochladen genügt, die Datenbank passt sich beim nächsten Aufruf selbst an.',
         'Updates need no further step: uploading the new files is enough, and the database updates itself on the next page view.'))?></p>
