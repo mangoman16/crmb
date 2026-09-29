@@ -5,6 +5,13 @@ date: 2026-09-29
 
 # 0018. Club news by email is on by default
 
+> **Amended 2026-09-29.**
+>
+> - Decision 2 now quotes the activation wording as it shipped. The first version of this
+>   record gave a draft.
+> - Decision 5, the printed form, is new. It records how the paper form follows the same
+>   default.
+
 ## Context
 
 The owner decided that news by email is club information, not advertising. New accounts
@@ -37,8 +44,9 @@ What the code does today:
      - A second run after an interrupted update does nothing twice.
    - **Existing accounts keep their value.**
 2. **Activation.** The checkbox on `views/activate.php` is **ticked by default** and can
-   still be unticked. Its wording states the fact rather than asking for consent: „Neuigkeiten
-   des Vereins per E-Mail erhalten (jederzeit abbestellbar)". The `activate` case keeps
+   still be unticked. Its wording states the fact rather than asking for consent. As
+   shipped, it reads „Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit abbestellbar."
+   ("Receive club news by email. You can stop them at any time."). The `activate` case keeps
    writing what was posted.
 3. **Records.** `record_consent(…,'newsletter',…)` stays on activation and in
    `preferences_save`. It now records the person's choice, and above all their opt-outs,
@@ -46,6 +54,27 @@ What the code does today:
 4. **The privacy notice** changes the basis for news mail from consent to the club's
    legitimate interest in informing members, keeping the right to object at any time.
    `docs-writer` drafts the sentence, and the owner releases it with 021.
+5. **The printed form** (`views/print.php`, „Einverständnis") follows the same default.
+   - Both kinds of email are on unless somebody says no. Club news is on by this record, and
+     mail about new messages by its column default (`notifications`, `DEFAULT 1` since 001)
+     and its ticked box at activation.
+   - So the paper offers two **"no" boxes** instead of "yes" boxes:
+     - „Bitte keine Neuigkeiten des Vereins per E-Mail schicken." ("Please do not send me
+       club news by email.")
+     - „Bitte keine E-Mail bei neuen Nachrichten schicken." ("Please do not email me when
+       there is a new message.")
+   - **On a blank form** both boxes are empty. Leaving a box alone means yes, and a
+     pre-printed tick could not be taken back with a pen.
+   - **On a data sheet** each box is ticked from what the student's login holds:
+     - the news box when `accounts.newsletter = 0`;
+     - the messages box when `accounts.notifications = 0`.
+
+     A data sheet shows what the portal holds, so a no already given is there to be checked.
+     A student without a login has nothing to show yet, and both boxes are empty.
+   - „Ich habe die Datenschutzerklärung gelesen." is unchanged.
+   - The paper is for reading and signing. A box ticked by pen changes nothing until
+     somebody enters it. The person does that under „Mein Konto", or staff do it by the
+     existing routes. This record adds no write path.
 
 ## Rejected
 
@@ -62,6 +91,13 @@ mail people who were never asked.
 
 **Recording this in ADR 0015.** It has nothing to do with presence.
 
+**"Yes" boxes on paper, left empty.** An empty "yes" box reads as "no" and contradicts the
+default. A pre-printed tick in a "yes" box cannot be withdrawn cleanly with a pen.
+
+**A data sheet that leaves the boxes empty even when the login holds a no.** The sheet
+exists so the family can check what the portal holds. An empty box would say "yes" where
+the portal says "no".
+
 ## Consequences
 
 - **The owner decided this change in how families' data is used.** Whether members' news
@@ -71,6 +107,14 @@ mail people who were never asked.
   - a directly created account has `newsletter=1`;
   - activating with the box unticked stores 0 and a consent line;
   - 021 leaves existing values unchanged, checked with one account at 0 and one at 1;
-  - it applies on SQLite and on MariaDB.
-- **`TESTING.md`:** invite a family, confirm the box is ticked, untick it, and confirm no
-  news mail arrives.
+  - it applies on SQLite and on MariaDB;
+  - the printed form:
+    - a blank form carries both "no" sentences with both boxes empty;
+    - a data sheet for a login with `newsletter=0` ticks the news box and not the messages
+      box, and the reverse with `notifications=0`;
+    - a student without a login gets both boxes empty.
+    - `tests/suites/pages.php` already checks the news sentence; the messages sentence and
+      the ticking are added.
+- **`TESTING.md`:**
+  - invite a family, confirm the box is ticked, untick it, and confirm no news mail arrives;
+  - print that student's data sheet and confirm the news "no" box is ticked.

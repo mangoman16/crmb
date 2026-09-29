@@ -1,9 +1,39 @@
 ---
-status: accepted
+status: accepted, amended by 0019
 date: 2026-09-24
 ---
 
 # 0010. One account is one student
+
+> **Amended by ADR 0019 (2026-09-29).** The owner reversed one half of this record. Several
+> accounts may now share one email address; siblings use a parent's. Sign-in is by username.
+>
+> **These parts no longer hold:**
+>
+> - the owner's words "simply they need new email addresses";
+> - under "What already holds", "`accounts.email` is `UNIQUE`". Migration 024 drops that
+>   index;
+> - under "One address", every refusal of an address because another account holds it:
+>   - `student_save` "refuses if the new address belongs to any account";
+>   - the "No account" bullet's refusal and its tolerated clash;
+> - under "Granting and removing access", `student_invite`'s "or if the address belongs to
+>   **any** account";
+> - the whole of "Read-side functions in `app/domain.php`": `account_with_address()`,
+>   `students_needing_own_address()` and the „Eigene E-Mail-Adresse eintragen" step;
+> - in Rejected, the reasons given under "Clearing `students.email` on detached siblings".
+>   They rested on the refusal;
+> - in Consequences, the `qa-tester` items that test a refusal of a shared address;
+> - `change_login_address()` is renamed `change_account_email()`.
+>
+> **Everything else stands:**
+>
+> - one login is one student;
+> - the index `student_one_account` and migration 019;
+> - `accounts.email` and `students.email` kept equal once a login exists;
+> - staff never re-address an active login;
+> - the access card on the student page;
+> - `greeting_name()`;
+> - the Konten page.
 
 ## Context
 

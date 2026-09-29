@@ -1,9 +1,25 @@
 ---
-status: proposed
+status: superseded by 0019
 date: 2026-09-23
 ---
 
 # 0007. The sign-in throttle tells you whether an address is registered
+
+> **Superseded by ADR 0019 (2026-09-29).** Sign-in is by username now, and an address is no
+> longer unique. Both throttles count the typed value for everybody, whether or not it
+> exists:
+>
+> - `login` counts against the normalised username;
+> - `forgot` counts against the address, and looks it up only when it passes `email_value()`.
+>
+> Every stored username and address is ASCII in that same normal form, so the collation has
+> nothing left to fold, and a known and an unknown value behave alike. That closes the
+> channel described below, without the identity table or `WEIGHT_STRING`.
+>
+> **One condition remains.** The closure rests on `utf8mb4_unicode_ci` not equating two
+> distinct characters of the `email_value()` alphabet. ADR 0019 has that measured on
+> MariaDB. Until it has been, `VALIDATION.md` keeps the statement below. The questions to the
+> owner at the end of this file are withdrawn.
 
 ## Context
 

@@ -5,6 +5,11 @@ date: 2026-09-29
 
 # 0015. Presence: a chosen status, and thirty days of when somebody was online
 
+> **Updated 2026-09-29 with the owner's answer about families.** Presence is for staff only.
+> A family sees no dot, not even their own, and no status block. Their account menu holds
+> „Mein Konto" and „Abmelden". Families' online periods are still recorded, and staff still
+> see them. The sections below are written to that answer. See "Families: decided".
+
 ## Context
 
 The owner wants a coloured dot on the avatar in the top bar:
@@ -31,8 +36,9 @@ What exists today:
 
 Two facts shape the design:
 
-- **Only the person and staff see a dot.** A family never sees anybody else's. A chosen
-  status can therefore only change what **staff** see.
+- **Only staff see a dot.** Staff see their own and everybody else's. A family sees none,
+  not even their own (the owner, 2026-09-29). A chosen status can therefore only change what
+  **staff** see, and only staff choose one.
 - **An existing fault.** While staff look through a family's eyes, `$_SESSION['user_id']` is
   the family's, and `touch_last_seen($user)` records **the family** as online.
 
@@ -93,10 +99,15 @@ Nothing earlier calls it. Only the router, the actions, `app/ui.php`, the views 
 
 - **`presence_choices(): array`**: `auto`, `away` and `hidden`, with their labels through
   `t()`.
-- **`presence_choice(array $account): string`**.
+- **`presence_choice(array $account): string`**
+  - It returns `auto` for an account that is not staff, whatever is stored.
+  - A family cannot choose a status, so a value left from before this answer, or written by
+    any other path, must not hide them from trainers.
 - **`presence_touch(array $user): void`**
   - It has the same once-a-minute throttle through `$_SESSION['seen_written']`.
   - It records `impersonator() ?? $user`, which **fixes the impersonation fault**.
+  - The `hidden` flag it writes comes from `presence_choice()`, so a family's periods are
+    always `hidden=0`.
   - All its writes use `run_counter()`:
     1. `UPDATE accounts SET last_seen_at=?`
     2. `SELECT id FROM online_periods WHERE account_id=? AND hidden=? AND last_seen_at>=? ORDER BY last_seen_at DESC LIMIT 1`
@@ -106,29 +117,33 @@ Nothing earlier calls it. Only the router, the actions, `app/ui.php`, the views 
   - Time bands: within `online_window_minutes` is `online`, within `presence_recent_minutes`
     is `recent`, within `presence_away_hours` is `away`, and anything longer is `offline`.
   - Each threshold is at least the one before it (`max()`).
-  - Then the chosen status applies: `hidden` gives `offline`, and `away` turns `online` or
-    `recent` into `away`.
+  - Then the chosen status applies, through `presence_choice()`: `hidden` gives `offline`,
+    and `away` turns `online` or `recent` into `away`.
 - **`presence_state_label(string $state): string`**.
-- **`presence_visible_to(array $viewer, array $subject): bool`**: true for the subject
-  themselves, or when `is_staff($viewer)`.
+- **`presence_visible_to(array $viewer, array $subject): bool`**: true when
+  `is_staff($viewer)`, and false otherwise, **including for the subject themselves** when
+  the subject is a family.
 - **`presence_last_seen_for(array $viewer, array $subject): ?string`**
-  - The subject themselves and administrators get `accounts.last_seen_at`.
+  - Administrators, and a staff member asking about themselves, get
+    `accounts.last_seen_at`.
   - Trainers get the same, unless the subject is `hidden`. Then they get the newest
     `last_seen_at` among the subject's `hidden=0` periods, or `null`.
-  - A family viewing anybody else gets `null`.
+  - A viewer who is not staff gets `null`, for anybody including themselves.
 - **`presence_history(array $viewer, array $accountIds): array`**
   - It runs one query for the whole list.
-  - It refuses a viewer who is neither staff nor the subject.
+  - It refuses a viewer who is not staff.
   - It returns periods from the last `presence_history_days`. Trainers see only `hidden=0`
-    rows. Administrators and the subject see every row, with `hidden` marked.
+    rows. Administrators see every row, with `hidden` marked.
 - **`presence_prune(int $days): int`**, called from `prune_expired()`.
 
 The router calls `presence_touch($user)` where it called `touch_last_seen($user)`, but
-**not** for `icon`, `manifest`, `brand` and `logo`.
+**not** for `icon`, `manifest`, `brand` and `logo`. It does so for families too, because
+their periods are recorded.
 
 `presence_dot(array $viewer, array $subject): string` goes in `app/ui.php`.
 
-- It returns `''` unless `presence_visible_to()`.
+- It returns `''` unless `presence_visible_to()`, so a family never gets one, not even in
+  their own top bar.
 - Otherwise it returns `<span class="presence-dot is-{state}">` holding a `visually-hidden`
   label.
 - It joins the `structure` suite's HTML-helper list.
@@ -148,11 +163,11 @@ families' data, not a setting.
 
 ### Who sees what
 
-| | Own dot | Others' dot | Others' "last online" | Others' 30-day history |
-| --- | --- | --- | --- | --- |
-| Family | yes (pending the owner, see below) | no | no | no |
-| Trainer | yes | yes, as chosen (`hidden` is grey) | yes; for a `hidden` account, only up to when they hid | yes, `hidden` periods left out |
-| Administrator | yes | yes, as chosen | always the true time | every period, hidden ones marked |
+| | Own dot | Status menu | Others' dot | Others' "last online" | Others' 30-day history |
+| --- | --- | --- | --- | --- | --- |
+| Family | no | no | no | no | no |
+| Trainer | yes | yes | yes, as chosen (`hidden` is grey) | yes; for a `hidden` account, only up to when they hid | yes, `hidden` periods left out |
+| Administrator | yes | yes | yes, as chosen | always the true time | every period, hidden ones marked |
 
 „Als offline anzeigen" therefore means that trainers see you as offline, while
 administrators still see when you were online. The status menu (ADR 0016) says so in those
@@ -170,15 +185,18 @@ through it:
 
 That change needs no migration.
 
-**Families: pending the owner.** The PM is asking her whether families get the status menu
-and their own dot at all. Until she answers, build it for staff and families alike, as
-above. If she says no:
+**Families: decided (the owner, 2026-09-29).** The own-status dot and the status block in
+the account menu are **for staff only**. A family's account menu holds „Mein Konto" and
+„Abmelden".
 
-- `presence_dot()` and the menu's status block are shown only when `is_staff($viewer)`;
-- `presence_save` refuses a non-staff caller;
-- families' periods are still recorded, because staff see families' history either way.
-
-The decision goes into this record when she answers.
+- `presence_dot()` and the menu's status block are shown only when `is_staff($viewer)`.
+- `presence_save` refuses a caller who is not staff, before it writes. A stale page or a
+  hand-made POST from a family gets a sentence, not a stored choice.
+- `presence_choice()` reads `auto` for every account that is not staff (above).
+- **Families' periods are still recorded**, always `hidden=0`, and staff see families' dots,
+  last-online times and history exactly as in the table.
+- While staff view the portal as a family, the menu is the family's: no status block, as
+  ADR 0016 already has it.
 
 The status is changed by `presence_save` (ADR 0016).
 
@@ -211,12 +229,19 @@ that child being online at 23:00.
 **Retention as an open-ended setting.** It would allow keeping presence data longer than
 the notice says.
 
+**Families keeping their own dot but no menu.** The owner answered for both together. A dot
+the person cannot change would also invite the question of how to change it.
+
+**Not recording families' periods once they cannot see presence.** Staff still see
+families' history. That was the owner's original request, and this answer does not change
+it.
+
 ## Consequences
 
 - **Owner:**
   - the schema change is approved;
-  - the trainer/admin split and whether families get the menu are hers to change, and
-    neither needs a migration;
+  - families get no dot and no status (decided 2026-09-29);
+  - the trainer/admin split is still hers to change, and it needs no migration;
   - the privacy notice must say that when each account was online is kept for 30 days and
     is visible to trainers and administrators. `docs-writer` drafts the sentence; she
     releases it with 020.
@@ -226,7 +251,12 @@ the notice says.
   - switching to `hidden` starts a `hidden=1` row;
   - `presence_state()` over each band and choice;
   - a trainer's history omits hidden rows, and an administrator's does not;
-  - a family asking for another account's history is refused;
+  - a family asking for any history, including their own, is refused;
+  - a family's own top bar has no dot, and their menu has no status block;
+  - `presence_save` from a family is refused and writes nothing;
+  - a family account with `presence='hidden'` stored still shows to a trainer from its
+    activity, and its periods are `hidden=0`;
+  - a family's visit is still recorded as a period;
   - impersonation records the impersonator;
   - prune removes exactly the rows older than the horizon;
   - 020 applies on SQLite, and **run twice after an interruption** it still applies;
@@ -238,6 +268,7 @@ the notice says.
 - **Must not:**
   - show another account's dot, last-online time or history except through
     `presence_visible_to()` / `presence_history()`;
+  - show a family any presence, their own included;
   - write presence on the main connection;
   - touch presence from the asset routes;
   - let `presence_history_days` exceed 30.

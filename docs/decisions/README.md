@@ -4,6 +4,11 @@ One file per decision, numbered in sequence, never renumbered. A decision that i
 later reversed is not deleted: it gets `status: superseded by NNNN` and the new file
 explains what changed.
 
+A decision that is reversed only **in part** keeps `accepted` and adds `amended by NNNN`.
+A note under its title names the sections that no longer hold. Everything the note does not
+name still stands. The text itself is not rewritten, because it is the record of what was
+decided at the time.
+
 ```
 NNNN-kebab-case-title.md
 ```
@@ -12,7 +17,7 @@ Front matter, then four sections:
 
 ```markdown
 ---
-status: accepted | proposed | superseded by NNNN
+status: accepted | accepted, amended by NNNN | proposed | superseded by NNNN
 date: YYYY-MM-DD
 ---
 
