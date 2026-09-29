@@ -135,9 +135,19 @@ $minor = $student ? (($age = student_age($student['birth_date'] ?? null)) !== nu
     <section class="sheet-block">
         <h2><?=e(t('Einverständnis','Consent'))?></h2>
         <?php
-        print_tick(t('Ich habe die Datenschutzerklärung gelesen.','I have read the privacy notice.'), $student ? null : null);
-        print_tick(t('Ja, ich möchte die Neuigkeiten per E-Mail bekommen.','Yes, send me the news by email.'), null);
-        print_tick(t('Ja, bitte per E-Mail an neue Nachrichten erinnern.','Yes, email me when there is a new message.'), null);
+        print_tick(t('Ich habe die Datenschutzerklärung gelesen.','I have read the privacy notice.'), null);
+        // Both kinds of email are on unless somebody says no (ADR 0018), so the
+        // paper asks for the no. A pre-printed tick cannot be taken back with a
+        // pen; an empty box for "please don't" can simply be left alone. A data
+        // sheet shows what the portal holds, so a no already given is ticked
+        // there to be checked; without a login there is nothing to show yet.
+        $login = !empty($student['account_id'])
+            ? one('SELECT newsletter, notifications FROM accounts WHERE id=?', [(int)$student['account_id']])
+            : null;
+        print_tick(t('Bitte keine Neuigkeiten des Vereins per E-Mail schicken.','Please do not send me club news by email.'),
+            $login ? !(int)$login['newsletter'] : null);
+        print_tick(t('Bitte keine E-Mail bei neuen Nachrichten schicken.','Please do not email me when there is a new message.'),
+            $login ? !(int)$login['notifications'] : null);
         ?>
         <?php /* The long version of this is in the intro at the top of a blank
                  form, and two paragraphs saying the same thing cost the sheet a

@@ -404,7 +404,9 @@ function make_account(array $over=[]): int {
         'password_hash' => password_hash('Test-Only-Password-2026', PASSWORD_DEFAULT),
         'role' => 'student', 'state' => 'active', 'verified_at' => now(),
         'locale' => 'de', 'theme' => 'auto', 'text_scale' => 'normal',
-        'auth_version' => 1, 'newsletter' => 0, 'notifications' => 1, 'payment_notices' => 1,
+        // newsletter is left to the schema's default (on since 021, ADR 0018),
+        // so a fixture starts a login the way the portal does.
+        'auth_version' => 1, 'notifications' => 1, 'payment_notices' => 1,
         'created_at' => now(),
     ], $over));
 }

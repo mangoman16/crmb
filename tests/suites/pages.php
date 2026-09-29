@@ -248,6 +248,20 @@ ok(substr_count($blank, 'sheet-contact') >= 2, 'with room for two people to ring
 ok(str_contains($blank, 'print-boxes'), 'in boxes, one letter each');
 ok(!str_contains($blank, 'print-value'), 'and nothing filled in');
 ok(str_contains($blank, 'nicht verkauft'), 'saying what happens to what they write down');
+// Club news by email is on unless somebody declines it (ADR 0018), so the paper
+// offers a box for "no" - a form still asking "yes, please" would make a parent
+// who ticked nothing look like somebody who declined.
+/* The paper's two email boxes, read the way print_tick() draws them: true for
+   a tick, false for an empty box, null when the line is not there at all. */
+$noNews     = 'Bitte keine Neuigkeiten des Vereins per E-Mail schicken.';
+$noReminder = 'Bitte keine E-Mail bei neuen Nachrichten schicken.';
+$tick = fn(string $html, string $label) =>
+    preg_match('/<span class="print-box">(&#10003;)?<\/span><span>'.preg_quote(e($label), '/').'<\/span>/', $html, $m)
+        ? ($m[1] ?? '') !== '' : null;
+is_same(false, $tick($blank, $noNews), 'the news box on paper is an empty one for saying no');
+is_same(false, $tick($blank, $noReminder), 'and so is the one for message reminders, both being on unless declined');
+ok(!str_contains($blank, 'ich möchte die Neuigkeiten') && !str_contains($blank, 'Ja, bitte per E-Mail'),
+   'and neither asks them to opt in any more');
 // The fee block a club's own form has. Without it a parent has filled in a page
 // that never says what they are agreeing to pay.
 ok(str_contains($blank, 'Beitrag'), 'and what it costs is on it');
@@ -271,7 +285,55 @@ ok(str_contains($sheet, 'Lena'), 'the child’s name among them');
 ok(str_contains($sheet, 'Maria Hofer'), 'and the person to ring');
 ok(str_contains($sheet, 'Unterschrift'), 'with somewhere to sign that it was checked');
 is_same(0, deepest_form_nesting($blank), 'and no form at all on it: it is printed, not submitted');
+// A data sheet is what the portal holds, to be checked and signed - so a "no"
+// the family already gave is on it, ticked, and a "yes" leaves the box empty.
+$familyChoices = one('SELECT newsletter, notifications FROM accounts WHERE id=?', [$family]);
+run('UPDATE accounts SET newsletter=0, notifications=1 WHERE id=?', [$family]);
+$sheet = render_view('print', ['id'=>$lena]);
+is_same(true, $tick($sheet, $noNews), 'a family who switched news off has the "no" ticked on the data sheet');
+is_same(false, $tick($sheet, $noReminder), 'while the reminders they kept stay unticked');
+run('UPDATE accounts SET newsletter=1, notifications=0 WHERE id=?', [$family]);
+$sheet = render_view('print', ['id'=>$lena]);
+is_same(false, $tick($sheet, $noNews), 'the other way round, news they receive is left unticked');
+is_same(true, $tick($sheet, $noReminder), 'and the reminders they declined are ticked');
+run('UPDATE accounts SET newsletter=?, notifications=? WHERE id=?',
+    [(int)$familyChoices['newsletter'], (int)$familyChoices['notifications'], $family]);
+$bareSheet = render_view('print', ['id'=>$bare]);
+is_same([false, false], [$tick($bareSheet, $noNews), $tick($bareSheet, $noReminder)],
+        'a child with no login yet has nothing to show, so both boxes are empty');
 
 case_('And it is staff-only, because it carries a family’s details');
 sign_in_as($family);
 throws(fn() => render_view('print', ['id'=>$lena]), 'a family does not open the print view', 'Zugriff');
+
+case_('Sending news by email is offered to the people who get it, not to "subscribers"');
+/* With news on by default nobody subscribed to anything (ADR 0018), and the
+   word was jargon to her anyway. */
+sign_in_as($trainer);
+$newsForm = render_view('news', ['new'=>1]);
+ok(str_contains($newsForm, e('an alle senden, die Neuigkeiten per E-Mail erhalten')), 'the box says who the email goes to');
+ok(!str_contains($newsForm, 'Newsletter'), 'without calling them newsletter subscribers');
+
+case_('Setting up an account starts with club news by email switched on');
+/* ADR 0018: club news is club information, on unless the person switches it off.
+   The activation page decides for every invited account - the action stores
+   whatever the box posts - so the column default alone would change nothing a
+   family sees. The box has to arrive ticked, and still be a box they can untick. */
+sign_out();
+$invited = make_account(['role'=>'student', 'email'=>'eingeladen@beispiel.test', 'state'=>'invited',
+                         'verified_at'=>null, 'password_hash'=>null]);
+$_SESSION['activation_hash'] = hash('sha256', make_token($invited, 'invite'));
+$activation = render_view('activate');
+$box = fn(string $name) => preg_match('/<input\b[^>]*\bname="'.$name.'"[^>]*>/', $activation, $m) ? $m[0] : '';
+// The attribute as a word: a class or a value that merely contains "checked"
+// must not pass for a ticked box.
+$ticked = fn(string $name) => (bool)preg_match('/\schecked(\s|>|=)/', $box($name));
+ok($box('newsletter') !== '', 'the page has the club news box');
+ok($ticked('newsletter'), 'and it arrives ticked');
+ok(str_contains($box('newsletter'), 'type="checkbox"'), 'as a box that can still be unticked');
+ok($ticked('notifications'), 'like the message reminders beside it');
+ok($box('privacy_seen') !== '' && !$ticked('privacy_seen'), 'while having read the privacy notice is still theirs to tick');
+ok(str_contains($activation, 'Neuigkeiten des Vereins per E-Mail erhalten'), 'it says what they will get');
+ok(!str_contains($activation, 'Freiwillig') && !str_contains($activation, 'zusätzlich'),
+   'without calling club information optional or extra');
+unset($_SESSION['activation_hash']);

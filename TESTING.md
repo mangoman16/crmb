@@ -91,6 +91,7 @@ release and emptied again for the next.
 - The portal's own icon: U.2–U.8 · the sign-in line: U.1 · rows that line up: U.9–U.12
 - The privacy notice in English is optional: U.35, U.56
 - A profile picture is kept by the browser instead of fetched on every page, and another family's is never shown: U.58–U.62
+- News by email starts switched on for a new login, can be unticked when accepting the invitation, and the printed form asks for the no: [15.2, 15.7, 15.8](#news-email-and-the-queue), in News and email
 
 ---
 
@@ -955,7 +956,10 @@ Skip on an ordinary code change; do all of it before a release.
 ## News, email and the queue
 
 - [ ] **15.1** Publish a news item. Families see it under **Neuigkeiten**.
-- [ ] **15.2** With the newsletter ticked, an email is queued per subscriber.
+- [ ] **15.2** Save a news item with **„Diese Fassung auch an alle senden, die
+  Neuigkeiten per E-Mail erhalten"** ticked. **Postausgang** holds one email for
+  each family whose **„Neuigkeiten per E-Mail erhalten"** is on under **Mein
+  Konto**, and none for a family who switched it off.
 - [ ] **15.3** **Einstellungen → SMTP → Verbindung testen**: with a target
   address filled in, the page comes back with the outcome on it, not with a
   message in a list to go and find. It arrives, or the summary says which step
@@ -1062,6 +1066,25 @@ Skip on an ordinary code change; do all of it before a release.
 
 ## On the phone, at the end
 
+- [ ] **15.7** News by email starts switched on, and saying no sticks. You need
+  two email addresses of your own that have no login yet. On a child,
+  **„Zugang zum Portal" → „Einladung senden"** to the first; open the invitation
+  and its link. **„Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit
+  abbestellbar."** is **already ticked**. Untick it, tick „Ich habe die
+  Datenschutzhinweise gelesen.", choose a password and tap **„Konto
+  aktivieren"**. Signed in as that family, **Mein Konto** shows **„Neuigkeiten
+  per E-Mail erhalten"** switched off. Do the same for the second address on
+  another child, but leave the box ticked. Now save a news item as in 15.2:
+  **Postausgang** has one for the second address and **none for the first**, and
+  only the second inbox receives it. Without the second address, a news mail
+  that reached nobody would pass this check. Keep both logins for 15.8.
+- [ ] **15.8** **Schüler → Leeres Formular drucken**: under **Einverständnis**
+  there are two **empty** boxes, **„Bitte keine Neuigkeiten des Vereins per
+  E-Mail schicken."** and **„Bitte keine E-Mail bei neuen Nachrichten
+  schicken."** — the paper asks for the no, because both emails are on unless
+  somebody refuses. No „Ja, ich möchte …" line is left. On the **Datenblatt** of
+  the first child from 15.7 the news box is **ticked** and the message box is
+  not. Afterwards delete both logins from 15.7 in **Konten**.
 Do this last, on a real phone, not a resized desktop window.
 
 - [ ] **22.1** Sign in, take attendance for one course, and record one payment,

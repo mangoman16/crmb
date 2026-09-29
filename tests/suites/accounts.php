@@ -437,3 +437,37 @@ $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
 $redirect = strpos($router, "if(\$page==='students' && (\$instead=students_list_instead(\$user)))go(\$instead[0],\$instead[1]);");
 ok($redirect !== false && $redirect > (int)strpos($router, '$user=$public?') && $redirect < (int)strpos($router, "require ROOT.'/views/'"),
    'the router redirects there once it knows who is asking, before any page is drawn');
+
+case_('Accepting an invitation with club news unticked stores the no, and a record of it (ADR 0018)');
+/* The box arrives ticked and the schema starts a login with news on, so the
+   only thing standing between an untick and a news mail is the activation
+   writing what was posted. Two logins, one unticked and one left ticked, both
+   starting at 1 - so a write of a fixed value fails one of them - and a third
+   that is not activated, to show the write touched only the one it was for. */
+set_setting('privacy_ready', true);
+is_same(1, (int)scalar('SELECT newsletter FROM accounts WHERE id=?', [make_account(['email' => 'standard@beispiel.test'])]),
+        'a login written without naming it has news by email on: the schema\'s default since 021');
+$activate = function (string $email, array $fields): int {
+    $id = make_account(['email' => $email, 'state' => 'invited', 'verified_at' => null, 'password_hash' => null, 'newsletter' => 1]);
+    sign_out();
+    $_SESSION['activation_hash'] = hash('sha256', make_token($id, 'invite'));
+    submit('activate', ['password' => 'Federball-2026-Halle!', 'password_confirm' => 'Federball-2026-Halle!',
+                        'privacy_seen' => '1', 'notifications' => '1'] + $fields);
+    return $id;
+};
+$bystander = make_account(['email' => 'unbeteiligt@beispiel.test', 'newsletter' => 1]);
+$consents = fn(int $id) => array_map(fn($r) => [(string)$r['purpose'], (int)$r['enabled']],
+    rows("SELECT purpose, enabled FROM consent_log WHERE account_id=? AND purpose='newsletter' ORDER BY id", [$id]));
+$declined = $activate('ohne-neuigkeiten@beispiel.test', []);
+is_same('active', (string)scalar('SELECT state FROM accounts WHERE id=?', [$declined]), 'the invitation was accepted');
+is_same(0, (int)scalar('SELECT newsletter FROM accounts WHERE id=?', [$declined]), 'news by email is off for the login that unticked it');
+is_same([['newsletter', 0]], $consents($declined), 'and one line records that they said no');
+// Asked straight away: the ticked activation below writes 1, which would hide
+// an untick that had been written to every login.
+is_same(1, (int)scalar('SELECT newsletter FROM accounts WHERE id=?', [$bystander]), 'a login that was not activated keeps its own');
+$accepted = $activate('mit-neuigkeiten@beispiel.test', ['newsletter' => '1']);
+is_same(1, (int)scalar('SELECT newsletter FROM accounts WHERE id=?', [$accepted]), 'left ticked, it stays on');
+is_same([['newsletter', 1]], $consents($accepted), 'and that is recorded too');
+is_same(0, (int)scalar('SELECT newsletter FROM accounts WHERE id=?', [$declined]), 'and the one that said no is still off');
+is_same([], $consents($bystander), 'the login that was not activated gets no record');
+sign_out();
