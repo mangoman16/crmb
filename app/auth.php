@@ -35,6 +35,22 @@ function role_label(string $role): string {
 function assignable_roles(array $actor): array {
     return is_admin($actor) ? ['trainer','admin'] : [];
 }
+/**
+ * Whether one person may see another account's profile picture.
+ *
+ * Staff see everybody's, everybody sees their own, and everybody sees the
+ * trainers' and administrators' - the people a family writes to. A family
+ * never sees another family's, not even one they have agreed to write with:
+ * the name is shown, the photograph stays theirs. The download route refuses
+ * by this rule and avatar() draws initials by it, so a page never links to a
+ * picture the route would refuse. An account row without its role is not
+ * taken for staff.
+ */
+function may_see_account_picture(array $viewer, array $account): bool {
+    return is_staff($viewer)
+        || (int)$viewer['id'] === (int)($account['id'] ?? 0)
+        || (isset($account['role']) && is_staff($account));
+}
 /** Record activity for the online indicator, at most once a minute per account. */
 function touch_last_seen(array $user): void {
     if(time()-(int)($_SESSION['seen_written']??0) < 60) return;

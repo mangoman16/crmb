@@ -85,6 +85,27 @@ case_('The nightly maintenance is what runs it');
 ok(str_contains((string)file_get_contents(APP_ROOT.'/app/tick.php'), 'prune_uploads()'),
    'so nobody has to remember to sweep by hand');
 
+case_('A profile picture is kept by the browser, and only at the address of the picture in use');
+/* Without this every page change fetched the top bar's picture again. A week,
+   not a year: a copy left on a borrowed phone runs out on its own. */
+$picture = str_repeat('e', 32).'.jpg';
+is_same('private, max-age=604800', avatar_cache_control($picture, 'eeeeeeeeeeee'),
+        'the current address is kept for a week, by this browser alone - never a shared cache');
+is_same('private, no-store', avatar_cache_control($picture, 'aaaaaaaaaaaa'),
+        'an address from before a new upload is never kept, so it cannot be remembered as the new picture');
+is_same('private, no-store', avatar_cache_control($picture, null), 'nor is one with no version');
+is_same('private, no-store', avatar_cache_control($picture, ['x']), 'or with a version that is not text');
+is_same('private, no-store', avatar_cache_control('', ''), 'and a removed picture matches nothing');
+/* The route ends with exit and its headers cannot be read on the command line,
+   so which rule it hands to send_upload() is pinned here by its text. */
+ok(str_contains((string)file_get_contents(APP_ROOT.'/app/uploads.php'), "avatar_cache_control(\$name, \$_GET['v'] ?? null)"),
+   'the download route asks that question of the version it was given');
+
+case_('Everything else that is downloaded is still never kept');
+foreach (['send_download_headers' => 4, 'send_upload' => 4] as $function => $position)
+    is_same('private, no-store', (new ReflectionFunction($function))->getParameters()[$position]->getDefaultValue(),
+            $function.'() keeps invoices, proofs, attachments and screenshots out of every cache unless told otherwise');
+
 // ---------------------------------------------------------------------------
 // The portal's own icon (ADR 0008)
 // ---------------------------------------------------------------------------

@@ -251,3 +251,50 @@ ok(str_contains($donePage, $droppedNote), 'and the page says the typed values we
 ok(!str_contains($donePage, 'Beim Erledigen werden'), 'rather than warning about a deletion that has happened');
 run('DELETE FROM feedback');
 sign_out();
+
+/* A contact request row carries its own id. In both cases below that id is
+   made to equal somebody else's account id, so a page that built the picture
+   address from the row's id instead of the sender's would ask for the wrong
+   person's picture - and the download route would serve it. */
+$requestsBlock = fn(string $html) => (string)strstr((string)strstr($html, 'Möchte dir schreiben'), 'An wen?', true);
+$askedFor = function (string $block): array {
+    preg_match_all('/what=avatar&amp;kind=account&amp;id=(\d+)/', $block, $m);
+    return array_values(array_unique($m[1]));
+};
+
+case_('A contact request from another family shows their initials, and asks for nobody’s picture');
+/* Another family's account is a child (ADR 0010), so its picture is not shown
+   to a family. The request's id is the recipient's own account id: the one id
+   whose picture this viewer may see, so the old code would have printed it. */
+$sender    = make_account(['role'=>'student','name'=>'Absender Kontakt','avatar_name'=>str_repeat('a', 32).'.jpg']);
+$recipient = make_account(['role'=>'student','name'=>'Empfängerin Kontakt']);
+$request = fixture('contact_requests', ['id'=>$recipient,'from_account_id'=>$sender,'to_account_id'=>$recipient,
+                                        'state'=>'pending','message'=>'Hallo','created_at'=>now()]);
+is_same($recipient, $request, 'the request’s id is the recipient’s own account id');
+sign_in_as($recipient);
+$block = $requestsBlock(render_view('messages', ['contacts'=>1]));
+ok(str_contains($block, 'Absender Kontakt'), 'the request is on the page');
+ok(str_contains($block, '<span class="avatar">AK</span>'), 'with the sender’s initials');
+is_same([], $askedFor($block), 'and no picture is asked for, by the request’s number or any other');
+run('DELETE FROM contact_requests WHERE id=?', [$request]);
+sign_out();
+
+case_('A contact request from the trainer shows her picture, asked for by her account, not the request');
+/* Families may see staff pictures. Staff do not normally send requests - they
+   may write anyway - but a row like this is what the page is given, and here the
+   request's id is another family's child, who has a photo of their own. */
+$staffSender = make_account(['role'=>'trainer','name'=>'Trainerin Anfrage','avatar_name'=>str_repeat('c', 32).'.jpg']);
+$otherChild  = make_account(['role'=>'student','name'=>'Fremdes Kind','avatar_name'=>str_repeat('d', 32).'.jpg']);
+$recipient   = make_account(['role'=>'student','name'=>'Empfänger Trainerin']);
+$request = fixture('contact_requests', ['id'=>$otherChild,'from_account_id'=>$staffSender,'to_account_id'=>$recipient,
+                                        'state'=>'pending','message'=>'','created_at'=>now()]);
+is_same($otherChild, $request, 'the request’s id is the other child’s account id');
+sign_in_as($recipient);
+$block = $requestsBlock(render_view('messages', ['contacts'=>1]));
+ok(str_contains($block, 'Trainerin Anfrage'), 'the request is on the page');
+ok(str_contains($block, e(url('download', ['what'=>'avatar','kind'=>'account','id'=>$staffSender,
+                                           'v'=>upload_version(str_repeat('c', 32).'.jpg')]))),
+   'with the trainer’s picture, asked for by her account id');
+is_same([(string)$staffSender], $askedFor($block), 'and by no other id - not the request’s, which is the other child’s');
+run('DELETE FROM contact_requests WHERE id=?', [$request]);
+sign_out();

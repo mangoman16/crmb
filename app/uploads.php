@@ -201,13 +201,22 @@ function prune_uploads(int $graceSeconds = 3600): int {
 }
 
 /**
+ * How a download is cached unless its caller knows better: not at all.
+ *
+ * An invoice, a payment proof or a message attachment is one family's
+ * business, and a phone shared in the family keeps what its browser keeps.
+ */
+const DOWNLOAD_CACHE_CONTROL = 'private, no-store';
+
+/**
  * Send a stored file to the browser, having decided the caller may have it.
  *
  * Content-Disposition is attachment for everything except images, and the type
  * is the one recorded at upload rather than guessed again, so a file cannot be
  * served as something it is not.
  */
-function send_upload(string $kind, string $storedName, string $mime, string $downloadName = ''): never {
+function send_upload(string $kind, string $storedName, string $mime, string $downloadName = '',
+                     string $cacheControl = DOWNLOAD_CACHE_CONTROL): never {
     $path = upload_dir($kind) . '/' . $storedName;
     if (!preg_match('/^[a-f0-9]{32}\.[a-z0-9]{2,5}$/D', $storedName) || !is_file($path)) {
         http_response_code(404);
@@ -219,7 +228,7 @@ function send_upload(string $kind, string $storedName, string $mime, string $dow
     // request is holding should not be what decides whether a file can be
     // downloaded at all.
     send_download_headers($mime, $downloadName !== '' ? $downloadName : $storedName,
-                          !str_starts_with($mime, 'image/'), (int)filesize($path));
+                          !str_starts_with($mime, 'image/'), (int)filesize($path), $cacheControl);
     readfile($path);
     exit;
 }
@@ -232,7 +241,8 @@ function send_bytes(string $body, string $mime, string $name, bool $asAttachment
 }
 
 /** The headers both of those need, written once so they cannot drift apart. */
-function send_download_headers(string $mime, string $name, bool $asAttachment, int $length): void {
+function send_download_headers(string $mime, string $name, bool $asAttachment, int $length,
+                               string $cacheControl = DOWNLOAD_CACHE_CONTROL): void {
     // The name goes into a header, so anything that could end the header or
     // start a second one is removed rather than escaped.
     $safe = preg_replace('/[^\w .()\-]+/u', '_', $name) ?: 'download';
@@ -240,7 +250,86 @@ function send_download_headers(string $mime, string $name, bool $asAttachment, i
     header('Content-Disposition: ' . ($asAttachment ? 'attachment' : 'inline') . '; filename="' . $safe . '"');
     header('Content-Length: ' . $length);
     header('X-Content-Type-Options: nosniff');
-    header('Cache-Control: private, no-store');
+    send_cache_control($cacheControl);
+}
+
+/**
+ * How long the club's own assets may be kept: a year.
+ *
+ * For the portal's icon and the like - the club's, not a family's - served at
+ * an address that changes when the file does, so a year risks nothing stale.
+ */
+const CLUB_ASSET_MAX_AGE = 31536000;
+
+/**
+ * Replace the no-store every response starts with.
+ *
+ * boot_http() sends no-store, and the session sends its own Cache-Control with
+ * Expires and Pragma beside it; header() replaces the first two but not the
+ * others. A reply that may be kept should not carry headers saying the
+ * opposite, so they go - and only then: for no-store or no-cache they agree.
+ */
+function send_cache_control(string $value): void {
+    header('Cache-Control: ' . $value);
+    if (!str_contains($value, 'max-age=')) return;
+    header_remove('Expires');
+    header_remove('Pragma');
+}
+
+/**
+ * The part of a stored file's address that changes when the file does.
+ *
+ * store_upload() gives every file a new random name, so the name already is a
+ * version and needs no setting of its own. Twelve characters are plenty to
+ * tell uploads apart and give nothing away that the address needs to hide.
+ */
+function upload_version(string $storedName): string { return substr($storedName, 0, 12); }
+
+/** Whether a requested address names the file stored now, not one it replaced. */
+function upload_version_current(string $storedName, mixed $requestedVersion): bool {
+    return $storedName !== '' && is_string($requestedVersion) && $requestedVersion === upload_version($storedName);
+}
+
+/**
+ * How long a browser may keep the profile picture it is being sent.
+ *
+ * Profile pictures sit in the top bar of every page, and without this each
+ * page change fetched the same picture again. At the address of the picture in
+ * use it is kept: a new picture gets a new address and a removed one falls back
+ * to initials, so nothing stale is shown from the cache. An old address is
+ * never kept, so it cannot be remembered as the new picture.
+ *
+ * Always private - a child's photograph is never for a shared cache. Seven
+ * days rather than a year, and not immutable: after signing out, the picture
+ * stays in that browser's own cache (logout asks the browser to clear it, but
+ * not every browser does), and on a borrowed phone that copy should run out on
+ * its own within a week. A week is still far longer than a visit, which is all
+ * it takes to stop the reload on every page. The route still asks who is
+ * signed in, and whether they may see this picture, before it reads a byte.
+ */
+function avatar_cache_control(string $storedName, mixed $requestedVersion): string {
+    return upload_version_current($storedName, $requestedVersion)
+        ? 'private, max-age=604800'
+        : DOWNLOAD_CACHE_CONTROL;
+}
+
+/**
+ * The stored picture the signed-in person asked for, having checked they may
+ * see it: '' when there is none, NotFound when there is nobody they may see.
+ *
+ * A child's picture goes through student(), which is how every page finds a
+ * child, so a family reaches their own children's and staff reach all. An
+ * account's goes through may_see_account_picture(), the rule avatar() draws by.
+ * Somebody who is not there and somebody who may not be seen are the same 404,
+ * so the address cannot be used to find out which ids exist.
+ */
+function avatar_for_download(string $kind, int $id): string {
+    $viewer = require_user();
+    if ($kind === 'student') return (string)student($id)['avatar_name'];
+    $account = one('SELECT id, role, avatar_name FROM accounts WHERE id=?', [$id]);
+    if (!$account || !may_see_account_picture($viewer, $account))
+        throw new NotFound(t('Dieses Bild gibt es nicht.', 'There is no such picture.'));
+    return (string)$account['avatar_name'];
 }
 
 /**
@@ -260,16 +349,18 @@ function serve_download(): void {
         send_bytes(invoice_pdf($invoice), 'application/pdf', invoice_filename($invoice));
     }
     if ($what === 'avatar') {
-        // A picture is shown to everybody who can already see the person's name,
-        // which on this portal is everybody signed in: a family sees the
-        // trainer, the trainer sees the children, and a child sees their own.
-        require_user();
-        $kind = ($_GET['kind'] ?? '') === 'student' ? 'students' : 'accounts';
-        $name = (string)(scalar('SELECT avatar_name FROM ' . $kind . ' WHERE id=?', [$id]) ?: '');
+        // Who may have which picture is avatar_for_download()'s to decide;
+        // anybody else gets its 404.
+        $name = avatar_for_download(($_GET['kind'] ?? '') === 'student' ? 'student' : 'account', $id);
         // The type comes back from the same table the extension was chosen
         // from, so a file is never announced as something it is not.
         $mime = array_search(pathinfo($name, PATHINFO_EXTENSION), upload_types('avatar'), true);
-        if ($name !== '' && $mime !== false) send_upload('avatar', $name, (string)$mime);
+        // An address with an older version is still answered, uncached, rather
+        // than refused: a page drawn a moment before the picture was replaced -
+        // or a lazy picture fetched when scrolled to much later - would
+        // otherwise show a broken image instead of the new picture.
+        if ($name !== '' && $mime !== false)
+            send_upload('avatar', $name, (string)$mime, '', avatar_cache_control($name, $_GET['v'] ?? null));
     }
     if ($what === 'shot') {
         require_admin();

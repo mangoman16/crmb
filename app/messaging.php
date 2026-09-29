@@ -105,7 +105,9 @@ function may_message(array $from, int $toId): bool {
 
 /** Requests waiting for this account to answer. */
 function contact_requests_for(int $accountId): array {
-    return rows("SELECT r.*, a.name AS from_name, a.avatar_name FROM contact_requests r"
+    // The sender's role travels with the request because whether their picture
+    // may be shown depends on it (may_see_account_picture()).
+    return rows("SELECT r.*, a.name AS from_name, a.role AS from_role, a.avatar_name FROM contact_requests r"
         .' JOIN accounts a ON a.id=r.from_account_id'
         ." WHERE r.to_account_id=? AND r.state='pending' ORDER BY r.id DESC", [$accountId]);
 }

@@ -28,6 +28,59 @@ does_not_throw(fn() => student($kidB), 'trainer sees B');
 does_not_throw(fn() => student($orphan), 'trainer sees the unlinked one');
 is_same(3, count(filtered_students([])), 'the unscoped list has all three');
 
+case_('A child’s or a family’s picture reaches only who may see them');
+/* serve_download() is the route itself. A refusal throws before a byte is read,
+   which the front controller turns into a 404; what is allowed is asked of
+   avatar_for_download(), the lookup the route serves from, because serving
+   would end the test run with exit. */
+$picture = fn(string $fill) => str_repeat($fill, 32).'.jpg';
+run('UPDATE students SET avatar_name=? WHERE id=?', [$picture('a'), $kidA]);
+run('UPDATE students SET avatar_name=? WHERE id=?', [$picture('b'), $kidB]);
+run('UPDATE accounts SET avatar_name=? WHERE id=?', [$picture('c'), $parentA]);
+run('UPDATE accounts SET avatar_name=? WHERE id=?', [$picture('d'), $parentB]);
+run('UPDATE accounts SET avatar_name=? WHERE id=?', [$picture('e'), $trainerId]);
+/* Serving a file ends the request with exit, and exit here would end the whole
+   run quietly with status 0. So while the route is being asked, an exit is
+   caught on the way out and reported as the failure it is. */
+$routeCall = new stdClass; $routeCall->asking = '';
+register_shutdown_function(function () use ($routeCall) {
+    if ($routeCall->asking === '') return;
+    fwrite(STDERR, "\nFAIL security: the download route served ".$routeCall->asking." instead of refusing, and ended the run.\n");
+    exit(1);
+});
+$download = function (string $kind, int $id) use ($routeCall): void {
+    $_GET = ['page'=>'download', 'what'=>'avatar', 'kind'=>$kind, 'id'=>(string)$id];
+    $routeCall->asking = $kind.' '.$id;
+    try { serve_download(); } finally { $_GET = []; $routeCall->asking = ''; }
+};
+$refused = function (callable $fn, string $what) {
+    try { $fn(); ok(false, $what); } catch (Throwable $e) { ok($e instanceof NotFound, $what.' (a 404, not '.get_class($e).')'); }
+};
+sign_in_as($parentA);
+$refused(fn() => $download('student', $kidB), 'family A asking for family B’s child’s photo gets nothing');
+$refused(fn() => $download('student', $orphan), 'nor a child linked to no account');
+$refused(fn() => $download('account', $parentB), 'nor another family’s own photo');
+$refused(fn() => $download('account', 999999), 'and an id that does not exist is the same answer');
+is_same($picture('a'), avatar_for_download('student', $kidA), 'their own child’s photo is served');
+is_same($picture('c'), avatar_for_download('account', $parentA), 'and their own');
+is_same($picture('e'), avatar_for_download('account', $trainerId), 'and the trainer’s, whom they write to');
+does_not_throw(fn() => $download('account', $adminId), 'the route lets them ask for an administrator’s, who has no picture');
+sign_in_as($trainerId);
+is_same($picture('b'), avatar_for_download('student', $kidB), 'the trainer sees every child’s');
+is_same($picture('d'), avatar_for_download('account', $parentB), 'and every family’s');
+sign_in_as($adminId);
+is_same($picture('b'), avatar_for_download('student', $kidB), 'and so does an administrator');
+ok(!may_see_account_picture(['id'=>$parentA, 'role'=>'student'], ['id'=>$trainerId, 'avatar_name'=>$picture('e')]),
+   'an account row that does not say it is staff is not taken for staff');
+
+case_('Signing out asks the browser to forget the pictures it kept');
+/* Headers cannot be read back on the command line, so this pins the line in the
+   logout action; TESTING.md has the check in a real browser. */
+$actions = (string)file_get_contents(APP_ROOT.'/app/actions.php');
+// The whole logout case, up to the next one, however long its comment grows.
+$logout = (string)strstr((string)strstr($actions, "case 'logout':"), "case 'forgot':", true);
+ok(str_contains($logout, "header('Clear-Site-Data: \"cache\"')"), 'Clear-Site-Data: "cache" goes out with the logout');
+
 case_('Role helpers agree with each other');
 sign_in_as($adminId);
 ok(is_staff() && is_admin(), 'an administrator is staff and admin');

@@ -57,7 +57,10 @@ if($showContacts): $contacts=contacts_for($user); $requests=contact_requests_for
     <h3><?=e(t('Möchte dir schreiben','Would like to write to you'))?></h3>
     <?php foreach($requests as $r): ?>
     <div class="record-row">
-        <div class="account-identity"><?=avatar($r+['name'=>$r['from_name']])?>
+        <?php /* The row is the request, so its id is the request's, not the sender's:
+                 the picture has to be asked for by the sender's account id, and
+                 whether it may be shown at all depends on the sender's role. */ ?>
+        <div class="account-identity"><?=avatar(['id'=>(int)$r['from_account_id'],'role'=>$r['from_role'],'name'=>$r['from_name'],'avatar_name'=>$r['avatar_name']])?>
             <div><strong><?=e($r['from_name'])?></strong><?php if($r['message']):?><p><?=e($r['message'])?></p><?php endif ?></div></div>
         <div class="row-actions">
             <?php start_form('contact_decide',['id'=>$r['id'],'decision'=>'accept'],'inline-form');submit_button(t('Zustimmen','Agree'),'secondary');?></form>

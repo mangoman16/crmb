@@ -197,7 +197,17 @@ function dispatch_action(string $action): array {
         if(password_needs_rehash($hash,PASSWORD_DEFAULT)) run('UPDATE accounts SET password_hash=? WHERE id=?',[password_hash(post('password'),PASSWORD_DEFAULT),$a['id']]);
         sign_in($a); return landing_after_sign_in($a);
     case 'logout':
-        $_SESSION=[]; session_regenerate_id(true); current_user(true); return ['login',[]];
+        $_SESSION=[]; session_regenerate_id(true); current_user(true);
+        // Profile pictures are kept by the browser for up to a week
+        // (avatar_cache_control()), so ask it to forget them along with
+        // everything else it cached here. Best effort only: Safari has not
+        // always honoured Clear-Site-Data, and no browser has to. What
+        // actually bounds a copy left on a borrowed phone is the week.
+        // headers_sent() is only ever true where output began before the
+        // action ran - the test runner, which prints as it goes; a real
+        // request prints nothing before its redirect.
+        if(!headers_sent()) header('Clear-Site-Data: "cache"');
+        return ['login',[]];
     case 'forgot':
         $a=one("SELECT * FROM accounts WHERE email=? AND state='active' AND verified_at IS NOT NULL",[attempted_email()]);
         if($a && account_mail_ready()) send_account_token($a,'reset');

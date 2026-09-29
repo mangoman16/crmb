@@ -44,19 +44,10 @@ function portal_icon(): string {
     return is_file(upload_dir('icon') . '/' . $name) ? $name : '';
 }
 
-/**
- * The part of the icon's address that changes when the icon does.
- *
- * The stored name is random per upload, so it already is a version and needs
- * no setting of its own. Twelve characters are plenty to tell uploads apart and
- * give nothing away that the address needs to hide.
- */
-function portal_icon_version(string $storedName): string { return substr($storedName, 0, 12); }
-
 /** Where the icon is fetched from, or '' when the built-in one applies. */
 function portal_icon_url(): string {
     $name = portal_icon();
-    return $name === '' ? '' : url('icon', ['v' => portal_icon_version($name)]);
+    return $name === '' ? '' : url('icon', ['v' => upload_version($name)]);
 }
 
 /**
@@ -103,9 +94,8 @@ function check_portal_icon(string $storedName): void {
  * again every time.
  */
 function portal_icon_cache_control(string $storedName, mixed $requestedVersion): string {
-    $current = $storedName !== '' && is_string($requestedVersion)
-        && $requestedVersion === portal_icon_version($storedName);
-    return $current ? shared_cache_control(31536000, true) : 'no-cache';
+    return upload_version_current($storedName, $requestedVersion)
+        ? shared_cache_control(CLUB_ASSET_MAX_AGE, true) : 'no-cache';
 }
 
 /**
@@ -123,26 +113,12 @@ function shared_cache_control(int $seconds, bool $immutable = false, ?array $sen
     return ($setsCookie ? 'private' : 'public') . ', max-age=' . $seconds . ($immutable ? ', immutable' : '');
 }
 
-/**
- * Replace the no-store every response starts with.
- *
- * The session sends Expires and Pragma alongside it, and a reply that may be
- * kept should not carry two headers saying the opposite.
- */
-function send_cache_control(string $value): void {
-    header('Cache-Control: ' . $value);
-    if ($value === 'no-cache') return;
-    header_remove('Expires');
-    header_remove('Pragma');
-}
-
 /** Answer ?page=icon with the icon in use, or the built-in one in its place. */
 function serve_portal_icon(): never {
     $name = portal_icon();
     $path = $name !== '' ? upload_dir('icon') . '/' . $name : ROOT . '/public/assets/icon-512.png';
-    send_download_headers('image/png', 'icon.png', false, (int)filesize($path));
-    // After send_download_headers(), whose no-store this replaces.
-    send_cache_control(portal_icon_cache_control($name, $_GET['v'] ?? null));
+    send_download_headers('image/png', 'icon.png', false, (int)filesize($path),
+                          portal_icon_cache_control($name, $_GET['v'] ?? null));
     readfile($path);
     exit;
 }

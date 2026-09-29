@@ -38,9 +38,13 @@ require __DIR__ . '/attendance.php';
 require __DIR__ . '/billing.php';
 require __DIR__ . '/duplicate.php';
 require __DIR__ . '/shell.php';
+// avatar() in shell.php above calls upload_version() from here, at request time
+// only - never while loading - so this order is safe as it stands. Do not
+// "tidy" it by moving either file without checking that call.
 require __DIR__ . '/uploads.php';
-// Needs upload_dir() and send_download_headers() from the line above. Nothing
-// loaded earlier calls it: only the router and the layout do, per request.
+// Needs uploads.php above: upload_dir(), upload_version(), the download and
+// cache headers. Nothing loaded earlier calls it: only the router and the
+// layout do, per request.
 require __DIR__ . '/portal_icon.php';
 require __DIR__ . '/pdf.php';
 require __DIR__ . '/invoices.php';

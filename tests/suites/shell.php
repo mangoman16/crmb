@@ -62,10 +62,36 @@ is_same('L', initials('Lena'), 'one name');
 is_same('LH', initials('Lena Maria Hofer'), 'the first and the last, not all three');
 is_same('?', initials('   '), 'and a blank name still renders something');
 ok(str_contains(avatar(['name'=>'Lena Hofer', 'avatar_name'=>'']), 'LH'), 'no picture, so the initials');
-$withPhoto = avatar(['id'=>3, 'name'=>'Lena Hofer', 'avatar_name'=>'abc.jpg'], '', 'student');
+// A name of the shape store_upload() gives, so the version is what it would be.
+$stored = str_repeat('c0ffee', 5).'ab.jpg';
+$withPhoto = avatar(['id'=>3, 'name'=>'Lena Hofer', 'avatar_name'=>$stored], '', 'student');
 ok(str_contains($withPhoto, '<img'), 'a picture when there is one');
 ok(str_contains($withPhoto, 'what=avatar'), 'served through the download route, not by URL');
-ok(!str_contains($withPhoto, 'abc.jpg'), 'and the stored name is never in the page');
+ok(!str_contains($withPhoto, $stored), 'and the stored name is never in the page');
+ok(str_contains($withPhoto, 'v=c0ffeec0ffee'),
+   'the address names the picture, so the browser may keep it until a new one is uploaded');
+$replaced = avatar(['id'=>3, 'name'=>'Lena Hofer', 'avatar_name'=>str_repeat('d', 32).'.jpg'], '', 'student');
+ok(str_contains($replaced, 'v=dddddddddddd'), 'a new picture of the same child gets a new address, so the old one is never shown');
+ok(str_contains($withPhoto, 'loading="lazy"'), 'a picture in a list of people waits until it is scrolled to');
+sign_in_as($family);
+$topBar = avatar(['id'=>$family, 'role'=>'student', 'name'=>'Familie Hofer', 'avatar_name'=>$stored], 'tiny');
+ok(str_contains($topBar, '<img'), 'her own picture in the top bar');
+ok(!str_contains($topBar, 'loading="lazy"'), 'and, in view on every page, fetched at once');
+
+case_('An account’s picture is drawn only for somebody who may see it');
+/* The download route answers 404 to anybody else; drawing the <img> anyway
+   would put a broken picture on the page instead of the initials. */
+$otherFamily = ['id'=>$family + 1000, 'role'=>'student', 'name'=>'Familie Gruber', 'avatar_name'=>$stored];
+$trainerRow = ['id'=>$trainer, 'role'=>'trainer', 'name'=>'Trainerin Beispiel', 'avatar_name'=>$stored];
+sign_in_as($family);
+is_same('<span class="avatar">FG</span>', avatar($otherFamily), 'a family sees another family’s initials, not their photograph');
+ok(str_contains(avatar($trainerRow), '<img'), 'and the trainer’s picture');
+ok(!str_contains(avatar(['role'=>null] + $trainerRow), '<img'), 'but not from a row that does not say it is the trainer’s');
+sign_in_as($trainer);
+ok(str_contains(avatar($otherFamily), '<img'), 'the trainer sees every family’s');
+sign_out();
+ok(!str_contains(avatar($trainerRow), '<img'), 'and nobody signed out sees any');
+sign_in_as($family);
 
 // ---------------------------------------------------------------------------
 case_('Who may look through whose eyes');

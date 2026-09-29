@@ -90,6 +90,7 @@ release and emptied again for the next.
 - A problem report says how she got there; errors report themselves: U.13–U.19, U.40–U.44
 - The portal's own icon: U.2–U.8 · the sign-in line: U.1 · rows that line up: U.9–U.12
 - The privacy notice in English is optional: U.35, U.56
+- A profile picture is kept by the browser instead of fetched on every page, and another family's is never shown: U.58–U.62
 
 ---
 
@@ -1389,3 +1390,28 @@ Say what you ran, not what you hope is true.
 Copy the numbers of everything that failed into the release note, with one line
 each: what you did, what you saw, what you expected. A number and a sentence is
 enough for somebody to reproduce it; "the payments page is broken" is not.
+**A profile picture is kept by the browser, and shown only to who may see it**
+
+- [ ] **U.58** With a profile picture of your own, move between four or five
+  pages on the phone: the picture in the top bar is there the moment each page
+  appears, not blank for a moment and then filled in.
+- [ ] **U.59** **Mein Konto**: upload a different picture. The top bar shows the
+  new one on the very next page — never the old one — and so does a child's
+  page after changing the child's picture. „Bild entfernen" puts the initials
+  back on the next page.
+- [ ] **U.60** **(release)** In a desktop browser's developer tools
+  (**Netzwerk** / **Network**), open a page: the picture's request answers with
+  `Cache-Control: private, max-age=604800` and no `Pragma` or `Expires`. Go to
+  another page: it comes „from memory cache" / „from disk cache". An invoice PDF
+  or a message attachment still answers `private, no-store`. Sign out: the
+  logout's response carries `Clear-Site-Data: "cache"`. (Safari may ignore that
+  header; the picture's copy then runs out on its own within a week.)
+- [ ] **U.61** **(release)** On the copy, signed in as family A, open
+  `?page=download&what=avatar&kind=student&id=` with the id of a child of
+  another family who has a picture: „Nicht gefunden", no picture. The same with
+  `kind=account` and another family's account id. Your own child's, your own
+  and the trainer's still show.
+- [ ] **U.62** As a family, **Nachrichten → Neue Nachricht**: other families in
+  the list show their initials, never their photograph; the trainer shows her
+  picture. As the trainer, every family shows its picture.
+
