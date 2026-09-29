@@ -13,13 +13,15 @@ declare(strict_types=1);
  * keeping only one of them. "Nobody's next invoice changes" was a claim with
  * nothing behind it.
  *
- * Two pauses. Before 015, a portal as it stood with prices on the tariff and
+ * Three pauses. Before 015, a portal as it stood with prices on the tariff and
  * addresses on the contacts. Before 019, a portal where one login holds several
  * brothers and sisters and a child's address has drifted from its login's. 019
  * is then applied three ways: straight through; stopped after each of its
  * statements in turn and started again from the first, which is what the next
  * page view does after an interrupted update, each on a fresh copy; and once
- * more after it has finished.
+ * more after it has finished. Before 020, logins with news by email both off
+ * and on, which 020 and 021 must leave as they are; 020 is stopped and started
+ * again the same way, and 021 run twice.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -303,6 +305,42 @@ function table_columns(PDO $pdo, string $table): array {
             . " AND table_name = '" . $table . "' ORDER BY ordinal_position")->fetchAll(), 'name');
 }
 
+/** Each login's news-by-email choice, and its status once 020 has given it one. */
+function login_choices(PDO $pdo): array {
+    $presence = in_array('presence', table_columns($pdo, 'accounts'), true) ? ', presence' : '';
+    return $pdo->query('SELECT id, email, newsletter' . $presence . ' FROM accounts ORDER BY id')->fetchAll();
+}
+
+/** A login from before 020 that had chosen news by email. */
+function add_subscribed_login(PDO $pdo): void {
+    insert_row($pdo, 'accounts', ['name' => 'Familie Pichler', 'email' => 'pichler@beispiel.test', 'role' => 'student',
+        'state' => 'active', 'verified_at' => '2025-09-01 08:00:00', 'newsletter' => 1, 'created_at' => '2025-09-01 08:00:00']);
+}
+
+/** A login written the way the portal writes one, naming neither column. */
+function new_login(PDO $pdo, string $email): array {
+    $id = insert_row($pdo, 'accounts', ['name' => 'Neu', 'email' => $email, 'role' => 'student', 'created_at' => gmdate('Y-m-d H:i:s')]);
+    $row = $pdo->query('SELECT newsletter, presence FROM accounts WHERE id = ' . $id)->fetch();
+    $pdo->exec('DELETE FROM accounts WHERE id = ' . $id);
+    return $row;
+}
+
+/**
+ * The indexes 020 gives online_periods, as MySQL or MariaDB describes them.
+ *
+ * null on SQLite, whose translation drops an index written inside CREATE TABLE
+ * for every table alike; that they exist is a fact about the real engine only.
+ */
+function online_period_indexes(PDO $pdo): ?array {
+    global $mysql;
+    if ($mysql === null) return null;
+    $indexes = [];
+    foreach ($pdo->query("SELECT index_name AS name, column_name AS col FROM information_schema.statistics"
+        . " WHERE table_schema = DATABASE() AND table_name = 'online_periods' ORDER BY index_name, seq_in_index")->fetchAll() as $row)
+        $indexes[$row['name']][] = $row['col'];
+    return $indexes;
+}
+
 $nineteen = migration_path('019');
 $statements = migration_statements($nineteen);
 
@@ -316,7 +354,21 @@ $index = one_account_index($pdo);
 // says so when it runs twice. Nothing may change.
 run_statements($pdo, $nineteen, array_slice($statements, 0, -1));
 $again = portal_state($pdo);
+
+// --- 020 and 021 on logins that already exist ---------------------------------
+// Neither moves data, and that is exactly what is held to here: every login
+// written by the previous version keeps its news-by-email choice when the
+// default changes under it - one that had it off above all, since a stray UPDATE
+// would sign that family up behind their back - and is given 'auto' rather than
+// a NULL for its status. One with news on is added so that "unchanged" is not
+// only ever checked against zeros.
+add_subscribed_login($pdo);
+$twentyBefore = ['accounts' => login_choices($pdo), 'counts' => portal_state($pdo)['counts']];
 apply_migrations($pdo, '020', '999');
+$twentyAfter = ['accounts' => login_choices($pdo), 'counts' => portal_state($pdo)['counts'],
+                'online_periods' => table_columns($pdo, 'online_periods'),
+                'online_period_rows' => (int)$pdo->query('SELECT COUNT(*) FROM online_periods')->fetchColumn(),
+                'indexes' => online_period_indexes($pdo), 'new_login' => new_login($pdo, 'neu@beispiel.test')];
 
 $fetch = fn(string $sql) => $pdo->query($sql)->fetchAll();
 $result = [
@@ -338,6 +390,25 @@ for ($stopped = 1; $stopped < count($statements); $stopped++) {
     run_statements($pdo, $nineteen, array_slice($statements, 0, $stopped));
     run_statements($pdo, $nineteen, $statements);
     $result['nineteen']['retried'][$stopped] = portal_state($pdo) + ['index' => one_account_index($pdo)];
+}
+
+// --- 020 interrupted after each statement, then started again from the first --
+// And 021 run a second time, as a retry after it finished but before the ledger
+// recorded it would.
+$twenty = migration_path('020');
+$twentyOne = migration_path('021');
+$twentyStatements = migration_statements($twenty);
+$result['twenty'] = ['statements' => count($twentyStatements), 'before' => $twentyBefore, 'after' => $twentyAfter, 'retried' => []];
+for ($stopped = 1; $stopped < count($twentyStatements); $stopped++) {
+    [$pdo] = build_portal_before_019();
+    run_statements($pdo, $nineteen, $statements);
+    add_subscribed_login($pdo);
+    run_statements($pdo, $twenty, array_slice($twentyStatements, 0, $stopped));
+    run_statements($pdo, $twenty, $twentyStatements);
+    run_statements($pdo, $twentyOne, migration_statements($twentyOne));
+    run_statements($pdo, $twentyOne, migration_statements($twentyOne));
+    $result['twenty']['retried'][$stopped] = ['accounts' => login_choices($pdo),
+        'online_periods' => table_columns($pdo, 'online_periods'), 'new_login' => new_login($pdo, 'neu@beispiel.test')];
 }
 
 if ($mysql === null) @unlink($sqliteFile);

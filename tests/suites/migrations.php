@@ -32,7 +32,7 @@ if (!function_exists('exec')) {
     // Shared hosting often lists exec in disable_functions. The run says what it
     // could not do rather than stopping on an undefined function.
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved by migrations 015, 016 and 019 (this PHP disables exec, which the run with data in between needs)']));
+        ['the data moved or kept by migrations 015, 016, 019, 020 and 021 (this PHP disables exec, which the run with data in between needs)']));
     return;
 }
 $out = [];
@@ -50,7 +50,7 @@ if (!is_array($after)) {
 }
 if ($after['engine'] === 'sqlite' && test_driver() !== 'sqlite')
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved by migrations 015, 016 and 019 (checked on sqlite; set CRM_MIGRATION_CONFIG'
+        ['the data moved or kept by migrations 015, 016, 019, 020 and 021 (checked on sqlite; set CRM_MIGRATION_CONFIG'
          . ' to the config of an empty *_test database to check it on this engine)']));
 
 $ids = $after['ids'];
@@ -237,6 +237,95 @@ foreach ($n['retried'] as $stopped => $state) {
 
 case_('019 run again after it finished changes nothing');
 is_same($n['after'], $n['again'], 'the same children, revisions, times, lines and counts');
+
+// ---------------------------------------------------------------------------
+// 020 and 021: a status and thirty days of online history, and news by email on
+// for a new login. Neither moves data; what is held to here is that neither
+// changes any, on logins the previous version wrote.
+$w = $after['twenty'];
+$newsOf = fn(array $rows): array => array_combine(array_map('intval', array_column($rows, 'id')),
+                                                  array_map('intval', array_column($rows, 'newsletter')));
+$hadIt = $newsOf($w['before']['accounts']);
+$hasIt = $newsOf($w['after']['accounts']);
+
+case_('021 leaves every existing login’s news-by-email choice as it was');
+ok(in_array(0, $hadIt, true) && in_array(1, $hadIt, true),
+   'there were logins with it off and with it on before the update, for it to change');
+is_same($hadIt, $hasIt, 'each keeps the choice it had');
+is_same([], array_keys(array_filter($hasIt, fn($now, $id) => $now === 1 && $hadIt[$id] === 0, ARRAY_FILTER_USE_BOTH)),
+        'and not one login that had it off is signed up by the update');
+
+case_('A login written after 021 without naming it has news by email on');
+is_same(1, (int)$w['after']['new_login']['newsletter'], 'news by email is on');
+
+case_('020 gives every login a status that shows what it showed before');
+is_same(array_fill(0, count($w['after']['accounts']), 'auto'), array_column($w['after']['accounts'], 'presence'),
+        'every existing login is auto, and none is left NULL');
+is_same('auto', $w['after']['new_login']['presence'], 'and so is a new one');
+
+case_('020 adds the online history empty, and removes nothing');
+is_same(['id', 'account_id', 'started_at', 'last_seen_at', 'hidden'], $w['after']['online_periods'],
+        'online_periods has the columns ADR 0015 names');
+is_same(0, $w['after']['online_period_rows'], 'with no history made up for anybody');
+is_same($w['before']['counts'], $w['after']['counts'], 'every guarded table has as many rows as before');
+ok(!in_array('online_periods', schema_guarded_tables(), true),
+   'online_periods is left off the guard: the nightly prune empties it by design, and an update must not stay closed over that');
+if ($w['after']['indexes'] !== null) {
+    $indexes = $w['after']['indexes'];
+    ksort($indexes);
+    is_same(['PRIMARY' => ['id'], 'online_period_age' => ['last_seen_at'], 'online_period_of_account' => ['account_id', 'last_seen_at']],
+            $indexes, 'with an index for one account’s periods and one for the prune, and no other');
+}
+
+case_('020 stopped partway and started again, and 021 run twice, end as one run does');
+is_same($w['statements'] - 1, count($w['retried']), 'it was stopped after each statement but the last');
+foreach ($w['retried'] as $stopped => $state) {
+    $when = 'stopped after statement ' . $stopped . ' of ' . $w['statements'] . ' and run from the first: ';
+    is_same($w['after']['accounts'], $state['accounts'], $when . 'every login has the choice and status of one run');
+    is_same($w['after']['online_periods'], $state['online_periods'], $when . 'the same history table');
+    is_same($w['after']['new_login'], $state['new_login'], $when . 'and a new login the same defaults');
+}
+
+case_('On this run’s own engine, a new login has news on and status auto, and its history goes with it');
+run("INSERT INTO accounts (name, email, role, created_at) VALUES ('Neu', 'neu@example.test', 'student', ?)", [now()]);
+$fresh = one("SELECT id, newsletter, presence FROM accounts WHERE email = 'neu@example.test'");
+is_same([1, 'auto'], [(int)$fresh['newsletter'], $fresh['presence']], 'news by email on, status auto');
+run('INSERT INTO online_periods (account_id, started_at, last_seen_at, hidden) VALUES (?, ?, ?, 0)', [$fresh['id'], now(), now()]);
+run('DELETE FROM accounts WHERE id = ?', [$fresh['id']]);
+is_same(0, (int)scalar('SELECT COUNT(*) FROM online_periods WHERE account_id = ?', [$fresh['id']]),
+        'deleting a login deletes when it was online, rather than leaving periods nobody can be named for');
+
+if (test_driver() === 'sqlite') {
+    case_('The SQLite translation of SET DEFAULT changes the default and no stored value');
+    // SQLite has no such statement; TestSqlitePdo edits the table's definition.
+    // A row older than its column stores nothing for it and is read through the
+    // default, so this is the case where "changes nothing stored" can go wrong.
+    $file = test_run_dir() . '/set-default.sqlite';
+    $open = fn() => new TestSqlitePdo('sqlite:' . $file, null, null,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
+    $main = $open();
+    $main->exec('PRAGMA journal_mode=WAL');
+    $main->exec("CREATE TABLE t (id INTEGER PRIMARY KEY, kept INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT 'a,b')");
+    $main->exec('INSERT INTO t (id) VALUES (1)');
+    $main->exec('ALTER TABLE t ADD COLUMN late INTEGER NOT NULL DEFAULT 0');
+    $other = $open();
+    $other->query('SELECT * FROM t')->fetchAll();   // holds the old definition, as the counter connection would
+    is_same(0, $main->exec('ALTER TABLE t ALTER COLUMN late SET DEFAULT 1'), 'exec() takes it');
+    $main->exec('ALTER TABLE `t` ALTER COLUMN `kept` SET DEFAULT 1;');
+    is_same([], $main->query("ALTER TABLE t ALTER COLUMN note SET DEFAULT 'x, y'")->fetchAll(),
+            'and so does query(), which is how the runner sends a migration statement');
+    is_same(['id' => 1, 'kept' => 0, 'note' => 'a,b', 'late' => 0], $main->query('SELECT * FROM t WHERE id = 1')->fetch(),
+            'a row written before keeps every value it had, including one it never stored');
+    $other->exec('INSERT INTO t (id) VALUES (2)');
+    is_same(['id' => 2, 'kept' => 1, 'note' => 'x, y', 'late' => 1], $main->query('SELECT * FROM t WHERE id = 2')->fetch(),
+            'a row written afterwards, on another connection, gets the new defaults');
+    is_same('ok', $main->query('PRAGMA integrity_check')->fetchColumn(), 'and the file is sound');
+    throws(fn() => $main->exec('ALTER TABLE t ALTER COLUMN kept SET DEFAULT (1 + 1)'),
+           'an expression is refused rather than guessed at', 'literal');
+    throws(fn() => $main->exec('ALTER TABLE t ALTER COLUMN id SET DEFAULT 5'),
+           'as is a column with no DEFAULT to change', 'no DEFAULT');
+    $main = $other = null;
+}
 
 case_('One login cannot hold a second child, whatever code tries it');
 // On the run's own database, so a run on MariaDB proves this on MariaDB.

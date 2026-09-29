@@ -76,10 +76,14 @@ final class TestSqlitePdo extends PDO {
     }
 
     public function exec(string $statement): int|false {
+        if ($this->setColumnDefault($statement)) return 0;
         return parent::exec($this->translate($statement));
     }
 
     public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false {
+        // The runner sends migration statements through query(); an empty result
+        // stands in for the one MySQL gives back for DDL.
+        if ($this->setColumnDefault($query)) $query = 'SELECT 1 WHERE 0';
         $query = $this->translate($query);
         return $fetchMode === null ? parent::query($query) : parent::query($query, $fetchMode, ...$fetchModeArgs);
     }
@@ -95,6 +99,54 @@ final class TestSqlitePdo extends PDO {
         // MySQL IF(cond, a, b) has no SQLite equivalent.
         if (preg_match('/\bIF\s*\(/i', $sql)) $sql = $this->inlineIf($sql);
         return $sql;
+    }
+
+    /**
+     * ALTER TABLE t ALTER COLUMN c SET DEFAULT v, which SQLite has no statement for.
+     *
+     * Returns false for any other statement. SQLite keeps a table's definition as
+     * the text of its CREATE TABLE, and the documented way to change a default
+     * without rebuilding the table is to edit that text with writable_schema on
+     * and raise the schema version, so every open connection - the counter
+     * connection included - reads the new definition before its next statement.
+     *
+     * The rows are rewritten first, and that is the line that looks unnecessary
+     * but is not. A row written before its column was added by ADD COLUMN stores
+     * no value for it at all: SQLite reads the column's default from the schema
+     * text whenever it reads that row. Changing the text alone would therefore
+     * switch every such row to the new value, where MySQL and MariaDB change
+     * nothing that is stored. Rewriting each row with its own value first stores
+     * what it had, so only rows written afterwards see the new default.
+     *
+     * Only a column that already has a DEFAULT, and only a literal: anything else
+     * is refused with a message rather than guessed at.
+     */
+    private function setColumnDefault(string $sql): bool {
+        if (!preg_match('/^\s*ALTER\s+TABLE\s+`?(\w+)`?\s+ALTER\s+(?:COLUMN\s+)?`?(\w+)`?\s+SET\s+DEFAULT\s+(.+?)\s*;?\s*$/is', $sql, $m))
+            return false;
+        [, $table, $column, $value] = $m;
+        $literal = '\'(?:[^\']|\'\')*\'|-?\d+(?:\.\d+)?|NULL';
+        if (!preg_match('/^(?:' . $literal . ')$/i', $value))
+            throw new RuntimeException("The SQLite translation only sets a literal default, not $value, on $table.$column");
+        $create = parent::query("SELECT sql FROM sqlite_master WHERE type='table' AND name=" . parent::quote($table))->fetchColumn();
+        if (!is_string($create)) throw new RuntimeException("No table $table to set a default on");
+        // The column's own definition runs from the comma or parenthesis before its
+        // name to the next comma; its DEFAULT is inside that and nowhere else.
+        $changed = preg_replace('/([(,]\s*[`"]?' . $column . '[`"]?\s[^,]*?\bDEFAULT\s+)(?:' . $literal . '|\([^()]*\))/i',
+                                '${1}' . strtr($value, ['\\' => '\\\\', '$' => '\\$']), $create, -1, $found);
+        if ($found !== 1)
+            throw new RuntimeException("The SQLite translation found no DEFAULT to change on $table.$column");
+        $version = (int)parent::query('PRAGMA schema_version')->fetchColumn();
+        parent::exec('UPDATE "' . $table . '" SET "' . $column . '" = "' . $column . '"');
+        parent::exec('PRAGMA writable_schema=ON');
+        try {
+            $write = parent::prepare("UPDATE sqlite_master SET sql=? WHERE type='table' AND name=?");
+            $write->execute([$changed, $table]);
+            parent::exec('PRAGMA schema_version=' . ($version + 1));
+        } finally {
+            parent::exec('PRAGMA writable_schema=OFF');
+        }
+        return true;
     }
 
     private function upsert(string $sql): string {
