@@ -52,9 +52,15 @@ function upload_limit(): int {
     return $php ? min($wanted, (int)min($php)) : $wanted;
 }
 
-/** That limit as a person would say it. */
-function upload_limit_label(): string {
-    $bytes = upload_limit();
+/**
+ * That limit as a person would say it.
+ *
+ * $cap is a kind's own smaller limit, such as PORTAL_LOGO_MAX_BYTES for the
+ * logo that every sign-in page loads: the label is then the smaller of the two,
+ * so a form never promises more than its check will accept.
+ */
+function upload_limit_label(?int $cap = null): string {
+    $bytes = $cap !== null ? min(upload_limit(), max(1, $cap)) : upload_limit();
     return $bytes >= 1024 * 1024
         ? number_format($bytes / 1048576, 1, locale() === 'de' ? ',' : '.', '') . ' MB'
         : (int)round($bytes / 1024) . ' kB';

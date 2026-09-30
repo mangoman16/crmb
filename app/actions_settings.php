@@ -104,8 +104,12 @@ function dispatch_settings_or_messages(string $action): array {
         // upload it again, the same as for any other setting saved here.
         require_admin(); $old=portal_icon(); $new='';
         if(!post('remove')) { $new=store_upload('icon','icon')['stored_name']; check_portal_icon($new); }
-        set_setting('portal_icon',$new);
-        audit($new!==''?'portal_icon.saved':'portal_icon.removed','settings');
+        transactional(function() use ($new) {
+            set_setting('portal_icon',$new);
+            audit($new!==''?'portal_icon.saved':'portal_icon.removed','settings');
+        });
+        // After the transaction, never inside it: a file cannot be rolled back,
+        // so it goes only once the setting no longer points at it.
         if($old!=='' && $old!==$new) delete_upload('icon',$old);
         flash($new!==''
             ?t('Symbol gespeichert. Im Browser erscheint es beim nächsten Seitenaufruf. Wer das Portal schon auf dem Home-Bildschirm hat, sieht es dort erst, wenn es neu hinzugefügt wird.',
@@ -119,8 +123,10 @@ function dispatch_settings_or_messages(string $action): array {
         // back from a removal is to upload the file again.
         require_admin(); $old=portal_logo(); $new='';
         if(!post('remove')) { $new=store_upload('logo','logo')['stored_name']; check_portal_logo($new); }
-        set_setting('portal_logo',$new);
-        audit($new!==''?'portal_logo.saved':'portal_logo.removed','settings');
+        transactional(function() use ($new) {
+            set_setting('portal_logo',$new);
+            audit($new!==''?'portal_logo.saved':'portal_logo.removed','settings');
+        });
         if($old!=='' && $old!==$new) delete_upload('logo',$old);
         flash($new!==''?t('Logo gespeichert.','Logo saved.')
             :(portal_icon()!==''

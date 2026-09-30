@@ -140,12 +140,24 @@ is_same(1, $logoForms->length, 'with no logo, the logo card has one form, the up
 is_same('multipart/form-data', $logoForms->item(0)->getAttribute('enctype'), 'which can carry a file');
 is_same('portal_logo_save', $x->query('.//input[@name="action"]', $logoForms->item(0))->item(0)?->getAttribute('value'), 'and saves the logo');
 ok(str_contains($page, 'Noch kein Logo'), 'the preview says there is none yet');
+/* The card states the logo's own limit, never the general one: a card that
+   promises more than check_portal_logo() accepts gets a refusal after the upload. */
+preg_match('/Höchstens ([0-9]+),([0-9]) MB\./u', (string)$x->query('//section[@id="logo"]//small')->item(0)?->textContent, $stated);
+is_same('1,0', isset($stated[1]) ? $stated[1].','.$stated[2] : null, 'the logo card says „Höchstens 1,0 MB"');
+ok(isset($stated[1]) && (float)($stated[1].'.'.$stated[2]) * 1048576 <= PORTAL_LOGO_MAX_BYTES, 'which is no more than the logo check accepts');
 $branding = $x->query('//section[@id="branding"]//form')->item(0);
 ok($branding !== null, 'the Aussehen card has its form');
 $field = fn(string $name) => $x->query('.//*[@name="'.$name.'"]', $branding)->length;
 is_same('branding', $x->query('.//input[@name="group"]', $branding)->item(0)?->getAttribute('value'), 'saving the branding group');
 foreach (array_keys(settings_in_group('branding')) as $key) is_same(1, $field('set_'.$key), 'with '.$key.' on it, so a save cannot blank it');
 is_same(0, $x->query('//section[@id="logo"]//*[@name="set_header_hide_name"]')->length, 'the switches are not on the logo card');
+$fieldsLink = '//a[contains(@href, "tab=fields")]';
+is_same(0, $x->query('//section[@id="branding"]'.$fieldsLink)->length, 'the Aussehen card does not lead to custom fields for students');
+is_same(0, $x->query($fieldsLink)->length, 'nor does anything else on the Portal tab');
+is_same(1, brand_xpath(render_view('settings', ['tab' => 'system']))->query($fieldsLink)->length, 'the System tab\'s „Erweitert" still does');
+$pickerLabels = array_map(fn($n) => $n->getAttribute('data-picker-label'), iterator_to_array($x->query('//section[@id="branding"]//*[@data-picker-label]')));
+is_same(count(array_filter(settings_in_group('branding'), fn($s) => $s['kind'] === 'colour')), count($pickerLabels), 'every colour field names its picker');
+ok(in_array('Farbe auswählen: Hauptfarbe', $pickerLabels, true), 'in the page\'s language, with the field\'s name');
 $ids = array_map(fn($n) => $n->getAttribute('id'), iterator_to_array($x->query('//*[@id]')));
 is_same([], array_values(array_unique(array_diff_assoc($ids, array_unique($ids)))), 'no id is used twice on the page');
 

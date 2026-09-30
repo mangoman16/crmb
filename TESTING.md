@@ -701,8 +701,9 @@ sign-in page, and a family's login at hand. Before you start, note what the
 - [ ] **6.17** **Logo**: upload a wide PNG, then an iPhone JPEG, then a WebP.
   Each replaces the last, top left in the menu, on the sign-in page, and in the
   phone's top bar at 320 px, on a white plate in light and dark mode.
-- [ ] **6.18** Upload a logo 40 pixels tall, a 6:1 banner and a GIF. Each is
-  refused with its size and what is needed, and the logo you had stays.
+- [ ] **6.18** Upload a logo 40 pixels tall, a 6:1 banner, a GIF and a
+  photograph over 1 MB. Each is refused with its size and what is needed, and
+  the logo you had stays.
 - [ ] **6.19** On **Aussehen**, tick „Portalnamen neben dem Logo ausblenden" and
   „Zeile „Verwaltung“ / „Mein Portal“ … ausblenden". Check each with a logo, with
   only the portal icon, and with neither: with neither, the name still shows.

@@ -65,7 +65,7 @@ $registryField=function(string $key,array $spec): void {
                moved away from hers - on a swatch coloured by class, because a
                style attribute is refused (ADR 0013). */
             $palette=brand_palette(); $used=$palette['used'][$key]; $fallback=$palette['placeholder'][$key];
-            echo '<div class="colour-field" data-colour="'.e($used).'" data-colour-label="'.e($label).'">';
+            echo '<div class="colour-field" data-colour="'.e($used).'" data-picker-label="'.e(t('Farbe auswählen: ','Pick a colour: ').$label).'">';
             default_field($name,$label,(string)$value,$fallback,$fallback,'text',$hint);
             $moved=$palette['adjusted'][$key]??null;
             echo '<p class="colour-used"><span class="brand-swatch '.e(brand_swatch_class($key)).'"></span><span>'
@@ -88,7 +88,9 @@ if(!$specs):?><p class="muted"><?=e(t('Für diesen Bereich gibt es keine Vorgabe
     <details class="advanced-settings" id="<?=e($registryCard?'advanced-'.$registryCard['id']:'advanced')?>" <?=($_GET['open']??'')==='advanced'?'open':''?>><summary><?=e(t('Erweitert','Advanced'))?></summary>
         <p class="muted"><?=e(t('Selten gebraucht. Die Vorgaben passen für die meisten Portale.','Rarely needed. The defaults suit most portals.'))?></p>
         <div class="grid two"><?php foreach($advanced as $key=>$spec)$registryField($key,$spec); ?></div>
-        <?php if(current_page()==='settings'): ?>
+        <?php /* Custom fields are a system matter, so only the System tab's
+                 block leads there - not every group's that has an „Erweitert". */
+        if(current_page()==='settings' && $registryGroup==='system'): ?>
         <p class="advanced-link"><a href="<?=e(url('settings',['tab'=>'fields']))?>"><?=e(t('Eigene Felder für Schüler','Custom fields for students'))?></a></p>
         <?php endif ?>
     </details>

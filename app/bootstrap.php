@@ -56,9 +56,10 @@ require __DIR__ . '/uploads.php';
 // from defaults.php, colour.php, is_staff() from auth.php and uploads.php's
 // folders and cache headers above; before portal_icon.php, whose web_manifest()
 // reads brand_theme_colour(). Its own calls into portal_icon.php happen at
-// request time only. Nothing loaded earlier calls it: only accent_for()'s
-// colour check reads colour.php, and the router, the actions, app/ui.php and
-// the layout call this file, per request (ADR 0013, 0014).
+// request time only. accent_for() in shell.php above calls brand_chosen() from
+// here, at request time only - never while loading; otherwise only the router,
+// the actions, app/ui.php and the layout call this file, per request
+// (ADR 0013, 0014).
 require __DIR__ . '/brand.php';
 // Needs uploads.php above: upload_dir(), upload_version(), the download and
 // cache headers. Nothing loaded earlier calls it: only the router and the

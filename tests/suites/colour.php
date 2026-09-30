@@ -276,6 +276,10 @@ act('defaults_registry_save', branding_post(['set_brand_primary' => '', 'set_bra
 is_same('Defaults saved. Before: main colour #1f5fa9, highlight in dark mode built-in.', $_SESSION['flash']['message'] ?? null,
         'in English too, mid-sentence in lower case');
 is_same('#aabbcc', setting('brand_highlight_dark'), 'a dark override is stored without its light colour, for when one is set');
+set_setting('brand_background', '#444444');   // stored without the form; brand_chosen() shows it as built-in
+act('defaults_registry_save', branding_post(['set_brand_background' => '#fffaf0']));
+is_same('Defaults saved. Before: background built-in.', $_SESSION['flash']['message'] ?? null,
+        'a stored background the form would refuse was showing as built-in, and is named so - not as a colour to type back in');
 $_SESSION['locale'] = 'de';
 
 case_('A refusal leaves the whole card as it was');
@@ -310,6 +314,26 @@ sign_in_as($trainer);
 throws(fn() => act('defaults_registry_save', branding_post(['set_brand_primary' => '#8a1538'])), 'a trainer may not', 'Administratoren');
 is_same('', setting('brand_primary'), 'and nothing changed');
 sign_in_as($admin);
+
+case_('Each built-in colour is declared once, and app.css and the palette agree with it');
+/* defaults.php's 'builtin' is the one place: the palette falls back to it and
+   the form shows it. app.css cannot read PHP, so its swatches - the built-in
+   colours the „Aussehen" card shows before anything is set - are held to it
+   here. */
+require_once TEST_ROOT.'/css.php';
+branding_clear();
+$palette = brand_palette();
+$swatches = [];
+foreach (css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css')) as $row)
+    if ($row['media'] === '' && $row['property'] === 'background'
+        && preg_match('/^\.brand-swatch\.swatch-([a-z-]+)$/D', $row['selector'], $m))
+        $swatches[str_replace('-', '_', $m[1])] = $row['value'];
+foreach (brand_families() as $family) foreach ([$family, $family.'_dark'] as $key) {
+    $builtin = setting_schema()[$key]['builtin'];
+    is_same($builtin, $palette['used'][$key], $key.': with nothing set, the palette uses the declared built-in colour');
+    is_same($builtin, $swatches[$key] ?? null, $key.': and app.css’s swatch shows that same colour');
+}
+is_same(8, count($swatches), 'app.css has a swatch for each of the eight, and no other');
 
 case_('Every branding key is a colour or a switch, and belongs on the one card');
 $branding = settings_in_group('branding');

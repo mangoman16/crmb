@@ -164,7 +164,8 @@ document.querySelectorAll('.colour-field').forEach(wrapper => {
   const picker = document.createElement('input');
   picker.type = 'color';
   picker.className = 'colour-picker';
-  picker.setAttribute('aria-label', (document.documentElement.lang === 'en' ? 'Pick a colour: ' : 'Farbe auswählen: ') + wrapper.dataset.colourLabel);
+  // The label comes from the page, in the page's language, like every other word.
+  picker.setAttribute('aria-label', wrapper.dataset.pickerLabel || '');
   const whole = value => /^#[0-9a-f]{6}$/i.test(value.trim()) ? value.trim().toLowerCase() : '';
   picker.value = whole(field.value) || whole(wrapper.dataset.colour || '') || '#000000';
   const row = document.createElement('span');

@@ -508,14 +508,18 @@ function setting_colour_refusal(array $spec, string $colour): string {
  * look can be undone too. '' when no colour changed.
  */
 function settings_replaced_colours(array $specs, array $before, array $after): string {
-    // Read the way brand_chosen() reads them: what did not normalise was
-    // showing as the built-in colour, so that is what it is called.
-    $colour = fn(mixed $v): string => is_string($v) ? (colour_normalise($v) ?? '') : '';
+    // Read the way brand_chosen() reads them: a value that did not normalise,
+    // or a background the form would refuse today, was showing as the built-in
+    // colour, so that is what it is called.
+    $colour = function (array $spec, mixed $v): string {
+        $c = is_string($v) ? colour_normalise($v) : null;
+        return $c === null || setting_colour_refusal($spec, $c) !== '' ? '' : $c;
+    };
     $parts = [];
     foreach ($specs as $key => $spec) {
         if (($spec['kind'] ?? '') !== 'colour') continue;
-        $old = $colour($before[$key] ?? '');
-        if ($old === $colour($after[$key] ?? '')) continue;
+        $old = $colour($spec, $before[$key] ?? '');
+        if ($old === $colour($spec, $after[$key] ?? '')) continue;
         $label = setting_label($spec);
         // Mid-sentence in English, where a label is not a noun that keeps its capital.
         if (locale() === 'en') $label = lcfirst($label);

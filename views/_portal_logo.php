@@ -16,7 +16,7 @@ $logoUrl=portal_logo_url();
         'Shown top left in the menu, on the sign-in page and in the bar at the top on a phone. Without a logo the portal icon is shown there, without an icon a “B”.'))?></p>
     <div class="avatar-editor">
         <figure class="logo-preview">
-            <?php if($logoUrl!==''): ?>
+            <?php if($logoUrl!==''): /* The same plate as brand_block() draws top left, at its 48px. */ ?>
             <span class="brand-plate"><img class="brand-logo" src="<?=e($logoUrl)?>" alt="<?=e(t('Das Logo','The logo'))?>" width="<?=(int)$logoWidth?>" height="<?=(int)$logoHeight?>"></span>
             <?php else: ?>
             <span class="logo-empty"><?=e(t('Noch kein Logo','No logo yet'))?></span>
@@ -24,10 +24,12 @@ $logoUrl=portal_logo_url();
         </figure>
         <div>
             <?php start_form('portal_logo_save',[],'form',true);
+            // The hint is plain text; file_field() escapes it. The shape comes
+            // from the limits check_portal_logo() applies, so the two cannot differ.
             file_field('logo',t('Bild auswählen','Choose a picture'),'logo',
-                t('PNG, JPEG oder WebP, mindestens ','PNG, JPEG or WebP, at least ').PORTAL_LOGO_MIN_HEIGHT
-                .t(' Pixel hoch. Höchstens fünfmal so breit wie hoch und höchstens doppelt so hoch wie breit. Das Logo steht immer auf einer weißen Fläche.',
-                   ' pixels tall. At most five times as wide as it is tall, and at most twice as tall as it is wide. The logo always sits on a white background.'));
+                t('PNG, JPEG oder WebP, mindestens ','PNG, JPEG or WebP, at least ').PORTAL_LOGO_MIN_HEIGHT.t(' Pixel hoch. ',' pixels tall. ')
+                .portal_logo_shape_hint().' '.t('Das Logo steht immer auf einer weißen Fläche.','The logo always sits on a white background.'),
+                PORTAL_LOGO_MAX_BYTES);
             submit_button(t('Logo speichern','Save the logo'),'secondary'); ?></form>
             <?php if($logoUrl!==''): ?>
             <?php start_form('portal_logo_save',['remove'=>1],'form logo-remove');

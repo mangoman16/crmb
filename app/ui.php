@@ -34,12 +34,14 @@ function start_form(string $action,array $hidden=[],string $class='form',bool $m
  * The limit shown is upload_limit(), which is the smaller of what the operator
  * asked for and what this server will actually accept - because a form that
  * promises more than PHP allows fails in a way that looks like a broken portal.
+ * $maxBytes is a smaller limit of the upload's own, such as the logo's, which
+ * is then the one stated.
  */
-function file_field(string $name,string $label,string $kind='proof',string $hint=''): void {
+function file_field(string $name,string $label,string $kind='proof',string $hint='',?int $maxBytes=null): void {
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
     echo '<div class="field"><label for="'.e($id).'">'.e($label).'</label>';
     echo '<input id="'.e($id).'" name="'.e($name).'" type="file" accept="'.e(implode(',',array_keys(upload_types($kind)))).'">';
-    echo '<small>'.e(($hint?$hint.' ':'').t('Höchstens ','At most ').upload_limit_label().'.').'</small></div>';
+    echo '<small>'.e(($hint?$hint.' ':'').t('Höchstens ','At most ').upload_limit_label($maxBytes).'.').'</small></div>';
 }
 /**
  * A saved filter, in the words that made it.
@@ -745,7 +747,7 @@ function login_delete_details(array $account,string $summary,string $explanation
  */
 function brand_block(?array $user, string $where, ?string $href): void {
     $b = brand_header($user);
-    $name = $b['name'] !== '' ? $b['name'] : 'Badminton';
+    $name = $b['name'];
     $kind = $b['logo'] !== '' ? 'logo' : ($b['icon'] !== '' ? 'icon' : 'mark');
     $bar = $where === 'bar';
     // In the bar there is room for one thing: the logo, or the icon when the

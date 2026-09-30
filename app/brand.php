@@ -16,10 +16,15 @@ declare(strict_types=1);
  * to the built-in colour instead of carrying text into the CSS.
  */
 
-/** The fixed colours every derivation works against: app.css's surfaces and inks. */
+/**
+ * The fixed colours every derivation works against: app.css's card surfaces,
+ * its light ink, and the near-black the dark menu is shaded toward. None of
+ * them is hers to choose (ADR 0013 rejects a custom surface). The built-in
+ * colours she can choose are not here: each is declared once, as 'builtin' in
+ * app/defaults.php.
+ */
 const BRAND_SURFACE_LIGHT = '#ffffff';
 const BRAND_SURFACE_DARK = '#182430';
-const BRAND_GROUND_DARK = '#101922';
 const BRAND_NAV_SHADE = '#0d141b';
 const BRAND_INK_LIGHT = '#172d42';
 
@@ -69,15 +74,15 @@ function brand_palette(): array {
     if (isset($memo[$memoKey])) return $memo[$memoKey];
     $builtin = array_map(fn($spec) => (string)($spec['builtin'] ?? ''), setting_schema());
 
-    $light = brand_scheme_light($chosen);
+    $light = brand_scheme_light($chosen, $builtin);
     // Dark: the override where there is one, else worked out from the light
     // choice. Worked out a second time without the overrides, for what an
     // empty override means - the placeholder the form shows.
     $overrides = [];
     foreach (brand_families() as $family)
         $overrides[$family] = $chosen[$family] !== '' ? $chosen[$family.'_dark'] : '';
-    $dark = brand_scheme_dark($chosen, $overrides);
-    $computed = brand_scheme_dark($chosen, array_fill_keys(brand_families(), ''));
+    $dark = brand_scheme_dark($chosen, $overrides, $builtin);
+    $computed = brand_scheme_dark($chosen, array_fill_keys(brand_families(), ''), $builtin);
 
     $palette = ['light' => $light['tokens'], 'dark' => $dark['tokens'], 'used' => [], 'placeholder' => [], 'adjusted' => []];
     foreach (brand_families() as $family) {
@@ -95,25 +100,29 @@ function brand_palette(): array {
     return $memo[$memoKey] = $palette;
 }
 
-/** The light scheme: tokens for the customised families, and the colour each family ends up as. */
-function brand_scheme_light(array $chosen): array {
+/**
+ * The light scheme: tokens for the customised families, and the colour each
+ * family ends up as. $builtin is setting key => its declared built-in colour,
+ * what an empty family is.
+ */
+function brand_scheme_light(array $chosen, array $builtin): array {
     [$p, $n, $h, $b] = array_map(fn($f) => $chosen[$f], brand_families());
     $tokens = [];
     // White is printed on the main colour (--on-accent), so white has to read
     // on it - and then the main colour also reads as text on white.
-    $teal = $p !== '' ? colour_until_contrast($p, [BRAND_SURFACE_LIGHT], 4.5, 'darker') : '#077e76';
+    $teal = $p !== '' ? colour_until_contrast($p, [BRAND_SURFACE_LIGHT], 4.5, 'darker') : $builtin['brand_primary'];
     if ($p !== '') {
         $soft = colour_mix($p, BRAND_SURFACE_LIGHT, .12);
         $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => '#ffffff',
                     '--teal-soft' => $soft, '--teal-border' => colour_mix($p, BRAND_SURFACE_LIGHT, .30),
                     '--teal-ink' => colour_until_contrast($teal, [$soft], 4.5, 'darker')];
     }
-    $nav = $n !== '' ? $n : '#13243a';
+    $nav = $n !== '' ? $n : $builtin['brand_secondary'];
     $onNav = colour_text_on($nav);
     if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '0d', '26');
-    $bright = $h !== '' ? colour_until_contrast($h, [$nav], 3, brand_toward($onNav)) : '#23cbbb';
+    $bright = $h !== '' ? colour_until_contrast($h, [$nav], 3, brand_toward($onNav)) : $builtin['brand_highlight'];
     if ($h !== '') $tokens['--teal-bright'] = $bright;
-    $bg = $b !== '' ? $b : '#f3f6f9';
+    $bg = $b !== '' ? $b : $builtin['brand_background'];
     if ($b !== '') $tokens += ['--bg' => $bg, '--scrim-bg' => $bg.'ee'];
     // The club's name on the sign-in page is printed in the menu colour on the
     // background, and a light menu colour on a light page would vanish.
@@ -124,37 +133,40 @@ function brand_scheme_light(array $chosen): array {
 
 /**
  * The dark scheme. $overrides holds the _dark colours that apply, by family,
- * '' where none does and the colour is worked out from the light choice.
+ * '' where none does and the colour is worked out from the light choice. An
+ * empty family is its _dark built-in colour, and the dark background's
+ * built-in colour is also what the light choices are shaded toward.
  */
-function brand_scheme_dark(array $chosen, array $overrides): array {
+function brand_scheme_dark(array $chosen, array $overrides, array $builtin): array {
+    $ground = $builtin['brand_background_dark'];
     $pick = fn(string $family) => $overrides[$family] !== '' ? $overrides[$family] : $chosen[$family];
     $tokens = [];
     // The dark scheme prints the dark ink on the main colour, and uses the main
     // colour as text on the dark surface: it has to read against both.
     $p = $pick('brand_primary');
-    $teal = $p !== '' ? colour_until_contrast($p, [BRAND_SURFACE_DARK, COLOUR_DARK_INK], 4.5, 'lighter') : '#3fd0bd';
+    $teal = $p !== '' ? colour_until_contrast($p, [BRAND_SURFACE_DARK, COLOUR_DARK_INK], 4.5, 'lighter') : $builtin['brand_primary_dark'];
     if ($p !== '') {
-        $soft = colour_mix($p, BRAND_GROUND_DARK, .18);
+        $soft = colour_mix($p, $ground, .18);
         $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => COLOUR_DARK_INK,
-                    '--teal-soft' => $soft, '--teal-border' => colour_mix($p, BRAND_GROUND_DARK, .35),
+                    '--teal-soft' => $soft, '--teal-border' => colour_mix($p, $ground, .35),
                     '--teal-ink' => colour_until_contrast($teal, [BRAND_SURFACE_DARK, $soft], 7, 'lighter')];
     }
     $n = $chosen['brand_secondary'];
     $nav = match (true) {
         $overrides['brand_secondary'] !== '' => $overrides['brand_secondary'],
         $n !== '' => colour_mix($n, BRAND_NAV_SHADE, .25),
-        default => '#131d27',
+        default => $builtin['brand_secondary_dark'],
     };
     $onNav = colour_text_on($nav);
     if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '12', '1a');
     $h = $pick('brand_highlight');
-    $bright = $h !== '' ? colour_until_contrast($h, [$nav], 3, brand_toward($onNav)) : '#3fd0bd';
+    $bright = $h !== '' ? colour_until_contrast($h, [$nav], 3, brand_toward($onNav)) : $builtin['brand_highlight_dark'];
     if ($h !== '') $tokens['--teal-bright'] = $bright;
     $b = $chosen['brand_background'];
     $bg = match (true) {
         $overrides['brand_background'] !== '' => $overrides['brand_background'],
-        $b !== '' => colour_mix($b, BRAND_GROUND_DARK, .06),
-        default => BRAND_GROUND_DARK,
+        $b !== '' => colour_mix($b, $ground, .06),
+        default => $ground,
     };
     if ($b !== '') $tokens += ['--bg' => $bg, '--scrim-bg' => $bg.'ee'];
     return ['tokens' => $tokens, 'used' => ['brand_primary' => $teal, 'brand_secondary' => $nav,
@@ -304,9 +316,42 @@ const PORTAL_LOGO_MIN_HEIGHT = 88;
  * to unpack it.
  */
 const PORTAL_LOGO_MAX_SIDE = 2048;
-/** Widest and tallest accepted, as width / height: 5:1 and 1:2. */
+/**
+ * The largest file accepted: 1 MB. Every sign-in page loads the logo, often on
+ * a phone on mobile data, so it gets a cap of its own below the general
+ * upload limit, which is sized for payment proofs and voice notes. A logo
+ * drawn for the web is a few kilobytes; a megabyte is a photograph.
+ */
+const PORTAL_LOGO_MAX_BYTES = 1048576;
+/**
+ * Widest and tallest accepted, as width / height: 5:1 and 1:2. The words for
+ * them come from portal_logo_times(), so the refusals and the Logo card's hint
+ * (portal_logo_shape_hint()) change with the numbers.
+ */
 const PORTAL_LOGO_MAX_RATIO = 5.0;
 const PORTAL_LOGO_MIN_RATIO = 0.5;
+
+/**
+ * A whole ratio in words, [German, English]: „doppelt"/"twice",
+ * „fünfmal"/"five times". Only the ratios somebody would write as words; any
+ * other number is a mistake in the constants above, and says so.
+ */
+function portal_logo_times(float $ratio): array {
+    $words = [2 => ['doppelt', 'twice'], 3 => ['dreimal', 'three times'], 4 => ['viermal', 'four times'],
+              5 => ['fünfmal', 'five times'], 6 => ['sechsmal', 'six times'], 8 => ['achtmal', 'eight times'],
+              10 => ['zehnmal', 'ten times']];
+    $whole = (int)round($ratio);
+    if (abs($ratio - $whole) > 1e-9 || !isset($words[$whole])) throw new LogicException('No words for a logo ratio of '.$ratio);
+    return $words[$whole];
+}
+
+/** The shape a logo may have, as the Logo card says it. */
+function portal_logo_shape_hint(): string {
+    [$wideDe, $wideEn] = portal_logo_times(PORTAL_LOGO_MAX_RATIO);
+    [$tallDe, $tallEn] = portal_logo_times(1 / PORTAL_LOGO_MIN_RATIO);
+    return t('Höchstens '.$wideDe.' so breit wie hoch und höchstens '.$tallDe.' so hoch wie breit.',
+             'At most '.$wideEn.' as wide as it is tall, and at most '.$tallEn.' as tall as it is wide.');
+}
 
 /** The image type getimagesize() must report for each extension store_upload() gives. */
 function portal_logo_types(): array {
@@ -365,7 +410,15 @@ function check_portal_logo(string $storedName): void {
     $extension = pathinfo($storedName, PATHINFO_EXTENSION);
     [$width, $height] = $size ? [(int)$size[0], (int)$size[1]] : [0, 0];
     $dimensions = $width . ' × ' . $height;
+    $bytes = is_file($path) ? (int)filesize($path) : 0;
     $problem = match (true) {
+        // First: however well-formed, a file this size is not what every
+        // sign-in page should be made to load.
+        $bytes > PORTAL_LOGO_MAX_BYTES =>
+            t('Das Bild ist ', 'The picture is ') . portal_logo_megabytes($bytes) . t(' MB groß. Für das Logo reichen ', ' MB. ')
+            . portal_logo_megabytes(PORTAL_LOGO_MAX_BYTES)
+            . t(' MB – größer wird es nicht schärfer, lädt auf dem Telefon aber langsamer. Speichere es kleiner oder als PNG.',
+                ' MB is enough for the logo – larger is no sharper, only slower to load on a phone. Save it smaller or as a PNG.'),
         !$size || $width < 1 || $height < 1 || ($size[2] ?? null) !== (portal_logo_types()[$extension] ?? false) =>
             t('Diese Datei lässt sich nicht als PNG-, JPEG- oder WebP-Bild lesen.', 'This file cannot be read as a PNG, JPEG or WebP picture.'),
         $height < PORTAL_LOGO_MIN_HEIGHT =>
@@ -379,17 +432,27 @@ function check_portal_logo(string $storedName): void {
                 ' pixels wide and tall – larger is no sharper, only slower to load on a phone.'),
         $width / $height > PORTAL_LOGO_MAX_RATIO =>
             t('Das Bild ist ', 'The picture is ') . $dimensions
-            . t(' Pixel groß und damit mehr als fünfmal so breit wie hoch. Schneide den Rand ab oder nimm eine kompaktere Fassung.',
-                ' pixels, more than five times as wide as it is tall. Crop the edges or use a more compact version.'),
+            . t(' Pixel groß und damit mehr als '.portal_logo_times(PORTAL_LOGO_MAX_RATIO)[0].' so breit wie hoch. Schneide den Rand ab oder nimm eine kompaktere Fassung.',
+                ' pixels, more than '.portal_logo_times(PORTAL_LOGO_MAX_RATIO)[1].' as wide as it is tall. Crop the edges or use a more compact version.'),
         $width / $height < PORTAL_LOGO_MIN_RATIO =>
             t('Das Bild ist ', 'The picture is ') . $dimensions
-            . t(' Pixel groß und damit mehr als doppelt so hoch wie breit. Schneide den Rand ab oder nimm eine breitere Fassung.',
-                ' pixels, more than twice as tall as it is wide. Crop the edges or use a wider version.'),
+            . t(' Pixel groß und damit mehr als '.portal_logo_times(1 / PORTAL_LOGO_MIN_RATIO)[0].' so hoch wie breit. Schneide den Rand ab oder nimm eine breitere Fassung.',
+                ' pixels, more than '.portal_logo_times(1 / PORTAL_LOGO_MIN_RATIO)[1].' as tall as it is wide. Crop the edges or use a wider version.'),
         default => '',
     };
     if ($problem === '') return;
     delete_upload('logo', $storedName);
     throw new UserError($problem);
+}
+
+/**
+ * A file size in megabytes with one decimal, in the reader's language, rounded
+ * up: a file just over the limit must not read as exactly the limit.
+ */
+function portal_logo_megabytes(int $bytes): string {
+    $mb = ceil($bytes / 1048576 * 10) / 10;
+    $text = fmod($mb, 1.0) == 0.0 ? (string)(int)$mb : number_format($mb, 1, '.', '');
+    return locale() === 'en' ? $text : str_replace('.', ',', $text);
 }
 
 /** A year at the address of the logo in use, as for the icon; anything else is asked again. */

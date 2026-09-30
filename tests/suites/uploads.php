@@ -17,6 +17,18 @@ set_setting('upload_max_kb', 8);
 is_same(8 * 1024, upload_limit(), 'a small setting is honoured as it stands');
 is_same(false, upload_limit_capped(), 'and is not reported as capped');
 
+case_('A kind with a smaller limit of its own is labelled with the smaller one');
+/* The Logo card said „Höchstens 2,0 MB" while check_portal_logo() refused
+   anything over 1 MB: the promise has to be the smaller of the two. */
+set_setting('upload_max_kb', 2048);
+$general = upload_limit();
+is_same(upload_limit_label(), upload_limit_label(null), 'without a cap, the general limit');
+ok($general > PORTAL_LOGO_MAX_BYTES, 'this fixture has a general limit above the logo’s ('.$general.' bytes), so the next line proves something');
+is_same('1,0 MB', upload_limit_label(PORTAL_LOGO_MAX_BYTES), 'with the logo’s cap, the logo’s 1 MB');
+is_same(upload_limit_label(), upload_limit_label($general * 4), 'a cap above the general limit does not raise it');
+set_setting('upload_max_kb', 8);
+is_same('8 kB', upload_limit_label(PORTAL_LOGO_MAX_BYTES), 'and a general limit below the cap still wins');
+
 case_('Each kind allows what it is for, and nothing else');
 ok(!isset(upload_types('avatar')['application/pdf']), 'a profile picture is a picture');
 ok(isset(upload_types('proof')['application/pdf']), 'a proof may be a PDF');
@@ -289,6 +301,16 @@ foreach ([[jpeg_header(600, 150), 'png', 'PNG-, JPEG- oder WebP', 'a JPEG rename
     ok(!is_file(upload_dir('logo').'/'.$name), 'and '.$what.' is deleted there and then');
 }
 throws(fn() => check_portal_logo(str_repeat('0', 32).'.png'), 'a file that never arrived is refused rather than trusted');
+$heavy = logo_file(png_header(600, 150).str_repeat("\0", PORTAL_LOGO_MAX_BYTES), 'png');
+throws(fn() => check_portal_logo($heavy), 'a logo over 1 MB is refused, however well-formed: every sign-in page loads it',
+       'Das Bild ist 1,1 MB groß. Für das Logo reichen 1 MB – größer wird es nicht schärfer');
+ok(!is_file(upload_dir('logo').'/'.$heavy), 'and is deleted there and then');
+$justUnder = logo_file(png_header(600, 150).str_repeat("\0", PORTAL_LOGO_MAX_BYTES - strlen(png_header(600, 150))), 'png');
+does_not_throw(fn() => check_portal_logo($justUnder), 'exactly 1 MB is accepted');
+is_same('1,1', portal_logo_megabytes(PORTAL_LOGO_MAX_BYTES + 1), 'one byte over reads as over, not as exactly the limit');
+$_SESSION['locale'] = 'en';
+is_same('2.5', portal_logo_megabytes((int)(2.45 * 1048576)), 'in English with a point');
+$_SESSION['locale'] = 'de';
 foreach ([[webp_header(600, 150), 'webp', '600 × 150 WebP'], [png_header(440, 88), 'png', '5:1 PNG exactly 88 tall'],
           [jpeg_header(1024, 768), 'jpg', 'iPhone-shaped JPEG'], [png_header(100, 200), 'png', '1:2 PNG'],
           [png_header(2048, 2048), 'png', '2048 square PNG']] as [$bytes, $extension, $what]) {
@@ -296,6 +318,13 @@ foreach ([[webp_header(600, 150), 'webp', '600 × 150 WebP'], [png_header(440, 8
     does_not_throw(fn() => check_portal_logo($name), 'a '.$what.' is accepted');
     ok(is_file(upload_dir('logo').'/'.$name), 'and kept');
 }
+
+case_('The shape rule is said in words made from the numbers it checks');
+is_same('Höchstens fünfmal so breit wie hoch und höchstens doppelt so hoch wie breit.', portal_logo_shape_hint(),
+        'the Logo card’s hint, from PORTAL_LOGO_MAX_RATIO and PORTAL_LOGO_MIN_RATIO');
+is_same(['fünfmal', 'five times'], portal_logo_times(PORTAL_LOGO_MAX_RATIO), 'the widest, in both languages');
+is_same(['doppelt', 'twice'], portal_logo_times(1 / PORTAL_LOGO_MIN_RATIO), 'the tallest');
+throws(fn() => portal_logo_times(2.5), 'a ratio nobody would write as a word is a mistake in the constants, and says so', 'No words');
 
 case_('The logo in use survives the sweep; the ones it replaced do not');
 $liveLogo = logo_file(webp_header(600, 150), 'webp', 'a');
@@ -341,6 +370,14 @@ throws(fn() => act('portal_logo_save', []), 'a file that did not come through th
 $_FILES = [];
 is_same($liveLogo, portal_logo(), 'and the logo she had is still the logo');
 ok(is_file(upload_dir('logo').'/'.$liveLogo), 'with its file untouched');
+
+case_('The icon and the logo are written in one transaction, and their old files deleted only after');
+/* A file cannot be rolled back. Deleted inside the transaction, a failure
+   after it would leave the setting pointing at a file that is gone. */
+$settingsActions = (string)file_get_contents(APP_ROOT.'/app/actions_settings.php');
+foreach (['icon', 'logo'] as $kind)
+    ok(preg_match("/case 'portal_{$kind}_save':.*?transactional\(function\(\) use \(\\\$new\) \{\s*set_setting\('portal_{$kind}',\\\$new\);\s*audit\(.*?\}\);\s*(\/\/[^\n]*\n\s*)*if\(\\\$old!=='' && \\\$old!==\\\$new\) delete_upload\('{$kind}'/s",
+                  $settingsActions) === 1, "portal_{$kind}_save writes the setting and the audit line inside transactional(), then deletes the old file");
 
 case_('Removing the logo deletes the file and says what shows instead');
 set_setting('portal_icon', '');
