@@ -916,6 +916,6 @@ function report_file_text(array $file): string {
     $bytes = (int)report_scalar($file['bytes'] ?? 0);
     $size = $bytes < 1024 ? $bytes . ' B'
           : ($bytes < 1048576 ? round($bytes / 1024) . ' kB'
-          : number_format($bytes / 1048576, 1, locale() === 'de' ? ',' : '.', '') . ' MB');
+          : megabytes_label($bytes));
     return trim($size . ' ' . report_scalar($file['type'] ?? ''));
 }

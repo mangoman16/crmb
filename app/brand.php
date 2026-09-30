@@ -415,10 +415,12 @@ function check_portal_logo(string $storedName): void {
         // First: however well-formed, a file this size is not what every
         // sign-in page should be made to load.
         $bytes > PORTAL_LOGO_MAX_BYTES =>
-            t('Das Bild ist ', 'The picture is ') . portal_logo_megabytes($bytes) . t(' MB groß. Für das Logo reichen ', ' MB. ')
-            . portal_logo_megabytes(PORTAL_LOGO_MAX_BYTES)
-            . t(' MB – größer wird es nicht schärfer, lädt auf dem Telefon aber langsamer. Speichere es kleiner oder als PNG.',
-                ' MB is enough for the logo – larger is no sharper, only slower to load on a phone. Save it smaller or as a PNG.'),
+            // The limit in the words the Logo card uses for it, so the refusal
+            // repeats what she was told rather than a second way of saying it.
+            t('Das Bild ist ', 'The picture is ') . megabytes_label($bytes, true) . t(' groß. Für das Logo reichen ', '. ')
+            . upload_limit_label(PORTAL_LOGO_MAX_BYTES)
+            . t(' – größer wird es nicht schärfer, lädt auf dem Telefon aber langsamer. Speichere es kleiner oder als PNG.',
+                ' is enough for the logo – larger is no sharper, only slower to load on a phone. Save it smaller or as a PNG.'),
         !$size || $width < 1 || $height < 1 || ($size[2] ?? null) !== (portal_logo_types()[$extension] ?? false) =>
             t('Diese Datei lässt sich nicht als PNG-, JPEG- oder WebP-Bild lesen.', 'This file cannot be read as a PNG, JPEG or WebP picture.'),
         $height < PORTAL_LOGO_MIN_HEIGHT =>
@@ -443,16 +445,6 @@ function check_portal_logo(string $storedName): void {
     if ($problem === '') return;
     delete_upload('logo', $storedName);
     throw new UserError($problem);
-}
-
-/**
- * A file size in megabytes with one decimal, in the reader's language, rounded
- * up: a file just over the limit must not read as exactly the limit.
- */
-function portal_logo_megabytes(int $bytes): string {
-    $mb = ceil($bytes / 1048576 * 10) / 10;
-    $text = fmod($mb, 1.0) == 0.0 ? (string)(int)$mb : number_format($mb, 1, '.', '');
-    return locale() === 'en' ? $text : str_replace('.', ',', $text);
 }
 
 /** A year at the address of the logo in use, as for the icon; anything else is asked again. */
@@ -485,7 +477,8 @@ function serve_portal_logo(): never {
  *   logo, logo_width, logo_height  the logo's address and size, or '' and 0
  *   icon           the portal icon's address when there is no logo, else ''
  *   name           the club's name, always - hidden or not, it stays in the
- *                  markup for screen readers, and is the logo's alt text then
+ *                  markup for screen readers. The logo itself has alt="", so
+ *                  the name is read once, not twice
  *   subtitle       „Verwaltung" or „Mein Portal", for the person looking
  *   show_name      false only when she hid it and a logo or icon is there to
  *                  take its place: with only the „B", the name always shows

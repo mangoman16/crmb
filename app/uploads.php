@@ -53,6 +53,20 @@ function upload_limit(): int {
 }
 
 /**
+ * A size in megabytes as a person reads it: „1,0 MB" or "1.0 MB", one decimal.
+ *
+ * The one formatter, so the limit a form states and the size a refusal names
+ * read alike. $roundUp is for a measured size set against a limit: a file one
+ * byte over 1 MB must read „1,1 MB", not the „1,0 MB" it would round to and
+ * which is exactly what the form allows.
+ */
+function megabytes_label(int $bytes, bool $roundUp = false): string {
+    $mb = $bytes / 1048576;
+    if ($roundUp) $mb = ceil(round($mb * 10, 6)) / 10;
+    return number_format($mb, 1, locale() === 'de' ? ',' : '.', '') . ' MB';
+}
+
+/**
  * That limit as a person would say it.
  *
  * $cap is a kind's own smaller limit, such as PORTAL_LOGO_MAX_BYTES for the
@@ -62,7 +76,7 @@ function upload_limit(): int {
 function upload_limit_label(?int $cap = null): string {
     $bytes = $cap !== null ? min(upload_limit(), max(1, $cap)) : upload_limit();
     return $bytes >= 1024 * 1024
-        ? number_format($bytes / 1048576, 1, locale() === 'de' ? ',' : '.', '') . ' MB'
+        ? megabytes_label($bytes)
         : (int)round($bytes / 1024) . ' kB';
 }
 

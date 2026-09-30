@@ -104,12 +104,12 @@ function dispatch_settings_or_messages(string $action): array {
         // upload it again, the same as for any other setting saved here.
         require_admin(); $old=portal_icon(); $new='';
         if(!post('remove')) { $new=store_upload('icon','icon')['stored_name']; check_portal_icon($new); }
-        transactional(function() use ($new) {
-            set_setting('portal_icon',$new);
-            audit($new!==''?'portal_icon.saved':'portal_icon.removed','settings');
-        });
-        // After the transaction, never inside it: a file cannot be rolled back,
-        // so it goes only once the setting no longer points at it.
+        set_setting('portal_icon',$new);
+        audit($new!==''?'portal_icon.saved':'portal_icon.removed','settings');
+        // Last, because a file cannot be rolled back. The request's transaction
+        // commits after this; should that commit fail, the setting still names
+        // the old file, which is gone - and portal_icon() checks is_file(), so
+        // the built-in icon shows rather than a broken picture.
         if($old!=='' && $old!==$new) delete_upload('icon',$old);
         flash($new!==''
             ?t('Symbol gespeichert. Im Browser erscheint es beim nächsten Seitenaufruf. Wer das Portal schon auf dem Home-Bildschirm hat, sieht es dort erst, wenn es neu hinzugefügt wird.',
@@ -123,10 +123,10 @@ function dispatch_settings_or_messages(string $action): array {
         // back from a removal is to upload the file again.
         require_admin(); $old=portal_logo(); $new='';
         if(!post('remove')) { $new=store_upload('logo','logo')['stored_name']; check_portal_logo($new); }
-        transactional(function() use ($new) {
-            set_setting('portal_logo',$new);
-            audit($new!==''?'portal_logo.saved':'portal_logo.removed','settings');
-        });
+        set_setting('portal_logo',$new);
+        audit($new!==''?'portal_logo.saved':'portal_logo.removed','settings');
+        // Last, as for the icon: should the request's commit fail after this,
+        // portal_logo() finds no file and the icon, or the „B", shows instead.
         if($old!=='' && $old!==$new) delete_upload('logo',$old);
         flash($new!==''?t('Logo gespeichert.','Logo saved.')
             :(portal_icon()!==''
