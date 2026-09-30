@@ -20,6 +20,16 @@ date: 2026-09-23
 > distinct characters of the `email_value()` alphabet. ADR 0019 has that measured on
 > MariaDB. Until it has been, `VALIDATION.md` keeps the statement below. The questions to the
 > owner at the end of this file are withdrawn.
+>
+> **Kept closed by ADR 0020 (2026-09-30).** Addresses are unique again, and sign-in takes the
+> username **or** the address.
+>
+> - Both kinds of input are still counted under the typed value, normalised, and never
+>   resolved to a row first.
+> - A row is used only when its stored value equals the typed value exactly. A spelling that
+>   reaches it only through the collation neither signs in nor sends a mail.
+>
+> So the closure no longer rests on the condition above (ADR 0020, §3).
 
 ## Context
 

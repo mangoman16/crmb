@@ -1,5 +1,5 @@
 ---
-status: accepted, amended by 0019
+status: accepted, amended by 0019, 0020
 date: 2026-09-24
 ---
 
@@ -34,6 +34,31 @@ date: 2026-09-24
 > - the access card on the student page;
 > - `greeting_name()`;
 > - the Konten page.
+
+> **Amended again by ADR 0020 (2026-09-30).** 0020 reverses 0019's shared addresses before
+> they shipped. The owner's words: "one person = one login = one own e-mail address".
+>
+> **The parts the note above lists as no longer holding hold again:**
+>
+> - `accounts.email` is `UNIQUE`. Migration 024 is deleted, not written;
+> - `student_save` and `student_invite` refuse an address that is already a login's, with the
+>   tolerated clash as described;
+> - `account_with_address()` stays, for the access card and `student_next_steps()`;
+> - the qa items that test a refusal of an address in use.
+>
+> **Still different from this record:**
+>
+> - the refusal is `refuse_address_in_use()`, in place of `account_using_email()`;
+> - `change_login_address()` stays renamed `change_account_email()`;
+> - `students_needing_own_address()`, `own_address_missing_sql()` and the „Eigene
+>   E-Mail-Adresse eintragen" notices on the dashboard and the students list stay deleted;
+> - `student_invite` has no `mode=direct`, and `account_create` is gone: nobody sets another
+>   person's password;
+> - `students.account_id` is set in `app/` only by `invite_student()`, which both
+>   `student_invite` and `student_save` (creating with an invitation) call. In Must not,
+>   "any code except `student_invite`" now reads "any code except `invite_student()`";
+> - sign-in takes the username or the address, in one box;
+> - a family's own edits of its student, custom fields and contacts are `tracked()`.
 
 ## Context
 

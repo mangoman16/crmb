@@ -1,19 +1,78 @@
 ---
-status: accepted
+status: accepted, amended by 0020
 date: 2026-09-29
 ---
 
 # 0019. Sign in with a username, and an address may be shared
 
-*Amended twice on 2026-09-30, before any username code was written.*
+> **Partly superseded by ADR 0020 (2026-09-30), before any of it shipped.** The owner reversed
+> the shared address:
+>
+> - every login has its own address again;
+> - sign-in takes the username **or** the address, in one box;
+> - nobody sets another person's password.
+>
+> Migration 024 is deleted; 022 and 023 stand.
+>
+> **These parts no longer hold:**
+>
+> - the second half of the title;
+> - in Context, the owner's words and the clarifications about shared addresses, staff addresses
+>   [M3], and sign-in by username only;
+> - §2: `staff_address_conflict()`, `logins_on_address()`, `accounts_sharing_address()` and
+>   `send_sign_in_details()`;
+> - §3: migration 024 and the SQLite rebuild;
+> - §4: the paragraph on staff addresses already shared [M3, R10];
+> - §5:
+>   - step 1, the `@` refusal;
+>   - "No code path signs in by address";
+>   - the sign-in flash after a reset [R4], with its staff sentence;
+> - §6: the one mail listing every login on an address, and leaving invited logins out;
+> - §7: the sharing count on Mein Konto, and the direct-login flash;
+> - §9: the staff rule as a rule of its own [M3], „Gleiche Familie" [S5], and the data-sheet label;
+> - §10: the siblings hint, the sharing count and direct creation;
+> - in Rejected:
+>   - "Signing in by username *or* address";
+>   - "Keeping `accounts.email` unique";
+>   - "Refusing every shared address except within one family";
+>   - "Refusing, rather than confirming, a new address that other logins use";
+>   - "One reset mail per account on the address";
+>   - "Listing invited accounts in the reset mail";
+> - in Consequences and "In plain words", everything about shared addresses, 024, R10, S5 and the
+>   privacy sentence on shared mailboxes;
+> - "Open for the owner": closed, because the data sheet prints no username.
+>
+> **Everything else stands**, as ADR 0020 §8 lists it:
+>
+> - the username and its rules;
+> - the address checks [M1, R2];
+> - the sign-in timing [M2, R6, R9];
+> - the sender [S1, R7];
+> - the reset audit, and the 14-day window on Mein Konto and the access card [S4, I1, I2];
+> - the change log [R5, S6];
+> - the throttles [S2, S3, S7];
+> - locking [R8, I3];
+> - every creator calling the guards [R1], with `refuse_address_in_use()` in place of
+>   `staff_address_conflict()`;
+> - `held_for()` and `token_record()` [I4];
+> - the runner's backfill.
+
+*Amended twice on 2026-09-30, before any username code was written, and a third time the same
+day, during implementation.*
 
 - **First amendment.** The first design **failed security review**. The owner decided two
   findings: staff logins need their own address (M3), and the lock-out risk is accepted
   (S3). The rest were adopted.
 - **Second amendment.** The re-review failed narrowly, on R1 and R2. R3 to R10 are adopted as
   well.
+- **Third amendment.** Four gaps found while building it. None changes a decision the owner
+  made:
+  - one reset window, 14 days, everywhere [I1];
+  - staff read a different last sentence in the reset notice [I2];
+  - the isolation check names both server variables [I3];
+  - the designer's backend asks, checked against this record [I4].
 
-Each change is marked **[M1]** … **[R10]** where it lands.
+Each change is marked **[M1]** … **[R10]** and **[I1]** … **[I4]** where it lands.
 
 ## Context
 
@@ -179,6 +238,16 @@ usable by everything including the runner.
   `$base.'2'`, `$base.'3'` and so on, the lowest free one first. So a number appears only
   when the name is taken, and a number freed by a deleted account is used again.
 
+**A refused form, asked for by name [I4]:**
+
+- **`held_for(string $action): array`**, beside `holding_input()`, returns the held fields when
+  the last refused form was `$action` on this page, record and tab, and `[]` otherwise.
+- **`holding_input()` becomes `held_for(form_context()) !== []`**, so the page/id/tab match
+  exists once. `remember_input()` never holds an empty set, so the two cannot disagree.
+- Views use it to react to a refusal before they open the form: the `@` hint on the sign-in
+  page, the open „Benutzernamen ändern" on Mein Konto, the „Gleiche Familie" tick on the
+  student page. It reads the session only. Views still write nothing (ADR 0003).
+
 **No `ext-intl` and no `iconv('…//TRANSLIT')`.** The first is not in `composer.json` and a
 shared host may lack it. The second depends on the locale and gives different answers on
 glibc and musl. One table in the file gives the same username on every host, and the default
@@ -200,11 +269,33 @@ suite can test it.
   - It also throws when a student login would share a staff login's address: „Diese Adresse
     gehört zu einem Mitarbeiterkonto."
   - It is the only remaining refusal of a shared address.
-- **REPEATABLE READ [R8].** Both functions carry a comment saying they rely on it.
-  `tests/mariadb-local.sh` may assert `@@transaction_isolation = 'REPEATABLE-READ'`. That is
-  optional: the portal never changes the isolation level.
-- **`logins_on_address($email, $exceptId)`** returns id, username and student name of the
-  other logins on an address [S5].
+- **REPEATABLE READ [R8, I3].** Both functions carry a comment saying they rely on it.
+  - `tests/suites/migrations.php` asserts it on every run against a real engine, not in
+    `tests/mariadb-local.sh`, so `tests/existing-database.sh` asks a hosting provider's
+    server too.
+  - The server variable has two names. **MariaDB 10.11.14 has only `@@tx_isolation`**:
+    `database-engineer` found that `@@transaction_isolation` fails there with error 1193.
+    **MySQL 8.0 has only `@@transaction_isolation`**, because it removed `tx_isolation`.
+  - The check tries both and expects `REPEATABLE-READ`. The MySQL half follows MySQL's
+    documentation and has not been run.
+  - The portal itself never reads or changes the level.
+- **`logins_on_address($email, $exceptId)`** returns the other logins on an address, oldest
+  first [S5].
+  - **Row shape [I4]:**
+    - `id`, the **account's** id;
+    - `username`;
+    - `name`, as `login_holder_name()` gives it;
+    - `student_id` (`?int`, null for a login with no student);
+    - `first_name` and `last_name`, the student's, `''` without one.
+  - `id` stays the account's because every caller in `app/` is about logins, and some have no
+    student. The access card maps the rows with a `student_id` to `students_notice()`'s `id`,
+    `first_name` and `last_name` in the view. It adds „und ein Zugang ohne Schüler" for the
+    rest.
+  - One `LEFT JOIN students` may replace today's query per row, provided `name` stays what
+    `login_holder_name()` gives.
+  - It names people, so it is called for staff only (§8). A view that calls it with a held,
+    typed address first gates that address on `email_is_dot_atom(email_normalised(…))`, like
+    every other lookup.
 - **`sign_in_dummy_hash(): string` [M2, R9]** returns the setting `sign_in_dummy_hash` (`raw`,
   `internal`, `system`, default `''`).
   - **It is created and refreshed by the runner step (§4)**, and refreshed nightly by
@@ -215,7 +306,7 @@ suite can test it.
     request creates it once, stores it and logs that it did.
 - **`accounts_sharing_address($accountId)`** [S4].
 - **`password_resets_for($accountId, $days)`**: the `account.password_reset` audit entries
-  [S4].
+  [S4]. Every caller passes 14 [I1].
 - **`give_every_account_a_username()`** (§4) and **`send_sign_in_details()`** (§6).
 
 **No new file.** Nothing here needs anything later than `auth.php`. The runner's call (§4)
@@ -325,8 +416,15 @@ lookup and for the throttle.
 4. **A recent reset [S4, R4].**
    - On **every** successful sign-in, while the account has an `account.password_reset` from
      the **last 14 days**, the flash names the newest: „Dein Passwort wurde am ‹Datum,
-     Uhrzeit› über „Benutzername oder Passwort vergessen" neu gesetzt. Warst du das nicht,
-     wende dich an die Trainerin."
+     Uhrzeit› über „Benutzername oder Passwort vergessen" neu gesetzt."
+   - **The last sentence depends on who reads it [I2].**
+     - A **student login** reads „Warst du das nicht, wende dich an die Trainerin."
+     - A **staff login** (`is_staff()`: trainer or administrator) reads „Warst du das nicht,
+       ändere dein Passwort gleich unter „Mein Konto“." The family's sentence would send the
+       trainer to herself.
+     - English, from the designer's specification (§2.4): "If that was not you, please
+       contact your coach." and "If that was not you, change your password under “My
+       account” straight away."
    - The exception is the sign-in the reset itself performs. The `activate` reset branch
      passes its audit id in the session, and that entry is skipped once.
    - `last_seen_at` is not the condition, because any visit in between would hide the notice.
@@ -400,6 +498,9 @@ Otherwise the job is cancelled.
 - It keeps raising `auth_version`.
 - It writes `audit('account.password_reset')` and remembers its id for §5 [S4, R4].
 - It shows the username as a read-only `autocomplete="username"` field [N10].
+- **`token_record()` also selects `a.username` [I4]**, which is where the page reads it from.
+  Whoever holds the link is the holder, or reads the mailbox that could reset the login
+  anyway, so this discloses nothing new.
 
 ### 7. Telling a person their username
 
@@ -408,7 +509,10 @@ Otherwise the job is cancelled.
 - **„Mein Konto"**:
   - the username, and „Benutzernamen ändern";
   - **[S4]** „Diese E-Mail-Adresse nutzen auch N weitere Konten." (the count only);
-  - the resets of the last 30 days.
+  - the resets of the last **14 days** [I1], the same window as the sign-in flash (§5) and the
+    access card (§10). Its last sentence splits like the flash [I2]. Families read „Warst du
+    das nicht? Ändere dein Passwort gleich hier unten und sag deiner Trainerin Bescheid."
+    Staff read the same sentence without its second half.
 - **A direct login:** the flash names the username, so the administrator can tell the person
   next to her.
 - **Setup:**
@@ -484,6 +588,13 @@ notifications go. It is the **recovery channel**. ADR 0010's "One address" rule 
   the „Eigene E-Mail-Adresse eintragen" branch, and `own_address_notice()` with its calls.
 - **Deleting a login** is confirmed by typing the **username**. An address shared by three
   logins confirms nothing about which one is going.
+  - The comparison is `username_normalised(post('confirmation')) === $a['username']` [I4]. It
+    is the sign-in's own normalisation, so an iPhone's capital first letter still matches, and
+    what signs in also confirms.
+- **The printed data sheet [I4]** (`views/print.php`) labels the field „E-Mail-Adresse (für
+  Einladung und Rechnungen)" / "Email address (for the invitation and invoices)". The old „…
+  für das Portal" says the address signs in, which is no longer true. The sheet prints no
+  username. Whether a filled sheet should is open for the owner (below).
 
 ### 10. The student page's access card
 
@@ -495,7 +606,7 @@ The rule is unchanged: one login per student, given only by `student_invite`.
 - **Active and suspended:**
   - username, then address, then last seen;
   - **[S4]** „Diese Adresse nutzen auch N weitere Konten";
-  - the latest reset.
+  - the latest reset, if it is from the last 14 days [I1].
 - The delete confirmation asks for the username.
 
 ### 11. Demo data
@@ -557,6 +668,24 @@ attributable.
 
 **Flashing a reset only when it is newer than `last_seen_at` [R4].** Any visit between the
 reset and the next sign-in would hide it.
+
+**A longer window on Mein Konto than for the flash, 30 days against 14 [I1].** A list is a
+record rather than a reminder, which is the one argument for it. Nothing in the reviews or in
+the owner's words asked for it, and "In plain words" below promises two weeks. Two numbers are
+two things to explain to a family and two things to test.
+
+**One reset sentence for everybody [I2].** „Wende dich an die Trainerin" sends the trainer to
+herself, and an administrator to somebody who cannot help her.
+
+**Asserting `@@transaction_isolation` only, or `@@tx_isolation` only [I3].** The first fails
+on MariaDB 10.11.14, the one engine that has been run. The second fails on MySQL 8.0.
+
+**Making `logins_on_address()`'s `id` the student's [I4].** Konten and the actions' refusals
+name logins, and some logins have no student. An `id` that means an account in one caller and
+a student in another is a bug waiting for the next caller.
+
+**Comparing the delete confirmation byte for byte [I4].** An iPhone capitalises the first
+letter, so the holder's own username, typed correctly, would be refused.
 
 **Stripping never-recorded columns on update only [R5].** An insert or delete snapshot would
 still carry the hash.
@@ -682,24 +811,27 @@ schema change or an unstable engine function. The gates above close it with neit
   - **the MariaDB 10.11.14 check [M1]:** for every character of the username alphabet and of
     `EMAIL_DOT_ATOM`, no two distinct characters compare equal, and **none compares equal to
     `''`**. If it fails, this record is amended before release;
-  - optionally, the isolation assertion [R8];
+  - the isolation assertion [R8, I3], in `tests/suites/migrations.php`, trying both variable
+    names;
   - MySQL 8.0 stays unverified.
 - **`backend-dev`:**
   - `core.php`: `email_deliverable()`, `EMAIL_DOT_ATOM`, `email_is_dot_atom()`, the
-    `email_value()` change, and the username functions;
+    `email_value()` change, the username functions, and `held_for()` with `holding_input()`
+    rebuilt on it [I4];
   - `mail.php`: `queue_mail()` uses `email_deliverable()` [R2]; `process_mail()` checks every
     token and normalises both sides [R7];
-  - `auth.php`: the §2 functions with the R8 comments, and `create_admin_account()` calling
-    both creation guards [R1];
+  - `auth.php`: the §2 functions with the R8 comments, `create_admin_account()` calling both
+    creation guards [R1], `logins_on_address()`'s row shape and `token_record()`'s `username`
+    [I4];
   - `history.php`: the columns never recorded, for every operation [R5];
   - `tick.php`: the dummy-hash refresh;
-  - `actions.php`: `login` (R4), `forgot`, `activate`, the creators and re-addressers (M3, R1,
-    S5), and the delete confirmation;
+  - `actions.php`: `login` (R4, and the staff sentence, I2), `forgot`, `activate`, the creators
+    and re-addressers (M3, R1, S5), and the delete confirmation (I4);
   - `actions_settings.php`: `username_change` (R3, N5, S2, S6) and `email_change`;
   - `demo.php` (R1), `domain.php`, `bin/console.php` and `public/setup.php`.
 - **`frontend-dev`**, from `ui-ux-designer`'s specification: the login, forgot, activate
-  (read-only username), profile, student, accounts, dashboard and students views, and
-  `app/ui.php`.
+  (read-only username), profile, student, accounts, dashboard, students and print [I4] views,
+  and `app/ui.php`.
 - **`qa-tester`**, breaking each rule once on purpose:
   - **Generation:** the §2 table, plus `ÄNNE` → `aenne` and `ẞ` → `ss`; a second and third
     Lena Müller get `…2` and `…3`; a freed `…2` is reused; `konto` is the fallback.
@@ -721,6 +853,12 @@ schema change or an unstable engine function. The gates above close it with neit
     `username_change` is in `structure.php`'s throttling list.
   - **[R4]:** a reset 10 days ago flashes on two sign-ins with a visit between them; one 15
     days ago does not; the reset's own sign-in does not.
+  - **[I1]:** Mein Konto lists a reset from 13 days ago and not one from 15.
+  - **[I2]:** a trainer's and an administrator's flash do not say „wende dich an die
+    Trainerin"; a student's does.
+  - **[I4]:** the delete confirmation accepts `Lena.Mueller` for `lena.mueller`;
+    `holding_input()` and `held_for(form_context())` agree; `logins_on_address()` gives a
+    null `student_id` for a login with no student.
   - **[R5]:** an insert and a delete of an account record none of the three columns.
   - **[R7]:** a stored `Lena@Example.at` still receives its reset mail.
   - **[R9]:** after the runner, the dummy hash exists and matches `PASSWORD_DEFAULT`; a request
@@ -793,5 +931,8 @@ schema change or an unstable engine function. The gates above close it with neit
 
 ## Open for the owner
 
-Nothing is open in this record. The privacy-notice sentence comes to her as a draft from
-`docs-writer`, for release.
+- **[I4] Whether a filled data sheet prints the username**, so that a family takes it home on
+  paper. A username is not a secret (§1), and the sheet goes to its holder. This record does
+  not decide it. Until she does, the sheet prints none.
+
+The privacy-notice sentence comes to her as a draft from `docs-writer`, for release.
