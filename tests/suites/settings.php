@@ -157,17 +157,22 @@ throws(fn() => setting_default('default_tariff'), 'a default tariff nothing uses
 ok(!str_contains((string)file_get_contents(APP_ROOT.'/database/defaults.php'), 'default_tariff'), 'nor seeded on a new portal');
 
 case_('Every note in the shipped drafts counts as a placeholder, however long');
-/* The check used to stop at 80 characters, and six of the eight notes in each
-   draft are longer: a notice still saying „[Vollständiger Name …]“ could be
-   released. Counted against the drafts themselves, so a new note is covered. */
+/* The check used to stop at 80 characters, and most of the notes in each draft
+   are longer: a notice still saying „[Vollständiger Name …]“ could be released.
+   Counted against the drafts themselves - every „[" in them opens a note - so a
+   note added to a draft is covered without a number here to update. The two
+   drafts carry the same notes, one in each language. */
+$noteCount = [];
 foreach (['de', 'en'] as $lang) {
     $draft = (string)file_get_contents(ROOT.'/docs/privacy-draft-'.$lang.'.txt');
-    is_same(8, substr_count($draft, '['), $lang.': the draft has eight notes, so the count below means something');
-    is_same(8, count(privacy_draft_placeholders($draft)), $lang.': and all eight are found');
+    $noteCount[$lang] = substr_count($draft, '[');
+    ok($noteCount[$lang] >= 8, $lang.': the draft has its notes ('.$noteCount[$lang].'), so the count below means something');
+    is_same($noteCount[$lang], count(privacy_draft_placeholders($draft)), $lang.': and every one of them is found');
     ok(max([0, ...array_map('mb_strlen', privacy_draft_placeholders($draft))]) > 250, $lang.': the longest among them too, at over 250 characters');
     throws(fn() => $save($lang === 'de' ? $draft.$long : $long, $lang === 'en' ? $draft.$long : $long, true),
            $lang.': the draft itself cannot be released', $lang === 'de' ? '[Vollständiger Name' : '[Full name');
 }
+is_same($noteCount['de'], $noteCount['en'], 'the German and the English draft have the same number of notes');
 $complete = "Verantwortlich: Badminton Hofer, Hauptstraße 1, 12345 Musterstadt, info@beispiel.test\n"
     ."Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO, für Protokolle Art. 6 Abs. 1 lit. f DSGVO (Art. 6 (1) (f) GDPR).\n"
     ."Beschwerden: https://www.bfdi.bund.de/DE/Home/home_node.html?view=renderKontakt#top und https://example.org/a?x[]=1\n"
