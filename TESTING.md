@@ -95,6 +95,7 @@ release and emptied again for the next.
 - The bell no longer jumps when opened, its panel stays on a phone's screen, its number is a badge in the portal's colour like the one on **Post**, and a tap elsewhere or Escape closes it: [5.3a–5.3g](#the-shell-the-bar-notifications-feedback-impersonation), in The shell
 - A status to choose — „Automatisch", „Abwesend", „Als offline anzeigen" — for trainers and administrators, a coloured dot, and when each account was online over the last 30 days: [P.1–P.10](#online-status-and-when-somebody-was-online)
 - Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
+- The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
 
 ---
 
@@ -684,11 +685,23 @@ sign-in page, and a family's login at hand. Before you start, note what the
   your choice — a dark mustard that still looks yellow, not a grey. White text
   on the buttons is readable. In dark mode the buttons show the pale yellow
   itself, with dark text.
+- [ ] **6.11a** Now set **Hauptfarbe** to `#f5e663`, a stronger yellow, and
+  save. The message names the colour it replaced: „Vorgaben gespeichert.
+  Vorher: Hauptfarbe #fdf6b2." The card again says „Für gute Lesbarkeit
+  verwendet: …" with your choice beside it. Look at the sign-in page in the
+  other browser and at the menu, each in light and in dark mode: every button,
+  link and menu entry can be read.
 - [ ] **6.12** Set **Hintergrund** to `#444444`. Refused: „Hintergrund: Auf
   diesem Hintergrund wäre die graue Schrift schwer zu lesen …" and **nothing**
   else from that save has changed — change the main colour in the same save to
   prove it. Your typed values are still in the form. Type `gelb` into a colour:
   refused with „Bitte eine Farbe wie #1f5fa9 eingeben."
+- [ ] **6.12a** Beside each colour box is a small colour swatch. Tap it and pick
+  a colour: the box fills with that colour's code. „Standard übernehmen" empties
+  the box again; saved empty, that colour goes back to the built-in one. Then
+  switch JavaScript off, as in 5.3g: there is no swatch and no „Standard
+  übernehmen", and a colour typed into the box as `#1f5fa9` is saved all the
+  same.
 - [ ] **6.13** The way back: retype the values the last „Vorher: …" message
   named, save, and the portal looks as it did.
 - [ ] **6.14** A family who picked their own colour under **Mein Konto** keeps
@@ -1235,9 +1248,16 @@ your picture at the top right.
 - [ ] **20.1** **Einstellungen → Datenschutz**: the German and English drafts
   are editable, and the operator's own details are filled into them from
   **Betrieb** rather than typed twice.
-- [ ] **20.2** Editing the notice asks each person to acknowledge the new
-  version once, and records that they did.
+- [ ] **20.2** Editing the notice changes the **Fassung** number printed under
+  it. Nobody is asked to acknowledge it again: the number is recorded when a
+  family accepts an invitation, and never compared afterwards.
 - [ ] **20.3** The notice is readable signed out.
+- [ ] **20.4** The notice she has released says what this version stores and
+  sends: a paragraph on when each account was online (last visit, 30 days of
+  periods, seen only by trainers and administrators) and one on club news by
+  email being on for new accounts. A portal that was updated keeps the text she
+  saved before, so these arrive only if she pasted them in (UPDATING.md). No
+  „[…]" note is left in the released text.
 
 ---
 

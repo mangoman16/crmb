@@ -170,7 +170,14 @@ Die neuen Dateien über die alten hochladen und das Portal öffnen. Die Datenban
 passt sich beim ersten Aufruf selbst an. Kein weiterer Schritt.
 
 > **Beim Update eines Portals, in dem schon Familien sind, auf Version 0.6.0:**
-> danach einmal unter **Einstellungen → SMTP** auf **„Nur Verbindung prüfen“**
+> **vor** dem Hochladen unter **Einstellungen → Datenschutz** zwei Absätze in
+> die Datenschutzerklärung übernehmen – einen darüber, dass das Portal jetzt
+> speichert, wann jemand online war, und einen, der den alten Absatz zum
+> Newsletter ersetzt, weil Neuigkeiten per E-Mail bei neuen Konten jetzt
+> eingeschaltet sind. Beide Absätze zum Kopieren stehen in
+> [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060); die
+> Rechtsgrundlage an der Stelle in eckigen Klammern selbst eintragen. Nach dem
+> Hochladen einmal unter **Einstellungen → SMTP** auf **„Nur Verbindung prüfen“**
 > tippen und das grüne **Erfolgreich** abwarten. Vorher gehen keine
 > Einladungen und keine „Passwort vergessen?“-Links hinaus. Außerdem hat ab
 > dieser Version jedes Kind einen eigenen Zugang: Geschwister, die sich bisher
@@ -288,7 +295,7 @@ Seitenaufruf und jede der vier Prüfungen vor einem Update sind gegen
 **MariaDB 10.11.14** mit echten HTTP-Anfragen durchgespielt worden – samt einer
 Sicherung, die anschließend in eine zweite Datenbank zurückgespielt wurde und
 dort vollständig ankam. Die gesamte Testsuite läuft dort ebenfalls durch, mit
-allen neunzehn Datenbankänderungen.
+allen einundzwanzig Datenbankänderungen.
 
 Für Version 0.6.0 wurde außerdem der erste Abend von Anfang bis Ende in einem
 echten Browser in Telefonbreite durchgespielt, gegen MariaDB 10.11.14: die

@@ -30,6 +30,23 @@ tests/mariadb-local.sh billing    # one suite
 It keeps its data in a temporary directory and never touches an existing
 installation.
 
+**Two runs at the same time must not share that directory.** By default every
+run uses `$TMPDIR/crm-mariadb` and port 3307. A second run that finds a server
+already answering there uses it rather than starting its own, and both then
+drop and recreate the tables of the same `badminton_crm_test` database under
+each other, and the run that started the server stops it when it finishes,
+whether the other is done or not. Give each concurrent run a folder and a port of its own:
+
+```bash
+CRM_MARIADB_WORK=/tmp/crm-mdb-a CRM_MARIADB_PORT=3391 tests/mariadb-local.sh
+CRM_MARIADB_WORK=/tmp/crm-mdb-b CRM_MARIADB_PORT=3392 tests/mariadb-local.sh security
+```
+
+Keep the folder's path short. The server's socket is `run/mysql.sock` inside
+it, and MariaDB refuses to start when that whole path is longer than 107
+characters („The socket file path is too long (> 107)"); the script then stops
+with „Server did not start" and the reason in the folder's `server.log`.
+
 On shared hosting there is no server to start, but the hosting panel can create
 another database. Create an empty one whose name ends in `_test` (the panel adds
 the account prefix, as in `konto_crm_test`), then, in the git checkout that

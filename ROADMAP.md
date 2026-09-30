@@ -125,6 +125,20 @@ screen (ADR 0008).
 shared hosting, and `tests/e2e.sh`, a browser walk of the first evening against
 a real MariaDB that found six defects the suite had passed.
 
+**The top bar, and what staff can see.** The bell no longer jumps; tapping
+your picture opens „Mein Konto" and „Abmelden" (ADR 0016). Trainers and
+administrators choose a status and see, for every account, when it was online
+over the last 30 days; families see none of it (ADR 0015, migration 020).
+**Profile pictures** are cached privately and a family can fetch only its own
+and the staff's (ADR 0017). **Club news by email** starts switched on for new
+accounts (ADR 0018, migration 021). **The club's colours and logo** under
+Einstellungen → Portal (ADRs 0013, 0014). The browser walk has not been
+repeated since these were added.
+
+**Designed, not built:** sign-in by username, with one address allowed on
+several logins (ADR 0019, planned as migrations 022–024). Until it is built,
+the sign-in throttle's known weakness in VALIDATION.md stands.
+
 ---
 
 ## Next — before she uses it
@@ -133,7 +147,7 @@ These are the things that stand between "the code is good" and "her data is
 safe in it". Nothing below is optional.
 
 1. **Done for MariaDB; repeat on MySQL 8 if that is your target.**
-   All nineteen migrations, the upgrade path and the whole suite have now run
+   All twenty-one migrations, the upgrade path and the whole suite have now run
    against MariaDB 10.11.14 — see [VALIDATION.md](VALIDATION.md). Repeat any
    time with `tests/mariadb-local.sh`, which starts a throwaway server and stops
    it again, or on shared hosting with `tests/existing-database.sh` against an
@@ -153,7 +167,9 @@ safe in it". Nothing below is optional.
 4. **Finish the privacy notice.** What the portal itself stores is written out
    in the drafts; still open are the real operator details, the hosting and
    SMTP providers, retention periods, and a decision on how sickness absences
-   and minors' data are handled — the draft flags these as placeholders.
+   and minors' data are handled, and the legal basis for two things she has
+   decided: recording when each account was online, and sending club news by
+   email without asking for a yes first — the draft flags these as placeholders.
    Invitations stay disabled until the German notice is released, which is the
    right default; an English one is optional.
 5. **Confirm the background work runs on her host.** No cron job is needed:

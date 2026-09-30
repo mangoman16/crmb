@@ -1,5 +1,76 @@
 # Validation
 
+## 0.6.0 — the top bar, online status, news by email, the club's colours and logo
+
+Recorded 2026-09-30 against commit `dda5db0`, whose code is that of `3b4c4c8`
+(`dda5db0` changed decision records only). The two whole-suite runs below were
+made on a copy exported with `git archive`, so the documents being edited in
+the working tree at the time could not affect them. Every figure here was run
+and watched for this record, not taken from a commit message.
+
+- **The whole suite on the SQLite translation: 4840 assertions, 0 failed**, in
+  51.2 seconds on PHP 8.4.19. Its closing list names what that driver cannot
+  cover: the foreign keys on `charges`, `students`, `class_students` and
+  `tariffs`, the MySQL-dialect backup, two spellings of one address sharing a
+  sign-in count, and the SMTP test naming a missing sender address, because
+  `vendor/` was not installed.
+- **The whole suite against MariaDB 10.11.14
+  (`10.11.14-MariaDB-0ubuntu0.24.04.1`), started by `tests/mariadb-local.sh`
+  with a private `CRM_MARIADB_WORK` and `CRM_MARIADB_PORT`: 4851 assertions, 0
+  failed**, in 58.1 seconds on PHP 8.4.19. The harness builds that database from
+  every statement of all twenty-one migration files, so all twenty-one apply
+  there. Its closing list says the data that migrations 015, 016, 019, 020 and
+  021 carry across was checked on SQLite only, and names the same SMTP test.
+- **That gap was then closed for MariaDB.** The `migrations` suite was run
+  again against the same server with `CRM_MIGRATION_CONFIG` naming a second,
+  empty `_test` database: **166 assertions, 0 failed**, and nothing listed as
+  uncovered. This run was on the working tree, where only documents had
+  changed. So the rows that 020 and 021 find already in place are checked on
+  MariaDB too: every existing account starts on „Automatisch", and one that had
+  news by email off still has it off.
+- The top-bar menus were exercised by `tests/topbar-menus.mjs` under `node`
+  as part of the `shell` suite in both runs: taps, a swipe and Escape against
+  the real `app.js` in a page of stand-in elements, not in a browser.
+
+- **The drafts' own count of notes had to change.** This change added two
+  bracketed notes to each privacy draft, one after the paragraph on online
+  times and one for the legal basis of news by email. The `settings` suite
+  counted exactly eight per draft, so with these documents it first gave 4837
+  passed, 4 failed on SQLite and 4848 passed, 4 failed on MariaDB 10.11.14, all
+  four being that count. The test now counts the notes in the drafts
+  themselves and checks that both languages have the same number. With it, the
+  whole suite on the working tree gave **4842 passed, 0 failed** on SQLite (PHP
+  8.4.19). It has not been run on MariaDB since that change.
+
+Reported by the implementers and **not** reproduced here: the security review
+of the colours and logo (PASS, commit `667367a`), the code review of the bell,
+the account menu and online status, and the code re-review of the colours and
+logo, which `667367a` gives as still in progress.
+
+**Known limits, accepted.**
+
+- **The sign-in throttle still tells whoever tries that an address is
+  registered**, as described under „the sign-in counter" below. ADR 0019
+  supersedes ADR 0007 with sign-in by username, which would close it, but
+  username sign-in is not built yet: there are no migrations 022–024. Until it
+  is built and measured on MariaDB, the weakness stands.
+- **A logo photo marked as rotated is measured unrotated.** A phone often
+  stores a photo sideways, with a note in the file telling the viewer to turn it
+  (EXIF orientation). The browser turns it, but `getimagesize()` reports the
+  width and height as stored, so such a logo can be refused as too tall when it
+  looks wide. Reading the note would need PHP's `exif` extension, which shared
+  hosting does not promise. Saving the picture again from an image editor, or as
+  a screenshot, fixes it. TESTING.md says so under 6.20.
+**Not covered here.** **MySQL 8.0 remains unverified.** The browser walk,
+`tests/e2e.sh`, was not run for this round: Playwright's Chromium is not
+installed on the machine that made this record, so the account menu, the dot,
+the history and the colours have not been walked end to end in any browser
+here. Nothing was looked at on a real iPhone, including P.14 („Abmelden" above
+the bar at 320 px) and 6.10 (Safari's bar in the menu colour). The removal of
+online periods after 30 days is tested by ageing the stored dates; nobody has
+waited 30 days (TESTING.md P.10). No real mail provider and no real hosting
+account were used.
+
 ## 0.6.0 — one login per student, the start checklist, errors that report themselves
 
 Recorded 2026-09-28 against commit `645b059`. Every figure in this list was run

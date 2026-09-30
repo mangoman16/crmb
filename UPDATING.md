@@ -12,8 +12,72 @@ shell.
 ## Updating an existing portal to 0.6.0
 
 A portal installed fresh from this version can skip this section: its start
-checklist covers all of it. A portal that already has families in it changes
-in three ways the moment the new files are opened.
+checklist covers all of it, and its privacy notice already starts from the new
+drafts. A portal that already has families in it needs one thing done
+**before** the upload, and then changes in the ways below the moment the new
+files are opened.
+
+**Before you upload: add two paragraphs to your privacy notice.** This version
+records when each account was in the portal, and it switches club news by
+email on for new accounts. Your privacy notice has to say both. The drafts in
+the download only fill in the notice of a brand-new portal; yours keeps the
+text you saved, so the paragraphs have to be added by hand. Do it while the old
+version is still running, so that no family uses the new one under a notice
+that does not mention it. Open **Einstellungen → Datenschutz**, and in the
+German text:
+
+1. At the end of the section that lists what is processed (in the draft, „3.
+   Welche Angaben verarbeitet werden"), add:
+
+   > Das Portal speichert für jedes Konto, wann es zuletzt geöffnet wurde, und
+   > für höchstens die letzten 30 Tage, von wann bis wann es geöffnet war – nur
+   > Datum und Uhrzeit, keine IP-Adresse und keine aufgerufenen Seiten. Sehen
+   > können das nur Trainerinnen und Administratoren; Schülerkonten sehen weder
+   > eigene noch fremde Zeiten. Diese Zeiträume werden automatisch gelöscht,
+   > sobald sie älter als 30 Tage sind, oder früher, wenn das Portal auf eine
+   > kürzere Frist eingestellt ist; das Portal räumt dafür einmal am Tag auf.
+   > Der Zeitpunkt des letzten Besuchs bleibt gespeichert, solange das Konto
+   > besteht, und wird mit ihm gelöscht. Wer als Trainerin „Als offline
+   > anzeigen“ wählt, erscheint für andere Trainerinnen offline;
+   > Administratoren sehen die Zeiten weiterhin.
+   > [Zweck und Rechtsgrundlage ergänzen]
+
+2. In „4. Rechtsgrundlagen", replace the paragraph that begins „Der Newsletter
+   wird nur an Konten mit aktiviertem Newsletter-Abonnement gesendet" with:
+
+   > Neuigkeiten des Vereins werden als Vereinsinformation per E-Mail
+   > verschickt, etwa wenn sich eine Trainingszeit ändert oder die Halle
+   > geschlossen ist. Bei neuen Konten ist das eingeschaltet. Abschalten lässt
+   > es sich schon beim Aktivieren des Kontos, jederzeit später in „Mein Konto“
+   > und über den Link in jeder dieser E-Mails; im Portal bleiben die
+   > Neuigkeiten lesbar.
+   > [Rechtsgrundlage ergänzen – z. B. berechtigtes Interesse]
+   > E-Mail-Hinweise auf private Nachrichten haben eine eigene Einstellung.
+   > Sicherheitsmails wie Einladungen und Passwortlinks dienen der
+   > Bereitstellung des Zugangs.
+
+3. Replace each line in square brackets with your own words, then save.
+
+The old paragraph called club news voluntary and based on consent. That is no
+longer true: you decided that club news is information every member needs,
+which is why it now starts switched on. Which legal basis that rests on is
+yours to decide and to have checked; the bracketed notes mark where it goes. A
+notice you have released („… zur Verwendung freigegeben") is not saved while a
+note in square brackets is still in it, and the message names the note. The
+same two paragraphs in English are in `docs/privacy-draft-en.txt` in the
+download, for the English version if you keep one. Saving changes the
+**Fassung** number under the notice; nobody is asked to acknowledge it again.
+
+**Migrations 020 and 021 run by themselves** on the first page view, like every
+migration before them. 020 gives every account a status, which starts on
+„Automatisch" and so shows exactly what it showed before, and adds an empty list
+of times online. Nothing from before the update is filled in, so for the first
+30 days the history says „Aufgezeichnet wird seit dem …" with the day of the
+update. That list is not among the tables whose rows are counted before and
+after, because the nightly cleanup deletes from it on purpose. 021 switches
+„Neuigkeiten per E-Mail" on for accounts created **from now on**. Every
+existing account keeps what it has: a family who had it off still has it off,
+and nobody is signed up behind their back.
 
 **Brothers and sisters on one login are separated.** From this version one
 login belongs to one student, and migration 019 makes the database hold to
@@ -45,6 +109,38 @@ from the German and the English text as a pair, so every portal shows a new
 acknowledge it again: the number is recorded, never compared. The English text
 is optional from this version; a notice already released in both languages
 keeps both.
+
+**What you will notice afterwards.** None of this needs anything done; it is
+here so that nothing surprises you.
+
+- **Profile pictures load once**, not again on every page, and a family sees
+  only their own child's picture and those of the trainers and administrators.
+  Anybody else appears as initials, in **Nachrichten** too. A new picture shows at once; an
+  old one can stay in a phone's memory for up to seven days.
+- **The bell stays where it is** when you open it, its panel fits on the
+  phone's screen, and the number of unread notices is a small badge in the
+  portal's colour. Tapping anywhere else, or Escape, closes it.
+- **Your picture at the top right opens a menu**: „Mein Konto" and
+  „Abmelden". For you and the other trainers it also holds a status —
+  „Automatisch", „Abwesend", „Als offline anzeigen" — and a coloured dot on the
+  picture: green online, blue recently, yellow away, grey offline. Families
+  have the menu, but no status and no dot.
+- **When somebody was online**: under **Konten** and on each child's page, a
+  line says when the account was last in the portal, and „Wann online? Letzte
+  30 Tage" opens the days and times. Only trainers and administrators see it.
+  When you view the portal as a family, it is your visit that is recorded, not
+  theirs.
+- **Club news by email starts switched on** for a new family: the box on the
+  invitation page is already ticked, and they can untick it there. The printed
+  sign-up form now asks „Bitte keine Neuigkeiten des Vereins per E-Mail
+  schicken." instead of asking for a yes.
+- **Your club's colours and logo**, under **Einstellungen → Portal**, on the
+  cards „Aussehen" and „Logo". Until you set something, the portal looks exactly
+  as before. A colour too pale or too dark to read text on is used darker or
+  lighter, in the same hue, and the card shows both. A logo can be a PNG, JPEG or WebP
+  of at most 1 MB. A photo taken on a phone can be measured the wrong way round
+  and refused; saving it again from an image editor, or as a screenshot, fixes
+  that.
 
 Everything else in this version is either new or moved to another place in the
 menu; [CHANGELOG.md](CHANGELOG.md) lists it.

@@ -4,9 +4,27 @@
 
 ### Before you upload this over a portal that has families in it
 
-A portal installed fresh from this version can skip this. An existing one
-changes in three ways the first time it is opened, and
-[UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) has them in full.
+A portal installed fresh from this version can skip this. An existing one needs
+one thing done before the upload, and changes in several ways the first time it
+is opened; [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) has
+them in full.
+
+**First, while the old version is still running, add two paragraphs to the
+privacy notice** under **Einstellungen → Datenschutz**: one saying that the
+portal now records when each account was online, and who can see it, and one
+replacing the old newsletter paragraph, because club news by email now starts
+switched on and is no longer described as voluntary consent. UPDATING.md has
+both paragraphs to copy. The drafts shipped with this version only fill in the
+notice of a new portal; an existing one keeps the text it had. Each paragraph
+ends in a note in square brackets for the legal basis, which is hers to decide
+and have checked, and a released notice is not saved until the notes are
+replaced.
+
+Migrations 020 and 021 then run by themselves. 020 gives every account a status
+that starts on „Automatisch" and an empty list of times online; nothing is
+filled in from before. 021 switches news by email on for accounts created from
+now on; every existing account keeps its choice.
+
 Migration 019 takes every child but the first off a login they shared; nothing
 is deleted, each change is written under **Änderungen**, and those children
 need an address of their own and an invitation before they can sign in on
@@ -14,6 +32,94 @@ their own. Invitations and „Passwort vergessen?“ links wait until **„Nur
 Verbindung prüfen“** under **Einstellungen → SMTP** has passed once. And the
 version number printed under the privacy notice changes once although the text
 does not; nobody is asked to acknowledge it again.
+
+### The top bar: a steady bell, and a menu behind your picture
+
+- **Opening the bell no longer moves anything.** On a phone the whole bar used
+  to jump and the panel ran off the left edge of the screen. The panel now
+  stays on the screen, the number of unread notices is a badge in the portal's
+  colour, like the one on **Post**, and Escape, a tap anywhere else or opening
+  the other menu closes it.
+- **Tapping your picture opens „Mein Konto" and „Abmelden".** Trainers and
+  administrators also get a status there: „Automatisch", „Abwesend" or „Als
+  offline anzeigen". The menu works without JavaScript. Families have the menu,
+  but no status (ADR 0016).
+- On the attendance list, the text on the marks for present and absent is
+  readable in dark mode again; it now comes from the same colour as the text on
+  every button.
+
+### Who was online, for trainers and administrators
+
+- **A coloured dot on each picture**: green online, blue recently, yellow
+  away, grey offline. „Abwesend" shows as yellow while you are in the portal;
+  „Als offline anzeigen" shows as offline to the other trainers, while
+  administrators still see the true times, marked „(als offline angezeigt)".
+- **„Wann online? Letzte 30 Tage"**, under **Konten** and on each child's page,
+  lists the days and the times from when to when each account was in the
+  portal. Only the date and time are kept: no IP address and no pages viewed.
+  Periods older than 30 days are the first thing the nightly cleanup removes;
+  under **Einstellungen → System → Erweitert** the 30 days can be shortened,
+  never lengthened (ADR 0015, migration 020).
+- **Families see none of it**, neither their own times nor anybody else's: the
+  owner's decision. When a trainer views the portal as a family, the trainer's
+  visit is recorded, not the family's, so a child does not show as online at
+  23:00 because somebody checked what the child sees.
+
+### Profile pictures load once, and a family sees only its own
+
+- The picture in the top bar was fetched again on every page. It is now kept
+  by the browser, privately, for up to seven days, at an address that changes
+  when the picture does, so a new picture shows at once. Invoices, attachments
+  and payment proofs are still never kept. Signing out asks the browser to
+  clear what it kept; Safari may ignore that, which is why the seven days are
+  the real limit (ADR 0017).
+- **This closed a real hole.** Any signed-in family could fetch every other
+  child's photo, and every account's, by counting through the numbers in the
+  address. Now staff see every picture, and everybody else sees their own and
+  those of the trainers and administrators. Anything else is refused, and the
+  page draws initials instead, in **Nachrichten** too.
+- The list of contact requests could show a stranger's face beside a request;
+  it now shows the sender's own picture.
+
+### Club news by email starts switched on
+
+- The owner decided that club news is information every member needs, not
+  advertising (ADR 0018). New accounts therefore start with „Neuigkeiten per
+  E-Mail" switched on (migration 021). Existing accounts keep what they had.
+- The invitation page shows „Neuigkeiten des Vereins per E-Mail erhalten.
+  Jederzeit abbestellbar." already ticked. A family can untick it there, later
+  under **Mein Konto**, or through the link in every such email; a no is kept,
+  with a record of when it was given.
+- **The printed sign-up form asks for the no**: „Bitte keine Neuigkeiten des
+  Vereins per E-Mail schicken." and the same for message reminders, so a parent
+  who ticked nothing is not mistaken for one who declined. A data sheet printed
+  for an existing child ticks each no from what the login actually holds.
+- The news form no longer says „Newsletter-Abonnenten"; it sends to everyone
+  who receives news by email.
+- The privacy drafts say so; see the first section above for an existing
+  portal.
+
+### The club's own colours and logo
+
+- **Einstellungen → Portal** has two new cards. **„Aussehen"** takes a main
+  colour, a menu colour, a highlight and a background; the dark-mode shades are
+  worked out from them and can be set by hand under „Erweitert". A colour too
+  pale or too dark for readable text is saved, not refused, and used darker or
+  lighter in the same hue, with the card showing „Für gute Lesbarkeit
+  verwendet: …" beside her choice. A save that changes a colour names the
+  colours it replaced, so the change can be typed back. A colour picker sits beside each box; without
+  JavaScript she types the colour. (ADR 0013.)
+- **„Logo"** replaces the „B" top left, in the menu, on the sign-in page and in
+  the phone's top bar: a PNG, JPEG or WebP of at most 1 MB, at least 88 pixels
+  tall, at most 2048 on either side, and no more than five times as wide as it
+  is tall or twice as tall as it is wide. Two switches on
+  „Aussehen" hide the portal's name and the „Verwaltung" line beside it.
+  Removing the logo brings back the portal icon, or else the „B". (ADR 0014.)
+- A portal with no colours set looks exactly as before and loads nothing extra.
+- **Known limit**: a photo taken on a phone is often stored sideways with a
+  note telling the viewer to turn it. The portal measures the picture as stored,
+  so such a logo can be refused as too tall when it looks wide. Saving it again
+  from an image editor, or as a screenshot, fixes that.
 
 ### One login is one student
 
@@ -232,6 +338,14 @@ passed, 279 checks, against MariaDB 10.11.14 on PHP 8.4.19 and 8.5.11, with no
 PHP warning, JavaScript error or layout failure. **MySQL 8.0 was not tried**,
 nor Safari on a real iPhone, a real mail provider, a PDF reader rather than a
 parser, or a real hosting account. VALIDATION.md has the details.
+
+The top bar, online status, news by email and the colours and logo were
+checked later, at commit `dda5db0`. The whole suite gave 4840 assertions, 0
+failed, on the SQLite translation, and 4851, 0 failed, against MariaDB 10.11.14,
+with all twenty-one migrations applying there. The data that 020 and 021 find
+already in place was checked on MariaDB as well. The browser walk was **not**
+repeated for these, and nothing was tried on a real iPhone. **MySQL 8.0 was not
+tried.**
 
 ### Signing in correctly no longer counts against her
 

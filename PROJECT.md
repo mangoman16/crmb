@@ -37,7 +37,7 @@ Reopening these needs a reason, not a preference.
 | Not doing | Why |
 |---|---|
 | Online card payments | A processor brings PCI scope, a contract and a fraud surface. Bank transfer with a QR code is the right answer at this size. |
-| A JavaScript framework | Server-rendered HTML plus ~225 lines of JS does the job, and every page works without it. A build step is a thing that breaks between her and her data. |
+| A JavaScript framework | Server-rendered HTML plus ~280 lines of JS does the job, and every page works without it. A build step is a thing that breaks between her and her data. |
 | Multi-tenant / other clubs | This is one coach's tool. Multi-tenancy would change every access check for a user who does not exist. |
 | Replacing it with an off-the-shelf CRM | Reasoning in [AUDIT.md](AUDIT.md). The domain here is narrow and the fit of a general CRM is poor. |
 | More dependencies | Two today. Each one is something she must keep patched. |
@@ -52,10 +52,10 @@ to change, and there is no migration debt.
 
 | | |
 |---|---|
-| Application code | ~10,590 lines PHP in `app/`, 2,900 lines of views, 1,024 lines CSS, 224 lines JS |
-| Schema | 42 tables, 19 migrations |
-| Configuration | 53 settings, each declared once with a type and a default |
-| Tests | 26 suites, no database server needed, under a minute; plus `tests/e2e.sh`, a browser walk against a real MariaDB |
+| Application code | ~12,080 lines PHP in `app/`, 3,090 lines of views, 1,183 lines CSS, 282 lines JS |
+| Schema | 43 tables, 21 migrations |
+| Configuration | 67 settings, each declared once with a type and a default |
+| Tests | 30 suites, no database server needed, under a minute; plus `tests/e2e.sh`, a browser walk against a real MariaDB |
 | Dependencies | 2: phpmailer 7.1.1, bacon/bacon-qr-code 3.1.1 (both pinned in `composer.lock`) |
 | Change log | 13 tables recorded field by field under „Änderungen“; it informs, and puts nothing back |
 
@@ -87,7 +87,7 @@ This document previously led with the fact that no migration had ever run
 against a real database engine. **That has now been done, against MariaDB
 10.11.14.** What was verified:
 
-- All nineteen migrations apply, including the two
+- All twenty-one migrations apply, including the two
   `ALTER TABLE ... ADD CONSTRAINT` in migration 004 that the SQLite translation
   could not represent at all. Both foreign keys exist in the resulting schema.
 - Re-running `migrate` applies nothing; the checksum guard refuses a migration
@@ -123,7 +123,7 @@ Phase 2 starts first.
 
 | # | Work | Why it blocks | Done when |
 |---|---|---|---|
-| 1.1 | ~~Run migrations and the suite against a real engine~~ **Done on MariaDB 10.11.14** | The dialect was unproven | ✅ Nineteen migrations apply and the suite passes there; the run names what it could not cover. Repeat with `tests/mariadb-local.sh`, or `tests/existing-database.sh` on her hosting. Remaining: the same on MySQL 8.0, if that is the target |
+| 1.1 | ~~Run migrations and the suite against a real engine~~ **Done on MariaDB 10.11.14** | The dialect was unproven | ✅ Twenty-one migrations apply and the suite passes there; the run names what it could not cover. Repeat with `tests/mariadb-local.sh`, or `tests/existing-database.sh` on her hosting. Remaining: the same on MySQL 8.0, if that is the target |
 | 1.2 | Send one real email end to end | The queue has only ever talked to a mail server on the test machine, never to a real provider | The SMTP test passes on her host, an invitation arrives, is accepted, and a password is set |
 | 1.3 | Complete the German privacy draft | Invitations stay disabled until it is released, by design; English is optional | The German notice released in settings, with the operator, hosting and retention placeholders filled in |
 | 1.4 | Watch the background work run on her host | No cron job is needed: queued mail, clean-up and, when switched on, the monthly charges run just after a page is served. That has not yet been watched on a shared host | **Einstellungen → System** shows a recent „Letzter Hintergrundlauf“ and the invitation from 1.2 left the queue without anybody pressing anything |

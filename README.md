@@ -18,10 +18,11 @@ Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Students with contact people — one of them the standard contact, with an address invoices and reminders go to — membership dates, configurable statuses and dated absences.
 - Editable custom fields: types, options, defaults, sections, ordering, student permissions and archiving.
 - Messages in the shape people already know one: conversations, bubbles, pictures, PDFs and voice notes. Writing to the trainer needs nobody's permission; writing to another family needs theirs. A conversation between two families is private — neither the trainer nor the administrator can read it. Group messages with filters, saved views, templates and a review step are a separate page.
-- News, optional newsletter emails, separate private-message notifications, and unsubscribe links.
+- News, and club news by email, which starts switched on for a new account and can be switched off under **Mein Konto** or through the link in every such email; separate private-message notifications; unsubscribe links. The printed sign-up form asks for the no rather than the yes.
 - SMTP settings, encrypted SMTP password, a mail queue with automatic retry and an outgoing-mail overview.
 - Editable privacy drafts filled in from the operator's own details, acknowledgement and subscription records. Only the German notice has to be released; somebody using the portal in English is shown it with a line saying it exists in German only.
-- A pinned top bar with notifications, profile pictures, a portal colour each person can override for themselves, light and dark following the device, adjustable text size, and installable to a phone home screen — with the club's own icon, a square PNG uploaded under **Einstellungen → Portal**.
+- A pinned top bar with a bell for notifications, and a menu behind your picture with „Mein Konto" and „Abmelden" that works without JavaScript. Profile pictures are kept by the browser for up to seven days, and a family can fetch only its own child's picture and the staff's. Light and dark follow the device, text size is adjustable, and each person can override the portal colour for themselves. Installable to a phone home screen, with the club's own icon.
+- The club's own look under **Einstellungen → Portal**: a main, menu, highlight and background colour, with dark-mode shades worked out and a colour too pale or dark for readable text used in a readable shade of the same hue; and a logo (PNG, JPEG or WebP, at most 1 MB) in place of the „B", with switches to hide the portal's name beside it. A portal with nothing set looks as before and loads nothing extra.
 - Any page can report that something is wrong on it, with a screenshot. The report arrives with the page, the device, the version and the last eight steps before it, form fields included but never a password or a token. Marking it done removes what was typed, and a done report is deleted 30 days later.
 - Unexpected errors report themselves: whoever hit one sees a friendly page, and the administrator finds the error under **Einstellungen → Rückmeldungen**, counted rather than repeated, with a block of text to copy for whoever helps her. No password, typed value, IP address or database message goes into it, and an entry is deleted 30 days after the error last happened.
 - An administrator or trainer can view the portal as somebody else, with a bar saying so and a way back — and what they change is recorded against them.
@@ -30,10 +31,11 @@ Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - An update that refuses to run against an older package, an incomplete upload, a database it could not back up first, or a result with fewer rows than it started with.
 - Queued email, cleanup and optional charge creation run without a cron job, just after a page has been served.
 - Every operator setting declared once with a type and a default, editable from the settings screen, so no value is ever undefined.
-- Online status for accounts, and email reminders for outstanding payments.
+- For trainers and administrators: a status to choose („Automatisch", „Abwesend", „Als offline anzeigen"), a coloured dot on each picture, and when each account was online over the last 30 days — date and time only, deleted after 30 days. Families see none of it.
+- Email reminders for outstanding payments.
 - A change log that says what changed, field by field, in the words she uses.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs about 3800 assertions in under a minute, writing only into a temporary folder of its own. `tests/e2e.sh` walks the first evening in a real browser against a real MariaDB. [TESTING.md](TESTING.md) is the list to walk by hand after a change.
+- A test suite that needs no database server: `php tests/run.php` runs about 4800 assertions in under a minute, writing only into a temporary folder of its own. `tests/e2e.sh` walks the first evening in a real browser against a real MariaDB. [TESTING.md](TESTING.md) is the list to walk by hand after a change.
 
 ## Install
 
@@ -175,8 +177,10 @@ tests/mariadb-local.sh          # starts a throwaway MariaDB, runs the suite, st
 ```
 
 It has been run against MariaDB 10.11.14 with everything passing. That run ends
-by naming what it could not reach either: the data that migrations 015, 016 and
-019 carry across is checked on SQLite only.
+by naming what it could not reach either: the data that migrations 015, 016,
+019, 020 and 021 carry across is checked on SQLite, unless `CRM_MIGRATION_CONFIG`
+names the configuration of a second, empty `_test` database; with one, it has
+been checked on MariaDB 10.11.14 as well.
 
 On shared hosting, where there is no database server to start, make an empty
 database whose name ends in `_test` in the hosting panel and run the suite
@@ -229,9 +233,11 @@ Custom content, tariff names and message templates are entered by the operator; 
 This release has not been deployed. Validation results and remaining hosting
 checks are in [VALIDATION.md](VALIDATION.md). A full bug, security and design
 review is in [AUDIT.md](AUDIT.md), and what is done versus outstanding is in
-[ROADMAP.md](ROADMAP.md) — start there. All nineteen migrations and the whole
-test suite have been run against **MariaDB 10.11.14**, and the first evening has
-been walked end to end in Chromium against it; **MySQL 8.0 itself has not been
+[ROADMAP.md](ROADMAP.md) — start there. All twenty-one migrations and the whole
+test suite have been run against **MariaDB 10.11.14**. The first evening was
+walked end to end in Chromium against it, last at commit `2be0a61`, before the
+account menu, online status and the club's colours and logo were added; that
+walk has not been repeated since them; **MySQL 8.0 itself has not been
 tried**, and neither has a real iPhone, a real mail provider or a real hosting
 account. Either way, run `php bin/console.php update` against a disposable
 copy of the database before touching anything real.
