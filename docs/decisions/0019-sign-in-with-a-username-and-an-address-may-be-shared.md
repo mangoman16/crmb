@@ -5,80 +5,90 @@ date: 2026-09-29
 
 # 0019. Sign in with a username, and an address may be shared
 
-*Amended on 2026-09-30, before any username code was written.* The first design **failed
-security review**. The owner decided two findings: staff logins need their own address (M3),
-and the lock-out risk is accepted (S3). The rest are adopted as below. Each change is marked
-**[M1]** … **[N10]** where it lands.
+*Amended twice on 2026-09-30, before any username code was written.*
+
+- **First amendment.** The first design **failed security review**. The owner decided two
+  findings: staff logins need their own address (M3), and the lock-out risk is accepted
+  (S3). The rest were adopted.
+- **Second amendment.** The re-review failed narrowly, on R1 and R2. R3 to R10 are adopted as
+  well.
+
+Each change is marked **[M1]** … **[R10]** where it lands.
 
 ## Context
 
 Today an email address is the sign-in. `accounts.email` is `NOT NULL UNIQUE` (migration 001,
 line 10: an inline constraint, so the index MariaDB and MySQL create is named `email`).
-ADR 0010 built on that: one login is one student, and **"an address already in use is
-refused"**, so a brother or sister needs an address of their own.
 
-The owner has changed the second half. In her words: "every child has their own account, 1
+ADR 0010 built on that: one login is one student, and **"an address already in use is
+refused"**.
+
+The owner has changed the second half. Her words: "every child has their own account, 1
 person = 1 account, families need more accounts. Add login with username; each person is
 automatically given a username from first and last name + a number, which they can change
 themselves. Change logging in from email-based to username-based; email is used if you forgot
-your username or password." Clarified with her:
+your username or password."
 
-- **Several student accounts may share one address.** Siblings use a parent's address. This
-  reverses ADR 0010's refusal of an address already in use.
-- **A staff login needs an address of its own [M3, owner].** A trainer's or administrator's
-  address may not be shared with any other login, in either direction.
-- **Sign-in is by username only.** An address no longer identifies one person.
-- **„Benutzername oder Passwort vergessen"** sends **one** email to the address, listing
-  every username on it, each with its own reset link. The page never says whether the
-  address exists.
-- **Format:** `lena.mueller` — first name, a dot, last name.
-  - Lower case.
-  - `ä→ae`, `ö→oe`, `ü→ue`, `ß→ss`; other accents are stripped; spaces and hyphens are
-    handled sensibly.
-  - A number is appended **only** when the name is taken: `lena.mueller2`, `lena.mueller3`.
-- **Everyone can change their own username later.**
+Clarified with her:
 
-ADR 0010's first half stands: one login is one student, enforced by the unique index
-`student_one_account` on `students.account_id`.
+- **Shared addresses.** Several student accounts may share one address: siblings use a
+  parent's.
+- **Staff addresses [M3, owner].** A trainer's or administrator's address may not be shared
+  with any other login, in either direction.
+- **Sign-in** is by username only.
+- **„Benutzername oder Passwort vergessen"** sends **one** email to the address, listing every
+  username on it with its own reset link. It never says whether the address exists.
+- **Format.** `lena.mueller`: lower case, `ä→ae`, `ö→oe`, `ü→ue`, `ß→ss`, other accents
+  stripped. A number is added only when the name is taken: `lena.mueller2`.
+- **Changing it.** Everyone can change their own username later.
+
+ADR 0010's first half stands: one login is one student (`student_one_account`).
 
 What the code does now, and what this touches:
 
 - **Sign-in and reset.**
   - `login` and `forgot` (`app/actions.php`) look accounts up `WHERE email=?`.
-  - The throttle resolves the typed address to a row first (`attempted_identity()`), because
-    `utf8mb4_unicode_ci` folds spellings that PHP does not fold. ADR 0007 records the
-    one-bit oracle this leaves.
+  - The throttle resolves the typed address to a row first (`attempted_identity()`). That
+    leaves ADR 0007's one-bit oracle.
   - `login` verifies a missing row against a **hard-coded `$2y$10$` dummy hash**, while real
-    hashes follow `PASSWORD_DEFAULT`, which PHP 8.4 raised to cost 12 [M2].
-- **The mail sender.** For a `security` job, `process_mail()` (`app/mail.php`) checks the
-  **first** `token=` in the body, using `preg_match`, against the job's account and
-  recipient [S1].
-- **Five refusals of a shared address.**
-  - `own_address_needed()` in `student_invite`, in `student_save` (two places), and in
+    hashes follow `PASSWORD_DEFAULT`. PHP 8.4 raised its cost to 12 [M2].
+- **The mail sender.** For a `security` job, `process_mail()` checks only the **first**
+  `token=` in the body, and compares addresses as stored strings [S1, R7].
+- **`queue_mail()`** calls `email_value()` on its recipient. A throw there rolls back the whole
+  action, such as a newsletter to every family [R2].
+- **Where accounts are created:**
+  - `create_admin_account()` (`app/auth.php:101`, called by `public/setup.php` and by
+    `bin/console.php`, also with `--force`);
+  - `account_invite` and `account_create`;
+  - `student_invite` (invite and direct);
+  - `demo_fill()` [R1].
+- **Five refusals of a shared address:**
+  - `own_address_needed()` in `student_invite`, `student_save` (twice) and
     `change_login_address()`;
   - „Diese Adresse hat schon ein Konto" in `account_invite` and `account_create`;
-  - the uniqueness check in `email_change`.
+  - the check in `email_change`.
 
-  Before each insert, `account_using_email()` (`app/auth.php`) holds the address
-  `FOR UPDATE`.
-- **Code that exists only because an address could not be shared.**
-  - In `app/domain.php`: `account_with_address()`, `own_address_missing_sql()`,
-    `students_needing_own_address()`, `own_address_taken_by()`, and the „Eigene
-    E-Mail-Adresse eintragen" branch of `student_next_steps()`.
-  - In `app/ui.php`: `own_address_notice()` and the address confirmation in
+  Before each insert, `account_using_email()` holds the address `FOR UPDATE`.
+- **Code that exists only because an address could not be shared:**
+  - in `app/domain.php`: `account_with_address()`, `own_address_missing_sql()`,
+    `students_needing_own_address()`, `own_address_taken_by()`, and one branch of
+    `student_next_steps()`;
+  - in `app/ui.php`: `own_address_notice()`, and one confirmation in
     `login_delete_details()`.
-- **Where names come from.** `accounts.name` is one field. A student's login is created by
-  `student_invite` from `students.first_name` and `students.last_name`. Staff logins have
-  only the one field.
-- **The migration runner** (`app/schema.php`) applies SQL files only. After them it always
-  requires `database/defaults.php`, which already repairs data in PHP (`students.level_id`).
-  The operator has no shell.
-- **Stored addresses.** Every address reaches the database through `email_value()`
-  (`app/core.php`), which is `FILTER_VALIDATE_EMAIL` without the Unicode flag. That filter
-  **accepts a quoted local part, which may hold control characters**.
+- **Names.** `accounts.name` is one field. A student's login is made from
+  `students.first_name` and `last_name`.
+- **The migration runner** applies SQL only, then always requires `database/defaults.php`,
+  which already repairs data in PHP. The operator has no shell.
+- **Stored addresses.**
+  - Every address was written through `email_value()`: `FILTER_VALIDATE_EMAIL` without the
+    Unicode flag.
+  - It **accepts a quoted local part**, which may hold control characters.
   - `database-engineer` confirmed on **MariaDB 10.11.14** that `utf8mb4_unicode_ci` ignores
-    control characters. Two different typed addresses can therefore reach one row [M1].
-  - The same check found that the username alphabet held.
+    control characters, so two different typed addresses can reach one row [M1]. The
+    username alphabet held.
+- **Locking.** `account_using_email()`'s range lock, like the ones below, relies on InnoDB's
+  default isolation, **REPEATABLE READ**. Under it, a `FOR UPDATE` read also locks the gap
+  where a missing row would go. Under READ COMMITTED it would not [R8].
 
 ## Decision
 
@@ -88,61 +98,73 @@ What the code does now, and what this touches:
   - It starts with a letter and ends with a letter or digit.
   - No two separators in a row.
   - 3 to 40 characters.
-  - `/^[a-z](?:[a-z0-9]|[.-](?=[a-z0-9])){2,39}$/D`.
-- **No underscore.** It is a `LIKE` wildcard, and §3 builds a `LIKE` pattern from a
-  username.
-- **Stored lower case, always.** The unique index compares under `utf8mb4_unicode_ci`, which
-  is a second guard, not the rule.
-- **No reserved names.** A username is shown only to its holder and to staff (§8).
-- **A username is not a secret.** `first.last` is guessable by design. The password and the
-  throttles protect the account.
-  - **[S3, owner] The lock-out risk that follows is accepted for now.** Anybody who can guess
-    `lena.mueller` can lock that sign-in for the throttle window by typing ten wrong
-    passwords.
-  - Nothing is disclosed, and the holder can still use „vergessen" (§6), whose throttle is
-    separate.
-  - `docs-writer` records the risk in `VALIDATION.md`. It is re-decided if it ever happens in
-    practice.
+  - As a pattern: `/^[a-z](?:[a-z0-9]|[.-](?=[a-z0-9])){2,39}$/D`.
+- **No underscore.** `_` is a `LIKE` wildcard, and §2 builds a `LIKE` pattern from a
+  username. Without it the pattern is literal, with no escaping. It is also one character
+  fewer to spell out on the phone.
+- **Stored lower case, always.** Uniqueness ignores case because nothing else is ever
+  written. The unique index also compares case-insensitively under `utf8mb4_unicode_ci`: a
+  second guard, not the rule.
+- **No reserved names.** A username is shown only to its holder and to staff (§8), so there
+  is nobody for `trainerin` or `admin` to deceive. A list would be one more rule to keep, and
+  it would turn the first administrator's own name, typed as "Admin", into `admin2`.
+- **Not a secret.** `first.last` is guessable by design. The password and the throttles
+  protect the account.
+- **[S3, owner] The lock-out risk that follows is accepted for now.**
+  - Anyone who guesses `lena.mueller` can lock that sign-in for the throttle window by typing
+    ten wrong passwords.
+  - Nothing is disclosed by it, and „vergessen" has its own throttle.
+  - `VALIDATION.md` records it (`docs-writer`).
 
 ### 2. The rules, in one place each
 
-**In `app/core.php`, next to `email_normalised()` and `email_value()`.** These are pure
-functions, loaded first.
+**In `app/core.php`, next to `email_normalised()`.** These are pure functions, loaded first,
+usable by everything including the runner.
 
-- **`EMAIL_DOT_ATOM` and `email_is_dot_atom(string $normalised): bool` [M1].** They define,
-  **once**, the only address shape the portal writes or looks up:
-  - a dot-atom local part of RFC 5322 `atext` (`a–z 0–9 ! # $ % & ' * + / = ? ^ _ { | } ~ -`
-    and the backtick), with single dots between atoms;
-  - `@`;
-  - a domain of dot-separated LDH labels;
-  - all ASCII, lower case, at most 254 bytes.
+**Two address checks, for two jobs [M1, R2]:**
 
-  There are no quotes, no spaces, no control characters and no IP-literal. It is applied to
-  `email_normalised()` output.
-- **`email_value()`** additionally refuses anything `email_is_dot_atom()` rejects, with the
-  same „Ungültige E-Mail-Adresse." **Every new write** is therefore dot-atom.
-  - A stored address that predates this and fails it keeps receiving mail.
-  - It cannot be used for „vergessen" (§6).
-  - Staff re-address it through `student_save`, or the holder through `email_change`.
+- **`email_deliverable(string $normalised): bool`** asks whether a mail can be sent to this
+  address.
+  - It is `FILTER_VALIDATE_EMAIL` and ≤ 254 bytes: today's check, unchanged.
+  - **`queue_mail()` uses it, not `email_value()`.** Every stored address was written through
+    exactly this check, so no stored address, a legacy quoted one included, can make
+    `queue_mail()` throw and roll back a newsletter to every other family.
+- **`EMAIL_DOT_ATOM` and `email_is_dot_atom(string $normalised): bool`** ask whether this
+  address may be **written** or **looked up**. It is defined once.
+  - It allows a dot-atom local part of RFC 5322 `atext`, then `@`, then dot-separated LDH
+    labels.
+  - The whole address is ASCII, lower case and at most 254 bytes.
+  - No quotes, spaces, control characters or IP literal.
+- **`email_value()`** is the write check.
+  - It runs `email_normalised()`, then `email_deliverable()`, then `email_is_dot_atom()`, with
+    one message: „Ungültige E-Mail-Adresse."
+  - A legacy address that is not dot-atom keeps receiving mail. It cannot be used for
+    „vergessen" (§6), and saving its record requires replacing it.
+
+**The username functions:**
+
 - **`username_normalised(string $typed): string`**
-  - Trims, lower-cases with `mb_strtolower`, then transliterates with one explicit table.
-  - The table maps `ä ae`, `ö oe`, `ü ue`, `ß ss` (and `ẞ`), and Latin-1 and Latin
-    Extended-A letters to their base letter. It also maps `æ→ae`, `œ→oe`, `þ→th`, `ð→d`,
-    `đ→d` and `ı→i`.
-  - It keeps every other character, so the result can fail the pattern and is then never
-    looked up (§5).
-- **`username_value(string $typed): string`** runs `username_normalised()`, then the pattern.
-  On failure it throws `UserError` with the rule in words. It is the only way a typed
-  username reaches a write.
+  - It trims, applies `mb_strtolower`, then one explicit transliteration table: `ä ae`,
+    `ö oe`, `ü ue`, `ß ss` (and `ẞ`), Latin-1 and Latin Extended-A letters to their base
+    letter, plus `æ→ae`, `œ→oe`, `þ→th`, `ð→d`, `đ→d`, `ı→i`.
+  - It keeps every other character. The result can then fail the pattern, and is never looked
+    up (§5).
+  - So `Lena.Müller`, typed on an iPhone that capitalised the first letter, signs in as
+    `lena.mueller`.
+- **`username_value(string $typed): string`**
+  - It normalises, then applies the pattern.
+  - On failure it throws `UserError` with the rule in words.
+  - It is the only way a typed username reaches a write.
 - **`username_from_name(string $first, string $last): string`** builds the base, with no
   number:
-  1. Transliterate each part.
-  2. Runs of spaces, hyphens or dots become one `-`, and apostrophes are dropped.
-  3. Drop anything else outside the alphabet.
-  4. Join the parts with `.` and trim separators from both ends.
-  5. Cut at a boundary to 36 characters.
-  6. With an empty last name, use the first part alone.
-  7. If the result is shorter than 3 or does not start with a letter, use `konto`.
+  1. Transliterate.
+  2. Inside a part, a run of spaces, hyphens or dots becomes one `-`. Apostrophes are
+     dropped. Anything else outside the alphabet is dropped.
+  3. Join the parts with `.` and trim separators.
+  4. Cut at a boundary to 36 characters, leaving room for a number up to 9999.
+  5. An empty last name gives the first part alone.
+  6. A result shorter than 3, or not starting with a letter, becomes `konto`. That covers
+     names written only in Cyrillic, Greek or CJK script.
 
   | First name | Last name | Username |
   | --- | --- | --- |
@@ -151,68 +173,72 @@ functions, loaded first.
   | `Jürgen` | `Groß` | `juergen.gross` |
   | `Łukasz` | `Wałęsa` | `lukasz.walesa` |
   | `王` | `芳` | `konto` |
-- **`username_from_full_name(string $name): string`**: the first word is the first name, the
-  last word is the last name, and middle words are dropped.
-- **`username_first_free(string $base, array $taken): string`**: `$base`, else `$base.'2'`,
-  `$base.'3'`, …, lowest free first.
+- **`username_from_full_name(string $name): string`** is for staff and logins without a
+  student. It takes the first and the last word; middle words are dropped.
+- **`username_first_free(string $base, array $taken): string`** returns `$base`, or else
+  `$base.'2'`, `$base.'3'` and so on, the lowest free one first. So a number appears only
+  when the name is taken, and a number freed by a deleted account is used again.
 
-**No `ext-intl` and no `iconv('…//TRANSLIT')`.** Both depend on the host.
+**No `ext-intl` and no `iconv('…//TRANSLIT')`.** The first is not in `composer.json` and a
+shared host may lack it. The second depends on the locale and gives different answers on
+glibc and musl. One table in the file gives the same username on every host, and the default
+suite can test it.
 
-**In `app/auth.php`** (replacing `account_using_email()`). This is the database half.
+**In `app/auth.php`, replacing `account_using_email()`:**
 
-- **`username_for_new_account(string $first, string $last): string`**
+- **`username_for_new_account($first, $last)`**
   - It refuses outside a transaction.
-  - It reads `SELECT username FROM accounts WHERE username=? OR username LIKE ? FOR UPDATE`.
-  - It keeps `$base` and `$base` followed by digits only, and returns
-    `username_first_free()`.
+  - It reads `SELECT username … WHERE username=? OR username LIKE ? FOR UPDATE`.
+  - It keeps `$base` and `$base` followed by digits, and returns `username_first_free()`.
+  - A second "Lena Müller" invited in the same second waits, then sees the first.
 - **`staff_address_conflict(string $email, bool $newIsStaff, ?int $exceptId = null): void`
   [M3].**
   - It refuses outside a transaction.
   - It reads `SELECT id, role FROM accounts WHERE email=? AND id<>? FOR UPDATE`.
-  - It throws `UserError` if either of these holds:
-    - the login being given the address is staff and any other login has the address:
-      „Ein Konto für Trainerin oder Administrator braucht eine eigene E-Mail-Adresse.";
-    - it is a student login and a staff login has the address: „Diese Adresse gehört zu
-      einem Mitarbeiterkonto."
+  - It throws `UserError` when a staff login would share the address: „Ein Konto für
+    Trainerin oder Administrator braucht eine eigene E-Mail-Adresse."
+  - It also throws when a student login would share a staff login's address: „Diese Adresse
+    gehört zu einem Mitarbeiterkonto."
+  - It is the only remaining refusal of a shared address.
+- **REPEATABLE READ [R8].** Both functions carry a comment saying they rely on it.
+  `tests/mariadb-local.sh` may assert `@@transaction_isolation = 'REPEATABLE-READ'`. That is
+  optional: the portal never changes the isolation level.
+- **`logins_on_address($email, $exceptId)`** returns id, username and student name of the
+  other logins on an address [S5].
+- **`sign_in_dummy_hash(): string` [M2, R9]** returns the setting `sign_in_dummy_hash` (`raw`,
+  `internal`, `system`, default `''`).
+  - **It is created and refreshed by the runner step (§4)**, and refreshed nightly by
+    `prune_expired()`, with `password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT)`
+    whenever it is empty or `password_needs_rehash()` says so.
+  - A request never refreshes it.
+  - **Fallback, once only:** if a request finds it missing (a restore without settings), the
+    request creates it once, stores it and logs that it did.
+- **`accounts_sharing_address($accountId)`** [S4].
+- **`password_resets_for($accountId, $days)`**: the `account.password_reset` audit entries
+  [S4].
+- **`give_every_account_a_username()`** (§4) and **`send_sign_in_details()`** (§6).
 
-  It is the one place the rule is spelled, and the only remaining refusal of a shared
-  address.
-- **`logins_on_address(string $email, ?int $exceptId = null): array` [S5].** It returns id,
-  username and student name for the other logins on an address, and is used for the
-  „gleiche Familie" confirmation (§9).
-- **`sign_in_dummy_hash(): string` [M2].** It returns the setting `sign_in_dummy_hash`:
-  `kind raw`, `internal`, group `system`, default `''`.
-  - The runner step (§4) and `prune_expired()` regenerate it with `password_hash(<32 random
-    bytes, hex>, PASSWORD_DEFAULT)` when it is empty or `password_needs_rehash()` says so.
-    Its cost therefore follows `PASSWORD_DEFAULT` and every real hash.
-  - It is **never regenerated inside a sign-in**, because hashing there would make a failed
-    sign-in measurably slower than a real one.
-  - If it is missing on a request, it is created once and stored.
-- **`accounts_sharing_address(int $accountId): int`** counts the other logins on this
-  account's address [S4].
-- **`password_resets_for(int $accountId, int $days = 30): array`** returns the
-  `account.password_reset` audit entries for this account [S4].
-- **`give_every_account_a_username(): int`** is the backfill in §4.
-- **`send_sign_in_details(string $email): void`** is the reset mail in §6.
+**No new file.** Nothing here needs anything later than `auth.php`. The runner's call (§4)
+happens at request time, after everything is loaded.
 
-**No new file.** Nothing here needs anything later than `auth.php`.
-
-**In `app/history.php` [S6].** `history_never_recorded(string $entity): array` returns, for
-`accounts`, `password_hash`, `auth_version` and `last_seen_at`. `history_record()` drops
-those columns from both snapshots before comparing and storing. A change-log line can
-therefore never carry a password hash, whatever `tracked()` is wrapped around.
+**In `app/history.php` [S6, R5].** `history_never_recorded(string $entity): array` returns,
+for `accounts`, `password_hash`, `auth_version` and `last_seen_at`. `history_record()` strips
+them from both snapshots **for every operation**: insert, update and delete.
 
 ### 3. Schema: three migrations, each with at most one statement that cannot run twice
 
-A run that stops partway restarts from statement 1 on the next page view. MySQL 8.0 has no
-`IF [NOT] EXISTS` for indexes, so each non-repeatable statement gets a file of its own and
-comes last in it.
+A run that stops partway restarts from statement 1 on the next page view (ADR 0015). MySQL 8.0
+has no `IF [NOT] EXISTS` for indexes, so each statement that cannot run twice gets a file of
+its own and comes last in it.
 
 1. **`022_a_username_for_every_account.sql`**
 
    ```sql
    ALTER TABLE accounts ADD COLUMN username VARCHAR(40) NOT NULL DEFAULT '' AFTER email;
    ```
+
+   `''` means "not given one yet". It can never sign in, because it fails the pattern, and §4
+   replaces it.
 2. **`023_usernames_are_unique.sql`**
 
    ```sql
@@ -220,481 +246,552 @@ comes last in it.
    CREATE UNIQUE INDEX account_username ON accounts (username);
    ```
 
-   `#<id>` is unique, outside the alphabet, never passes the sign-in lookup, and is easy for
-   §4 to find.
+   The placeholder `#<id>` is unique because ids are. It is outside the alphabet, so it can
+   never collide with a real username or pass the sign-in lookup, and §4 finds it easily. The
+   `UPDATE` is idempotent, and the index comes last.
 3. **`024_an_address_may_be_shared.sql`**
 
    ```sql
    ALTER TABLE accounts DROP INDEX email;
    ```
 
-   - It runs last.
-   - No non-unique index replaces it.
-   - No foreign key uses the dropped index.
+   It runs last, so a half-applied update never leaves accounts without a unique identifier.
+   No foreign key uses the index.
 
-Further points:
+Also:
 
-- **Nothing is deleted.** `schema_guarded_tables()` is not widened.
-- **Each file's header points here.** 001 is not edited (ADR 0004).
-- **The SQLite translation must really drop the uniqueness.**
-  - The inline `UNIQUE` from 001 is an autoindex, so `accounts` is rebuilt without it when
-    the translation meets this statement.
-  - How is `database-engineer`'s call.
-  - It is proved by inserting two accounts with one address after 024.
-- **No schema for the staff rule [M3].** It is enforced in PHP under `FOR UPDATE`. A
-  database constraint cannot express "unique among staff and across the staff/student
-  divide".
+- **Nothing is deleted.** `schema_guarded_tables()` is not widened, and 001 is not edited
+  (ADR 0004).
+- **SQLite.** The inline `UNIQUE` from 001 is an autoindex that `DROP INDEX` cannot remove.
+  The translation must rebuild `accounts` without it, not mark it unsupported. Every sibling
+  test depends on two accounts sharing an address. This is proved by inserting two such
+  accounts after 024.
+- **No schema for the staff rule [M3].** A constraint cannot express "unique among staff and
+  across the staff/student divide". The rule is enforced in PHP, under `FOR UPDATE`.
 
 ### 4. Existing accounts get their username from the runner, in PHP
 
-The first part of `database/defaults.php` runs after every `schema_apply()`. It calls
-`give_every_account_a_username()`, which:
+The first part of `database/defaults.php` runs after every `schema_apply()`: for the
+installer, the console and the first request after an upload alike.
 
-1. runs inside `transactional()`;
-2. selects accounts whose `username` is `''` or starts with `#`, `LEFT JOIN students s ON
-   s.account_id = a.id`, in id order;
-3. builds the base with `username_from_name(s.first_name, s.last_name)`, or with
-   `username_from_full_name(a.name)`;
-4. reads the set of real usernames once, and picks each name with `username_first_free()`,
-   so the oldest account gets the plain name;
-5. runs `UPDATE accounts SET username=? WHERE id=?` and returns the count.
+It calls `give_every_account_a_username()` inside `transactional()`, which:
 
-- It is not `tracked()`.
-- It is idempotent.
-- On failure the stamp is not written, and the next request retries.
+1. selects the accounts whose username is `''` or starts with `#`, `LEFT JOIN students`, in id
+   order;
+2. builds the base from the student's names, or from `a.name`;
+3. picks with `username_first_free()` against a set read once, so the oldest account gets the
+   plain name;
+4. runs `UPDATE` for each.
 
-The same step ensures `sign_in_dummy_hash` exists and is current [M2].
+- **Not `tracked()`.** No person made the change.
+- **Idempotent.** Once every account has a username, the select is one indexed query that
+  returns nothing.
+- **On failure** the stamp is not written, and the next request retries. Meanwhile the portal
+  shows the blocked page rather than a sign-in nobody can use.
 
-**Existing staff addresses shared with another login [M3].** The rule governs new writes. An
-existing conflict, possible only through data entered by hand, is not repaired by the
-runner, which never changes an address. `database-engineer` adds a check to
-`tests/migration-data.php` that such a pair survives the update untouched. The Konten page
-flags it to the administrator with „Diese Adresse nutzt auch ‹Name›", so she re-addresses
-one of them.
+The same step creates or refreshes `sign_in_dummy_hash` [M2, R9].
 
-**Nobody is mailed their username by the update** (see Rejected).
+**Staff addresses already shared with another login [M3, R10].**
+
+- None can exist before 024, because the unique index forbade it. After 024, one could only be
+  entered by hand.
+- The rule governs writes, and the runner never changes an address.
+- The Konten page flags such a pair to the administrator: „Diese Adresse nutzt auch ‹Name›".
+
+**Nobody is mailed their username by the update.** The owner decided this: the portal is in
+beta. Somebody who types an address on the sign-in page is pointed to „vergessen" (§5).
 
 ### 5. Signing in
 
-- **The form.** `views/login.php` asks for „Benutzername" (`name="username"`,
-  `autocomplete="username"`, `autocapitalize="none"`, `autocorrect="off"`,
-  `spellcheck="false"`).
-- **`attempted_username(): string`** is `username_normalised(post('username'))`.
-- **The `login` case:**
-  1. **A typed `@`.** It refuses before any lookup, with a sentence pointing to „Benutzername
-     oder Passwort vergessen".
-  2. **A value that fails the pattern.** No lookup. `password_verify()` runs against
-     `sign_in_dummy_hash()`, and the answer is the usual „Anmeldung nicht möglich" [M2].
-  3. **Otherwise:** `SELECT * FROM accounts WHERE username=? FOR UPDATE`.
-     - **No row, or a row that is invited (`verified_at` empty) or suspended:**
-       `password_verify()` still runs, against `sign_in_dummy_hash()` for no row and for an
-       invited login without a hash, and against the stored hash otherwise. Then the same
-       refusal [M2].
-     - **Success:** as today, `password_needs_rehash()` rehashes, and the sign-in follows.
-  4. **After a successful sign-in [S4].** If `password_resets_for()` has an entry newer than
-     the account's `last_seen_at` as it was before this sign-in, the flash says: „Dein
-     Passwort wurde am ‹Datum› über „Benutzername oder Passwort vergessen" neu gesetzt. Warst
-     du das nicht, wende dich an die Trainerin."
+**The form** asks for „Benutzername", with `name="username"`, `autocomplete="username"`,
+`autocapitalize="none"`, `autocorrect="off"` and `spellcheck="false"`.
 
-  **No code path signs in by address.**
-- **Throttle.** `throttle('login', username_identity(attempted_username()), 10)`, where
-  `username_identity($u)` is `'username:'.$u`.
-  - `forget_attempts_after_success()` clears the same bucket.
-  - **No row is resolved first.** The lookup only ever runs with an ASCII string in normal
-    form, which the collation compares as bytes (verified on MariaDB 10.11.14). A username
-    that exists and one that does not are therefore counted identically, and **the sign-in
-    form is no longer an oracle.** A comment at the function says so.
-  - The lock-out a guessable username allows is accepted (§1, S3).
+`attempted_username()` is `username_normalised(post('username'))`: one derivation for the
+lookup and for the throttle.
+
+**The `login` case:**
+
+1. **An `@` in the typed value.** It refuses before any lookup, pointing to „vergessen". The
+   answer depends only on the input's shape.
+2. **A pattern failure.** There is no lookup. `password_verify()` runs against
+   `sign_in_dummy_hash()`, then the usual refusal [M2].
+3. **Otherwise,** `SELECT * FROM accounts WHERE username=? FOR UPDATE`.
+   - With no row, or an invited login without a hash, it verifies against
+     `sign_in_dummy_hash()`.
+   - With a suspended login, or an invited one with a hash, it verifies against the stored
+     hash.
+   - Then the same refusal.
+   - On success it rehashes if needed and signs in.
+4. **A recent reset [S4, R4].**
+   - On **every** successful sign-in, while the account has an `account.password_reset` from
+     the **last 14 days**, the flash names the newest: „Dein Passwort wurde am ‹Datum,
+     Uhrzeit› über „Benutzername oder Passwort vergessen" neu gesetzt. Warst du das nicht,
+     wende dich an die Trainerin."
+   - The exception is the sign-in the reset itself performs. The `activate` reset branch
+     passes its audit id in the session, and that entry is skipped once.
+   - `last_seen_at` is not the condition, because any visit in between would hide the notice.
+
+**No code path signs in by address.**
+
+**The throttle** is `throttle('login', username_identity(attempted_username()), 10)`, with
+`forget_attempts_after_success()` clearing the same bucket.
+
+- **No row is resolved first.** The lookup only ever runs with an ASCII string in normal form.
+  The collation compares that as bytes (verified on MariaDB 10.11.14). An existing username
+  and a missing one are counted identically, so **the form is not an oracle**.
+- A comment at the function says so, so that nobody "restores" the lookup.
+- The accepted lock-out (S3) follows from this.
+
+**A residual timing difference [R6].**
+
+- After a PHP upgrade raises `PASSWORD_DEFAULT`'s cost, a login nobody has used since keeps
+  its old, cheaper hash until its next sign-in. The dummy is refreshed at once.
+- A failed sign-in for a **dormant existing** username is therefore measurably faster than
+  one for a missing username.
+- This is known and accepted. `VALIDATION.md` records it (`docs-writer`). It closes as each
+  account signs in.
 
 ### 6. „Benutzername oder Passwort vergessen"
 
-- **The `forgot` case:**
-  1. `$typed = attempted_email()`.
-  2. **Throttles [S7].** Both are counted for every request, whether or not any account
-     has the address:
-     - `throttle('forgot', 'address:'.$typed, 3, 3600)`: 3 per hour per address;
-     - `throttle('forgot-ip', $_SERVER['REMOTE_ADDR'] ?? 'local', 10, 3600)`.
-  3. **The lookup is gated on `email_is_dot_atom($typed)` [M1].** A typed value that fails it
-     is never looked up and sends nothing.
-     - Every value that is looked up is plain ASCII atext, with no character
-       `utf8mb4_unicode_ci` ignores or folds. The collation therefore compares it as bytes.
-     - One mailbox cannot be reached under several spellings, each with a fresh bucket.
-  4. If it passes, `send_sign_in_details($typed)` runs.
-  5. The answer is always the same: „Wenn zu dieser Adresse ein aktives Konto gehört, ist
-     eine E-Mail an sie unterwegs." It never names the address.
+**The `forgot` case:**
 
-  Existing and unknown addresses behave identically. **This closes the channel ADR 0007
-  describes.** 0007 is superseded by this record.
-- **`send_sign_in_details(string $email)` [S1]:**
-  1. It selects every account whose `email` equals the value, with `state='active'` and
-     `verified_at` set, **ordered by id**. If there are none, it sends nothing.
-  2. For each account it calls `make_token($id,'reset')`.
-  3. It builds **one** mail with one block per account, in id order: the name, the username
-     and that account's link, valid for one hour.
-  4. It queues that mail once to **the stored `a.email` of the lowest-id account**, never
-     the typed string: `queue_mail(<lowest id>, <its stored email>, …, 'security')`.
-     Because the lookup matched as bytes, the two are equal. The stored value is used so
-     that no future change to the gate can send a mail to an address that no row holds.
-  5. If `account_mail_ready()` is false, it sends nothing.
-- **The sender re-checks every link [S1].** For a `security` job, `process_mail()` extracts
-  **every** `token=` in the body with `preg_match_all`. The mail is sent only if there is at
-  least one, and **each** of them:
-  - is a live token (`token_record()`);
-  - belongs to an account whose current `email` equals the job's recipient (or whose
-    `target_email` does, for the `email` purpose);
-  - belongs to an account that is not suspended.
+1. `$typed = attempted_email()`.
+2. **Throttles [S7].** Both are counted for every request:
+   - `throttle('forgot', 'address:'.$typed, 3, 3600)`;
+   - `throttle('forgot-ip', $_SERVER['REMOTE_ADDR'] ?? 'local', 10, 3600)`.
+3. **The lookup is gated on `email_is_dot_atom($typed)` [M1].** A value that fails is never
+   looked up and sends nothing. Only plain ASCII `atext` is ever looked up. With no ignorable
+   or folded characters (checked on MariaDB, see Consequences), one mailbox cannot be reached
+   under several spellings, each with a fresh throttle bucket. That was the abuse `bcfa796`
+   closed.
+4. If the check passes, `send_sign_in_details($typed)` runs.
+5. The answer is always „Wenn zu dieser Adresse ein aktives Konto gehört, ist eine E-Mail an
+   sie unterwegs." It never names the address.
 
-  Otherwise the job is cancelled.
-  - A mail listing three children is not sent if one of them has since been re-addressed,
-    suspended or deleted. The parent asks again.
-  - The existing single-token rule for the other purposes is the same check with one token.
-- **The `activate` case's `reset` branch:**
-  - The token is still one account's.
-  - It **keeps raising `auth_version`** [S4], which signs out every other session of that
-    login.
-  - It writes `audit('account.password_reset', 'account', $id)` [S4].
-  - The reset page shows the username as a **read-only field**, with `name="username"` and
-    `autocomplete="username"`, next to the new-password field. A password manager then
-    saves the new password against the right username [N10].
+Existing and unknown addresses behave identically. **This closes ADR 0007's channel**, and
+0007 is superseded.
+
+**`send_sign_in_details()` [S1]:**
+
+1. It selects the active, verified accounts with that address, **in id order**. Invited
+   accounts are left out: their way in is the invitation, which already names the username
+   (§7).
+2. It calls `make_token($id,'reset')` for each. Each call replaces only that account's earlier
+   link.
+3. It builds **one** mail with a block per account: name, username and link, valid one hour.
+   The mail is in `locale()`.
+4. It queues the mail once, to **the stored `a.email` of the lowest id**, never the typed
+   string.
+5. With `account_mail_ready()` false, it sends nothing, and the answer is unchanged.
+
+**The sender re-checks every link [S1, R7].** For a `security` job, `process_mail()` extracts
+every `token=` with `preg_match_all`. It sends only if there is at least one, and each one:
+
+- is live;
+- belongs to an account that is not suspended;
+- belongs to an account whose address matches the job's recipient, compared as
+  `email_normalised()` of **both sides**, or as the token's `target_email` for the `email`
+  purpose.
+
+Otherwise the job is cancelled.
+
+**The `activate` reset branch:**
+
+- It keeps raising `auth_version`.
+- It writes `audit('account.password_reset')` and remembers its id for §5 [S4, R4].
+- It shows the username as a read-only `autocomplete="username"` field [N10].
 
 ### 7. Telling a person their username
 
-- **The invitation mail** gains a line naming the username.
-- **The activation page** shows the username for `invite` and `reset`, as the read-only
-  `autocomplete="username"` field of §6 [N10]. The flash after activating repeats it.
-- **„Mein Konto"** (`views/profile.php`) gets a sign-in section at the top:
-  - the username;
-  - a `<details>` „Benutzernamen ändern";
-  - **[S4]** „Diese E-Mail-Adresse nutzen auch N weitere Konten." when
-    `accounts_sharing_address()` > 0. Only the count is shown, never whose.
-  - **[S4]** the password resets of the last 30 days from `password_resets_for()`, with
-    date and time.
-- **A login created directly with a password:** the flash names the username.
-- **Setup:** `create_admin_account()` generates the username, the finished page and
-  `bin/console.php` show it, and the setup form gets no username field.
+- **The invitation mail** names the username and says it can be changed under „Mein Konto".
+- **The activation page** shows it as the read-only field [N10], and the flash repeats it.
+- **„Mein Konto"**:
+  - the username, and „Benutzernamen ändern";
+  - **[S4]** „Diese E-Mail-Adresse nutzen auch N weitere Konten." (the count only);
+  - the resets of the last 30 days.
+- **A direct login:** the flash names the username, so the administrator can tell the person
+  next to her.
+- **Setup:**
+  - `create_admin_account()` generates the username;
+  - the finished page (large, monospace) and `bin/console.php` show it;
+  - there is no username field, because the owner said "automatically given".
 
 ### 8. Who sees a username, and who changes it
 
 - **Shown** to the holder and to staff: the access card, the Konten page and the change log.
   **Never to another family.**
-- **Changed only by the holder**, with a new case, `username_change`, in
-  `app/actions_settings.php` after `email_change`:
-  1. `require_user()`. It refuses while `impersonator()` is set.
-  2. It checks the current password, posted as **`current_password`** like `password_change`,
-     so a password manager does not offer to save it as a new one [N5].
+- **Changed only by the holder**, with `username_change` in `app/actions_settings.php`:
+  1. `require_user()`. It refuses while impersonating.
+  2. It checks the password posted as **`current_password`** [N5].
   3. `username_value(post('username'))`.
   4. An unchanged value gets a flash and no write.
-  5. **`lock_row('accounts', $id)` [S6]**, so the snapshot `tracked()` takes cannot race
-     another write to the same row.
-  6. `SELECT id FROM accounts WHERE username=? FOR UPDATE`. If another holder has it:
-     - count it in **its own bucket [S2]**:
-       `throttle('username-taken', account_identity($id), 5, 86400)`, 5 per day per
-       account;
-     - `audit('account.username_taken', 'account', $id)`;
-     - refuse with „Dieser Benutzername ist schon vergeben."
-  7. `tracked('accounts', $id, $name, fn() => run('UPDATE accounts SET username=? WHERE id=?', …))`.
-     With S6 the change-log line can only ever hold `username`.
-  8. `audit('account.username_changed', 'account', $id)`, and a flash.
-  - `auth_version` is not raised.
-  - The case is still also in `handle_post()`'s `account-security` list (10 per quarter
-    hour). The taken bucket bounds how many names a login can test to 5 a day, and each
-    test is attributable in the audit.
-- **Staff do not change anybody else's username.**
-- **A username does not follow name changes.**
+  5. **`lock_row('accounts', $id)` [S6].**
+  6. `SELECT id FROM accounts WHERE username=? FOR UPDATE`. If the name is taken [S2, R3]:
+     - `throttle('username-taken', account_identity($id), 5, 86400)`;
+     - `audit('account.username_taken')`;
+     - **`flash(…,'error')`, `remember_input('username_change')` and a return to
+       `profile`**, not a throw. A throw would roll back the audit row.
+  7. `tracked('accounts', …)` around the `UPDATE`. Because of S6, the line holds only
+     `username`.
+  8. `audit('account.username_changed')`, and a flash naming the new username.
+  - `auth_version` is not raised: a username is not a secret.
+  - The action stays in the `account-security` list as well.
+  - It is changeable but not undoable: `history.php` has no undo, and the holder changes it
+    back the same way.
+- **Staff do not change anybody else's username.** A trainer who renamed a family's login
+  would lock them out without their knowing. A typo before the invitation is accepted is fixed
+  by withdrawing the invitation and inviting again.
+- **A username does not follow name changes.** A login that renamed itself would lock its
+  holder out.
 
 ### 9. The address, now that it is not the sign-in
 
-`accounts.email` is the account's **recovery channel**. ADR 0010's "One address" rule
-stands: `students.email` equals it once a login exists.
+`accounts.email` is where invitations, sign-in details, reset links, invoices, reminders and
+notifications go. It is the **recovery channel**. ADR 0010's "One address" rule stands.
 
-- **`change_login_address()` is renamed `change_account_email()`.** It keeps:
-  - updating both copies;
-  - raising `auth_version`;
-  - deleting tokens;
-  - calling `cancel_account_mail()`.
-
-  It calls `staff_address_conflict()` [M3]. `refuse_unless_student_login()` stays.
-- **`email_change`** keeps the password check and the confirmation from the new mailbox. It
-  refuses an address equal to the current one, and calls `staff_address_conflict()` **both
-  when asked and when the confirmation link is used**, because a staff login may have taken
-  the address in between [M3].
+- **`change_login_address()` is renamed `change_account_email()`.**
+  - It keeps updating both copies, raising `auth_version`, deleting tokens and cancelling
+    mail.
+  - It calls `staff_address_conflict()`.
+  - `refuse_unless_student_login()` stays.
+- **`email_change`** keeps the password check and the confirmation mail. It calls
+  `staff_address_conflict()` both when asked and at confirmation [M3].
   - The refusal tells a signed-in person that an address belongs to staff. That is one bit,
-    it is attributable, it is throttled by `account-security`, and staff addresses are no
-    secret to the families who write to them.
-  - Staff still cannot re-address an active or suspended login.
-- **The staff rule [M3, owner]** is enforced by `staff_address_conflict()` in exactly these
-  five places, and no other refusal of a shared address remains:
-  - `account_invite`;
-  - `account_create`;
+    attributable and throttled, about addresses families write to anyway.
+  - Staff still cannot re-address an active or suspended login: a trainer who could move a
+    family's recovery channel could then ask „vergessen" for a link to her own mailbox.
+- **The staff rule is enforced [M3, R1] in every block that creates an account**, inside its
+  transaction and next to `username_for_new_account()`:
+  - `create_admin_account()` (true), which covers setup and the console with `--force`;
+  - `account_invite` and `account_create` (true);
+  - `student_invite`, both modes (false);
+  - `demo_fill()` (true for its trainer, false for its students).
+- **It is also enforced in every re-addressing:**
   - `email_change`;
-  - `student_invite` (both modes);
-  - the re-addressing branch of `student_save` (through `change_account_email()`).
+  - `student_save`, through `change_account_email()`.
 
-  **If a role change ever turns a student login into a staff login, it must pass the same
-  check.** No such path exists today.
-- **„Gleiche Familie" [S5].** When `student_invite` (invite or direct login) or `student_save`'s
-  re-addressing would put an address on a login while `logins_on_address()` returns others:
-  - The action refuses **unless** `post('same_family')==='1'`, with: „Diese Adresse nutzen
-    schon: Lena Hofer (lena.hofer), Jonas Hofer (jonas.hofer). Wer diese Adresse liest, kann
-    für jedes dieser Konten ein neues Passwort setzen. Gehört das neue Konto zur selben
-    Familie?"
-  - `remember_input()` brings the form back with a „gleiche Familie" tick shown.
-  - This is a confirmation, not a refusal. Only staff ever see it; the names are ones staff
-    already see.
-  - `email_change` by the holder shows no names, because a family must not learn other
-    families' names. The confirmation mail is what proves the mailbox.
-- **Deletion.** `own_address_needed()` and `account_using_email()` are deleted. So are, in
-  `app/domain.php`, `account_with_address()`, `own_address_missing_sql()`,
-  `students_needing_own_address()` and `own_address_taken_by()`. The „Eigene
-  E-Mail-Adresse eintragen" branch of `student_next_steps()` goes, and `own_address_notice()`
-  goes with its calls.
-- **Deleting a login** is confirmed by typing the **username**.
+  **No other refusal of a shared address remains.** A future role change from student to staff
+  must pass the same check. No such path exists today.
+- **„Gleiche Familie" [S5].**
+  - `student_invite` (invite or direct) and `student_save`'s re-addressing check
+    `logins_on_address()`. When it returns other logins, the action refuses unless
+    `post('same_family')==='1'`.
+  - The message names those logins and says that whoever reads the address can reset each of
+    them. `remember_input()` brings the form back with the tick.
+  - This is a confirmation, not a refusal. Only staff see it.
+  - `email_change` by the holder shows no names.
+- **Deleted:** `own_address_needed()`, `account_using_email()`, the four `domain.php` helpers,
+  the „Eigene E-Mail-Adresse eintragen" branch, and `own_address_notice()` with its calls.
+- **Deleting a login** is confirmed by typing the **username**. An address shared by three
+  logins confirms nothing about which one is going.
 
 ### 10. The student page's access card
 
-- **No login:** the invitation is offered whenever the record has an address. The hint says
-  brothers and sisters may share an address, each with their own login and username.
-- **Invited:** „Eingeladen an ‹Adresse› · Benutzername ‹username›, noch nicht angenommen."
-- **Active and suspended:** the username, then the address, then last seen.
-  - **[S4]** „Diese Adresse nutzen auch N weitere Konten", with the count only. The names are
-    on the other students' own cards.
-  - The latest password reset from `password_resets_for()`.
-- The delete confirmation asks for the username.
+The rule is unchanged: one login per student, given only by `student_invite`.
 
-`ui-ux-designer` specifies the wording and layout.
+- **No login:** the invitation is offered whenever there is an address. The hint says that
+  siblings may share one.
+- **Invited:** the address and the username.
+- **Active and suspended:**
+  - username, then address, then last seen;
+  - **[S4]** „Diese Adresse nutzen auch N weitere Konten";
+  - the latest reset.
+- The delete confirmation asks for the username.
 
 ### 11. Demo data
 
-- `demo_fill()` calls `username_for_new_account()` for its three logins, and returns the
-  usernames. The demo trainer's address is used by no other login [M3].
+- `demo_fill()` calls `username_for_new_account()` and `staff_address_conflict()` for each
+  login [R1].
+- It returns the usernames it made, because a forced fill beside real data could produce
+  `lena.hofer2`.
+- The demo trainer's address is used by no other login.
 - `public/setup.php` and `demo_password_notice()` read usernames from
   `accounts WHERE is_demo=1`.
 
 ## Rejected
 
-**Signing in by username *or* address.** An address that several accounts share cannot say
-which one is signing in, and it would bring the collation oracle back.
+**Signing in by username *or* address.**
 
-**Keeping `accounts.email` unique.** The owner reversed it for student logins.
+- The owner chose username only.
+- An address that several accounts share cannot say which one is signing in.
+- Accepting an address "when it happens to be unique" would make a sign-in stop working the
+  day a sibling is invited.
+- It would bring the collation oracle back.
+
+**Keeping `accounts.email` unique.** The owner reversed it for student logins: siblings use a
+parent's address.
 
 **Letting staff logins share an address [M3].** A trainer's recovery channel would be readable
 by a family, or a family's by a trainer. „Vergessen" would then hand one of them the other's
 sign-in. The owner refused it.
 
-**Refusing every shared address except among one family.** The portal has no family entity.
-„Gleiche Familie" is a confirmation by staff, which is what the portal can know [S5].
+**Enforcing the staff rule only in the five portal actions [R1].** Setup, `console --force` and
+the demo fill create staff logins too. A rule that three creators skip is not a rule.
+
+**Refusing every shared address except within one family.** The portal has no family entity.
+A „gleiche Familie" confirmation by staff is what the portal can know.
 
 **Refusing, rather than confirming, a new address that other logins use [S5].** It would undo
 the owner's decision that siblings share.
 
-**Keeping `FILTER_VALIDATE_EMAIL` as the only address check [M1].** It accepts quoted local
+**One address check for sending, writing and looking up [R2].** Tightening it for writes made
+`queue_mail()` throw on legacy stored addresses, and so roll back whole newsletters. Sending
+needs only deliverability. Writing and lookup need the strict shape.
+
+**Keeping `FILTER_VALIDATE_EMAIL` as the write and lookup check [M1].** It accepts quoted local
 parts. The collation ignores control characters inside them, so one mailbox has unboundedly
 many spellings, each with a fresh throttle bucket.
 
-**Stripping control characters instead of refusing them.** The stored value would then differ
-from what was typed, silently.
+**Stripping control characters instead of refusing them.** The stored value would silently
+differ from what was typed.
 
-**A constant dummy hash, or a new hash per failed sign-in [M2].** The first drifts from
-`PASSWORD_DEFAULT`, and PHP 8.4 already moved it. The second is slower than a real
-verification, which is a timing oracle.
+**A constant dummy hash [M2].** It drifts from `PASSWORD_DEFAULT`, and PHP 8.4 already moved
+it.
 
-**Queuing the reset mail to the typed address [S1].** Correct only as long as the gate holds.
-The stored address is right by construction.
+**A new dummy hash per failed sign-in, or refreshed in the request path [M2, R9].** Hashing is
+slower than verifying, which is a timing oracle. A request may only repair a missing hash,
+once.
+
+**Throwing on "username taken" [R3].** It rolls back the audit row that makes each test
+attributable.
+
+**Flashing a reset only when it is newer than `last_seen_at` [R4].** Any visit between the
+reset and the next sign-in would hide it.
+
+**Stripping never-recorded columns on update only [R5].** An insert or delete snapshot would
+still carry the hash.
+
+**Comparing addresses byte for byte in the sender [R7].** A stored address with capitals,
+written before `email_value()` lower-cased, would cancel a real reset mail.
+
+**Queuing the reset mail to the typed address [S1].** It is correct only as long as the gate
+holds. The stored address is right by construction.
 
 **Checking only the first token in a multi-account mail [S1].** One stale link in three would
 go out.
 
-**One throttle for both kinds of username-change refusal [S2].** 10 per quarter hour lets a
-signed-in account test 960 names a day.
+**One throttle for both username-change refusals [S2].** Ten per quarter hour lets a signed-in
+account test 960 names a day.
 
-**A per-account forgot throttle only [S7].** One requester could still cycle through many
-addresses.
+**A per-address forgot throttle only [S7].** One requester could cycle through many addresses.
 
-**Hiding the password-reset event from the holder [S4].** With shared addresses, whoever reads
-the mailbox can reset a child's password. The holder should find out.
+**Hiding a password reset from its holder [S4].** With shared addresses, whoever reads the
+mailbox can reset a child's password. The holder should find out.
 
 **Letting `tracked()` snapshot every column [S6].** A future `tracked('accounts', …)` around a
 password write would put the hash in the change log.
 
-**Backfilling usernames in SQL.** It would be a second copy of `username_from_name()`, and the
-migration's copy could never be fixed.
+**Guarding against lock-out with a per-IP throttle only [S3].** It lets one guesser try every
+username at 10 attempts each. The owner accepted the lock-out risk instead.
 
-**Giving usernames lazily at the next sign-in.** An account without one cannot sign in.
+**Backfilling usernames in SQL.**
 
-**A PHP migration kind.** It would be a second mechanism beside the checksum ledger.
+- SQL cannot strip arbitrary accents without a second transliteration table.
+- Numbering duplicates needs window functions that the SQLite translation would have to
+  imitate.
+- Above all, it would be a second copy of `username_from_name()` in another language. The two
+  would drift, and the migration's copy could never be fixed.
 
-**A nullable `username`.** It would be a NULL for the code to guess about.
+**Giving usernames lazily at the next sign-in.** Sign-in is by username, so an account without
+one cannot sign in to be given one. An invited account needs its username before anyone can
+tell it to them.
 
-**One migration file for all three statements.** An interruption would block every later run.
+**A PHP migration kind (`022_….php`).**
 
-**A non-unique index on `email`.** It is a fourth file for a rare, throttled lookup.
+- It would be a second mechanism beside `migration_files()` and the checksum ledger, for one
+  backfill.
+- `database/defaults.php` is already the runner's PHP step.
+- `CLAUDE.md`: "adding a second path for any of them is how they start disagreeing".
 
-**A binary collation on `username`.** It is not needed, and it would cost the translation a
-clause.
+**A nullable `username` with `DEFAULT NULL`.** It is the NULL-to-guess-about that `CLAUDE.md`
+forbids. `''` plus the `#<id>` placeholder gives every state a visible value that cannot sign
+in.
 
-**`ext-intl` / `iconv`, reserved usernames, an underscore, numbering from 1, staff changing a
-family's username, usernames that follow name edits, holding changed usernames back from
-reuse, changing a username without the password.** The reasons are in §1, §2 and §8.
+**One migration file for all of it.** Three statements that cannot run twice would sit in one
+file. An interruption after the first would block every later run, and the operator has no
+shell.
 
-**One reset mail per account on the address.** The owner asked for one mail.
+**A non-unique index on `accounts.email` in place of the unique one.** It is a fourth statement
+and a fourth file, for a lookup that runs a few times a month against tens of rows.
 
-**Listing invited accounts in the reset mail.** It would skip the privacy acknowledgement.
+**A binary collation on `username`.** The values are ASCII lower case by construction, so every
+collation agrees on them. It would cost the SQLite translation a new clause, and lose the
+case-insensitive second guard.
 
-**Mailing every existing account its new username when the update runs.** The runner is the
-wrong place to send mail. The portal is in beta, and the `@` hint and „vergessen" cover it.
+**`ext-intl` / `iconv` transliteration.** It depends on the host (§2).
 
-**Keeping the throttle resolution, or ADR 0007's identity table or `WEIGHT_STRING`.** With
-the dot-atom gate and the ASCII username alphabet, there is nothing left to fold.
+**Reserved usernames.** Nobody outside staff sees a username (§1).
 
-**Guarding against lock-out by throttling per IP only [S3].** It lets a guesser try every
-username at 10 each. The owner accepted the lock-out risk instead.
+**An underscore in the alphabet.** It is a `LIKE` wildcard (§1).
+
+**Numbering every username (`lena.mueller1`), or numbering from 1.** The owner said a number is
+added only when the name is taken.
+
+**Staff changing a family's username, or the username following edits to the name.** Either
+would lock the holder out without their knowing (§8).
+
+**Holding a changed username back from reuse.** Usernames are never shown to other families,
+and this is one club. It would be a table or a column for a problem nobody here has.
+
+**Changing a username without the password.** Anyone holding an unlocked phone could rename a
+child's login. `email_change` asks for the password for the same reason.
+
+**One reset mail per account on the address.** The owner asked for one mail listing them all,
+which is also easier for a parent with three children.
+
+**Listing invited accounts in the reset mail.** A reset link for a never-activated account would
+skip the privacy acknowledgement that activation records.
+
+**Mailing every existing account its username when the update runs.**
+
+- The runner is the wrong place to send mail, and SMTP may not be tested yet.
+- The portal is in beta, and the owner decided against it.
+- ADR 0010 set the precedent that an update does not write to families.
+- The `@` hint and „vergessen" cover anyone who does not know their username.
+
+**Keeping the throttle resolution (`attempted_identity()` looking the row up).** It existed
+because the collation folded spellings PHP could not. With ASCII normal forms on both sides,
+nothing is left to fold, and the lookup was the source of ADR 0007's oracle.
+
+**ADR 0007's identity table, or `WEIGHT_STRING`.** Both close the oracle, at the cost of a
+schema change or an unstable engine function. The gates above close it with neither.
 
 ## Consequences
 
-- **Owner:**
-  - **Decided [M3]:** staff logins need their own address.
-  - **Decided [S3]:** the lock-out risk from guessable usernames is accepted.
-  - **Still to give:** her yes to migrations 022–024 before `database-engineer` writes them.
-  - **Still to give:** her release of the privacy-notice sentence, drafted by `docs-writer`.
-    **A shared address means that whoever reads that mailbox can set a new password for every
-    student account on it**, including a teenager's, and so read their messages with the
-    trainer. §7, §9 and §10 make this visible to the holder and to staff. It does not
-    prevent it. A child who needs privacy needs their own address.
+- **Owner. Decided:**
+  - username sign-in, including migrations 022–024 (approved; the portal is in beta);
+  - staff logins need their own address (M3);
+  - the lock-out risk is accepted (S3);
+  - existing accounts are **not** emailed their username by the update.
+- **Owner. Still to come:** `docs-writer` drafts the privacy-notice sentence on shared
+  addresses, and she releases it. The sentence must say that whoever reads a shared mailbox
+  can set a new password for every student account on it. §5, §7 and §10 make that visible;
+  they do not prevent it.
 - **Supersedes:**
-  - ADR 0007 in full;
+  - ADR 0007, in full;
   - ADR 0010's refusal of an address in use, **except for staff logins**.
 - **Action count:** +1 (`username_change`).
 - **`database-engineer`:**
-  - writes 022–024;
-  - handles the SQLite rebuild;
-  - makes the runner step call the backfill and ensure `sign_in_dummy_hash`;
-  - extends `tests/migration-data.php`, including an existing staff/student shared pair
-    that survives untouched.
-  - **The MariaDB 10.11.14 check is amended [M1].** For every character of both the
-    username alphabet and the `EMAIL_DOT_ATOM` alphabet:
-    - no two distinct characters compare equal under `utf8mb4_unicode_ci`;
-    - **no character compares equal to the empty string**, i.e. none is ignorable.
-
-    If either fails, this record is amended before release.
-  - runs `tests/mariadb-local.sh`. MySQL 8.0 stays unverified.
+  - migrations 022–024, the SQLite rebuild, and the runner step (backfill and dummy hash, R9);
+  - `tests/migration-data.php`:
+    - the username cases;
+    - **one legacy quoted address**, inserted before the update, proving that news still
+      queues for every other account and that the legacy account keeps its address [R2];
+    - **a staff/student pair on one address, inserted after 024**, proving that the runner
+      leaves it and that the Konten page flags it [R10];
+  - **the MariaDB 10.11.14 check [M1]:** for every character of the username alphabet and of
+    `EMAIL_DOT_ATOM`, no two distinct characters compare equal, and **none compares equal to
+    `''`**. If it fails, this record is amended before release;
+  - optionally, the isolation assertion [R8];
+  - MySQL 8.0 stays unverified.
 - **`backend-dev`:**
-  - `app/core.php`:
-    - `EMAIL_DOT_ATOM`, `email_is_dot_atom()` and the `email_value()` change;
-    - the username functions.
-  - `app/auth.php`:
-    - `username_for_new_account()`, `staff_address_conflict()` and `logins_on_address()`;
-    - `sign_in_dummy_hash()`, `accounts_sharing_address()` and `password_resets_for()`;
-    - `give_every_account_a_username()` and `send_sign_in_details()`;
-    - the invite mail.
-  - `app/history.php`: `history_never_recorded()` and the label.
-  - `app/mail.php`: the `preg_match_all` re-check of every token.
-  - `app/tick.php`: the dummy-hash refresh in `prune_expired()`.
-  - `app/actions.php`:
-    - `login`, `forgot` and `activate` (audit, `auth_version`);
-    - the throttles;
-    - `change_account_email()`;
-    - `account_invite`, `account_create`, `student_invite` and `student_save` (M3, S5);
-    - the delete confirmation.
-  - `app/actions_settings.php`: `username_change` (N5, S2, S6) and `email_change` (M3 twice).
-  - `app/domain.php`: the deletions.
-  - `app/demo.php`, `bin/console.php` and `public/setup.php`.
-- **`frontend-dev`**, from `ui-ux-designer`'s specification:
-  - `views/login.php`, `forgot.php` and `activate.php` (with the read-only username field);
-  - `profile.php` (sign-in section, shared-address count, resets);
-  - `student.php` (access card: count, last reset, „gleiche Familie" tick);
-  - `accounts.php` (flags an existing staff address shared with another login);
-  - `dashboard.php` and `students.php`;
-  - `app/ui.php`.
-- **`qa-tester`**, breaking each rule once:
-  - **Generation, database and backfill:** as before.
-  - **[M1]:**
-    - `email_value()` refuses `"a b"@x.at`, a quoted local part holding `\x01`, and any
-      control character;
-    - `forgot` with such a value queues nothing and gives the same flash;
-    - `email_is_dot_atom` is defined only in `core.php`, and `forgot` calls it before any
-      `SELECT`.
-  - **[M2]:**
-    - the dummy hash's `password_get_info()` matches `PASSWORD_DEFAULT`'s algorithm and cost;
-    - a no-row sign-in, a failed-pattern sign-in and an invited sign-in each call
-      `password_verify()` once;
-    - the `login` case contains no literal `$2y$`.
-  - **[M3]:**
-    - each of the five paths refuses a staff/other overlap in both directions;
-    - two students on one address are still allowed;
-    - `email_change` re-checks at confirmation.
-  - **[S1]:**
-    - the mail goes to the stored address;
-    - blocks are in id order;
-    - with one of three tokens stale, the job is cancelled.
-  - **[S2]:** the sixth "taken" answer in a day is throttled, and each one is audited.
-  - **[S4]:**
-    - a reset raises `auth_version` and writes the audit;
-    - the next sign-in flashes it;
-    - Mein Konto shows the count and the resets.
-  - **[S5]:** a second login on an address is refused without `same_family=1`, with the
-    names, and allowed with it.
-  - **[S6]:**
-    - `username_change` calls `lock_row` before `tracked`;
-    - a `tracked('accounts', …)` that also changes `password_hash` records no hash.
-  - **[S7]:**
-    - the fourth `forgot` for one address in an hour is throttled;
-    - the eleventh from one IP is throttled;
-    - a known address and an unknown one behave identically.
+  - `core.php`: `email_deliverable()`, `EMAIL_DOT_ATOM`, `email_is_dot_atom()`, the
+    `email_value()` change, and the username functions;
+  - `mail.php`: `queue_mail()` uses `email_deliverable()` [R2]; `process_mail()` checks every
+    token and normalises both sides [R7];
+  - `auth.php`: the §2 functions with the R8 comments, and `create_admin_account()` calling
+    both creation guards [R1];
+  - `history.php`: the columns never recorded, for every operation [R5];
+  - `tick.php`: the dummy-hash refresh;
+  - `actions.php`: `login` (R4), `forgot`, `activate`, the creators and re-addressers (M3, R1,
+    S5), and the delete confirmation;
+  - `actions_settings.php`: `username_change` (R3, N5, S2, S6) and `email_change`;
+  - `demo.php` (R1), `domain.php`, `bin/console.php` and `public/setup.php`.
+- **`frontend-dev`**, from `ui-ux-designer`'s specification: the login, forgot, activate
+  (read-only username), profile, student, accounts, dashboard and students views, and
+  `app/ui.php`.
+- **`qa-tester`**, breaking each rule once on purpose:
+  - **Generation:** the §2 table, plus `ÄNNE` → `aenne` and `ẞ` → `ss`; a second and third
+    Lena Müller get `…2` and `…3`; a freed `…2` is reused; `konto` is the fallback.
+  - **Database:** two accounts on one address after 024, SQLite included; the same username
+    is refused with 23000; `tests/suites/errors.php` needs another unique key to provoke a
+    PDOException.
+  - **Backfill:** every account matches the pattern; a student login uses the student's names;
+    the older account keeps the plain name; a second run changes nothing; the account count is
+    unchanged.
+  - **[R1] structure:** every block with `INSERT INTO accounts` calls both
+    `staff_address_conflict()` and `username_for_new_account()`. **Separately**, no refusal of
+    a shared address exists outside `staff_address_conflict()`.
+  - **[R1] behaviour:** `create_admin_account()`, with and without `--force`, refuses an
+    address a student login uses; `demo_fill()` refuses to give its trainer a student's
+    address.
+  - **[R2]:** `queue_mail()` accepts a legacy quoted address; `email_value()` refuses it; a
+    newsletter with one such recipient queues for all the others.
+  - **[R3]:** a "taken" answer leaves an audit row and a flash, without a throw.
+    `username_change` is in `structure.php`'s throttling list.
+  - **[R4]:** a reset 10 days ago flashes on two sign-ins with a visit between them; one 15
+    days ago does not; the reset's own sign-in does not.
+  - **[R5]:** an insert and a delete of an account record none of the three columns.
+  - **[R7]:** a stored `Lena@Example.at` still receives its reset mail.
+  - **[R9]:** after the runner, the dummy hash exists and matches `PASSWORD_DEFAULT`; a request
+    refreshes nothing.
+  - **[M1]:** `"a b"@x.at` and control characters are refused for writes and never looked up,
+    and `forgot` gates before any `SELECT`.
+  - **[M2]:** each failure path calls `password_verify()` once, and there is no literal `$2y$`
+    in `login`.
+  - **[M3]:** every creator and re-addresser refuses a staff overlap in both directions; two
+    students on one address are allowed; `email_change` re-checks at confirmation.
+  - **[S1]:** the mail goes to the stored address, in id order, and one stale token of three
+    cancels it.
+  - **[S2]:** the sixth "taken" answer in a day is throttled.
+  - **[S4]:** a reset raises `auth_version` and is audited; Mein Konto shows the count and
+    the resets.
+  - **[S5]:** without the tick the action refuses, naming the other logins; with it, it
+    proceeds.
+  - **[S6]:** `lock_row` comes before `tracked`, and no hash is recorded.
+  - **[S7]:** the fourth request per address in an hour, and the eleventh per IP, are
+    throttled; known and unknown addresses behave alike.
   - **[N5]:** `username_change` reads `current_password`.
-  - **[N10]:** the reset page has a read-only `autocomplete="username"` field.
-  - **Sign-in:** an unknown username is locked at the eleventh try exactly like a known one.
-  - **`structure`:**
-    - the rules above;
-    - `staff_address_conflict` is called in exactly the five named handlers, and no other
-      refusal of a shared address exists;
-    - the earlier list of deleted functions.
+  - **[N10]:** the reset page has the read-only field.
+  - **Sign-in:** `Lena.Müller` signs in as `lena.mueller`; an address gets the hint; an
+    unknown username locks at the eleventh try exactly like a known one; success clears the
+    bucket.
+  - **Structure:** `login` reads `WHERE username=?`; `views/login.php` has no `email` field;
+    `['username']` is printed only in the views named in §8; the deleted functions are
+    defined nowhere.
 - **`docs-writer`:**
-  - `CHANGELOG`, `UPDATING` and `TESTING.md`: invitation, iPhone sign-in, „vergessen" with
-    two children, the „gleiche Familie" tick, a staff address refused, and a password
-    manager on the reset page;
-  - both privacy drafts;
-  - `VALIDATION.md`: record S3's accepted lock-out risk, and drop the ADR 0007 weakness
-    once the amended MariaDB check has passed.
-- **`security-reviewer`** re-reviews §5, §6 and §9 after implementation.
+  - `CHANGELOG`, `UPDATING` and `TESTING.md`;
+  - the privacy draft above;
+  - `VALIDATION.md`: S3's accepted lock-out, **R6's dormant-account timing residual**, and
+    dropping the ADR 0007 weakness once the MariaDB check has passed.
+- **`security-reviewer`** re-reviews after implementation.
 - **Must not:**
   - sign anybody in by address;
-  - look up an account with a string that failed its format, username or dot-atom;
-  - hash inside the sign-in request;
+  - look up with a string that failed its format;
+  - hash inside a sign-in, except R9's one-off repair;
+  - create an account without `staff_address_conflict()`;
+  - refuse a shared address anywhere else;
+  - use `email_value()` to decide whether to send;
   - let staff write another person's username;
   - send a mail from the runner;
   - edit a shipped migration;
   - show a username or another family's name to a family;
-  - refuse a shared address anywhere except through `staff_address_conflict()`;
-  - record `password_hash`, `auth_version` or `last_seen_at` in the change log.
+  - record `password_hash`, `auth_version` or `last_seen_at` in the change log for any
+    operation.
 
 ## In plain words, for the owner
 
 - **Signing in.** Everybody will sign in with a username instead of an email address, such as
-  `lena.mueller`. It is made automatically from the first and last name. If two people have
+  `lena.mueller`. It is made automatically from the first and last name; if two people have
   the same name, the second gets a 2 on the end. Each person can change their own under
   „Mein Konto".
-- **Shared addresses.** Brothers and sisters can all use their parent's email address, and
-  each still has their own login. **Trainers and administrators keep an address of their own.**
-- **Forgetting.** Someone who forgets their username or password types the email address and
-  gets one email listing every username on that address, each with a link to set a new
-  password.
-- **The update.** Existing accounts are given their usernames automatically when it is
-  installed; nothing needs to be run afterwards.
-
-The database needs three small changes to the accounts table. They cannot be undone once
-they have run, so we need your yes before they are written.
-
-Whoever reads a shared mailbox can set a new password for every account on it. The portal now
-tells the account holder when that happened, and shows you and the family how many accounts
-share an address. If a teenager's messages with you should stay private from their parents,
-that child needs an address of their own.
-
-You accepted one risk: because usernames are easy to guess, somebody could type wrong
-passwords on purpose and lock a child out of signing in for a short while. Nothing is revealed
-by it, and „vergessen" still works.
+- **Shared addresses.** Brothers and sisters can all use their parent's email address, each
+  with their own login. **Trainers and administrators always keep an address of their own.**
+- **Forgetting.** Someone who forgets their username or password types the address and gets
+  one email listing every username on it, each with a link to set a new password.
+- **The update.** Existing accounts get their usernames automatically when the update is
+  installed. As you decided, nobody is emailed about it; the sign-in page tells anyone who
+  types an address what to do instead. You approved the three database changes this needs.
+- **Shared mailboxes.** Whoever reads a shared mailbox can set a new password for every account
+  on it. For two weeks afterwards, the portal tells the account holder each time they sign in,
+  and it shows you and the family how many accounts share an address. If a teenager's
+  messages with you should stay private from their parents, that child needs an address of
+  their own.
+- **A risk you accepted.** Because usernames are easy to guess, somebody could lock a child out
+  of signing in for a short while by typing wrong passwords on purpose. Nothing is revealed by
+  it, and „vergessen" still works.
 
 ## Open for the owner
 
-1. Yes to the three database changes (022–024)?
-2. Is it right that the update does **not** email existing accounts their new username?
-   Recommended while the portal is in beta.
+Nothing is open in this record. The privacy-notice sentence comes to her as a draft from
+`docs-writer`, for release.
