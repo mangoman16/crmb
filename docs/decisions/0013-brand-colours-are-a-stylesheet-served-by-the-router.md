@@ -11,34 +11,30 @@ The owner wants to set the portal's colours in Settings:
 
 - a **main colour**, today the `--teal` family (`--teal`, `--teal-ink`, `--teal-soft`,
   `--teal-border`, `--focus`);
-- a **second colour**, today `--navy` and the `--nav-*` family (sidebar, `.stat.accent`,
-  the public header's name);
+- a **second colour**, today `--navy` and the `--nav-*` family (sidebar, `.stat.accent`, the
+  public header's name);
 - a **third colour**, today `--teal-bright` (the dot on the brand mark, the active-menu
   marker);
 - a **background colour**, today `--bg`.
 
 She decided:
 
-- dark shades are computed from the light choices, and each can be overridden later
-  (empty = computed);
-- the main colour becomes the portal default, and everybody can still pick a personal
-  accent (`accounts.accent`, `accents()`, `accent_for()` in `app/shell.php`).
+- dark shades are computed from the light choices, and each can be overridden later (empty
+  means computed);
+- the main colour becomes the portal default, and everybody can still pick a personal accent
+  (`accounts.accent`, `accents()`, `accent_for()` in `app/shell.php`).
 
 The constraints:
 
-- **The CSP.** `boot_http()` sends `style-src 'self'`. An inline `style` attribute or
-  `<style>` block is refused by the browser (see the comment in `views/profile.php`).
-  Colours can only reach the page as a stylesheet from the portal's own origin.
-- **The login page is public** and should wear the colours too.
-- **`public/` is overwritten by the next update** and may not be writable (ADR 0008).
-- **A free colour choice can make text unreadable.** Every preset in `accents()` was picked
-  so that white text on it stays readable, and the components rely on that:
-  - `.button` and `.composer-send` print `#fff` on `--teal` in light mode;
-  - the dark block prints `#0b1218` on it;
-  - `a`, `.tabs`, `.chip` and `.eyebrow` use `--teal` as text on `--surface`.
-- **Nothing changes for a portal nobody customised.** It must look exactly as it does today
-  and make no extra request.
-- **Settings are not `tracked()`.** A mis-set colour has no undo in the change log.
+- `boot_http()` sends `style-src 'self'`. An inline `style` attribute or `<style>` block is
+  refused by the browser (see the comment in `views/profile.php`). Colours can only reach
+  the page as a stylesheet from the portal's own origin.
+- The login page is public and should wear the colours too.
+- `public/` is overwritten by the next update and may not be writable (ADR 0008).
+- A free colour choice can make text unreadable. Every preset in `accents()` was picked so
+  that white text on it stays readable.
+- A portal nobody customised must look exactly as it does today and make no extra request.
+- Settings are not `tracked()`, so a mis-set colour has no undo in the change log.
 
 ## Decision
 
@@ -47,223 +43,232 @@ The constraints:
 There is one new kind, `colour`, in `app/defaults.php`. Its value is `''` (the built-in
 colour) or a lower-case `#rrggbb`.
 
-There are eight new settings, all `kind colour`, `default ''`, in a new group `branding`:
+- **`builtin`.** A `colour` setting declares its built-in colour once, as `'builtin' =>
+  '#…'`. The form shows it as the placeholder, a refusal names it, and `brand_palette()`
+  uses it for an empty family.
+- **No second copy.** No constant in `brand.php` repeats a built-in value. An earlier
+  `BRAND_GROUND_DARK` is gone: the dark scheme shades toward the `builtin` of
+  `brand_background_dark`.
 
-| Key | Token family | Notes |
+There are eight settings, all `kind colour`, `default ''`, group `branding`:
+
+| Key | `builtin` | Notes |
 | --- | --- | --- |
-| `brand_primary` | `--teal`, `--teal-ink`, `--teal-soft`, `--teal-border`, `--focus` | the portal default accent |
-| `brand_secondary` | `--navy`, `--navy-2`, `--nav-bg`, `--nav-bg-2`, `--nav-active`, `--nav-ink`, `--nav-ink-2`, `--nav-hover`, `--on-navy`, `--on-navy-faint`, new `--on-nav`, new `--brand-ink` | |
-| `brand_highlight` | `--teal-bright` | |
-| `brand_background` | `--bg`, `--scrim-bg` | `'text_on' => '#5d6e7e'` |
-| `brand_primary_dark`, `brand_secondary_dark`, `brand_highlight_dark` | the same families, dark scheme | `'advanced' => true` |
-| `brand_background_dark` | the same, dark scheme | `'advanced' => true`, `'text_on' => '#9aabba'` |
+| `brand_primary` | `#077e76` | the portal default accent |
+| `brand_secondary` | `#13243a` | menu colour |
+| `brand_highlight` | `#23cbbb` | |
+| `brand_background` | `#f3f6f9` | `'text_on' => '#5d6e7e'` |
+| `brand_primary_dark` | `#3fd0bd` | advanced |
+| `brand_secondary_dark` | `#131d27` | advanced |
+| `brand_highlight_dark` | `#3fd0bd` | advanced |
+| `brand_background_dark` | `#101922` | advanced, `'text_on' => '#9aabba'` |
 
 - A dark override applies only while its light colour is set. The form's hint says so.
-- The same group holds the two header switches of ADR 0014, `header_hide_name` and
-  `header_hide_subtitle`.
-- The whole group is one form, the „Aussehen" card in Settings.
-- It is saved by `defaults_registry_save`, which gains `branding` in its `choose()` list and
-  is admin-only, like `portal`. **No new action.**
-- `defaults_registry_save` writes **every** key of a group from one POST. Any setting in
-  `branding` must therefore be on that card, or a save would blank it.
-- `default_accent` stays. Its hint changes to „Gilt, solange keine eigene Hauptfarbe gesetzt
-  ist." Existing portals that chose a preset keep it until a main colour is set.
+- The same group holds `header_hide_name` and `header_hide_subtitle` (ADR 0014).
+- The whole group is one form, the **„Aussehen" card**, saved by `defaults_registry_save`.
+  That action gains `branding` in its `choose()` list and is admin-only. **No new action.**
+  It writes every key of a group from one POST, so every `branding` key must be on that
+  card.
+- `default_accent` stays. Its hint says it applies only while no main colour is set, so a
+  portal that chose „Blau" is unchanged.
 
-**The way back.** For the `branding` group, the save's flash message lists the values it
-replaced, for example „Gespeichert. Vorher: Hauptfarbe #077e76, Zweitfarbe Standard, …". She
-can type them back in. Settings are not `tracked()`, so this sentence is the undo. An empty
-value is named as the built-in one („Standard"), so a return to the built-in look is shown
-too. The exact wording is the `ui-ux-designer`'s.
+**The way back.** A `branding` save's flash lists the values it replaced, for example
+„Gespeichert. Vorher: Hauptfarbe #077e76, Zweitfarbe Standard, …". This sentence is the
+undo, because settings are not `tracked()`. The exact wording is the ui-ux-designer's.
 
-**Validation.** `setting_validate()` gains `case 'colour'`:
+**Validation.** `setting_validate()` has a `case 'colour'`:
 
-- empty returns `''`;
-- otherwise `colour_normalise()` accepts `#rgb` or `#rrggbb`, with or without `#`, in any
-  case, and returns lower-case `#rrggbb`. Anything else refuses the save with „Bitte eine
-  Farbe wie #1f5fa9 eingeben.";
-- when the spec has `text_on`, a colour whose contrast with that text colour is below 4.5:1
-  is refused, saying the grey text on it would be hard to read.
+- `colour_normalise()` accepts `#rgb` or `#rrggbb`, with or without `#`, in any case, and
+  returns lower-case `#rrggbb`.
+- `setting_colour_refusal($spec, $colour)` refuses a `text_on` colour that is below 4.5:1
+  against that text. Its message names the built-in value and says nothing was saved.
+- Only backgrounds are refused. The brand colours are adjusted instead.
+- `brand_chosen()` applies the same refusal on every read. A stored background that fails it
+  counts as unset, so a row written by hand or by an older version never reaches the page.
 
-Only backgrounds are refused. The brand colours are adjusted instead (below), because a
-club's colours are not hers to change.
-
-**The form control** is a text field (`maxlength 7`). `<input type=color>` cannot be empty,
-so it cannot express "built-in". `app.js` may add a native picker that writes into the text
-field, as an enhancement only.
+**Form control.** A text field. `<input type=color>` cannot be empty. `app.js` may add a
+picker as an enhancement.
 
 ### Where the code lives
 
-**`app/colour.php`, new, pure.** It has no database, no settings and no IO. It is required
-directly after `validate.php`: `setting_validate()` in `defaults.php` calls it, and nothing it
-needs comes later. It holds:
+**`app/colour.php`, pure.** It is required directly after `validate.php`, because
+`setting_validate()` needs it. It holds:
 
-- `colour_normalise(string): ?string`
-- `colour_luminance(string): float`, the WCAG relative luminance
-- `colour_contrast(string, string): float`
-- `colour_mix(string $a, string $b, float $weightOfA): string`
-- `colour_text_on(string $bg): string`, which returns `#ffffff` or `#0b1218`, whichever
-  contrasts more
-- `colour_until_contrast(string $c, array $against, float $min, string $toward): string`,
-  which steps `$c` toward black or white until it reaches `$min` against every colour in
-  `$against`
+- `COLOUR_DARK_INK` (`#0b1218`), the ink the dark scheme prints on the main colour;
+- `colour_normalise()`, `colour_channels()`, `colour_luminance()`, `colour_contrast()`,
+  `colour_mix()` (weight clamped to 0..1), `colour_text_on()`, `colour_contrasts_with_all()`;
+- `colour_to_hsl()` and `colour_from_hsl()`;
+- `colour_until_contrast(string $colour, array $against, float $min, string $direction)`.
+  `$direction` is `'darker'` or `'lighter'`; anything else throws.
 
-**`app/brand.php`, new.** It is required directly after `uploads.php` and **before**
-`portal_icon.php`, because `web_manifest()` reads `brand_theme_colour()`. It needs
-`setting()`, the `colour_*` functions and the cache helpers in `uploads.php`. Nothing earlier
-calls it. It holds:
+**How a colour is adjusted: lightness only.** `colour_until_contrast()` keeps hue and
+saturation in HSL and moves only the lightness toward 0 or 1.
 
-- `brand_palette(): array`, memoised. It returns
-  `['light'=>[token=>hex], 'dark'=>[...], 'adjusted'=>[key=>['chosen'=>…, 'used'=>…]]]`.
-  Every setting is re-normalised on read. A value that does not normalise counts as `''`, so
-  a tampered or old row falls back to built-in and never reaches the CSS.
-- `brand_css(): string`
-- `brand_css_version(): string`: the first 12 hex characters of
-  `sha256(app_version() . json of the eight settings)`. `app_version()` is included so a
-  release that changes the derivation also changes the address.
-- `brand_css_url(): string`, which is `''` when all eight settings are empty
-- `serve_brand_css(): never`
-- `brand_theme_colour(string $scheme): string`. For `light` it is the effective nav colour
-  (today `#13243a`); for `dark` it is the effective dark background (today `#101922`).
-- the logo functions of ADR 0014
+- It moves in 512 steps and returns the first colour that reaches `$min` against every
+  colour in `$against`. Step 0 is the colour itself, so a readable colour is returned
+  unchanged.
+- If even black or white does not reach `$min`, it returns that end rather than the colour
+  that failed.
+- **Changed after implementation.** The first method mixed toward black or white. It turned
+  a pale yellow into grey-olive (`#fdf6b2` → `#7b7756`). She would not recognise that as her
+  colour. Keeping hue and saturation gives a dark mustard.
+- **HSL, not OKLCH.** At a fixed hue and saturation, every HSL lightness is a colour a
+  screen can show, so nothing is ever clipped. In OKLCH, clipping back into range shifts
+  the hue of exactly the saturated club colours this is for.
 
-**Cache helpers.**
+**`app/brand.php`.** It is required after `uploads.php` and before `portal_icon.php`.
 
-- `shared_cache_control()` moves from `portal_icon.php` to `uploads.php`, next to
-  `send_cache_control()`. It is generic, and `brand.php` loads before `portal_icon.php`.
-- The year that club assets are kept is one constant, **`CLUB_ASSET_MAX_AGE`** (31536000),
-  also in `uploads.php` beside `send_cache_control()`. The icon, logo and stylesheet all
-  read it.
+- **Fixed colours**, none of them hers to choose: `BRAND_SURFACE_LIGHT` (`#ffffff`),
+  `BRAND_SURFACE_DARK` (`#182430`), `BRAND_NAV_SHADE` (`#0d141b`), `BRAND_INK_LIGHT`
+  (`#172d42`).
+- **Choices:** `brand_families()`, and `brand_chosen()` (normalised and refusal-checked on
+  every read).
+- **`brand_palette()`**, memoised per set of choices. It returns:
+  - `light` and `dark`: token → colour, only for customised families;
+  - `used`: the colour each setting ends up as;
+  - `placeholder`: what empty means, the builtin or the colour computed from the light
+    choice;
+  - `adjusted`: `[chosen, used]` where readability moved her own choice.
+- **Derivation helpers:** `brand_scheme_light()`, `brand_scheme_dark()`,
+  `brand_nav_tokens()`, and `brand_toward($onNav)`, which gives `'lighter'` when white
+  reads on the menu colour and `'darker'` otherwise.
+- **Stylesheet:** `brand_css_rule()`, `brand_css()`, `brand_css_version()`,
+  `brand_css_url()`, `brand_css_cache_control()`, `serve_brand_css()`,
+  `brand_swatch_class()`.
+- **Browser colours:** `brand_theme_colour($scheme)`, and `brand_background_colour()` for
+  the manifest's `background_color`.
+- The logo functions of ADR 0014.
+
+`shared_cache_control()`, `send_cache_control()` and **`CLUB_ASSET_MAX_AGE`** (31536000)
+live in `app/uploads.php`.
 
 ### Derivation
 
-`P`, `N`, `H` and `B` are the chosen colours. For the dark scheme, each is its `_dark`
-override if set, otherwise the light choice. The surfaces are fixed, as today: `#ffffff` in
-light and `#182430` in dark.
+`P`, `N`, `H` and `B` are the chosen light colours. For the dark scheme, `P` and `H` are
+their overrides if set, otherwise the light choice. `G` is the `builtin` of
+`brand_background_dark` (`#101922`).
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| `--teal`, `--focus` | `P` toward black until ≥ 4.5 against `#ffffff` | `P` toward white until ≥ 4.5 against `#182430` **and** `#0b1218` |
-| `--teal-ink` | `--teal` toward black until ≥ 4.5 against `--teal-soft` | `--teal` toward white until ≥ 7 against `#182430` |
-| `--teal-soft` | `mix(P, #ffffff, .12)` | `mix(P, #101922, .18)` |
-| `--teal-border` | `mix(P, #ffffff, .30)` | `mix(P, #101922, .35)` |
-| `--navy`, `--nav-bg` | `N` | the override, else `mix(N, #0d141b, .25)` |
-| `--on-nav` (new) | `colour_text_on(nav)` | the same on the dark nav |
-| `--navy-2`, `--nav-bg-2`, `--nav-active` | `mix(nav, on-nav, .08 / .08 / .14)` | same formula |
-| `--nav-ink`, `--nav-ink-2`, `--on-navy` | `mix(on-nav, nav, .82 / .68)`, until ≥ 7 / 4.5 / 7 against nav | same formula |
-| `--nav-hover`, `--on-navy-faint` | on-nav at alpha `0d` / `26` | on-nav at alpha `12` / `1a` |
-| `--brand-ink` (new) | nav if ≥ 4.5 against `--bg`, else `--ink` | not used |
-| `--teal-bright` | `H` toward on-nav until ≥ 3 against nav | the same against the dark nav |
-| `--bg`, `--scrim-bg` | `B`, and `B` + `ee` | the override, else `mix(B, #101922, .06)` |
+| `--teal`, `--focus` | `P` darker until ≥ 4.5 against `#ffffff` | `P` lighter until ≥ 4.5 against `#182430` and `COLOUR_DARK_INK` |
+| `--on-accent` | `#ffffff` | `COLOUR_DARK_INK` |
+| `--teal-soft` | `mix(P, #ffffff, .12)` | `mix(P, G, .18)` |
+| `--teal-border` | `mix(P, #ffffff, .30)` | `mix(P, G, .35)` |
+| `--teal-ink` | `--teal` darker until ≥ 4.5 against `--teal-soft` | `--teal` lighter until ≥ 7 against `#182430` and `--teal-soft` |
+| `--navy`, `--nav-bg` | `N` | the override, else `mix(N, BRAND_NAV_SHADE, .25)` |
+| `--on-nav` | `colour_text_on(nav)` | the same |
+| `--navy-2`, `--nav-bg-2` / `--nav-active` | `mix(on-nav, nav, .08 / .14)` | the same |
+| `--nav-ink` (= `--on-navy`) / `--nav-ink-2` | `mix(on-nav, nav, .82 / .68)`, then `brand_toward` until ≥ 7 / 4.5 against nav | the same |
+| `--nav-hover`, `--on-navy-faint` | on-nav + `0d` / `26` | on-nav + `12` / `1a` |
+| `--teal-bright` | `H`, `brand_toward` until ≥ 3 against nav | the same, against the dark nav |
+| `--bg`, `--scrim-bg` | `B`, `B`+`ee` | the override, else `mix(B, G, .06)` |
+| `--brand-ink` | nav if ≥ 4.5 against bg, else `BRAND_INK_LIGHT` | not set |
 
-**Why no `--on-teal` token is needed.** The two rules for `--teal` keep the existing
-hard-coded button text correct:
+**Button text.** `--on-accent` is the token for text on the main colour. The two rules for
+`--teal` guarantee that white reads on it in light mode, and that the dark ink reads on it
+in dark mode.
 
-- in light mode, ≥ 4.5 against white means white on `--teal` is also ≥ 4.5;
-- in dark mode, the button text is `#0b1218`, and `--teal` is held to ≥ 4.5 against it.
-
-When a colour had to be moved, `adjusted` records it, and the „Aussehen" card shows „Für gute
-Lesbarkeit verwendet: #…" beside her choice.
+**Adjusted colours.** When her colour was moved, the „Aussehen" card shows „Für gute
+Lesbarkeit verwendet: #…" beside it.
 
 ### How it reaches the page
 
-- **Route.** `brand` is in `$allowed` and `$public` in `public/index.php`, answered by
-  `if($page==='brand')serve_brand_css();` next to `icon` and `manifest`. It has no view.
-- **Response.** `Content-Type: text/css; charset=utf-8`.
-  - When `v` equals `brand_css_version()`:
-    `shared_cache_control(CLUB_ASSET_MAX_AGE, true)`.
-  - Otherwise: `no-cache`.
-- **Layout.** `views/layout.php` prints `<link rel="stylesheet" href="brand_css_url()">`
-  directly **after** `app.css`, and only when `brand_css_url() !== ''`.
-- **Selectors.** The CSS repeats `app.css`'s own shape, so specificity and order decide as
-  they do today:
-  - the primary tokens go under `html[data-accent=brand]`, then under
-    `@media(prefers-color-scheme:dark){html:not([data-theme=light])[data-accent=brand]{…}}`,
-    then under `html[data-theme=dark][data-accent=brand]{…}`;
-  - the other families go under `:root`, then under the same two dark selectors without the
-    accent;
-  - `.accent-dot.is-default{background:P}`, plus swatch classes for the settings preview.
+- **Route `brand`.** It is public, answered by `serve_brand_css()` next to `icon` and
+  `manifest`, and has no view.
+  - It sends `text/css; charset=utf-8`.
+  - When `v` equals `brand_css_version()`, it sends
+    `shared_cache_control(CLUB_ASSET_MAX_AGE, true)`. Otherwise it sends `no-cache`.
+  - With nothing customised, it serves an empty stylesheet, not an error.
+- **The version.** `brand_css_version()` is the first 12 characters of
+  `sha256(app_version() . json_encode(brand_chosen()))`.
+- **When there is no request.** `brand_css_url()` is `''` when no light colour is set. A dark
+  override alone does not apply yet, so it costs no request.
+- **Where it loads.** The layout links the stylesheet directly after `app.css`, only when the
+  URL is not empty.
+- **Selectors.** `brand_css()` uses `app.css`'s own selectors:
+  - the primary tokens (including `--on-accent`) go under `html[data-accent=brand]`;
+  - the rest go under `:root`;
+  - both are repeated under the two dark selectors;
+  - it adds `.accent-dot.is-default` and the swatch classes for the „Aussehen" card.
+- **Nothing but colours leaves.** `brand_css_rule()` prints a declaration only when its name
+  is a token or `background`, and its value matches `#rrggbb` (optionally with alpha).
 - **`accent_for()`** tries, in order:
-  1. the person's own valid accent;
-  2. `'brand'`, when `colour_normalise(setting('brand_primary'))` is not null;
+  1. the person's own accent;
+  2. `'brand'` when a main colour is set;
   3. `default_accent`;
   4. `'teal'`.
 
-  `'brand'` is **not** added to `accents()`. „Wie eingestellt" is that choice. If the
-  stylesheet fails to load, `data-accent=brand` matches no rule and the built-in teal
-  applies.
-- **Theme colour.** The `theme-color` meta tags in the layout, and `theme_color` /
-  `background_color` in `web_manifest()`, use `brand_theme_colour()`.
+  `'brand'` is not in `accents()`. If the stylesheet fails to load, no rule matches
+  `data-accent=brand` and the built-in teal shows.
+- **Browser colours.** The `theme-color` tags use `brand_theme_colour()`. The manifest uses
+  `brand_theme_colour('light')` and `brand_background_colour()`.
 
-### What `app.css` changes (`frontend-dev`)
+### What `app.css` carries (`frontend-dev`)
 
-- Add `--on-nav:#fff` and `--brand-ink:var(--navy)` to `:root`.
-- These literal colours on the nav colour use the tokens instead:
-  - `.sidebar{color:white}`
-  - `.sidebar nav a[aria-current]{color:#fff}`
-  - `.stat.accent{color:white}`
-  - `.brand-mark{background:#fff}`
-  - `.public-header .brand-mark{color:white}`
-- `.public-header .brand` uses `var(--brand-ink)`.
-- Nothing else changes. The personal accent blocks stay as they are.
+- `--on-accent`, `--on-nav` and `--brand-ink` tokens with the built-in values.
+- The literal white or `#0b1218` on the main colour and on the menu colour replaced by
+  those tokens.
+- `.public-header .brand` in `--brand-ink`.
+- The personal accent blocks are unchanged.
 
 ## Rejected
 
-**A `<style>` block or `style` attribute in the layout.** The CSP refuses it. Relaxing the
-policy with `'unsafe-inline'` or a nonce weakens the defence against an escaping mistake in
-any of 30 views, only to save a request.
+**A `<style>` block or `style` attribute.** The CSP refuses it. `'unsafe-inline'` or a nonce
+weakens the defence against an escaping mistake in 30 views.
 
-**Writing a CSS file into `public/assets/` on save.** Updates overwrite it, it is often not
-writable, and it would be a second copy of the settings.
+**Writing a CSS file into `public/assets/`.** Updates overwrite it, it is often not writable,
+and it would be a second copy of the settings.
 
-**Making `--surface` customisable.** Every text token is tuned against it. Changing it means
-a new palette, not a new colour. It needs its own ADR.
+**Making `--surface` customisable.** Every text token is tuned against it. It needs its own
+ADR.
 
-**Refusing a main, second or highlight colour that fails contrast.** A club's colours are not
-hers to change. Adjusting them and showing the adjusted value is honest. Backgrounds are a
-free choice, so refusing one with a reason is clearer.
+**Refusing a brand colour that fails contrast.** A club's colours are not hers to change.
+Backgrounds are a free choice, so a refusal with a reason is clearer there.
 
-**Deleting `default_accent` and folding it into `brand_primary`.** A portal that chose
-„Blau" would turn teal on update.
+**Mixing toward black or white to adjust.** It desaturates. A pale yellow became grey-olive
+(`#fdf6b2` → `#7b7756`).
 
-**`tracked()` for settings, as the way back.** Settings have never been tracked
-(`defaults_registry_save`, `portal_icon_save`). Tracking one group would be a second
-mechanism for one card. The previous values in the save message are enough to retype.
+**OKLCH lightness.** It needs gamut clipping, which shifts the hue of saturated colours.
 
-**The header switches on the logo card.** `defaults_registry_save` writes every key of a
-group from one POST. A group split across two forms blanks whichever half was not posted.
+**A second constant for a built-in colour (`BRAND_GROUND_DARK`).** It is the same value as
+`brand_background_dark`'s `builtin`, and two copies drift.
 
-**An `--on-teal` token and a sweep of every button.** The contrast rules make it unnecessary.
+**Deleting `default_accent`.** A portal that chose „Blau" would turn teal on update.
 
-**The maths inside `brand.php`.** `setting_validate()` loads earlier and needs the contrast
-check, and calling forward in the load order breaks rule 5.
+**`tracked()` for settings.** Settings have never been tracked. The previous values in the
+flash are enough to retype.
 
-**Colour maths in `app.js`.** The page must be right without JavaScript.
+**The header switches on the logo card.** Their group is saved from one POST. A group split
+across two forms blanks the half that was not posted.
+
+**Colour maths in `brand.php` or `app.js`.** `setting_validate()` loads earlier, and the page
+must be right without JavaScript.
 
 ## Consequences
 
-- **`structure` suite:**
-  - classify `brand` as public;
-  - add the handler exception `brand` → `serve_brand_css`;
-  - add `app/colour.php` and `app/brand.php` to the expected files.
-- **A new `colour` suite:**
+- **`structure`:**
+  - `brand` is public, with the handler `serve_brand_css`;
+  - `app/colour.php` and `app/brand.php` are in the expected files.
+- **The `colour` suite:**
   - normalisation;
-  - the WCAG figures for known pairs;
-  - each of the eight presets as `P` yields `--teal` ≥ 4.5 against `#fff`, and dark
-    `--teal` ≥ 4.5 against `#0b1218`;
-  - a pale yellow `P` is adjusted and reported;
-  - a tampered value such as `red;}body{display:none` produces no CSS text.
-  - Break the clamp in `colour_until_contrast()` and watch it fail.
-- **The `settings` or `actions` suite:** a `branding` save's flash names the previous values.
+  - the WCAG figures;
+  - each preset as `P` meets both `--teal` rules;
+  - `#fdf6b2` keeps its hue and saturation (within rounding), and meets 4.5 against white;
+  - an unknown direction throws;
+  - a colour no lightness can rescue returns black or white;
+  - a tampered setting produces no CSS text.
+  - Break each rule once and watch the suite fail.
+- **Settings:** a `branding` save's flash names the previous values.
 - **Must not:**
-  - interpolate a raw setting value into the stylesheet; only `colour_normalise()` output
-    may reach it;
+  - print a raw setting value into the stylesheet;
+  - repeat a built-in colour outside `builtin`;
   - put a `branding` key anywhere but the „Aussehen" card.
-- **Maintenance mode:** the stylesheet answers 503, so the built-in colours show. Accepted.
-- **`mobile-tester`:** 320 and 390 px, in light and dark, with a dark `N`, a light `N`
-  (`#e8eef4`) and a pale yellow `P`.
+- **Maintenance mode:** the stylesheet answers 503, and the built-in colours show. Accepted.
+- **`mobile-tester`:** 320 and 390 px, light and dark, with a dark `N`, a light `N`
+  (`#e8eef4`) and `#fdf6b2` as `P`.
 - **`TESTING.md`:**
-  - set each colour, then check the login page, a signed-in page, both schemes and the
-    status-bar colour;
-  - clear every colour, and confirm there is no `page=brand` request;
-  - the save message names the old values, and retyping them restores the look.
+  - each colour set, on the login page and a signed-in page, in both schemes, with the
+    status bar;
+  - clearing every colour makes no `page=brand` request;
+  - retyping the „Vorher" values restores the look.
 - No migration and no dependency.

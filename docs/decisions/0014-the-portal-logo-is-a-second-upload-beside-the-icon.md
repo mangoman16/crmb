@@ -10,137 +10,154 @@ date: 2026-09-29
 The owner wants her own logo top left, replacing the „B" mark in `.brand`. The mark appears
 twice in `views/layout.php`: in the sidebar and in `.public-header`.
 
-She chose a **separate** upload from the portal icon of ADR 0008:
+She chose a **separate** upload from the portal icon of ADR 0008. It may be wide, not only
+square, and it may be PNG, JPEG or WebP. The fallback order is logo, then portal icon, then
+„B".
 
-- it may be wide, not only square;
-- it may be PNG, JPEG or WebP.
-
-The fallback order is logo, then portal icon, then „B". She also wants two switches:
+She also wants two switches:
 
 - hide the portal name;
-- hide the „Verwaltung" / „Mein Portal" line under it. This line is not `portal_tagline`,
-  which is the top bar's `.topbar-context`.
+- hide the „Verwaltung" / „Mein Portal" line under it. This line is not `portal_tagline`.
 
-The icon's constraints carry over: storage under `storage/`, a public route (the login page
-shows it), no GD, no SVG, and `getimagesize()` reading only the header.
+The icon's constraints carry over:
 
-One constraint is new. The sidebar is the nav colour: dark by default, and brand-chosen from
-ADR 0013. The public header is the page background, which is light. A logo drawn for one is
-invisible on the other.
+- the file is stored under `storage/`;
+- the route is public, because the login page shows it;
+- there is no GD;
+- SVG is not accepted;
+- `getimagesize()` reads only the header.
+
+Two constraints are new:
+
+- The sidebar is the menu colour: dark by default, and brand-chosen under ADR 0013. The
+  public header is the light page background. A logo drawn for one is invisible on the
+  other.
+- The logo is loaded by every sign-in page. The general upload limit (`upload_max_kb`,
+  default 4 MB) is far more than a header picture needs on a phone connection.
 
 ## Decision
 
 **Storage.**
 
-- Upload kind `logo`: `store_upload('logo','logo')`, stored in `storage/uploads/logo/`.
-- `upload_types('logo')` is `['image/png'=>'png','image/jpeg'=>'jpg','image/webp'=>'webp']`.
-- Setting `portal_logo`: `kind raw`, `internal`, group `portal`, default `''`.
-- No migration.
+- The upload kind is `logo`, stored in `storage/uploads/logo/`.
+- `upload_types('logo')` accepts PNG, JPEG and WebP.
+- `portal_logo_types()` maps each extension to its `IMAGETYPE_*`.
+- The setting is `portal_logo`: `kind raw`, `internal`, group `portal`, default `''`.
+- There is no migration.
 
-**Code.** These functions go in `app/brand.php` (ADR 0013), because they are the club's
-look, like the colours:
+**Code, in `app/brand.php`:**
 
-- `portal_logo(): string`. It returns `''` when the setting is unset, when the name does not
-  match `^[a-f0-9]{32}\.(png|jpg|webp)$`, or when the file is missing.
-- `portal_logo_url(): string`, which is `url('logo', ['v' => upload_version($name)])`, or
-  `''`.
-- `portal_logo_size(): array`, which is `[w, h]` from `getimagesize()`, memoised. The
-  `<img>` carries `width` and `height` attributes, not a `style`: the CSP refuses a style.
-- `check_portal_logo(string $storedName): void`. It refuses the upload and deletes the file
-  when:
-  - `getimagesize()` cannot read it;
-  - its type does not match the extension;
-  - its height is under `PORTAL_LOGO_MIN_HEIGHT` (88, which is 44 px at 2×);
-  - either side is over `PORTAL_LOGO_MAX_SIDE` (2048);
-  - its width-to-height ratio is outside 1:2 to 5:1.
+- **Constants:**
+  - `PORTAL_LOGO_MIN_HEIGHT` 88 (44 px drawn, at 2×);
+  - `PORTAL_LOGO_MAX_SIDE` 2048;
+  - **`PORTAL_LOGO_MAX_BYTES` 1048576 (1 MB)**;
+  - `PORTAL_LOGO_MAX_RATIO` 5.0 and `PORTAL_LOGO_MIN_RATIO` 0.5.
+- `portal_logo()`, `portal_logo_url()` (`v` = `upload_version()`), and
+  `portal_logo_size()` (memoised, for the `width` and `height` attributes).
+- `check_portal_logo()`. It refuses the upload and deletes the file, checking in this order:
+  1. **more than 1 MB.** This is checked first: however well formed, a larger file is not
+     what every sign-in page should load. The message gives the size with
+     `megabytes_label($bytes, true)`, which rounds up so that a file one byte over reads
+     „1,1 MB", not the „1,0 MB" the form allows. It states the limit with
+     `upload_limit_label(PORTAL_LOGO_MAX_BYTES)`.
+  2. unreadable, or a type that does not match the extension;
+  3. too short;
+  4. too large;
+  5. too wide or too tall.
 
-  Each message names the measured size and what is needed. `ui-ux-designer` may tune the
-  numbers; the mechanism stays.
-- `serve_portal_logo(): never`. It serves inline, with the MIME type taken from
-  `upload_types('logo')` by extension.
-  - When `v` is current: `shared_cache_control(CLUB_ASSET_MAX_AGE, true)`.
-  - Otherwise: `no-cache`.
-  - With no logo: 404 and `no-cache`.
-- `brand_header(?array $user): array`. It returns
-  `['logo'=>url|'', 'icon'=>url|'', 'show_name'=>bool, 'show_subtitle'=>bool]`. This is the
-  one place the fallback and the switches are decided. `show_name` is false only when
-  `header_hide_name` is on **and** a logo or icon is shown: with only „B", the name always
-  shows.
+  Each message names what it measured and what is needed.
+- `portal_logo_shape_hint()` and `portal_logo_times()` produce the shape limits in words, for
+  the card and for the messages.
+- `serve_portal_logo()`, with `portal_logo_cache_control()`:
+  - when `v` is current: `shared_cache_control(CLUB_ASSET_MAX_AGE, true)`;
+  - otherwise: `no-cache`;
+  - with no logo: a 404 with `no-cache`.
+- `brand_header(?array $user)`, the one place the fallback and the switches are decided. It
+  returns `logo`, `logo_width`, `logo_height`, `icon`, `name`, `subtitle`, `show_name` and
+  `show_subtitle`.
+  - `show_name` is false only when `header_hide_name` is on **and** a logo or icon is shown.
 
-**Switches.** `header_hide_name` and `header_hide_subtitle` are `kind bool`, default
-`false`, group **`branding`**.
+**In `app/uploads.php`:**
 
-- They are on the **„Aussehen" card** with the colours, saved by `defaults_registry_save`
-  (ADR 0013), **not on the logo card.** That save writes every key of a group from one POST,
-  so a group split across two forms blanks the half that was not posted.
-- The logo card may say where the switches are.
-- The switches get no action of their own.
+- `megabytes_label(int $bytes, bool $roundUp = false)` is the one formatter for a size in
+  MB. The limit a form states and the size a refusal names read alike.
+- `upload_limit_label(?int $cap = null)` gives the smaller of the server's limit and a
+  kind's own cap. A form never promises more than its check accepts.
 
-**Route.** `logo` is in `$allowed` and `$public`:
-`if($page==='logo')serve_portal_logo();` beside `icon`, `manifest` and `brand`. It has no
-view.
+**Switches.** `header_hide_name` and `header_hide_subtitle` are `kind bool`, group
+`branding`. They are on the „Aussehen" card with the colours, saved by
+`defaults_registry_save`, and **not on the logo card**. That action writes every key of a
+group from one POST.
 
-**Change and removal.** A new action, `portal_logo_save`, in `app/actions_settings.php`
-directly after `portal_icon_save`. It takes the same steps in the same order:
+**Route.** `logo` is public, answered by `serve_portal_logo()` beside `icon`, `manifest` and
+`brand`.
+
+**Change and removal.** `portal_logo_save` sits in `app/actions_settings.php` after
+`portal_icon_save`, in the same order:
 
 1. `require_admin()`
 2. `store_upload()`
 3. `check_portal_logo()`
 4. `set_setting()`
-5. `audit('portal_logo.saved|removed')`
+5. `audit()`
 6. `delete_upload()` of the old file
 
-`remove=1` clears the logo. It is not `tracked()`, as in ADR 0008.
+It is not `tracked()`.
 
-**Sweep.** `upload_references()['logo']` is
-`SELECT REPLACE(setting_value,'"','') AS name FROM settings WHERE setting_key='portal_logo'`.
+**Sweep.** `upload_references()['logo']` uses the same `REPLACE` query as the icon.
 
-**Layout.** Both `.brand` blocks render from `brand_header()`. If `frontend-dev` puts the
-markup in `app/ui.php` as `brand_block(?array $user, bool $public): string`, that helper is
-added to the `structure` suite's HTML-helper list.
+**Layout.**
 
-- The logo is `<img class="brand-logo" src alt width height>`. `alt` is the club name when
-  the name is hidden, and `alt=""` when the name is printed beside it.
-- The icon uses the 44 px `.brand-mark` box, without the highlight dot.
-- A hidden name or subtitle stays in the markup with `visually-hidden`.
-- The logo sits on a fixed light plate (`#fff`, rounded, padded), in the sidebar and in the
-  public header, in both schemes. `ui-ux-designer` specifies its size and the phone top bar.
+- **The logo** is `<img class="brand-logo" src width height alt="">`, always with an empty
+  `alt`. **PM decision.**
+- **The club's name is always in the markup.** When hidden, it is kept as `visually-hidden`
+  text. A screen reader hears the name once, from the text, and never twice.
+- **The icon** fills the 44 px `.brand-mark` box, without the highlight dot.
+- **The plate.** The logo sits on a fixed white plate, in the sidebar and in the public
+  header, in both schemes.
 
 ## Rejected
 
 **Generalising `app/portal_icon.php`.** An upload over the install would leave the old file
-behind on every server. ADR 0008 and the `structure` suite name it, and the icon code works.
+on every server.
 
 **Reusing the icon upload.** The icon must be a square PNG for iOS.
 
 **SVG and GIF.** SVG for the reasons in ADR 0008. GIF was not asked for, and it animates.
 
-**A second logo „for dark backgrounds".** It doubles the upload, the setting, the sweep and
-the checks, for a problem the plate solves. It can be added later.
+**The general upload limit for the logo.** A 4 MB header picture on every sign-in page, over
+a phone connection.
 
-**Resizing or cropping.** That needs GD. The `width`/`height` attributes and CSS scale the
-logo.
+**`alt` set to the club's name, with the name hidden.** The name would then exist in two
+forms that can disagree. The visible or `visually-hidden` text is the single one, and the
+picture is decoration beside it.
 
-**The switches on the logo card.** See Switches above.
+**A second logo for dark backgrounds.** The plate solves the same problem. It can be added
+later.
 
-**Serving through `page=download`.** Not public (ADR 0008).
+**Resizing or cropping.** It needs GD.
+
+**The switches on the logo card.** The `branding` group is saved from one POST.
+
+**Serving through `page=download`.** That page is not public.
 
 ## Consequences
 
 - **`structure`:**
-  - classify `logo` as public;
-  - add the handler exception `logo` → `serve_portal_logo`;
-  - add `portal_logo_save` to the refuses-before-it-writes orderings, anchored on
-    `check_portal_logo`.
+  - `logo` is public, with the handler `serve_portal_logo`;
+  - `portal_logo_save` is in the refuses-before-it-writes orderings.
 - **`uploads`:**
-  - `logo` is swept, and the live logo survives `prune_uploads()`;
-  - `check_portal_logo()` refuses a JPEG renamed `.png`, a 40 px tall image and a 6:1
-    banner, and accepts a 600×150 WebP.
-- **`settings`:** saving the „Aussehen" card leaves `header_hide_*` as posted, and saving
-  the logo card leaves them untouched.
+  - `logo` is swept, and the live one survives;
+  - `check_portal_logo()` refuses a file over 1 MB before reading it as a picture, and names
+    it as „1,1 MB" when it is one byte over;
+  - it refuses a JPEG named `.png`, an image 40 px tall, and a 6:1 banner;
+  - it accepts a 600×150 WebP;
+  - `upload_limit_label(PORTAL_LOGO_MAX_BYTES)` never exceeds the server's limit.
+- **`views`:** the logo's `alt` is empty, and the club name is present, as visible or
+  `visually-hidden` text, with every combination of switch, logo and icon.
 - **`TESTING.md`:**
-  - upload a wide PNG, an iPhone JPEG and a WebP;
-  - check the sidebar in light and dark, the login page, and the phone top bar at 320 px;
-  - check each switch with a logo, with only the icon, and with neither;
-  - remove the logo and see the icon, then „B", come back.
+  - a wide PNG, an iPhone JPEG over 1 MB (refused, with its size) and a WebP;
+  - the sidebar in light and dark, the login page, and the phone bar at 320 px;
+  - VoiceOver reads the club name once;
+  - removing the logo brings back the icon, then „B".
 - No migration and no dependency.
