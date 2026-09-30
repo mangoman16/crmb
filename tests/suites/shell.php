@@ -348,7 +348,9 @@ $profileCharge = fixture('charges', ['student_id'=>$ownStudent, 'label'=>'Beitra
     'due_on'=>'2026-09-01', 'overdue_on'=>'2026-09-08', 'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
 create_invoice($ownStudent, [$profileCharge]);
 
-$signedOutOnly = array_intersect($publicOnly, ['login','forgot','activate','unsubscribe','icon','manifest','not_found']);
+// Also the files a page loads rather than a page anybody opens: the icon, the
+// manifest, the portal's colours and its logo.
+$signedOutOnly = array_intersect($publicOnly, ['login','forgot','activate','unsubscribe','icon','manifest','brand','logo','not_found']);
 /** The links on a page: [page, query] for each, the page the router would open. */
 $linksOn = function (string $html): array {
     preg_match_all('/href="([^"]*)"/', $html, $m);
@@ -448,3 +450,171 @@ $drawn = [];
 foreach ($links as [, $route, $inside])
     $drawn[$route] = preg_match('~<span class="count"[^>]*>(\d+)</span>~', $inside, $n) ? (int)$n[1] : 0;
 is_same(array_column(nav_entries($adminUser), 'count', 'route'), $drawn, 'the side menu draws each number on its own entry and nowhere else');
+
+// ---------------------------------------------------------------------------
+case_('A menu in the top bar is a <details> of its own kind, with a panel');
+/* The bell once took the rules meant for a section that folds open in the page:
+   a margin under the open button, and on a phone a drawn triangle. So it jumped
+   when opened, and its panel ran off the left edge of a phone. Every menu in the
+   top bar says it is one - the class the stylesheet and app.js look for - and
+   hangs its list in a panel of its own. Read from the source, so a menu drawn
+   only in some states is held to it too, and from the drawn page. */
+$layoutSource = (string)file_get_contents(APP_ROOT.'/views/layout.php');
+ok(preg_match('~<header class="topbar">(.*?)</header>~s', $layoutSource, $topbarSource) === 1, 'the top bar was found in views/layout.php');
+preg_match_all('~<details\b[^>]*>~', $topbarSource[1] ?? '', $topbarDetails);
+ok(count($topbarDetails[0]) >= 1, 'it holds at least one menu, the bell');
+foreach ($topbarDetails[0] as $tag)
+    ok(preg_match('~\bclass="[^"]*\btopbar-menu\b(?!-)~', $tag) === 1, $tag.' carries the class topbar-menu');
+$drawnMenus = function (string $html): array {
+    $dom = new DOMDocument();
+    $quiet = libxml_use_internal_errors(true);
+    $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
+    libxml_clear_errors(); libxml_use_internal_errors($quiet);
+    $class = fn(string $name) => "contains(concat(' ', normalize-space(@class), ' '), ' $name ')";
+    $xpath = new DOMXPath($dom);
+    $menus = [];
+    foreach ($xpath->query('//header['.$class('topbar').']//details') as $details) {
+        $first = $xpath->query('*[1]', $details)->item(0);
+        $menus[] = [
+            'menu'    => preg_match('~(^|\s)topbar-menu(\s|$)~', $details->getAttribute('class')) === 1,
+            'summary' => $first !== null && $first->nodeName === 'summary',
+            'panel'   => $xpath->query('*['.$class('topbar-menu-panel').']', $details)->length === 1,
+            'count'   => $xpath->query('summary/*['.$class('count').']', $details)->length,
+        ];
+    }
+    return $menus;
+};
+foreach (['the administrator' => $admin, 'a family' => $family] as $who => $accountId) {
+    notify($accountId, 'info', 'Etwas wartet');
+    sign_in_as($accountId);
+    $menus = $drawnMenus(shell_page('dashboard'));
+    ok(count($menus) >= 1, 'the top bar drawn for '.$who.' has its menus');
+    foreach ($menus as $n => $menu) {
+        ok($menu['menu'], 'menu '.($n + 1).' drawn for '.$who.' carries the class topbar-menu');
+        ok($menu['summary'], 'its button, a <summary>, comes first');
+        ok($menu['panel'], 'and what it opens is one .topbar-menu-panel directly inside it');
+    }
+    is_same(1, $menus[0]['count'] ?? null, 'the bell drawn for '.$who.' carries its number');
+}
+
+case_('The stylesheet reader counts as a browser does');
+/* tests/css.php decides which rule wins below, so it is held to known answers
+   first: a reader that miscounted would pass an override that loses. */
+foreach (['details[open]>summary' => [0, 1, 2], '.topbar-menu[open]>summary' => [0, 2, 1],
+          'html:not([data-theme=light]) :is(.sidebar nav a,.mobile-nav a) .count' => [0, 3, 3],
+          'summary:before' => [0, 0, 2], 'summary::-webkit-details-marker' => [0, 0, 2],
+          '#main :where(.card p)' => [1, 0, 0], 'li:nth-child(odd)' => [0, 1, 1], 'p:lang(de) a' => [0, 1, 2]] as $selector => $expected)
+    is_same($expected, css_specificity($selector), $selector);
+$sample = css_rules("/* a { b } */ a  >  b , .c::before { margin : 0 !important ; content:\"x;y\" }\n@media (max-width:760px){.d{left:1px}}.e{top:0}");
+is_same([['', 'a>b', 'margin', '0', true, 1], ['', '.c:before', 'margin', '0', true, 1],
+         ['', 'a>b', 'content', '"x;y"', false, 1], ['', '.c:before', 'content', '"x;y"', false, 1],
+         ['@media (max-width:760px)', '.d', 'left', '1px', false, 2], ['', '.e', 'top', '0', false, 3]],
+        array_map(fn($r) => [$r['media'], $r['selector'], $r['property'], $r['value'], $r['important'], $r['order']], $sample),
+        'rules are read past comments, spacing, a quoted semicolon and an @media');
+$row = fn(string $selector, int $order, string $media = '', bool $important = false) =>
+    ['media' => $media, 'selector' => $selector, 'property' => 'margin', 'value' => '0', 'important' => $important, 'order' => $order];
+ok(css_wins($row('.a>summary', 2), $row('.b>summary', 1)), 'as specific and later wins');
+ok(!css_wins($row('.a>summary', 1), $row('.b>summary', 2)), 'as specific and earlier loses');
+ok(css_wins($row('.a[open]>summary', 1), $row('details[open]>summary', 2)), 'more specific wins even when earlier');
+ok(!css_wins($row('.a>summary', 2), $row('details[open]>summary', 1)), 'less specific loses even when later');
+ok(!css_wins($row('.a[open]>summary', 2), $row('details summary', 1, '', true)), 'nothing without !important beats !important');
+ok(!css_wins($row('.a[open]>summary', 2, '@media(min-width:900px)'), $row('details summary', 1)), 'and an override in a narrower @media is not one everywhere');
+is_same(760, css_max_width('@media(max-width:760px)'), 'a phone @media applies up to its max-width');
+is_same(0, css_max_width('@media (min-width:400px) and (max-width:760px)'), 'and one with a min-width is not taken for every phone');
+
+case_('The stylesheet keeps a top-bar menu still when it opens, and its panel on the screen');
+/* A general rule for <summary> - one naming no class - that moves the button or
+   draws beside it has to be undone for .topbar-menu by a rule that wins, at
+   every width the general one applies at. css_wins() does not check that the
+   override applies in the same state: .topbar-menu[open]>summary is accepted
+   against details summary, which is fine here because a shut menu's button is
+   what the always-on .topbar-menu>summary rule already sets. */
+$css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
+ok(count($css) > 1000, count($css).' declarations read from app.css');
+$notPrint = fn(array $row) => !str_contains($row['media'], 'print');
+$topbarButton = css_matching($css, '/^\.topbar-menu(\[open\])?>summary$/');
+$generalMoves = array_filter(css_matching($css, '/^[^.#]*summary$/'),
+    fn($r) => $notPrint($r) && preg_match('/^(margin|padding|display|gap)(-|$)/', $r['property']));
+ok(count($generalMoves) >= 2, 'the general rules for a <summary> that move it were found ('.count($generalMoves).')');
+foreach ($generalMoves as $general) {
+    $margin = str_starts_with($general['property'], 'margin');
+    ok(array_filter($topbarButton, fn($over) => css_wins($over, $general) && (!$margin || css_is_zero($over['value']))) !== [],
+       $general['selector'].' { '.$general['property'].': '.$general['value'].' }'.($general['media'] !== '' ? ' in '.$general['media'] : '')
+       .' is undone for a top-bar menu\'s button by a rule that wins'.($margin ? ', with a margin of 0' : ''));
+}
+$generalDrawn = array_filter(css_matching($css, '/^[^.#]*summary:(before|after)$/'),
+    fn($r) => $notPrint($r) && $r['property'] === 'content' && !in_array($r['value'], ['none', 'normal'], true));
+ok(count($generalDrawn) >= 1, 'the general rule drawing a triangle beside a <summary> was found');
+foreach ($generalDrawn as $general) {
+    $pseudo = substr($general['selector'], (int)strrpos($general['selector'], ':'));
+    ok(array_filter(css_matching($css, '/^\.topbar-menu(\[open\])?>summary'.preg_quote($pseudo, '/').'$/'),
+                    fn($over) => css_wins($over, $general) && $over['value'] === 'none') !== [],
+       $general['selector'].' { content: '.$general['value'].' } is undone for a top-bar menu with content: none, by a rule that wins');
+}
+$everywhere = fn(string $pattern, string $property, callable $accepts) => array_filter(css_matching($css, $pattern),
+    fn($r) => $r['media'] === '' && $r['property'] === $property && $accepts($r['value'])) !== [];
+ok($everywhere('/^\.topbar-menu>summary$/', 'list-style', fn($v) => str_contains($v, 'none'))
+   || $everywhere('/^\.topbar-menu>summary$/', 'list-style-type', fn($v) => $v === 'none'),
+   'a top-bar menu\'s button has no list marker, at every width');
+ok($everywhere('/^\.topbar-menu>summary::-webkit-details-marker$/', 'display', fn($v) => $v === 'none'),
+   'nor Safari\'s own triangle, at every width');
+ok($everywhere('/^\.topbar-menu$/', 'position', fn($v) => $v === 'relative'),
+   'on a wide screen the panel hangs from its own button');
+
+/* On a phone the account button sits right of the bell, so a panel hung from
+   the bell runs off the left edge. It hangs from the bar, at every width the
+   phone layout is used - read from where the stylesheet shows the phone's
+   portal name - and the bar has to be positioned for that to work. */
+$phone = max(array_map(fn($r) => css_max_width($r['media']),
+    array_filter(css_matching($css, '/(^|[\s>])(a)?\.mobile-brand$/'), fn($r) => $r['property'] === 'display' && $r['value'] !== 'none')) ?: [0]);
+ok($phone > 0, 'the phone layout starts below '.$phone.'px, where the portal\'s name moves into the top bar');
+$onPhone = fn(string $pattern, string $property) => array_filter(css_matching($css, $pattern),
+    fn($r) => css_max_width($r['media']) >= $phone && $r['property'] === $property);
+ok(array_filter($onPhone('/^\.topbar-menu$/', 'position'), fn($r) => $r['value'] === 'static') !== [],
+   'on a phone a top-bar menu lets go of its panel (position: static)');
+foreach (['left', 'right'] as $side)
+    ok($onPhone('/\.topbar-menu-panel$/', $side) || $onPhone('/\.topbar-menu-panel$/', 'inset'),
+       'and the panel is pinned to the bar\'s '.$side.' edge, up to '.$phone.'px');
+$barPosition = array_filter(css_matching($css, '/^\.topbar$/'),
+    fn($r) => $r['property'] === 'position' && ($r['media'] === '' || css_max_width($r['media']) >= $phone));
+usort($barPosition, fn($x, $y) => $x['order'] <=> $y['order']);
+$last = end($barPosition) ?: ['value' => 'nothing'];
+ok(in_array($last['value'], ['sticky', 'fixed', 'relative', 'absolute'], true),
+   'the bar is positioned, so the panel is measured from it ('.$last['value'].')');
+
+/* The bell's number is a badge like the menu's: the same background, and its
+   figure in --on-accent, the colour made for text on the accent, which the
+   stylesheet sets once for light and once for each way of being dark. A
+   hard-coded colour on a number is how the bell's came to differ before. */
+$bellCount = css_matching($css, '/^\.notification-pane>summary \.count$/');
+$menuCount = css_matching($css, '/^\.mobile-nav a \.count$/');
+$value = fn(array $rows, string $property) => array_column(array_filter($rows, fn($r) => $r['media'] === '' && $r['property'] === $property), 'value');
+ok($value($menuCount, 'background') !== [] && $value($bellCount, 'background') === $value($menuCount, 'background'),
+   'the bell\'s number has the background of the menu\'s ('.implode(', ', $value($bellCount, 'background')).')');
+is_same(['var(--on-accent)'], $value($bellCount, 'color'), 'and its figure is in var(--on-accent)');
+$hardCoded = array_filter($css, fn($r) => $notPrint($r) && preg_match('/(\.notification-pane>summary|\.mobile-nav a|\.sidebar nav a)\)? \.count$/', $r['selector'])
+    && $r['property'] === 'color' && $r['value'] !== 'var(--on-accent)');
+is_same([], array_map(fn($r) => $r['selector'].' { color: '.$r['value'].' }', array_values($hardCoded)), 'no rule gives a number any other colour');
+foreach ([':root' => 'light', 'html:not([data-theme=light])' => 'dark by the device', 'html[data-theme=dark]' => 'dark by choice'] as $selector => $mode)
+    ok(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'), fn($r) => $r['property'] === '--on-accent') !== [],
+       '--on-accent is set for '.$mode);
+
+case_('A tap elsewhere, a swipe and Escape do what they should to an open menu');
+/* The behaviour itself, run against the real app.js in tests/topbar-menus.mjs:
+   the stylesheet can keep the bell still, but only the script closes it. */
+$appJs = (string)file_get_contents(APP_ROOT.'/public/assets/app.js');
+ok(preg_match('/querySelectorAll\(\s*([\'"])\.topbar-menu\1\s*\)/', $appJs) === 1,
+   'app.js finds the top bar\'s menus by the class the layout gives them');
+$node = function_exists('exec') ? trim((string)exec('command -v node 2>/dev/null')) : '';
+if ($node === '') {
+    test_unsupported(array_merge(test_unsupported(),
+        ['what a tap, a swipe and Escape do to a top-bar menu (tests/topbar-menus.mjs needs node)']));
+} else {
+    $output = [];
+    exec(escapeshellarg($node).' '.escapeshellarg(TEST_ROOT.'/topbar-menus.mjs').' 2>&1', $output, $status);
+    $results = json_decode(implode("\n", $output), true);
+    ok($status === 0 && is_array($results), 'tests/topbar-menus.mjs ran'.($status === 0 && is_array($results) ? '' : ': '.implode("\n", $output)));
+    ok(is_array($results) && count($results) >= 16, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
+    foreach (is_array($results) ? $results : [] as $result)
+        ok($result['pass'] === true, $result['what'].($result['pass'] ? '' : ' — '.$result['detail']));
+}

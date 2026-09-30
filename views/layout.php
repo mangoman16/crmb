@@ -9,8 +9,8 @@ $realUser=$public?null:impersonator();
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <?php /* Matching the bar to the surface keeps the notch area from banding in standalone mode. */ ?>
-    <meta name="theme-color" content="<?=$theme==='dark'?'#101922':'#13243a'?>"<?=$theme==='auto'?' media="(prefers-color-scheme: light)"':''?>>
-    <?php if($theme==='auto'): ?><meta name="theme-color" content="#101922" media="(prefers-color-scheme: dark)"><?php endif ?>
+    <meta name="theme-color" content="<?=e(brand_theme_colour($theme==='dark'?'dark':'light'))?>"<?=$theme==='auto'?' media="(prefers-color-scheme: light)"':''?>>
+    <?php if($theme==='auto'): ?><meta name="theme-color" content="<?=e(brand_theme_colour('dark'))?>" media="(prefers-color-scheme: dark)"><?php endif ?>
     <?php /* Home-screen install: the manifest covers modern iOS and Android, the
              apple-* tags cover older iOS versions that ignore display:standalone.
              The manifest is built per request (ADR 0008) and is fetched with the
@@ -34,6 +34,9 @@ $realUser=$public?null:impersonator();
     <meta name="description" content="<?=e(setting('club_name').' – '.t('Schüler, Beiträge und Nachrichten.','students, payments and messages.'))?>">
     <title><?=e(setting('club_name','Badminton'))?></title>
     <link rel="stylesheet" href="<?=e(asset_url('app.css'))?>?v=<?=e(app_version())?>">
+    <?php /* The club's colours, after app.css so they win at equal specificity;
+             no request at all while none is set (ADR 0013). */
+    if(($brandCss=brand_css_url())!==''): ?><link rel="stylesheet" href="<?=e($brandCss)?>"><?php endif ?>
     <script defer src="<?=e(asset_url('app.js'))?>?v=<?=e(app_version())?>"></script>
 </head>
 <body class="<?=$public?'public-page':'app-page'?>">
@@ -45,7 +48,7 @@ $unreadNotes=unread_notifications((int)$user['id']);
     <?php /* The way out of the side menu on a phone. A link, so it works without
              JavaScript: „Mehr" opens the menu as #sidebar, and this leaves it. */
     if(is_staff($user)): ?><a class="menu-close" id="menu-close" href="#main"><?=e(t('Menü schließen','Close menu'))?></a><?php endif ?>
-    <a class="brand" href="<?=e(url('dashboard'))?>"><span class="brand-mark">B<span></span></span><span><?=e(setting('club_name','Badminton'))?><small><?=e(is_staff($user)?t('Verwaltung','Management'):t('Mein Portal','My portal'))?></small></span></a>
+    <?php brand_block($user,'sidebar',url('dashboard')); ?>
     <?=sidebar_nav($user,$page)?>
     <?php /* The account used to be here as well as in the top bar. One of the two
              was always redundant, and the top bar is the one on screen whatever
@@ -61,14 +64,14 @@ $unreadNotes=unread_notifications((int)$user['id']);
          wherever you happen to have scrolled to. */ ?>
 <header class="topbar">
     <span class="topbar-context"><?=e((string)setting('portal_tagline'))?></span>
-    <a class="mobile-brand" href="<?=e(url('dashboard'))?>"><?=e(setting('club_name','Badminton'))?></a>
+    <?php brand_block($user,'bar',url('dashboard')); ?>
     <div class="topbar-actions">
         <a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['id','tab']))))?>"><?=locale()==='de'?'EN':'DE'?></a>
-        <details class="notification-pane">
+        <details class="topbar-menu notification-pane">
             <summary aria-label="<?=e($unreadNotes?$unreadNotes.' '.t('neue Hinweise','new notifications'):t('Hinweise','Notifications'))?>">
                 <?=icon('bell')?><?php if($unreadNotes):?><span class="count"><?=e($unreadNotes)?></span><?php endif ?>
             </summary>
-            <div class="notification-list">
+            <div class="topbar-menu-panel notification-list">
                 <div class="notification-head">
                     <strong><?=e(t('Hinweise','Notifications'))?></strong>
                     <?php if($unreadNotes){start_form('notifications_read',[],'inline-form');submit_button(t('Alle gelesen','Mark all read'),'subtle');echo '</form>';} ?>
@@ -84,11 +87,11 @@ $unreadNotes=unread_notifications((int)$user['id']);
                 <?php endforeach ?>
             </div>
         </details>
-        <a class="account-link compact" href="<?=e(url('profile'))?>"><?=avatar($user,'tiny')?><span><?=e($user['name'])?><small><?=e(role_label($user['role']))?></small></span></a>
+        <?php require ROOT.'/views/_account_menu.php'; ?>
     </div>
 </header>
 <?php else: ?>
-<header class="public-header"><a class="brand" href="<?=e(url($user?'dashboard':'login'))?>"><span class="brand-mark">B<span></span></span><?=e(setting('club_name','Badminton'))?></a><a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['account','category','signature']))))?>"><?=locale()==='de'?'EN':'DE'?></a></header>
+<header class="public-header"><?php brand_block($user,'public',url($user?'dashboard':'login')); ?><a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['account','category','signature']))))?>"><?=locale()==='de'?'EN':'DE'?></a></header>
 <?php endif ?>
 <main id="main" class="<?=$public?'public-main':'main-content'?>">
 <?php if($realUser): ?>

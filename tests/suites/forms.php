@@ -254,3 +254,28 @@ ok(!in_array(t('Tarif wählen','Choose a tariff'), $steps(), true), 'and choosin
 run('UPDATE class_students SET left_on=? WHERE student_id=?', [today(), $fresh]);
 ok(in_array(t('In einen Kurs eintragen','Put them in a course'), $steps(), true),
    'and a child who has left every course is asked for one again');
+
+case_('A form sent from any page goes back to that page, record and tab included');
+/* The notification pane is on every page, and „Alle gelesen“ used to return
+   the page name alone: pressed on a child's page it went to "page=student"
+   with no child, which is "Nicht gefunden". form_return() is the one reading of
+   the return_* fields, for it, the account menu and the router's way back. */
+sign_in_as($admin);
+is_same(['student', ['id' => 7, 'tab' => 'payments']],
+    act('notifications_read', ['return_page' => 'student', 'return_id' => '7', 'return_tab' => 'payments']),
+    'marking all read keeps the child and the tab');
+is_same(['students', []], act('notifications_read', ['return_page' => 'students', 'return_id' => '0', 'return_tab' => '']),
+    'a page with no record gets no id=0 either');
+$_POST = ['return_page' => '//evil.example/x'];
+is_same(['dashboard', []], form_return(), 'something that is not a page name is never where it goes');
+$_POST = [];
+is_same(['login', []], form_return('login'), 'and with nothing posted the fallback is used');
+/* After a refusal the router passes its own list of pages, so the page she
+   lands on with the error message is always one that exists. */
+$_POST = ['return_page' => 'no_such_page', 'return_id' => '4'];
+is_same(['dashboard', ['id' => 4]], form_return('dashboard', ['dashboard', 'student']), 'a page the router does not know is replaced by the fallback');
+$_POST = ['return_page' => 'student', 'return_id' => '4'];
+is_same(['student', ['id' => 4]], form_return('dashboard', ['dashboard', 'student']), 'one it knows is kept');
+$_POST = [];
+$router = (string)file_get_contents(APP_ROOT.'/public/index.php');
+ok(str_contains($router, "form_return(current_user()?'dashboard':'login',\$allowed)"), 'and the router hands its list of pages to the way back');

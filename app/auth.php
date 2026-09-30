@@ -51,18 +51,6 @@ function may_see_account_picture(array $viewer, array $account): bool {
         || (int)$viewer['id'] === (int)($account['id'] ?? 0)
         || (isset($account['role']) && is_staff($account));
 }
-/** Record activity for the online indicator, at most once a minute per account. */
-function touch_last_seen(array $user): void {
-    if(time()-(int)($_SESSION['seen_written']??0) < 60) return;
-    $_SESSION['seen_written']=time();
-    // Written on the counter connection: an action that rolls back should not
-    // also undo the fact that the person was here.
-    run_counter('UPDATE accounts SET last_seen_at=? WHERE id=?',[now(),$user['id']]);
-}
-function is_online(?string $lastSeen): bool {
-    if($lastSeen===null || $lastSeen==='') return false;
-    return (strtotime($lastSeen.' UTC') ?: 0) > time()-((int)setting('online_window_minutes'))*60;
-}
 function require_user(): array { $a=current_user(); if(!$a) go('login'); return $a; }
 function require_staff(): array { $a=require_user(); if(!is_staff($a)) throw new UserError(t('Kein Zugriff.','Access denied.')); return $a; }
 function require_admin(): array { $a=require_user(); if($a['role']!=='admin') throw new UserError(t('Nur für Administratoren.','Administrators only.')); return $a; }

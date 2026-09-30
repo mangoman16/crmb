@@ -19,7 +19,7 @@ $expected = [
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
     'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
     'app/duplicate.php' => 80, 'app/portal_icon.php' => 60, 'app/start.php' => 100,
-    'app/backup.php' => 100, 'public/setup.php' => 180,
+    'app/backup.php' => 100, 'public/setup.php' => 180, 'app/presence.php' => 120,
 ];
 foreach ($expected as $file => $minLines) {
     $path = APP_ROOT.'/'.$file;
@@ -76,7 +76,8 @@ ok(isset($m[1]), 'the allow-list is found');
    with its handler, and the router has to call exactly that for exactly that
    page, so an exception cannot outlive the line that made it true. No stub
    views: an empty file would satisfy the old rule and serve nothing. */
-$answeredWithoutView = ['icon' => 'serve_portal_icon', 'manifest' => 'serve_web_manifest'];
+$answeredWithoutView = ['icon' => 'serve_portal_icon', 'manifest' => 'serve_web_manifest',
+                        'brand' => 'serve_brand_css', 'logo' => 'serve_portal_logo'];
 foreach (array_map(fn($p) => trim($p, " '"), explode(',', $m[1] ?? '')) as $page) {
     if ($page === '') continue;
     if (!isset($answeredWithoutView[$page])) {
@@ -144,6 +145,7 @@ $expected = [
     'login' => 'public', 'forgot' => 'public', 'activate' => 'public',
     'unsubscribe' => 'public', 'privacy' => 'public',
     'icon' => 'public', 'manifest' => 'public',   // the login page wears the icon; an install reads the manifest
+    'brand' => 'public', 'logo' => 'public',      // the sign-in page wears the portal's colours and logo too
     'dashboard' => 'everyone', 'students' => 'everyone', 'student' => 'everyone',
     'messages' => 'everyone', 'news' => 'everyone', 'profile' => 'everyone',
     'download' => 'everyone',   // decides per file, inside serve_download()
@@ -365,6 +367,7 @@ function printable_parts(string $expr): array {
 $escaping = ['e',                                                   // escapes
              'icon','link_button','qr_svg','progress_chart','avatar', // build their own markup and escape inside
              'sidebar_nav','time_cells','select_options',           // build their own markup and escape inside
+             'presence_dot','presence_dot_for','presence_line',     // build their own markup and escape inside
              'money','number_format','count','ceil','floor','round','array_sum','plural',  // numbers
              'fmt_date','fmt_datetime',                             // formatted dates
              'role_label','entity_label'];                          // fixed sets in code
@@ -1037,6 +1040,31 @@ function action_calls_in(string $php): array {
     }
     return $calls;
 }
+
+case_('Presence is written on the counter connection only, and never from the asset routes');
+/* ADR 0015. The online helpers moved to app/presence.php; a copy left in
+   auth.php would be the one somebody fixes next. A period written on the main
+   connection vanishes with any action that rolls back, and a touch from the
+   icon or the manifest - which a browser fetches on its own, from a tab left
+   open - would show somebody online who is not there. */
+$authFunctions = defined_functions_in(APP_ROOT.'/app/auth.php');
+ok(!isset($authFunctions['touch_last_seen']) && !isset($authFunctions['is_online']), 'touch_last_seen() and is_online() are gone from auth.php');
+$oldCalls = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $file)
+    if (preg_match('/(?<![a-z_>])(touch_last_seen|is_online)\s*\(/', (string)file_get_contents($file))) $oldCalls[] = basename($file);
+is_same([], $oldCalls, 'and nothing calls them any more');
+$touch = defined_functions_in(APP_ROOT.'/app/presence.php')['presence_touch'] ?? '';
+is_same(4, substr_count($touch, 'run_counter ('), 'presence_touch() reads and writes the account and the period on the counter connection');
+ok($touch !== '' && preg_match('/(?<![a-z_])(run|one|rows|scalar) \(/', $touch) === 0, 'and writes nothing on the main connection');
+$routerText = (string)file_get_contents(APP_ROOT.'/public/index.php');
+is_same(1, substr_count($routerText, 'presence_touch('), 'the router touches in one place');
+preg_match('/if\(\$user && !in_array\(\$page,\[([^\]]*)\],true\)\)presence_touch\(\$user\);/', $routerText, $skip);
+$skipped = isset($skip[1]) ? array_map(fn($p) => trim($p, " '"), explode(',', $skip[1])) : [];
+foreach (['icon', 'manifest', 'brand', 'logo'] as $asset)
+    ok(in_array($asset, $skipped, true), 'and not for the '.$asset.' route');
+$prune = defined_functions_in(APP_ROOT.'/app/tick.php')['prune_expired'] ?? '';
+ok(preg_match('/^\{ presence_prune \(/', $prune) === 1,
+   'the nightly prune forgets presence first, so nothing failing after it can keep it past the month');
 
 /** name => body, for every named function in one file, by matching its braces. */
 function defined_functions_in(string $path): array {

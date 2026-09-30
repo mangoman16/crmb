@@ -615,6 +615,104 @@ function login_state_badge(?array $account): void {
     }, match ($state) { 'active' => 'green', 'invited' => 'amber', 'suspended' => 'red', default => '' });
 }
 
+/*
+ * Presence, as the pages show it (ADR 0015). Who may see what is decided in
+ * app/presence.php and asked here before anything is drawn, so a view that
+ * calls these cannot show a family - or anybody presence_visible_to() refuses -
+ * more than '' or an empty history.
+ */
+
+/** The dot itself, for a state; its label for a screen reader unless the text beside it already says it. */
+function presence_dot_for(string $state, bool $labelled=true): string {
+    $state = in_array($state, ['online','recent','away','offline'], true) ? $state : 'offline';
+    return '<span class="presence-dot is-'.$state.'"'.($labelled ? '' : ' aria-hidden="true"').'>'
+        .($labelled ? '<span class="visually-hidden">'.e(presence_state_label($state)).'</span>' : '').'</span>';
+}
+
+/**
+ * Whether a page shows $account's presence to $viewer at all. An invitation
+ * nobody has taken up has never been used, so it has nothing to show rather
+ * than a grey „Offline"; beyond that it is presence_visible_to()'s answer.
+ */
+function presence_shown_for(array $viewer, ?array $account): bool {
+    return $account !== null && ($account['state'] ?? '') !== 'invited' && presence_visible_to($viewer, $account);
+}
+
+/** $subject's dot as $viewer may see it, or '' - which is what a family always gets. */
+function presence_dot(array $viewer, array $subject): string {
+    return presence_visible_to($viewer, $subject) ? presence_dot_for(presence_state($subject)) : '';
+}
+
+/**
+ * $subject's dot and, in words, what it means: „Online“, or the state and when
+ * they were last here, as $viewer may know it. '' for a viewer who may not see
+ * presence. An administrator looking at somebody who appears offline is told
+ * so, because the time shown is then one a trainer does not see.
+ */
+function presence_line(array $viewer, array $subject): string {
+    if (!presence_visible_to($viewer, $subject)) return '';
+    $state = presence_state($subject);
+    $text = presence_state_label($state);
+    if ($state !== 'online' && ($seen = presence_last_seen_for($viewer, $subject)) !== null)
+        $text .= ' · '.t('zuletzt ', 'last seen ').fmt_datetime($seen);
+    if (is_admin($viewer) && presence_choice($subject) === 'hidden')
+        $text .= t(' (als offline angezeigt)', ' (appearing offline)');
+    return '<span class="presence-line">'.presence_dot_for($state, false).'<span>'.e($text).'</span></span>';
+}
+
+/**
+ * When somebody was online over the days kept, folded away: how many days, a
+ * strip of them, and the times, newest first. $periods is this account's entry
+ * from presence_history(), which has already left out what $viewer may not see
+ * - a trainer gets no hidden periods but her own - so whatever hidden period
+ * arrives here is marked rather than dropped. $recordedSince is
+ * presence_recorded_since(), which the page asks once for all its people.
+ */
+function presence_history_details(array $viewer, array $periods, ?string $recordedSince): void {
+    if (!is_staff($viewer)) return;
+    $n = presence_history_days();
+    $days = presence_days($periods);
+    $today = $days[count($days) - 1]['date'];
+    $yesterday = $days[count($days) - 2]['date'] ?? '';
+    $active = array_values(array_filter(array_reverse($days), fn($d) => $d['state'] !== 'none'));
+    $label = function (string $date) use ($today, $yesterday): string {
+        if ($date === $today) return t('Heute', 'Today');
+        if ($date === $yesterday) return t('Gestern', 'Yesterday');
+        $d = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        return locale() === 'de' ? mb_substr(weekdays()[(int)$d->format('N')], 0, 2).' '.$d->format('d.m.') : $d->format('D j M');
+    };
+    echo '<details class="presence-history"><summary>'
+        .e(t('Wann online? Letzte ', 'When online? Last ').plural($n, 'Tag', 'Tage', 'day', 'days')).'</summary>';
+    echo '<p>'.e($active
+        ? t('An ', 'Online on ').count($active).t(' von ', ' of the last ').plural($n, 'Tag', 'Tagen', 'day', 'days').t(' online.', '.')
+        : t('In den letzten ', 'Not online in the last ').plural($n, 'Tag', 'Tagen', 'day', 'days').t(' nicht online.', '.')).'</p>';
+    // For the first weeks after the update the record is shorter than the
+    // window, and "not online in 30 days" would be untrue of somebody who was
+    // simply not recorded yet. presence_recorded_since(), asked once by the
+    // page rather than once per person on a list.
+    if ($recordedSince !== null)
+        echo '<p class="muted">'.e(t('Aufgezeichnet wird seit dem ', 'Recorded since ').fmt_date($recordedSince).'.').'</p>';
+    // The strip repeats the list below at a glance, so it is hidden from a
+    // screen reader, which would otherwise read thirty empty cells.
+    echo '<div class="presence-strip" aria-hidden="true">';
+    foreach ($days as $day) echo '<span class="is-'.($day['state'] === 'on' ? 'on' : ($day['state'] === 'hidden' ? 'hidden' : 'none')).'"></span>';
+    echo '</div><div class="presence-strip-scale" aria-hidden="true">'
+        // The oldest cell is N-1 days back: today is a cell of its own.
+        .($n > 1 ? '<span>'.e(t('vor ', '').plural($n - 1, 'Tag', 'Tagen', 'day', 'days').t('', ' ago')).'</span>' : '<span></span>')
+        .'<span>'.e(t('heute', 'today')).'</span></div>';
+    if ($active) {
+        echo '<dl class="presence-days">';
+        foreach ($active as $day) {
+            // Within a day in the order they happened, as one reads a timetable.
+            $times = array_map(fn($p) => ($p['from'] === $p['to'] ? $p['from'] : $p['from'].'–'.$p['to'])
+                .($p['hidden'] ? t(' (als offline angezeigt)', ' (appearing offline)') : ''), $day['periods']);
+            echo '<div><dt>'.e($label($day['date'])).'</dt><dd>'.e(implode(', ', $times)).'</dd></div>';
+        }
+        echo '</dl>';
+    }
+    echo '</details>';
+}
+
 /**
  * Deleting a login, folded away, with its address typed to confirm.
  *
@@ -628,6 +726,50 @@ function login_delete_details(array $account,string $summary,string $explanation
     input('confirmation',t('Zur Bestätigung die E-Mail-Adresse eingeben','Enter the email address to confirm'),'','email',true);
     submit_button($button,'danger');
     echo '</form></details>';
+}
+
+/**
+ * The club's name and mark, top left (ADR 0014): its logo on a white plate,
+ * else its icon, else the „B". brand_header() decides which and whether the
+ * name and the line under it are shown; this only draws it.
+ *
+ *   $where  'sidebar'  the menu, with the „Verwaltung“ / „Mein Portal“ line
+ *           'public'   the sign-in page's header, without that line
+ *           'bar'      the phone's top bar: the logo alone, or the icon alone
+ *                      when the name is switched off, or else the name
+ *   $href   where it leads; null draws it without a link, for the preview on
+ *           the „Aussehen" card
+ *
+ * A name that is switched off stays in the markup for a screen reader, and the
+ * pictures have an empty alt, so the name is read once, never twice.
+ */
+function brand_block(?array $user, string $where, ?string $href): void {
+    $b = brand_header($user);
+    $name = $b['name'] !== '' ? $b['name'] : 'Badminton';
+    $kind = $b['logo'] !== '' ? 'logo' : ($b['icon'] !== '' ? 'icon' : 'mark');
+    $bar = $where === 'bar';
+    // In the bar there is room for one thing: the logo, or the icon when the
+    // name is switched off, or else the name as it always was.
+    if ($bar && $kind === 'icon' && $b['show_name']) $kind = 'none';
+    if ($bar && $kind === 'mark') $kind = 'none';
+    $tag = $href === null ? 'span' : 'a';
+    echo '<'.$tag.' class="'.($bar ? 'mobile-brand' : 'brand').' brand-is-'.$kind.'"'.($href === null ? '' : ' href="'.e($href).'"').'>';
+    if ($kind === 'logo')
+        echo '<span class="brand-plate"><img class="brand-logo" src="'.e($b['logo']).'" alt="" width="'.(int)$b['logo_width'].'" height="'.(int)$b['logo_height'].'"></span>';
+    elseif ($kind === 'icon')
+        echo '<span class="brand-mark brand-icon"><img src="'.e($b['icon']).'" alt="" width="44" height="44"></span>';
+    elseif ($kind === 'mark')
+        echo '<span class="brand-mark">B<span></span></span>';
+    if ($bar) {
+        // The name only where it is the whole of it; beside a picture it is for
+        // a screen reader. Two lines at most, so a long name cannot push the
+        // bar taller than the bar.
+        echo '<span class="'.($kind === 'none' ? 'mobile-brand-name' : 'visually-hidden').'">'.e($name).'</span>';
+    } else {
+        $sub = $where === 'sidebar' ? '<small'.($b['show_subtitle'] ? '' : ' class="visually-hidden"').'>'.e($b['subtitle']).'</small>' : '';
+        echo '<span class="brand-name"><span'.($b['show_name'] ? '' : ' class="visually-hidden"').'>'.e($name).'</span>'.$sub.'</span>';
+    }
+    echo '</'.$tag.'>';
 }
 
 /** The address of a file that ships in public/assets/. */

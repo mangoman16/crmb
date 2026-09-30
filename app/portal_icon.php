@@ -98,21 +98,6 @@ function portal_icon_cache_control(string $storedName, mixed $requestedVersion):
         ? shared_cache_control(CLUB_ASSET_MAX_AGE, true) : 'no-cache';
 }
 
-/**
- * Cache-Control for a reply any cache may keep - unless it starts a session.
- *
- * A request that arrives without a cookie gets a new session and a Set-Cookie
- * with its reply, and a shared cache may store that header with the body
- * (RFC 9111) and hand one session to everybody behind it. Such a reply is kept
- * by the browser alone.
- */
-function shared_cache_control(int $seconds, bool $immutable = false, ?array $sentHeaders = null): string {
-    $setsCookie = false;
-    foreach ($sentHeaders ?? headers_list() as $header)
-        if (stripos((string)$header, 'set-cookie:') === 0) $setsCookie = true;
-    return ($setsCookie ? 'private' : 'public') . ', max-age=' . $seconds . ($immutable ? ', immutable' : '');
-}
-
 /** Answer ?page=icon with the icon in use, or the built-in one in its place. */
 function serve_portal_icon(): never {
     $name = portal_icon();
@@ -159,8 +144,10 @@ function web_manifest(): array {
         'scope'            => $base . '/',
         'display'          => 'standalone',
         'orientation'      => 'portrait-primary',
-        'background_color' => '#f3f6f9',
-        'theme_color'      => '#13243a',
+        // The club's colours when she set them (ADR 0013): the page an
+        // installed portal opens on, and the bar around it.
+        'background_color' => brand_background_colour(),
+        'theme_color'      => brand_theme_colour('light'),
         'icons'            => $icons,
     ];
 }

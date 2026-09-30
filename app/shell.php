@@ -101,14 +101,20 @@ function accents(): array {
 }
 
 /**
- * Which accent applies: the person's own, or the one the administrator set.
+ * Which accent applies: the person's own, the club's main colour, or the preset
+ * the administrator set.
  *
- * Both are validated against the list, so a value left behind by an accent that
- * has since been removed falls back rather than producing a page with no colour.
+ * 'brand' is not one of accents(): it is what „Wie eingestellt" means once the
+ * club has a main colour (ADR 0013), and the brand stylesheet colours it. If
+ * that stylesheet fails to load, no rule matches and the built-in teal shows.
+ * The rest are validated against the list, so a value left behind by an accent
+ * that has since been removed falls back rather than producing a page with no
+ * colour.
  */
 function accent_for(?array $user): string {
     $own = (string)($user['accent'] ?? '');
     if (isset(accents()[$own])) return $own;
+    if (brand_chosen()['brand_primary'] !== '') return 'brand';
     $default = (string)setting('default_accent');
     return isset(accents()[$default]) ? $default : 'teal';
 }
@@ -235,8 +241,12 @@ function stop_impersonation(): void {
 
 /** How many steps a report carries, oldest first. */
 const REPORT_STEPS = 8;
-/** Pages that are not somewhere a person went: pictures, the icon, the manifest. */
-const REPORT_UNRECORDED_PAGES = ['download', 'icon', 'manifest'];
+/**
+ * Pages that are not somewhere a person went: pictures, the icon, the manifest,
+ * the club's stylesheet and logo. Every page fetches the last two, so recorded
+ * they would push the steps she actually took out of the trail.
+ */
+const REPORT_UNRECORDED_PAGES = ['download', 'icon', 'manifest', 'brand', 'logo'];
 
 /**
  * Write down the request being served, for a report filed later.

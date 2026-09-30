@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * Files people send: payment proofs, message attachments, profile pictures,
- * and the portal's own icon.
+ * and the portal's own icon and logo.
  *
  * Three rules hold for all of them.
  *
@@ -75,6 +75,9 @@ function upload_types(string $kind): array {
         // PNG, and one format for the tab, iOS and Android means no guessing
         // which browser takes what. check_portal_icon() then reads its size.
         'icon'   => ['image/png' => 'png'],
+        // The logo may be wide and may be a photograph, so JPEG and WebP too;
+        // not GIF, which animates, and never SVG, which can carry script (ADR 0014).
+        'logo'   => ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'],
         // A message may carry a picture, a document or a voice note. webm and
         // mp4 are what a browser's own recorder produces; the rest are what
         // somebody's phone hands over when they pick an existing file.
@@ -166,6 +169,7 @@ function upload_references(): array {
         // be swept an hour after it was uploaded. REPLACE(x,y,z) is spelled the
         // same in MariaDB, MySQL and SQLite.
         'icon'    => ["SELECT REPLACE(setting_value,'\"','') AS name FROM settings WHERE setting_key='portal_icon'"],
+        'logo'    => ["SELECT REPLACE(setting_value,'\"','') AS name FROM settings WHERE setting_key='portal_logo'"],
     ];
 }
 
@@ -256,10 +260,26 @@ function send_download_headers(string $mime, string $name, bool $asAttachment, i
 /**
  * How long the club's own assets may be kept: a year.
  *
- * For the portal's icon and the like - the club's, not a family's - served at
- * an address that changes when the file does, so a year risks nothing stale.
+ * For the portal's icon, its logo and its colours - the club's, not a
+ * family's - each served at an address that changes when it does, so a year
+ * risks nothing stale.
  */
 const CLUB_ASSET_MAX_AGE = 31536000;
+
+/**
+ * Cache-Control for a reply any cache may keep - unless it starts a session.
+ *
+ * A request that arrives without a cookie gets a new session and a Set-Cookie
+ * with its reply, and a shared cache may store that header with the body
+ * (RFC 9111) and hand one session to everybody behind it. Such a reply is kept
+ * by the browser alone.
+ */
+function shared_cache_control(int $seconds, bool $immutable = false, ?array $sentHeaders = null): string {
+    $setsCookie = false;
+    foreach ($sentHeaders ?? headers_list() as $header)
+        if (stripos((string)$header, 'set-cookie:') === 0) $setsCookie = true;
+    return ($setsCookie ? 'private' : 'public') . ', max-age=' . $seconds . ($immutable ? ', immutable' : '');
+}
 
 /**
  * Replace the no-store every response starts with.

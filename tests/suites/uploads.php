@@ -22,8 +22,10 @@ ok(!isset(upload_types('avatar')['application/pdf']), 'a profile picture is a pi
 ok(isset(upload_types('proof')['application/pdf']), 'a proof may be a PDF');
 ok(isset(upload_types('message')['audio/webm']), 'a message may be a voice note');
 is_same(['image/png' => 'png'], upload_types('icon'), 'the portal icon is a PNG and nothing else, not even an SVG');
-foreach (['avatar','proof','message','icon'] as $kind)
-    foreach (['text/html','application/x-php','application/octet-stream'] as $mime)
+is_same(['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'], upload_types('logo'),
+        'the logo may be a PNG, a JPEG or a WebP - no GIF, which animates, and no SVG');
+foreach (['avatar','proof','message','icon','logo'] as $kind)
+    foreach (['text/html','application/x-php','application/octet-stream','image/svg+xml'] as $mime)
         ok(!isset(upload_types($kind)[$mime]), $mime.' is allowed nowhere');
 
 case_('A file is stored under a name of the portal’s own choosing');
@@ -31,7 +33,7 @@ foreach (upload_types('message') as $extension)
     ok(preg_match('/^[a-z0-9]{2,5}$/D', $extension) === 1, 'the extension '.$extension.' cannot execute anywhere');
 
 case_('Every kind of upload is swept, and the sweep knows where each is pointed at from');
-foreach (['avatar','proof','message','icon'] as $kind)
+foreach (['avatar','proof','message','icon','logo'] as $kind)
     ok(isset(upload_references()[$kind]), $kind.' is covered by the sweep');
 
 case_('A file nothing points at any more is removed');
@@ -237,3 +239,119 @@ is_same('Das Standard-Symbol wird wieder verwendet.', $_SESSION['flash']['messag
 ok(!is_file(upload_dir('icon').'/'.$live), 'and the file is gone, so the way back is to upload it again');
 is_same('portal_icon.removed', (string)scalar('SELECT action FROM audit_log ORDER BY id DESC LIMIT 1'), 'the log says who did it');
 does_not_throw(fn() => act('portal_icon_save', ['remove'=>'1']), 'removing when there is nothing to remove is not an error');
+
+// ---------------------------------------------------------------------------
+// The club's logo (ADR 0014)
+// ---------------------------------------------------------------------------
+
+/** The start of a baseline JPEG: the markers getimagesize() reads for its size, and no picture. */
+function jpeg_header(int $width, int $height): string {
+    return "\xFF\xD8" . "\xFF\xE0" . pack('n', 16) . "JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+         . "\xFF\xC0" . pack('n', 17) . "\x08" . pack('nn', $height, $width) . "\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01"
+         . "\xFF\xD9";
+}
+
+/** The start of an extended WebP: the VP8X chunk, which carries the canvas size. */
+function webp_header(int $width, int $height): string {
+    $size = fn(int $n): string => substr(pack('V', $n - 1), 0, 3);
+    $chunk = 'VP8X' . pack('V', 10) . "\x00\x00\x00\x00" . $size($width) . $size($height);
+    return 'RIFF' . pack('V', 4 + strlen($chunk)) . 'WEBP' . $chunk;
+}
+
+/** A file in the logo folder, as store_upload() would have left it. */
+function logo_file(string $bytes, string $extension, string $fill = ''): string {
+    static $n = 0;
+    $name = ($fill !== '' ? str_repeat($fill, 32) : str_pad(dechex(++$n), 32, 'e', STR_PAD_LEFT)).'.'.$extension;
+    @mkdir(upload_dir('logo'), 0775, true);
+    file_put_contents(upload_dir('logo').'/'.$name, $bytes);
+    return $name;
+}
+
+case_('The fixtures are pictures getimagesize() reads, of the size they claim');
+foreach ([['png', png_header(600, 150), IMAGETYPE_PNG], ['jpg', jpeg_header(600, 150), IMAGETYPE_JPEG],
+          ['webp', webp_header(600, 150), IMAGETYPE_WEBP]] as [$extension, $bytes, $type]) {
+    $size = getimagesizefromstring($bytes);
+    is_same([600, 150, $type], $size ? [$size[0], $size[1], $size[2]] : null, 'a '.$extension.' header of 600 × 150 reads as one');
+}
+
+case_('A picture that cannot be the logo is refused, says why, and is gone');
+foreach ([[jpeg_header(600, 150), 'png', 'PNG-, JPEG- oder WebP', 'a JPEG renamed .png'],
+          [png_header(600, 150), 'webp', 'PNG-, JPEG- oder WebP', 'a PNG renamed .webp'],
+          ["GIF89a\x01\x00\x01\x00\x80\x00\x00", 'png', 'PNG-, JPEG- oder WebP', 'a GIF'],
+          ['<svg xmlns="http://www.w3.org/2000/svg"/>', 'png', 'PNG-, JPEG- oder WebP', 'an SVG'],
+          [png_header(160, 40), 'png', 'nur 160 × 40 Pixel groß. Es muss mindestens 88 Pixel hoch sein', 'a picture 40 pixels tall'],
+          [png_header(600, 100), 'png', '600 × 100 Pixel groß und damit mehr als fünfmal so breit wie hoch', 'a 6:1 banner'],
+          [jpeg_header(100, 201), 'jpg', '100 × 201 Pixel groß und damit mehr als doppelt so hoch wie breit', 'a picture more than twice as tall as wide'],
+          [webp_header(2049, 1000), 'webp', 'höchstens 2048 Pixel breit und hoch', 'a picture wider than 2048'],
+          [png_header(30000, 30000), 'png', 'höchstens 2048', 'a picture every phone would have to unpack into gigabytes']] as [$bytes, $extension, $says, $what]) {
+    $name = logo_file($bytes, $extension);
+    throws(fn() => check_portal_logo($name), $what.' is refused', $says);
+    ok(!is_file(upload_dir('logo').'/'.$name), 'and '.$what.' is deleted there and then');
+}
+throws(fn() => check_portal_logo(str_repeat('0', 32).'.png'), 'a file that never arrived is refused rather than trusted');
+foreach ([[webp_header(600, 150), 'webp', '600 × 150 WebP'], [png_header(440, 88), 'png', '5:1 PNG exactly 88 tall'],
+          [jpeg_header(1024, 768), 'jpg', 'iPhone-shaped JPEG'], [png_header(100, 200), 'png', '1:2 PNG'],
+          [png_header(2048, 2048), 'png', '2048 square PNG']] as [$bytes, $extension, $what]) {
+    $name = logo_file($bytes, $extension);
+    does_not_throw(fn() => check_portal_logo($name), 'a '.$what.' is accepted');
+    ok(is_file(upload_dir('logo').'/'.$name), 'and kept');
+}
+
+case_('The logo in use survives the sweep; the ones it replaced do not');
+$liveLogo = logo_file(webp_header(600, 150), 'webp', 'a');
+$replacedLogo = logo_file(png_header(600, 150), 'png', 'b');
+foreach (glob(upload_dir('logo').'/*') as $path) touch($path, $old);
+set_setting('portal_logo', $liveLogo);
+prune_uploads();
+ok(is_file(upload_dir('logo').'/'.$liveLogo), 'the logo in use is kept, although its setting is stored in quotes');
+ok(!is_file(upload_dir('logo').'/'.$replacedLogo), 'the one it replaced is swept');
+
+case_('The logo in use, its address and its size');
+is_same($liveLogo, portal_logo(), 'the one she uploaded');
+$logoUrl = portal_logo_url();
+ok(str_contains($logoUrl, 'page=logo') && str_contains($logoUrl, 'v='.substr($liveLogo, 0, 12)), 'served by the router, versioned by its name');
+ok(!str_contains($logoUrl, $liveLogo), 'but never the whole stored name');
+is_same([600, 150], portal_logo_size(), 'its real size, for the width and height attributes');
+set_setting('portal_logo', '../../config/config.php');
+is_same('', portal_logo(), 'a setting that does not look like a stored name is never served');
+set_setting('portal_logo', str_repeat('c', 32).'.gif');
+is_same('', portal_logo(), 'nor one of a type the logo cannot be');
+set_setting('portal_logo', str_repeat('c', 32).'.png');
+is_same('', portal_logo(), 'and a file that is not there falls back rather than linking to a 404');
+is_same('', portal_logo_url(), 'so no page links to one');
+is_same([0, 0], portal_logo_size(), 'and there is no size to print');
+set_setting('portal_logo', $liveLogo);
+
+case_('The logo is kept for a year only at the address of the logo in use');
+is_same('public, max-age=31536000, immutable', portal_logo_cache_control($liveLogo, substr($liveLogo, 0, 12)),
+        'the current address may be kept for good: a new logo gets a new one');
+is_same('no-cache', portal_logo_cache_control($liveLogo, 'bbbbbbbbbbbb'), 'an old address is checked again every time');
+is_same('no-cache', portal_logo_cache_control($liveLogo, null), 'and one with no version');
+is_same('no-cache', portal_logo_cache_control('', ''), 'and there is no current address without a logo');
+is_same('image/webp', array_search('webp', upload_types('logo'), true), 'the logo is served as the type its extension stands for');
+
+case_('Only an administrator changes the logo, and a refusal leaves the logo she had');
+sign_in_as($trainer);
+throws(fn() => act('portal_logo_save', ['remove'=>'1']), 'a trainer may not', 'Administratoren');
+is_same($liveLogo, portal_logo(), 'and nothing changed');
+sign_in_as($admin);
+throws(fn() => act('portal_logo_save', []), 'saving with no picture chosen says so', 'keine Datei');
+$_FILES = ['logo' => ['name'=>'logo.png', 'type'=>'image/png', 'tmp_name'=>'/tmp/not-an-upload', 'error'=>UPLOAD_ERR_OK, 'size'=>2048]];
+throws(fn() => act('portal_logo_save', []), 'a file that did not come through the form is refused', 'nicht über das Formular');
+$_FILES = [];
+is_same($liveLogo, portal_logo(), 'and the logo she had is still the logo');
+ok(is_file(upload_dir('logo').'/'.$liveLogo), 'with its file untouched');
+
+case_('Removing the logo deletes the file and says what shows instead');
+set_setting('portal_icon', '');
+act('portal_logo_save', ['remove'=>'1']);
+is_same('', portal_logo(), 'no logo');
+is_same('Logo entfernt. Oben links steht wieder das „B“.', $_SESSION['flash']['message'] ?? null, 'with no icon either, the „B" is back');
+ok(!is_file(upload_dir('logo').'/'.$liveLogo), 'and the file is gone, so the way back is to upload it again');
+is_same('portal_logo.removed', (string)scalar('SELECT action FROM audit_log ORDER BY id DESC LIMIT 1'), 'the log says who did it');
+$iconBack = icon_file(png_header(512, 512));
+set_setting('portal_icon', $iconBack);
+act('portal_logo_save', ['remove'=>'1']);
+is_same('Logo entfernt. Oben links steht wieder das Symbol des Portals.', $_SESSION['flash']['message'] ?? null,
+        'with an icon, the message says the icon is back');
+set_setting('portal_icon', '');

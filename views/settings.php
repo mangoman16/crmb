@@ -40,7 +40,9 @@ if($tab==='system') require ROOT.'/views/_settings_system.php';
 if($tab==='organisation') require ROOT.'/views/_organisation.php';
 if($tab==='feedback') require ROOT.'/views/_feedback.php';
 if(in_array($tab,['portal','organisation','system'],true)) require ROOT.'/views/_settings_registry.php';
-if($tab==='portal') require ROOT.'/views/_portal_icon.php';
+// Portal: its settings, then the club's look - the logo, the colours with the
+// switches for the name beside the logo - then the icon.
+if($tab==='portal'){ require ROOT.'/views/_portal_logo.php'; require ROOT.'/views/_branding.php'; require ROOT.'/views/_portal_icon.php'; }
 if($tab==='fields'):
 $f=$edit?one('SELECT * FROM field_definitions WHERE id=?',[$edit]):null;
 ?>

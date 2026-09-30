@@ -19,7 +19,7 @@ try {
     require ROOT.'/app/actions_config.php';
     require ROOT.'/app/ui.php';
     $page=is_scalar($_GET['page']??'')?(string)($_GET['page']??'dashboard'):'dashboard';
-    $allowed=['dashboard','start','students','student','payments','classes','accounts','messages','compose','news','outbox','manage','invoices','attendance','download','settings','history','profile','print','login','forgot','activate','unsubscribe','privacy','icon','manifest'];
+    $allowed=['dashboard','start','students','student','payments','classes','accounts','messages','compose','news','outbox','manage','invoices','attendance','download','settings','history','profile','print','login','forgot','activate','unsubscribe','privacy','icon','manifest','brand','logo'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
     // The trail a problem report carries. Here, before the POST branch, because
     // that branch redirects and never comes back: recorded any later, the trail
@@ -53,10 +53,8 @@ try {
                 flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: Adresse bereits vergeben oder verknüpfte Daten vorhanden.','Cannot save: email already used or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
             }
         }
-        $fallback=post('return_page',current_user()?'dashboard':'login');
-        if(!in_array($fallback,$allowed,true))$fallback='dashboard';
-        $params=[];if(post('return_id')!=='')$params['id']=(int)post('return_id');if(post('return_tab')!=='')$params['tab']=post('return_tab');
-        go($fallback,$params);
+        [$back,$params]=form_return(current_user()?'dashboard':'login',$allowed);
+        go($back,$params);
     }
     if($page==='activate' && isset($_GET['token'])) {
         throttle('token-view',$_SERVER['REMOTE_ADDR']??'local',60);
@@ -64,9 +62,12 @@ try {
         $_SESSION['activation_hash']=preg_match('/^[a-f0-9]{64}$/D',$token)?hash('sha256',$token):'';
         go('activate');
     }
-    $public=in_array($page,['login','forgot','activate','unsubscribe','privacy','not_found','icon','manifest'],true);
+    $public=in_array($page,['login','forgot','activate','unsubscribe','privacy','not_found','icon','manifest','brand','logo'],true);
     $user=$public?current_user():require_user();
-    if($user)touch_last_seen($user);
+    // Not for the icon, the manifest and the brand stylesheet and logo: a browser
+    // fetches those on its own, from a tab left open or a home-screen icon, and
+    // counting them would show somebody as online who is not looking (ADR 0015).
+    if($user && !in_array($page,['icon','manifest','brand','logo'],true))presence_touch($user);
     if(in_array($page,['accounts','payments','compose','outbox','classes','manage','invoices','attendance','print'],true))require_staff();
     // A family's list is their own student; an old bookmark to the students list
     // opens that page instead. Not a change of who may open it.
@@ -75,10 +76,13 @@ try {
     // rather than in a view because a view is wrapped in the layout, and the one
     // thing a PDF must not have around it is HTML.
     if($page==='download')serve_download();
-    // The icon and the manifest likewise, and public: the login page wears the
-    // icon, and an install reads the manifest before anybody signs in.
+    // The icon, the manifest, the colours and the logo likewise, and public: the
+    // login page wears the club's look, and an install reads the manifest
+    // before anybody signs in.
     if($page==='icon')serve_portal_icon();
     if($page==='manifest')serve_web_manifest();
+    if($page==='brand')serve_brand_css();
+    if($page==='logo')serve_portal_logo();
     if(in_array($page,['settings','history','start'],true))require_admin();
     // Read once, like the flash message: a submission that was rejected is offered
     // back to the form that follows and then forgotten, so it cannot reappear on a

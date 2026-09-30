@@ -29,13 +29,18 @@ select_field('role',t('Rolle','Role'),$roles,'trainer',true);
 ?></div><?php submit_button(t('Anlegen','Add'));?></form></details>
 <?php endif ?>
 <?php
-/* One row of either list: who, what, when last seen, and where the login stands. */
-$identity=function(array $a): void { ?>
-<div class="record-row"><div class="account-identity"><?=avatar($a)?><div><h3><?=e($a['name'])?></h3><p><?=e($a['email'])?></p><small><?=e(role_label($a['role']))?><?php
-    if(is_online($a['last_seen_at']??null)) echo ' · <span class="online"><span class="dot"></span>'.e(t('online','online')).'</span>';
-    elseif(!empty($a['last_seen_at'])) echo ' · '.e(t('zuletzt ','last seen ').fmt_datetime($a['last_seen_at']));
-?></small></div></div><div><?php login_state_badge($a);?></div></div>
-<?php };
+/* One row of either list: who, what, whether and when they were last here, and
+   where the login stands. An invitation nobody has taken up has no presence to
+   show, so it gets none rather than a grey „Offline". The history for the whole
+   page is one query (ADR 0015). */
+$seenHere=array_values(array_filter(array_merge($team,$orphans),fn($a)=>presence_shown_for($user,$a)));
+$history=presence_history($user,array_column($seenHere,'id'));
+$recordedSince=presence_recorded_since();
+$identity=function(array $a) use ($user,$history,$recordedSince): void {
+    $present=presence_shown_for($user,$a); ?>
+<div class="record-row"><div class="account-identity"><?=avatar($a)?><div><h3><?=e($a['name'])?></h3><p><?=e($a['email'])?></p><small><?=e(role_label($a['role']))?><?php if($present):?> · <?=presence_line($user,$a)?><?php endif ?></small></div></div><div><?php login_state_badge($a);?></div></div>
+<?php if($present) presence_history_details($user,$history[(int)$a['id']]??[],$recordedSince);
+};
 $deleteText=t('Löscht die Anmeldung, die privaten Unterhaltungen und die E-Mails, die für sie noch warten. Schüler, Beiträge und Rechnungen bleiben.','Deletes the login, the private conversations and any emails still waiting for it. Students, charges and invoices stay.');
 ?>
 <div class="card">

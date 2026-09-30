@@ -324,19 +324,30 @@ function dispatch_config(string $action): array {
     // ---- defaults registry and maintenance -----------------------------
 
     case 'defaults_registry_save':
-        $group=choose(post('group'),['portal','students','payments','organisation','system']);
+        $group=choose(post('group'),['portal','branding','students','payments','organisation','system']);
         // Who may change what, rather than one rule for the whole registry:
         // membership statuses and payment methods are the trainer's words for
-        // her own work; the portal's name and the background jobs are not.
+        // her own work; the portal's name, its look and the background jobs are not.
         if(in_array($group,['students','payments'],true)) require_staff(); else require_admin();
-        foreach(settings_in_group($group) as $key=>$spec) {
+        // Every value is checked before any is written, so a refusal - an
+        // unreadable background, a colour that is not one - leaves the whole
+        // card as it was, and says so, rather than half of it saved.
+        $specs=settings_in_group($group); $values=[]; $before=[];
+        foreach($specs as $key=>$spec) {
+            $before[$key]=setting($key);
             $raw = $spec['kind']==='bool' ? (post('set_'.$key)!=='') : ($_POST['set_'.$key] ?? '');
-            if($spec['kind']==='map') { set_setting($key,map_from_post($key,$spec)); continue; }
+            if($spec['kind']==='map') { $values[$key]=map_from_post($key,$spec); continue; }
             if(is_array($raw)) throw new UserError(t('Ungültige Eingabe.','Invalid input.'));
-            set_setting($key,setting_validate($key,$spec,$raw));
+            $values[$key]=setting_validate($key,$spec,$raw);
         }
-        audit('settings.saved','settings'); flash(t('Vorgaben gespeichert.','Defaults saved.'));
-        return [choose(post('to_page','settings'),['settings','manage']),['tab'=>post('to_tab')?:$group]];
+        foreach($values as $key=>$value) set_setting($key,$value);
+        audit('settings.saved','settings');
+        // The colours are not tracked(), so the message is the way back: it
+        // names what they were, to be typed in again (ADR 0013).
+        $replaced=$group==='branding'?settings_replaced_colours($specs,$before,$values):'';
+        flash(t('Vorgaben gespeichert.','Defaults saved.').($replaced!==''?' '.$replaced:''));
+        // The „Aussehen" card is on the Portal tab; it has no tab of its own.
+        return [choose(post('to_page','settings'),['settings','manage']),['tab'=>post('to_tab')?:($group==='branding'?'portal':$group)]];
 
     // ---- invoices --------------------------------------------------------
 
@@ -402,7 +413,8 @@ function dispatch_config(string $action): array {
         $u=require_user();
         if(post('id')!=='') run('UPDATE notifications SET read_at=? WHERE id=? AND account_id=? AND read_at IS NULL',[now(),(int)post('id'),$u['id']]);
         else run('UPDATE notifications SET read_at=? WHERE account_id=? AND read_at IS NULL',[now(),$u['id']]);
-        return [post('return_page','dashboard'),[]];
+        // The pane is on every page, so back to that page with its record and tab.
+        return form_return();
 
     case 'avatar_save':
         $u=require_user();

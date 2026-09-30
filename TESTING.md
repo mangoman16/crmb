@@ -92,6 +92,9 @@ release and emptied again for the next.
 - The privacy notice in English is optional: U.35, U.56
 - A profile picture is kept by the browser instead of fetched on every page, and another family's is never shown: U.58–U.62
 - News by email starts switched on for a new login, can be unticked when accepting the invitation, and the printed form asks for the no: [15.2, 15.7, 15.8](#news-email-and-the-queue), in News and email
+- The bell no longer jumps when opened, its panel stays on a phone's screen, its number is a badge in the portal's colour like the one on **Post**, and a tap elsewhere or Escape closes it: [5.3a–5.3g](#the-shell-the-bar-notifications-feedback-impersonation), in The shell
+- A status to choose — „Automatisch", „Abwesend", „Als offline anzeigen" — for trainers and administrators, a coloured dot, and when each account was online over the last 30 days: [P.1–P.10](#online-status-and-when-somebody-was-online)
+- Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
 
 ---
 
@@ -579,6 +582,45 @@ Skip on an ordinary code change; do all of it before a release.
   the bottom of the menu.
 - [ ] **5.3** The bell shows a number when something is waiting. Opening it
   lists the notifications newest first; „Alle gelesen" clears the number.
+- [ ] **5.3a** On a real iPhone, in Safari, with at least one unread
+  notification (a family's message does it, 5.4). Walk 5.3a–5.3d at **390**
+  pixels wide (an iPhone 12 to 16 held upright) and at **320** (an iPhone SE of
+  the first generation), once with the phone in light mode and once in dark. No
+  320 iPhone to hand? Write down that 320 was not checked on an iPhone, rather
+  than ticking it. Now **watch the portal's name at the top left, not the bell**,
+  and tap the bell: the name does not move, not by a hair, as the panel opens —
+  nor as it closes when you tap the bell again. The bell itself stays exactly
+  where it was too. It used to jump by about 7 pixels — „das Logo springt" —
+  and a desktop browser could not show that happening, so only an iPhone can
+  pass this check.
+- [ ] **5.3b** With the bell open: no small triangle beside it, open or shut,
+  and nothing turning. The panel's left and right edges are both on the screen,
+  with a little space on each side — it used to run off the left edge — and
+  nothing on the page scrolls sideways. The first word of each notification is
+  readable, and „Alle gelesen" can be tapped.
+- [ ] **5.3c** The number on the bell is a badge in the portal's colour, the
+  same as the number on **Post** in the bar at the bottom, and its figure can be
+  read — in light mode and in dark. In dark, the open panel is dark too and
+  every line in it can be read.
+- [ ] **5.3d** With the bell open, **swipe the page to scroll**: the panel stays
+  open. Then **tap an empty part of the page** — the heading, say, not a link:
+  the panel closes. Open it and tap the bell again: it closes.
+- [ ] **5.3e** On a laptop with a keyboard: press **Tab** until the bell has
+  its outline, **Enter** to open it, **Tab** once more into the panel, then
+  **Escape**. The panel closes and the outline is back on the bell. Open it
+  again, press **Tab** until the outline has left the panel (on your name, next
+  to the bell), then **Escape**: the panel closes and the outline stays where it
+  was — it does not jump back to the bell.
+- [ ] **5.3f** Opening one menu in the top bar closes the other. Open the bell,
+  then tap your picture: the bell's panel closes as the account menu opens. Then
+  the other way round — only one is ever open. The same with the keyboard: Tab
+  to the picture and press Enter while the bell is open.
+- [ ] **5.3g** In Chrome on a laptop, switch JavaScript off (developer tools,
+  then ⌘/Ctrl+Shift+P, type „Disable JavaScript", Enter; it stays off while
+  the developer tools are open) and reload a page. The bell still opens
+  when clicked and closes when clicked again. A click elsewhere leaving it open
+  is expected without JavaScript and passes. Close the developer tools to
+  switch JavaScript back on.
 - [ ] **5.4** A family sends a message. Both the trainer *and* the
   administrator get a notification — not only one of them.
 - [ ] **5.5** Clicking a notification lands on the thing it is about.
@@ -613,6 +655,146 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **6.5** A child's picture on their page shows in the student list.
 - [ ] **6.6** Upload something that is not a picture. Refused in words, and the
   form still holds everything else you had typed.
+
+### The club's colours and logo (Einstellungen → Portal)
+
+Signed in as an **administrator**. Keep a second browser signed out on the
+sign-in page, and a family's login at hand. Before you start, note what the
+**Aussehen** card shows, so you can put it back.
+
+- [ ] **6.7** Nothing set: every colour field on **Aussehen** is empty and says
+  „Standard". Open the sign-in page with the browser's developer tools on the
+  network tab and reload: there is **no** request for `page=brand`. The portal
+  looks exactly as before the update.
+- [ ] **6.8** Set **Hauptfarbe** `#8a1538`, **Menüfarbe** `#0a1030`,
+  **Hervorhebung** `#ffcc00`, **Hintergrund** `#fffaf0` and save. The message
+  reads „Vorgaben gespeichert. Vorher: Hauptfarbe Standard, Menüfarbe Standard,
+  Hervorhebung Standard, Hintergrund Standard." Buttons, links, the menu, the dot
+  on the „B" and the page background all change — signed in, and on the sign-in
+  page in the other browser.
+- [ ] **6.9** Switch the phone (or the computer) to dark mode, then choose
+  **Dunkel** under **Mein Konto**. Both show the dark shades worked out from
+  your colours; no text disappears into its background, and the text on a
+  button stays readable.
+- [ ] **6.10** On an iPhone, the bar at the very top of Safari (and of the
+  home-screen app) is the menu colour in light mode and the dark background in
+  dark mode.
+- [ ] **6.11** Set **Hauptfarbe** to a pale yellow, `#fdf6b2`. It is saved, not
+  refused, and the card says „Für gute Lesbarkeit verwendet: #837703" next to
+  your choice — a dark mustard that still looks yellow, not a grey. White text
+  on the buttons is readable. In dark mode the buttons show the pale yellow
+  itself, with dark text.
+- [ ] **6.12** Set **Hintergrund** to `#444444`. Refused: „Hintergrund: Auf
+  diesem Hintergrund wäre die graue Schrift schwer zu lesen …" and **nothing**
+  else from that save has changed — change the main colour in the same save to
+  prove it. Your typed values are still in the form. Type `gelb` into a colour:
+  refused with „Bitte eine Farbe wie #1f5fa9 eingeben."
+- [ ] **6.13** The way back: retype the values the last „Vorher: …" message
+  named, save, and the portal looks as it did.
+- [ ] **6.14** A family who picked their own colour under **Mein Konto** keeps
+  it; one who left „Wie eingestellt" gets the club's main colour.
+- [ ] **6.15** Under „Erweitert", set **Hauptfarbe im Dunkelmodus** without a
+  light **Hauptfarbe**: nothing changes, as the hint says. With the light one
+  set, it applies in dark mode only.
+- [ ] **6.16** Clear every colour and save. The message names the colours you
+  had. Reload with the network tab open: no `page=brand` request again.
+- [ ] **6.17** **Logo**: upload a wide PNG, then an iPhone JPEG, then a WebP.
+  Each replaces the last, top left in the menu, on the sign-in page, and in the
+  phone's top bar at 320 px, on a white plate in light and dark mode.
+- [ ] **6.18** Upload a logo 40 pixels tall, a 6:1 banner and a GIF. Each is
+  refused with its size and what is needed, and the logo you had stays.
+- [ ] **6.19** On **Aussehen**, tick „Portalnamen neben dem Logo ausblenden" and
+  „Zeile „Verwaltung“ / „Mein Portal“ … ausblenden". Check each with a logo, with
+  only the portal icon, and with neither: with neither, the name still shows.
+  Saving the **Logo** card leaves both ticks as they were.
+- [ ] **6.20** „Logo entfernen": the portal icon comes back top left, and after
+  removing the icon too, the „B". The message says which.
+
+**Known limit, not a failure:** a photo taken on a phone held upright is often
+stored sideways with a note saying "turn me" (EXIF orientation). The browser
+turns it, but the portal measures the picture as stored, without the turn. Such
+a logo can be refused as "too tall" when it looks wide, or drawn with its width
+and height swapped. Reading that note needs PHP's exif extension, which shared
+hosting does not promise. The way round is to save the logo from an image
+editor or as a screenshot, which stores it the right way up. A logo from a
+designer is not affected.
+
+---
+
+## Online status and when somebody was online
+
+You need two phones or browsers: one signed in as an **administrator**, one as a
+**trainer**, and a family's login you can view through (**Portal als diese
+Person ansehen**). The dot and the status block are in the account menu — tap
+your picture at the top right.
+
+- [ ] **P.1** As the trainer, open the account menu. Under **Status** the three
+  rows read „Automatisch", „Abwesend", „Als offline anzeigen", and the one you
+  have now is marked, not a button. Tap „Abwesend": the page you were on comes
+  back — try it on a child's page with a tab open, and the same child and tab
+  are still showing — with „Dein Status ist jetzt „Abwesend"." Your dot is
+  yellow.
+- [ ] **P.2** Tap „Automatisch": „Dein Status richtet sich wieder nach deiner
+  Aktivität." and the dot is green again. Nothing new appears under
+  **Einstellungen → Änderungen**: a status is not a change to undo.
+- [ ] **P.3** Sign in as a family. The account menu has „Mein Konto" and
+  „Abmelden" only: no status, and no dot on their own picture.
+- [ ] **P.4** As the trainer, view the portal as that family. The account menu
+  has no status block. Stop viewing, then open the family's page: their „zuletzt
+  online" has **not** moved to just now — it was you in the portal, not them.
+- [ ] **P.5** As the trainer, choose „Als offline anzeigen": „Du wirst jetzt als
+  offline angezeigt." Keep using the portal for a few minutes. On the
+  administrator's phone, under **Konten**, the trainer shows the true time and
+  „(als offline angezeigt)". Have a second trainer look instead (or view the
+  portal as one): the dot is grey and „zuletzt" stays at the moment you hid.
+- [ ] **P.6** As the administrator, open a child's page whose family has signed
+  in this month: **„Wann online? Letzte 30 Tage"** opens to the days they were
+  in, newest first, with times in your own time zone. A visit that ran past
+  midnight is listed once, under the evening it began. A period while
+  somebody appeared offline is marked „(als offline angezeigt)"; a trainer
+  looking at the same account does not see it at all.
+- [ ] **P.7** In the first month after this update the history also says
+  „Aufgezeichnet wird seit dem …" with the day of the update. Nothing before
+  that day is shown as „nicht online".
+- [ ] **P.8** **Einstellungen → Portal**: the online field reads „Grün –
+  „online": aktiv innerhalb von (Minuten)". Under **Erweitert**, blue in
+  minutes and yellow in hours. **Einstellungen → System → Erweitert**: „Wann
+  jemand online war, aufbewahren (Tage)" refuses 31 and accepts 30 or less.
+- [ ] **P.9** With the bell open on a child's page, „Alle gelesen" leaves you on
+  that same child, not on „Nicht gefunden".
+- [ ] **P.10** **(release)** In the database, set one `online_periods` row's
+  `last_seen_at` to 31 days ago and let the nightly cleanup run (or
+  `php bin/console.php maintenance`): that row is gone and one from 29 days ago is
+  still there.
+- [ ] **P.11** On a real iPhone, in Safari, as the trainer — once in light mode
+  and once in dark: tap your picture at the top right. Under **Status** the one
+  you have now is marked with a tick, not a button. Tap „Abwesend": the page
+  comes back with „Dein Status ist jetzt „Abwesend"." at the top, and the dot on
+  your picture has turned from green to yellow. „Als offline anzeigen" turns it
+  grey. Put it back to „Automatisch".
+- [ ] **P.12** On the iPhone, signed in as a family, tap the picture: the menu
+  holds „Mein Konto" and „Abmelden" and nothing else, and the picture has no
+  dot — P.3, on the phone.
+- [ ] **P.13** As the administrator, **Konten → „Portal als diese Person
+  ansehen"** on a family, then tap the picture: no **Status** in the menu, and
+  no dot. (P.4 is the same for the trainer.) „Ansicht beenden" afterwards.
+- [ ] **P.14** On an iPhone 320 pixels wide (an iPhone SE of the first
+  generation), as the trainer, tap your picture: „Abmelden" is above the bar at
+  the bottom, or can be reached by scrolling inside the menu — never hidden
+  behind the bar. Safari's own bars leave a small iPhone less height than a
+  desktop browser set to 320 has, so only the phone can pass this; a menu that
+  scrolls passes as long as „Abmelden" can be tapped. Tap it: you are signed
+  out. No such iPhone to hand? Write down that this was not checked.
+- [ ] **P.15** **Konten**, and a child's page whose family has a login: open
+  **„Wann online? Letzte 30 Tage"** on your own row. The days and times match
+  when you really used the portal this week. Then the trainer who chose „Als
+  offline anzeigen" in P.5: as the administrator, those times are listed and
+  marked „(als offline angezeigt)"; through a second trainer's eyes they are not
+  listed at all.
+- [ ] **P.16** With JavaScript switched off, as in 5.3g: tap your picture — the
+  menu opens, and tapping the picture again closes it. Choose „Abwesend": the
+  message appears and the dot is yellow; put it back to „Automatisch". Then
+  „Abmelden": you are signed out.
 
 ---
 
@@ -978,6 +1160,25 @@ Skip on an ordinary code change; do all of it before a release.
   signing in, and only unsubscribes that one person.
 - [ ] **15.6** Changing the SMTP password and saving does not print it back to
   the page.
+- [ ] **15.7** News by email starts switched on, and saying no sticks. You need
+  two email addresses of your own that have no login yet. On a child,
+  **„Zugang zum Portal" → „Einladung senden"** to the first; open the invitation
+  and its link. **„Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit
+  abbestellbar."** is **already ticked**. Untick it, tick „Ich habe die
+  Datenschutzhinweise gelesen.", choose a password and tap **„Konto
+  aktivieren"**. Signed in as that family, **Mein Konto** shows **„Neuigkeiten
+  per E-Mail erhalten"** switched off. Do the same for the second address on
+  another child, but leave the box ticked. Now save a news item as in 15.2:
+  **Postausgang** has one for the second address and **none for the first**, and
+  only the second inbox receives it. Without the second address, a news mail
+  that reached nobody would pass this check. Keep both logins for 15.8.
+- [ ] **15.8** **Schüler → Leeres Formular drucken**: under **Einverständnis**
+  there are two **empty** boxes, **„Bitte keine Neuigkeiten des Vereins per
+  E-Mail schicken."** and **„Bitte keine E-Mail bei neuen Nachrichten
+  schicken."** — the paper asks for the no, because both emails are on unless
+  somebody refuses. No „Ja, ich möchte …" line is left. On the **Datenblatt** of
+  the first child from 15.7 the news box is **ticked** and the message box is
+  not. Afterwards delete both logins from 15.7 in **Konten**.
 
 ---
 
@@ -1066,25 +1267,6 @@ Skip on an ordinary code change; do all of it before a release.
 
 ## On the phone, at the end
 
-- [ ] **15.7** News by email starts switched on, and saying no sticks. You need
-  two email addresses of your own that have no login yet. On a child,
-  **„Zugang zum Portal" → „Einladung senden"** to the first; open the invitation
-  and its link. **„Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit
-  abbestellbar."** is **already ticked**. Untick it, tick „Ich habe die
-  Datenschutzhinweise gelesen.", choose a password and tap **„Konto
-  aktivieren"**. Signed in as that family, **Mein Konto** shows **„Neuigkeiten
-  per E-Mail erhalten"** switched off. Do the same for the second address on
-  another child, but leave the box ticked. Now save a news item as in 15.2:
-  **Postausgang** has one for the second address and **none for the first**, and
-  only the second inbox receives it. Without the second address, a news mail
-  that reached nobody would pass this check. Keep both logins for 15.8.
-- [ ] **15.8** **Schüler → Leeres Formular drucken**: under **Einverständnis**
-  there are two **empty** boxes, **„Bitte keine Neuigkeiten des Vereins per
-  E-Mail schicken."** and **„Bitte keine E-Mail bei neuen Nachrichten
-  schicken."** — the paper asks for the no, because both emails are on unless
-  somebody refuses. No „Ja, ich möchte …" line is left. On the **Datenblatt** of
-  the first child from 15.7 the news box is **ticked** and the message box is
-  not. Afterwards delete both logins from 15.7 in **Konten**.
 Do this last, on a real phone, not a resized desktop window.
 
 - [ ] **22.1** Sign in, take attendance for one course, and record one payment,
@@ -1388,31 +1570,6 @@ Rückmeldungen**, „Technische Einzelheiten"
   Verbindung prüfen." After **„Nur Verbindung prüfen"** succeeds, the invitation
   goes out. Change the server and save: refused again until the next passing test.
 
----
-
-## What none of this proves
-
-Say what you ran, not what you hope is true.
-
-- `php tests/run.php` runs against a **SQLite translation** of the schema. It
-  proves the PHP logic. It does not prove the SQL dialect, and it prints what it
-  could not cover at the end of every run.
-- `tests/mariadb-local.sh` proves **MariaDB 10.11**. **MySQL 8.0 is still
-  unverified** — it is one of the two supported engines, not both.
-  `tests/existing-database.sh` proves whichever engine the hosting runs: quote the
-  „Database server:" line it prints, not what you expect it to be.
-- No automated check opens the generated PDF in Adobe Reader, sends real email
-  through a real provider, or renders a page in Safari on a real iPhone. Checks
-  13.4, 15.3 and 22.x exist because nothing else covers them.
-- A green suite has never been proof that a file is intact. The `structure`
-  suite exists because an automated edit once truncated a whole dispatcher and
-  every behavioural test still passed.
-
-## Recording a result
-
-Copy the numbers of everything that failed into the release note, with one line
-each: what you did, what you saw, what you expected. A number and a sentence is
-enough for somebody to reproduce it; "the payments page is broken" is not.
 **A profile picture is kept by the browser, and shown only to who may see it**
 
 - [ ] **U.58** With a profile picture of your own, move between four or five
@@ -1438,3 +1595,28 @@ enough for somebody to reproduce it; "the payments page is broken" is not.
   the list show their initials, never their photograph; the trainer shows her
   picture. As the trainer, every family shows its picture.
 
+---
+
+## What none of this proves
+
+Say what you ran, not what you hope is true.
+
+- `php tests/run.php` runs against a **SQLite translation** of the schema. It
+  proves the PHP logic. It does not prove the SQL dialect, and it prints what it
+  could not cover at the end of every run.
+- `tests/mariadb-local.sh` proves **MariaDB 10.11**. **MySQL 8.0 is still
+  unverified** — it is one of the two supported engines, not both.
+  `tests/existing-database.sh` proves whichever engine the hosting runs: quote the
+  „Database server:" line it prints, not what you expect it to be.
+- No automated check opens the generated PDF in Adobe Reader, sends real email
+  through a real provider, or renders a page in Safari on a real iPhone. Checks
+  13.4, 15.3 and 22.x exist because nothing else covers them.
+- A green suite has never been proof that a file is intact. The `structure`
+  suite exists because an automated edit once truncated a whole dispatcher and
+  every behavioural test still passed.
+
+## Recording a result
+
+Copy the numbers of everything that failed into the release note, with one line
+each: what you did, what you saw, what you expected. A number and a sentence is
+enough for somebody to reproduce it; "the payments page is broken" is not.

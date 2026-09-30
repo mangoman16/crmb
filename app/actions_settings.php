@@ -112,6 +112,21 @@ function dispatch_settings_or_messages(string $action): array {
                'Icon saved. The browser shows it on the next page. Anybody who already has the portal on their home screen sees it there once they add it again.')
             :t('Das Standard-Symbol wird wieder verwendet.','The standard icon is used again.'));
         return ['settings',['tab'=>'portal']];
+    case 'portal_logo_save':
+        // The same steps in the same order as the icon (ADR 0014): checked
+        // before the setting points at it, the old file deleted only after, so
+        // a refused picture leaves the logo she had. Not tracked(): the way
+        // back from a removal is to upload the file again.
+        require_admin(); $old=portal_logo(); $new='';
+        if(!post('remove')) { $new=store_upload('logo','logo')['stored_name']; check_portal_logo($new); }
+        set_setting('portal_logo',$new);
+        audit($new!==''?'portal_logo.saved':'portal_logo.removed','settings');
+        if($old!=='' && $old!==$new) delete_upload('logo',$old);
+        flash($new!==''?t('Logo gespeichert.','Logo saved.')
+            :(portal_icon()!==''
+                ?t('Logo entfernt. Oben links steht wieder das Symbol des Portals.','Logo removed. The portal icon is shown top left again.')
+                :t('Logo entfernt. Oben links steht wieder das „B“.','Logo removed. The “B” is shown top left again.')));
+        return ['settings',['tab'=>'portal']];
     case 'privacy_save':
         require_admin();$de=text_limit('privacy_de',30000);$en=text_limit('privacy_en',30000);
         // The text is always saved. Only the release tick is refused, and it says
@@ -172,6 +187,27 @@ function dispatch_settings_or_messages(string $action): array {
         if((bool)$u['newsletter']!==$newsletter)record_consent((int)$u['id'],'newsletter',$newsletter);
         if((bool)$u['notifications']!==$notifications)record_consent((int)$u['id'],'notifications',$notifications);
         $_SESSION['locale']=post('locale');flash(t('Einstellungen gespeichert.','Preferences saved.'));return ['profile',[]];
+    case 'presence_save':
+        // Asked before who is asking: while staff look through a family's eyes
+        // the session is the family's, and the answer she needs is how to get
+        // back to her own, not that families have no status (ADR 0016).
+        if(impersonator())throw new UserError(t('Den Status kann nur die Person selbst ändern. Beende zuerst die Ansicht.','Only the person themselves can change their status. Stop viewing first.'));
+        // Staff only: the owner decided a family has no status to choose (ADR 0015).
+        $u=require_user();
+        if(!is_staff($u))throw new UserError(t('Einen Status wählen nur Trainerinnen und Administratoren.','Only trainers and administrators choose a status.'));
+        $choice=choose(post('presence'),array_keys(presence_choices()));
+        run('UPDATE accounts SET presence=? WHERE id=?',[$choice,$u['id']]);
+        // So the very next page view writes, and opens a period with the new
+        // hidden flag, instead of extending the old one for up to a minute.
+        $_SESSION['seen_written']=0;
+        // Neither tracked() nor audited: one tap puts it back, and it is the
+        // person's own business (ADR 0016).
+        flash(match($choice){
+            'away'   => t('Dein Status ist jetzt „Abwesend“.','Your status is now “Away”.'),
+            'hidden' => t('Du wirst jetzt als offline angezeigt.','You now appear offline.'),
+            default  => t('Dein Status richtet sich wieder nach deiner Aktivität.','Your status follows your activity again.'),
+        });
+        return form_return();
     case 'email_change':
         $u=require_user();throttle('email-change',(string)$u['id'],5,3600);
         if(!password_verify(post('password'),$u['password_hash']))throw new UserError(t('Passwort nicht korrekt.','Incorrect password.'));

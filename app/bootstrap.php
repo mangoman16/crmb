@@ -24,6 +24,10 @@ if (!filter_var($config['app_url'], FILTER_VALIDATE_URL) || !in_array(parse_url(
 require __DIR__ . '/core.php';
 require __DIR__ . '/tx.php';
 require __DIR__ . '/validate.php';
+// Pure colour arithmetic, no database or settings. setting_validate() in
+// defaults.php below needs its contrast check to refuse an unreadable
+// background, and nothing it needs comes later (ADR 0013).
+require __DIR__ . '/colour.php';
 require __DIR__ . '/history.php';
 require __DIR__ . '/defaults.php';
 require __DIR__ . '/version.php';
@@ -38,10 +42,24 @@ require __DIR__ . '/attendance.php';
 require __DIR__ . '/billing.php';
 require __DIR__ . '/duplicate.php';
 require __DIR__ . '/shell.php';
+// Needs run_counter() and rows() from core.php, setting() from defaults.php,
+// is_staff() and is_admin() from auth.php and impersonator() from shell.php
+// above. Nothing loaded earlier calls it: only the router, the actions,
+// app/ui.php, the views and prune_expired() in tick.php below do, at request
+// time (ADR 0015).
+require __DIR__ . '/presence.php';
 // avatar() in shell.php above calls upload_version() from here, at request time
 // only - never while loading - so this order is safe as it stands. Do not
 // "tidy" it by moving either file without checking that call.
 require __DIR__ . '/uploads.php';
+// The club's colours and logo. Needs setting() and setting_colour_refusal()
+// from defaults.php, colour.php, is_staff() from auth.php and uploads.php's
+// folders and cache headers above; before portal_icon.php, whose web_manifest()
+// reads brand_theme_colour(). Its own calls into portal_icon.php happen at
+// request time only. Nothing loaded earlier calls it: only accent_for()'s
+// colour check reads colour.php, and the router, the actions, app/ui.php and
+// the layout call this file, per request (ADR 0013, 0014).
+require __DIR__ . '/brand.php';
 // Needs uploads.php above: upload_dir(), upload_version(), the download and
 // cache headers. Nothing loaded earlier calls it: only the router and the
 // layout do, per request.

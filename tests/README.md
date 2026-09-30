@@ -95,6 +95,11 @@ counted by the driver rather than by instrumenting the code. Use it on anything
 that renders a list, so that one query per row is caught while it is cheap to
 fix.
 
+A test about the stylesheet reads it with `tests/css.php` — `css_rules()`,
+`css_matching()`, `css_specificity()`, `css_wins()` — rather than matching
+strings, so it holds however `app.css` is formatted; the file's header lists
+what those functions get wrong.
+
 ## The suites
 
 Most cover a part of the domain — `billing`, `attendance`, `settings`,
@@ -107,6 +112,12 @@ Most cover a part of the domain — `billing`, `attendance`, `settings`,
   unescaped, and no file has been truncated. That last one exists because a bad
   edit once reduced a dispatch file to 36 bytes while every other test stayed
   green — nothing else was reading it.
+
+`shell` also runs `topbar-menus.mjs` with `node`, which loads the real
+`public/assets/app.js` into a page of stand-in elements and taps, swipes and
+presses Escape on the top bar's menus. No browser and no Playwright: only
+`node`. Without it those checks are listed at the end of the run as not
+covered, rather than passed.
 
 ## The first evening, end to end, in a browser
 

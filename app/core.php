@@ -184,6 +184,29 @@ function held_input(string $name, mixed $fallback): mixed {
     $fields=$GLOBALS['crm_held_input']['fields'];
     return array_key_exists($name,$fields) ? $fields[$name] : $fallback;
 }
+/**
+ * The page a form was sent from, as [page, params] for go(): the record and tab
+ * start_form() posted along with it.
+ *
+ * For an action that can be sent from any page - the notification pane, the
+ * account menu - and for the front controller's way back after a refusal.
+ * Returning only the page name sent a form sent from one student's page back to
+ * "page=student" with no student, which is a "Nicht gefunden".
+ *
+ * Never an open redirect: go() builds the address from url(), so the most a
+ * forged value can do is name a page of this portal that does not exist, and a
+ * name that is not even shaped like one falls back to $fallback. The router
+ * passes its list of pages as $pages, so after a refusal - when the page a
+ * person lands on is the one thing they see - it is always one that exists.
+ */
+function form_return(string $fallback='dashboard', ?array $pages=null): array {
+    $page=post('return_page',$fallback);
+    if(!preg_match('/^[a-z_]{1,40}$/D',$page) || ($pages!==null && !in_array($page,$pages,true))) $page=$fallback;
+    $params=[];
+    if((int)post('return_id')>0) $params['id']=(int)post('return_id');
+    if(post('return_tab')!=='') $params['tab']=post('return_tab');
+    return [$page,$params];
+}
 // form_text() is in app/install.php, so the installer reads its form by the same rule.
 function post(string $key, string $default=''): string { $v=form_text($_POST[$key]??$default); if($v===null) throw new UserError(t('Ungültige Eingabe.','Invalid input.')); return $v; }
 /**

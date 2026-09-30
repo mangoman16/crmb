@@ -25,6 +25,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require_once __DIR__.'/sqlite-driver.php';
 require_once __DIR__.'/database-name.php';
 require_once __DIR__.'/run-config.php';
+require_once __DIR__.'/css.php';
 
 const TEST_ROOT = __DIR__;
 const APP_ROOT  = __DIR__ . '/..';
@@ -364,6 +365,11 @@ function test_reset(): void {
     } finally {
         db()->exec($sqlite ? 'PRAGMA foreign_keys = ON' : 'SET FOREIGN_KEY_CHECKS=1');
     }
+    // A running portal always has the migrations ledger: schema_apply() creates
+    // it before anything else, and pages read it (presence_recorded_since()).
+    // The harness applies the migration files directly, and the install suite
+    // drops the ledger on purpose, so it is put back - empty - for every suite.
+    run('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
     // The counter connection is separate by design, so clear it through itself.
     run_counter('DELETE FROM rate_limits');
     setting_cache_clear();

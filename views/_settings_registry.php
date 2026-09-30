@@ -4,8 +4,11 @@
 //
 // $registryGroup names the group when it differs from the tab showing it, which
 // is how the same declarations serve both Einstellungen and Verwaltung without a
-// second copy of this form.
+// second copy of this form. A second group on one tab (the „Aussehen" card on
+// Portal) also sets $registryCard: the card's id, and what to draw above the
+// form - its heading and whatever explains it.
 $registryGroup=$registryGroup??$tab;
+$registryCard=$registryCard??null;
 $specs=settings_in_group($registryGroup);
 // Most portals never touch these, so they wait in one „Erweitert" block rather
 // than standing among the questions a new portal has to answer (ADR 0011).
@@ -55,18 +58,34 @@ $registryField=function(string $key,array $spec): void {
                 <small><?=e(t('Bezeichnung leeren, um einen nicht verwendeten Eintrag zu entfernen.','Clear a label to remove an unused entry.'))?></small>
             </div>
         <?php break;
+        case 'colour':
+            /* Empty is the built-in colour, so the box shows that as its
+               placeholder and „Standard übernehmen" empties it. Under it, the
+               colour the portal really uses - which readability may have
+               moved away from hers - on a swatch coloured by class, because a
+               style attribute is refused (ADR 0013). */
+            $palette=brand_palette(); $used=$palette['used'][$key]; $fallback=$palette['placeholder'][$key];
+            echo '<div class="colour-field" data-colour="'.e($used).'" data-colour-label="'.e($label).'">';
+            default_field($name,$label,(string)$value,$fallback,$fallback,'text',$hint);
+            $moved=$palette['adjusted'][$key]??null;
+            echo '<p class="colour-used"><span class="brand-swatch '.e(brand_swatch_class($key)).'"></span><span>'
+                .e($moved?t('Für gute Lesbarkeit verwendet: ','Used for readability: '):t('Verwendet: ','In use: ')).'<strong>'.e($used).'</strong>';
+            if($moved) echo e(t(' – deine Wahl: ',' – your choice: ')).'<span class="brand-swatch '.e(brand_swatch_class($key,true)).'"></span><strong>'.e($moved['chosen']).'</strong>';
+            echo '</span></p></div>';
+            break;
         default: input($name,$label,(string)$value,'text',!empty($spec['required']),$hint);
     endswitch;
 };
 if(!$specs):?><p class="muted"><?=e(t('Für diesen Bereich gibt es keine Vorgaben.','No defaults in this group.'))?></p><?php else:?>
-<section class="card">
+<section class="card"<?=$registryCard?' id="'.e($registryCard['id']).'"':''?>>
+    <?php if($registryCard)($registryCard['head'])(); ?>
     <?php start_form('defaults_registry_save',['group'=>$registryGroup,'to_page'=>current_page(),'to_tab'=>$tab]); ?>
     <?php if($everyday): ?><div class="grid two"><?php foreach($everyday as $key=>$spec)$registryField($key,$spec); ?></div><?php endif ?>
     <?php if($advanced):
     /* Opened by the hub's „Erweitert" link (open=advanced), so the way there
        does not end at a closed box; a fragment alone cannot open it without
        JavaScript. */ ?>
-    <details class="advanced-settings" id="advanced" <?=($_GET['open']??'')==='advanced'?'open':''?>><summary><?=e(t('Erweitert','Advanced'))?></summary>
+    <details class="advanced-settings" id="<?=e($registryCard?'advanced-'.$registryCard['id']:'advanced')?>" <?=($_GET['open']??'')==='advanced'?'open':''?>><summary><?=e(t('Erweitert','Advanced'))?></summary>
         <p class="muted"><?=e(t('Selten gebraucht. Die Vorgaben passen für die meisten Portale.','Rarely needed. The defaults suit most portals.'))?></p>
         <div class="grid two"><?php foreach($advanced as $key=>$spec)$registryField($key,$spec); ?></div>
         <?php if(current_page()==='settings'): ?>

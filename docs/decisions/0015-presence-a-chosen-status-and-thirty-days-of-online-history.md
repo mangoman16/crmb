@@ -5,10 +5,19 @@ date: 2026-09-29
 
 # 0015. Presence: a chosen status, and thirty days of when somebody was online
 
-> **Updated 2026-09-29 with the owner's answer about families.** Presence is for staff only.
-> A family sees no dot, not even their own, and no status block. Their account menu holds
-> „Mein Konto" and „Abmelden". Families' online periods are still recorded, and staff still
-> see them. The sections below are written to that answer. See "Families: decided".
+> **Updated 2026-09-29, twice.**
+>
+> - **The owner's answer about families.** Presence is for staff only. A family sees no dot,
+>   not even their own, and no status block. Their account menu holds „Mein Konto" and
+>   „Abmelden". Families' online periods are still recorded, and staff still see them.
+> - **What `backend-dev` shipped.**
+>   - `presence_visible_to()` is simply `is_staff($viewer)`.
+>   - The `max()` chaining of thresholds is gone.
+>   - Two helpers were added, `presence_days()` and `presence_recorded_since()`.
+>   - A new core helper, `form_return()`.
+>
+> The sections below describe the code as it is. See "Families: decided" and "What shipped
+> beyond the first draft".
 
 ## Context
 
@@ -26,12 +35,12 @@ the schema change** (migration 020). Her words were:
 - „trainer and admin can see the history of when last online … 30 days";
 - on a hidden status: „administrator should see when last online".
 
-What exists today:
+What existed before:
 
 - `accounts.last_seen_at` (migration 004), written by `touch_last_seen()` in `app/auth.php`
   at most once a minute, on the counter connection (`run_counter()`), so an action that
   rolls back does not erase the visit;
-- `is_online()`, which compares it with `online_window_minutes` (default 5) and is used
+- `is_online()`, which compared it with `online_window_minutes` (default 5) and was used
   only by `views/accounts.php`.
 
 Two facts shape the design:
@@ -79,13 +88,16 @@ ALTER TABLE accounts ADD COLUMN presence VARCHAR(10) NOT NULL DEFAULT 'auto' AFT
 - **Not guarded.** `online_periods` is **not** in `schema_guarded_tables()`: it loses rows
   every night by design, and a prune between an update's before-count and after-count would
   keep the portal closed for nothing a family would miss. `accounts` is guarded already.
+- **The file name is load-bearing.** `presence_recorded_since()` reads this migration's
+  `applied_at` from `schema_migrations` by its name. ADR 0004 guarantees a shipped
+  migration is never renamed.
 - Migration 021, the newsletter default, is ADR 0018.
 
-### Code: `app/presence.php`, new
+### Code: `app/presence.php` (shipped)
 
 `app/presence.php` is required directly after `shell.php`. It needs:
 
-- `run_counter()` and `rows()` from core;
+- `run_counter()`, `rows()` and `scalar()` from core;
 - `setting()` from defaults;
 - `is_staff()` and `is_admin()` from auth;
 - `impersonator()` from shell.
@@ -99,42 +111,70 @@ Nothing earlier calls it. Only the router, the actions, `app/ui.php`, the views 
 
 - **`presence_choices(): array`**: `auto`, `away` and `hidden`, with their labels through
   `t()`.
-- **`presence_choice(array $account): string`**
-  - It returns `auto` for an account that is not staff, whatever is stored.
-  - A family cannot choose a status, so a value left from before this answer, or written by
-    any other path, must not hide them from trainers.
+- **`presence_choice(array $account): string`**: the stored choice, or `auto` for anything
+  that is not one of the three.
+  - It is the same for every role. A family's column stays `auto`, because the only writer
+    of `accounts.presence` is `presence_save`, and that is staff-only (below).
+- **`presence_bands(): array`**: `online`, `recent` and `away` in seconds.
+  - Each is measured **from the last activity**, not from the end of the band before it.
+  - `online` is at least one minute.
+  - There is **no `max()` chaining** (see "What shipped").
+- **`presence_history_days(): int`**: the setting, clamped to 1–30 here as well as on the
+  form. A value written into the settings table by hand still cannot keep more.
 - **`presence_touch(array $user): void`**
   - It has the same once-a-minute throttle through `$_SESSION['seen_written']`.
   - It records `impersonator() ?? $user`, which **fixes the impersonation fault**.
-  - The `hidden` flag it writes comes from `presence_choice()`, so a family's periods are
-    always `hidden=0`.
+  - The `hidden` flag it writes is `presence_choice($who) === 'hidden'`.
   - All its writes use `run_counter()`:
     1. `UPDATE accounts SET last_seen_at=?`
     2. `SELECT id FROM online_periods WHERE account_id=? AND hidden=? AND last_seen_at>=? ORDER BY last_seen_at DESC LIMIT 1`
     3. `UPDATE … WHERE id=?`, or `INSERT` if step 2 found nothing. A race between two
        devices can leave two overlapping rows, which is harmless.
 - **`presence_state(array $subject, ?int $now = null): string`**, the dot as others see it.
-  - Time bands: within `online_window_minutes` is `online`, within `presence_recent_minutes`
-    is `recent`, within `presence_away_hours` is `away`, and anything longer is `offline`.
-  - Each threshold is at least the one before it (`max()`).
-  - Then the chosen status applies, through `presence_choice()`: `hidden` gives `offline`,
-    and `away` turns `online` or `recent` into `away`.
+  - `hidden` gives `offline` at once. No timestamp gives `offline`.
+  - Otherwise the bands are **tested in order**: `online`, then `recent`, then `away`. Past
+    all three is `offline`.
+  - Then `away` turns `online` or `recent` into `away`.
+- **`presence_seconds_since(?string $utc, int $now): ?int`**.
 - **`presence_state_label(string $state): string`**.
-- **`presence_visible_to(array $viewer, array $subject): bool`**: true when
-  `is_staff($viewer)`, and false otherwise, **including for the subject themselves** when
-  the subject is a family.
+- **`presence_visible_to(array $viewer, array $subject): bool`** is `is_staff($viewer)`, and
+  nothing else. A family is shown no presence at all, **their own included**. Every function
+  below that answers about a subject asks this first, so the rule lives in one place.
 - **`presence_last_seen_for(array $viewer, array $subject): ?string`**
+  - Anybody `presence_visible_to()` refuses gets `null`.
   - Administrators, and a staff member asking about themselves, get
     `accounts.last_seen_at`.
   - Trainers get the same, unless the subject is `hidden`. Then they get the newest
     `last_seen_at` among the subject's `hidden=0` periods, or `null`.
-  - A viewer who is not staff gets `null`, for anybody including themselves.
-- **`presence_history(array $viewer, array $accountIds): array`**
+- **`presence_history(array $viewer, array $accountIds, ?int $now = null): array`**
   - It runs one query for the whole list.
-  - It refuses a viewer who is not staff.
-  - It returns periods from the last `presence_history_days`. Trainers see only `hidden=0`
-    rows. Administrators see every row, with `hidden` marked.
-- **`presence_prune(int $days): int`**, called from `prune_expired()`.
+  - It refuses the whole request if `presence_visible_to()` refuses any id, which means a
+    viewer who is not staff is always refused.
+  - It returns periods from `presence_window_start()` onwards, newest first, with every
+    asked-for id as a key.
+  - Trainers see `hidden=0` rows **and their own hidden rows**. Administrators see every
+    row, with `hidden` marked.
+- **`presence_window_start(?int $now = null): string`**: the oldest moment of the history
+  window, in UTC.
+- **`presence_days(array $periods, ?int $now = null): array`**: one account's periods from
+  `presence_history()`, laid out as calendar days for the day strip and the list.
+  - It covers exactly `presence_history_days()` days, oldest first, ending today in the
+    portal's time zone.
+  - A period belongs to the local day it started on, so 23:40–00:20 is listed once.
+  - Each day's `state` is:
+    - `on` if it has a period a trainer would see;
+    - `hidden` if all its periods are hidden, which only an administrator's history can
+      contain;
+    - `none` otherwise.
+  - Each period carries its local `from` and `to` as `H:i`.
+  - Views print these, and compute none of it themselves.
+- **`presence_recorded_since(?int $now = null): ?string`**: when recording began, taken
+  from migration 020's `applied_at`, if that falls inside the window, and `null` otherwise.
+  - For the first month after the update the history is shorter than it claims.
+  - „In den letzten 30 Tagen nicht online" would be untrue about somebody who simply had not
+    been recorded yet.
+  - With `null` the page says nothing extra.
+- **`presence_prune(int $days): int`**, called from `prune_expired()`. It clamps to 30.
 
 The router calls `presence_touch($user)` where it called `touch_last_seen($user)`, but
 **not** for `icon`, `manifest`, `brand` and `logo`. It does so for families too, because
@@ -161,6 +201,9 @@ their periods are recorded.
 Retention can be shortened, never lengthened. Longer would be a new decision about
 families' data, not a setting.
 
+A band set shorter than the one before it simply never shows. For example, „blau" shorter
+than „grün" means no blue. The dot never turns blue and then green again as time passes.
+
 ### Who sees what
 
 | | Own dot | Status menu | Others' dot | Others' "last online" | Others' 30-day history |
@@ -168,6 +211,10 @@ families' data, not a setting.
 | Family | no | no | no | no | no |
 | Trainer | yes | yes | yes, as chosen (`hidden` is grey) | yes; for a `hidden` account, only up to when they hid | yes, `hidden` periods left out |
 | Administrator | yes | yes | yes, as chosen | always the true time | every period, hidden ones marked |
+
+A trainer's own history includes their own hidden periods: it is their own business, and
+hiding them from themselves would make the list look wrong to the one person who knows
+better.
 
 „Als offline anzeigen" therefore means that trainers see you as offline, while
 administrators still see when you were online. The status menu (ADR 0016) says so in those
@@ -189,16 +236,43 @@ That change needs no migration.
 the account menu are **for staff only**. A family's account menu holds „Mein Konto" and
 „Abmelden".
 
-- `presence_dot()` and the menu's status block are shown only when `is_staff($viewer)`.
-- `presence_save` refuses a caller who is not staff, before it writes. A stale page or a
-  hand-made POST from a family gets a sentence, not a stored choice.
-- `presence_choice()` reads `auto` for every account that is not staff (above).
-- **Families' periods are still recorded**, always `hidden=0`, and staff see families' dots,
-  last-online times and history exactly as in the table.
-- While staff view the portal as a family, the menu is the family's: no status block, as
-  ADR 0016 already has it.
+- `presence_visible_to()` is `is_staff($viewer)`, so `presence_dot()`,
+  `presence_last_seen_for()` and `presence_history()` give a family nothing.
+- The menu's status block is shown only to staff (ADR 0016).
+- `presence_save` begins with `require_staff()`, so a stale page or a hand-made POST from a
+  family is refused before anything is written.
+  - While staff view the portal as a family, the session is the family's, so the same line
+    refuses. No separate `impersonator()` check is needed.
+- **Families' periods are still recorded**, always `hidden=0` because their choice stays
+  `auto`. Staff see families' dots, last-online times and history exactly as in the table.
 
 The status is changed by `presence_save` (ADR 0016).
+
+### What shipped beyond the first draft
+
+- **The `max()` chaining of thresholds was dropped as redundant.**
+  - The first draft made each band at least the one before it.
+  - Because `presence_state()` tests the bands in order, a later band shorter than an
+    earlier one is never reached, which gives the same visible result with less code.
+  - It is tested: a `recent` band set shorter than `online` shows no blue.
+- **`presence_days()` and `presence_recorded_since()`** were added so the history page lays
+  out days and states its own start without doing date arithmetic in a view (above).
+- **`form_return(string $fallback='dashboard'): array`**, a new helper in `app/core.php`.
+  - It returns `[page, params]` for `go()`: the page, record id and tab that `start_form()`
+    posts as `return_page`, `return_id` and `return_tab`.
+  - A page name not shaped like one (`/^[a-z_]{1,40}$/D`) falls back to `$fallback`.
+  - **It is never an open redirect.** `go()` builds the address from `url()`, and the front
+    controller also checks the page against its allow-list. The most a forged value can do
+    is name a page of this portal.
+  - It is used by:
+    - `presence_save`;
+    - `notifications_read`: the pane is on every page;
+    - `public/index.php`'s way back after a refused action.
+  - It **fixed a fault.** „Alle gelesen" on a student's page used to return
+    `page=student` with no id, which is „Nicht gefunden". It now returns to that student
+    and tab.
+  - It lives in core because the front controller and actions in three files use it, and it
+    needs only `post()`. Nothing earlier than core exists to need it.
 
 ## Rejected
 
@@ -236,6 +310,18 @@ the person cannot change would also invite the question of how to change it.
 families' history. That was the owner's original request, and this answer does not change
 it.
 
+**Reading `auto` for every family account, whatever is stored.** It was considered as a
+guard against a stale `hidden` hiding a family from trainers. It is not needed: nothing but
+the staff-only `presence_save` writes the column, and the `structure` rule below keeps it
+that way. It would have been a second rule about who may have a status, beside
+`require_staff()`.
+
+**Keeping the `max()` chaining.** It enforced an order that testing the bands in order
+already gives.
+
+**Returning to the page name alone after a form sent from anywhere.** That is the
+„Nicht gefunden" fault `form_return()` fixed.
+
 ## Consequences
 
 - **Owner:**
@@ -249,14 +335,19 @@ it.
   - a rolled-back action leaves the period;
   - touches 2 minutes apart extend one row, and 20 minutes apart start two;
   - switching to `hidden` starts a `hidden=1` row;
-  - `presence_state()` over each band and choice;
-  - a trainer's history omits hidden rows, and an administrator's does not;
+  - `presence_state()` over each band and choice, including a later band set shorter than
+    an earlier one, which never shows;
+  - a trainer's history omits other people's hidden rows and keeps their own, and an
+    administrator's omits none;
   - a family asking for any history, including their own, is refused;
   - a family's own top bar has no dot, and their menu has no status block;
   - `presence_save` from a family is refused and writes nothing;
-  - a family account with `presence='hidden'` stored still shows to a trainer from its
-    activity, and its periods are `hidden=0`;
-  - a family's visit is still recorded as a period;
+  - a family's visit is still recorded as a `hidden=0` period;
+  - `presence_days()` places a period that crosses midnight under the day it started, and
+    returns exactly `presence_history_days()` days;
+  - `presence_recorded_since()` is the applied time within the window and `null` outside it;
+  - `form_return()` returns to the student and tab it was sent from, and falls back for a
+    malformed page name;
   - impersonation records the impersonator;
   - prune removes exactly the rows older than the horizon;
   - 020 applies on SQLite, and **run twice after an interruption** it still applies;
@@ -264,11 +355,14 @@ it.
 - **`structure`:**
   - `app/presence.php` is in the expected files;
   - `touch_last_seen` and `is_online` are gone from `auth.php`;
-  - `presence_dot` is in the HTML-helper list.
+  - `presence_dot` is in the HTML-helper list;
+  - `presence_save` is the only writer of `accounts.presence`, and it calls
+    `require_staff()` before its `UPDATE`.
 - **Must not:**
   - show another account's dot, last-online time or history except through
     `presence_visible_to()` / `presence_history()`;
   - show a family any presence, their own included;
   - write presence on the main connection;
   - touch presence from the asset routes;
-  - let `presence_history_days` exceed 30.
+  - let `presence_history_days` exceed 30;
+  - rename migration 020.

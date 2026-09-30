@@ -168,9 +168,16 @@ $loginState=$login['state']??'none'; ?>
         .$firstName.t(', Kurse, Beiträge und Rechnungen bleiben; du kannst später neu einladen. Nur vorübergehend? Dann lieber sperren.',
                       ', the courses, charges and invoices stay; you can invite again later. Only for a while? Then suspend instead.'); ?>
     <p><?php if($loginState==='invited') echo e(t('Eingeladen an ','Invited at ').$login['email'].t(', noch nicht angenommen.',', not accepted yet.'));
-        elseif($loginState==='active') echo e(t('Meldet sich an mit ','Signs in with ').$login['email']
-            .(!empty($login['last_seen_at'])?' · '.t('zuletzt ','last seen ').fmt_date((string)$login['last_seen_at']):'').'.');
+        elseif($loginState==='active') echo e(t('Meldet sich an mit ','Signs in with ').$login['email'].'.');
         else echo e(t('Gesperrt – ','Suspended – ').$firstName.t(' kann sich nicht anmelden. Daten und Nachrichten bleiben.',' cannot sign in. Details and messages stay.')); ?></p>
+    <?php /* When the login was last used, as this viewer may know it: through
+             presence_line(), never last_seen_at itself, which for somebody who
+             appears offline is a time a trainer is not to see (ADR 0015). An
+             invitation has not been used, so there is nothing to show. */
+    if(presence_shown_for($user,$login)): ?>
+    <p class="access-presence"><?=presence_line($user,$login)?></p>
+    <?php presence_history_details($user,presence_history($user,[(int)$login['id']])[(int)$login['id']]??[],presence_recorded_since());
+    endif ?>
     <div class="row-actions access-actions">
     <?php if($loginState==='invited'):
         start_form('account_state',['id'=>$login['id'],'mode'=>'reinvite'],'inline-form');submit_button(t('Einladung erneut senden','Send the invitation again'),'secondary');echo '</form>';
