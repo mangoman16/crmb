@@ -177,6 +177,9 @@ function avatar(array $who, string $size = '', string $kind = 'account'): string
  */
 function impersonator(): ?array {
     if (empty($_SESSION['impersonator_id'])) return null;
+    // A view needs somebody signed in to be a view of: an id left over from a
+    // session that ended is no view, and is dropped (security review F1).
+    if (!current_user()) { unset($_SESSION['impersonator_id']); return null; }
     return one('SELECT * FROM accounts WHERE id=?', [(int)$_SESSION['impersonator_id']]);
 }
 
@@ -213,7 +216,15 @@ function start_impersonation(int $targetId): array {
     return $target;
 }
 
-/** Stop looking, and go back to being yourself. */
+/**
+ * Stop looking, and go back to being yourself.
+ *
+ * Only from a view that is still open: impersonator() answers nobody unless
+ * somebody is signed in as the account being looked at. An impersonator id
+ * with nobody signed in is a view whose session has ended, and stopping it
+ * would sign the browser in as the staff member without a password (security
+ * review F1).
+ */
 function stop_impersonation(): void {
     $real = impersonator();
     if (!$real) return;

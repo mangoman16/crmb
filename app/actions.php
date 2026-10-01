@@ -64,27 +64,42 @@ function change_account_email(int $accountId, string $email): void {
  * is not a secret, and its holder changes it back the same way.
  *
  * The caller flashes, holds the form and chooses the page. It also decides who
- * may ask: this trusts that $account is the person asking.
+ * may ask: this trusts that $account is the person asking. $actor is for the
+ * activation page only, where nobody is signed in yet: it passes the token's
+ * own login, so the change log names who chose the name rather than
+ * „automatisch" (ADR 0020, §2 as amended). Mein Konto passes none; the session
+ * names the holder.
  */
-function change_own_username(array $account, string $typed): string {
+function change_own_username(array $account, string $typed, ?int $actor = null): string {
     $username=username_value($typed);
     if($username===(string)$account['username']) return 'unchanged';
     lock_row('accounts',(int)$account['id']);
     if(one('SELECT id FROM accounts WHERE username=? FOR UPDATE',[$username])) {
         throttle('username-taken',account_identity((int)$account['id']),5,86400);
-        audit('account.username_taken','account',(int)$account['id']);
+        audit('account.username_taken','account',(int)$account['id'],$actor);
         return 'taken';
     }
     tracked('accounts',(int)$account['id'],(string)$account['name'],
-        fn()=>run('UPDATE accounts SET username=? WHERE id=?',[$username,(int)$account['id']]));
-    audit('account.username_changed','account',(int)$account['id']);
+        fn()=>run('UPDATE accounts SET username=? WHERE id=?',[$username,(int)$account['id']]),'update',$actor);
+    audit('account.username_changed','account',(int)$account['id'],$actor);
     return 'changed';
 }
 
 /**
+ * What a person choosing a username is told when it is taken, on Mein Konto and
+ * on the activation page alike (spec §4.5): the one bounded answer that a name
+ * has a login (ADR 0020, §2, N3), with a way out.
+ */
+function username_taken_answer(): string {
+    return t('Diesen Benutzernamen hat schon jemand. Such dir einen anderen aus, zum Beispiel mit einer Zahl am Ende.',
+             'Somebody already has that username. Choose another one, for example with a number at the end.');
+}
+
+/**
  * A student's own login, made by invitation - the only code that sets
- * students.account_id (ADR 0010, as moved by ADR 0020 §6). Returns the
- * account_id and the username it was given.
+ * students.account_id (ADR 0010, as moved by ADR 0020 §6), apart from
+ * demo_fill(), whose example families are made with their logins already in
+ * use. Returns the account_id and the username it was given.
  *
  * For the access card's button (student_invite) and for creating a student with
  * „Gleich einladen" (student_save). The caller holds the student's row.
@@ -277,7 +292,10 @@ function dispatch_action(string $action): array {
         if(!password_verify(post('password'),$real?$hash:sign_in_dummy_hash()) || !$real || $a['state']!=='active' || !$a['verified_at'])
             throw new UserError(t('Anmeldung nicht möglich. Bitte Benutzername oder E-Mail-Adresse und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link in der Einladung öffnen.',
                                   'Could not sign you in. Please check your username or email address and your password. Not set up yet? Open the link in your invitation first.'));
-        if(password_needs_rehash($hash,PASSWORD_DEFAULT)) run('UPDATE accounts SET password_hash=? WHERE id=?',[password_hash(post('password'),PASSWORD_DEFAULT),$a['id']]);
+        // Over the very hash just verified, and nothing else: a password changed
+        // in the meantime is not overwritten with this one, and so the read
+        // above needs no lock (security review F2).
+        if(password_needs_rehash($hash,PASSWORD_DEFAULT)) run('UPDATE accounts SET password_hash=? WHERE id=? AND password_hash=?',[password_hash(post('password'),PASSWORD_DEFAULT),$a['id'],$hash]);
         sign_in($a);
         return landing_after_sign_in($a);
     case 'logout':
@@ -303,7 +321,7 @@ function dispatch_action(string $action): array {
            again: that is its way in, and accepting it records the privacy
            acknowledgement a reset would skip - sending nothing meant a call to
            the trainer. A suspended login gets nothing. */
-        $a=account_for_sign_in(...attempted_sign_in());
+        $a=account_for_sign_in(...attempted_sign_in(),lock:true);
         if($a && account_mail_ready()) {
             if($a['state']==='active' && $a['verified_at']) send_account_token($a,'reset');
             elseif($a['state']==='invited') { cancel_account_mail((int)$a['id']); send_account_token($a,'invite'); }
@@ -318,18 +336,21 @@ function dispatch_action(string $action): array {
             if(!post('privacy_seen') || !setting('privacy_ready',false)) throw new UserError(t('Bitte die Datenschutzhinweise lesen und bestätigen.','Please read and acknowledge the privacy notice.'));
             $pass=strong_password(post('password'));
             if($pass!==post('password_confirm')) throw new UserError(t('Die Passwörter stimmen nicht überein.','Passwords do not match.'));
-            // Whoever this browser was signed in as is not who is setting up
-            // this login, and must not be named in the change log as having
-            // chosen its username. The sign_in() below replaces the session in
-            // any case.
-            if(current_user()) { unset($_SESSION['user_id'],$_SESSION['auth_version'],$_SESSION['impersonator_id']); current_user(true); }
+            // Whoever this browser was signed in as - or was viewing the portal
+            // as - is not who is setting up this login. Their session ends
+            // here, even when the username below is taken and nobody is signed
+            // in afterwards: a view left behind would hand the next person
+            // „Ansicht beenden" (security review F1). The change log names the
+            // link's holder explicitly: the locked token's own login, never
+            // anything posted.
+            unset($_SESSION['user_id'],$_SESSION['auth_version'],$_SESSION['impersonator_id']); current_user(true);
             // The username, as the person chose it on this page (ADR 0020, §2).
             // The link proves the holder, so no current password is asked. A
             // taken name comes back to this page with what was typed, having
             // activated nothing; the password boxes come back empty, because
             // is_secret_field() never holds them.
-            if(post('username')!=='' && change_own_username(one('SELECT * FROM accounts WHERE id=?',[$r['account_id']]),post('username'))==='taken') {
-                flash(t('Dieser Benutzername ist schon vergeben. Bitte einen anderen wählen.','That username is already taken. Please choose another one.'),'error');
+            if(post('username')!=='' && change_own_username(one('SELECT * FROM accounts WHERE id=?',[$r['account_id']]),post('username'),(int)$r['account_id'])==='taken') {
+                flash(username_taken_answer(),'error');
                 remember_input('activate');
                 return ['activate',[]];
             }
@@ -339,7 +360,7 @@ function dispatch_action(string $action): array {
             record_consent((int)$r['account_id'],'notifications',(bool)post('notifications'));
             record_consent((int)$r['account_id'],'payment_notices',true);
         } elseif($r['purpose']==='reset') {
-            if($r['state']!=='active') throw new UserError('Invalid account');
+            if($r['state']!=='active') throw new UserError(t('Dieser Zugang kann sein Passwort gerade nicht neu setzen. Bitte bei der Trainerin melden.','This login cannot set a new password right now. Please contact your coach.'));
             $pass=strong_password(post('password'));
             if($pass!==post('password_confirm')) throw new UserError(t('Die Passwörter stimmen nicht überein.','Passwords do not match.'));
             run('UPDATE accounts SET password_hash=?,auth_version=auth_version+1 WHERE id=?',[password_hash($pass,PASSWORD_DEFAULT),$r['account_id']]);
@@ -349,7 +370,7 @@ function dispatch_action(string $action): array {
             change_account_email((int)$r['account_id'],(string)$r['target_email']);
             // Confirmed from the new mailbox, which is what proves it is theirs.
             run('UPDATE accounts SET verified_at=? WHERE id=?',[now(),$r['account_id']]);
-        } else throw new UserError('Invalid token');
+        } else throw new UserError(t('Dieser Link ist ungültig oder abgelaufen. Bitte eine neue Einladung bzw. einen neuen Link anfordern.','This link is invalid or expired. Please request a new invitation or reset link.'));
         run('DELETE FROM auth_tokens WHERE account_id=?',[$r['account_id']]);
         unset($_SESSION['activation_hash']);
         $signed=one('SELECT * FROM accounts WHERE id=?',[$r['account_id']]);
@@ -359,17 +380,18 @@ function dispatch_action(string $action): array {
         // rather than whoever this browser was signed in as. Mein Konto and the
         // access card list it for a fortnight (password_resets_for()).
         if($r['purpose']==='reset') audit('account.password_reset','account',(int)$r['account_id']);
+        // Both names that sign in, said once more now that they are final (spec §4.5).
+        $bothNames=t(' Anmelden kannst du dich mit ',' You can sign in with ').$signed['username']
+            .t(' oder mit ',' or with ').$signed['email'].'.';
         if($r['purpose']==='invite') {
-            // Both names that sign in, said once more now that they are final.
-            flash(t('Dein Konto ist bereit. Du meldest dich mit dem Benutzernamen ','Your account is ready. You sign in with the username ').$signed['username']
-                .t(' oder mit der E-Mail-Adresse ',' or with the email address ').$signed['email'].t(' an.','.'));
+            flash(t('Dein Konto ist bereit.','Your account is ready.').$bothNames);
             // A family that has only just arrived is shown what is still missing
             // on their own page (family_next_steps()), once; every later
             // sign-in lands where landing_after_sign_in() says.
             $own=login_student_id((int)$signed['id']);
             if($own && family_next_steps($own)) return ['student',['id'=>$own]];
         } elseif($r['purpose']==='reset') {
-            flash(t('Dein neues Passwort gilt ab sofort. Dein Benutzername: ','Your new password works from now on. Your username: ').$signed['username']);
+            flash(t('Dein neues Passwort gilt ab sofort.','Your new password works from now on.').$bothNames);
         } else {
             flash(t('Deine neue E-Mail-Adresse ist bestätigt. Du meldest dich mit ihr oder mit deinem Benutzernamen an.','Your new email address is confirmed. You sign in with it or with your username.'));
         }
@@ -402,7 +424,7 @@ function dispatch_action(string $action): array {
         require_staff();
         $s=lock_row('students',(int)student((int)post('student_id'))['id']);
         $made=invite_student($s);
-        flash(t('Einladung liegt im Postausgang. Benutzername: ','The invitation is in the outbox. Username: ').$made['username']);
+        flash(t('Die Einladung an ','The invitation to ').email_normalised((string)$s['email']).t(' ist unterwegs. Benutzername: ',' is on its way. Username: ').$made['username'].'.');
         return ['student',['id'=>$s['id']]];
     case 'account_state':
         $u=require_staff();$id=(int)post('id');$mode=choose(post('mode'),['suspend','restore','delete','reinvite','reset_link']);
@@ -421,17 +443,21 @@ function dispatch_action(string $action): array {
         if($mode==='reinvite') {
             if($a['state']!=='invited') throw new UserError(t('Nur offene Einladungen können erneut versendet werden.','Only pending invitations can be resent.'));
             cancel_account_mail($id);send_account_token($a,'invite');
+            $said=t('Die Einladung ist noch einmal an ','The invitation is on its way to ').$a['email']
+                .t(' unterwegs. Der alte Link gilt nicht mehr.',' again. The old link no longer works.');
         } elseif($mode==='reset_link') {
             /* A link to set a new password, mailed to the login's own address
                (ADR 0020, §5). Staff see neither the password nor the link: the
                outbox never shows a security mail's body. Only for a login in
                use - an invitation is sent again instead, a suspended login is
                restored first. */
-            if($a['state']!=='active' || !$a['verified_at'])
+            if(!reset_link_possible($a))
                 throw new UserError(t('Ein Link für ein neues Passwort geht nur an einen Zugang, der in Gebrauch ist. Eine offene Einladung erneut senden; einen gesperrten Zugang zuerst entsperren.',
                                       'A link for a new password only goes to a login in use. Send an open invitation again; restore a suspended login first.'));
             send_account_token($a,'reset');
-            $said=t('Ein Link für ein neues Passwort ist an die Adresse des Zugangs unterwegs. Er gilt eine Stunde.','A link for a new password is on its way to the login’s address. It is valid for one hour.');
+            // The address, so she can tell the family where to look; never the link.
+            $said=t('Ein Link für ein neues Passwort ist an ','A link for a new password is on its way to ').$a['email']
+                .t(' unterwegs. Er gilt eine Stunde; bis dahin gilt das alte Passwort weiter.','. It is valid for one hour; until then the old password keeps working.');
         } else {
             run('DELETE FROM auth_tokens WHERE account_id=?',[$id]);cancel_account_mail($id);
             if($mode==='delete') {
@@ -455,7 +481,10 @@ function dispatch_action(string $action): array {
         // should have to keep. The family writes both as well (ADR 0020, §7):
         // the address is the one their next invoice is made out to.
         $address=text_limit('address',200);$phone=text_limit('phone',60);
-        $stale=fn()=>new UserError(t('Der Eintrag wurde inzwischen geändert. Bitte neu laden und die Änderungen vergleichen.','This record has changed. Reload it and compare the changes before saving.'));
+        // One text for both roles: a family cannot "compare the changes", and
+        // the held form does bring back what they typed (spec §6.2).
+        $stale=fn()=>new UserError(t('Inzwischen hat jemand anderes etwas an diesem Profil gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal speichern.',
+                                     'Somebody else saved something on this profile in the meantime. What you typed is still here – please check it and save again.'));
         $made=null;$readdress=false;
         if(is_staff($u)) {
             // account_id is neither read nor written here: a login is given by
@@ -479,6 +508,8 @@ function dispatch_action(string $action): array {
             // reminders - and, once they have a login, what they sign in with.
             // Optional while the record is being set up. Once the student has a
             // login it is that login's address, and this copy is kept equal to it.
+            // „Gleich einladen" on the create form (ADR 0020, §6).
+            $invite=!$existing && post('invite')==='1';
             $posted=post('email')!==''?email_value(post('email')):'';
             $account=$existing && $existing['account_id']?lock_row('accounts',(int)$existing['account_id']):null;
             if(!$account) {
@@ -488,13 +519,21 @@ function dispatch_action(string $action): array {
                 // (ADR 0010, restored by 0020 §1); one already stored is
                 // tolerated, so her other edits still save.
                 $email=$posted;
-                if($email!=='' && $email!==email_normalised((string)($existing['email']??''))) refuse_address_in_use($email);
+                if($email!=='' && !same_address($email,(string)($existing['email']??''))) {
+                    // With the tick she expects a student and a login; say
+                    // plainly that neither was made (spec §6.5).
+                    try { refuse_address_in_use($email); }
+                    catch(UserError $refused) {
+                        if(!$invite) throw $refused;
+                        throw new UserError($refused->getMessage().t(' Nichts wurde gespeichert.',' Nothing was saved.'));
+                    }
+                }
             } else {
                 $email=(string)$account['email'];
                 // Nothing posted means nothing to change: a login always has an
                 // address, so an empty or missing field cannot be a request to
                 // remove it.
-                if($posted!=='' && $posted!==email_normalised($email)) {
+                if($posted!=='' && !same_address($posted,$email)) {
                     refuse_unless_student_login($account);
                     // Refused, not ignored: a page opened before the family signed
                     // up still shows an editable field, and a save that quietly
@@ -512,18 +551,17 @@ function dispatch_action(string $action): array {
                     $email=$posted; $readdress=true;
                 }
             }
-            // „Gleich einladen" on the create form (ADR 0020, §6): every refusal
-            // before the first write, so a refused invitation leaves no student
-            // behind either. An address that is somebody's login was refused
-            // just above.
-            $invite=!$existing && post('invite')==='1';
+            // With the tick, every refusal before the first write, so a refused
+            // invitation leaves no student behind either. An address that is
+            // somebody's login was refused just above. The words are the
+            // designer's (spec §6.5).
             if($invite) {
                 if($email==='')
-                    throw new UserError(t('Zum Einladen braucht es die eigene E-Mail-Adresse der Schülerin oder des Schülers.',
-                                          'To invite them, enter the student’s own email address.'));
+                    throw new UserError(t('Für „Gleich einladen“ fehlt die E-Mail-Adresse. Trag sie ein, oder nimm das Häkchen weg – dann wird nur angelegt. Nichts wurde gespeichert.',
+                                          '“Invite straight away” needs the email address. Enter it, or untick the box to only add the student. Nothing was saved.'));
                 if(!account_mail_ready())
-                    throw new UserError(t('Eine Einladung lässt sich noch nicht verschicken. ','An invitation cannot be sent yet. ').account_mail_missing()
-                        .t(' Ohne „Gleich einladen“ wird jetzt gespeichert und später eingeladen.',' Without “Invite now” the student is saved now and invited later.'));
+                    throw new UserError(t('Einladen geht noch nicht. ','Inviting is not possible yet. ').account_mail_missing()
+                        .t(' Ohne das Häkchen wird ',' Without the tick, ').$first.t(' jetzt angelegt und später eingeladen. Nichts wurde gespeichert.',' is added now and invited later. Nothing was saved.'));
             }
             $args=[$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,$ageGroupId,text_limit('internal_notes',12000),now()];
             if($id) {
@@ -572,9 +610,10 @@ function dispatch_action(string $action): array {
             });
         }
         audit('student.saved','student',$id);
-        flash(t('Schüler gespeichert.','Student saved.')
-            .($readdress?' '.t('Die Einladung ist an die neue Adresse unterwegs; der Link an die alte gilt nicht mehr.','The invitation is on its way to the new address; the link sent to the old one no longer works.'):'')
-            .($made?' '.t('Die Einladung liegt im Postausgang. Benutzername: ','The invitation is in the outbox. Username: ').$made['username']:''));
+        if($made) flash($first.' '.$last.t(' ist angelegt. Die Einladung an ',' has been added. The invitation to ').$email
+            .t(' ist unterwegs; Benutzername: ',' is on its way; username: ').$made['username'].'.');
+        else flash((is_staff($u)?t('Schüler gespeichert.','Student saved.'):t('Deine Angaben sind gespeichert.','Your details are saved.'))
+            .($readdress?' '.t('Die Einladung ist an die neue Adresse unterwegs; der Link an die alte gilt nicht mehr.','The invitation is on its way to the new address; the link sent to the old one no longer works.'):''));
         return ['student',['id'=>$id]];
     case 'student_delete':
         require_staff();$s=student((int)post('id'));
@@ -615,7 +654,14 @@ function dispatch_action(string $action): array {
         // Bookkeeping, like moving it in contact_save: not tracked.
         if((int)$contact['is_primary'] && ($next=one('SELECT id FROM contacts WHERE student_id=? ORDER BY id LIMIT 1',[$s['id']])))
             run('UPDATE contacts SET is_primary=1 WHERE id=?',[(int)$next['id']]);
-        audit('contact.deleted','student',(int)$s['id']);return ['student',['id'=>$s['id'],'tab'=>'contacts']];
+        audit('contact.deleted','student',(int)$s['id']);
+        // There is no undo: this sentence is the family's way back, so it says
+        // exactly who went (spec §6.3). The trainer also has the whole row in
+        // the change log.
+        flash(t('Entfernt: ','Removed: ').$contact['owner_name'].' ('.$contact['relation_label'].')'
+            .((string)$contact['phone']!==''?', '.$contact['phone']:'').((string)$contact['email']!==''?', '.$contact['email']:'')
+            .t('. Aus Versehen? Trag die Person unten unter „Notfallkontakt hinzufügen“ wieder ein.','. By mistake? Just add them again below under “Add an emergency contact”.'));
+        return ['student',['id'=>$s['id'],'tab'=>'contacts']];
     case 'contact_save':
         $s=student((int)post('student_id'));$email=contact_email();
         $contact=one('SELECT * FROM contacts WHERE id=? AND student_id=?',[(int)post('id'),$s['id']]);

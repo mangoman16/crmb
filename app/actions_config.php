@@ -444,6 +444,8 @@ function dispatch_config(string $action): array {
         // the session has no staff rights at all, so requiring them here left
         // the only way back out refusing to work.
         if(post('mode')==='stop') {
+            // impersonator() answers nobody unless somebody is signed in, so a
+            // view whose session ended cannot be stopped into staff (F1).
             if(!impersonator()) throw new UserError(t('Du siehst das Portal gerade nicht als jemand anderer.','You are not viewing the portal as somebody else.'));
             stop_impersonation(); flash(t('Du bist wieder du selbst.','You are yourself again.')); return ['dashboard',[]];
         }

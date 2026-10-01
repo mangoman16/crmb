@@ -74,6 +74,7 @@ is_same(['M', true], [field_value($lena, $shirt), field_value($lena, $photos)], 
 $versions = history_for('students', $lena);
 is_same(1, count($versions), 'one save is one line in the change log');
 is_same($familyLogin, (int)$versions[0]['actor_id'], 'with the family as the actor');
+is_same('Deine Angaben sind gespeichert.', $_SESSION['flash']['message'] ?? null, 'and the family is told their details are saved, in their words');
 // Sorted: the order is the table's column order, which differs between an
 // engine whose columns were added by migration and the SQLite translation.
 $named = array_keys(version_changes($versions[0])); sort($named);
@@ -115,7 +116,8 @@ throws(fn() => act('contact_add', ['student_id'=>(string)$neighbour, 'owner_name
 
 case_('A stale form is refused as a whole, its fields included');
 $stale = (int)scalar('SELECT revision FROM students WHERE id=?', [$lena]) - 1;
-throws(fn() => $familySave(['revision'=>(string)$stale, 'phone'=>'0', 'custom'=>[$shirt=>'L']]), 'an old revision is refused', 'inzwischen geändert');
+throws(fn() => $familySave(['revision'=>(string)$stale, 'phone'=>'0', 'custom'=>[$shirt=>'L']]), 'an old revision is refused, without asking a family to compare changes it cannot see',
+       'Inzwischen hat jemand anderes etwas an diesem Profil gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal speichern.');
 is_same('M', field_value($lena, $shirt), 'and its custom field was not written either');
 
 case_('A required field is required of whoever fills it in');
@@ -137,6 +139,15 @@ does_not_throw(fn() => $staffSave(['custom'=>[$seen=>'blau', $secret=>'x', $must
 is_same('', field_value($lena, $mustFamily), 'she left it empty, and may');
 throws(fn() => $staffSave(['custom'=>[$mustStaff=>'A-17', 'abc'=>'x', $shirt=>'XXL']]), 'the type checks hold for staff too', 'Ungültige Option');
 
+case_('Whom a required field is required of is answered in one place');
+/* Code review 2: the save, the family's list and the student page each spelled
+   it out; three copies of one rule are two chances to disagree. */
+$of = fn(string $visibility, bool $required, bool $staff) => custom_field_required_of(['visibility'=>$visibility, 'required'=>$required ? 1 : 0], $staff);
+is_same([true, false], [$of('edit', true, false), $of('edit', true, true)], 'a required field at „Ansehen und bearbeiten“ is the family’s, not staff’s');
+is_same([true, true, false, false], [$of('view', true, true), $of('internal', true, true), $of('view', true, false), $of('internal', true, false)],
+        'one at „Ansehen“ or „Nur intern“ is staff’s, never the family’s');
+is_same([false, false, false], [$of('edit', false, false), $of('view', false, true), $of('internal', false, true)], 'and a field not marked required is nobody’s');
+
 case_('Staff can write every column and field a family can: typing the old value back is the undo');
 $staffSave(['first_name'=>'Lena', 'birth_date'=>'2014-05-07', 'address'=>'Alte Gasse 1, 4020 Linz', 'phone'=>'',
             'custom'=>[$mustStaff=>'A-17', $shirt=>'S', $photos=>'', $mustFamily=>'Nüsse', $seen=>'grün']]);
@@ -155,6 +166,8 @@ $oma = (int)scalar("SELECT id FROM contacts WHERE owner_name='Oma Hofer'");
 $papa = (int)scalar("SELECT id FROM contacts WHERE owner_name='Papa Hofer'");
 act('contact_save', ['student_id'=>(string)$lena, 'id'=>(string)$papa, 'owner_name'=>'Papa Hofer', 'relation_label'=>'Vater', 'phone'=>'+43 660 3', 'email'=>'', 'is_primary'=>'1']);
 act('contact_delete', ['student_id'=>(string)$lena, 'id'=>(string)$oma]);
+is_same('Entfernt: Oma Hofer (Großmutter), +43 660 1. Aus Versehen? Trag die Person unten unter „Notfallkontakt hinzufügen“ wieder ein.',
+        $_SESSION['flash']['message'] ?? null, 'removing a contact says exactly who went, which is the family’s way back');
 $lines = rows("SELECT * FROM record_versions WHERE entity='contacts' ORDER BY id");
 act('contact_save', ['student_id'=>(string)$lena, 'id'=>(string)$papa, 'owner_name'=>'Papa Hofer', 'relation_label'=>'Vater', 'phone'=>'+43 660 4', 'email'=>'']);
 is_same(['phone'], array_keys(version_changes(rows("SELECT * FROM record_versions WHERE entity='contacts' ORDER BY id DESC LIMIT 1")[0])),
@@ -175,18 +188,27 @@ case_('The family is shown what is still missing, and not the phone');
 $fresh = make_student(['first_name'=>'Frisch', 'last_name'=>'Da', 'account_id'=>make_account(['role'=>'student'])]);
 $mustPhoto = make_field('Hausordnung gelesen', 'edit', true, 'checkbox');
 $what = fn() => array_column(family_next_steps($fresh), 'what');
-is_same(['Geburtsdatum eintragen', 'Anschrift eintragen', 'Notfallkontakt eintragen', 'Allergien ausfüllen', 'Hausordnung gelesen ausfüllen'], $what(),
-        'birth date, address, somebody to ring, and every required field of theirs that is empty');
+is_same(['Notfallkontakt eintragen', 'Geburtsdatum eintragen', 'Anschrift eintragen', 'Allergien', 'Hausordnung gelesen'], $what(),
+        'somebody to ring first, then birth date and address, then every required field of theirs that is empty, by its label alone');
+is_same([['Wen die Trainerin anruft, wenn im Training etwas passiert.', 'contacts', 'add-contact'], ['Danach richtet sich die Altersgruppe.', null, 'birth-date'],
+         ['Sie steht auf deinen Rechnungen.', null, 'address'], ['Bitte ausfüllen – deine Trainerin bittet darum.', null, 'field-'.$mustFamily]],
+        array_map(fn($s) => [$s['why'], $s['params']['tab'] ?? null, $s['anchor']], array_slice(family_next_steps($fresh), 0, 4)),
+        'each with the line the designer wrote, and the anchor the page has');
 ok(!in_array('Telefonnummer eintragen', $what(), true), 'never the phone, which a child may not have');
 ok(!str_contains(implode(' ', $what()), 'Mitgliedsnummer'), 'nor a required field that is staff’s to fill in');
 run("UPDATE students SET birth_date='2015-01-01', address='Weg 1' WHERE id=?", [$fresh]);
 fixture('contacts', ['student_id'=>$fresh, 'owner_name'=>'Mama', 'relation_label'=>'Mutter', 'phone'=>'1', 'email'=>'', 'is_primary'=>1]);
 fixture('field_values', ['student_id'=>$fresh, 'field_id'=>$mustFamily, 'value_json'=>'"keine"']);
 fixture('field_values', ['student_id'=>$fresh, 'field_id'=>$mustPhoto, 'value_json'=>'false']);
-is_same(['Hausordnung gelesen ausfüllen'], $what(), 'an unticked box counts as not filled in, the same rule the save refuses by');
+is_same(['Hausordnung gelesen'], $what(), 'an unticked box counts as not filled in, the same rule the save refuses by');
 run('UPDATE field_values SET value_json=? WHERE student_id=? AND field_id=?', ['true', $fresh, $mustPhoto]);
 is_same([], family_next_steps($fresh), 'and once everything is there, the list is empty');
 run('UPDATE field_definitions SET archived=1 WHERE id IN (?,?)', [$mustPhoto, $mustFamily]);
+
+case_('An address of spaces is no address, for the list and for the invoice alike');
+is_same([true, true, false, true], [postal_address_missing(['address'=>'']), postal_address_missing(['address'=>"  \t "]),
+                                     postal_address_missing(['address'=>'Weg 1']), postal_address_missing([])],
+        'empty, blank or absent is missing; anything else is an address');
 
 // ---------------------------------------------------------------------------
 case_('An issued invoice keeps the address it was issued with; the next one has the new one');

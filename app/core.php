@@ -337,6 +337,20 @@ function set_setting(string $key, mixed $value): void {
     $cache=&setting_cache(); unset($cache[$key]);
 }
 /**
+ * Who is acting: the person impersonating, while somebody is being looked at,
+ * otherwise the signed-in login, otherwise nobody. The one answer audit() and
+ * history_record() give. Asked through current_user() first, so a view whose
+ * session has ended is never named: with nobody signed in, nobody acted
+ * (security review F1). current_user() is in app/auth.php, loaded later, and
+ * called only while a request runs.
+ */
+function acting_account_id(): ?int {
+    $user=current_user();
+    if(!$user) return null;
+    return (int)($_SESSION['impersonator_id'] ?? $user['id']);
+}
+
+/**
  * Write down that something happened, and who did it.
  *
  * "Who" is the person really signed in. While somebody is looking through
@@ -344,9 +358,13 @@ function set_setting(string $key, mixed $value): void {
  * was made by the person impersonating, and an audit log that named the borrowed
  * account would be recording the wrong person for the one kind of action where
  * it matters most.
+ *
+ * $actor names somebody else only where nobody is signed in yet and the person
+ * acting is known all the same: the holder of an invitation choosing a
+ * username (change_own_username()). Nothing else passes it.
  */
-function audit(string $action,string $type,?int $id=null): void {
-    $actor=$_SESSION['impersonator_id'] ?? (current_user()['id']??null);
+function audit(string $action,string $type,?int $id=null,?int $actor=null): void {
+    $actor??=acting_account_id();
     run('INSERT INTO audit_log (actor_id,action,entity_type,entity_id,created_at) VALUES (?,?,?,?,?)',[$actor?(int)$actor:null,$action,$type,$id,now()]);
 }
 function seal(string $plain): string { $iv=random_bytes(12); $tag=''; $cipher=openssl_encrypt($plain,'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,$iv,$tag); if($cipher===false) throw new RuntimeException('Encryption failed'); return base64_encode($iv.$tag.$cipher); }

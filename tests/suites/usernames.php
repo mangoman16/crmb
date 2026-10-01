@@ -122,9 +122,28 @@ act('account_invite', ['name' => 'Eva Hofer', 'email' => 'eva2@beispiel.test', '
 $invited = one("SELECT * FROM accounts WHERE email='eva2@beispiel.test'");
 is_same('eva.hofer2', $invited['username'] ?? null, 'a second Eva Hofer is eva.hofer2');
 $mail = unseal((string)scalar("SELECT payload FROM mail_jobs WHERE account_id=?", [(int)$invited['id']]));
-ok(str_contains($mail, 'Dein Benutzername: eva.hofer2'), 'her invitation says so');
-ok(str_contains($mail, 'beim Einrichten ändern') && str_contains($mail, 'auch mit dieser E-Mail-Adresse'),
-   'that she can change it while setting up, and that the address signs in too');
+/* The whole mail, as the designer wrote it (spec §3.1): nothing in it reads as
+   machine-made, and the link is the only machine part. */
+$masked = fn(string $body) => (string)preg_replace('~https?://\S+token=[a-f0-9]{64}~', '{link}', $body);
+is_same("Hallo Eva Hofer,\n\ndu bist ins Badminton-Portal eingeladen.\n\nDein Benutzername: eva.hofer2\n"
+    ."Beim Einrichten kannst du ihn so lassen oder ändern. Anmelden kannst du dich damit oder mit dieser E-Mail-Adresse.\n\n"
+    ."Öffne diesen Link, leg dein Passwort fest und ergänze danach deine Angaben:\n{link}\n\n"
+    ."Der Link gilt 48 Stunden. Ist er abgelaufen, bekommst du unter „Benutzername oder Passwort vergessen“ einen neuen.\n\n"
+    ."Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.", $masked($mail),
+    'the invitation names the username, says it may stay or change, that the address signs in too, and what to do when the link has expired');
+set_setting('org_name', 'Badmintonschule Hofer');
+act('account_state', ['id'=>(string)$invited['id'], 'mode'=>'reinvite']);
+$mail = unseal((string)scalar("SELECT payload FROM mail_jobs WHERE account_id=? AND status='queued' ORDER BY id DESC LIMIT 1", [(int)$invited['id']]));
+ok(str_contains($mail, "du bist ins Portal von Badmintonschule Hofer eingeladen."), 'and names the club once it has a name');
+run("UPDATE accounts SET locale='en' WHERE id=?", [(int)$invited['id']]);
+act('account_state', ['id'=>(string)$invited['id'], 'mode'=>'reinvite']);
+$mail = $masked(unseal((string)scalar("SELECT payload FROM mail_jobs WHERE account_id=? AND status='queued' ORDER BY id DESC LIMIT 1", [(int)$invited['id']])));
+is_same("Hello Eva Hofer,\n\nyou have been invited to Badmintonschule Hofer's portal.\n\nYour username: eva.hofer2\n"
+    ."While setting up you can keep it or change it. You can sign in with it or with this email address.\n\n"
+    ."Open this link, set your password and then complete your details:\n{link}\n\n"
+    ."The link is valid for 48 hours. If it has expired, “Forgot your username or password” sends a new one.\n\n"
+    ."If you did not expect this email, you can ignore it.", $mail, 'in English for an English login');
+set_setting('org_name', '');
 
 // ---------------------------------------------------------------------------
 case_('„Vergessen“ takes a username or an address, and mails the address as stored [§4, S1]');
@@ -136,7 +155,12 @@ $jobs = rows("SELECT * FROM mail_jobs WHERE category='security'");
 is_same([['mia.stein@beispiel.test', $mia]], array_map(fn($j) => [$j['recipient'], (int)$j['account_id']], $jobs),
         'by username: one mail, to the login’s own address');
 $body = unseal((string)($jobs[0]['payload'] ?? ''));
-ok(str_contains($body, 'Dein Benutzername: mia.stein') && preg_match_all('/token=[a-f0-9]{64}/', $body) === 1, 'naming the username, with one link');
+ok(preg_match_all('/token=[a-f0-9]{64}/', $body) === 1, 'with one link');
+is_same("Hallo Mia Stein,\n\nfür deinen Zugang wurde ein Link für ein neues Passwort angefordert.\n\nDein Benutzername: mia.stein\n"
+    ."Anmelden kannst du dich damit oder mit dieser E-Mail-Adresse.\n\n"
+    ."Weißt du dein Passwort noch, ist nichts zu tun – es gilt weiter.\nSonst leg hier ein neues fest (eine Stunde gültig):\n{link}\n\n"
+    ."Warst du das nicht, kannst du diese E-Mail ignorieren.", (string)preg_replace('~https?://\S+token=[a-f0-9]{64}~', '{link}', $body),
+    'the reset mail, one text whoever asked for it, saying the old password keeps working');
 is_same('reset', (string)scalar('SELECT purpose FROM auth_tokens WHERE account_id=?', [$mia]), 'a reset link');
 $flash = (string)($_SESSION['flash']['message'] ?? '');
 run('DELETE FROM mail_jobs'); $freshIp();
@@ -252,7 +276,8 @@ is_same($before + 1, (int)scalar('SELECT auth_version FROM accounts WHERE id=?',
 is_same('jana.kern', (string)scalar('SELECT username FROM accounts WHERE id=?', [$holder]), 'and a username posted to the reset page changes nothing [N10]');
 $audited = one("SELECT * FROM audit_log WHERE action='account.password_reset' ORDER BY id DESC LIMIT 1");
 is_same([$holder, $holder], [(int)($audited['entity_id'] ?? 0), (int)($audited['actor_id'] ?? 0)], 'the reset is in the audit log, done by the holder of the link');
-ok(str_contains((string)($_SESSION['flash']['message'] ?? ''), 'Dein Benutzername: jana.kern'), 'the sign-in it performs repeats the username');
+is_same('Dein neues Passwort gilt ab sofort. Anmelden kannst du dich mit jana.kern oder mit kern@beispiel.test.', $_SESSION['flash']['message'] ?? null,
+        'the sign-in it performs names both names that sign in');
 ok(!array_key_exists('own_password_reset', $_SESSION), 'and keeps no id in the session');
 sign_out(); $freshIp(); unset($_SESSION['flash']);
 submit('login', ['username' => 'jana.kern', 'password' => 'Federball-2026-Halle!']);
@@ -306,6 +331,13 @@ $settings = (string)strstr((string)strstr((string)file_get_contents(APP_ROOT.'/a
 ok(str_contains($settings, 'change_own_username($u,post(\'username\'))') && !str_contains($settings, 'UPDATE accounts SET username'),
    'and username_change writes the username only through it');
 
+case_('A taken username is answered in one sentence, with a way out, wherever it is chosen');
+is_same('Diesen Benutzernamen hat schon jemand. Such dir einen anderen aus, zum Beispiel mit einer Zahl am Ende.', username_taken_answer(),
+        'the designer’s words (spec §4.5)');
+foreach (['app/actions.php' => "case 'activate':", 'app/actions_settings.php' => "case 'username_change':"] as $file => $case)
+    ok(str_contains((string)strstr((string)file_get_contents(APP_ROOT.'/'.$file), $case), "flash(username_taken_answer(),'error');"),
+       $case.' gives that answer');
+
 case_('A username that is taken is answered, not thrown, and at most five times a day [R3, S2]');
 /* Only a "taken" answer counts, so the count comes after the lookup - inside a
    transaction that has already read. InnoDB lets the counter connection write
@@ -323,7 +355,7 @@ if (test_driver() === 'sqlite') {
     }
     is_same(array_fill(0, 5, ['profile', []]), $answers, 'five times the answer is a return to Mein Konto, not a refusal thrown');
     is_same('error', $_SESSION['flash']['kind'] ?? null, 'with the answer as an error flash');
-    ok(str_contains((string)($_SESSION['flash']['message'] ?? ''), 'schon vergeben'), 'saying the name is taken');
+    is_same('Diesen Benutzernamen hat schon jemand. Such dir einen anderen aus, zum Beispiel mit einer Zahl am Ende.', $_SESSION['flash']['message'] ?? null, 'saying the name is taken');
     is_same('Vergeben', $_SESSION['form_input']['fields']['username'] ?? null, 'the typed name is offered back');
     ok(!isset($_SESSION['form_input']['fields']['current_password']), 'and the password is not');
     is_same(5, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.username_taken' AND entity_id=?", [$lisa]),
@@ -348,9 +380,11 @@ is_same('neu.ankunft-lena', (string)scalar('SELECT username FROM accounts WHERE 
 $line = one("SELECT * FROM record_versions WHERE entity='accounts' AND entity_id=?", [$newcomer]);
 is_same([['username' => 'neu.ankunft'], ['username' => 'neu.ankunft-lena']],
         [json_decode((string)($line['before_json'] ?? ''), true), json_decode((string)($line['after_json'] ?? ''), true)], 'the change is tracked');
-ok($line !== null && (int)($line['actor_id'] ?? 0) !== $trainer, 'and not put down to whoever this browser was signed in as');
+is_same($newcomer, (int)($line['actor_id'] ?? 0), 'put down to the holder of the link, who chose it - not to whoever this browser was signed in as, nor to nobody');
+is_same($newcomer, (int)scalar("SELECT actor_id FROM audit_log WHERE action='account.username_changed' AND entity_id=? ORDER BY id DESC LIMIT 1", [$newcomer]),
+        'and so is the audit entry');
 is_same('active', (string)scalar('SELECT state FROM accounts WHERE id=?', [$newcomer]), 'the login is set up');
-ok(str_contains((string)($_SESSION['flash']['message'] ?? ''), 'neu.ankunft-lena') && str_contains((string)($_SESSION['flash']['message'] ?? ''), 'ankunft@beispiel.test'),
+is_same('Dein Konto ist bereit. Anmelden kannst du dich mit neu.ankunft-lena oder mit ankunft@beispiel.test.', $_SESSION['flash']['message'] ?? null,
    'and told both names that sign in');
 is_same(['student', ['id' => $newKid]], $landed, 'a family with details still to fill in lands on their own page [§7]');
 sign_out();
@@ -369,11 +403,15 @@ if (test_driver() === 'sqlite') {
     throttle_clear('username-taken', account_identity($late));
     $_SESSION['activation_hash'] = hash('sha256', make_token($late, 'invite')); $freshIp();
     unset($_SESSION['form_input']);
+    $_SESSION['impersonator_id'] = $trainer;   // a view left over on this browser
     is_same(['activate', []], submit('activate', $setUp + ['username' => 'neu.ankunft-lena']), 'a taken name comes back to the page');
+    ok(!isset($_SESSION['impersonator_id']), 'with no view left over, though nobody is signed in afterwards (F1)');
+    is_same($late, (int)scalar("SELECT actor_id FROM audit_log WHERE action='account.username_taken' AND entity_id=? ORDER BY id DESC LIMIT 1", [$late]),
+            'and the attempt put down to the holder of the link');
     is_same(['invited', null], [scalar('SELECT state FROM accounts WHERE id=?', [$late]), scalar('SELECT password_hash FROM accounts WHERE id=?', [$late])],
             'having activated nothing');
     is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.username_taken' AND entity_id=?", [$late]), 'with the attempt in the audit log [R3]');
-    ok(str_contains((string)($_SESSION['flash']['message'] ?? ''), 'schon vergeben'), 'and the answer said');
+    is_same('Diesen Benutzernamen hat schon jemand. Such dir einen anderen aus, zum Beispiel mit einer Zahl am Ende.', $_SESSION['flash']['message'] ?? null, 'and the answer said');
     is_same('neu.ankunft-lena', $_SESSION['form_input']['fields']['username'] ?? null, 'the typed name is offered back');
     ok(!isset($_SESSION['form_input']['fields']['password']) && !isset($_SESSION['form_input']['fields']['password_confirm']), 'and the passwords are not');
     ok(token_record((string)$_SESSION['activation_hash']) !== null, 'the link still works for the next try');

@@ -84,9 +84,9 @@ is_same(0, address_drift(), 'the student’s copy of the address is the login’
 $logged = version_changes(history_for('students', $mia)[0]);
 ok(isset($logged['account_id']), 'the student’s change log says they got a login');
 is_same('mia.gruber', history_value($logged['account_id']['to'], 'account_id'),
-        'and names it by its username, not by a number - nor by an address a brother may share');
+        'and names it by its username, not by a number');
 $invitation = unseal((string)scalar("SELECT payload FROM mail_jobs WHERE account_id=? AND category='security'", [(int)$miaLogin['id']]));
-ok(str_contains($invitation, 'Dein Benutzername: mia.gruber') && str_contains($invitation, 'beim Einrichten ändern'),
+ok(str_contains($invitation, 'Dein Benutzername: mia.gruber') && str_contains($invitation, 'Beim Einrichten kannst du ihn so lassen oder ändern.'),
    'the invitation says what the login is called and that it can be changed while setting up');
 
 case_('Everything about the new login comes from the student, and a long name is cut to fit');
@@ -505,12 +505,15 @@ $counts = fn() => [(int)scalar('SELECT COUNT(*) FROM students'), (int)scalar('SE
 $nothing = $counts();
 mail_ready(false);
 throws(fn() => $create(), 'without mail it is refused, saying what is missing', 'E-Mail-Versand zuerst testen');
-throws(fn() => $create(), 'and that without the tick the student is saved now and invited later', 'Ohne „Gleich einladen“ wird jetzt gespeichert und später eingeladen.');
+throws(fn() => $create(), 'and that without the tick the student is saved now and invited later',
+       'Einladen geht noch nicht. '.account_mail_missing().' Ohne das Häkchen wird Lea jetzt angelegt und später eingeladen. Nichts wurde gespeichert.');
 is_same($nothing, $counts(), 'and nothing at all was created');
 mail_ready(true);
-throws(fn() => $create(['email'=>'']), 'an empty address is refused', 'eigene E-Mail-Adresse');
+throws(fn() => $create(['email'=>'']), 'an empty address is refused',
+       'Für „Gleich einladen“ fehlt die E-Mail-Adresse. Trag sie ein, oder nimm das Häkchen weg – dann wird nur angelegt. Nichts wurde gespeichert.');
 throws(fn() => $create(['email'=>'lea@']), 'an invalid one is refused', 'Ungültige E-Mail-Adresse');
-throws(fn() => $create(['email'=>'Coach@Beispiel.test']), 'and one that is somebody’s login is refused', 'Jede Person braucht ihre eigene');
+throws(fn() => $create(['email'=>'Coach@Beispiel.test']), 'and one that is somebody’s login is refused, saying nothing was saved',
+       'Jede Person braucht ihre eigene. Es ist der Zugang von Trainerin. Nichts wurde gespeichert.');
 is_same($nothing, $counts(), 'none of the three created anything');
 $landed = $create();
 $lea = (int)scalar("SELECT id FROM students WHERE first_name='Lea'");
@@ -520,12 +523,19 @@ is_same(['lea.neumann', 'invited', 'lea.neumann@beispiel.test'], [$leaLogin['use
         'with an invited login of her own');
 is_same(1, (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE account_id=? AND purpose='invite'", [(int)$leaLogin['id']]), 'a token');
 is_same(1, links_queued_to('lea.neumann@beispiel.test'), 'and the invitation queued');
-ok(str_contains((string)($_SESSION['flash']['message'] ?? ''), 'Benutzername: lea.neumann'), 'the flash names the username');
+is_same('Lea Neumann ist angelegt. Die Einladung an lea.neumann@beispiel.test ist unterwegs; Benutzername: lea.neumann.', $_SESSION['flash']['message'] ?? null,
+        'the flash names the student, the address and the username');
 is_same(['insert', 'update'], array_reverse(array_column(history_for('students', $lea), 'operation')), 'the change log has her creation and her login');
 act('student_save', ['first_name'=>'Ohne', 'last_name'=>'Haken', 'email'=>'ohne.haken@beispiel.test', 'status'=>'active',
     'joined_on'=>today(), 'birth_date'=>'', 'ended_on'=>'', 'internal_notes'=>'']);
 is_same(null, scalar("SELECT account_id FROM students WHERE first_name='Ohne'"), 'without the tick, only the student is made');
 is_same(0, links_queued_to('ohne.haken@beispiel.test'), 'and nobody is mailed');
+
+case_('A reset link can go only to a login in use');
+is_same([true, false, false, false], array_map(fn($a) => reset_link_possible($a), [
+    ['state'=>'active', 'verified_at'=>now()], ['state'=>'invited', 'verified_at'=>null],
+    ['state'=>'suspended', 'verified_at'=>now()], ['state'=>'active', 'verified_at'=>null]]),
+    'active and verified, and nothing else - the one rule for the action and the card');
 
 case_('Staff can have a link for a new password mailed, and never see it');
 /* ADR 0020, §5: an active login only, never one's own, a trainer for students'
@@ -543,6 +553,15 @@ is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.res
         'and written down as hers');
 is_same($hashBefore, (string)scalar('SELECT password_hash FROM accounts WHERE id=?', [$active]), 'the password itself is not touched');
 ok(!str_contains((string)($_SESSION['flash']['message'] ?? ''), 'token='), 'and the flash shows no link');
+is_same('Ein Link für ein neues Passwort ist an aktiv@beispiel.test unterwegs. Er gilt eine Stunde; bis dahin gilt das alte Passwort weiter.',
+        $_SESSION['flash']['message'] ?? null, 'it names the address the link went to');
+$cardKid = make_student(['first_name'=>'Karte', 'last_name'=>'Kind', 'email'=>'karte.kind@beispiel.test']);
+act('student_invite', ['student_id'=>(string)$cardKid]);
+is_same('Die Einladung an karte.kind@beispiel.test ist unterwegs. Benutzername: karte.kind.', $_SESSION['flash']['message'] ?? null,
+        'an invitation from the card names the address and the username');
+act('account_state', ['id'=>(string)scalar('SELECT account_id FROM students WHERE id=?', [$cardKid]), 'mode'=>'reinvite']);
+is_same('Die Einladung ist noch einmal an karte.kind@beispiel.test unterwegs. Der alte Link gilt nicht mehr.', $_SESSION['flash']['message'] ?? null,
+        'and sending it again names it too');
 throws(fn() => act('account_state', ['id'=>(string)$otherCoach, 'mode'=>'reset_link']), 'a trainer may not for a staff login', 'kann hier nicht geändert werden');
 throws(fn() => act('account_state', ['id'=>(string)$coach, 'mode'=>'reset_link']), 'nobody for their own', 'kann hier nicht geändert werden');
 sign_in_as($boss);

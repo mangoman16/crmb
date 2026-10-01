@@ -1275,7 +1275,7 @@ $orderings = [
     'app/actions.php student_save' => [
         // The last of its refusals - „Gleich einladen" without working mail -
         // so the address refusals above it come first too.
-        'refusal' => 'Ohne „Gleich einladen“',
+        'refusal' => 'Ohne das Häkchen wird ',
         'guards'  => 'a student created with an invitation that could not be sent (ADR 0020, §6)',
         'suite'   => 'accounts.php "and nothing was created"',
     ],
@@ -1477,6 +1477,27 @@ $fieldsSave = defined_functions_in(APP_ROOT.'/app/domain.php')['save_custom_fiel
 ok(str_contains($fieldsSave, "if ( ! \$staff && ! \$families ) continue ;"),
    'save_custom_fields() skips, for a family, every field that is not theirs to fill in');
 
+case_('Whom a required field is required of is asked of one function');
+/* Code review 2: custom_field_required_of() is the rule; the save that refuses,
+   the family's list of what is missing and the page that marks a box required
+   all ask it, so the three cannot disagree. */
+$domainFns = defined_functions_in(APP_ROOT.'/app/domain.php');
+foreach (['save_custom_fields', 'family_next_steps'] as $caller)
+    ok(str_contains($domainFns[$caller] ?? '', 'custom_field_required_of ('), $caller.'() asks custom_field_required_of()');
+ok(str_contains((string)file_get_contents(APP_ROOT.'/views/student.php'), 'custom_field_required_of('), 'and so does the student page that marks the box');
+foreach (['save_custom_fields', 'family_next_steps'] as $caller)
+    ok(!str_contains($domainFns[$caller] ?? '', "[ 'required' ]"), $caller.'() does not read required itself');
+
+case_('One answer each to „may a reset link go?“ and „is the postal address missing?“');
+/* Code review 5 and 6: the action and the card ask reset_link_possible(); the
+   family's list and the invoice refusal ask postal_address_missing(), so the
+   card never offers what the action refuses, and „Anschrift eintragen“ is on the
+   list exactly when an invoice above 400 € would be refused for it. */
+$state = named_blocks_of(APP_ROOT.'/app/actions.php')['account_state'] ?? '';
+ok(str_contains($state, 'reset_link_possible($a)') && !str_contains($state, "\$a['verified_at'])\n                throw"), 'account_state asks reset_link_possible()');
+ok(str_contains(defined_functions_in(APP_ROOT.'/app/domain.php')['family_next_steps'] ?? '', 'postal_address_missing ('), 'family_next_steps() asks postal_address_missing()');
+ok(str_contains(defined_functions_in(APP_ROOT.'/app/invoices.php')['create_invoice'] ?? '', 'postal_address_missing ('), 'and so does create_invoice()');
+
 case_('Only the places named here set a password');
 /* ADR 0020, §5: nobody sets another person's password. A password is written by
    the person choosing it - accepting an invitation, a reset link, Mein Konto -
@@ -1506,21 +1527,33 @@ ok($invite !== '' && !str_contains($invite, "post('mode')") && !str_contains($in
 
 case_('A sign-in looks up exactly two literal statements, and only through account_for_sign_in()');
 /* ADR 0020, §3: no column name interpolated, a format gate before each, and the
-   login and „vergessen" cases send no SELECT of their own. */
+   login and „vergessen" cases send no SELECT of their own. Plain reads, not FOR
+   UPDATE (security review F2): a lock held through password_verify() made a
+   second sign-in to an existing login wait while one to a missing login did
+   not, and the wait said which logins exist. The one write a sign-in makes, the
+   rehash, is conditional on the hash it verified instead. */
 $lookup = defined_functions_in(APP_ROOT.'/app/auth.php')['account_for_sign_in'] ?? '';
-// Every statement is the whole first argument of one(): a literal, a comma,
-// nothing joined to it.
-preg_match_all("/\\bone \\( '([^']*)' ,/", $lookup, $literal);
-is_same(['SELECT * FROM accounts WHERE email=? FOR UPDATE', 'SELECT * FROM accounts WHERE username=? FOR UPDATE'], $literal[1],
+// Every statement is a literal, with nothing joined to it but the literal
+// FOR UPDATE, and that only for „vergessen" (ADR 0020, §3 as amended).
+preg_match_all('~\bone \( \x27([^\x27]*)\x27 (?:\. \( \$lock \? \x27 FOR UPDATE\x27 : \x27\x27 \) )?,~', $lookup, $literal);
+is_same(['SELECT * FROM accounts WHERE email=?', 'SELECT * FROM accounts WHERE username=?'], $literal[1],
         'account_for_sign_in() sends the two literal statements, one per kind');
+ok(str_contains(named_blocks_of(APP_ROOT.'/app/actions.php')['login'] ?? '', 'account_for_sign_in(...attempted_sign_in());'),
+   'login reads without a lock, so a missing login and an existing one take the same path (F2)');
+ok(str_contains(named_blocks_of(APP_ROOT.'/app/actions.php')['forgot'] ?? '', 'account_for_sign_in(...attempted_sign_in(),lock:true);'),
+   'while „vergessen“ locks, so two requests at once cannot leave two live links');
 is_same(2, substr_count($lookup, 'one ('), 'and no other, so nothing is joined into a statement');
 ok(strpos($lookup, 'email_is_dot_atom (') < strpos($lookup, "WHERE email=?")
    && strpos($lookup, 'USERNAME_PATTERN') < strpos($lookup, "WHERE username=?"), 'each behind its format gate');
 ok(str_contains($lookup, "email_normalised ( (string) \$a [ 'email' ] ) === \$value") && str_contains($lookup, "(string) \$a [ 'username' ] === \$value"),
    'and each row used only when it is exactly what was typed');
+$loginBlock = named_blocks_of(APP_ROOT.'/app/actions.php')['login'] ?? '';
+is_same(['UPDATE accounts SET password_hash=? WHERE id=? AND password_hash=?'],
+        array_values(array_filter(sql_statements_in($loginBlock), fn($sql) => str_starts_with($sql, 'UPDATE'))),
+        'the rehash writes only over the very hash it verified, so it needs no lock taken before');
 foreach (['login', 'forgot'] as $case) {
     $block = named_blocks_of(APP_ROOT.'/app/actions.php')[$case] ?? '';
-    ok(str_contains($block, 'account_for_sign_in(...attempted_sign_in())'), $case.' looks up through account_for_sign_in()');
+    ok(str_contains($block, 'account_for_sign_in(...attempted_sign_in()'), $case.' looks up through account_for_sign_in()');
     is_same([], array_values(array_filter(sql_statements_in($block), fn($sql) => str_starts_with($sql, 'SELECT'))), 'and sends no SELECT of its own');
 }
 
@@ -1556,3 +1589,37 @@ is_same([], $readers, 'token_hash appears in app/auth.php only, and auth_tokens 
 is_same(["SELECT created_at,expires_at FROM auth_tokens WHERE account_id=? AND purpose='invite' ORDER BY id DESC LIMIT 1"],
         sql_statements_in((string)(named_blocks_of(APP_ROOT.'/app/auth.php')['invitation_dates'] ?? '')),
         'invitation_dates() reads the two dates and nothing else');
+
+case_('Only change_own_username() names the actor of a change itself');
+/* Code review 3, ADR 0020 §2 as amended: the actor of a change-log line or an
+   audit entry is who is really signed in. The one exception is the username
+   chosen while accepting an invitation, before anybody is signed in: activate
+   passes the token's own login. An actor passed anywhere else would let a
+   caller write somebody else's name. change_own_username() hands its $actor on;
+   tracked() hands its own on to history_record(). */
+$naming = [];
+$limits = ['audit' => 3, 'tracked' => 5, 'history_record' => 6, 'change_own_username' => 2];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $path)
+    foreach (named_blocks_of($path) as $block => $code) {
+        $tokens = action_tokens($code);
+        foreach ($tokens as $i => $token) {
+            if (!is_array($token) || !isset($limits[$token[1]]) || ($tokens[$i + 1] ?? null) !== '(') continue;
+            $previous = $tokens[$i - 1] ?? null;
+            if (is_array($previous) && in_array($previous[0], [T_FUNCTION, T_OBJECT_OPERATOR, T_DOUBLE_COLON], true)) continue;
+            $depth = 0; $arguments = 1;
+            for ($j = $i + 1; $j < count($tokens); $j++) {
+                $t = is_array($tokens[$j]) ? $tokens[$j][1] : $tokens[$j];
+                if (in_array($t, ['(', '[', '{'], true)) $depth++;
+                elseif (in_array($t, [')', ']', '}'], true)) { if (--$depth === 0) break; }
+                elseif ($t === ',' && $depth === 1) $arguments++;
+            }
+            if ($arguments > $limits[$token[1]]) $naming[] = substr($path, strlen(APP_ROOT) + 1).' '.$block.' '.$token[1].'()';
+        }
+    }
+sort($naming);
+// tracked() hands its own $actor on to history_record(), which is the plumbing.
+is_same(['app/actions.php activate change_own_username()', 'app/actions.php change_own_username audit()', 'app/actions.php change_own_username audit()',
+         'app/actions.php change_own_username tracked()', 'app/history.php tracked history_record()'],
+        $naming, 'an actor is named by activate, and only handed on below it');
+ok(str_contains(named_blocks_of(APP_ROOT.'/app/actions.php')['activate'] ?? '', "post('username'),(int)\$r['account_id'])"),
+   'and what activate names is the token’s own login, never posted input');

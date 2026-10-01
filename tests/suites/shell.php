@@ -137,6 +137,59 @@ is_same($trainer, (int)scalar('SELECT actor_id FROM audit_log ORDER BY id DESC L
         'the trainer, not the account they are borrowing');
 act('impersonate', ['mode'=>'stop']);
 
+case_('A view that timed out is not handed to whoever signs in next on that browser');
+/* Security review F1. The trainer's „Portal als … ansehen" session expired; the
+   impersonator id was left in the session; the next person to sign in on that
+   phone got „Ansicht beenden" and, with one tap, became the trainer. Ending a
+   session - by time, by a changed password, by signing in, by an invitation
+   accepted - ends the view with it, and stopping a view needs somebody signed
+   in to stop it for. */
+$visitor = make_account(['username'=>'naechste.person', 'email'=>'naechste@beispiel.test',
+                         'password_hash'=>password_hash('Federball-2026-Halle!', PASSWORD_DEFAULT)]);
+sign_in_as($trainer);
+act('impersonate', ['id'=>(string)$family, 'mode'=>'start']);
+$_SESSION['last_seen'] = time() - (int)config('session_idle_minutes') * 60 - 5;
+is_same(null, current_user(true), 'the view times out like any session');
+ok(!isset($_SESSION['impersonator_id']), 'and the session forgets the real person with it');
+is_same(null, impersonator(), 'so nobody is being viewed');
+throws(fn() => act('impersonate', ['mode'=>'stop']), 'so nobody can stop it into the trainer’s account', 'nicht als jemand anderer');
+is_same(null, current_user(), 'and nobody is signed in');
+$_SESSION['impersonator_id'] = $trainer;   // as a session written before this fix may still hold it
+audit('test.left_over', 'account', $family);
+is_same(null, scalar("SELECT actor_id FROM audit_log WHERE action='test.left_over' ORDER BY id DESC LIMIT 1"),
+        'what happens with nobody signed in is put down to nobody, never to a view left over');
+$_SESSION['impersonator_id'] = $trainer;
+$line = history_record('accounts', $family, 'update', 'x', ['name'=>'a'], ['name'=>'b']);
+is_same(null, scalar('SELECT actor_id FROM record_versions WHERE id=?', [$line]), 'and so is a change-log line');
+$_SESSION['impersonator_id'] = $trainer;
+current_user(true);
+ok(!isset($_SESSION['impersonator_id']), 'asking who is signed in, with nobody, drops the id left over');
+$_SESSION['impersonator_id'] = $trainer;
+stop_impersonation();
+is_same(null, current_user(), 'stop_impersonation() itself signs nobody in from a view that has ended');
+$_SESSION['impersonator_id'] = $trainer;
+throws(fn() => act('impersonate', ['mode'=>'stop']), 'a stop with nobody signed in is refused even with an id left over', 'nicht als jemand anderer');
+is_same(null, current_user(), 'and signs nobody in');
+is_same(null, impersonator(), 'and asking who is signed in forgets the id left over');
+throttle_clear('auth-ip', $_SERVER['REMOTE_ADDR'] ?? 'local');
+// Left over in the raw session, where only sign_in() itself can drop it:
+// nothing asks who is signed in before the sign-in does.
+$_SESSION['impersonator_id'] = $trainer;
+submit('login', ['username'=>'naechste.person', 'password'=>'Federball-2026-Halle!']);
+is_same($visitor, (int)(current_user()['id'] ?? 0), 'the next person signs in as themselves');
+ok(!isset($_SESSION['impersonator_id']), 'into a session that carries no view of anybody');
+is_same(null, impersonator(), 'with no view of anybody else’s left over');
+throws(fn() => act('impersonate', ['mode'=>'stop']), 'and „Ansicht beenden“ does not make them the trainer', 'nicht als jemand anderer');
+is_same($visitor, (int)current_user()['id'], 'they are still themselves');
+sign_out();
+$invited = make_account(['username'=>'neu.eingeladen', 'email'=>'neu.eingeladen@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+set_setting('privacy_ready', true);
+$_SESSION['impersonator_id'] = $trainer;
+$_SESSION['activation_hash'] = hash('sha256', make_token($invited, 'invite'));
+submit('activate', ['password'=>'Federball-2026-Halle!', 'password_confirm'=>'Federball-2026-Halle!', 'privacy_seen'=>'1']);
+is_same([$invited, null], [(int)(current_user()['id'] ?? 0), impersonator()], 'accepting an invitation on that browser leaves no view behind either');
+sign_out();
+
 case_('Stopping when nothing is being impersonated says so rather than failing');
 throws(fn() => act('impersonate', ['mode'=>'stop']), 'there is nothing to stop', 'nicht als jemand anderer');
 

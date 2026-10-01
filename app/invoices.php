@@ -129,6 +129,14 @@ function invoice_recipient(array $student): array {
 const INVOICE_ADDRESS_FROM_CENTS = 40000;
 
 /**
+ * Whether a student's postal address is missing: trimmed, it is empty. One rule
+ * for create_invoice(), which refuses an invoice above the threshold without
+ * one, and for family_next_steps(), which puts „Anschrift eintragen" on the
+ * family's list for exactly that reason (ADR 0020, §7 and §11).
+ */
+function postal_address_missing(array $student): bool { return trim((string)($student['address'] ?? '')) === ''; }
+
+/**
  * The span one charge actually paid for, as [from, to].
  *
  * Two dates on a charge answer two different questions. period_from and
@@ -293,11 +301,10 @@ function create_invoice(int $studentId, array $chargeIds, string $issuedOn = '',
         }
 
         $recipient = invoice_recipient($student);
-        $recipientAddress = $recipient['address'];
         // The threshold is on the gross of this document, so it cannot be known
         // from the settings the way the issuer's own details can: it is checked
         // here, where the charges are finally added up.
-        if ($gross > INVOICE_ADDRESS_FROM_CENTS && trim((string)$recipientAddress) === '')
+        if ($gross > INVOICE_ADDRESS_FROM_CENTS && postal_address_missing($student))
             throw new UserError(t('Über 400 € gehört die Anschrift der Rechnungsempfängerin oder des Rechnungsempfängers auf die Rechnung (§ 11 Abs 1 UStG). Sie steht beim Kind unter „Anschrift“.',
                                   'Above 400 € the recipient’s postal address belongs on the invoice (§ 11 Abs 1 UStG). It goes on the child’s record under “Anschrift”.'));
 

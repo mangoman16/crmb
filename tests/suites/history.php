@@ -183,7 +183,9 @@ is_same(['rot, blau', 'ja', '27.01.2019'], array_map(fn($c, $p) => history_value
         'a list joined with commas, a box as ja, a date as she writes one');
 is_same('—', history_value($changes['field:'.$since]['from'], 'field:'.$since), 'and an empty value as a dash');
 tracked('students', $kid, 'Feld Test', fn() => run('UPDATE field_values SET value_json=? WHERE student_id=? AND field_id=?', ['false', $kid, $photos]));
-is_same('nein', history_value(version_changes(history_for('students', $kid)[0])['field:'.$photos]['to'], 'field:'.$photos), 'an unticked box reads nein');
+$unticked = version_changes(history_for('students', $kid)[0])['field:'.$photos] ?? [];
+is_same(['ja', '—'], [history_value($unticked['from'] ?? null, 'field:'.$photos), history_value($unticked['to'] ?? null, 'field:'.$photos)],
+        'unticking reads „ja → —“: an unticked box is empty, by the same rule as a required one');
 $_SESSION['locale'] = 'en';
 is_same('Favourite colour', history_field_label('field:'.$colour), 'in English where the field has an English name');
 unset($_SESSION['locale']);
@@ -195,8 +197,14 @@ tracked('students', $kid, 'Feld Test', fn() => run('INSERT INTO field_values (st
 is_same([], version_changes(history_for('students', $kid)[0]), 'a field written empty where nothing was is no change worth a line');
 tracked('students', $kid, 'Feld Test', fn() => run('DELETE FROM students WHERE id=?', [$kid]), 'delete');
 $kept = json_decode((string)history_for('students', $kid)[0]['before_json'], true);
-is_same(['["rot","blau"]', 'false', '"2019-01-27"'], [$kept['field:'.$colour] ?? null, $kept['field:'.$photos] ?? null, $kept['field:'.$since] ?? null],
-        'a deleted student’s line keeps their custom values');
+is_same(['["rot","blau"]', null, '"2019-01-27"'], [$kept['field:'.$colour] ?? null, $kept['field:'.$photos] ?? null, $kept['field:'.$since] ?? null],
+        'a deleted student’s line keeps their custom values, every one that holds something');
+$quiet = make_student(['first_name'=>'Still', 'last_name'=>'Kind', 'level_id'=>(int)(level_default()['id'] ?? 0) ?: null]);
+run('DELETE FROM record_versions');
+act('student_save', ['id'=>(string)$quiet, 'revision'=>'1', 'first_name'=>'Still', 'last_name'=>'Kind', 'email'=>'', 'birth_date'=>'',
+    'joined_on'=>'2025-01-01', 'ended_on'=>'', 'status'=>'active', 'internal_notes'=>'', 'address'=>'', 'phone'=>'']);
+is_same([], version_changes(history_for('students', $quiet)[0] ?? ['before_json'=>null, 'after_json'=>null, 'entity'=>'students']),
+        'a staff save that posts nothing for a box with no stored row logs no change: an unticked box is nothing, not „nein“');
 
 case_('What a family writes is labelled, and a contact’s line does not repeat whose it is');
 foreach (['address'=>'Anschrift', 'phone'=>'Telefonnummer', 'owner_name'=>'Name', 'relation_label'=>'Beziehung', 'is_primary'=>'Standardkontakt'] as $column => $word)

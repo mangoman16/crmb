@@ -6,11 +6,17 @@ function current_user(bool $reload=false): ?array {
     if($reload) { $resolved=false; $cached=null; }
     if($resolved) return $cached;
     $resolved=true;
-    if(empty($_SESSION['user_id'])) return $cached=null;
+    // Nobody signed in is nobody viewing as anybody either: an id left over
+    // from a session that ended is forgotten here, wherever it is first asked
+    // (security review F1).
+    if(empty($_SESSION['user_id'])) { unset($_SESSION['impersonator_id']); return $cached=null; }
     $a=one('SELECT * FROM accounts WHERE id=?',[(int)$_SESSION['user_id']]);
     $expired=time()-(int)($_SESSION['last_seen']??0)>(int)config('session_idle_minutes')*60;
     if(!$a || $a['state']!=='active' || !$a['verified_at'] || (int)$a['auth_version']!==(int)($_SESSION['auth_version']??0) || $expired) {
-        unset($_SESSION['user_id'],$_SESSION['auth_version']); return $cached=null;
+        // A view through somebody's eyes ends with the session it was opened
+        // in. Left behind, it handed whoever signed in next on that browser
+        // „Ansicht beenden" - and the staff member's account (security review F1).
+        unset($_SESSION['user_id'],$_SESSION['auth_version'],$_SESSION['impersonator_id']); return $cached=null;
     }
     $_SESSION['last_seen']=time(); return $cached=$a;
 }
@@ -54,7 +60,8 @@ function may_see_account_picture(array $viewer, array $account): bool {
 function require_user(): array { $a=current_user(); if(!$a) go('login'); return $a; }
 function require_staff(): array { $a=require_user(); if(!is_staff($a)) throw new UserError(t('Kein Zugriff.','Access denied.')); return $a; }
 function require_admin(): array { $a=require_user(); if($a['role']!=='admin') throw new UserError(t('Nur für Administratoren.','Administrators only.')); return $a; }
-function sign_in(array $a): void { session_regenerate_id(true); $_SESSION['user_id']=(int)$a['id']; $_SESSION['auth_version']=(int)$a['auth_version']; $_SESSION['last_seen']=time(); $_SESSION['locale']=$a['locale']; $_SESSION['csrf']=bin2hex(random_bytes(32)); current_user(true); }
+/** A new session for $a, and nothing of the one before it: no view through somebody else's eyes (F1). */
+function sign_in(array $a): void { session_regenerate_id(true); unset($_SESSION['impersonator_id']); $_SESSION['user_id']=(int)$a['id']; $_SESSION['auth_version']=(int)$a['auth_version']; $_SESSION['last_seen']=time(); $_SESSION['locale']=$a['locale']; $_SESSION['csrf']=bin2hex(random_bytes(32)); current_user(true); }
 function strong_password(string $p): string {
     if(strlen($p)<12 || strlen($p)>72) throw new UserError(t('Das Passwort muss 12 bis 72 Byte lang sein. Umlaute zählen doppelt.','The password must be 12 to 72 bytes long. Accented characters count double.'));
     // A 12-character minimum alone still admits these; they are the passwords an
@@ -229,6 +236,13 @@ function give_every_account_a_username(): int {
  * 1. A value that fails its format - email_is_dot_atom() or USERNAME_PATTERN -
  *    is never looked up [M1]. Nothing outside atext reaches the collation.
  * 2. Two literal statements, one per kind. The column is never interpolated.
+ *    A plain read for a sign-in: under REPEATABLE READ, FOR UPDATE takes a
+ *    record lock on a login that exists and only a gap lock on one that does
+ *    not, so concurrent sign-ins queued only for real logins, and the wait said
+ *    which exist (security review F2). The login case's one write, the rehash,
+ *    is conditional on the hash it verified instead. „Vergessen" passes $lock,
+ *    and ' FOR UPDATE' is appended as a literal: two requests at once must not
+ *    leave two live links (ADR 0020, §3 and §4 as amended).
  * 3. A row counts only if it is exactly what was typed, compared in PHP after
  *    normalising both sides. utf8mb4_unicode_ci folds accents, ß against ss and
  *    full-width letters (ADR 0007); a spelling that reaches a row only through
@@ -240,15 +254,15 @@ function give_every_account_a_username(): int {
  * The caller has already counted the attempt under the typed value
  * (sign_in_identity()); nothing here decides what is counted.
  */
-function account_for_sign_in(string $kind, string $value): ?array {
+function account_for_sign_in(string $kind, string $value, bool $lock = false): ?array {
     if($kind==='address') {
         if(!email_is_dot_atom($value)) return null;
-        $a=one('SELECT * FROM accounts WHERE email=? FOR UPDATE',[$value]);
+        $a=one('SELECT * FROM accounts WHERE email=?'.($lock?' FOR UPDATE':''),[$value]);
         return $a && email_normalised((string)$a['email'])===$value ? $a : null;
     }
     if($kind==='username') {
         if(!preg_match(USERNAME_PATTERN,$value)) return null;
-        $a=one('SELECT * FROM accounts WHERE username=? FOR UPDATE',[$value]);
+        $a=one('SELECT * FROM accounts WHERE username=?'.($lock?' FOR UPDATE':''),[$value]);
         return $a && (string)$a['username']===$value ? $a : null;
     }
     throw new LogicException('Not a kind of sign-in: '.$kind);
@@ -357,6 +371,16 @@ function token_record(string $hash,bool $lock=false): ?array {
  * without a date rather than guessing one from accounts.created_at, which a
  * later re-invitation would make wrong.
  */
+/**
+ * Whether staff may have a link for a new password mailed to this login: only
+ * to one in use, active and verified (ADR 0020, §5). An invitation is sent
+ * again instead; a suspended login is restored first. One rule for the
+ * account_state action and for the card that offers the button, so the card
+ * never offers what the action refuses.
+ */
+function reset_link_possible(array $account): bool {
+    return ($account['state'] ?? '')==='active' && !empty($account['verified_at']);
+}
 function invitation_dates(int $accountId): ?array {
     return one("SELECT created_at,expires_at FROM auth_tokens WHERE account_id=? AND purpose='invite' ORDER BY id DESC LIMIT 1",[$accountId]);
 }
@@ -394,15 +418,39 @@ function send_account_token(array $account,string $purpose,?string $email=null):
     $token=make_token((int)$account['id'],$purpose,$email);
     $en=$account['locale']==='en';
     $subjects=['invite'=>$en?'Your badminton invitation':'Deine Badminton-Einladung','reset'=>$en?'Reset your password':'Passwort zurücksetzen','email'=>$en?'Verify your email address':'E-Mail-Adresse bestätigen'];
-    // An invitation and a reset say what the login is called, because nobody
-    // chose it; an invitation also says it can be changed on the page the link
-    // opens, and that the address signs in as well (ADR 0020, §2 and §6). A
-    // changed address is being confirmed by somebody already signed in, who
-    // knows it. One builder for every one of these mails, „vergessen" included.
-    $username=$purpose==='email' ? '' : ($en?'Your username: ':'Dein Benutzername: ').($account['username']??'')."\n"
-        .($purpose==='invite' ? ($en?'You can change it while setting up. You can also sign in with this email address.'
-                                    :'Du kannst ihn beim Einrichten ändern. Anmelden kannst du dich auch mit dieser E-Mail-Adresse.')."\n" : '')."\n";
-    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n".$username.($en?'Open this link to continue:':'Öffne diesen Link, um fortzufahren:')."\n".url('activate',['token'=>$token])."\n\n".($purpose==='invite'?($en?'Valid for 48 hours.':'48 Stunden gültig.'):($en?'Valid for one hour.':'Eine Stunde gültig.'))."\n\n".($en?'If you did not expect this email, you can ignore it.':'Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.');
+    // The words are the designer's (spec §3.1), one text per purpose whoever
+    // asked for it, so the builder needs no sender. An invitation and a reset
+    // say what the login is called, because nobody chose it, and that the
+    // address signs in too (ADR 0020, §2 and §6). A changed address is being
+    // confirmed by somebody already signed in, who knows both. The link is the
+    // only machine-made part.
+    $link=url('activate',['token'=>$token]);
+    $club=trim((string)setting('org_name'));
+    $hello=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n";
+    $named=($en?'Your username: ':'Dein Benutzername: ').($account['username']??'')."\n";
+    $body=match($purpose) {
+        'invite' => $hello
+            .($en ? ($club!==''?"you have been invited to {$club}'s portal.":'you have been invited to the badminton portal.')
+                  : ($club!==''?"du bist ins Portal von {$club} eingeladen.":'du bist ins Badminton-Portal eingeladen.'))."\n\n"
+            .$named
+            .($en?'While setting up you can keep it or change it. You can sign in with it or with this email address.'
+                 :'Beim Einrichten kannst du ihn so lassen oder ändern. Anmelden kannst du dich damit oder mit dieser E-Mail-Adresse.')."\n\n"
+            .($en?'Open this link, set your password and then complete your details:':'Öffne diesen Link, leg dein Passwort fest und ergänze danach deine Angaben:')."\n".$link."\n\n"
+            .($en?'The link is valid for 48 hours. If it has expired, “Forgot your username or password” sends a new one.'
+                 :'Der Link gilt 48 Stunden. Ist er abgelaufen, bekommst du unter „Benutzername oder Passwort vergessen“ einen neuen.')."\n\n"
+            .($en?'If you did not expect this email, you can ignore it.':'Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.'),
+        'reset' => $hello
+            .($en?'a link to set a new password was requested for your login.':'für deinen Zugang wurde ein Link für ein neues Passwort angefordert.')."\n\n"
+            .$named
+            .($en?'You can sign in with it or with this email address.':'Anmelden kannst du dich damit oder mit dieser E-Mail-Adresse.')."\n\n"
+            .($en?'If you still know your password, there is nothing to do – it keeps working.':'Weißt du dein Passwort noch, ist nichts zu tun – es gilt weiter.')."\n"
+            .($en?'Otherwise set a new one here (valid for one hour):':'Sonst leg hier ein neues fest (eine Stunde gültig):')."\n".$link."\n\n"
+            .($en?'If that was not you, you can ignore this email.':'Warst du das nicht, kannst du diese E-Mail ignorieren.'),
+        default => $hello
+            .($en?'Open this link to continue:':'Öffne diesen Link, um fortzufahren:')."\n".$link."\n\n"
+            .($en?'Valid for one hour.':'Eine Stunde gültig.')."\n\n"
+            .($en?'If you did not expect this email, you can ignore it.':'Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.'),
+    };
     queue_mail((int)$account['id'],$email??$account['email'],$subjects[$purpose],$body,'security');
 }
 function unsubscribe_signature(int $id,string $category): string { return hash_hmac('sha256',$id.'|'.$category,base64_decode(config('app_key'))); }

@@ -370,6 +370,13 @@ is_same(['Anmeldung nicht möglich. Bitte Benutzername oder E-Mail-Adresse und P
 ok(!str_contains((string)reset($said), 'Zugangsdaten'), 'which no longer says „Zugangsdaten“');
 $_POST = [];
 
+case_('An outdated password hash is brought to today’s cost by the next correct sign-in');
+$cheap = make_account(['username' => 'alt.hash', 'email' => 'alt.hash@beispiel.test', 'password_hash' => password_hash($familyPassword, PASSWORD_BCRYPT, ['cost' => 4])]);
+does_not_throw(fn() => submit('login', ['username' => 'alt.hash', 'password' => $familyPassword]), 'the old hash still signs in');
+$renewed = (string)scalar('SELECT password_hash FROM accounts WHERE id=?', [$cheap]);
+ok(!password_needs_rehash($renewed, PASSWORD_DEFAULT) && password_verify($familyPassword, $renewed), 'and is replaced by one at today’s cost, of the same password');
+sign_out();
+
 case_('A restored database without the comparison hash gets one from its first sign-in, once');
 /* R9's one repair. Made before the action's transaction opens, so the refusal
    that follows cannot roll it back and make every refusal hash again. */

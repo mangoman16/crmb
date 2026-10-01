@@ -164,17 +164,20 @@ function entity_title(string $entity, ?array $row): string {
  * field_values has no id of its own to be tracked by, so each of its rows for
  * this student is added as a pseudo-column field:<field_id> holding its
  * value_json. A save of the student and its fields is then one line, and a
- * deleted student's line keeps their custom values. A row holding nothing - an
- * empty text, no option - is left out, so a save that merely wrote empty rows
- * for fields nobody filled in is no change. These keys never reach SQL: there
- * is no undo to write them back.
+ * deleted student's line keeps their custom values. A value that is not filled
+ * in, by custom_value_empty() - the rule a required field is refused by, in
+ * app/domain.php, called only while a request runs, as history_field_label()
+ * calls field_label() - is
+ * left out, so a save that merely wrote empty rows for fields nobody filled in
+ * is no change. An unticked box is one of those: unticking reads „ja → —“, not
+ * „ja → nein“. These keys never reach SQL: there is no undo to write them back.
  */
 function entity_snapshot(string $entity, int $id): ?array {
     tracked_entity($entity);
     $row = one('SELECT * FROM '.$entity.' WHERE id=?', [$id]);
     if ($row === null || $entity !== 'students') return $row;
     foreach (rows('SELECT field_id,value_json FROM field_values WHERE student_id=? ORDER BY field_id', [$id]) as $value)
-        if (!in_array((string)$value['value_json'], ['""', '[]', 'null'], true))
+        if (!custom_value_empty(json_decode((string)$value['value_json'], true)))
             $row['field:'.(int)$value['field_id']] = (string)$value['value_json'];
     return $row;
 }
@@ -207,8 +210,13 @@ function history_never_recorded(string $entity): array {
  * A creation and a deletion keep the whole row on purpose: for a creation it is
  * what was entered, and for a deletion it is the only remaining description of
  * what used to be there.
+ *
+ * The actor is who is really signed in (audit()'s rule), unless the caller
+ * names one: $actor exists for the one change made before anybody is signed in
+ * - the username chosen while accepting an invitation, whose actor is the
+ * holder of the link (change_own_username()). Nothing else passes it.
  */
-function history_record(string $entity, int $id, string $operation, string $label, ?array $before, ?array $after): int {
+function history_record(string $entity, int $id, string $operation, string $label, ?array $before, ?array $after, ?int $actor = null): int {
     tracked_entity($entity);
     $never = array_flip(history_never_recorded($entity));
     if ($before !== null) $before = array_diff_key($before, $never);
@@ -227,7 +235,7 @@ function history_record(string $entity, int $id, string $operation, string $labe
         [$entity, $id, $operation, mb_substr($label, 0, 160),
          $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE),
          $after  === null ? null : json_encode($after,  JSON_UNESCAPED_UNICODE),
-         $_SESSION['impersonator_id'] ?? (current_user()['id'] ?? null), now()]);
+         $actor ?? acting_account_id(), now()]);
     return (int)db()->lastInsertId();
 }
 
@@ -239,14 +247,15 @@ function history_record(string $entity, int $id, string $operation, string $labe
  * happen.
  *
  * $operation is 'update' normally, or 'delete' when $mutate removes the row.
+ * $actor is history_record()'s, for the one caller that has to name it.
  */
-function tracked(string $entity, int $id, string $label, callable $mutate, string $operation = 'update'): mixed {
+function tracked(string $entity, int $id, string $label, callable $mutate, string $operation = 'update', ?int $actor = null): mixed {
     tracked_entity($entity);
-    return transactional(function () use ($entity, $id, $label, $mutate, $operation) {
+    return transactional(function () use ($entity, $id, $label, $mutate, $operation, $actor) {
         $before = entity_snapshot($entity, $id);
         $result = $mutate();
         $after = $operation === 'delete' ? null : entity_snapshot($entity, $id);
-        history_record($entity, $id, $operation, $label, $before, $after);
+        history_record($entity, $id, $operation, $label, $before, $after, $actor);
         return $result;
     });
 }

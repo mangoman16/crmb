@@ -242,7 +242,7 @@ function dispatch_settings_or_messages(string $action): array {
         $outcome=change_own_username($u,post('username'));
         if($outcome==='unchanged'){flash(t('Das ist schon dein Benutzername.','That is already your username.'));return ['profile',[]];}
         if($outcome==='taken') {
-            flash(t('Dieser Benutzername ist schon vergeben. Bitte einen anderen wählen.','That username is already taken. Please choose another one.'),'error');
+            flash(username_taken_answer(),'error');
             remember_input('username_change');
             return ['profile',[]];
         }

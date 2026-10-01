@@ -300,10 +300,6 @@ function demo_fill(bool $force = false): array {
         // thread. Example data that lies about the app is worse than none.
         run('INSERT INTO thread_participants (thread_id,account_id,joined_at) VALUES (?,?,?)',
             [$thread, $accounts[demo_address($first[0], $first[1])], now()]);
-        // Who is in a thread is a row of its own, and without it the example
-        // family opened Nachrichten and was told they had none - while the
-        // trainer could see the conversation, because staff see every staff
-        // thread. Example data that lies about the app is worse than none.
 
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',
             [$thread, $accounts[demo_address($first[0], $first[1])], 'Hallo! Welchen Schläger sollen wir für Lena kaufen?', now()]);

@@ -96,7 +96,7 @@ release and emptied again for the next.
 - A status to choose — „Automatisch", „Abwesend", „Als offline anzeigen" — for trainers and administrators, a coloured dot, and when each account was online over the last 30 days: [P.1–P.10](#online-status-and-when-somebody-was-online)
 - Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
-- Everybody has a username and an address of their own, and signs in with either in one box; logins are made by invitation only; families fill in their own details, and every change is in the change log (ADR 0020): A.1–A.24
+- Everybody has a username and an address of their own, and signs in with either in one box; logins are made by invitation only; families fill in their own details, and every change is in the change log (ADR 0020): A.1–A.27
 
 ---
 
@@ -1641,6 +1641,27 @@ where it says so, after the views for it are in
   Every existing login signs in with its email address exactly as before, and
   now also with a username made from its name (Mein Konto shows it). Nobody was
   mailed about it.
+**After the reviews of the first build**
+
+- [ ] **A.25** On the phone, as the trainer, „Portal als {Familie} ansehen", then
+  leave the phone until the session times out (or set „Abmelden nach (Minuten)"
+  low on a copy). Open the portal again: the sign-in page, and **no** „Ansicht
+  beenden" anywhere. Sign in as somebody else on that phone: they are
+  themselves, with no bar about viewing anybody, and nothing they tap makes them
+  the trainer. The same after opening an invitation link on that phone.
+- [ ] **A.26** As the administrator, **Änderungen**: the username chosen on an
+  invitation page is listed under the name of the person who chose it, not as
+  „automatisch". A „Passwort vergessen" asked on a phone where a view had timed
+  out names nobody in the audit log.
+- [ ] **A.27** The flashes say what happened, in plain words: a family's save,
+  „Deine Angaben sind gespeichert."; a family's save after somebody else saved
+  the same child, „Inzwischen hat jemand anderes etwas an diesem Profil
+  gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal
+  speichern." with the typed values still in the boxes; removing a contact,
+  „Entfernt: {Name} ({Beziehung}), {Telefon}. Aus Versehen? …"; the access
+  card's invitation, resend and reset link each name the address the mail went
+  to.
+
 - [ ] **A.24** **(release)** `php tests/run.php` and `tests/mariadb-local.sh`
   are green apart from what the run lists as not covered; the collation cases
   (an address stored with capitals, ß read as ss) are covered only by the
