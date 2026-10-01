@@ -50,9 +50,9 @@ if(may_impersonate($user,$a)){start_form('impersonate',['id'=>$a['id'],'mode'=>'
          Only for a login in use: an invitation is sent again instead, and a
          suspended login is restored first. Nothing to undo if tapped by
          mistake: the old password works until the link is used. */
-if($mailReady && $a['state']==='active' && $a['verified_at']){start_form('account_state',['id'=>$a['id'],'mode'=>'reset_link'],'inline-form');submit_button(t('Link zum Zurücksetzen senden','Send a reset link'),'secondary');echo '</form>';}
+if($mailReady && reset_link_possible($a)){start_form('account_state',['id'=>$a['id'],'mode'=>'reset_link'],'inline-form');submit_button(t('Link zum Zurücksetzen senden','Send a reset link'),'secondary');echo '</form>';}
 $mode=$a['state']==='suspended'?'restore':'suspend';start_form('account_state',['id'=>$a['id'],'mode'=>$mode],'inline-form');submit_button($mode==='restore'?t('Zugang entsperren','Restore the access'):t('Zugang sperren','Suspend the access'),'secondary');?></form>
-<?php if($a['state']==='invited'){start_form('account_state',['id'=>$a['id'],'mode'=>'reinvite'],'inline-form');submit_button(t('Einladung erneut senden','Send the invitation again'),'secondary');echo '</form>';}?>
+<?php if($mailReady && $a['state']==='invited'){start_form('account_state',['id'=>$a['id'],'mode'=>'reinvite'],'inline-form');submit_button(t('Einladung erneut senden','Send the invitation again'),'secondary');echo '</form>';}?>
 <?php login_delete_details($a,t('Zugang löschen','Delete the access'),$deleteText,t('Zugang endgültig löschen','Delete the access for good')); ?>
 </div>
 <?php endif ?></div>

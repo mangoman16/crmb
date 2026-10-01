@@ -139,14 +139,16 @@ function select_field(string $name,string $label,array $options,mixed $value='',
  * A tick box with its label. $hint is said under the label, inside it, where
  * every other field's hint sits and in the same size - and inside the label, so
  * it is part of what a thumb can tap. As a paragraph of its own beside the box
- * it was louder than any hint on the page.
+ * it was louder than any hint on the page. $required prints the mark input()
+ * prints; the action decides whether an unticked box is refused, so the box
+ * itself carries no required attribute.
  */
-function check_field(string $name,string $label,bool $value=false,string $hint=''): void {
+function check_field(string $name,string $label,bool $value=false,string $hint='',bool $required=false): void {
     // An unticked box sends nothing at all, so "held, and absent" means unticked
     // rather than "no opinion" - checking holding_input() first is what tells the
     // two apart.
     if(holding_input()) $value=held_input($name,null)!==null;
-    echo '<label class="check"><input type="checkbox" name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label)
+    echo '<label class="check"><input type="checkbox" name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label).($required?' <span aria-hidden="true">*</span>':'')
         .($hint!==''?'<small>'.e($hint).'</small>':'').'</span></label>';
 }
 
@@ -442,11 +444,8 @@ function sidebar_nav(array $user,string $page): string {
  * other, which reads as a question about ownership rather than a request for
  * the person's name - and "Beziehung, z. B. Mutter" put the example inside the
  * label, where it stays on screen after the box has been filled in.
- *
- * $standard says whether this contact is, or would become, the one invoices and
- * reminders are sent to, which is the only reason the email address is required.
  */
-function contact_fields(array $contact=[], bool $standard=false): void {
+function contact_fields(array $contact=[]): void {
     echo '<div class="grid two">';
     input('owner_name',t('Name der Kontaktperson','Name of the contact'),$contact['owner_name']??'','text',true,
           '',t('z. B. Maria Hofer','e.g. Maria Hofer'));

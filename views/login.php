@@ -2,7 +2,7 @@
 /* One box for the username or the address, whichever somebody remembers (ADR
    0020, §3). Posted as `username`; the action decides by the „@", which a
    username can never contain. inputmode="email" puts „@" and „." on the
-   iPhone's first keyboard layer, and „." is in every username too. A refusal
+   iPhone's first keyboard layer, and „." is in most usernames too. A refusal
    is one sentence for every failure and brings back what was typed, so this
    page says nothing about what was typed. */ ?>
 <div class="auth-card card"><h1><?=e(t('Anmelden','Sign in'))?></h1>

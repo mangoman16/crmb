@@ -1206,6 +1206,8 @@ input[readonly]:not([type=checkbox]):not([type=radio]){background:var(--surface-
    Its explanation sits under the label and inside it (check_field()), the size
    of every other hint. */
 .check small{display:block;margin-top:4px}
+/* The required mark, teal as .field label span makes it on every other box. */
+.check span>[aria-hidden]{color:var(--teal)}
 /* The button in mail_not_ready_notice(): touching its sentence without this. */
 .notice>.row-actions{margin-top:12px}
 /* The family's intro above „Persönliche Daten", and „Anschrift und Telefon"

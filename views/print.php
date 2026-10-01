@@ -69,9 +69,11 @@ $minor = $student ? (($age = student_age($student['birth_date'] ?? null)) !== nu
         // invitation goes to it and so do the invoices, and it is the
         // student's own (ADR 0020, §1). No username: the address signs in, so
         // the sheet needs none.
-        print_field(t('E-Mail-Adresse (Anmeldung, Einladung, Rechnungen)','Email address (sign-in, invitation, invoices)'), 34,
+        // print_field() brackets its hint, so the label carries none of its
+        // own: two bracket pairs on one line read like a form generator.
+        print_field(t('E-Mail-Adresse für Anmeldung, Einladung und Rechnungen','Email address for signing in, invitations and invoices'), 34,
                     $student ? student_email($student) : '',
-                    t('Die eigene Adresse der Schülerin oder des Schülers – die der Eltern gehört zu den Kontakten','The student’s own address – a parent’s belongs with the contacts'), true);
+                    t('die eigene des Mitglieds – die der Eltern gehört unten zu den Notfallkontakten','the member’s own – a parent’s goes under Emergency contacts below'), true);
         // Asked for on paper by every club form and, above 400 €, by § 11 UStG.
         print_field(t('Anschrift','Postal address'), 34, (string)($student['address'] ?? ''),
                     t('Straße, PLZ und Ort','Street, postcode and town'), true);

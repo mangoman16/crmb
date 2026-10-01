@@ -150,22 +150,21 @@ select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),arra
 <?php
 /* The custom fields: 'view' ones are read to a family, 'edit' ones are theirs
    to fill in, 'internal' ones they never see. A required field is required of
-   whoever fills it in (ADR 0020, §7): the family's at 'edit', hers otherwise -
-   so the mark and the browser's own check follow that, and an empty one that
+   whoever fills it in (ADR 0020, §7), which custom_field_required_of() says -
+   so the mark and the browser's own check follow it, and an empty one that
    is the family's says so to her instead of holding up her save. Each field
    carries the anchor the family's „Noch zu ergänzen" leads to. */
 $fields=$id?array_filter(field_definitions(),fn($f)=>$staff || $f['visibility']!=='internal'):[];if($fields): ?><section class="card" id="more-details"><h2><?=e(t('Weitere Angaben','Additional details'))?></h2><div class="grid two">
 <?php $lastSection='';foreach($fields as $f):$v=field_value($id,(int)$f['id']);$label=field_label($f);$n='custom['.$f['id'].']';
-$familyFills=$f['visibility']==='edit';
-$required=(bool)$f['required'] && $staff!==$familyFills;
-$hint=$f['required'] && $familyFills && custom_value_empty($v)
+$required=custom_field_required_of($f,$staff);
+$hint=$f['required'] && $f['visibility']==='edit' && custom_value_empty($v)
     ? ($staff?t('Fehlt noch. Das füllt die Familie aus.','Still missing. The family fills this in.'):t('Bitte ausfüllen.','Please fill this in.'))
     : '';
 if($f['section_name'] && $f['section_name']!==$lastSection){echo '<h3 class="full">'.e($f['section_name']).'</h3>';$lastSection=$f['section_name'];}
 echo '<div id="field-'.(int)$f['id'].'">';
 if(!$staff && $f['visibility']==='view') echo '<div class="field"><label>'.e($label).'</label><div class="readonly">'.e(is_array($v)?implode(', ',$v):(is_bool($v)?($v?t('Ja','Yes'):t('Nein','No')):($v??'–'))).'</div></div>';
 elseif(in_array($f['field_type'],['select','multiselect'],true)){$opts=json_decode($f['options_json'],true);foreach(is_array($v)?$v:[$v] as $x)if($x!==null&&$x!==''&&!in_array($x,$opts,true))$opts[]=$x;select_field($n,$label,array_combine($opts,$opts),$v,$required,$f['field_type']==='multiselect',$hint);}
-elseif($f['field_type']==='checkbox')check_field($n,$label.($required?' *':''),(bool)$v,$hint);
+elseif($f['field_type']==='checkbox')check_field($n,$label,(bool)$v,$hint,$required);
 else input($n,$label,$v??'',$f['field_type']==='number'?'text':$f['field_type'],$required,$hint);
 echo '</div>';
 endforeach ?></div></section><?php endif ?>
@@ -277,7 +276,7 @@ $loginState=$login['state']??'none'; ?>
            §5). Not destructive: the old password works until the link is used,
            and the link lapses in an hour. Only for a login in use, and only
            when mail can go out - a button that can only fail is not offered. */
-        if($mailReady && $login['verified_at']){start_form('account_state',['id'=>$login['id'],'mode'=>'reset_link'],'inline-form');submit_button(t('Link zum Zurücksetzen senden','Send a reset link'),'secondary');echo '</form>';}
+        if($mailReady && reset_link_possible($login)){start_form('account_state',['id'=>$login['id'],'mode'=>'reset_link'],'inline-form');submit_button(t('Link zum Zurücksetzen senden','Send a reset link'),'secondary');echo '</form>';}
         start_form('account_state',['id'=>$login['id'],'mode'=>'suspend'],'inline-form');submit_button(t('Zugang sperren','Suspend the access'),'secondary');echo '</form>';
         login_delete_details($login,t('Zugang löschen','Delete the access'),$deleteText,t('Zugang endgültig löschen','Delete the access for good'));
     else:
@@ -321,7 +320,7 @@ $loginState=$login['state']??'none'; ?>
              back into this form and no other. */ ?>
     <details <?=held_for('contact_save',(int)$c['id'])!==[]?'open':''?>><summary><?=e(t('Kontakt bearbeiten','Edit contact'))?></summary>
         <?php start_form('contact_save',['student_id'=>$id,'id'=>$c['id']]);
-        contact_fields($c,(bool)$c['is_primary']);
+        contact_fields($c);
         if((int)$c['is_primary'])echo '<p class="muted">'.e(t('Das ist der Standardkontakt. Um das zu ändern, setze bei einem anderen Kontakt das Häkchen.','This is the standard contact. To change that, tick the box on another contact.')).'</p>';
         else check_field('is_primary',t('Als Standardkontakt verwenden','Use as the standard contact'),false);
         submit_button();?></form>
@@ -330,9 +329,7 @@ $loginState=$login['state']??'none'; ?>
 </section>
 <section class="card" id="add-contact"><h2><?=e(t('Notfallkontakt hinzufügen','Add an emergency contact'))?></h2>
     <?php start_form('contact_add',['student_id'=>$id]);
-    // The first contact a child has is the standard one by definition, so it is
-    // the one that needs an address to send an invoice to.
-    contact_fields([],!$contacts);
+    contact_fields();
     if($contacts)check_field('is_primary',t('Als Standardkontakt verwenden','Use as the standard contact'),false);
     submit_button(t('Kontakt hinzufügen','Add contact'));?></form>
 </section>

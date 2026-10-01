@@ -536,6 +536,11 @@ ok(preg_match('~<select[^>]*name="custom\['.$shirt.'\]"[^>]*required~', $profil)
    'a required field the family fills in is required of them, and asked for');
 ok(str_contains($profil, e('T-Shirt-Größe').' <span aria-hidden="true">*</span>'), 'with the same mark every required box has');
 ok(str_contains(render_view('dashboard'), '<h2>'.e('Noch zu ergänzen').'</h2>'), 'the overview shows the same card');
+$photos = fixture('field_definitions', ['label'=>'Fotos erlaubt', 'label_en'=>'', 'field_type'=>'checkbox', 'section_name'=>'',
+    'options_json'=>'[]', 'default_json'=>'false', 'required'=>1, 'visibility'=>'edit', 'sort_order'=>0, 'archived'=>0]);
+ok(str_contains(render_view('student', ['id'=>$lena]), '<span>'.e('Fotos erlaubt').' <span aria-hidden="true">*</span>'),
+   'a required tick box carries the same mark as every other required box');
+run('DELETE FROM field_definitions WHERE id=?', [$photos]);
 
 case_('Staff are never held up by a field the family fills in');
 sign_in_as($trainer);
@@ -592,7 +597,13 @@ ok(!str_contains($team, 'account_create') && !str_contains($team, 'name="passwor
 ok(str_contains($team, 'name="mode" value="reset_link"'), 'a team login in use can be sent a reset link');
 mail_ready(false);
 $team = render_view('accounts');
+$waiting = make_account(['role'=>'trainer', 'name'=>'Neue Trainerin', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
 ok(!str_contains($team, 'value="account_invite"') && str_contains($team, e('Einladen geht noch nicht')), 'with mail not ready the invite card says why instead');
+ok(!str_contains(render_view('accounts'), 'value="reinvite"'), 'and no invitation is offered again that could only be refused');
+mail_ready(true);
+ok(str_contains(render_view('accounts'), 'value="reinvite"'), 'which it is once mail can go out');
+run('DELETE FROM accounts WHERE id=?', [$waiting]);
+mail_ready(false);
 mail_ready(true);
 
 case_('Änderungen separates what families changed');
