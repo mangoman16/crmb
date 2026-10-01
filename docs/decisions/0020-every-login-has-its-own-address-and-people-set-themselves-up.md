@@ -5,12 +5,21 @@ date: 2026-09-30
 
 # 0020. Every login has its own address, and people set themselves up
 
-*Amended on 2026-10-01, after commit `7f891a5`, from the designer's revised screen specification:*
+*Amended on 2026-09-30, after commit `7f891a5`, from the designer's revised screen specification:*
 
 - *the forgot page keeps „Oder frag deine Trainerin – sie kann dir deinen Benutzernamen sagen.",
   which is the owner's decision;*
 - *the sign-in refusal is reworded in plain words (§3);*
 - *five asks of the specification are decided in §10.*
+
+*Amended on 2026-10-01, after the code and security reviews of `722b8f9`:*
+
+- *the sign-in lookup no longer locks the row, and the rehash is conditional (§3, security F2);*
+- *the "taken" answer for a username is the one bounded exception to "never tell a family whether
+  a username has a login" (§2, security N3);*
+- *a username chosen on the activation page names its chooser in the change log (§2, code
+  review 3);*
+- *four rules each get one function, and `demo_fill()` is named as the exception it is (§11).*
 
 This record supersedes the shared-address parts of ADR 0019, its uncommitted third amendment
 included, before any of them shipped. §8 lists what of 0019 still stands.
@@ -187,33 +196,57 @@ stays.
 
 **Only the holder changes it**, in two places and through one function.
 
-**`change_own_username(array $account, string $typed): string`** lives in `app/actions.php`,
-beside `change_account_email()`. It is `username_change`'s body today, moved:
+**`change_own_username(array $account, string $typed, ?int $actor = null): string`** lives in
+`app/actions.php`, beside `change_account_email()`. It is `username_change`'s body today, moved:
 
 1. `username_value()`.
 2. `'unchanged'` when the value is the same.
 3. `lock_row('accounts', …)` [S6].
 4. `SELECT id … WHERE username=? FOR UPDATE`. When the name is taken:
    - `throttle('username-taken', account_identity(…), 5, 86400)` [S2];
-   - `audit('account.username_taken')`;
+   - `audit('account.username_taken', …, $actor)`;
    - it returns `'taken'`, without a throw [R3].
-5. Otherwise `tracked('accounts', …)` around the `UPDATE`, then
-   `audit('account.username_changed')`, then `'changed'`.
+5. Otherwise `tracked('accounts', …, $actor)` around the `UPDATE`, then
+   `audit('account.username_changed', …, $actor)`, then `'changed'`.
 
 The caller flashes, holds the form and chooses the page.
 
 **The two places:**
 
 - **Mein Konto** (`username_change`) is unchanged. It asks for `current_password` [N5] and
-  refuses while staff are impersonating.
+  refuses while staff are impersonating. It passes no `$actor`: the session names the holder.
 - **The activation page, invite branch.** The username is an editable box, filled in with the
   generated one.
   - The token proves the holder, so no current password is asked.
-  - Before the activating `UPDATE`, a changed value goes through `change_own_username()`.
+  - Before the activating `UPDATE`, a changed value goes through `change_own_username()`, with
+    **`$actor = (int)$r['account_id']`**, the token's own login.
+  - At that moment nobody is signed in, so without it the change log and the audit log would
+    say „automatisch". With it, the line names the person who chose the username.
   - On `'taken'`, the action returns to the activation page with the flash and the form held.
     It has activated nothing.
   - The password boxes come back empty, because `is_secret_field()` never holds them.
 - The **reset** branch keeps its read-only box [N10].
+
+**The explicit actor [code review 3].**
+
+- `tracked()`, `history_record()` and `audit()` each gain an optional last parameter,
+  `?int $actor = null`.
+- `null` means what it means today: the impersonator, otherwise the signed-in login, otherwise
+  nobody.
+- **Only the activation page passes one**, and only the token's `account_id`, read from the
+  locked `token_record()`. It is never taken from posted input.
+- Every other caller is unchanged.
+
+**The "taken" answer is the one bounded exception [N3, S2].** Saying „Diesen Benutzernamen hat
+schon jemand" tells the person that some login has that username. It is allowed, and only here:
+
+- only to somebody proven to be a login's holder: signed in with their password on Mein Konto,
+  or holding a live invitation token on the activation page;
+- at most five "taken" answers a day per login (`username-taken`), each audited with its actor;
+- a username is not a secret (0019 §1), while an address never gets such an answer.
+
+The sign-in and „vergessen" pages still never answer it, and the "Must not" line says so with
+this exception.
 
 Staff never change another person's username (0019 §8).
 
@@ -233,13 +266,17 @@ Staff never change another person's username (0019 §8).
 A username can never contain `@`, because its alphabet is `a–z 0–9 . -`. The two kinds cannot
 overlap, and the input's shape alone decides.
 
-**One lookup**, `account_for_sign_in(string $kind, string $value): ?array` in `app/auth.php`:
+**One lookup**, `account_for_sign_in(string $kind, string $value, bool $lock = false): ?array` in
+`app/auth.php`:
 
 1. **Format gate [M1].** An address that fails `email_is_dot_atom()`, or a username that fails
    `USERNAME_PATTERN`, is never looked up. It gives `null`.
 2. **Two literal statements**, with no column name interpolated:
-   - `SELECT * FROM accounts WHERE email=? FOR UPDATE`;
-   - `SELECT * FROM accounts WHERE username=? FOR UPDATE`.
+   - `SELECT * FROM accounts WHERE email=?`;
+   - `SELECT * FROM accounts WHERE username=?`.
+
+   ` FOR UPDATE` is appended, as a literal, only when `$lock` is true, the way `token_record()`
+   does it.
 3. **Exact match.** A row is returned only if `email_normalised($row['email']) === $value`, or
    `$row['username'] === $value`. Otherwise the answer is `null`.
    - A spelling that reaches a row only through `utf8mb4_unicode_ci`, which is the fold ADR 0007
@@ -249,9 +286,30 @@ overlap, and the input's shape alone decides.
    - A legacy stored address with capitals still matches, because both sides are normalised.
    - A legacy quoted address can never pass the gate. Its holder signs in with the username.
 
+**Sign-in does not lock [F2].**
+
+- **The problem.** Under InnoDB's REPEATABLE READ, `FOR UPDATE` on a row that exists takes an
+  exclusive record lock. On a row that is missing it takes only a gap lock, and gap locks do not
+  conflict. The lock was held through `password_verify()` until commit. So concurrent sign-ins
+  queued behind each other only when the login existed, and the time to answer told an outsider
+  whether a username or an address belonged to a member.
+- **The fix.** `login` calls `account_for_sign_in(…)` without `$lock`: a plain, non-locking read.
+  Known and unknown inputs then take the same path through the engine.
+- **The rehash is conditional:**
+  `UPDATE accounts SET password_hash=? WHERE id=? AND password_hash=?`, with the hash just
+  verified as the last value. If the password changed in between, the newer hash is kept and the
+  rehash waits for the next sign-in.
+- **Nothing that the lock protected is lost.** A password change, a suspension or a reset that
+  commits while a sign-in is between its read and its answer raises `auth_version`. The session
+  that sign-in opens carries the old `auth_version`, and `current_user()` ends it on the next
+  request.
+- **„Vergessen" keeps its lock**: it calls `account_for_sign_in(…, true)` (§4). Its known inputs
+  already cost a token and a mail more than unknown ones, which §4 accepts. The lock stops two
+  requests at once from leaving two live links.
+
 **The `login` case:**
 
-1. `$a = account_for_sign_in(...attempted_sign_in())`.
+1. `$a = account_for_sign_in(...attempted_sign_in())`, without a lock.
 2. **Exactly one `password_verify()` on every path [M2].**
    - It checks against `$a['password_hash']` when there is one.
    - Otherwise it checks against `sign_in_dummy_hash()`: no row, a format failure, an inexact
@@ -268,8 +326,8 @@ overlap, and the input's shape alone decides.
      told where to go.
    - It is shown for every failure, so it says nothing about whether the login exists, is
      invited or is suspended.
-4. **On success** it rehashes if needed, then runs `sign_in()` and `landing_after_sign_in()`.
-   There is **no reset flash** (§8, R4).
+4. **On success** it runs the conditional rehash if needed, then `sign_in()` and
+   `landing_after_sign_in()`. There is **no reset flash** (§8, R4).
 
 0019's step 1, which refused any input containing `@`, is deleted. So is the `@` hint on the
 sign-in page.
@@ -315,7 +373,7 @@ address, is posted as `username`, and has `autocomplete="username"`.
 
 **The case:**
 
-1. `$a = account_for_sign_in(...attempted_sign_in())`.
+1. `$a = account_for_sign_in(...attempted_sign_in(), true)`, **with** the lock (§3).
 2. If there is an `$a` and `account_mail_ready()` is true:
    - an **active, verified** login gets `send_account_token($a, 'reset')`. That is a link valid
      for an hour, with its username, sent to `$a['email']` as stored and never to what was
@@ -330,8 +388,9 @@ address, is posted as `username`, and has `autocomplete="username"`.
 **`send_sign_in_details()` is deleted.** With one login per address, `send_account_token()`
 already writes this mail and names the username. That leaves one mail builder, not two.
 
-A known input costs a token and a queued mail more than an unknown one. That is a few inserts,
-the same difference 0019 had, and the mail itself tells the mailbox. It is accepted.
+A known input costs a token and a queued mail more than an unknown one, and its row lock can make
+a second request for it wait. That is a few inserts and a short wait, the same kind of difference
+0019 had, and the mail itself tells the mailbox. It is accepted.
 
 ### 5. Nobody sets another person's password (R-c, R-d)
 
@@ -362,6 +421,9 @@ today), and `invite_student()` (§6) for a student.
   - `account_state`'s existing rules decide who may. An administrator may do it for anybody but
     herself, and a trainer only for a student's login. Nobody does it for their own login, which
     uses Mein Konto or „vergessen";
+  - **`reset_link_possible(array $account): bool`** in `app/auth.php` is the one rule for which
+    logins may get one: active and verified (§11). The action refuses by it, and the access card
+    and Konten show the button by it;
   - it runs `send_account_token($a, 'reset')` to the login's own stored address, then
     `audit('account.reset_link')`;
   - staff see neither the password nor the link, because the outbox hides `security` bodies.
@@ -396,9 +458,13 @@ Then it writes:
 8. `send_account_token(…, 'invite')`;
 9. `audit('account.invited')`.
 
-It is **the only code in `app/` that sets `students.account_id`**. ADR 0010's "only
-`student_invite`" moves here. Migration 019 and the foreign key's `ON DELETE SET NULL` stay as
-0010 describes them.
+It is **the only code in `app/` that sets `students.account_id` for a real student**. ADR 0010's
+"only `student_invite`" moves here.
+
+- **The one exception is `demo_fill()`** (`app/demo.php`), which inserts its two example
+  students with their example logins already set. It writes only `is_demo=1` rows, which
+  `demo_clear()` removes, and it never touches a real student.
+- Migration 019 and the foreign key's `ON DELETE SET NULL` stay as 0010 describes them.
 
 **`student_invite`**, the access card's button, is `require_staff()`, then `lock_row()` on the
 student through `student()`, then `invite_student()`.
@@ -441,9 +507,10 @@ There is no new page, no new action and no new view file.
 still missing:
 
 - a birth date;
-- a postal address;
+- a postal address, by `postal_address_missing()` (below);
 - an emergency contact, when `primary_contact()` is null;
-- every custom field with `visibility='edit'` and `required=1` that is still empty.
+- every custom field with `visibility='edit'` that `custom_field_required_of()` (below) says the
+  family must fill in and that is still empty.
 
 **The phone is not on the list.** It is the member's own number, and a child may have none; the
 emergency contacts are who gets rung. An item that some families can never tick off teaches every
@@ -506,6 +573,9 @@ is on no invoice.
   - A family that empties the box makes such an invoice wait until somebody fills it in.
   - Staff can, on the same page; the refusal already says where.
   - The address is on „Noch zu ergänzen" for exactly this reason.
+- **`postal_address_missing(array $student): bool`** in `app/invoices.php`, beside
+  `INVOICE_ADDRESS_FROM_CENTS`, is the one "address missing" rule: the address, trimmed, is
+  empty. `create_invoice()`'s refusal and `family_next_steps()` both ask it (§11).
 - **The printed data sheet** (`views/print.php`) prints the current address and phone. It is a
   form to fill in or check, not a record of what was billed, so it follows the student.
 - Nothing else in `app/` or `views/` reads either column.
@@ -522,6 +592,13 @@ A required field is required of whoever fills it in.
   refused while one is empty, as today.
 - **Creating a student** refuses none. The create form carries no custom fields, because "a form
   with twenty boxes is a form somebody abandons". That is what the unused `$new` was for.
+- **`custom_field_required_of(array $field, bool $staff): bool`** in `app/domain.php` is the one
+  "required of whom" rule (§11):
+  - true for a family only when the field is required and at `'edit'`;
+  - true for staff only when the field is required and not at `'edit'`.
+
+  `save_custom_fields()`, `family_next_steps()` and the view's `required` attribute and mark all
+  ask it. Creation passes nothing to it, because it validates no emptiness.
 - `validate_custom()` is told whether an empty value is refused. The type checks (date, number,
   option) apply to every value that is not empty, for everybody.
 
@@ -586,7 +663,8 @@ Every family write names its student by id. It is authorised by `student()`'s sc
 
   `phone` serves the student and the contact alike.
 - **The actor** is the family's login, or the staff member who is impersonating it. That is how
-  `history_record()` already works.
+  `history_record()` already works. The one change made with nobody signed in, a username chosen
+  on the activation page, names its chooser through the explicit actor (§2).
 
 #### Undo: she sets the value back
 
@@ -609,9 +687,10 @@ No code is needed beyond the tracking above.
 | --- | --- |
 | §1: the username alphabet, lower case, no reserved names, not a secret | **Unchanged.** |
 | §2: the username functions in `core.php`, and `username_for_new_account()` | **Unchanged.** |
-| `username_change`: R3 (answer rather than throw), S2 (five "taken" a day), S6 (`lock_row` before `tracked`), N5 (`current_password`) | **Unchanged.** They now live inside `change_own_username()`, so the activation page follows the same rules. |
+| `username_change`: R3 (answer rather than throw), S2 (five "taken" a day), S6 (`lock_row` before `tracked`), N5 (`current_password`) | **Unchanged.** They now live inside `change_own_username()`, so the activation page follows the same rules. S2's "taken" answer is the one bounded exception to "never tell" (§2). |
 | M1, the dot-atom gate for writes and lookups; R2, `email_deliverable()` in `queue_mail()` | **Unchanged.** M1 now also gates sign-in. The exact-match check (§3) makes a collation fold harmless without it. |
 | M2, one `password_verify()` per failure path against the dummy hash; R9, the hash made by the runner and the nightly prune and repaired once by a request | **Unchanged**, and extended to the address path. |
+| 0019 §5's `FOR UPDATE` on the sign-in lookup | **Removed** (§3, F2). Sign-in reads without a lock, and the rehash is conditional. |
 | R6, the timing residual of a dormant hash | **Stands**, on both paths. |
 | R7, the sender compares normalised addresses; S1, the sender checks every token and mails the stored address | **Unchanged.** A forgot mail now carries one link, and the sender still checks every one. |
 | S4, `audit('account.password_reset')` on every reset | **Unchanged.** It also makes a link that staff asked for attributable. |
@@ -732,6 +811,27 @@ a layout choice for the designer; the rule it has to keep is the one it keeps. T
 outside the `student_save` form, because a form inside a form is thrown away. Nothing else moves
 with it.
 
+### 11. One rule, one function
+
+Each of these rules is asked in more than one place. Each is written once, and every place asks
+the function. A second spelling is the one that gets forgotten.
+
+| Rule | Function | Asked by |
+| --- | --- | --- |
+| Which logins may get a reset link: active and verified | `reset_link_possible(array $account): bool`, `app/auth.php` | `account_state` `reset_link`; the access card; Konten |
+| The postal address is missing: trimmed, it is empty | `postal_address_missing(array $student): bool`, `app/invoices.php`, beside `INVOICE_ADDRESS_FROM_CENTS` | `create_invoice()`'s refusal above 400 €; `family_next_steps()` |
+| Whom a custom field is required of | `custom_field_required_of(array $field, bool $staff): bool`, `app/domain.php` | `save_custom_fields()`; `family_next_steps()`; the view's `required` attribute and mark |
+| Who sets `students.account_id` | `invite_student()`, `app/actions.php`, with `demo_fill()` as the one named exception for its example students (§6) | `student_invite`; `student_save` when creating with an invitation |
+
+None of the first three exists at `722b8f9`; each is new.
+
+**Load order.** `family_next_steps()` in `app/domain.php` calls `postal_address_missing()` in
+`app/invoices.php`, which is loaded later.
+
+- The call happens at request time only, never while loading. That is the same pattern as
+  `avatar()` calling `upload_version()`, and it carries the same kind of comment.
+- Neither file moves in the load order.
+
 ## Rejected
 
 **Keeping a shared address for students only.** The owner reversed it: "one person = one login =
@@ -751,6 +851,13 @@ two buckets per login (§3), which is accepted.
 **Relying on the per-character collation measurement [M1] for lookups by address.** Nobody has
 automated it. The exact-match check closes the fold by construction on every engine, and the
 default suite can test it.
+
+**Locking the row on sign-in, as 0019 §5 did [F2].** A found row takes a record lock and a missing
+one only a gap lock, so concurrent sign-ins wait only for a member's login. The lock protected
+nothing that `auth_version` does not already protect.
+
+**Locking only after the password has verified.** The lock itself would still be taken only for
+an existing login, and the rehash needs no lock once it is conditional.
 
 **A silent per-login cap on forgot mails.** A second counting mechanism, to turn six mails an hour
 into three.
@@ -775,6 +882,14 @@ records.
 
 **Refusing an address in use when `email_change` is asked.** It would tell a signed-in family
 whether an address has a login. Refusing at confirmation tells only the reader of that mailbox.
+
+**Refusing the "taken" answer altogether [N3].** A holder choosing a username must learn that the
+name is taken, or the change silently fails. The answer is bounded, audited and given only to a
+proven holder, about a value that is not a secret.
+
+**Signing in before the activation page changes the username, to get an actor from the
+session.** A `'taken'` answer must activate nothing, and a session opened before a refusal is not
+undone by the rollback. The explicit actor is one optional parameter and touches no other caller.
 
 **Asking for more at creation (birth date, contacts, address, fields).** R-e: the family fills
 them in.
@@ -860,13 +975,15 @@ re-invitation makes it wrong, and a wrong date is worse than none.
 - **Actions:** one fewer case (`account_create`). `reset_link` is a mode of `account_state`, not a
   new case.
 - **Load order:** no new file.
-  - New functions in `auth.php`: `refuse_address_in_use()`, `account_for_sign_in()` and
-    `invitation_dates()`.
-  - New in `domain.php`: `family_next_steps()`.
+  - New functions in `auth.php`: `refuse_address_in_use()`, `account_for_sign_in()`,
+    `invitation_dates()` and `reset_link_possible()`.
+  - New in `domain.php`: `family_next_steps()` and `custom_field_required_of()`.
+  - New in `invoices.php`: `postal_address_missing()`.
   - New in `actions.php`: `attempted_sign_in()`, `address_identity()`, `sign_in_identity()`,
     `change_own_username()` and `invite_student()`.
   - New in `ui.php`: `mail_not_ready_notice()`.
-  - `history.php` calls into `domain.php` at request time only, with a comment saying so.
+  - `history.php` calls into `domain.php`, and `domain.php` into `invoices.php`, at request time
+    only, each with a comment saying so.
 - **Dependencies:** none.
 
 ### `ui-ux-designer`
@@ -929,8 +1046,8 @@ has been checked against this record (§10).
 
 - **Delete:** `staff_address_conflict()`, `logins_on_address()`, `accounts_sharing_address()` and
   `send_sign_in_details()`.
-- **Add:** `refuse_address_in_use()` (§1), `account_for_sign_in()` (§3) and `invitation_dates()`
-  (§10c).
+- **Add:** `refuse_address_in_use()` (§1), `account_for_sign_in()` with `bool $lock = false`
+  (§3), `invitation_dates()` (§10c) and `reset_link_possible()` (§11).
 - **Keep:**
   - `username_for_new_account()`: its block comment now names `refuse_address_in_use()` as the
     other guard;
@@ -952,21 +1069,21 @@ has been checked against this record (§10).
   - `attempted_email()` and `attempted_username()`;
   - the `account_create` case and the comment above it.
 - **Add:** `attempted_sign_in()`, `address_identity()`, `sign_in_identity()`,
-  `change_own_username()` and `invite_student()`.
+  `change_own_username()` with `?int $actor = null`, and `invite_student()`.
 - **Keep:** `staff_role_posted()`, `refuse_unless_student_login()`, `account_identity()`,
   `username_identity()`, and `change_account_email()`, which now calls `refuse_address_in_use()`.
 - **Change:**
   - `handle_post()`: the throttles in §3 and §4;
   - `forget_attempts_after_success()`: both buckets;
-  - `login` (§3), with the new refusal text;
-  - `forgot` (§4);
+  - `login` (§3): the lookup without a lock, the conditional rehash, and the new refusal text;
+  - `forgot` (§4): the lookup with the lock;
   - `activate`:
-    - invite branch: the username through `change_own_username()`, the flash naming the username
-      and the address, and the landing (§7);
+    - invite branch: the username through `change_own_username(…, (int)$r['account_id'])`, the
+      flash naming the username and the address, and the landing (§7);
     - reset branch: the audit entry stays, with no id in the session;
   - `account_invite`: calls `refuse_address_in_use()`;
   - `student_invite`: calls `invite_student()`;
-  - `account_state`: adds `reset_link`;
+  - `account_state`: adds `reset_link`, refused unless `reset_link_possible()`;
   - `student_save`:
     - the address refusal (§1);
     - creating with an invitation (§6);
@@ -977,9 +1094,9 @@ has been checked against this record (§10).
 
 **`app/actions_settings.php`**
 
-- `username_change` calls `change_own_username()`. It keeps the impersonation refusal and the
-  `current_password` check. The flash says the person signs in with the new username "oder mit
-  deiner E-Mail-Adresse".
+- `username_change` calls `change_own_username()`, with no actor. It keeps the impersonation
+  refusal and the `current_password` check. The flash says the person signs in with the new
+  username "oder mit deiner E-Mail-Adresse".
 - `email_change` drops its `staff_address_conflict()` call. A comment says why the check happens at
   confirmation.
 
@@ -988,21 +1105,25 @@ has been checked against this record (§10).
 - `remember_input()`, `form_open()` and `form_context()`, `held_for()`, `holding_input()` and
   `held_input()`: the record match (§10a).
 - `held_for()`'s docblock no longer mentions „Gleiche Familie".
+- `audit()`: the optional `?int $actor = null` (§2).
 
 **`app/domain.php`**
 
 - **Delete:** `own_address_missing_sql()`, `students_needing_own_address()`,
   `own_address_taken_by()`, and the comment block above them.
 - **Keep:** `account_with_address()`, with a docblock naming its two callers.
-- **Add:** `family_next_steps()`, with the postal address and without the phone (§7).
+- **Add:** `family_next_steps()`, with the postal address and without the phone (§7), and
+  `custom_field_required_of()` (§11).
 - **Change:**
   - `student_next_steps()`: before „Zugang einladen", a step for an address that is somebody's
     login;
-  - `save_custom_fields()` and `validate_custom()`: the rules in §7.
+  - `save_custom_fields()` and `validate_custom()`: the rules in §7, through
+    `custom_field_required_of()`.
 
 **`app/history.php`**
 
 - **Change:**
+  - `tracked()` and `history_record()`: the optional `?int $actor = null` (§2);
   - `entity_snapshot()`;
   - `history_field_label()`: `field:<id>`, and the five labels in §7;
   - `history_value()`: `field:` JSON, and `YYYY-MM-DD` through `fmt_date()` (§10b);
@@ -1014,7 +1135,9 @@ has been checked against this record (§10).
 
 **`app/invoices.php`**
 
-- **No code change.** `invoice_recipient()` keeps reading `students.address`.
+- **Add:** `postal_address_missing()` beside `INVOICE_ADDRESS_FROM_CENTS`. `create_invoice()`'s
+  refusal above 400 € asks it (§11).
+- `invoice_recipient()` keeps reading `students.address`.
 - The comment above its return says "for a child is a parent's address". It becomes: the address
   the family keeps on its own „Profil" tab, frozen into each invoice when it is issued.
 
@@ -1023,7 +1146,9 @@ has been checked against this record (§10).
 - **`app/mail.php`:** only the comment above `security_mail_links_live()`.
 - **`app/demo.php`:**
   - calls `refuse_address_in_use()`;
-  - the comments change;
+  - a comment at its `INSERT INTO students` says it is the one named exception to "only
+    `invite_student()` sets `account_id`", for example rows only (§6);
+  - the other comments change;
   - the example students get addresses of their own, such as `vorname.nachname@beispiel.test`,
     not `eltern.…`.
 - **`public/setup.php` and `bin/console.php`:** the wording says to sign in with this username or
@@ -1054,17 +1179,18 @@ Working from the designer's new specification:
     - the create form's tick;
     - the access card's line saying the address is somebody's login, with no invitation button;
     - the invited-login line from `invitation_dates()` (§10c);
-    - `reset_link` for an active login;
+    - `reset_link` for a login where `reset_link_possible()` says so;
     - for a family, `next_steps_card(family_next_steps($id))`;
     - for a family, the address and phone inputs inside the student form. They leave the
       `if($staff)` block but stay inside the form, so one save carries them;
+    - the `required` attribute and mark on custom fields through `custom_field_required_of()`;
     - the refused contact's `<details>` open through `held_for('contact_save', $contact['id'])`
       (§10a);
   - **move** the picture card below the student form, still outside it (§10e);
   - **fix** every hint and comment that says siblings may share an address.
 - **`views/accounts.php`:**
   - delete the `account_create` form, `$sharedAddresses` and the `$alongside` notice;
-  - add `reset_link` for active staff logins other than her own;
+  - add `reset_link` for staff logins other than her own, where `reset_link_possible()` says so;
   - keep the username line.
 - **`views/dashboard.php`:** the family's card.
 - **`views/history.php`:** the „Alle / Von Familien" tabs on the unscoped list, and „(Familie)"
@@ -1100,30 +1226,47 @@ Break each of these once on purpose and watch it fail.
    - A known and an unknown input, of each kind, lock at the eleventh try exactly alike.
    - With the username bucket full, the address still signs in.
    - Success clears both buckets.
-3. **„Vergessen".**
+3. **Sign-in takes no lock [F2].**
+   - **Structure:** the `login` path's SQL contains no `FOR UPDATE`; `forgot`'s does.
+   - **On MariaDB, not SQLite:**
+     - hold the row of an existing login with `SELECT … FOR UPDATE` on a second connection, with
+       a short `innodb_lock_wait_timeout`;
+     - sign in for that login and for a missing one;
+     - both answer without waiting for the lock and without a lock-wait timeout.
+     - Declare it unsupported on SQLite.
+   - **The conditional rehash:** a hash that changed between the read and the rehash is kept, not
+     overwritten.
+   - **A password change between read and answer:** a session opened with the old
+     `auth_version` is ended on its next request.
+4. **„Vergessen".**
    - A username and an address each mail the stored address.
    - Known and unknown inputs get the same answer.
    - An invited login gets its invitation again; a suspended one gets nothing.
    - When mail is not ready, nothing is queued and the answer is the same.
    - The fourth request per input in an hour, and the eleventh per IP, are throttled.
-4. **R-c.**
+5. **R-c.**
    - The action `account_create` does not exist.
    - `mode=direct` never makes an active login.
    - A `structure` rule names the only writers of `password_hash`: `activate`, `password_change`,
      the rehash in `login`, `create_admin_account()` and `demo_fill()`.
-   - `reset_link` works only for active logins, never for one's own, and a trainer may use it only
-     on student logins.
+   - `reset_link` works only where `reset_link_possible()` is true, never for one's own login, and
+     a trainer may use it only on student logins.
    - The outbox shows no `security` body.
-5. **Creating with an invitation.**
+6. **Creating with an invitation.**
    - It makes a student, a login, a token and a queued mail, and the flash names the username.
    - Mail not ready, an address in use, or an empty address each refuse with **nothing** created.
    - Without the tick, only the student is made.
-6. **Activation.**
+   - A `structure` rule: `students.account_id` is written only in `invite_student()` and in
+     `demo_fill()`'s example rows.
+7. **Activation.**
    - The username can be changed, and the change is tracked.
-   - A taken username leaves an audit row and a flash, activates nothing, and brings the password
-     boxes back empty.
+   - **Its change-log line and its audit rows name the invited login as the actor**, not
+     „automatisch".
+   - A taken username leaves an audit row with that actor and a flash, activates nothing, and
+     brings the password boxes back empty.
    - The reset page's box is read-only.
-7. **Self-service.**
+   - No caller but `activate` passes an explicit actor.
+8. **Self-service.**
    - A family saving names, birth date, address, phone and `'edit'` fields makes one version
      row, with the family as the actor.
    - Posted `'view'` and `'internal'` fields, and posted staff-only columns, change nothing.
@@ -1132,17 +1275,19 @@ Break each of these once on purpose and watch it fail.
    - A `structure` rule pins the column list of the family's `UPDATE`: `first_name`, `last_name`,
      `birth_date`, `address`, `phone`.
    - Staff can write every column and field a family can.
-8. **Address and invoices.**
+9. **Address and invoices.**
    - An invoice issued before a family changes its address still downloads, and mails, with the
      old one.
    - The next invoice has the new one.
    - With the address emptied, an invoice above 400 € is refused and one below is issued.
-9. **Required fields.**
-   - **First**, a test that creating a student succeeds while a required field exists, of each
-     visibility. Expect it to fail on today's code.
-   - A required `'edit'` field refuses the family's save but not staff's.
-   - A required `'internal'` field refuses staff's save of an existing student.
-10. **History.**
+   - An address of spaces only counts as missing, for the invoice and for the card alike.
+10. **Required fields.**
+    - **First**, a test that creating a student succeeds while a required field exists, of each
+      visibility. Expect it to fail on today's code.
+    - A required `'edit'` field refuses the family's save but not staff's.
+    - A required `'internal'` field refuses staff's save of an existing student.
+    - `custom_field_required_of()` gives all four combinations of visibility and role.
+11. **History.**
     - `field:<id>` is shown with its label and a readable value.
     - `address`, `phone`, `owner_name`, `relation_label` and `is_primary` are shown with their
       labels, not their column names.
@@ -1152,28 +1297,28 @@ Break each of these once on purpose and watch it fail.
       that family, and not staff's own changes.
     - A deleted student's row keeps its custom values.
     - No hash is recorded [R5].
-11. **Held forms (§10a).**
+12. **Held forms (§10a).**
     - A refused edit of the second of two contacts is held in the second form only.
     - The first form shows its own stored values.
     - A refused `contact_add` is still held in the add form.
-12. **The invited line (§10c).**
+13. **The invited line (§10c).**
     - A live invitation shows its two dates.
     - With the token pruned, the line says it has expired and names no date.
     - No view selects from `auth_tokens`.
-13. **`email_change`.** An address in use is accepted when asked, refused when the link is opened,
+14. **`email_change`.** An address in use is accepted when asked, refused when the link is opened,
     and the holder's address is unchanged.
-14. **Gone.** None of these is defined anywhere, and none is used by any view:
+15. **Gone.** None of these is defined anywhere, and none is used by any view:
     - `staff_address_conflict`, `logins_on_address`, `accounts_sharing_address`;
     - `send_sign_in_details`, `confirm_same_family`, `recent_password_reset_notice`;
     - `own_address_missing_sql`, `students_needing_own_address`, `own_address_taken_by`;
     - `same_family`.
 
     Migration 024 does not exist.
-15. **Rewritten for the new rules:** `tests/suites/usernames.php`, `accounts.php`, `security.php`,
+16. **Rewritten for the new rules:** `tests/suites/usernames.php`, `accounts.php`, `security.php`,
     `structure.php` (the throttled list names `change_own_username`; the orderings for
     `student_invite` and `account_invite` name `refuse_address_in_use`), `pages.php`, `forms.php`
     and `transactions.php`.
-16. **`TESTING.md`:** the walks for all of the above on a real iPhone. They include the Keychain
+17. **`TESTING.md`:** the walks for all of the above on a real iPhone. They include the Keychain
     offering the username, or the address, in the one box.
 
 ### `mobile-tester`
@@ -1197,12 +1342,14 @@ Measure at 320 and 390, as both roles, in light and dark:
 - There is one mail builder for a reset.
 - No call to `staff_address_conflict()` remains.
 - `tracked()` wraps every family write.
+- Each rule in §11 is spelled only in its function.
 
 ### `security-reviewer`
 
 Re-reviews after implementation, specifically:
 
 - §3's exact match and throttle identities;
+- §3's lock-free sign-in and conditional rehash [F2];
 - §4's handling of invited logins;
 - that no path is left where staff set a password;
 - who may use `reset_link`;
@@ -1210,6 +1357,8 @@ Re-reviews after implementation, specifically:
 - a family-written address reaching invoices: new ones only, and never an issued one;
 - custom-field values in the change log, which only administrators read;
 - `email_change`'s check, now made at confirmation;
+- the "taken" answer given only to a proven holder, five a day [N3];
+- the explicit actor passed by `activate` only, from the token, never from input;
 - `invitation_dates()` selecting no `token_hash`;
 - held input never crossing from one record's form to another's.
 
@@ -1229,6 +1378,7 @@ Re-reviews after implementation, specifically:
   - drop the ADR 0007 weakness once 0020 is built and its tests pass;
   - keep S3 (softened) and R6;
   - add the forgot bound of 6 mails an hour per login, and the insert-timing note in §4;
+  - add the bounded "taken" answer [N3], as accepted;
   - name the engine the tests actually ran on.
 - **The privacy drafts, in German and English:**
   - the change-log sentence for the owner to release;
@@ -1245,8 +1395,11 @@ Nothing. There is no new file to deliver and no command to run.
 - Let two logins share an address, drop the `email` index, or write migration 024 in any form.
 - Refuse an address in use anywhere but `refuse_address_in_use()`, or show a person the 23000.
 - Tell anybody who is not staff whether an address or a username has a login. That covers the
-  sign-in, „vergessen" and `email_change` pages, and every other page.
+  sign-in, „vergessen" and `email_change` pages, and every other page. **The one exception** is
+  the "taken" answer when a proven holder chooses a username, on Mein Konto or the activation
+  page, five a day per login and audited (§2).
 - Word the sign-in refusal differently for different failures.
+- Lock the account row on sign-in, or overwrite a hash that changed since it was read.
 - Look up a sign-in or „vergessen" input that failed its format.
 - Use a row that does not match the typed value exactly.
 - Resolve an input to a row before it is counted.
@@ -1259,7 +1412,10 @@ Nothing. There is no new file to deliver and no command to run.
 - Add a public sign-up, a request-access form, a shared invitation link, or any unauthenticated
   `INSERT`.
 - Let staff write another person's username.
-- Set `students.account_id` in `app/` anywhere but `invite_student()`.
+- Set `students.account_id` in `app/` anywhere but `invite_student()`, or `demo_fill()` for its
+  example rows.
+- Pass an explicit actor anywhere but `activate`, or take one from posted input.
+- Spell a rule in §11 anywhere but its function.
 - Let a family write any of these: status, membership dates, level, age group, courses, tariff,
   price, billing, internal notes, the student's email, or a custom field not at `'edit'`.
 - Make any field a family can write read-only for staff. Typing the value back is the undo.
