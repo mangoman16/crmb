@@ -1,9 +1,15 @@
 ---
-status: accepted, amended by 0020
+status: superseded by 0021
 date: 2026-09-29
 ---
 
 # 0019. Sign in with a username, and an address may be shared
+
+> **Superseded by ADR 0021 (2026-10-01).** The owner reversed the usernames as well, so neither
+> half of the title holds: every login has its own address (0020), and the address is the only
+> sign-in (0021). 022 and 023 stay as shipped; 024 removes the column. What 0020 §8 kept stands as
+> 0021 §1 carries it for the address: the address checks, the dummy hash, the sender's checks, the
+> reset audit, the change-log exclusions, the throttles, the isolation assertion and `held_for()`.
 
 > **Partly superseded by ADR 0020 (2026-09-30), before any of it shipped.** The owner reversed
 > the shared address:

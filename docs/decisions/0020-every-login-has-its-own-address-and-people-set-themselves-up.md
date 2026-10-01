@@ -1,9 +1,15 @@
 ---
-status: accepted
+status: accepted, amended by 0021
 date: 2026-09-30
 ---
 
 # 0020. Every login has its own address, and people set themselves up
+
+> **Amended by ADR 0021 (2026-10-01).** Usernames are gone; the address is the only sign-in. No
+> longer hold: §2; the username halves of §3, §4 and §8; the username in §6's mail and flashes;
+> the editable username on the activation page, whose explicit actor now names the person
+> creating their own student record (0021 §3). §3 and §4 hold for the address alone, with one
+> throttle bucket per login. Everything else stands.
 
 *Amended on 2026-09-30, after commit `7f891a5`, from the designer's revised screen specification:*
 
