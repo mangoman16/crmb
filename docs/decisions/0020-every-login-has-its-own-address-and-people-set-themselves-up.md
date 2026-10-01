@@ -5,6 +5,13 @@ date: 2026-09-30
 
 # 0020. Every login has its own address, and people set themselves up
 
+*Amended on 2026-10-01, after commit `7f891a5`, from the designer's revised screen specification:*
+
+- *the forgot page keeps „Oder frag deine Trainerin – sie kann dir deinen Benutzernamen sagen.",
+  which is the owner's decision;*
+- *the sign-in refusal is reworded in plain words (§3);*
+- *five asks of the specification are decided in §10.*
+
 This record supersedes the shared-address parts of ADR 0019, its uncommitted third amendment
 included, before any of them shipped. §8 lists what of 0019 still stands.
 
@@ -249,8 +256,18 @@ overlap, and the input's shape alone decides.
    - It checks against `$a['password_hash']` when there is one.
    - Otherwise it checks against `sign_in_dummy_hash()`: no row, a format failure, an inexact
      match, or an invitation without a hash.
-3. **One refusal for every failure**, whether a wrong password, no row, a suspended login or an
-   unverified one: „Anmeldung nicht möglich. Zugangsdaten und Einladung prüfen."
+3. **One refusal for every failure**: a wrong password, no row, a suspended login and an
+   unverified one all get the same text.
+   - „Anmeldung nicht möglich. Bitte Benutzername oder E-Mail-Adresse und Passwort prüfen. Noch
+     nicht eingerichtet? Dann zuerst den Link in der Einladung öffnen."
+   - "Could not sign you in. Please check your username or email address and your password. Not
+     set up yet? Open the link in your invitation first."
+   - It replaces „Zugangsdaten und Einladung prüfen", whose first word is jargon to her and to
+     parents.
+   - The last sentence keeps what „Einladung" was for: somebody invited but not yet set up is
+     told where to go.
+   - It is shown for every failure, so it says nothing about whether the login exists, is
+     invited or is suspended.
 4. **On success** it rehashes if needed, then runs `sign_in()` and `landing_after_sign_in()`.
    There is **no reset flash** (§8, R4).
 
@@ -603,7 +620,7 @@ No code is needed beyond the tracking above.
 | I1, one 14-day window (`PASSWORD_RESET_SHOWN_DAYS`) | **Stands**, for the list on Mein Konto and the line on the access card. The wording becomes „per E-Mail-Link", since staff can now ask for one. |
 | I2, staff read a different last sentence | **Stands** on Mein Konto. The flash it also split is gone. |
 | I3, the isolation assertion trying both variable names; the R8 comments | **Unchanged.** |
-| I4: `held_for()`, `token_record()` with `username`, the delete confirmation through `username_normalised()` | **Unchanged.** The row shape of `logins_on_address()` is **removed**. The data sheet's label changes again (`views/print.php`, under `frontend-dev`). |
+| I4: `held_for()`, `token_record()` with `username`, the delete confirmation through `username_normalised()` | **Unchanged**, except that `held_for()` now also matches the record a form edits (§10a). The row shape of `logins_on_address()` is **removed**. The data sheet's label changes again (`views/print.php`, under `frontend-dev`). |
 | R5, `history_never_recorded()` for every operation | **Unchanged.** |
 | S3, the lock-out risk the owner accepted | **Stands, softened** (§3). |
 | S7, both forgot throttles counted every time | **Unchanged** in form. The identity is the typed value of either kind. |
@@ -632,6 +649,88 @@ No code is needed beyond the tracking above.
 - `schema_guarded_tables()` is not widened, and nothing is deleted.
 - The update needs no command. The runner applies 022 and 023, then names every login in
   `database/defaults.php`.
+
+### 10. The screen specification's asks, decided
+
+The designer's specification (`accounts-ui-spec.md`) asked for five things this record had not
+covered. **Each is accepted.** None needs a schema change.
+
+**a. A held form belongs to the record it edits** (spec §1.3). **Yes.**
+
+- **The bug, reproduced by the designer.** A refused `contact_save` of one contact is written
+  into every contact's edit form on the page. Saving the wrong one then overwrites a person.
+- **The cause.** `form_context()` holds the action's name only, and `held_for()` matches page,
+  page id and tab, never the record the form edits.
+- **The fix**, in `app/core.php`:
+  - `remember_input()` also stores the form's own record: the posted `id`, when it is a
+    positive integer.
+  - `form_open()` records the hidden `id` it writes alongside the action, in the form context.
+  - `held_for(string $action, ?int $record = null)` refuses a match when both the held
+    submission and the form have a record and they differ.
+  - `holding_input()` and `held_input()` pass the form context's record.
+  - A form without an `id` (`contact_add`, the create form) matches as before.
+- **Why it is the right place.** Every page with one form per record (contacts, enrolments,
+  charges) is then safe, not only the contacts tab. It is the general fix to the cause, in the
+  one function 0019 I4 made the single place for that match.
+- **The view** opens the refused contact's `<details>` with `held_for('contact_save', $contact['id'])`.
+
+**b. „Von Familien" in Änderungen** (spec §10). **Yes.** It is how she sees a family's changes
+(R-e), on the page she already has.
+
+- `history_recent()` and `history_for()` select the actor's role, as `a.role AS actor_role`, from
+  the join they already make.
+- `history_recent(int $limit = 60, bool $familiesOnly = false)`: when true, it adds the literal
+  condition `a.role='student'`. No value is interpolated.
+  - A change made while staff viewed the portal as a family is recorded under the staff member
+    (`history_record()`), so it is not "by a family". That is correct.
+  - A version whose login has since been deleted has no actor, and falls out of the tab. That is
+    accepted: the change still shows under „Alle".
+- **The role is read when the page is read, not stored with the change.** Storing it would be a
+  column on `record_versions`, and a migration, for a filter.
+- **`student_id` is hidden on a contact's line**, because the label already names the child.
+  - It is hidden **for `contacts` only.** On another entity, such as a charge, `student_id` would
+    be the only thing saying whose it is.
+  - `tracked_entities()` gains an optional `hidden` list per entity, `'contacts' => ['student_id']`.
+    `version_changes()` skips those columns beside its bookkeeping ones.
+- **`history_value()` shows a value shaped exactly `YYYY-MM-DD` through `fmt_date()`.**
+  - `local_time()` does not shift a DATE and requires the value to round-trip, so a calendar date
+    stays the day it was.
+  - A custom date field, stored the same way, reads the same.
+  - A `DATETIME` has a time part, and is left alone.
+
+**c. The invited-login line reads the invitation's dates** (spec §6.6). **Yes.** It is what she
+needs when a parent says "the link doesn't work".
+
+- `invitation_dates(int $accountId): ?array` in `app/auth.php`, beside `token_record()`.
+  - It reads `SELECT created_at, expires_at FROM auth_tokens WHERE account_id=? AND purpose='invite' ORDER BY id DESC LIMIT 1`.
+  - **It never selects `token_hash`.** The view reads the dates through this function and does
+    not query `auth_tokens` itself.
+- **Expired tokens are deleted every night** (`prune_expired()` in `app/tick.php`). So there is
+  usually no row for an expired invitation.
+  - The line then says the invitation is no longer valid, **without a date**.
+  - It does not guess one from `accounts.created_at`, which a later re-invitation would make
+    wrong.
+- The card is for staff only, as today.
+
+**d. Four changes in `app/ui.php`** (spec §1.1). **Yes to each.** They replace this record's
+"only comments change" for that file.
+
+- **`check_field()` gains a `$hint`**, printed inside the label through `e()`. It is a parameter,
+  not a new escaping helper, so the `structure` suite needs no new name.
+- **`select_field()` prints the required mark as `input()` does.** That is one look for one
+  meaning.
+- **`mail_not_ready_notice(array $user): void`** is one wording for the three places an invitation
+  can be blocked, instead of three.
+  - It prints `account_mail_missing()` through `e()`.
+  - It links to `start` for an administrator only, since that page is administrator-only.
+  - It only reads.
+- **`students_notice()` loses `$also`.** Its only caller was the siblings notice, and the two calls
+  left in `views/students.php` do not pass it. It is dead code, and deleted.
+
+**e. The picture card moves below the student form**, for both roles (spec §6.0). **Yes.** It is
+a layout choice for the designer; the rule it has to keep is the one it keeps. The card stays
+outside the `student_save` form, because a form inside a form is thrown away. Nothing else moves
+with it.
 
 ## Rejected
 
@@ -724,6 +823,22 @@ work too, but changing it back is churn for the same safety.
 
 **Printing the username on the data sheet.** It is not needed, because the address signs in.
 
+**„Zugangsdaten" in the sign-in refusal.** It is jargon to her and to parents. The replacement
+(§3) names the two things to check, and is equally silent about whether the login exists.
+
+**Fixing the held-contact bug in the view** (spec §10a), for example by opening only one
+`<details>`. The values would still be written into every form's fields. Only `held_for()` can
+tell the forms apart.
+
+**Storing the actor's role on each change-log line** (§10b). It is a column on `record_versions`
+and a migration, for a filter the join already answers.
+
+**Hiding `student_id` on every entity's line** (§10b). On a charge's line it is the only thing
+saying whose charge it was.
+
+**Guessing an expired invitation's date from `accounts.created_at`** (§10c). A later
+re-invitation makes it wrong, and a wrong date is worse than none.
+
 ## Consequences
 
 - **Owner.**
@@ -745,17 +860,20 @@ work too, but changing it back is churn for the same safety.
 - **Actions:** one fewer case (`account_create`). `reset_link` is a mode of `account_state`, not a
   new case.
 - **Load order:** no new file.
-  - New functions in `auth.php`: `refuse_address_in_use()` and `account_for_sign_in()`.
+  - New functions in `auth.php`: `refuse_address_in_use()`, `account_for_sign_in()` and
+    `invitation_dates()`.
   - New in `domain.php`: `family_next_steps()`.
   - New in `actions.php`: `attempted_sign_in()`, `address_identity()`, `sign_in_identity()`,
     `change_own_username()` and `invite_student()`.
+  - New in `ui.php`: `mail_not_ready_notice()`.
   - `history.php` calls into `domain.php` at request time only, with a comment saying so.
 - **Dependencies:** none.
 
 ### `ui-ux-designer`
 
 The 0019 screen specification needs respecifying before `frontend-dev` starts. It is
-`username-ui-spec.md` in the session's scratchpad.
+`username-ui-spec.md` in the session's scratchpad, and its replacement, `accounts-ui-spec.md`,
+has been checked against this record (§10).
 
 - **Keep:** §1.1, §1.2, §1.3, §1.4 and §1.6.
 - **Superseded:**
@@ -776,7 +894,8 @@ The 0019 screen specification needs respecifying before `frontend-dev` starts. I
   - the family's postal address and phone on their „Profil" tab. That includes the address hint
     about invoices above 400 €, worded for a family rather than for her.
 - **Its open issues:**
-  - 1 is moot, since nobody needs to ask the coach for a username;
+  - 1 is decided by the owner: the forgot page keeps „Oder frag deine Trainerin – sie kann dir
+    deinen Benutzernamen sagen.";
   - 2 is closed: no;
   - 3 is settled at 14 days;
   - 4 is settled: I2 stands on Mein Konto.
@@ -810,7 +929,8 @@ The 0019 screen specification needs respecifying before `frontend-dev` starts. I
 
 - **Delete:** `staff_address_conflict()`, `logins_on_address()`, `accounts_sharing_address()` and
   `send_sign_in_details()`.
-- **Add:** `refuse_address_in_use()` (§1) and `account_for_sign_in()` (§3).
+- **Add:** `refuse_address_in_use()` (§1), `account_for_sign_in()` (§3) and `invitation_dates()`
+  (§10c).
 - **Keep:**
   - `username_for_new_account()`: its block comment now names `refuse_address_in_use()` as the
     other guard;
@@ -838,7 +958,8 @@ The 0019 screen specification needs respecifying before `frontend-dev` starts. I
 - **Change:**
   - `handle_post()`: the throttles in §3 and §4;
   - `forget_attempts_after_success()`: both buckets;
-  - `login` (§3) and `forgot` (§4);
+  - `login` (§3), with the new refusal text;
+  - `forgot` (§4);
   - `activate`:
     - invite branch: the username through `change_own_username()`, the flash naming the username
       and the address, and the landing (§7);
@@ -862,6 +983,12 @@ The 0019 screen specification needs respecifying before `frontend-dev` starts. I
 - `email_change` drops its `staff_address_conflict()` call. A comment says why the check happens at
   confirmation.
 
+**`app/core.php`**
+
+- `remember_input()`, `form_open()` and `form_context()`, `held_for()`, `holding_input()` and
+  `held_input()`: the record match (§10a).
+- `held_for()`'s docblock no longer mentions „Gleiche Familie".
+
 **`app/domain.php`**
 
 - **Delete:** `own_address_missing_sql()`, `students_needing_own_address()`,
@@ -878,7 +1005,10 @@ The 0019 screen specification needs respecifying before `frontend-dev` starts. I
 - **Change:**
   - `entity_snapshot()`;
   - `history_field_label()`: `field:<id>`, and the five labels in §7;
-  - `history_value()`;
+  - `history_value()`: `field:` JSON, and `YYYY-MM-DD` through `fmt_date()` (§10b);
+  - `tracked_entities()`: the `hidden` list for `contacts` (§10b);
+  - `version_changes()`: skips the entity's hidden columns (§10b);
+  - `history_recent()`, with `$familiesOnly`, and `history_for()`: `actor_role` (§10b);
   - the comment on `history_login()`.
 - **Keep:** `history_never_recorded()`.
 
@@ -896,7 +1026,6 @@ The 0019 screen specification needs respecifying before `frontend-dev` starts. I
   - the comments change;
   - the example students get addresses of their own, such as `vorname.nachname@beispiel.test`,
     not `eltern.…`.
-- **`app/core.php`:** only `held_for()`'s docblock, which no longer mentions „Gleiche Familie".
 - **`public/setup.php` and `bin/console.php`:** the wording says to sign in with this username or
   the email address.
 
@@ -906,7 +1035,8 @@ Working from the designer's new specification:
 
 - **`views/login.php`:** one box. Delete `$typedAddress` and the `@` notice.
 - **`views/forgot.php`:** one box, for a username or an address. Delete the sentence about
-  siblings and "ask your coach for your username".
+  siblings. **Keep** „Keine E-Mail bekommen? Schau auch im Spam-Ordner nach. Oder frag deine
+  Trainerin – sie kann dir deinen Benutzernamen sagen." as it is; the owner decided.
 - **`views/activate.php`:**
   - invite: the username is editable;
   - reset: it stays read-only;
@@ -923,23 +1053,31 @@ Working from the designer's new specification:
   - **add:**
     - the create form's tick;
     - the access card's line saying the address is somebody's login, with no invitation button;
+    - the invited-login line from `invitation_dates()` (§10c);
     - `reset_link` for an active login;
     - for a family, `next_steps_card(family_next_steps($id))`;
     - for a family, the address and phone inputs inside the student form. They leave the
       `if($staff)` block but stay inside the form, so one save carries them;
+    - the refused contact's `<details>` open through `held_for('contact_save', $contact['id'])`
+      (§10a);
+  - **move** the picture card below the student form, still outside it (§10e);
   - **fix** every hint and comment that says siblings may share an address.
 - **`views/accounts.php`:**
   - delete the `account_create` form, `$sharedAddresses` and the `$alongside` notice;
   - add `reset_link` for active staff logins other than her own;
   - keep the username line.
 - **`views/dashboard.php`:** the family's card.
+- **`views/history.php`:** the „Alle / Von Familien" tabs on the unscoped list, and „(Familie)"
+  after a family actor's name (§10b).
 - **`views/print.php`:**
   - the label becomes „E-Mail-Adresse (Anmeldung, Einladung, Rechnungen)";
   - the hint becomes „Die eigene Adresse der Schülerin oder des Schülers – die der Eltern gehört zu
     den Kontakten", replacing „Bei einem Kind die Adresse eines Elternteils".
 - **`views/students.php`:** the comment only.
-- **`app/ui.php`:** `username_attributes()`, `login_facts()`, `login_delete_details()`,
-  `demo_password_notice()` and `students_notice()` all stay. Only comments change.
+- **`app/ui.php`:**
+  - the four changes in §10d;
+  - `username_attributes()`, `login_facts()`, `login_delete_details()` and
+    `demo_password_notice()` stay, and only their comments change.
 
 ### `qa-tester`
 
@@ -958,6 +1096,7 @@ Break each of these once on purpose and watch it fail.
      real collation, so SQLite declares it unsupported.
    - A non-dot-atom address and a malformed username reach no `SELECT`.
    - Every failure path runs one `password_verify()`, and `login` contains no literal `$2y$`.
+   - Every failure path gets the one refusal text, and it no longer contains „Zugangsdaten".
    - A known and an unknown input, of each kind, lock at the eleventh try exactly alike.
    - With the username bucket full, the address still signs in.
    - Success clears both buckets.
@@ -1007,40 +1146,54 @@ Break each of these once on purpose and watch it fail.
     - `field:<id>` is shown with its label and a readable value.
     - `address`, `phone`, `owner_name`, `relation_label` and `is_primary` are shown with their
       labels, not their column names.
+    - A birth date reads „27.01.2019", not „2019-01-27", and a `DATETIME` is left alone.
+    - A contact's line shows no `student_id`, and a charge's line still does.
+    - „Von Familien" lists a family's change, not a change made while staff viewed the portal as
+      that family, and not staff's own changes.
     - A deleted student's row keeps its custom values.
     - No hash is recorded [R5].
-11. **`email_change`.** An address in use is accepted when asked, refused when the link is opened,
+11. **Held forms (§10a).**
+    - A refused edit of the second of two contacts is held in the second form only.
+    - The first form shows its own stored values.
+    - A refused `contact_add` is still held in the add form.
+12. **The invited line (§10c).**
+    - A live invitation shows its two dates.
+    - With the token pruned, the line says it has expired and names no date.
+    - No view selects from `auth_tokens`.
+13. **`email_change`.** An address in use is accepted when asked, refused when the link is opened,
     and the holder's address is unchanged.
-12. **Gone.** None of these is defined anywhere, and none is used by any view:
+14. **Gone.** None of these is defined anywhere, and none is used by any view:
     - `staff_address_conflict`, `logins_on_address`, `accounts_sharing_address`;
     - `send_sign_in_details`, `confirm_same_family`, `recent_password_reset_notice`;
     - `own_address_missing_sql`, `students_needing_own_address`, `own_address_taken_by`;
     - `same_family`.
 
     Migration 024 does not exist.
-13. **Rewritten for the new rules:** `tests/suites/usernames.php`, `accounts.php`, `security.php`,
+15. **Rewritten for the new rules:** `tests/suites/usernames.php`, `accounts.php`, `security.php`,
     `structure.php` (the throttled list names `change_own_username`; the orderings for
     `student_invite` and `account_invite` name `refuse_address_in_use`), `pages.php`, `forms.php`
     and `transactions.php`.
-14. **`TESTING.md`:** the walks for all of the above on a real iPhone. They include the Keychain
+16. **`TESTING.md`:** the walks for all of the above on a real iPhone. They include the Keychain
     offering the username, or the address, in the one box.
 
 ### `mobile-tester`
 
 Measure at 320 and 390, as both roles, in light and dark:
 
-- the sign-in page;
+- the sign-in page, including the three-sentence refusal;
 - „vergessen";
 - activation, invite branch, with a 40-character editable username;
 - the create form with its tick;
-- every state of the access card, including the address clash and `reset_link`;
+- every state of the access card, including the address clash, the invited dates and
+  `reset_link`;
 - the family's Profil tab, with the card, the address and phone, and a required field;
-- Kontakte;
-- Konten.
+- Kontakte, including a refused edit of one of two contacts;
+- Konten;
+- Änderungen with its two tabs.
 
 ### `code-reviewer`
 
-- The dead code named above is gone.
+- The dead code named above is gone, `students_notice()`'s `$also` included.
 - There is one mail builder for a reset.
 - No call to `staff_address_conflict()` remains.
 - `tracked()` wraps every family write.
@@ -1056,7 +1209,9 @@ Re-reviews after implementation, specifically:
 - `student()`'s scoping on every family write, and the column list of the family's `UPDATE`;
 - a family-written address reaching invoices: new ones only, and never an issued one;
 - custom-field values in the change log, which only administrators read;
-- `email_change`'s check, now made at confirmation.
+- `email_change`'s check, now made at confirmation;
+- `invitation_dates()` selecting no `token_hash`;
+- held input never crossing from one record's form to another's.
 
 ### `docs-writer`
 
@@ -1065,7 +1220,8 @@ Re-reviews after implementation, specifically:
   - invitations only, and direct creation removed;
   - one-step invitation;
   - families complete their details, the postal address and phone included;
-  - staff reset link.
+  - staff reset link;
+  - „Von Familien" in Änderungen.
 - **`UPDATING`:** nothing to do. Everybody who signed in with an address still does, and now has a
   username as well.
 - **`TESTING.md`,** together with `qa-tester`.
@@ -1090,6 +1246,7 @@ Nothing. There is no new file to deliver and no command to run.
 - Refuse an address in use anywhere but `refuse_address_in_use()`, or show a person the 23000.
 - Tell anybody who is not staff whether an address or a username has a login. That covers the
   sign-in, „vergessen" and `email_change` pages, and every other page.
+- Word the sign-in refusal differently for different failures.
 - Look up a sign-in or „vergessen" input that failed its format.
 - Use a row that does not match the typed value exactly.
 - Resolve an input to a row before it is counted.
@@ -1098,6 +1255,7 @@ Nothing. There is no new file to deliver and no command to run.
 - Make a login other than through `account_invite`, `invite_student()`, `create_admin_account()` or
   `demo_fill()`.
 - Let staff type, set, see or send a password, or see a link that sets one.
+- Read `auth_tokens.token_hash` anywhere but `app/auth.php`, or query `auth_tokens` from a view.
 - Add a public sign-up, a request-access form, a shared invitation link, or any unauthenticated
   `INSERT`.
 - Let staff write another person's username.
@@ -1107,6 +1265,7 @@ Nothing. There is no new file to deliver and no command to run.
 - Make any field a family can write read-only for staff. Typing the value back is the undo.
 - Authorise a family's write by anything but `student()`'s scoping, or keep a student id in the
   session.
+- Hand one record's refused input to another record's form.
 - Write a student, contact or custom-field change outside `tracked()`.
 - Write `invoices.snapshot_json` after issue, or build an issued invoice from the live student row.
 - Write a `record_versions` key, a `field:` one included, back into a table.
@@ -1136,8 +1295,8 @@ Nothing. There is no new file to deliver and no command to run.
     link.
 - **No sign-up page.** Only people she invites get in.
 - **She sees every change a family makes** in the change log: who changed it, when, and what it was
-  before. There is no undo button. To put something back, she types the old value in on the
-  student's page. She can change everything a family can.
+  before. A „Von Familien" tab shows only theirs. There is no undo button. To put something back,
+  she types the old value in on the student's page. She can change everything a family can.
 - **Invoices already sent never change.** A family that moves changes the address on the next
   invoice, not on any earlier one.
 - **Families still cannot change** their status, level, age group, courses, prices, payments or
