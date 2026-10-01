@@ -8,15 +8,19 @@
  */
 
 $trainer = make_account(['role'=>'trainer','name'=>'Trainerin Meier']);
-$parent  = make_account(['role'=>'student','name'=>'Eltern Huber']);
+$parent  = make_account(['role'=>'student','name'=>'Anna Huber']);
+$brother = make_account(['role'=>'student','name'=>'Bernd Huber']);
 
 sign_in_as($trainer);
 $tariff = make_tariff(['price_cents'=>4500]);
 
-// Two children of the signed-in parent and two belonging to somebody else, so
-// the parent's page has something it must leave out.
+// One student on the signed-in login, her brother on a login of his own, and
+// two belonging to nobody, so the page has three kinds of thing to leave out.
+// The brother is the one that matters: one login is one student (ADR 0010),
+// and a family's page that showed him would be the old sharing come back.
 $mine = []; $theirs = [];
-foreach (['Anna','Bernd'] as $n) $mine[]   = make_student(['first_name'=>$n,'last_name'=>'Huber','account_id'=>$parent,'tariff_id'=>$tariff,'status'=>'active']);
+$mine[] = make_student(['first_name'=>'Anna','last_name'=>'Huber','account_id'=>$parent,'tariff_id'=>$tariff,'status'=>'active']);
+$mine[] = make_student(['first_name'=>'Bernd','last_name'=>'Huber','account_id'=>$brother,'tariff_id'=>$tariff,'status'=>'active']);
 foreach (['Clara','Dieter'] as $n) $theirs[] = make_student(['first_name'=>$n,'last_name'=>'Fremd','tariff_id'=>$tariff,'status'=>'active']);
 $paused = make_student(['first_name'=>'Emil','last_name'=>'Pausiert','tariff_id'=>$tariff,'status'=>'paused']);
 
@@ -55,21 +59,23 @@ is_same(1, (int)scalar('SELECT COUNT(DISTINCT student_id) FROM absences WHERE st
 ok(preg_match('/<strong>1<\/strong><small>[^<]*(nicht da|away)/u', $html) === 1
    || substr_count($html, '<strong>1</strong>') >= 1, 'the away tile counts the person once, not twice');
 
-case_('A parent sees their own children and nobody else');
+case_('A login sees its own student and nobody else, not even a brother');
 sign_in_as($parent);
 $parentHtml = render_view('dashboard');
-ok(str_contains($parentHtml, 'Anna'), 'their own child is listed');
-ok(str_contains($parentHtml, 'Bernd'), 'their other child is listed');
+ok(str_contains($parentHtml, 'Anna'), 'their own student is listed');
+is_same(false, str_contains($parentHtml, 'Bernd'), 'the brother on a login of his own is not');
 is_same(false, str_contains($parentHtml, 'Clara'), 'another family\'s child is not');
 is_same(false, str_contains($parentHtml, 'Dieter'), 'nor the other one');
 is_same(false, str_contains($parentHtml, 'Emil'), 'nor a student on no account');
 
-case_('A parent is shown what their own children owe, and only that');
-$ours = balance($mine[0]) + balance($mine[1]);
-is_same(7500, $ours, 'the two children owe 75.00');
-ok($ours !== $expectOpen, 'which is not the same number as the club total, so the next two checks can tell them apart');
-ok(str_contains($parentHtml, money($ours)), 'the total shown is their two children\'s');
-is_same(false, str_contains($parentHtml, money($expectOpen)), 'not the whole club\'s outstanding total');
+case_('A login is shown what its own student owes, and only that');
+$ours = balance($mine[0]);
+is_same(4500, $ours, 'Anna owes 45.00');
+ok($ours !== $expectOpen, 'which is not the same number as the club total, so the next checks can tell them apart');
+ok(str_contains($parentHtml, money($ours)), 'the total shown is hers');
+is_same(false, str_contains($parentHtml, money($ours + balance($mine[1]))), 'not hers and her brother’s together');
+is_same(false, str_contains($parentHtml, money(balance($mine[1]))), 'nor her brother’s');
+is_same(false, str_contains($parentHtml, money($expectOpen)), 'nor the whole club\'s outstanding total');
 
 case_('Every page renders for the role that is allowed to open it');
 $pages = ['dashboard','students','messages','news','profile'];
@@ -152,3 +158,143 @@ ok(str_contains($html, 'Schon überwiesen'), 'with an open charge the offer is o
 ok(str_contains($html, 'Freiwillig'), 'and says it is voluntary, because it is');
 sign_in_as($trainer);
 ok(!str_contains(render_view('dashboard'), 'Schon überwiesen'), 'the trainer is not the one uploading it');
+
+// ---------------------------------------------------------------------------
+case_('A problem report shows the way there, in both shapes it can be stored in');
+/* Einstellungen → Rückmeldungen reads each report through report_trail() in
+   app/ui.php. Reports filed since the trail exists carry steps and on; older
+   ones carry only query and referer. Both are still in the table, so both have
+   to read correctly - and nothing a family typed may survive "Erledigt". */
+$trailStep = fn(string $method, string $url, array $extra = []) =>
+    ['at' => '2026-09-24 08:00:00', 'method' => $method, 'url' => $url] + $extra;
+$newShape = ['page' => 'student', 'on' => ['page' => 'student', 'id' => 4, 'tab' => ''], 'steps' => [
+    $trailStep('GET', '/index.php?page=dashboard'),
+    $trailStep('GET', '/index.php?page=student&id=4'),
+    $trailStep('POST', '/index.php', ['action' => 'student_save',
+        'fields' => ['first_name' => 'Mia', 'password' => '***', 'custom' => [3 => 'blau'], '…' => '…'],
+        'files' => ['avatar' => ['bytes' => 2048, 'type' => 'image/png', 'error' => 0, 'name' => 'mia-geheim.png'],
+                    'docs' => [['bytes' => 1572864, 'type' => 'application/pdf', 'error' => 0], ['error' => UPLOAD_ERR_NO_FILE],
+                               ['error' => UPLOAD_ERR_INI_SIZE]]]]),
+    $trailStep('GET', '/index.php?page=student&id=4', ['flash' => ['text' => 'Bitte ein Datum angeben.', 'kind' => 'error']]),
+    // "Zurück" and then somewhere else: the last step is not the reported page.
+    $trailStep('GET', '/index.php?page=messages'),
+]];
+$trail = report_trail($newShape);
+is_same(true, $trail['recorded'], 'a report with steps says it carries a trail');
+is_same(3, $trail['here'], 'the reported page is the last GET that showed the page the form was on, not the last step');
+is_same('/index.php?page=student&id=4', $trail['address'], 'and its address is that page\'s');
+is_same('POST ?action=student_save', $trail['before'], 'what came just before it is named, a post by its action');
+is_same(['GET ?page=dashboard', 'GET ?page=student&id=4'], array_column(array_slice($trail['steps'], 0, 2), 'line'),
+        'each page is one line, without the path that is the same on every line');
+$posted = $trail['steps'][2]['line'];
+ok(str_starts_with($posted, 'POST ?action=student_save  first_name=Mia · password=***'), 'a post shows what was sent, a password as ***: '.$posted);
+ok(str_contains($posted, 'custom[3]=blau'), 'a nested field is written the way the form named it');
+ok(str_contains($posted, ' · …'), 'and where the recorder stopped keeping fields, it says so');
+ok(str_contains($posted, 'avatar=2 kB image/png'), 'a file shows its size and type');
+ok(!str_contains($posted, 'mia-geheim'), 'and never its name, even when one was stored');
+ok(str_contains($posted, 'docs[0]=1,5 MB application/pdf') && str_contains($posted, 'docs[1]=(keine Datei)')
+   && str_contains($posted, 'docs[2]=(Upload-Fehler '.UPLOAD_ERR_INI_SIZE.')'),
+   'several files under one name are each shown, including one that never came and one PHP refused');
+is_same(['Bitte ein Datum angeben.', 'error'], [$trail['steps'][3]['flash'], $trail['steps'][3]['flash_kind']],
+        'the message the page showed is kept with the step that showed it');
+
+$done = feedback_mark_done($newShape);
+$after = report_trail($done);
+ok(str_contains($after['steps'][2]['line'], 'first_name=(gelöscht)') && str_contains($after['steps'][2]['line'], 'custom=(gelöscht)'),
+   'the field names stay, each saying its value was deleted: '.$after['steps'][2]['line']);
+ok(str_contains($after['steps'][2]['line'], 'avatar=(gelöscht)') && !str_contains($after['steps'][2]['line'], 'image/png'),
+   'and so do the files, without their size and type');
+is_same(array_column($trail['steps'], 'line')[0], array_column($after['steps'], 'line')[0], 'the addresses are kept, they are how it is reproduced');
+is_same($after['steps'][2]['line'], report_trail(feedback_mark_done($done))['steps'][2]['line'],
+        'and marking it done a second time brings nothing back');
+
+$fromOutside = report_trail(['on' => ['page' => 'student', 'id' => 4], 'steps' => [$trailStep('GET', '/index.php?page=student&id=4')]]);
+is_same('', $fromOutside['before'], 'a report whose page was the first one in the trail came from outside the portal');
+$old = report_trail(['page' => 'students', 'query' => ['page' => 'students', 'status' => 'active'],
+                     'referer' => 'https://badminton.example.at/index.php?page=dashboard']);
+is_same(false, $old['recorded'], 'an old report carries no trail');
+is_same('?page=students&status=active', $old['address'], 'its address comes from the query it stored');
+is_same('/index.php?page=dashboard', $old['before'], 'and "before" from its referer, without the host');
+$oldest = report_trail(['page' => 'payments', 'query' => [], 'referer' => '']);
+is_same('?page=payments', $oldest['address'], 'with nothing but a page name, the address is that page');
+is_same(null, $oldest['before'], 'and "before" is unknown rather than "outside"');
+does_not_throw(fn() => report_trail(['steps' => 'nonsense', 'on' => 7, 'referer' => ['x']]), 'a context of the wrong shapes is read, not a crash');
+
+$admin = make_account(['role' => 'admin']);
+foreach ([['from outside', $fromOutsideContext = ['on' => ['page' => 'student', 'id' => 4], 'steps' => [$trailStep('GET', '/index.php?page=student&id=4')]]],
+          ['not recorded', ['page' => 'payments', 'query' => [], 'referer' => '']]] as [$label, $context])
+    run('INSERT INTO feedback (account_id,page,message,context_json,created_at) VALUES (?,?,?,?,?)',
+        [$admin, 'student', 'Meldung '.$label, json_encode($context), now()]);
+sign_in_as($admin);
+$reportsPage = render_view('settings', ['tab' => 'feedback']);
+ok(str_contains($reportsPage, 'von außerhalb'), 'the page says „von außerhalb" for a report that came from outside');
+ok(str_contains($reportsPage, 'nicht erfasst'), 'and „nicht erfasst" for one too old to know');
+
+/* Whether a report still holds what was typed is decided by the page, from
+   values_dropped_at, so it is read off the page: one report at a time, so a
+   phrase found belongs to the report it is about. */
+$onlyReport = function (array $context, string $state) use ($admin): string {
+    run('DELETE FROM feedback');
+    run('INSERT INTO feedback (account_id,page,message,context_json,state,created_at) VALUES (?,?,?,?,?,?)',
+        [$admin, 'student', 'Nur diese Meldung', feedback_context_json($context), $state, now()]);
+    return render_view('settings', ['tab' => 'feedback']);
+};
+$droppedNote = 'Die eingetippten Werte wurden beim Erledigen gelöscht.';
+$openPage = $onlyReport($newShape, 'new');
+ok(str_contains($openPage, e('first_name=Mia')), 'an open report shows what was typed');
+ok(!str_contains($openPage, $droppedNote), 'and does not say it is gone');
+ok(str_contains($openPage, 'Beim Erledigen werden die eingetippten Werte gelöscht'), 'it says, before the tap, that „Erledigt" deletes them');
+$donePage = $onlyReport(feedback_mark_done($newShape), 'done');
+ok(!str_contains($donePage, e('first_name=Mia')) && str_contains($donePage, e('first_name=(gelöscht)')),
+   'after „Erledigt" nothing typed is on the page, only the field names');
+ok(str_contains($donePage, $droppedNote), 'and the page says the typed values were deleted');
+ok(!str_contains($donePage, 'Beim Erledigen werden'), 'rather than warning about a deletion that has happened');
+run('DELETE FROM feedback');
+sign_out();
+
+/* A contact request row carries its own id. In both cases below that id is
+   made to equal somebody else's account id, so a page that built the picture
+   address from the row's id instead of the sender's would ask for the wrong
+   person's picture - and the download route would serve it. */
+$requestsBlock = fn(string $html) => (string)strstr((string)strstr($html, 'Möchte dir schreiben'), 'An wen?', true);
+$askedFor = function (string $block): array {
+    preg_match_all('/what=avatar&amp;kind=account&amp;id=(\d+)/', $block, $m);
+    return array_values(array_unique($m[1]));
+};
+
+case_('A contact request from another family shows their initials, and asks for nobody’s picture');
+/* Another family's account is a child (ADR 0010), so its picture is not shown
+   to a family. The request's id is the recipient's own account id: the one id
+   whose picture this viewer may see, so the old code would have printed it. */
+$sender    = make_account(['role'=>'student','name'=>'Absender Kontakt','avatar_name'=>str_repeat('a', 32).'.jpg']);
+$recipient = make_account(['role'=>'student','name'=>'Empfängerin Kontakt']);
+$request = fixture('contact_requests', ['id'=>$recipient,'from_account_id'=>$sender,'to_account_id'=>$recipient,
+                                        'state'=>'pending','message'=>'Hallo','created_at'=>now()]);
+is_same($recipient, $request, 'the request’s id is the recipient’s own account id');
+sign_in_as($recipient);
+$block = $requestsBlock(render_view('messages', ['contacts'=>1]));
+ok(str_contains($block, 'Absender Kontakt'), 'the request is on the page');
+ok(str_contains($block, '<span class="avatar">AK</span>'), 'with the sender’s initials');
+is_same([], $askedFor($block), 'and no picture is asked for, by the request’s number or any other');
+run('DELETE FROM contact_requests WHERE id=?', [$request]);
+sign_out();
+
+case_('A contact request from the trainer shows her picture, asked for by her account, not the request');
+/* Families may see staff pictures. Staff do not normally send requests - they
+   may write anyway - but a row like this is what the page is given, and here the
+   request's id is another family's child, who has a photo of their own. */
+$staffSender = make_account(['role'=>'trainer','name'=>'Trainerin Anfrage','avatar_name'=>str_repeat('c', 32).'.jpg']);
+$otherChild  = make_account(['role'=>'student','name'=>'Fremdes Kind','avatar_name'=>str_repeat('d', 32).'.jpg']);
+$recipient   = make_account(['role'=>'student','name'=>'Empfänger Trainerin']);
+$request = fixture('contact_requests', ['id'=>$otherChild,'from_account_id'=>$staffSender,'to_account_id'=>$recipient,
+                                        'state'=>'pending','message'=>'','created_at'=>now()]);
+is_same($otherChild, $request, 'the request’s id is the other child’s account id');
+sign_in_as($recipient);
+$block = $requestsBlock(render_view('messages', ['contacts'=>1]));
+ok(str_contains($block, 'Trainerin Anfrage'), 'the request is on the page');
+ok(str_contains($block, e(url('download', ['what'=>'avatar','kind'=>'account','id'=>$staffSender,
+                                           'v'=>upload_version(str_repeat('c', 32).'.jpg')]))),
+   'with the trainer’s picture, asked for by her account id');
+is_same([(string)$staffSender], $askedFor($block), 'and by no other id - not the request’s, which is the other child’s');
+run('DELETE FROM contact_requests WHERE id=?', [$request]);
+sign_out();

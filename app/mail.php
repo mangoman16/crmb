@@ -16,9 +16,15 @@ const MAIL_STRUCTURED = "\x01crm-mail\n";
  * $attach describes files rather than carrying them: ['kind'=>'invoice','id'=>7].
  * The file is built when the message is sent, which keeps a queue of invoices
  * from being a queue of PDFs and means what goes out is the current document.
+ *
+ * The recipient is asked only whether mail can go there (email_deliverable()),
+ * never whether it could be written today (email_value()). Every stored address
+ * passed the first; a legacy one may fail the second, and a throw here rolls
+ * back the whole action - a newsletter to every other family with it (ADR 0019,
+ * R2).
  */
 function queue_mail(?int $accountId,string $recipient,string $subject,string $body,string $category,array $attach=[]): void {
-    email_value($recipient);
+    if(!email_deliverable(email_normalised($recipient))) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.'));
     if(preg_match('/[\r\n]/',$subject) || mb_strlen($subject)>255) throw new UserError(t('Ungültiger Betreff.','Invalid subject.'));
     $payload=$attach
         ? MAIL_STRUCTURED.json_encode(['body'=>$body,'attach'=>$attach],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)
@@ -46,6 +52,38 @@ function mail_attachment(array $described): ?array {
     if(!$invoice) return null;
     return ['name'=>invoice_filename($invoice),'mime'=>'application/pdf','body'=>invoice_pdf($invoice)];
 }
+/**
+ * Whether two addresses are one mailbox, compared the way they are stored.
+ *
+ * Not byte for byte: an address saved with capitals, before email_value()
+ * lower-cased everything, would otherwise cancel a real reset mail to it
+ * (ADR 0019, R7).
+ */
+function same_address(string $a, string $b): bool { return email_normalised($a)===email_normalised($b); }
+
+/**
+ * Whether every sign-in link in a security mail may still go to $recipient.
+ *
+ * Asked by the sender at the moment of sending, because a lot can happen while a
+ * mail waits: a link replaced, a login suspended, an address moved. Every mail
+ * send_account_token() writes carries one link today; every link found is still
+ * checked, not the first, so a body that ever carries more cannot let a stale
+ * one through [S1]. A mail with no link in it is not a security mail and is not
+ * sent.
+ * Each link must be live, belong to a login that is not suspended, and belong to
+ * this recipient: the login's own address, or for a changed address the new one
+ * it is confirming.
+ */
+function security_mail_links_live(string $body, string $recipient): bool {
+    if(!preg_match_all('/[?&]token=([a-f0-9]{64})\b/',$body,$found)) return false;
+    foreach($found[1] as $token) {
+        $record=token_record(hash('sha256',$token));
+        if(!$record || $record['state']==='suspended') return false;
+        $address=$record['purpose']==='email' ? (string)$record['target_email'] : (string)$record['email'];
+        if(!same_address($address,$recipient)) return false;
+    }
+    return true;
+}
 function cancel_account_mail(int $id): void { run("UPDATE mail_jobs SET status='cancelled',payload='',error=NULL WHERE account_id=? AND status IN ('queued','failed')",[$id]); }
 function notify_thread(array $account,int $threadId,string $subject): void {
     if($account['state']!=='active' || !$account['verified_at'] || !$account['notifications']) return;
@@ -56,7 +94,23 @@ const MAIL_MAX_ATTEMPTS = 5;
 // Backoff per attempt number, in seconds: ~1min, 5min, 15min, 1h.
 const MAIL_BACKOFF = [60, 300, 900, 3600];
 /**
- * Queue a payment reminder for the account that manages a student.
+ * The name a mail opens with, after "Hallo".
+ *
+ * A student's login greets the student: it is their own access (ADR 0010), and
+ * the name on the account is whatever was typed when it was made - "Familie
+ * Hofer" on an old one. The first name, because every mail here says "du".
+ * Staff, and a student login nobody points to any more, are greeted by the
+ * account's own name. One function, so no mail greets differently.
+ */
+function greeting_name(array $account): string {
+    if(($account['role']??'')==='student' && isset($account['id'])) {
+        $first=scalar('SELECT first_name FROM students WHERE account_id=?',[(int)$account['id']]);
+        if(is_string($first) && trim($first)!=='') return trim($first);
+    }
+    return (string)($account['name']??'');
+}
+/**
+ * Queue a payment reminder for a student's own login.
  *
  * Returns false when nothing was queued, so the caller can report how many
  * parents will actually hear about it rather than implying every selected
@@ -66,7 +120,7 @@ function notify_payment(array $account, array $student, int $amountCents, string
     if($account['state']!=='active' || !$account['verified_at'] || empty($account['payment_notices'])) return false;
     $en=$account['locale']==='en';
     $name=$student['first_name'].' '.$student['last_name'];
-    $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
         .($en?'There is an outstanding amount for ':'Für ').$name
         .($en?' of ':' ist noch ein Betrag von ').money($amountCents)
         .($en?', due ':' offen, fällig am ').fmt_date($dueOn).".\n\n"
@@ -100,7 +154,7 @@ function notify_class_change(array $class, string $date, ?array $entry, string $
             'changed'   => $en?'has changed':'hat sich geändert',
             default     => $en?'is going ahead':'findet statt',
         };
-        $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+        $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
             .$class['name'].' '.($en?'on ':'am ').fmt_date($date).' '.$what.".\n"
             .($entry?session_label($entry)."\n":'')
             .($note!==''?"\n".$note."\n":'')
@@ -119,7 +173,7 @@ function notify_enrolment_decision(array $request, bool $approved, string $note)
     $student=one('SELECT first_name,last_name FROM students WHERE id=?',[(int)$request['student_id']]);
     $class=one('SELECT name FROM classes WHERE id=?',[(int)$request['class_id']]);
     $en=$account['locale']==='en';
-    $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
         .request_kind_label((string)$request['kind']).' – '.$student['first_name'].' '.$student['last_name']
         .' · '.$class['name'].":\n"
         .($approved?($en?'Approved.':'Angenommen.'):($en?'Not approved.':'Leider nicht angenommen.'))."\n"
@@ -141,7 +195,7 @@ function notify_invoice(array $invoice): bool {
     $account=$invoice['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$invoice['account_id']]):null;
     if(!$account || $account['state']!=='active' || !$account['verified_at']) return false;
     $en=$account['locale']==='en';
-    $body=($en?'Hello ':'Hallo ').$account['name'].",\n\n"
+    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
         .($en?'Invoice ':'Rechnung ').$invoice['number'].' '.($en?'over':'über').' '.money((int)$invoice['gross_cents'])
         .', '.($en?'payable by ':'zahlbar bis ').fmt_date((string)$invoice['due_on']).".\n\n"
         .($en?'The invoice is attached as a PDF and is also in the portal:':'Die Rechnung hängt als PDF an und steht auch im Portal:')."\n"
@@ -328,6 +382,32 @@ function smtp_check(?string $recipient=null): array {
             'sent_to'=>$ok&&$recipient!==null?$recipient:'','at'=>now()];
 }
 
+/**
+ * Whether mail has been shown to work: a server is saved and the last
+ * connection test against it succeeded.
+ *
+ * The one answer to "are emails going out?" - the start checklist ticks
+ * „E-Mails verschicken“ by it and the SMTP tab shows it as green (ADR 0011).
+ * A test is only about the settings it ran with, which is why smtp_save
+ * forgets it when they change: a green result for yesterday's server says
+ * nothing about today's.
+ */
+function smtp_tested_ok(): bool {
+    return (bool)setting('smtp', []) && !empty(setting('smtp_last_test', [])['ok']);
+}
+
+/**
+ * Whether two saved SMTP configurations would talk to a server differently.
+ *
+ * The password is compared as she typed it, not as stored: sealing it again
+ * gives new bytes for the same password, and re-saving the form without
+ * touching it must not throw away a test that still holds.
+ */
+function smtp_settings_changed(array $old, array $new): bool {
+    $plain = static fn(array $s): array => ['password' => smtp_password($s)] + $s;
+    return $plain($old) != $plain($new);
+}
+
 function process_mail(int $limit=25, float $budget=0.0): array {
     if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
     if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');
@@ -355,12 +435,8 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                 $eligible=$a && $a['state']!=='suspended';
                 $stored=$job['payload']!==''?mail_payload(unseal($job['payload'])):['body'=>'','attach'=>[]];
                 $plainBody=$stored['body'];
-                if($eligible && $job['category']==='security') {
-                    preg_match('/[?&]token=([a-f0-9]{64})\b/',$plainBody,$match);
-                    $token=isset($match[1])?token_record(hash('sha256',$match[1])):null;
-                    $eligible=$token && (int)$token['account_id']===(int)$a['id'] && ($token['target_email']??$a['email'])===$job['recipient'];
-                }
-                if($eligible && $job['category']!=='security') $eligible=$a['state']==='active' && $a['verified_at'] && $a['email']===$job['recipient'];
+                if($eligible && $job['category']==='security') $eligible=security_mail_links_live($plainBody,(string)$job['recipient']);
+                if($eligible && $job['category']!=='security') $eligible=$a['state']==='active' && $a['verified_at'] && same_address((string)$a['email'],(string)$job['recipient']);
                 $switch=['newsletter'=>'newsletter','notifications'=>'notifications','payments'=>'payment_notices'][$job['category']]??null;
                 if($eligible && $switch!==null) $eligible=(bool)($a[$switch]??1);
                 if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='',retry_after=NULL WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}

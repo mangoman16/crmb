@@ -28,21 +28,33 @@ const TICK_INTERVAL = 60;
 const PRUNE_INTERVAL = 86400;
 
 /**
- * Remove expired tokens, old rate-limit counters, spent form identifiers and
- * uploaded files nothing points at any more.
+ * Remove expired tokens, old rate-limit counters, spent form identifiers,
+ * problem reports long since dealt with, errors nothing has repeated for a
+ * month, and uploaded files nothing points at any more.
  *
  * Deliberately narrow: nothing here removes a student, a payment or a message.
  * The files it does remove are the ones whose record has already gone - a photo
  * belonging to a deleted account, an attachment from a conversation that was
- * deleted with it - which would otherwise stay in storage for ever.
+ * deleted with it, the screenshot of a report - which would otherwise stay in
+ * storage for ever. That is why prune_uploads() comes last.
  */
 function prune_expired(): void {
+    // First, so nothing that fails below can keep presence data past the month
+    // the privacy notice promises (ADR 0015). The rest only tidies.
+    presence_prune(presence_history_days());
     run('DELETE FROM auth_tokens WHERE expires_at<?', [now()]);
     run('DELETE FROM rate_limits WHERE window_start<?', [time() - 86400]);
     run('DELETE FROM form_requests WHERE created_at<?', [gmdate('Y-m-d H:i:s', time() - 604800)]);
     // The change log is informative, not evidence, so it has a horizon. The
     // audit log next to it does not, because that one is evidence.
     history_prune((int)setting('history_months'));
+    // After a PHP upgrade raises PASSWORD_DEFAULT's cost, the hash a refused
+    // sign-in is checked against must cost the same as a real one again, or
+    // the time a refusal takes says whether the username exists (ADR 0019, M2).
+    // Here and in the migration runner, never in a sign-in.
+    refresh_sign_in_dummy_hash();
+    prune_done_feedback();
+    prune_quiet_errors();
     prune_uploads();
 }
 
@@ -77,7 +89,8 @@ function run_background_tasks(): void {
             run("SELECT RELEASE_LOCK('badminton_crm_tick')");
         }
     } catch (Throwable $e) {
-        error_log('CRM background: ' . $e->getMessage());
+        error_log('CRM background: ' . error_log_text($e));
+        capture_error($e, 'background');
     }
 }
 
@@ -85,7 +98,12 @@ function run_background_tasks(): void {
 function tick_work(): void {
     foreach (['mail' => tick_mail(...), 'prune' => tick_prune(...), 'billing' => tick_billing(...)] as $name => $job) {
         try { $job(); }
-        catch (Throwable $e) { error_log('CRM background (' . $name . '): ' . $e->getMessage()); }
+        catch (Throwable $e) {
+            // Logged here with the job's name, which capture_error() does not
+            // know, and for the refusals and second errors it does not write down.
+            error_log('CRM background (' . $name . '): ' . error_log_text($e));
+            capture_error($e, 'background');
+        }
     }
 }
 

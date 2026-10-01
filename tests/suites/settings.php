@@ -69,6 +69,137 @@ does_not_throw(fn() => $save('Entwurf', 'Draft', false), 'an incomplete draft st
 is_same('Entwurf', setting('privacy_de'), 'and the text is actually stored');
 is_same(false, (bool)setting('privacy_ready'), 'with the release tick cleared');
 
+case_('Only the German notice is needed to release it, and an English reader is told');
+/* ADR 0011. A club with no English-speaking families should not have to
+   translate a legal text nobody reads before it can invite anyone. An English
+   text that is there is still checked, because half a translation is not a
+   notice to release. */
+does_not_throw(fn() => $save($long, '', true), 'the German text alone is released');
+is_same(true, (bool)setting('privacy_ready'), 'and the notice counts as released');
+mail_ready(true);
+set_setting('privacy_ready', true);   // as the save above left it, not as the fixture says
+is_same(true, account_mail_ready(), 'which is all the invitation gate asks of the notice');
+set_setting('smtp', []); set_setting('smtp_last_test', []);
+throws(fn() => $save($long, 'short', true), 'an English text that is there is checked like the German', 'English');
+throws(fn() => $save($long, $long.'[operator name]', true), 'placeholders included', '[operator name]');
+does_not_throw(fn() => $save($long, '', true), 'so the German one alone again');
+$_SESSION['locale'] = 'en';
+is_same(privacy_text('de'), privacy_text(), 'an English reader is shown the German text rather than nothing');
+is_same(true, privacy_in_german_only(), 'and the page can tell that it is doing so');
+$_SESSION['locale'] = 'de';
+is_same(false, privacy_in_german_only(), 'a German reader is told nothing');
+$germanOnly = notice_version();
+is_same(substr(hash('sha256', (string)json_encode([privacy_filled((string)setting('privacy_de')), ''], JSON_UNESCAPED_UNICODE)), 0, 16), $germanOnly,
+        'the version is the German text and the English text as stored - none - and never the German twice');
+does_not_throw(fn() => $save($long, $long, true), 'an English text is added later, word for word the German');
+ok(notice_version() !== $germanOnly, 'which is a new version, because it is one');
+is_same(false, privacy_in_german_only('en'), 'and an English reader now reads the English');
+
+case_('Mail counts as working once a test of the saved settings passed, and not after they change');
+set_setting('smtp', []); set_setting('smtp_last_test', []);
+is_same(false, smtp_tested_ok(), 'nothing saved, nothing tested');
+$smtpForm = ['host'=>'mail.example.test', 'port'=>'587', 'username'=>'portal@example.test', 'smtp_password'=>'hunter2-and-then-some',
+             'encryption'=>'tls', 'from_email'=>'portal@example.test', 'from_name'=>'Badminton'];
+act('smtp_save', $smtpForm);
+is_same(false, smtp_tested_ok(), 'saved and never tested is not working');
+// What a passing smtp_test stores; a real server is TESTING.md's business.
+set_setting('smtp_last_test', ['ok'=>true, 'summary'=>'ok', 'transcript'=>'', 'sent_to'=>'', 'at'=>now()]);
+is_same(true, smtp_tested_ok(), 'a passing test of those settings is');
+act('smtp_save', ['smtp_password'=>''] + $smtpForm);
+is_same(true, smtp_tested_ok(), 're-saving the form without touching the password keeps the test');
+act('smtp_save', $smtpForm);
+is_same(true, smtp_tested_ok(), 'and so does typing the same password again, though it is sealed anew');
+act('smtp_save', ['host'=>'smtp.anderer-anbieter.test'] + $smtpForm);
+is_same(false, smtp_tested_ok(), 'another server is untested until it is tested');
+is_same([], setting('smtp_last_test', []), 'and the old result is gone rather than shown as its answer');
+set_setting('smtp_last_test', ['ok'=>true, 'summary'=>'ok', 'transcript'=>'', 'sent_to'=>'', 'at'=>now()]);
+act('smtp_save', ['smtp_password'=>'ein-ganz-anderes-passwort'] + $smtpForm);
+is_same(false, smtp_tested_ok(), 'a different password is untested too');
+
+case_('A mail server’s reply that is not valid UTF-8 is stored, not a 503');
+/* A broken server answered in bytes that are not UTF-8; the test result is
+   stored as it came, and refusing it ended the SMTP test in a 503. */
+does_not_throw(fn() => set_setting('smtp_last_test', ['ok'=>false, 'summary'=>"Antwort: \xC3\x28 \xFF kaputt",
+    'transcript'=>"220 \xFE\xFF mail\n", 'sent_to'=>'', 'at'=>now()]), 'a reply with invalid bytes is stored');
+ok(str_contains((string)(setting('smtp_last_test', [])['summary'] ?? ''), 'kaputt'), 'and read back, the readable part intact');
+
+case_('A reference setting offers and accepts only rows that can be chosen');
+$reference = setting_schema()['default_payment_profile'];
+is_same(['reference', 'payment_profiles'], [$reference['kind'], $reference['table']], 'the default recipient is a reference to a recipient');
+$profile = fn(string $name, int $archived) => fixture('payment_profiles', ['name'=>$name, 'recipient'=>'', 'iban'=>'', 'bic'=>'',
+    'currency'=>'EUR', 'note'=>'', 'qr_template'=>'', 'archived'=>$archived, 'created_at'=>now()]);
+$live = $profile('Vereinskonto Sparkasse', 0);
+$gone = $profile('Altes Konto', 1);
+is_same('Vereinskonto Sparkasse', setting_reference_options($reference)[$live] ?? null, 'a recipient in use is offered by name');
+ok(!isset(setting_reference_options($reference)[$gone]), 'an archived one is not offered');
+is_same($live, setting_validate('default_payment_profile', $reference, (string)$live), 'the one chosen is stored as its id');
+is_same(0, setting_validate('default_payment_profile', $reference, ''), 'nothing chosen is none');
+is_same(0, setting_validate('default_payment_profile', $reference, '0'), 'and so is 0');
+throws(fn() => setting_validate('default_payment_profile', $reference, (string)$gone), 'an archived one is refused', 'nicht verfügbar');
+throws(fn() => setting_validate('default_payment_profile', $reference, '999999'), 'one that does not exist is refused', 'nicht verfügbar');
+throws(fn() => setting_validate('default_payment_profile', $reference, $live.' OR 1=1'), 'and anything that is not an id', 'nicht verfügbar');
+throws(fn() => setting_reference_options(['table'=>'accounts'] + $reference), 'a table not on the allowlist is refused before any SQL', 'not allowed');
+$payments = [];
+foreach (settings_in_group('payments') as $key => $spec)
+    $payments['set_'.$key] = $spec['kind'] === 'list' ? implode("\n", (array)setting($key)) : (is_bool(setting($key)) ? (setting($key) ? '1' : '') : (string)setting($key));
+act('defaults_registry_save', ['group'=>'payments', 'set_default_payment_profile'=>(string)$live] + $payments);
+is_same($live, setting('default_payment_profile'), 'the settings form stores the choice');
+throws(fn() => act('defaults_registry_save', ['group'=>'payments', 'set_default_payment_profile'=>(string)$gone] + $payments),
+       'and refuses an archived recipient posted anyway', 'nicht verfügbar');
+
+case_('What most portals never touch is marked, and what is switched elsewhere is not listed twice');
+is_same(true, setting_schema()['auto_background']['advanced'] ?? false, 'the background work is advanced');
+is_same(true, setting_schema()['history_months']['advanced'] ?? false, 'and so is how long changes are kept');
+ok(!array_key_exists('auto_billing', settings_in_group('system')), 'automatic charges are switched on the Beiträge page, not here');
+ok(!array_key_exists('setup_hidden', settings_in_group('system')), 'and the checklist is hidden from the checklist, not here');
+is_same(false, setting_default('setup_hidden'), 'which is shown until she hides it');
+throws(fn() => setting_default('default_tariff'), 'a default tariff nothing uses any more is not declared at all');
+ok(!str_contains((string)file_get_contents(APP_ROOT.'/database/defaults.php'), 'default_tariff'), 'nor seeded on a new portal');
+
+case_('Every note in the shipped drafts counts as a placeholder, however long');
+/* The check used to stop at 80 characters, and most of the notes in each draft
+   are longer: a notice still saying „[Vollständiger Name …]“ could be released.
+   Counted against the drafts themselves - every „[" in them opens a note - so a
+   note added to a draft is covered without a number here to update. The two
+   drafts carry the same notes, one in each language. */
+$noteCount = [];
+foreach (['de', 'en'] as $lang) {
+    $draft = (string)file_get_contents(ROOT.'/docs/privacy-draft-'.$lang.'.txt');
+    $noteCount[$lang] = substr_count($draft, '[');
+    ok($noteCount[$lang] >= 8, $lang.': the draft has its notes ('.$noteCount[$lang].'), so the count below means something');
+    is_same($noteCount[$lang], count(privacy_draft_placeholders($draft)), $lang.': and every one of them is found');
+    ok(max([0, ...array_map('mb_strlen', privacy_draft_placeholders($draft))]) > 250, $lang.': the longest among them too, at over 250 characters');
+    throws(fn() => $save($lang === 'de' ? $draft.$long : $long, $lang === 'en' ? $draft.$long : $long, true),
+           $lang.': the draft itself cannot be released', $lang === 'de' ? '[Vollständiger Name' : '[Full name');
+}
+is_same($noteCount['de'], $noteCount['en'], 'the German and the English draft have the same number of notes');
+$complete = "Verantwortlich: Badminton Hofer, Hauptstraße 1, 12345 Musterstadt, info@beispiel.test\n"
+    ."Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO, für Protokolle Art. 6 Abs. 1 lit. f DSGVO (Art. 6 (1) (f) GDPR).\n"
+    ."Beschwerden: https://www.bfdi.bund.de/DE/Home/home_node.html?view=renderKontakt#top und https://example.org/a?x[]=1\n"
+    ."Wie das Gesetz sagt: „Personenbezogene Daten müssen […] verarbeitet werden“ [1].\n"
+    ."Mehr dazu [hier](https://example.org/datenschutz). Stand: 24.09.2026\n";
+is_same([], privacy_draft_placeholders($complete), 'a finished notice with laws, links, a footnote and an elision has none');
+does_not_throw(fn() => $save($complete.$long, $complete.$long, true), 'and is released');
+is_same(['[Datum]'], privacy_draft_placeholders("Stand: [Datum]\nText [ohne\nEnde]"),
+        'a bracket left open by a typo does not swallow the next line');
+
+case_('One long line of brackets is answered at once, and a text it cannot read is refused in words');
+/* 30,000 characters is what the field accepts. The earlier pattern looked ahead
+   past every further „[“ from every „[“, and took over a second on this line
+   with PCRE's JIT and ten without it: a request anybody on the settings page
+   could make hang. The closing „]“ matters - without one, PCRE gives up before
+   it starts, and the line would prove nothing. */
+$brackets = str_repeat('[', 29999).']';
+is_same(30000, mb_strlen($brackets), 'the line is as long as the field allows');
+$started = microtime(true);
+$found = privacy_draft_placeholders($brackets);
+$took = microtime(true) - $started;
+is_same([], $found, 'it holds no placeholder, having no letter');
+ok($took < 0.2, sprintf('and is checked in a moment, not seconds (%.4f s)', $took));
+does_not_throw(fn() => $save($brackets, $long, true), 'and saved through the page, it is answered rather than left to hang');
+throws(fn() => privacy_draft_placeholders("Stand: [Datum] \xFF"), 'a text the pattern cannot read is refused with a sentence, not a crash',
+       'nicht auf Platzhalter prüfen');
+
 // ---------------------------------------------------------------------------
 case_('The connection test answers while she waits, and says which step failed');
 /* It used to queue a message and send her to the outbox to look for it. A wrong
@@ -78,7 +209,20 @@ sign_in_as(make_account(['role'=>'admin', 'email'=>'chefin@example.test']));
 set_setting('smtp', []);
 $result = smtp_check();
 is_same(false, $result['ok'], 'nothing is configured yet, so it fails');
-ok(str_contains($result['summary'], 'Absenderadresse'), 'and it says what is missing, rather than "could not connect"');
+/* smtp_check() asks for the mail library before it reads the settings, so a copy
+   without vendor/ - a Git checkout nobody ran composer in - answers that the
+   library is missing, which is the true first problem there. Each answer is held
+   to what it should say, and a run that could only check the second one says so
+   in its footer rather than passing as though it had checked the first. */
+if (class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) {
+    ok(str_contains($result['summary'], 'Absenderadresse'),
+       'and it says what is missing, rather than "could not connect" (PHPMailer is installed)');
+} else {
+    ok(str_contains($result['summary'], 'PHPMailer') && str_contains($result['summary'], 'vendor/'),
+       'and without vendor/ it says the mail library is missing, rather than "could not connect"');
+    test_unsupported(array_merge(test_unsupported(),
+        ['the SMTP test naming a missing sender address (PHPMailer is not installed: vendor/ is missing)']));
+}
 ok(str_contains($result['transcript'], 'kein Server eingetragen'), 'the transcript starts with what it was working from');
 does_not_throw(fn() => smtp_check(), 'a failing test is an answer, never an exception');
 

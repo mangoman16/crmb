@@ -19,7 +19,27 @@ declare(strict_types=1);
  *   list      one value per line
  *   map       code => label pairs
  *   choice    one of options
+ *   reference the id of one row in 'table', or 0 for none. The table must be
+ *             one setting_reference_tables() names; the form offers its rows
+ *             through setting_reference_options().
+ *   colour    '' for the built-in colour ('builtin'), or a lower-case #rrggbb.
+ *             With 'text_on', a colour that text could not be read on is
+ *             refused (setting_colour_refusal()).
+ *
+ * 'advanced' => true marks a setting most portals never need to touch. The form
+ * gathers those under one „Erweitert“ heading instead of leaving them among the
+ * ones a new portal has to answer (ADR 0011).
  */
+/**
+ * The longest that when somebody was online is kept and shown, in days.
+ *
+ * A ceiling, not a setting: longer would be a new decision about families'
+ * data, which the privacy notice would have to say (ADR 0015). The setting
+ * presence_history_days may shorten it. Declared here, before the settings
+ * that use it, and read by app/presence.php, which loads later.
+ */
+const PRESENCE_HISTORY_MAX_DAYS = 30;
+
 function setting_schema(): array {
     static $schema;
     return $schema ??= [
@@ -33,6 +53,19 @@ function setting_schema(): array {
             'group' => 'portal',
             'label' => ['Untertitel in der Kopfzeile', 'Subtitle in the header'],
             'hint'  => ['Leer lassen, wenn keiner angezeigt werden soll.', 'Leave empty to show none.'],
+        ],
+        // The stored name of the portal's own icon under storage/uploads/icon/,
+        // or '' for the one that ships. Changed only through its own card in
+        // Settings, because it is a file, not something typed into a box.
+        'portal_icon' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'portal', 'internal' => true,
+            'label' => ['Eigenes Symbol des Portals', 'The portal’s own icon'],
+        ],
+        // The stored name of the club's logo under storage/uploads/logo/, or ''
+        // for none (ADR 0014). A file like the icon, so it has its own card too.
+        'portal_logo' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'portal', 'internal' => true,
+            'label' => ['Logo des Portals', 'The portal’s logo'],
         ],
         'statuses' => [
             'kind' => 'map', 'group' => 'students',
@@ -48,17 +81,13 @@ function setting_schema(): array {
             'kind' => 'choice', 'default' => 'active', 'options' => 'statuses', 'group' => 'students',
             'label' => ['Standardstatus für neue Schüler', 'Default status for new students'],
         ],
-        'default_tariff' => [
-            'kind' => 'int', 'default' => 0, 'min' => 0, 'group' => 'students',
-            'label' => ['Standardtarif (0 = keiner)', 'Default tariff (0 = none)'],
-        ],
         'payment_methods' => [
             'kind' => 'list', 'default' => ['Überweisung', 'Bar'], 'max_items' => 30, 'group' => 'payments',
             'label' => ['Zahlungsarten', 'Payment methods'],
         ],
         'default_payment_profile' => [
-            'kind' => 'int', 'default' => 0, 'min' => 0, 'group' => 'payments',
-            'label' => ['Standard-Zahlungsempfänger (0 = keiner)', 'Default payment profile (0 = none)'],
+            'kind' => 'reference', 'table' => 'payment_profiles', 'default' => 0, 'group' => 'payments',
+            'label' => ['Standard-Zahlungsempfänger', 'Default payment recipient'],
             'hint'  => ['Wird verwendet, wenn Beitrag und Kurs keinen eigenen haben.', 'Used when neither the charge nor the class names one.'],
         ],
         'payment_reference_template' => [
@@ -186,7 +215,7 @@ function setting_schema(): array {
         'default_accent' => [
             'kind' => 'choice', 'default' => 'teal', 'options' => 'accent_options', 'group' => 'portal',
             'label' => ['Standardfarbe des Portals', 'Default colour of the portal'],
-            'hint'  => ['Jede und jeder kann im eigenen Konto eine andere wählen.', 'Everybody can pick a different one for their own account.'],
+            'hint'  => ['Gilt, solange keine eigene Hauptfarbe gesetzt ist.', 'Applies while no main colour of your own is set.'],
         ],
         'accent_options' => [
             'kind' => 'raw', 'group' => 'portal', 'internal' => true,
@@ -194,11 +223,88 @@ function setting_schema(): array {
                           'red'=>'Rot','orange'=>'Orange','green'=>'Grün','slate'=>'Grau'],
             'label' => ['Farbauswahl', 'Colour choices'],
         ],
+        // --- the club's look (ADR 0013, 0014) ---------------------------------
+        // One group, one form: the „Aussehen" card. defaults_registry_save
+        // writes every key of a group from one POST, so a key of this group on
+        // any other card would be blanked by this one's save.
+        'header_hide_name' => [
+            'kind' => 'bool', 'default' => false, 'group' => 'branding',
+            'label' => ['Portalnamen neben dem Logo ausblenden', 'Hide the portal name next to the logo'],
+            'hint'  => ['Nur mit Logo oder Symbol – ohne beides wird der Name trotzdem gezeigt, sonst stünde oben links nichts.',
+                        'Only with a logo or icon – without either the name is shown anyway, or nothing would be left top left.'],
+        ],
+        'header_hide_subtitle' => [
+            'kind' => 'bool', 'default' => false, 'group' => 'branding',
+            'label' => ['Zeile „Verwaltung“ / „Mein Portal“ unter dem Namen ausblenden', 'Hide the “Management” / “My portal” line under the name'],
+            'hint'  => ['Die Zeile sagt, ob man als Trainerin oder als Familie angemeldet ist.',
+                        'It says whether you are signed in as a trainer or as a family.'],
+        ],
+        // '' is the built-in colour, which 'builtin' names for the form and the
+        // refusals. A background also names the grey text that has to stay
+        // readable on it ('text_on'); the three brand colours are adjusted for
+        // readability instead of refused, because a club's colours are not hers
+        // to change (brand_palette()).
+        'brand_primary' => [
+            'kind' => 'colour', 'default' => '', 'builtin' => '#077e76', 'group' => 'branding',
+            'label' => ['Hauptfarbe', 'Main colour'],
+            'hint'  => ['Knöpfe, Links und Markierungen. Wer sich unter „Mein Konto“ eine eigene Farbe ausgesucht hat, behält sie.',
+                        'Buttons, links and highlights. Anyone who picked their own colour under “My account” keeps it.'],
+        ],
+        'brand_secondary' => [
+            'kind' => 'colour', 'default' => '', 'builtin' => '#13243a', 'group' => 'branding',
+            'label' => ['Menüfarbe', 'Menu colour'],
+            'hint'  => ['Das Menü am Computer, das Menü hinter „Mehr“ auf dem Handy und der Name auf der Anmeldeseite.',
+                        'The menu on a computer, the menu behind “More” on a phone, and the name on the sign-in page.'],
+        ],
+        'brand_highlight' => [
+            'kind' => 'colour', 'default' => '', 'builtin' => '#23cbbb', 'group' => 'branding',
+            'label' => ['Hervorhebung', 'Highlight'],
+            'hint'  => ['Der Punkt am „B“ und die Markierung beim Menüpunkt der Seite, auf der man gerade ist.',
+                        'The dot on the “B” and the marker on the menu entry of the current page.'],
+        ],
+        'brand_background' => [
+            'kind' => 'colour', 'default' => '', 'builtin' => '#f3f6f9', 'text_on' => '#5d6e7e', 'group' => 'branding',
+            'label' => ['Hintergrund', 'Background'],
+            'hint'  => ['Die Fläche hinter den Karten. Muss hell genug sein, dass graue Schrift darauf gut lesbar bleibt.',
+                        'The area behind the cards. It has to be light enough for grey text on it to stay readable.'],
+        ],
+        'brand_primary_dark' => [
+            'kind' => 'colour', 'default' => '', 'builtin' => '#3fd0bd', 'group' => 'branding', 'advanced' => true,
+            'label' => ['Hauptfarbe im Dunkelmodus', 'Main colour in dark mode'],
+            'hint'  => ['Leer = aus der hellen Farbe berechnet. Wirkt nur, solange oben die helle Farbe eingetragen ist.',
+                        'Empty = worked out from the light colour. Only takes effect while the light colour is set above.'],
+        ],
+        'brand_secondary_dark' => [
+            'kind' => 'colour', 'default' => '', 'builtin' => '#131d27', 'group' => 'branding', 'advanced' => true,
+            'label' => ['Menüfarbe im Dunkelmodus', 'Menu colour in dark mode'],
+            'hint'  => ['Leer = aus der hellen Farbe berechnet. Wirkt nur, solange oben die helle Farbe eingetragen ist.',
+                        'Empty = worked out from the light colour. Only takes effect while the light colour is set above.'],
+        ],
+        'brand_highlight_dark' => [
+            'kind' => 'colour', 'default' => '', 'builtin' => '#3fd0bd', 'group' => 'branding', 'advanced' => true,
+            'label' => ['Hervorhebung im Dunkelmodus', 'Highlight in dark mode'],
+            'hint'  => ['Leer = aus der hellen Farbe berechnet. Wirkt nur, solange oben die helle Farbe eingetragen ist.',
+                        'Empty = worked out from the light colour. Only takes effect while the light colour is set above.'],
+        ],
+        'brand_background_dark' => [
+            'kind' => 'colour', 'default' => '', 'builtin' => '#101922', 'text_on' => '#9aabba', 'group' => 'branding', 'advanced' => true,
+            'label' => ['Hintergrund im Dunkelmodus', 'Background in dark mode'],
+            'hint'  => ['Leer = aus der hellen Farbe berechnet. Wirkt nur, solange oben die helle Farbe eingetragen ist. Muss dunkel genug sein, dass graue Schrift darauf gut lesbar bleibt.',
+                        'Empty = worked out from the light colour. Only takes effect while the light colour is set above. It has to be dark enough for grey text on it to stay readable.'],
+        ],
         'history_months' => [
-            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 240, 'group' => 'system',
+            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 240, 'group' => 'system', 'advanced' => true,
             'label' => ['Änderungen aufbewahren (Monate)', 'Keep changes for (months)'],
             'hint'  => ['Ältere Einträge im Änderungsprotokoll werden beim nächtlichen Aufräumen entfernt. Das Prüfprotokoll ist davon nicht betroffen.',
                         'Older entries in the change log are removed during the nightly cleanup. The audit log is not affected.'],
+        ],
+        // The whole month by default, and never more: see
+        // PRESENCE_HISTORY_MAX_DAYS. presence_history_days() clamps it again on read.
+        'presence_history_days' => [
+            'kind' => 'int', 'default' => PRESENCE_HISTORY_MAX_DAYS, 'min' => 1, 'max' => PRESENCE_HISTORY_MAX_DAYS, 'group' => 'system', 'advanced' => true,
+            'label' => ['Wann jemand online war, aufbewahren (Tage)', 'Keep when somebody was online for (days)'],
+            'hint'  => ['Höchstens 30. Sichtbar nur für Trainerinnen und Administratoren. Ältere Einträge löscht das nächtliche Aufräumen.',
+                        'At most 30. Visible to trainers and administrators only. The nightly cleanup removes older entries.'],
         ],
         'upload_max_kb' => [
             'kind' => 'int', 'default' => 4096, 'min' => 64, 'max' => 51200, 'group' => 'portal',
@@ -206,9 +312,24 @@ function setting_schema(): array {
             'hint'  => ['Gilt für Zahlungsbelege, Anhänge und Profilbilder. Der Server begrenzt zusätzlich; es gilt der kleinere Wert.',
                         'Applies to payment proofs, attachments and profile pictures. The server has its own limit; the smaller one wins.'],
         ],
+        // The four colours of the dot on an avatar (ADR 0015). Each band is
+        // measured from the last activity, and presence_state() tests them in
+        // order, so a band saved shorter than the one before it is skipped -
+        // never shown out of order. Nothing needs to reorder them.
         'online_window_minutes' => [
             'kind' => 'int', 'default' => 5, 'min' => 1, 'max' => 120, 'group' => 'portal',
-            'label' => ['Als „online“ gilt eine Aktivität innerhalb von (Minuten)', 'Count as “online” when active within (minutes)'],
+            'label' => ['Grün – „online“: aktiv innerhalb von (Minuten)', 'Green – “online”: active within (minutes)'],
+            'hint'  => ['Danach blau – „vor Kurzem online“, dann gelb – „abwesend“, dann grau – „offline“. Einstellbar unter „Erweitert“.',
+                        'After that blue – “recently online”, then yellow – “away”, then grey – “offline”. Adjustable under “Advanced”.'],
+        ],
+        'presence_recent_minutes' => [
+            'kind' => 'int', 'default' => 60, 'min' => 5, 'max' => 1440, 'group' => 'portal', 'advanced' => true,
+            'label' => ['Blau – „vor Kurzem online“: bis (Minuten nach der letzten Aktivität)', 'Blue – “recently online”: up to (minutes after the last activity)'],
+        ],
+        'presence_away_hours' => [
+            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 720, 'group' => 'portal', 'advanced' => true,
+            'label' => ['Gelb – „abwesend“: bis (Stunden nach der letzten Aktivität)', 'Yellow – “away”: up to (hours after the last activity)'],
+            'hint'  => ['Danach grau – „offline“.', 'After that grey – “offline”.'],
         ],
         'privacy_ready' => [
             'kind' => 'bool', 'default' => false, 'group' => 'privacy', 'internal' => true,
@@ -239,20 +360,23 @@ function setting_schema(): array {
             'label' => ['Vorgaben angelegt', 'Defaults created'],
         ],
         'auto_background' => [
-            'kind' => 'bool', 'default' => true, 'group' => 'system',
+            'kind' => 'bool', 'default' => true, 'group' => 'system', 'advanced' => true,
             'label' => ['Wartende Aufgaben beim Seitenaufruf erledigen', 'Do waiting work while pages are served'],
             'hint'  => ['E-Mails werden dann auch ohne Cronjob verschickt. Nur ausschalten, wenn ein Cronjob eingerichtet ist.',
                         'Email is then sent without a cron job. Switch this off only if a cron job is set up.'],
         ],
+        // Internal because it is switched on the Beiträge page, where the charges
+        // it creates are listed, by auto_billing_save - not a second time here.
         'auto_billing' => [
-            'kind' => 'bool', 'default' => false, 'group' => 'system',
+            'kind' => 'bool', 'default' => false, 'group' => 'system', 'internal' => true,
             'label' => ['Monatsbeiträge automatisch anlegen', 'Create the monthly charges automatically'],
-            // Said exactly: the portal has no clock of its own, it has page
-            // views. "Am 1." was not true on a month where nobody opened the
-            // portal until the 3rd, and it was not true of the moment the switch
-            // itself is turned on.
-            'hint'  => ['Einmal pro Monat, beim ersten Seitenaufruf in diesem Monat – nicht auf die Minute am 1. Wird sie mitten im Monat eingeschaltet, entstehen die Beiträge dieses Monats sofort. Aus: unter „Beiträge → Monatsbeiträge“ anlegen, mit Vorschau.',
-                        'Once a month, on the first page view in that month – not on the stroke of the 1st. Switched on mid-month, this month’s charges are created straight away. Off: create them under “Beiträge → Monatsbeiträge”, with a preview first.'],
+        ],
+        // The start checklist (ADR 0011), put away by the administrator. It stops
+        // the landing after sign-in, the menu entry, the overview card and the
+        // way back; the checklist itself is never ticked by hand.
+        'setup_hidden' => [
+            'kind' => 'bool', 'default' => false, 'group' => 'system', 'internal' => true,
+            'label' => ['Einrichtung ausgeblendet', 'Setup checklist hidden'],
         ],
         'tick_last_run' => [
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
@@ -279,6 +403,14 @@ function setting_schema(): array {
         'schema_last_update' => [
             'kind' => 'raw', 'default' => [], 'group' => 'system', 'internal' => true,
             'label' => ['Letzte Datenbankaktualisierung', 'Last database update'],
+        ],
+        // What a refused sign-in checks the password against when there is no
+        // real hash to check (ADR 0019, M2): a hash of random bytes, never a
+        // password anybody has. '' until the migration runner makes it; kept at
+        // PASSWORD_DEFAULT's cost by refresh_sign_in_dummy_hash().
+        'sign_in_dummy_hash' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Vergleichswert für abgelehnte Anmeldungen', 'Comparison value for refused sign-ins'],
         ],
         'schema_fingerprint' => [
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
@@ -334,6 +466,98 @@ function setting_validate(string $key, array $spec, mixed $raw): mixed {
         case 'choice':
             $allowed = array_keys((array)setting($spec['options']));
             return choose(trim((string)$raw), $allowed);
+        case 'reference':
+            $v = trim((string)$raw);
+            if ($v === '' || $v === '0') return 0;
+            // Only a row the form could have offered: archived ones are left out
+            // there, and a default pointing at one would quietly resolve to none.
+            if (!preg_match('/^\d{1,18}$/D', $v) || !isset(setting_reference_options($spec)[(int)$v]))
+                throw new UserError(setting_label($spec).': '.t('Die Auswahl ist nicht verfügbar.', 'That selection is not available.'));
+            return (int)$v;
+        case 'colour':
+            $v = trim((string)$raw);
+            if ($v === '') return '';
+            $colour = colour_normalise($v);
+            if ($colour === null) throw new UserError(setting_label($spec).': '.t('Bitte eine Farbe wie #1f5fa9 eingeben.', 'Please enter a colour like #1f5fa9.'));
+            $refusal = setting_colour_refusal($spec, $colour);
+            if ($refusal !== '') throw new UserError($refusal);
+            return $colour;
     }
     throw new RuntimeException('Setting '.$key.' is not editable through the form.');
+}
+
+/**
+ * Why a colour cannot be stored for this setting, or '' when it can.
+ *
+ * Only for a setting with 'text_on': a background, where the grey text on it
+ * has to stay readable at 4.5:1 (WCAG AA). Refused rather than adjusted,
+ * because a background is a free choice and a reason is clearer than a colour
+ * she did not pick. brand_palette() asks again on read, so a value that never
+ * came through this form cannot turn the grey text unreadable either.
+ */
+function setting_colour_refusal(array $spec, string $colour): string {
+    if (!isset($spec['text_on']) || colour_contrast($colour, (string)$spec['text_on']) >= 4.5) return '';
+    // Grey text that reads best on white is dark grey, so it needs a lighter
+    // background; the dark scheme's light grey needs a darker one.
+    $lighter = colour_text_on((string)$spec['text_on']) === '#ffffff';
+    return setting_label($spec).': '
+        .t('Auf diesem Hintergrund wäre die graue Schrift schwer zu lesen. Bitte eine ', 'Grey text would be hard to read on this background. Please choose a ')
+        .($lighter ? t('hellere', 'lighter') : t('dunklere', 'darker'))
+        .t(' Farbe wählen (eingebaut: ', ' colour (built-in: ').($spec['builtin'] ?? '').t('). Nichts wurde gespeichert.', '). Nothing was saved.');
+}
+
+/**
+ * The sentence a save of the „Aussehen" card ends with: the colours it replaced.
+ *
+ * Settings are not tracked(), so this is the way back (ADR 0013): she can type
+ * the old values in again. Only the colours that changed are named - a switch
+ * is a tick she can see on the card, a hex code is not something anybody
+ * remembers. The built-in colour is named as such, so a return to the built-in
+ * look can be undone too. '' when no colour changed.
+ */
+function settings_replaced_colours(array $specs, array $before, array $after): string {
+    // Read the way brand_chosen() reads them: a value that did not normalise,
+    // or a background the form would refuse today, was showing as the built-in
+    // colour, so that is what it is called.
+    $colour = function (array $spec, mixed $v): string {
+        $c = is_string($v) ? colour_normalise($v) : null;
+        return $c === null || setting_colour_refusal($spec, $c) !== '' ? '' : $c;
+    };
+    $parts = [];
+    foreach ($specs as $key => $spec) {
+        if (($spec['kind'] ?? '') !== 'colour') continue;
+        $old = $colour($spec, $before[$key] ?? '');
+        if ($old === $colour($spec, $after[$key] ?? '')) continue;
+        $label = setting_label($spec);
+        // Mid-sentence in English, where a label is not a noun that keeps its capital.
+        if (locale() === 'en') $label = lcfirst($label);
+        $parts[] = $label.' '.($old === '' ? t('Standard', 'built-in') : $old);
+    }
+    return $parts ? t('Vorher: ', 'Before: ').implode(', ', $parts).'.' : '';
+}
+
+/**
+ * The tables a 'reference' setting may point into, with the column that names a
+ * row. An allowlist, as tracked_entities() is: the table name is interpolated,
+ * and a declaration in this file is not a reason to trust whatever it says.
+ */
+function setting_reference_tables(): array {
+    return ['payment_profiles' => 'name'];
+}
+
+/**
+ * The rows a 'reference' setting may choose from, as id => name.
+ *
+ * The one list the form offers and setting_validate() accepts, so the two
+ * cannot disagree about which rows count. Archived rows are not offered.
+ */
+function setting_reference_options(array $spec): array {
+    $table = (string)($spec['table'] ?? '');
+    $column = setting_reference_tables()[$table] ?? null;
+    if ($column === null) throw new RuntimeException('Setting refers to a table that is not allowed: '.$table);
+    $out = [];
+    foreach (rows('SELECT id, '.sql_name($column, 'column').' AS label FROM '.sql_name($table, 'table')
+        .' WHERE archived=0 ORDER BY '.sql_name($column, 'column').', id') as $row)
+        $out[(int)$row['id']] = (string)$row['label'];
+    return $out;
 }

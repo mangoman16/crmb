@@ -69,6 +69,12 @@ ok(!function_exists('revert_version'), 'the undo is gone rather than hidden');
 $actions = (string)file_get_contents(APP_ROOT.'/app/actions_config.php');
 ok(!str_contains($actions, 'version_revert'), 'and so is the action behind its button');
 ok(!str_contains((string)file_get_contents(APP_ROOT.'/views/history.php'), 'version_revert'), 'and the button');
+$deleted = make_student(['first_name'=>'Tim','last_name'=>'Weg']);
+act('student_delete', ['id'=>(string)$deleted, 'confirmation'=>'Tim Weg']);
+$said = (string)($_SESSION['flash']['message'] ?? '');
+ok(str_contains($said, 'wiederherstellen lässt es sich nicht'), 'deleting a student says it cannot be restored');
+ok(!str_contains($said, 'rückgängig'), 'rather than promising an undo that no longer exists');
+is_same('delete', history_for('students', $deleted)[0]['operation'] ?? null, 'and what it points at is really there');
 
 case_('A failed change records no version');
 $sid2 = make_student(['first_name'=>'Heil']);
@@ -150,3 +156,83 @@ $item = fixture('news', ['title'=>'Hallenzeiten', 'body'=>'Ab Oktober.', 'publis
                          'created_at'=>now(), 'updated_at'=>now()]);
 is_same(0, (int)scalar('SELECT published FROM news WHERE id=?', [duplicate_record('news', $item)]),
         'a copied news item is not published');
+
+// ---------------------------------------------------------------------------
+case_('A student’s custom fields are part of the student’s line, labelled and readable');
+/* ADR 0020, §7. field_values has no id to be tracked by, so a student's
+   snapshot carries each value as field:<id>. */
+sign_in_as($admin);
+$colour = fixture('field_definitions', ['label'=>'Lieblingsfarbe', 'label_en'=>'Favourite colour', 'field_type'=>'multiselect', 'section_name'=>'',
+    'options_json'=>'["rot","blau"]', 'default_json'=>'[]', 'required'=>0, 'visibility'=>'edit', 'sort_order'=>0, 'archived'=>0]);
+$photos = fixture('field_definitions', ['label'=>'Fotos erlaubt', 'label_en'=>'', 'field_type'=>'checkbox', 'section_name'=>'',
+    'options_json'=>'[]', 'default_json'=>'false', 'required'=>0, 'visibility'=>'edit', 'sort_order'=>0, 'archived'=>0]);
+$since = fixture('field_definitions', ['label'=>'Im Verein seit', 'label_en'=>'', 'field_type'=>'date', 'section_name'=>'',
+    'options_json'=>'[]', 'default_json'=>'""', 'required'=>0, 'visibility'=>'internal', 'sort_order'=>0, 'archived'=>0]);
+$kid = make_student(['first_name'=>'Feld', 'last_name'=>'Test']);
+fixture('field_values', ['student_id'=>$kid, 'field_id'=>$since, 'value_json'=>'""']);
+tracked('students', $kid, 'Feld Test', function () use ($kid, $colour, $photos, $since) {
+    run('INSERT INTO field_values (student_id,field_id,value_json) VALUES (?,?,?)', [$kid, $colour, '["rot","blau"]']);
+    run('INSERT INTO field_values (student_id,field_id,value_json) VALUES (?,?,?)', [$kid, $photos, 'true']);
+    run('UPDATE field_values SET value_json=? WHERE student_id=? AND field_id=?', ['"2019-01-27"', $kid, $since]);
+});
+$changes = version_changes(history_for('students', $kid)[0]);
+is_same(['field:'.$colour, 'field:'.$photos, 'field:'.$since], array_keys($changes),
+        'a field filled in for the first time is a change, though the row did not exist before');
+is_same(['Lieblingsfarbe', 'Fotos erlaubt', 'Im Verein seit'], array_map('history_field_label', array_keys($changes)), 'each named as the settings page names it');
+is_same(['rot, blau', 'ja', '27.01.2019'], array_map(fn($c, $p) => history_value($p['to'], $c), array_keys($changes), $changes),
+        'a list joined with commas, a box as ja, a date as she writes one');
+is_same('—', history_value($changes['field:'.$since]['from'], 'field:'.$since), 'and an empty value as a dash');
+tracked('students', $kid, 'Feld Test', fn() => run('UPDATE field_values SET value_json=? WHERE student_id=? AND field_id=?', ['false', $kid, $photos]));
+$unticked = version_changes(history_for('students', $kid)[0])['field:'.$photos] ?? [];
+is_same(['ja', '—'], [history_value($unticked['from'] ?? null, 'field:'.$photos), history_value($unticked['to'] ?? null, 'field:'.$photos)],
+        'unticking reads „ja → —“: an unticked box is empty, by the same rule as a required one');
+$_SESSION['locale'] = 'en';
+is_same('Favourite colour', history_field_label('field:'.$colour), 'in English where the field has an English name');
+unset($_SESSION['locale']);
+is_same('Gelöschtes eigenes Feld', history_field_label('field:999999'), 'and a field that no longer exists says so rather than showing a number');
+run('DELETE FROM record_versions');
+tracked('students', $kid, 'Feld Test', fn() => run('INSERT INTO field_values (student_id,field_id,value_json) VALUES (?,?,?)',
+    [$kid, fixture('field_definitions', ['label'=>'Leer', 'label_en'=>'', 'field_type'=>'text', 'section_name'=>'', 'options_json'=>'[]',
+     'default_json'=>'""', 'required'=>0, 'visibility'=>'edit', 'sort_order'=>0, 'archived'=>0]), '""']));
+is_same([], version_changes(history_for('students', $kid)[0]), 'a field written empty where nothing was is no change worth a line');
+tracked('students', $kid, 'Feld Test', fn() => run('DELETE FROM students WHERE id=?', [$kid]), 'delete');
+$kept = json_decode((string)history_for('students', $kid)[0]['before_json'], true);
+is_same(['["rot","blau"]', null, '"2019-01-27"'], [$kept['field:'.$colour] ?? null, $kept['field:'.$photos] ?? null, $kept['field:'.$since] ?? null],
+        'a deleted student’s line keeps their custom values, every one that holds something');
+$quiet = make_student(['first_name'=>'Still', 'last_name'=>'Kind', 'level_id'=>(int)(level_default()['id'] ?? 0) ?: null]);
+run('DELETE FROM record_versions');
+act('student_save', ['id'=>(string)$quiet, 'revision'=>'1', 'first_name'=>'Still', 'last_name'=>'Kind', 'email'=>'', 'birth_date'=>'',
+    'joined_on'=>'2025-01-01', 'ended_on'=>'', 'status'=>'active', 'internal_notes'=>'', 'address'=>'', 'phone'=>'']);
+is_same([], version_changes(history_for('students', $quiet)[0] ?? ['before_json'=>null, 'after_json'=>null, 'entity'=>'students']),
+        'a staff save that posts nothing for a box with no stored row logs no change: an unticked box is nothing, not „nein“');
+
+case_('What a family writes is labelled, and a contact’s line does not repeat whose it is');
+foreach (['address'=>'Anschrift', 'phone'=>'Telefonnummer', 'owner_name'=>'Name', 'relation_label'=>'Beziehung', 'is_primary'=>'Standardkontakt'] as $column => $word)
+    is_same($word, history_field_label($column), $column.' reads as „'.$word.'“');
+is_same('27.01.2019', history_value('2019-01-27', 'birth_date'), 'a birth date reads as she writes one');
+is_same('2026-09-30 14:00:00', history_value('2026-09-30 14:00:00', 'created_at'), 'while a DATETIME is left alone');
+is_same('2026-02-30', history_value('2026-02-30'), 'and something shaped like a date that is none is shown as it is');
+$child = make_student(['first_name'=>'Kontakt', 'last_name'=>'Kind']);
+$contact = tracked_insert('contacts', 'Kontakt Kind · Oma', fn() => fixture('contacts', ['student_id'=>$child, 'owner_name'=>'Oma',
+    'relation_label'=>'Großmutter', 'phone'=>'1', 'email'=>'', 'is_primary'=>1]));
+ok(!array_key_exists('student_id', version_changes(history_for('contacts', $contact)[0])), 'a contact’s line hides student_id: the label names the child');
+$charged = tracked_insert('charges', 'Beitrag', fn() => fixture('charges', ['student_id'=>$child, 'label'=>'Beitrag', 'amount_cents'=>100,
+    'gross_cents'=>100, 'discount_cents'=>0, 'discount_note'=>'', 'due_on'=>'2026-09-01', 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]));
+ok(array_key_exists('student_id', version_changes(history_for('charges', $charged)[0])), 'while a charge’s still shows it, being the only thing that says whose');
+
+case_('„Von Familien“ lists what families changed, and nothing staff did in their place');
+run('DELETE FROM record_versions');
+$familyLogin = make_account(['role'=>'student', 'name'=>'Familie Test']);
+$theirs = make_student(['first_name'=>'Eigen', 'last_name'=>'Kind', 'account_id'=>$familyLogin]);
+sign_in_as($familyLogin);
+tracked('students', $theirs, 'Eigen Kind', fn() => run('UPDATE students SET phone=? WHERE id=?', ['1', $theirs]));
+$_SESSION['impersonator_id'] = $admin;
+tracked('students', $theirs, 'Eigen Kind', fn() => run('UPDATE students SET phone=? WHERE id=?', ['2', $theirs]));
+unset($_SESSION['impersonator_id']);
+sign_in_as($admin);
+tracked('students', $theirs, 'Eigen Kind', fn() => run('UPDATE students SET phone=? WHERE id=?', ['3', $theirs]));
+$byFamilies = history_recent(60, true);
+is_same([$familyLogin], array_map('intval', array_column($byFamilies, 'actor_id')), 'only the family’s own change');
+is_same('student', $byFamilies[0]['actor_role'] ?? null, 'with the actor’s role, read when the page is read');
+is_same(3, count(history_recent()), 'while „Alle“ has all three, the change made while viewing as the family under the administrator');
+is_same(['admin', 'admin', 'student'], array_column(history_for('students', $theirs), 'actor_role'), 'and a record’s own history carries the role too');

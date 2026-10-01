@@ -1,0 +1,19 @@
+-- News by email is on for a new login, the way message and payment notices
+-- already are.
+--
+-- The owner has decided that "Neuigkeiten per E-Mail" is club information a
+-- member needs - training moved, the hall closed, the season starting - and
+-- carries no advertising, so it belongs with the notices that start switched
+-- on rather than with something a member has to go looking for. Anybody can
+-- still switch it off on their profile or through the link in every such mail.
+--
+-- Only the default changes. Every login that exists keeps the choice it has:
+-- somebody who left it off, or switched it off, is not signed up behind their
+-- back by an update. The value is written by whatever creates a login without
+-- naming the column; a form that sends its own value still decides for itself.
+--
+-- ALTER COLUMN ... SET DEFAULT rather than MODIFY: it changes the default and
+-- nothing else, so the column's type and NOT NULL are not restated where a
+-- slip could change them, no row is rewritten, and running it a second time
+-- after an interrupted update does nothing twice.
+ALTER TABLE accounts ALTER COLUMN newsletter SET DEFAULT 1;

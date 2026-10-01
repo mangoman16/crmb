@@ -4,8 +4,10 @@ Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and
 
 ## Included
 
-- Invitation-only email/password accounts; verified invitation links, password reset and verified email changes.
-- One account can manage multiple students. Administrator, trainer and student roles; account suspension and deletion. An administrator can do everything a trainer can; the lists the trainer works with sit under **Verwaltung**, away from the technical settings.
+- Invitation-only email/password accounts; verified invitation links, password reset and verified email changes. Invitations and reset links are only sent once the mail connection has passed a test, so none is queued behind a server that has never answered.
+- One login is one student: a student's own email address is their login, and it is invited, suspended, re-sent or deleted on that student's page. Brothers and sisters each need an address of their own, and the database refuses a second student on one login. Administrator, trainer and student roles. An administrator can do everything a trainer can; the lists the trainer works with sit under **Verwaltung**, away from the technical settings, and **Konten** lists the team.
+- A start checklist, „Dein Portal einrichten“, with the nine things a new portal needs before families come. Each step is ticked from the data itself, example data never counts, and an administrator lands there at sign-in until it is done or hidden.
+- A menu of seven entries — Übersicht, Schüler, Kurse, Anwesenheit, Geld, Nachrichten, Einstellungen (Verwaltung for a trainer). Everything else is reached from the page it belongs to, and „Mehr“ on the phone opens the menu without JavaScript.
 - Courses with a timetable rather than a weekday: several days a week, each with its own time and place, its own tariffs and its own bank details. A student can be in several courses.
 - Students can ask to join, leave or change tariff; the trainer accepts or declines.
 - Attendance on one screen, designed for one hand on a phone: pick the course, pick the day, one tap per child, one save. A child reported absent that day carries the reason beside their name.
@@ -16,21 +18,24 @@ Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Students with contact people — one of them the standard contact, with an address invoices and reminders go to — membership dates, configurable statuses and dated absences.
 - Editable custom fields: types, options, defaults, sections, ordering, student permissions and archiving.
 - Messages in the shape people already know one: conversations, bubbles, pictures, PDFs and voice notes. Writing to the trainer needs nobody's permission; writing to another family needs theirs. A conversation between two families is private — neither the trainer nor the administrator can read it. Group messages with filters, saved views, templates and a review step are a separate page.
-- News, optional newsletter emails, separate private-message notifications, and unsubscribe links.
+- News, and club news by email, which starts switched on for a new account and can be switched off under **Mein Konto** or through the link in every such email; separate private-message notifications; unsubscribe links. The printed sign-up form asks for the no rather than the yes.
 - SMTP settings, encrypted SMTP password, a mail queue with automatic retry and an outgoing-mail overview.
-- Editable German/English privacy drafts filled in from the operator's own details, acknowledgement and subscription records.
-- A pinned top bar with notifications, profile pictures, a portal colour each person can override for themselves, light and dark following the device, adjustable text size, and installable to a phone home screen.
-- Any page can report that something is wrong on it, with a screenshot; the report arrives with the page, the device, the address and the version attached.
+- Editable privacy drafts filled in from the operator's own details, acknowledgement and subscription records. Only the German notice has to be released; somebody using the portal in English is shown it with a line saying it exists in German only.
+- A pinned top bar with a bell for notifications, and a menu behind your picture with „Mein Konto" and „Abmelden" that works without JavaScript. Profile pictures are kept by the browser for up to seven days, and a family can fetch only its own child's picture and the staff's. Light and dark follow the device, text size is adjustable, and each person can override the portal colour for themselves. Installable to a phone home screen, with the club's own icon.
+- The club's own look under **Einstellungen → Portal**: a main, menu, highlight and background colour, with dark-mode shades worked out and a colour too pale or dark for readable text used in a readable shade of the same hue; and a logo (PNG, JPEG or WebP, at most 1 MB) in place of the „B", with switches to hide the portal's name beside it. A portal with nothing set looks as before and loads nothing extra.
+- Any page can report that something is wrong on it, with a screenshot. The report arrives with the page, the device, the version and the last eight steps before it, form fields included but never a password or a token. Marking it done removes what was typed, and a done report is deleted 30 days later.
+- Unexpected errors report themselves: whoever hit one sees a friendly page, and the administrator finds the error under **Einstellungen → Rückmeldungen**, counted rather than repeated, with a block of text to copy for whoever helps her. No password, typed value, IP address or database message goes into it, and an entry is deleted 30 days after the error last happened.
 - An administrator or trainer can view the portal as somebody else, with a bar saying so and a way back — and what they change is recorded against them.
 - Example data at the press of a button, and out again, so the portal can be tried before it holds anybody real.
 - A browser installer for hosting without a shell, versioned migrations that apply themselves when new files are uploaded, `bin/update.sh` for a server with one, and a maintenance switch with an administrator bypass.
 - An update that refuses to run against an older package, an incomplete upload, a database it could not back up first, or a result with fewer rows than it started with.
 - Queued email, cleanup and optional charge creation run without a cron job, just after a page has been served.
 - Every operator setting declared once with a type and a default, editable from the settings screen, so no value is ever undefined.
-- Online status for accounts, and email reminders for outstanding payments.
+- For trainers and administrators: a status to choose („Automatisch", „Abwesend", „Als offline anzeigen"), a coloured dot on each picture, and when each account was online over the last 30 days — date and time only, deleted after 30 days. Families see none of it.
+- Email reminders for outstanding payments.
 - A change log that says what changed, field by field, in the words she uses.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs about 2500 assertions in half a minute, and [TESTING.md](TESTING.md) is the list to walk by hand after a change.
+- A test suite that needs no database server: `php tests/run.php` runs about 4800 assertions in under a minute, writing only into a temporary folder of its own. `tests/e2e.sh` walks the first evening in a real browser against a real MariaDB. [TESTING.md](TESTING.md) is the list to walk by hand after a change.
 
 ## Install
 
@@ -66,7 +71,10 @@ Full guide, including what to do when a step fails: [INSTALL.md](INSTALL.md).
 The web root may point at the project folder or at `public/`; both work. The
 `.htaccess` at the top rewrites every request into `public/`, and each other
 folder denies itself, so `app/`, `config/` and `storage/` stay unreachable even
-when they sit inside the published directory.
+when they sit inside the published directory. Hidden folders such as `.git`
+answer 404 through `mod_alias` even where `mod_rewrite` is off; `.well-known/`
+stays reachable for certificate renewal. That rule is checked by reading the
+file, not on a real Apache.
 
 No cron job is required. Waiting work — sending queued email, removing expired
 links, and optionally creating the monthly charges once a month — runs just after
@@ -84,8 +92,11 @@ php bin/console.php create-admin
 php bin/console.php check
 ```
 
-Then sign in and complete **Einstellungen → SMTP** and **Einstellungen →
-Datenschutz**. Invitations stay disabled until both are done.
+Then sign in. An administrator lands on „Dein Portal einrichten“, which lists
+what is still missing and links to where each thing is done. Invitations stay
+disabled until the SMTP connection has passed a test under **Einstellungen →
+SMTP** and the German privacy notice is released under **Einstellungen →
+Datenschutz**.
 
 ## Update
 
@@ -116,7 +127,11 @@ overwrite it. Keep its `app_key` forever: it decrypts the stored SMTP password
 and anything still in the mail queue.
 
 Full guide, including separate release directories and how to recover from a
-failed migration: [UPDATING.md](UPDATING.md).
+failed migration: [UPDATING.md](UPDATING.md). An existing portal moving to this
+version should read [its section there](UPDATING.md#updating-an-existing-portal-to-060)
+first: migration 019 takes every child but the first off a shared login, and
+invitations and reset links wait until **„Nur Verbindung prüfen“** under
+**Einstellungen → SMTP** has passed once.
 
 ```bash
 php bin/console.php update            # the same thing from a shell, with before/after counts
@@ -161,11 +176,38 @@ on how the database compares two spellings of one address. To prove the SQL:
 tests/mariadb-local.sh          # starts a throwaway MariaDB, runs the suite, stops it
 ```
 
-It has been run against MariaDB 10.11.14 with everything passing. Against a
-database you manage yourself, whose name must end in `_test`:
+It has been run against MariaDB 10.11.14 with everything passing. That run ends
+by naming what it could not reach either: the data that migrations 015, 016,
+019, 020 and 021 carry across is checked on SQLite, unless `CRM_MIGRATION_CONFIG`
+names the configuration of a second, empty `_test` database; with one, it has
+been checked on MariaDB 10.11.14 as well.
+
+On shared hosting, where there is no database server to start, make an empty
+database whose name ends in `_test` in the hosting panel and run the suite
+against it from the git checkout. It refuses the portal's own database, one that
+is not empty the first time, and one holding real email addresses:
+
+```bash
+tests/existing-database.sh      # asks for the details once, keeps them in tests/.test-database.php
+```
+
+Against a database you manage yourself, whose name must end in `_test`:
 
 ```bash
 CRM_TEST_DRIVER=mysql CRM_CONFIG=/path/to/test-config.php php tests/run.php
+```
+
+Every run keeps what it writes — uploads, backups, the maintenance flag — in a
+folder of its own under the system temp directory, prints that folder on its
+second line, and removes it at the end, so running it inside a live checkout no
+longer touches the portal's files.
+
+The first evening, end to end in Chromium at phone width against a throwaway
+MariaDB, a local mail server and `php -S` (needs `mariadbd`, `node` and
+Playwright's Chromium; details in [tests/README.md](tests/README.md)):
+
+```bash
+tests/e2e.sh                    # must end in RESULT: PASS
 ```
 
 Conventions for changing this code are in [CLAUDE.md](CLAUDE.md). Where the
@@ -175,9 +217,9 @@ project is going, and what has to be true before it holds real data, is in
 ## Start here
 
 1. Follow [INSTALL.md](INSTALL.md): empty database, files in place, open the address.
-2. Configure the portal under **Einstellungen**. Create tariffs and edit student fields.
-3. Add students, invite the account holders, and link each student to the appropriate account.
-4. To try it before real families are in it: **Einstellungen → System → Beispieldaten anlegen**.
+2. Sign in. „Dein Portal einrichten“ lists the nine steps — name and address, bank account, a course, a price for it, the children, charges, email, privacy notice, invitations — and ticks each one as it is done.
+3. Each child is invited from their own page, to their own email address.
+4. To try it before real families are in it: tick **Beispieldaten anlegen** on the setup page, or later **Einstellungen → System → Beispieldaten anlegen**. Example data never ticks a checklist step, and comes out again with one button.
 5. To update, upload the new files — or run `bin/update.sh` on a checkout. Nothing else.
 
 The distribution ZIP includes PHPMailer, BaconQrCode and the Composer autoloader, so an upload needs nothing else. A Git checkout uses `composer install --no-dev --prefer-dist --optimize-autoloader` to install the exact versions in `composer.lock`.
@@ -186,14 +228,18 @@ The distribution ZIP includes PHPMailer, BaconQrCode and the Composer autoloader
 
 Recurring charges are created from the tariff each enrolment names, for periods anchored to the calendar year, either from the payments screen with a preview or automatically once a month on the first page view of that month. One-off tariffs are entered by hand, because they do not recur. There is no online payment processor. SMTP sends email; replies belong in the app. No mailbox reader or backup system is included.
 
-Custom content, tariff names and message templates are entered by the operator; switching the interface language does not translate their content. The privacy notice is an editable draft that still needs the actual operator and service-provider details. Invitations stay disabled until SMTP is configured and both privacy texts are completed in settings.
+Custom content, tariff names and message templates are entered by the operator; switching the interface language does not translate their content. The privacy notice is an editable draft that still needs the actual operator and service-provider details. Invitations stay disabled until the SMTP connection has passed a test and the German privacy text is released; an English text is optional, and is checked the same way when there is one.
 
 This release has not been deployed. Validation results and remaining hosting
 checks are in [VALIDATION.md](VALIDATION.md). A full bug, security and design
 review is in [AUDIT.md](AUDIT.md), and what is done versus outstanding is in
-[ROADMAP.md](ROADMAP.md) — start there. All eighteen migrations and the whole
-test suite have been run against **MariaDB 10.11.14**; **MySQL 8.0 itself has
-not been tried**. Either way, run `php bin/console.php update` against a disposable
+[ROADMAP.md](ROADMAP.md) — start there. All twenty-one migrations and the whole
+test suite have been run against **MariaDB 10.11.14**. The first evening was
+walked end to end in Chromium against it, last at commit `2be0a61`, before the
+account menu, online status and the club's colours and logo were added; that
+walk has not been repeated since them; **MySQL 8.0 itself has not been
+tried**, and neither has a real iPhone, a real mail provider or a real hosting
+account. Either way, run `php bin/console.php update` against a disposable
 copy of the database before touching anything real.
 
 ## Layout

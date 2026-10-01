@@ -33,6 +33,36 @@ function install_e(mixed $value): string {
 }
 
 // ---------------------------------------------------------------------------
+// Reading what a form sent
+// ---------------------------------------------------------------------------
+
+/**
+ * A submitted field as every form here reads it: text, without the spaces
+ * around it. null when it is not text at all, which only a crafted request sends.
+ *
+ * The one copy of the rule. It lives here because the installer runs before the
+ * rest of the application is loaded; post() uses it for every other form, sign-in
+ * included. Setup once kept the spaces around the first administrator's password
+ * while sign-in removed them, so a password typed with a stray space was stored
+ * as one thing and checked as another, and she could never sign in.
+ */
+function form_text(mixed $value): ?string { return is_scalar($value) ? trim((string)$value) : null; }
+
+/**
+ * The text the installer's form sent, read the way every other form is read.
+ *
+ * Except the database password, which arrives exactly as typed: the database
+ * server checks it, not the portal, and the hosting panel decides what it is.
+ */
+function install_submission(array $post, array $form): array {
+    foreach (array_keys($form) as $field) $form[$field] = form_text($post[$field] ?? $form[$field]) ?? $form[$field];
+    return ['form' => $form,
+            'password' => form_text($post['admin_password'] ?? '') ?? '',
+            'repeat' => form_text($post['admin_password2'] ?? '') ?? '',
+            'db_password' => is_string($post['db_password'] ?? null) ? $post['db_password'] : ''];
+}
+
+// ---------------------------------------------------------------------------
 // Where things are
 // ---------------------------------------------------------------------------
 

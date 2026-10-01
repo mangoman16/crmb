@@ -70,11 +70,11 @@ try{
         // It said "the password printed above" and printed no password, so the
         // three accounts it had just made could not be signed in to at all.
         // Generated once and never stored in the clear, so this is the only
-        // moment it can be shown.
-        echo "\n  trainerin@beispiel.test        (trainer)\n"
-            ."  familie.hofer@beispiel.test    (family)\n"
-            ."  familie.berger@beispiel.test   (family)\n\n"
-            ."All three sign in with: ".$result['password']."\n"
+        // moment it can be shown. The usernames are read back rather than
+        // written here: beside real data one may carry a number.
+        echo "\n";
+        foreach($result['logins'] as $login)printf("  %-24s (%s)\n",$login['username'],$login['role']==='student'?'family':$login['role']);
+        echo "\nAll of them sign in with: ".$result['password']."\n"
             ."Write it down: it is not shown again. Remove everything with demo:clear.\n";exit;
     }
     if($command==='demo:clear'){
@@ -116,17 +116,32 @@ try{
     }
     if($command==='create-admin'){
         function ask(string $label,bool $secret=false):string{
-            static $tty=null;$tty??=stream_isatty(STDIN);fwrite(STDOUT,$label.': ');
-            if($secret&&$tty)shell_exec('stty -echo');
-            try{$value=trim((string)fgets(STDIN));}finally{if($secret&&$tty){shell_exec('stty echo');fwrite(STDOUT,PHP_EOL);}}
+            // Hiding a password as it is typed means running stty. Shared hosts
+            // often list shell_exec in disable_functions, and PHP 8 removes a
+            // disabled function outright, so calling it anyway ended the prompt
+            // with a fatal error before the account existed. Without it the
+            // password is read visibly, and whoever is typing is told so first.
+            static $tty=null,$warned=false;$tty??=stream_isatty(STDIN);
+            $hide=$secret&&$tty&&function_exists('shell_exec');
+            if($secret&&$tty&&!$hide&&!$warned){$warned=true;fwrite(STDOUT,"This server does not allow hiding what you type: the password will be visible on screen.\n"
+                ."Press Ctrl+C now to stop without creating anything, or change the password after signing in\n"
+                ."(your name at the top of the page, then \"Passwort ändern\").\n");}
+            fwrite(STDOUT,$label.': ');
+            if($hide)shell_exec('stty -echo');
+            // Trimmed exactly as post() trims every field on the web, sign-in
+            // included, so a password with a stray space still signs in.
+            try{$value=trim((string)fgets(STDIN));}finally{if($hide){shell_exec('stty echo');fwrite(STDOUT,PHP_EOL);}}
             return $value;
         }
         $name=ask('Name');$email=ask('Email');$password=ask('Password (12+ characters)',true);
         if($password!==ask('Repeat password',true))throw new RuntimeException('Passwords do not match.');
         // A second administrator can be created deliberately with --force; without
         // it the guard stays, so a stray run cannot quietly add one.
-        create_admin_account($name,$email,$password,($argv[2]??'')==='--force');
-        echo "Administrator created. Sign in to configure SMTP and the privacy notice.\n";exit;
+        $made=create_admin_account($name,$email,$password,($argv[2]??'')==='--force');
+        // Nobody chose it (ADR 0019): this is the one place it is told. The
+        // address signs in as well (ADR 0020).
+        echo "Administrator created. Sign in with the username ".$made['username']." or with the email address ".email_normalised($email).".\n"
+            ."Then configure SMTP and the privacy notice.\n";exit;
     }
     if($command==='billing:plan'){
         $period=billing_valid_period($argv[2]??billing_current_period());

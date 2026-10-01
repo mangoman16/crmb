@@ -238,8 +238,10 @@ function dispatch_config(string $action): array {
         if(!setting('smtp',[])) throw new UserError(t('Bitte zuerst SMTP einrichten.','Set up SMTP first.'));
         $only=(int)post('student_id');
         $sent=0; $skipped=0;
-        // Group by account: one parent with three children gets three lines of
-        // detail, not three separate emails.
+        // One reminder per overdue charge, to the student's own login. A student
+        // with no login - including a brother or sister taken off a shared one
+        // by the update to one login per member - is skipped and counted, until
+        // they are invited with an address of their own.
         foreach(rows('SELECT c.*, s.first_name, s.last_name, s.account_id,'
             .' '.charge_paid_sql().' AS paid'
             .' FROM charges c JOIN students s ON s.id=c.student_id'
@@ -322,19 +324,30 @@ function dispatch_config(string $action): array {
     // ---- defaults registry and maintenance -----------------------------
 
     case 'defaults_registry_save':
-        $group=choose(post('group'),['portal','students','payments','organisation','system']);
+        $group=choose(post('group'),['portal','branding','students','payments','organisation','system']);
         // Who may change what, rather than one rule for the whole registry:
         // membership statuses and payment methods are the trainer's words for
-        // her own work; the portal's name and the background jobs are not.
+        // her own work; the portal's name, its look and the background jobs are not.
         if(in_array($group,['students','payments'],true)) require_staff(); else require_admin();
-        foreach(settings_in_group($group) as $key=>$spec) {
+        // Every value is checked before any is written, so a refusal - an
+        // unreadable background, a colour that is not one - leaves the whole
+        // card as it was, and says so, rather than half of it saved.
+        $specs=settings_in_group($group); $values=[]; $before=[];
+        foreach($specs as $key=>$spec) {
+            $before[$key]=setting($key);
             $raw = $spec['kind']==='bool' ? (post('set_'.$key)!=='') : ($_POST['set_'.$key] ?? '');
-            if($spec['kind']==='map') { set_setting($key,map_from_post($key,$spec)); continue; }
+            if($spec['kind']==='map') { $values[$key]=map_from_post($key,$spec); continue; }
             if(is_array($raw)) throw new UserError(t('Ungültige Eingabe.','Invalid input.'));
-            set_setting($key,setting_validate($key,$spec,$raw));
+            $values[$key]=setting_validate($key,$spec,$raw);
         }
-        audit('settings.saved','settings'); flash(t('Vorgaben gespeichert.','Defaults saved.'));
-        return [choose(post('to_page','settings'),['settings','manage']),['tab'=>post('to_tab')?:$group]];
+        foreach($values as $key=>$value) set_setting($key,$value);
+        audit('settings.saved','settings');
+        // The colours are not tracked(), so the message is the way back: it
+        // names what they were, to be typed in again (ADR 0013).
+        $replaced=$group==='branding'?settings_replaced_colours($specs,$before,$values):'';
+        flash(t('Vorgaben gespeichert.','Defaults saved.').($replaced!==''?' '.$replaced:''));
+        // The „Aussehen" card is on the Portal tab; it has no tab of its own.
+        return [choose(post('to_page','settings'),['settings','manage']),['tab'=>post('to_tab')?:($group==='branding'?'portal':$group)]];
 
     // ---- invoices --------------------------------------------------------
 
@@ -400,7 +413,8 @@ function dispatch_config(string $action): array {
         $u=require_user();
         if(post('id')!=='') run('UPDATE notifications SET read_at=? WHERE id=? AND account_id=? AND read_at IS NULL',[now(),(int)post('id'),$u['id']]);
         else run('UPDATE notifications SET read_at=? WHERE account_id=? AND read_at IS NULL',[now(),$u['id']]);
-        return [post('return_page','dashboard'),[]];
+        // The pane is on every page, so back to that page with its record and tab.
+        return form_return();
 
     case 'avatar_save':
         $u=require_user();
@@ -430,6 +444,8 @@ function dispatch_config(string $action): array {
         // the session has no staff rights at all, so requiring them here left
         // the only way back out refusing to work.
         if(post('mode')==='stop') {
+            // impersonator() answers nobody unless somebody is signed in, so a
+            // view whose session ended cannot be stopped into staff (F1).
             if(!impersonator()) throw new UserError(t('Du siehst das Portal gerade nicht als jemand anderer.','You are not viewing the portal as somebody else.'));
             stop_impersonation(); flash(t('Du bist wieder du selbst.','You are yourself again.')); return ['dashboard',[]];
         }
@@ -454,26 +470,47 @@ function dispatch_config(string $action): array {
         if(isset($_FILES['screenshot']) && (int)($_FILES['screenshot']['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE)
             $screenshot=store_upload('screenshot','avatar')['stored_name'];
         run('INSERT INTO feedback (account_id,page,message,context_json,screenshot_name,created_at) VALUES (?,?,?,?,?,?)',
-            [(int)$u['id'],$page,$message,json_encode(feedback_context($page),JSON_UNESCAPED_UNICODE),$screenshot,now()]);
+            [(int)$u['id'],$page,$message,feedback_context_json(feedback_context($page)),$screenshot,now()]);
         $id=(int)db()->lastInsertId();
-        foreach(rows("SELECT id FROM accounts WHERE role='admin' AND state='active'") as $admin)
-            notify((int)$admin['id'],'problem',t('Jemand meldet ein Problem','Somebody reported a problem'),
-                mb_substr($message,0,200),'settings',['tab'=>'feedback']);
+        notify_admins('problem',t('Jemand meldet ein Problem','Somebody reported a problem'),
+            mb_substr($message,0,200),'settings',['tab'=>'feedback']);
         audit('feedback.sent','feedback',$id);
         flash(t('Danke! Die Meldung ist angekommen.','Thank you. Your report has arrived.'));
-        return [post('return_page','dashboard'),[]];
+        // Back to the page the report was sent from, record and tab included:
+        // the page name alone opened ?page=student with no id, which is „Kein
+        // Zugriff“. form_origin() is what the report itself recorded; the router
+        // refuses a page it does not know, so nothing is trusted beyond that.
+        $on=form_origin();
+        return [$on['page']!==''?$on['page']:'dashboard',array_filter(['id'=>$on['id']?:null,'tab'=>$on['tab']!==''?$on['tab']:null],fn($v)=>$v!==null)];
 
     case 'feedback_state':
-        require_admin();
-        run('UPDATE feedback SET state=? WHERE id=?',[choose(post('state'),['new','seen','done']),(int)post('id')]);
+        require_admin(); $state=choose(post('state'),['new','seen','done']);
+        transactional(function() use ($state): void {
+            // Held while it is rewritten, so two taps on "Erledigt" from two
+            // tabs cannot each read the old context and write it back.
+            $report=lock_row('feedback',(int)post('id'));
+            if(!$report) throw new NotFound(t('Diese Meldung gibt es nicht mehr.','That report no longer exists.'));
+            $context=(string)$report['context_json'];
+            // Done means dealt with, and a report that is dealt with no longer
+            // needs copies of what somebody typed. Re-opening it does not bring
+            // them back; the way there is kept. Done also starts the clock after
+            // which prune_done_feedback() deletes it.
+            if($state==='done' && is_array($decoded=json_decode($context,true)))
+                $context=feedback_context_json(feedback_mark_done($decoded));
+            run('UPDATE feedback SET state=?,context_json=? WHERE id=?',[$state,$context,$report['id']]);
+        });
         return ['settings',['tab'=>'feedback']];
 
     case 'demo_data':
         require_admin(); $mode=choose(post('mode'),['fill','clear']);
+        // Back to the checklist when that is where she came from: filling or
+        // clearing example data is something the checklist offers on the way
+        // to a real portal, and the System tab would lose her place (ADR 0011).
+        $back=post('from')==='start' || setup_return_active() ? ['start',[]] : ['settings',['tab'=>'system']];
         if($mode==='clear') {
             $removed=demo_clear(); unset($_SESSION['demo_password']);
             flash(t('Beispieldaten entfernt: ','Example data removed: ').plural($removed['students'],'Schüler','Schüler','student','students').'.');
-            return ['settings',['tab'=>'system']];
+            return $back;
         }
         $result=demo_fill(post('confirm')!=='');
         // Held in the session rather than the database: it is only ever needed by
@@ -484,7 +521,7 @@ function dispatch_config(string $action): array {
             .plural($result['students'],'Schüler','Schüler','student','students').', '
             .plural($result['courses'],'Kurs','Kurse','course','courses').'. '
             .t('Das Passwort für die Beispielkonten steht unten.','The password for the example accounts is below.'));
-        return ['settings',['tab'=>'system']];
+        return $back;
 
     case 'maintenance_toggle':
         require_admin(); $on=post('mode')==='on';

@@ -2,7 +2,8 @@
 declare(strict_types=1);
 
 /**
- * Files people send: payment proofs, message attachments, profile pictures.
+ * Files people send: payment proofs, message attachments, profile pictures,
+ * and the portal's own icon and logo.
  *
  * Three rules hold for all of them.
  *
@@ -51,11 +52,31 @@ function upload_limit(): int {
     return $php ? min($wanted, (int)min($php)) : $wanted;
 }
 
-/** That limit as a person would say it. */
-function upload_limit_label(): string {
-    $bytes = upload_limit();
+/**
+ * A size in megabytes as a person reads it: „1,0 MB" or "1.0 MB", one decimal.
+ *
+ * The one formatter, so the limit a form states and the size a refusal names
+ * read alike. $roundUp is for a measured size set against a limit: a file one
+ * byte over 1 MB must read „1,1 MB", not the „1,0 MB" it would round to and
+ * which is exactly what the form allows.
+ */
+function megabytes_label(int $bytes, bool $roundUp = false): string {
+    $mb = $bytes / 1048576;
+    if ($roundUp) $mb = ceil(round($mb * 10, 6)) / 10;
+    return number_format($mb, 1, locale() === 'de' ? ',' : '.', '') . ' MB';
+}
+
+/**
+ * That limit as a person would say it.
+ *
+ * $cap is a kind's own smaller limit, such as PORTAL_LOGO_MAX_BYTES for the
+ * logo that every sign-in page loads: the label is then the smaller of the two,
+ * so a form never promises more than its check will accept.
+ */
+function upload_limit_label(?int $cap = null): string {
+    $bytes = $cap !== null ? min(upload_limit(), max(1, $cap)) : upload_limit();
     return $bytes >= 1024 * 1024
-        ? number_format($bytes / 1048576, 1, locale() === 'de' ? ',' : '.', '') . ' MB'
+        ? megabytes_label($bytes)
         : (int)round($bytes / 1024) . ' kB';
 }
 
@@ -70,6 +91,13 @@ function upload_types(string $kind): array {
     return match ($kind) {
         'avatar' => $images,
         'proof'  => $images + ['application/pdf' => 'pdf'],
+        // PNG and nothing else: an iPhone takes its home-screen icon only as a
+        // PNG, and one format for the tab, iOS and Android means no guessing
+        // which browser takes what. check_portal_icon() then reads its size.
+        'icon'   => ['image/png' => 'png'],
+        // The logo may be wide and may be a photograph, so JPEG and WebP too;
+        // not GIF, which animates, and never SVG, which can carry script (ADR 0014).
+        'logo'   => ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'],
         // A message may carry a picture, a document or a voice note. webm and
         // mp4 are what a browser's own recorder produces; the rest are what
         // somebody's phone hands over when they pick an existing file.
@@ -156,6 +184,12 @@ function upload_references(): array {
                       "SELECT screenshot_name AS name FROM feedback WHERE screenshot_name<>''"],
         'proof'   => ['SELECT stored_name AS name FROM payment_proofs'],
         'message' => ['SELECT stored_name AS name FROM message_files'],
+        // A setting is stored as JSON, so the name sits inside quotes. Compared
+        // with the quotes still on, nothing would match and the live icon would
+        // be swept an hour after it was uploaded. REPLACE(x,y,z) is spelled the
+        // same in MariaDB, MySQL and SQLite.
+        'icon'    => ["SELECT REPLACE(setting_value,'\"','') AS name FROM settings WHERE setting_key='portal_icon'"],
+        'logo'    => ["SELECT REPLACE(setting_value,'\"','') AS name FROM settings WHERE setting_key='portal_logo'"],
     ];
 }
 
@@ -191,13 +225,22 @@ function prune_uploads(int $graceSeconds = 3600): int {
 }
 
 /**
+ * How a download is cached unless its caller knows better: not at all.
+ *
+ * An invoice, a payment proof or a message attachment is one family's
+ * business, and a phone shared in the family keeps what its browser keeps.
+ */
+const DOWNLOAD_CACHE_CONTROL = 'private, no-store';
+
+/**
  * Send a stored file to the browser, having decided the caller may have it.
  *
  * Content-Disposition is attachment for everything except images, and the type
  * is the one recorded at upload rather than guessed again, so a file cannot be
  * served as something it is not.
  */
-function send_upload(string $kind, string $storedName, string $mime, string $downloadName = ''): never {
+function send_upload(string $kind, string $storedName, string $mime, string $downloadName = '',
+                     string $cacheControl = DOWNLOAD_CACHE_CONTROL): never {
     $path = upload_dir($kind) . '/' . $storedName;
     if (!preg_match('/^[a-f0-9]{32}\.[a-z0-9]{2,5}$/D', $storedName) || !is_file($path)) {
         http_response_code(404);
@@ -209,7 +252,7 @@ function send_upload(string $kind, string $storedName, string $mime, string $dow
     // request is holding should not be what decides whether a file can be
     // downloaded at all.
     send_download_headers($mime, $downloadName !== '' ? $downloadName : $storedName,
-                          !str_starts_with($mime, 'image/'), (int)filesize($path));
+                          !str_starts_with($mime, 'image/'), (int)filesize($path), $cacheControl);
     readfile($path);
     exit;
 }
@@ -222,7 +265,8 @@ function send_bytes(string $body, string $mime, string $name, bool $asAttachment
 }
 
 /** The headers both of those need, written once so they cannot drift apart. */
-function send_download_headers(string $mime, string $name, bool $asAttachment, int $length): void {
+function send_download_headers(string $mime, string $name, bool $asAttachment, int $length,
+                               string $cacheControl = DOWNLOAD_CACHE_CONTROL): void {
     // The name goes into a header, so anything that could end the header or
     // start a second one is removed rather than escaped.
     $safe = preg_replace('/[^\w .()\-]+/u', '_', $name) ?: 'download';
@@ -230,7 +274,102 @@ function send_download_headers(string $mime, string $name, bool $asAttachment, i
     header('Content-Disposition: ' . ($asAttachment ? 'attachment' : 'inline') . '; filename="' . $safe . '"');
     header('Content-Length: ' . $length);
     header('X-Content-Type-Options: nosniff');
-    header('Cache-Control: private, no-store');
+    send_cache_control($cacheControl);
+}
+
+/**
+ * How long the club's own assets may be kept: a year.
+ *
+ * For the portal's icon, its logo and its colours - the club's, not a
+ * family's - each served at an address that changes when it does, so a year
+ * risks nothing stale.
+ */
+const CLUB_ASSET_MAX_AGE = 31536000;
+
+/**
+ * Cache-Control for a reply any cache may keep - unless it starts a session.
+ *
+ * A request that arrives without a cookie gets a new session and a Set-Cookie
+ * with its reply, and a shared cache may store that header with the body
+ * (RFC 9111) and hand one session to everybody behind it. Such a reply is kept
+ * by the browser alone.
+ */
+function shared_cache_control(int $seconds, bool $immutable = false, ?array $sentHeaders = null): string {
+    $setsCookie = false;
+    foreach ($sentHeaders ?? headers_list() as $header)
+        if (stripos((string)$header, 'set-cookie:') === 0) $setsCookie = true;
+    return ($setsCookie ? 'private' : 'public') . ', max-age=' . $seconds . ($immutable ? ', immutable' : '');
+}
+
+/**
+ * Replace the no-store every response starts with.
+ *
+ * boot_http() sends no-store, and the session sends its own Cache-Control with
+ * Expires and Pragma beside it; header() replaces the first two but not the
+ * others. A reply that may be kept should not carry headers saying the
+ * opposite, so they go - and only then: for no-store or no-cache they agree.
+ */
+function send_cache_control(string $value): void {
+    header('Cache-Control: ' . $value);
+    if (!str_contains($value, 'max-age=')) return;
+    header_remove('Expires');
+    header_remove('Pragma');
+}
+
+/**
+ * The part of a stored file's address that changes when the file does.
+ *
+ * store_upload() gives every file a new random name, so the name already is a
+ * version and needs no setting of its own. Twelve characters are plenty to
+ * tell uploads apart and give nothing away that the address needs to hide.
+ */
+function upload_version(string $storedName): string { return substr($storedName, 0, 12); }
+
+/** Whether a requested address names the file stored now, not one it replaced. */
+function upload_version_current(string $storedName, mixed $requestedVersion): bool {
+    return $storedName !== '' && is_string($requestedVersion) && $requestedVersion === upload_version($storedName);
+}
+
+/**
+ * How long a browser may keep the profile picture it is being sent.
+ *
+ * Profile pictures sit in the top bar of every page, and without this each
+ * page change fetched the same picture again. At the address of the picture in
+ * use it is kept: a new picture gets a new address and a removed one falls back
+ * to initials, so nothing stale is shown from the cache. An old address is
+ * never kept, so it cannot be remembered as the new picture.
+ *
+ * Always private - a child's photograph is never for a shared cache. Seven
+ * days rather than a year, and not immutable: after signing out, the picture
+ * stays in that browser's own cache (logout asks the browser to clear it, but
+ * not every browser does), and on a borrowed phone that copy should run out on
+ * its own within a week. A week is still far longer than a visit, which is all
+ * it takes to stop the reload on every page. The route still asks who is
+ * signed in, and whether they may see this picture, before it reads a byte.
+ */
+function avatar_cache_control(string $storedName, mixed $requestedVersion): string {
+    return upload_version_current($storedName, $requestedVersion)
+        ? 'private, max-age=604800'
+        : DOWNLOAD_CACHE_CONTROL;
+}
+
+/**
+ * The stored picture the signed-in person asked for, having checked they may
+ * see it: '' when there is none, NotFound when there is nobody they may see.
+ *
+ * A child's picture goes through student(), which is how every page finds a
+ * child, so a family reaches their own children's and staff reach all. An
+ * account's goes through may_see_account_picture(), the rule avatar() draws by.
+ * Somebody who is not there and somebody who may not be seen are the same 404,
+ * so the address cannot be used to find out which ids exist.
+ */
+function avatar_for_download(string $kind, int $id): string {
+    $viewer = require_user();
+    if ($kind === 'student') return (string)student($id)['avatar_name'];
+    $account = one('SELECT id, role, avatar_name FROM accounts WHERE id=?', [$id]);
+    if (!$account || !may_see_account_picture($viewer, $account))
+        throw new NotFound(t('Dieses Bild gibt es nicht.', 'There is no such picture.'));
+    return (string)$account['avatar_name'];
 }
 
 /**
@@ -250,16 +389,18 @@ function serve_download(): void {
         send_bytes(invoice_pdf($invoice), 'application/pdf', invoice_filename($invoice));
     }
     if ($what === 'avatar') {
-        // A picture is shown to everybody who can already see the person's name,
-        // which on this portal is everybody signed in: a family sees the
-        // trainer, the trainer sees the children, and a child sees their own.
-        require_user();
-        $kind = ($_GET['kind'] ?? '') === 'student' ? 'students' : 'accounts';
-        $name = (string)(scalar('SELECT avatar_name FROM ' . $kind . ' WHERE id=?', [$id]) ?: '');
+        // Who may have which picture is avatar_for_download()'s to decide;
+        // anybody else gets its 404.
+        $name = avatar_for_download(($_GET['kind'] ?? '') === 'student' ? 'student' : 'account', $id);
         // The type comes back from the same table the extension was chosen
         // from, so a file is never announced as something it is not.
         $mime = array_search(pathinfo($name, PATHINFO_EXTENSION), upload_types('avatar'), true);
-        if ($name !== '' && $mime !== false) send_upload('avatar', $name, (string)$mime);
+        // An address with an older version is still answered, uncached, rather
+        // than refused: a page drawn a moment before the picture was replaced -
+        // or a lazy picture fetched when scrolled to much later - would
+        // otherwise show a broken image instead of the new picture.
+        if ($name !== '' && $mime !== false)
+            send_upload('avatar', $name, (string)$mime, '', avatar_cache_control($name, $_GET['v'] ?? null));
     }
     if ($what === 'shot') {
         require_admin();

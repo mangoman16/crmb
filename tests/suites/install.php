@@ -16,6 +16,14 @@
 
 install_locale('de');
 
+case_('A new portal asks families nothing the trainer has not added herself');
+// The runner has just emptied the database and applied the seed, which is what a
+// fresh install is. A seeded example field („Trainingsgruppe") showed every family
+// an empty „Weitere Angaben" card until she found and deleted it (ADR 0011).
+is_same(0, (int)scalar('SELECT COUNT(*) FROM field_definitions'), 'the seed creates no custom field');
+ok((int)scalar('SELECT COUNT(*) FROM message_templates') > 0,
+   'while the examples she does start with are still there, so the check above ran against a seeded portal');
+
 case_('The portal address is derived from the request that asks for it');
 $request = fn(array $over = []) => $over + ['HTTP_HOST' => 'badminton.example.at', 'REQUEST_URI' => '/setup.php',
                                             'SERVER_NAME' => 'fallback.invalid', 'SERVER_PORT' => 80];
@@ -71,6 +79,14 @@ case_('The example configuration and the written one describe the same file');
 $example = install_read_config(APP_ROOT . '/config/config.example.php');
 is_same(install_config_keys(), array_keys((array)$example), 'config.example.php carries the declared keys too');
 is_same(array_keys($values['db']), array_keys((array)($example['db'] ?? [])), 'including the same database keys');
+// The third copy: the file every suite run boots on. A key the installer
+// gains and the tests never write would be a key no test ever ran with.
+$runConfig = test_run_dir().'/keys-'.bin2hex(random_bytes(4)).'.php';
+write_run_config($runConfig, $values['db'], test_run_dir());
+$ran = install_read_config($runConfig);
+@unlink($runConfig);
+is_same(install_config_keys(), array_keys((array)$ran), 'and so does the configuration the suites run on');
+is_same(array_keys($values['db']), array_keys((array)($ran['db'] ?? [])), 'with the same database keys');
 
 case_('Re-running setup never invents a new encryption key');
 /* app_key decrypts the stored SMTP password and everything still in the mail
@@ -129,19 +145,33 @@ ok(install_server_note('10.1.48-MariaDB') !== '', 'MariaDB 10.1 is called out');
 is_same('', install_server_note(''), 'and an unknown version is not guessed about');
 
 case_('The set of migrations has a fingerprint that follows their contents');
+/* On a copy, never on the shipped directory. The owner may run this suite inside
+   the folder the portal is served from, and a probe written there even for a
+   moment is a migration the next page view applies to her live database and
+   records in the ledger. Once the probe is deleted, the ledger names a file the
+   upload no longer has, and the portal refuses to open. */
 $fingerprint = schema_fingerprint();
+$shipped = migration_files();
 is_same(64, strlen($fingerprint), 'it is a sha256');
 is_same($fingerprint, schema_fingerprint(), 'and it is stable');
-$extra = APP_ROOT . '/database/migrations/zz_fingerprint_probe.sql';
+$copy = sys_get_temp_dir() . '/crm-migrations-' . getmypid();
+@mkdir($copy, 0777, true);
+foreach ($shipped as $file) copy($file, $copy . '/' . basename($file));
+is_same($fingerprint, schema_fingerprint($copy), 'a copy of the same files has the same fingerprint');
+$extra = $copy . '/zz_fingerprint_probe.sql';
 file_put_contents($extra, "CREATE TABLE fingerprint_probe (id INT);\n");
-ok(schema_fingerprint() !== $fingerprint, 'a migration added by an upload changes it, which is what triggers the update');
-ok(in_array('zz_fingerprint_probe.sql', array_map('basename', migration_files()), true), 'and the file is in the list');
+ok(schema_fingerprint($copy) !== $fingerprint, 'a migration added by an upload changes it, which is what triggers the update');
+ok(in_array('zz_fingerprint_probe.sql', array_map('basename', migration_files($copy)), true), 'and the file is in the list');
+is_same($shipped, migration_files(), 'while the shipped directory never saw the probe');
+is_same($fingerprint, schema_fingerprint(), 'so the portal’s own fingerprint did not move');
 file_put_contents($extra, "CREATE TABLE fingerprint_probe (id BIGINT);\n");
-$edited = schema_fingerprint();
+$edited = schema_fingerprint($copy);
 file_put_contents($extra, "CREATE TABLE fingerprint_probe (id INT);\n");
-ok(schema_fingerprint() !== $edited, 'editing a migration in place changes it too, rather than looking unchanged');
+ok(schema_fingerprint($copy) !== $edited, 'editing a migration in place changes it too, rather than looking unchanged');
 @unlink($extra);
-is_same($fingerprint, schema_fingerprint(), 'removing it again restores the original');
+is_same($fingerprint, schema_fingerprint($copy), 'removing it again restores the original');
+foreach (glob($copy . '/*.sql') ?: [] as $file) @unlink($file);
+@rmdir($copy);
 
 case_('Migration files are applied in name order');
 $names = array_map('basename', migration_files());
@@ -316,20 +346,72 @@ ok(!str_contains($stopped->summary(), 'ALTER TABLE'), 'the short form carries no
 
 case_('The first administrator can only be created once');
 run('DELETE FROM accounts');
-$id = create_admin_account('Trainerin', 'Trainerin@Example.Test', 'korrektesPferdBatterie');
+$made = create_admin_account('Trainerin', 'Trainerin@Example.Test', 'korrektesPferdBatterie');
+$id = (int)($made['id'] ?? 0);
 ok($id > 0, 'the first one is created');
+is_same('trainerin', $made['username'] ?? null, 'and handed back with the username it was given, for setup and the console to show');
 $admin = one('SELECT * FROM accounts WHERE id=?', [$id]);
 is_same('admin', $admin['role'], 'with the administrator role');
 is_same('active', $admin['state'], 'active');
 ok($admin['verified_at'] !== null, 'and already verified, because no invitation confirmed it');
-is_same('trainerin@example.test', $admin['email'], 'the address is normalised the way sign-in expects it');
+is_same('trainerin@example.test', $admin['email'], 'the address is normalised the way every lookup expects it');
+is_same('trainerin', $admin['username'], 'the username is stored, made from the name: there is no field for it (ADR 0019, §7)');
 ok(password_verify('korrektesPferdBatterie', $admin['password_hash']), 'the password is hashed, and verifies');
 throws(fn() => create_admin_account('Zweite', 'zweite@example.test', 'korrektesPferdBatterie'),
        'a second one is refused, which is what closes the setup page afterwards');
 is_same(1, (int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'"), 'and nothing was written');
 does_not_throw(fn() => create_admin_account('Zweite', 'zweite@example.test', 'korrektesPferdBatterie', true),
                'the console can still force one, which is sometimes the only way back in');
+is_same('zweite', (string)scalar("SELECT username FROM accounts WHERE email='zweite@example.test'"),
+        'with a username of its own, from a name of one word');
 run('DELETE FROM accounts');
+
+case_('Setup and the console give no administrator an address another login uses (ADR 0019, R1; 0020, §1)');
+/* Every creator asks refuse_address_in_use(), the setup page and the console
+   with --force included, so the person reads a sentence rather than a 23000. */
+make_account(['role' => 'student', 'email' => 'familie@example.test']);
+throws(fn() => create_admin_account('Trainerin', 'familie@example.test', 'korrektesPferdBatterie'),
+       'a family’s address is refused at setup', 'Jede Person braucht ihre eigene');
+throws(fn() => create_admin_account('Trainerin', 'Familie@Example.Test', 'korrektesPferdBatterie', true),
+       'and by the console with --force, however it is capitalised', 'Jede Person braucht ihre eigene');
+is_same(0, (int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'"), 'and no administrator was written');
+$first = create_admin_account('Lena Müller', 'lena@example.test', 'korrektesPferdBatterie');
+$second = create_admin_account('Lena Müller', 'lena2@example.test', 'korrektesPferdBatterie', true);
+is_same(['lena.mueller', 'lena.mueller2'], [$first['username'], $second['username']],
+        'two administrators with one name get lena.mueller and lena.mueller2');
+run('DELETE FROM accounts');
+
+case_('The password chosen at setup is the one sign-in accepts');
+/* Setup kept the spaces around the password and sign-in removed them, so an
+   administrator who typed one stray space was stored under one password and
+   checked against another, and could never sign in. */
+$sent = install_submission(['admin_name' => ' Trainerin ', 'admin_email' => ' setup@example.test ',
+                            'admin_password' => ' korrektesPferdBatterie ', 'admin_password2' => ' korrektesPferdBatterie ',
+                            'db_password' => ' vom Panel '], ['admin_name' => '', 'admin_email' => '']);
+$_POST = ['password' => ' korrektesPferdBatterie '];
+is_same(post('password'), $sent['password'], 'setup reads the password exactly as every other form does');
+is_same($sent['password'], $sent['repeat'], 'and its repetition the same way');
+is_same('Trainerin', $sent['form']['admin_name'], 'and the other fields too');
+is_same(' vom Panel ', $sent['db_password'], 'only the database password arrives as typed: the server checks it, not the portal');
+$setupUsername = create_admin_account($sent['form']['admin_name'], $sent['form']['admin_email'], $sent['password'])['username'];
+does_not_throw(fn() => submit('login', ['username' => $setupUsername, 'password' => ' korrektesPferdBatterie ']),
+               'signing in with the username setup showed and the password typed there works');
+sign_out();
+run('DELETE FROM accounts');
+
+case_('The page after installing points to the checklist rather than listing steps');
+/* It listed two steps - the mail settings and "both" privacy drafts - after the
+   checklist had taken them over: only the German draft is required, invitations
+   need a passed mail test, and there are nine steps (ADR 0011). The page is read
+   as source because it can only be rendered by installing; the title is read
+   from the checklist itself, so renaming one without the other fails here. */
+$setupPage = (string)file_get_contents(APP_ROOT.'/public/setup.php');
+preg_match("/page_head\(t\('([^']+)','([^']+)'\)/", (string)file_get_contents(APP_ROOT.'/views/start.php'), $title);
+ok(isset($title[2]), 'the checklist\'s title is found on the checklist');
+ok(str_contains($setupPage, '„'.($title[1] ?? '?').'“') && str_contains($setupPage, '“'.($title[2] ?? '?').'”'),
+   'the finished page names the checklist by that title, in both languages');
+foreach (['zwei Schritte', 'two steps', 'beide Entwürfe', 'both drafts'] as $stale)
+    ok(!str_contains($setupPage, $stale), 'and no longer says '.test_show($stale));
 
 case_('Waiting work happens without a cron job');
 /* On hosting with no cron line, a queued invitation that nothing ever picks up

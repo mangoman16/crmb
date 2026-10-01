@@ -32,16 +32,30 @@ if(!(int)scalar('SELECT COUNT(*) FROM age_groups')) {
 // new child starts; only rows that have never been given one are touched.
 run('UPDATE students SET level_id=(SELECT id FROM levels WHERE is_default=1 ORDER BY id LIMIT 1) WHERE level_id IS NULL');
 
+// Usernames (ADR 0019 §4, kept by 0020): 022 and 023 leave every existing login
+// at a '#<id>' placeholder, so the update is not finished until each has a name.
+// Here rather than in the migration because the rule for making one lives once,
+// in app/core.php. Once every login has one, this finds nothing. Nobody is
+// mailed about it and nobody needs to be: whoever signed in with their address
+// still does, and has a username as well.
+give_every_account_a_username();
+// The hash a refused sign-in is checked against, made once and brought to
+// today's PASSWORD_DEFAULT cost after a PHP upgrade [M2, R9]. Here and in the
+// nightly prune, because a sign-in that hashed would give away by how long it
+// took which usernames and addresses have a login.
+refresh_sign_in_dummy_hash();
+
 if(setting('defaults_initialized',false))return;
 db()->beginTransaction();
 try{
-    set_setting('club_name','Badminton');set_setting('default_status','active');set_setting('default_tariff',null);
+    set_setting('club_name','Badminton');set_setting('default_status','active');
     set_setting('statuses',['trial'=>'Probetraining','active'=>'Aktiv','paused'=>'Pausiert','ended'=>'Beendet']);
     set_setting('absence_reasons',['sick'=>'Krank','holiday'=>'Urlaub','other'=>'Abwesend']);
     set_setting('payment_methods',['Überweisung','Bar']);set_setting('privacy_ready',false);
     set_setting('privacy_de',file_get_contents(ROOT.'/docs/privacy-draft-de.txt'));
     set_setting('privacy_en',file_get_contents(ROOT.'/docs/privacy-draft-en.txt'));
-    run('INSERT INTO field_definitions (label,label_en,field_type,section_name,options_json,default_json,visibility,sort_order) VALUES (?,?,?,?,?,?,?,?)',['Trainingsgruppe','Training group','select','','["Gruppe 1","Gruppe 2"]','""','view',10]);
+    // No custom field is seeded: an example field nobody has filled in shows every
+    // family an empty „Weitere Angaben" card. The trainer adds her own (ADR 0011).
     run('INSERT INTO message_templates (name,subject,body) VALUES (?,?,?)',['Zahlungserinnerung','Dein Badminton-Beitrag',"Hallo {{first_name}},\n\nbei deinen Badminton-Beiträgen sind derzeit {{outstanding}} offen. Bitte prüfe die Beiträge im Portal. Falls du bereits bezahlt hast, gib mir dort kurz Bescheid.\n\n{{portal_url}}\n\nVielen Dank!"]);
     run('INSERT INTO message_templates (name,subject,body) VALUES (?,?,?)',['Training – Information','Information zum Training',"Hallo {{first_name}},\n\n\n\nDu kannst mir direkt im Portal antworten:\n{{portal_url}}"]);
     // An empty profile with the SEPA payload already in place: the operator fills

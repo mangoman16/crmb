@@ -48,6 +48,15 @@ const ENROLMENT_COLUMNS = 'cs.*, cs.interval_months AS enrolment_interval,'
     .' c.name AS class_name, c.location, t.name AS tariff_name, t.period,'
     .' t.interval_months AS tariff_interval, t.due_day AS tariff_due_day';
 
+/**
+ * Whether an enrolment is current: the child has not left the course. The one
+ * rule for "the courses they are in now", in the two forms it is asked in - a
+ * row already read, and a condition in a query - written side by side so they
+ * cannot drift apart.
+ */
+function enrolment_is_current(array $row): bool { return ($row['left_on'] ?? null) === null; }
+function current_enrolment_sql(string $alias = 'cs'): string { return sql_name($alias, 'alias').'.left_on IS NULL'; }
+
 /** One enrolment, with the tariff it names and the course it is in. */
 function enrolment(int $classId, int $studentId): ?array {
     $row = one('SELECT '.ENROLMENT_COLUMNS

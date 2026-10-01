@@ -7,10 +7,10 @@ date: 2026-09-22
 
 ## Context
 
-There are 18 migrations in `database/migrations/`, applied by `app/schema.php`. The same
-runner is used by the browser installer, by `bin/console.php` and by the first request
-after files are uploaded — one copy, because a second path is how two of them start
-disagreeing.
+The schema is the numbered files in `database/migrations/`, applied in order by
+`app/schema.php`. The same runner is used by the browser installer, by `bin/console.php` and
+by the first request after files are uploaded — one copy, because a second path is how two
+of them start disagreeing.
 
 The operator updates by uploading files. Nobody watches the migration run. If it goes
 wrong, there is no shell to go and fix it from, and the data is a family's membership and

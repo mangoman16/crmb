@@ -1,0 +1,27 @@
+-- Every login gets a username to sign in with.
+--
+-- Until now the email address was the sign-in. The owner has decided that each
+-- person also has a username such as lena.mueller, and signs in with either of
+-- the two. Every login keeps an address of its own: the unique index 001 put on
+-- accounts.email stays, and no two logins share one. The usernames are designed
+-- in docs/decisions/0019-sign-in-with-a-username-and-an-address-may-be-shared.md;
+-- docs/decisions/0020-every-login-has-its-own-address-and-people-set-themselves-up.md
+-- keeps them, and withdrew the shared addresses 0019 planned before they shipped.
+--
+-- This file only adds the column. '' means "not given one yet": it can never
+-- sign in, because it fails the username pattern. 023 turns every '' into a
+-- placeholder unique to its row, and after the migrations the runner's PHP step
+-- (give_every_account_a_username(), called from database/defaults.php) replaces
+-- each placeholder with a username made from the person's name. That is done in
+-- PHP rather than here because the rule for making a username from a name lives
+-- in one place in app/core.php, and a second copy of it in SQL could never be
+-- corrected once shipped.
+--
+-- Every row written by the previous version gets '' and keeps everything else.
+-- Nothing is deleted.
+--
+-- One statement, and it cannot run twice: MySQL 8.0 has no ADD COLUMN IF NOT
+-- EXISTS. The files 022 and 023 are split so that each has at most one such
+-- statement, and it comes last, so a run that stops partway can start again
+-- from the first statement on the next page view.
+ALTER TABLE accounts ADD COLUMN username VARCHAR(40) NOT NULL DEFAULT '' AFTER email;

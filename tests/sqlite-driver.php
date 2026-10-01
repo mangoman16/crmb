@@ -28,8 +28,47 @@ final class TestSqlitePdo extends PDO {
     private array $uniques = [];
     private int $prepared = 0;
 
+    public function __construct(string $dsn, ?string $username = null, ?string $password = null, ?array $options = null) {
+        parent::__construct($dsn, $username, $password, $options);
+        $this->addMysqlFunctions();
+    }
+
     /** Statements prepared so far, so a test can assert a query count. */
     public function statementsPrepared(): int { return $this->prepared; }
+
+    /**
+     * The MySQL functions the application and the migrations call.
+     *
+     * Registered by the connection itself, so every connection has the same set:
+     * tests/migration-data.php opens its own, and a copy of this list kept there
+     * would be the one nobody updates when a migration starts calling something
+     * new - found out only when that migration fails in a run that stops half way.
+     *
+     * A NULL argument makes the result NULL, because that is what MySQL does. Both
+     * SQLite's own concat() and a PHP implode() would quietly treat it as '', so a
+     * query that loses a value on the real engine would pass here.
+     */
+    private function addMysqlFunctions(): void {
+        $strict = fn(callable $f) => fn(...$a) => in_array(null, $a, true) ? null : $f($a);
+        $this->sqliteCreateFunction('CONCAT', $strict(fn($a) => implode('', $a)), -1);
+        $this->sqliteCreateFunction('GREATEST', $strict(fn($a) => max($a)), -1);
+        $this->sqliteCreateFunction('LEAST', $strict(fn($a) => min($a)), -1);
+        $this->sqliteCreateFunction('UTC_TIMESTAMP', fn() => gmdate('Y-m-d H:i:s'), 0);
+        // Advisory locks are a MySQL concept; a single-connection test always
+        // "holds" the lock, which is the behaviour the code expects.
+        $this->sqliteCreateFunction('GET_LOCK', fn($n, $t) => 1, 2);
+        $this->sqliteCreateFunction('RELEASE_LOCK', fn($n) => 1, 1);
+        // Built into SQLite since 3.38. Registered only where it is missing, so a
+        // build that has it is tested with the real one.
+        try { parent::query("SELECT json_object('a', 1)"); }
+        catch (PDOException) {
+            $this->sqliteCreateFunction('JSON_OBJECT', function (...$a) {
+                $object = [];
+                for ($i = 0; $i + 1 < count($a); $i += 2) $object[(string)$a[$i]] = $a[$i + 1];
+                return json_encode((object)$object, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            }, -1);
+        }
+    }
 
     public function prepare(string $query, array $options = []): PDOStatement|false {
         $this->prepared++;
@@ -37,10 +76,14 @@ final class TestSqlitePdo extends PDO {
     }
 
     public function exec(string $statement): int|false {
+        if ($this->setColumnDefault($statement)) return 0;
         return parent::exec($this->translate($statement));
     }
 
     public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false {
+        // The runner sends migration statements through query(); an empty result
+        // stands in for the one MySQL gives back for DDL.
+        if ($this->setColumnDefault($query)) $query = 'SELECT 1 WHERE 0';
         $query = $this->translate($query);
         return $fetchMode === null ? parent::query($query) : parent::query($query, $fetchMode, ...$fetchModeArgs);
     }
@@ -56,6 +99,54 @@ final class TestSqlitePdo extends PDO {
         // MySQL IF(cond, a, b) has no SQLite equivalent.
         if (preg_match('/\bIF\s*\(/i', $sql)) $sql = $this->inlineIf($sql);
         return $sql;
+    }
+
+    /**
+     * ALTER TABLE t ALTER COLUMN c SET DEFAULT v, which SQLite has no statement for.
+     *
+     * Returns false for any other statement. SQLite keeps a table's definition as
+     * the text of its CREATE TABLE, and the documented way to change a default
+     * without rebuilding the table is to edit that text with writable_schema on
+     * and raise the schema version, so every open connection - the counter
+     * connection included - reads the new definition before its next statement.
+     *
+     * The rows are rewritten first, and that is the line that looks unnecessary
+     * but is not. A row written before its column was added by ADD COLUMN stores
+     * no value for it at all: SQLite reads the column's default from the schema
+     * text whenever it reads that row. Changing the text alone would therefore
+     * switch every such row to the new value, where MySQL and MariaDB change
+     * nothing that is stored. Rewriting each row with its own value first stores
+     * what it had, so only rows written afterwards see the new default.
+     *
+     * Only a column that already has a DEFAULT, and only a literal: anything else
+     * is refused with a message rather than guessed at.
+     */
+    private function setColumnDefault(string $sql): bool {
+        if (!preg_match('/^\s*ALTER\s+TABLE\s+`?(\w+)`?\s+ALTER\s+(?:COLUMN\s+)?`?(\w+)`?\s+SET\s+DEFAULT\s+(.+?)\s*;?\s*$/is', $sql, $m))
+            return false;
+        [, $table, $column, $value] = $m;
+        $literal = '\'(?:[^\']|\'\')*\'|-?\d+(?:\.\d+)?|NULL';
+        if (!preg_match('/^(?:' . $literal . ')$/i', $value))
+            throw new RuntimeException("The SQLite translation only sets a literal default, not $value, on $table.$column");
+        $create = parent::query("SELECT sql FROM sqlite_master WHERE type='table' AND name=" . parent::quote($table))->fetchColumn();
+        if (!is_string($create)) throw new RuntimeException("No table $table to set a default on");
+        // The column's own definition runs from the comma or parenthesis before its
+        // name to the next comma; its DEFAULT is inside that and nowhere else.
+        $changed = preg_replace('/([(,]\s*[`"]?' . $column . '[`"]?\s[^,]*?\bDEFAULT\s+)(?:' . $literal . '|\([^()]*\))/i',
+                                '${1}' . strtr($value, ['\\' => '\\\\', '$' => '\\$']), $create, -1, $found);
+        if ($found !== 1)
+            throw new RuntimeException("The SQLite translation found no DEFAULT to change on $table.$column");
+        $version = (int)parent::query('PRAGMA schema_version')->fetchColumn();
+        parent::exec('UPDATE "' . $table . '" SET "' . $column . '" = "' . $column . '"');
+        parent::exec('PRAGMA writable_schema=ON');
+        try {
+            $write = parent::prepare("UPDATE sqlite_master SET sql=? WHERE type='table' AND name=?");
+            $write->execute([$changed, $table]);
+            parent::exec('PRAGMA schema_version=' . ($version + 1));
+        } finally {
+            parent::exec('PRAGMA writable_schema=OFF');
+        }
+        return true;
     }
 
     private function upsert(string $sql): string {

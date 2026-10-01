@@ -37,6 +37,7 @@ $form = [
 ];
 $withDemo = false;
 $demo = null;     // what demo_fill() created, to be shown on the finish page
+$adminUsername = '';   // what create_admin_account() named the first login
 if ($state === 'configured' && $stored) {
     $form['db_host'] = (string)($stored['db']['host'] ?? '');
     $form['db_port'] = (string)($stored['db']['port'] ?? '3306');
@@ -47,12 +48,9 @@ if ($state === 'configured' && $stored) {
 }
 
 if ($post && $state !== 'installed' && !$blockers) {
-    foreach (array_keys($form) as $field)
-        if (isset($_POST[$field]) && is_string($_POST[$field])) $form[$field] = trim($_POST[$field]);
+    ['form' => $form, 'password' => $password, 'repeat' => $repeat, 'db_password' => $dbPassword]
+        = install_submission($_POST, $form);
     $withDemo = isset($_POST['demo_fill']);
-    $password = is_string($_POST['admin_password'] ?? null) ? (string)$_POST['admin_password'] : '';
-    $repeat   = is_string($_POST['admin_password2'] ?? null) ? (string)$_POST['admin_password2'] : '';
-    $dbPassword = is_string($_POST['db_password'] ?? null) ? (string)$_POST['db_password'] : '';
 
     $url = rtrim($form['app_url'], '/');
     if (!filter_var($url, FILTER_VALIDATE_URL) || !in_array((string)parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true))
@@ -89,6 +87,9 @@ if ($post && $state !== 'installed' && !$blockers) {
     if (!$errors) {
         try {
             if ($state === 'fresh') {
+                // The same keys as config/config.example.php and the suite's own
+                // tests/run-config.php; install_config_keys() names them, and the
+                // install suite holds all three to it.
                 $source = install_config_source([
                     'app_url' => $url, 'app_key' => install_app_key($configPath), 'db' => $db,
                     'timezone' => $form['timezone'],
@@ -113,7 +114,7 @@ if ($post && $state !== 'installed' && !$blockers) {
             // No safeguards on a first install: there is no earlier release to be
             // older than, and an empty database has nothing worth copying.
             schema_apply(null, safeguards: false);
-            create_admin_account($form['admin_name'], $form['admin_email'], $password);
+            $adminUsername = create_admin_account($form['admin_name'], $form['admin_email'], $password)['username'];
             // Example data here rather than only afterwards, because the portal
             // is unrecognisable empty: no courses, no children, no charges, and
             // every page an empty state. Trying it out meant inventing a term's
@@ -168,9 +169,14 @@ header('X-Robots-Tag: noindex');
 <div class="card setup-step">
     <p class="eyebrow"><?=install_e(install_t('Fertig', 'Done'))?></p>
     <h1><?=install_e(install_t('Das Portal ist eingerichtet', 'The portal is ready'))?></h1>
+    <?php /* The username was made from the name, not typed (ADR 0019, §7), so
+             this is the moment it has to be read - large and in a fixed-width
+             face, where l and 1 cannot be mistaken for each other. */ ?>
+    <p><?=install_e(install_t('Dein Benutzername zum Anmelden:', 'Your username for signing in:'))?></p>
+    <p class="setup-username mono"><?=install_e($adminUsername)?></p>
     <p class="muted"><?=install_e(install_t(
-        'Melde dich jetzt mit der eben angelegten E-Mail-Adresse und dem Passwort an.',
-        'Sign in now with the email address and password you just chose.'))?></p>
+        'Melde dich jetzt mit diesem Benutzernamen oder mit der eben eingegebenen E-Mail-Adresse an, und mit dem eben gewählten Passwort. Den Benutzernamen kannst du später unter „Mein Konto“ ändern.',
+        'Sign in now with this username or with the email address you just entered, and the password you just chose. You can change the username later under “My account”.'))?></p>
     <p><a class="button" href="<?=install_e($portal)?>"><?=install_e(install_t('Zur Anmeldung', 'Go to sign-in'))?></a></p>
 </div>
 <?php if ($demo): ?>
@@ -181,11 +187,11 @@ header('X-Robots-Tag: noindex');
         . install_t(' Kinder, ', ' children, ') . (int)$demo['charges'] . install_t(' Beiträge.', ' charges.'))?></p>
     <p><?=install_e(install_t('Diese Konten kannst du zum Anprobieren verwenden:', 'These accounts are there to try it with:'))?></p>
     <ul>
-        <li>trainerin@beispiel.test <?=install_e(install_t('(Trainerin)', '(trainer)'))?></li>
-        <li>familie.hofer@beispiel.test <?=install_e(install_t('(Familie)', '(family)'))?></li>
-        <li>familie.berger@beispiel.test <?=install_e(install_t('(Familie)', '(family)'))?></li>
+        <?php foreach ($demo['logins'] as $login): ?>
+        <li><span class="mono"><?=install_e($login['username'])?></span> <?=install_e($login['role'] === 'student' ? install_t('(Familie)', '(family)') : install_t('(Trainerin)', '(trainer)'))?></li>
+        <?php endforeach ?>
     </ul>
-    <p><?=install_e(install_t('Passwort für alle drei: ', 'The password for all three: '))?>
+    <p><?=install_e(install_t('Passwort für alle: ', 'The password for all of them: '))?>
        <strong class="mono"><?=install_e((string)$demo['password'])?></strong></p>
     <p class="muted"><?=install_e(install_t(
         'Jetzt aufschreiben – es wird nicht noch einmal angezeigt. Entfernen lässt sich alles unter Einstellungen → System → „Beispieldaten entfernen“.',
@@ -193,10 +199,12 @@ header('X-Robots-Tag: noindex');
 </div>
 <?php endif ?>
 <div class="card setup-step">
-    <h2><?=install_e(install_t('Die nächsten zwei Schritte', 'The next two steps'))?></h2>
+    <h2><?=install_e(install_t('Wie es weitergeht', 'What comes next'))?></h2>
+    <?php /* The checklist owns what is left and how many steps that is (ADR 0011).
+             This page used to list them itself and was wrong within a release. */ ?>
     <p class="muted"><?=install_e(install_t(
-        'Einladungen bleiben gesperrt, bis beides erledigt ist: unter Einstellungen → SMTP den E-Mail-Versand eintragen, und unter Einstellungen → Datenschutz beide Entwürfe vervollständigen und freigeben.',
-        'Invitations stay disabled until both are done: enter the email details under Einstellungen → SMTP, and complete and approve both drafts under Einstellungen → Datenschutz.'))?></p>
+        'Nach der Anmeldung zeigt dir die Liste „Dein Portal einrichten“ Schritt für Schritt, was noch fehlt.',
+        'Once you are signed in, the “Set up your portal” checklist shows you what is left, step by step.'))?></p>
     <p class="muted"><?=install_e(install_t(
         'Updates brauchen keinen weiteren Schritt: die neuen Dateien hochladen genügt, die Datenbank passt sich beim nächsten Aufruf selbst an.',
         'Updates need no further step: uploading the new files is enough, and the database updates itself on the next page view.'))?></p>

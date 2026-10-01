@@ -48,7 +48,7 @@ if(!$id && !$edit && $tab==='list'):
     <?php foreach($list as $row): ?>
         <a class="class-row" href="<?=e(url('classes',['id'=>$row['id']]))?>">
             <div>
-                <h3><?=e($row['name'])?><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></h3>
+                <h3 class="badge-line"><span><?=e($row['name'])?></span><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></h3>
                 <p><?=e(class_schedule($row,$pattern[(int)$row['id']]??[]))?></p>
                 <small><?=e(plural((int)$row['tariff_count'],'Tarif','Tarife','tariff','tariffs'))?><?php if($row['trainer_name'])echo ' · '.e($row['trainer_name']);?></small>
             </div>
@@ -66,16 +66,19 @@ elseif(!$id && !$edit && $tab==='requests'): $requests=open_requests(); ?>
     <p class="muted"><?=e(t('Anmelden, abmelden und Tarifwechsel werden angefragt und erst wirksam, wenn du zustimmst.','Joining, leaving and changing tariff are asked for and only take effect once you agree.'))?></p>
     <?php if(!$requests): ?><p class="muted"><?=e(t('Im Moment wartet nichts auf eine Entscheidung.','Nothing is waiting for a decision right now.'))?></p><?php endif ?>
     <?php foreach($requests as $r): ?>
-    <div class="record-row">
+    <div class="record-row with-form">
         <div>
             <strong><a href="<?=e(url('student',['id'=>$r['student_id']]))?>"><?=e($r['first_name'].' '.$r['last_name'])?></a></strong>
             <p><?=e(request_kind_label((string)$r['kind']).' · '.$r['class_name'].($r['tariff_name']?' · '.$r['tariff_name']:''))?></p>
             <?php if($r['message']):?><p class="prewrap"><?=e($r['message'])?></p><?php endif ?>
             <small><?=e(fmt_datetime((string)$r['created_at']))?></small>
         </div>
+        <?php /* Two forms, not one form with two buttons: Enter in the reason box
+                 sends the form's first button, and a reason for saying no must
+                 never be the thing that says yes. */ ?>
         <div class="row-actions">
             <?php start_form('enrolment_decide',['id'=>$r['id'],'decision'=>'approve'],'inline-form');submit_button(t('Annehmen','Approve'));?></form>
-            <?php start_form('enrolment_decide',['id'=>$r['id'],'decision'=>'decline'],'inline-form');
+            <?php start_form('enrolment_decide',['id'=>$r['id'],'decision'=>'decline'],'row-form');
                   input('note',t('Grund (optional)','Reason (optional)'),'','text',false,'',t('Warum nicht?','Why not?'));
                   submit_button(t('Ablehnen','Decline'),'subtle danger-text');?></form>
         </div>
@@ -104,7 +107,7 @@ elseif($id && !$edit && $tab==='tariffs'):
         <?php foreach(class_tariffs($id,true) as $row): $rowRates=tariff_rates((int)$row['id']); ?>
         <a class="editor-list-item <?=$editTariff===(int)$row['id']?'selected':''?>" href="<?=e(url('classes',['id'=>$id,'tab'=>'tariffs','tariff'=>$row['id']]))?>">
             <span><strong><?=e($row['name'])?></strong><small><?=e(tariff_summary($row,$rowRates))?></small></span>
-            <span><?=e($rowRates?plural(count($rowRates),'Preis','Preise','price','prices'):t('kein Preis','no price'))?><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></span>
+            <span class="badge-line"><span><?=e($rowRates?plural(count($rowRates),'Preis','Preise','price','prices'):t('kein Preis','no price'))?></span><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber');?></span>
         </a>
         <?php endforeach ?>
         <?php $orphans=unattached_tariffs(); if($orphans): ?>
@@ -116,15 +119,15 @@ elseif($id && !$edit && $tab==='tariffs'):
         <div class="section-heading"><h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2>
         <?php if($tariff)duplicate_button('tariffs',$editTariff);?></div>
         <?php start_form('tariff_save',['id'=>$editTariff,'class_id'=>$id]); ?>
-        <div class="grid two"><?php
-        input('name',t('Name','Name'),$tf['name'],'text',true,'',t('z. B. Beitrag','e.g. Fee'));
-        select_field('period',t('Wiederkehrend?','Does it recur?'),['recurring'=>t('Ja, regelmäßig','Yes, regularly'),'once'=>t('Nein, einmalig','No, one-off')],$tf['period'],true);
-        ?></div>
-
-        <h3><?=e(t('Preise','Prices'))?></h3>
-        <p class="muted"><?=e(t('Ein Preis je Zahlungsweise. Der Betrag gilt für den ganzen Zeitraum, nicht pro Monat: 252 € jährlich, 162 € halbjährlich, 99 € im Quartal, 37 € im Monat. Leere Zeilen werden ignoriert.','One price per way of paying. The amount is for the whole period, not per month: 252 € yearly, 162 € half-yearly, 99 € quarterly, 37 € monthly. Empty rows are ignored.'))?></p>
+        <?php /* A name and what it costs is all most prices need. Everything else
+                 has a sensible default and waits under „Mehr Möglichkeiten" -
+                 a closed <details> still posts its fields, so saving is the same
+                 either way (ADR 0011). */
+        input('name',t('Name','Name'),$tf['name'],'text',true,'',t('z. B. Beitrag','e.g. Fee')); ?>
+        <h3><?=e(t('Preis','Price'))?></h3>
         <div class="option-editor" data-option-editor="rate">
-        <?php foreach(array_merge(array_map(fn($m,$c)=>['interval'=>$m,'price'=>$c],array_keys($rates),$rates),[['interval'=>'','price'=>null]]) as $rate): ?>
+        <?php // A new price starts as a monthly one, which is what most of them are.
+        foreach(array_merge(array_map(fn($m,$c)=>['interval'=>$m,'price'=>$c],array_keys($rates),$rates),[['interval'=>$rates?'':1,'price'=>null]]) as $rate): ?>
             <div class="option-row rate-row">
                 <select name="rate_interval[]" aria-label="<?=e(t('Zahlungsweise','How it is paid'))?>">
                     <?=select_options(billing_interval_choices(),$rate['interval'])?>
@@ -133,7 +136,14 @@ elseif($id && !$edit && $tab==='tariffs'):
             </div>
         <?php endforeach ?>
         </div>
+        <p class="muted rate-note"><?=e(t('Betrag für den ganzen Zeitraum, nicht pro Monat.','The amount for the whole period, not per month.'))?></p>
+
+        <details class="more-options" <?=$tf['archived']||$tf['period']==='once'?'open':''?>><summary><?=e(t('Mehr Möglichkeiten','More options'))?></summary>
+        <div class="grid two"><?php
+        select_field('period',t('Wiederkehrend?','Does it recur?'),['recurring'=>t('Ja, regelmäßig','Yes, regularly'),'once'=>t('Nein, einmalig','No, one-off')],$tf['period'],true);
+        ?></div>
         <button type="button" class="button secondary" data-add-option="rate"><?=e(t('+ Weitere Zahlungsweise','+ Another way of paying'))?></button>
+        <p class="muted"><?=e(t('Ein Preis je Zahlungsweise: 252 € jährlich, 162 € halbjährlich, 99 € im Quartal, 37 € im Monat. Beim Eintragen in den Kurs wählst du, welche davon für das Kind gilt. Leere Zeilen werden ignoriert.','One price per way of paying: 252 € yearly, 162 € half-yearly, 99 € quarterly, 37 € monthly. When you put a child in the course you choose which one applies. Empty rows are ignored.'))?></p>
 
         <h3><?=e(t('Zahlung','Payment'))?></h3>
         <div class="grid two"><?php
@@ -166,8 +176,9 @@ elseif($id && !$edit && $tab==='tariffs'):
         <?php input('description',t('Erklärung für die Familie','Explanation for the family'),$tf['description'],'text');
         input('sort_order',t('Reihenfolge in der Liste','Position in the list'),(int)$tf['sort_order'],'number',false,
               t('Kleine Zahl zuerst. Nur dafür da, in welcher Reihenfolge die Tarife dieses Kurses erscheinen.','Lowest number first. This only decides the order the tariffs of this course are listed in.'));
-        check_field('archived',t('Archivieren (bestehende Anmeldungen bleiben)','Archive (existing enrolments stay)'),(bool)$tf['archived']);
-        submit_button();?></form>
+        check_field('archived',t('Archivieren (bestehende Anmeldungen bleiben)','Archive (existing enrolments stay)'),(bool)$tf['archived']); ?>
+        </details>
+        <?php submit_button();?></form>
     </section>
 </div>
 <?php
@@ -186,7 +197,7 @@ elseif($id && !$edit && $tab==='dates'):
         <?php if(!$calendar): ?><p class="muted"><?=e(t('Für diesen Kurs ist noch kein Wochentag hinterlegt.','No weekday has been set for this course yet.'))?></p><?php endif ?>
         <?php foreach($calendar as $entry): ?>
         <a class="editor-list-item <?=$chosen===$entry['date']?'selected':''?> <?=$entry['status']==='cancelled'?'is-off':''?>" href="<?=e(url('classes',['id'=>$id,'tab'=>'dates','on'=>$entry['date']]))?>">
-            <span><strong><?=e(fmt_date($entry['date']))?><?php if($entry['date']===today())badge(t('Heute','Today'),'green');?></strong><small><?=e(session_label($entry))?></small></span>
+            <span><strong class="badge-line"><span><?=e(fmt_date($entry['date']))?></span><?php if($entry['date']===today())badge(t('Heute','Today'),'green');?></strong><small><?=e(session_label($entry))?></small></span>
             <span><?php if($entry['status']!=='planned')badge(session_statuses()[$entry['status']]??$entry['status'],$entry['status']==='cancelled'?'red':'amber'); echo icon('arrow');?></span>
         </a>
         <?php endforeach ?>

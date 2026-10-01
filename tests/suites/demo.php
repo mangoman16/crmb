@@ -15,7 +15,7 @@ $result = demo_fill();
 ok(($result['password'] ?? '') !== '', 'the fill hands back the password it set');
 ok(str_contains((string)file_get_contents(APP_ROOT.'/bin/console.php'), "\$result['password']"),
    'and the console prints it rather than pointing at nothing');
-foreach (['trainerin@beispiel.test', 'familie.hofer@beispiel.test', 'familie.berger@beispiel.test'] as $who)
+foreach (['trainerin@beispiel.test', 'lena.hofer@beispiel.test', 'jonas.berger@beispiel.test'] as $who)
     ok(password_verify((string)$result['password'],
         (string)scalar('SELECT password_hash FROM accounts WHERE email=?', [$who])),
         $who.' signs in with exactly that password');
@@ -101,7 +101,7 @@ case_('The example family can see their own example conversation');
 // it, so the family opened Nachrichten and was told there was nothing there.
 // Nobody noticed, because the trainer sees every staff conversation anyway.
 demo_fill(true);
-$familyId = (int)scalar('SELECT id FROM accounts WHERE email=?', ['familie.hofer@beispiel.test']);
+$familyId = (int)scalar('SELECT id FROM accounts WHERE email=?', ['lena.hofer@beispiel.test']);
 ok($familyId > 0, 'the example family has an account');
 sign_in_as($familyId);
 $theirs = threads_for(current_user());

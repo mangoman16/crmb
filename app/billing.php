@@ -327,7 +327,7 @@ function billing_enrolments(): array {
         .' cs.interval_months AS enrolment_interval,'
         .' cs.discount_months, cs.discount_kind, cs.discount_value, cs.discount_note,'
         .' s.first_name, s.last_name, s.status, s.billing_paused, s.billing_due_day, s.ended_on,'
-        .' s.joined_on AS student_joined_on, c.name AS class_name, c.payment_profile_id,'
+        .' s.joined_on AS student_joined_on, s.is_demo, c.name AS class_name, c.payment_profile_id,'
         .' t.id AS t_id, t.name AS tariff_name, t.period, t.interval_months AS tariff_interval,'
         .' t.due_day AS tariff_due_day, t.grace_days, t.first_period'
         .' FROM class_students cs'
@@ -337,6 +337,25 @@ function billing_enrolments(): array {
         .' ORDER BY s.last_name, s.first_name, s.id, c.sort_order, c.name');
     $rates = tariff_rate_map();
     return array_map(fn($row) => with_tariff_rate($row, $rates), $rows);
+}
+
+/**
+ * Whether billing has a price for this enrolment: a tariff, and either her own
+ * agreed price or a rate on that tariff above nothing.
+ *
+ * The one rule for "this child is in a course but nobody is billed for it".
+ * billing_plan() skips an enrolment that fails it, the child's page lists it
+ * under „Noch zu tun“, and the start checklist counts it - so none of the three
+ * can call a child priced while another says it is not (ADR 0011).
+ *
+ * Takes a row from billing_enrolments() or student_enrolments(): both carry
+ * tariff_id, price_cents and the tariff_price with_tariff_rate() worked out.
+ * A one-off tariff has a price; that billing does not repeat it is a different
+ * reason, and billing_plan() gives it separately.
+ */
+function enrolment_has_price(array $row): bool {
+    if (($row['tariff_id'] ?? null) === null) return false;
+    return (int)(enrolment_price($row)['cents'] ?? 0) > 0;
 }
 
 /** The tariff columns, lifted back out of one joined enrolment row. */
@@ -418,7 +437,10 @@ function billing_plan(string $period): array {
 
         $money = billing_amount_for($enrolment, $tariff, $bounds);
         if ($money['skip'] !== null)               { $entry['skip'] = $money['skip']; $rows[] = $entry; continue; }
-        if ($money['amount'] <= 0 && $money['gross'] <= 0) { $entry['skip'] = t('Kein Preis hinterlegt', 'No price set'); $rows[] = $entry; continue; }
+        // The gross as well as the rule: a price of a cent or two, shared out
+        // over the few days somebody was a member, can still round to nothing,
+        // and a charge for 0,00 € is not one to write.
+        if (!enrolment_has_price($enrolment) || $money['gross'] <= 0) { $entry['skip'] = t('Kein Preis hinterlegt', 'No price set'); $rows[] = $entry; continue; }
 
         $dueDay = billing_due_day($enrolment, $tariff);
         // A charge must never be created already late. The due day belongs to the
@@ -437,8 +459,13 @@ function billing_plan(string $period): array {
         // supply, so it has to survive as far as the charge.
         $entry['covered_from'] = $money['covered_from'] ?? $entry['from'];
         $entry['covered_to']   = $money['covered_to']   ?? $entry['to'];
-        $entry['due'] = billing_due_date($dueFrom, $dueDay);
-        $entry['overdue'] = billing_overdue_date($entry['due'], (int)$tariff['grace_days']);
+        // Nor before the first day it covers: a child who joined on the 28th was
+        // billed due on the 1st and shown „Überfällig“ the day the charge
+        // appeared. billing_run() adds the other half - never before the day it
+        // is written. A full month is unchanged: it covers from the 1st.
+        $entry['due'] = max(billing_due_date($dueFrom, $dueDay), $entry['covered_from']);
+        $entry['grace'] = (int)$tariff['grace_days'];
+        $entry['overdue'] = billing_overdue_date($entry['due'], $entry['grace']);
         $rows[] = $entry;
     }
     return $rows;
@@ -457,6 +484,13 @@ function billing_run(string $period): array {
     $created = 0; $skipped = 0; $total = 0;
     foreach (billing_plan($period) as $entry) {
         if ($entry['skip'] !== null) { $skipped++; continue; }
+        // A charge is never due before the day it is written: a month run late,
+        // or a child entered after the due day, is due today, and late only
+        // once its grace has passed from then.
+        if ($entry['due'] < today()) {
+            $entry['due'] = today();
+            $entry['overdue'] = billing_overdue_date($entry['due'], $entry['grace']);
+        }
         try {
             run('INSERT INTO charges (student_id,class_id,tariff_id,payment_profile_id,label,origin,billing_key,'
                 .'amount_cents,gross_cents,discount_cents,discount_note,period_from,period_to,'

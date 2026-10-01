@@ -23,6 +23,9 @@ declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 
 require_once __DIR__.'/sqlite-driver.php';
+require_once __DIR__.'/database-name.php';
+require_once __DIR__.'/run-config.php';
+require_once __DIR__.'/css.php';
 
 const TEST_ROOT = __DIR__;
 const APP_ROOT  = __DIR__ . '/..';
@@ -91,7 +94,24 @@ function case_(string $name): void { test_state()->case = $name; }
 // Database
 // ---------------------------------------------------------------------------
 
-function test_driver(): string { return getenv('CRM_TEST_DRIVER') ?: 'sqlite'; }
+/**
+ * Which engine this run uses: exactly "sqlite" (the default) or "mysql".
+ *
+ * Anything else is refused rather than read as "not sqlite". The guards that
+ * keep a run off a live database once asked for "mysql" while the branch that
+ * drops every table ran for anything that was not "sqlite", so "MySQL" or
+ * "mariadb" skipped the one and reached the other. Refused here, before any
+ * connection is made, and the guards below test the same condition as the
+ * branch they protect.
+ */
+function test_driver(): string {
+    $driver = getenv('CRM_TEST_DRIVER') ?: 'sqlite';
+    if ($driver !== 'sqlite' && $driver !== 'mysql') {
+        fwrite(STDERR, "Refusing to run: CRM_TEST_DRIVER must be exactly \"sqlite\" or \"mysql\", not \"$driver\".\n");
+        exit(2);
+    }
+    return $driver;
+}
 
 /**
  * Translate the MySQL migrations into something SQLite accepts.
@@ -135,6 +155,78 @@ function test_unsupported(?array $set=null): array {
 
 
 /**
+ * A path with every part that exists resolved, and the rest appended as written.
+ *
+ * realpath() answers false for a folder nobody has created yet, and most of the
+ * storage folders are created on first use - so "is this inside the portal" has
+ * to be answerable before they exist, not only afterwards.
+ */
+function test_resolved_path(string $path): string {
+    $rest = [];
+    while (($real = realpath($path)) === false) {
+        $parent = dirname($path);
+        if ($parent === $path) return $path;
+        $rest[] = basename($path);
+        $path = $parent;
+    }
+    return rtrim($real, '/') . ($rest ? '/' . implode('/', array_reverse($rest)) : '');
+}
+
+/** Whether a path lies inside a folder, both resolved first. */
+function test_path_inside(string $path, string $folder): bool {
+    return str_starts_with(test_resolved_path($path) . '/', rtrim(test_resolved_path($folder), '/') . '/');
+}
+
+/** The system temp directory, written the way dirname() will give it back. */
+function test_temp_base(): string { return rtrim(sys_get_temp_dir(), '/') ?: '/'; }
+
+/**
+ * A folder of this run's own, for everything the application writes to disk.
+ *
+ * The owner runs the suite on her hosting, possibly inside the very folder the
+ * live portal is served from. Uploads, backups, invoice proofs, the maintenance
+ * flag and the schema marker are all placed beside the maintenance file, so
+ * wherever that points is where a test run deletes "orphaned" uploads and
+ * "stale" backups. Pointing it here - a fresh folder under the system temp
+ * directory, readable by this user alone and removed when the run ends - is
+ * what keeps a run from touching hers, and from touching another run's.
+ */
+function test_run_dir(): string {
+    static $dir;
+    if ($dir !== null) return $dir;
+    $base = test_temp_base();
+    if (test_path_inside($base, APP_ROOT)) {
+        fwrite(STDERR, "Refusing to run: the temporary directory ($base) is inside the portal's own folder.\n"
+            ."Set TMPDIR to a folder outside it.\n");
+        exit(2);
+    }
+    $candidate = $base . '/crm-test-' . getmypid() . '-' . bin2hex(random_bytes(6));
+    if (!@mkdir($candidate, 0700)) {
+        fwrite(STDERR, "Cannot create a folder for this run under $base.\n");
+        exit(2);
+    }
+    $dir = $candidate;
+    register_shutdown_function('test_remove_run_dir', $dir);
+    return $dir;
+}
+
+/**
+ * Remove the run's folder and everything in it, and nothing else.
+ *
+ * Refuses any path that is not one test_run_dir() made, so a bug here can never
+ * become a recursive delete somewhere that matters. Links are removed, never
+ * followed.
+ */
+function test_remove_run_dir(string $dir): void {
+    if (!preg_match('~/crm-test-\d+-[0-9a-f]{12}$~D', $dir) || dirname($dir) !== test_temp_base() || !is_dir($dir)) return;
+    $items = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+                                           RecursiveIteratorIterator::CHILD_FIRST);
+    foreach ($items as $item)
+        ($item->isDir() && !$item->isLink()) ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+    @rmdir($dir);
+}
+
+/**
  * Boot the application against a fresh database and apply every migration.
  *
  * Called once per run; each suite then resets the data with test_reset().
@@ -142,21 +234,16 @@ function test_unsupported(?array $set=null): array {
 function test_boot(): void {
     $driver = test_driver();
     if ($driver === 'sqlite') {
-        $file = sys_get_temp_dir().'/crm-test-'.getmypid().'.sqlite';
-        @unlink($file);
+        $file = test_run_dir().'/test.sqlite';
         putenv('CRM_TEST_SQLITE='.$file);
         // A config the application will accept, pointing at nothing real: the
-        // sqlite driver replaces connect() below.
-        $config = TEST_ROOT.'/.config.generated.php';
-        file_put_contents($config, '<?php return '.var_export([
-            'app_url' => 'http://localhost',
-            'app_key' => base64_encode(str_repeat('k', 32)),
-            'db' => ['host'=>'127.0.0.1','port'=>3306,'database'=>'unused_test','username'=>'u','password'=>''],
-            'timezone' => 'Europe/Vienna',
-            'secure_cookies' => false,
-            'session_idle_minutes' => 120,
-            'maintenance_file' => sys_get_temp_dir().'/crm-test-maintenance-'.getmypid().'.flag',
-        ], true).';');
+        // sqlite driver replaces connect() below. The same layout the two
+        // real-engine scripts write, from the same function, into the run's own
+        // folder rather than into tests/, which is part of the portal's tree.
+        $config = test_run_dir().'/config.php';
+        write_run_config($config,
+            ['host'=>'127.0.0.1','port'=>3306,'database'=>'unused_test','username'=>'u','password'=>''],
+            test_run_dir());
         putenv('CRM_CONFIG='.$config);
     } elseif (!getenv('CRM_CONFIG')) {
         fwrite(STDERR, "CRM_TEST_DRIVER=mysql needs CRM_CONFIG pointing at a *_test database config.\n");
@@ -169,17 +256,10 @@ function test_boot(): void {
         // the action they guard. The harness has to do the same or that property
         // is untestable. WAL plus a busy timeout lets the two coexist on one file.
         $GLOBALS['crm_connect_override'] = function (): PDO {
+            // The MySQL functions the application calls come with the connection;
+            // see TestSqlitePdo::addMysqlFunctions().
             $pdo = new TestSqlitePdo('sqlite:'.getenv('CRM_TEST_SQLITE'), null, null,
                 [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-            // Functions the application's SQL uses that SQLite lacks.
-            $pdo->sqliteCreateFunction('CONCAT', fn(...$a) => implode('', $a), -1);
-            $pdo->sqliteCreateFunction('GREATEST', fn(...$a) => max($a), -1);
-            $pdo->sqliteCreateFunction('LEAST', fn(...$a) => min($a), -1);
-            // Advisory locks are a MySQL concept; a single-connection test always
-            // "holds" the lock, which is the behaviour the code expects.
-            $pdo->sqliteCreateFunction('GET_LOCK', fn($n, $t) => 1, 2);
-            $pdo->sqliteCreateFunction('UTC_TIMESTAMP', fn() => gmdate('Y-m-d H:i:s'), 0);
-            $pdo->sqliteCreateFunction('RELEASE_LOCK', fn($n) => 1, 1);
             $pdo->exec('PRAGMA journal_mode=WAL');
             $pdo->exec('PRAGMA busy_timeout=4000');
             $pdo->exec('PRAGMA foreign_keys=ON');
@@ -190,9 +270,31 @@ function test_boot(): void {
     $_SESSION = ['locale' => 'de'];
     require APP_ROOT.'/app/bootstrap.php';
 
-    if ($driver === 'mysql' && !str_ends_with(config('db')['database'], '_test')) {
-        fwrite(STDERR, "Refusing to run: the configured database name does not end in _test.\n");
+    // Whatever the configuration said. A config copied from the live one for the
+    // mysql driver still names the live storage/, and the suites delete uploads
+    // no test record points at and prune backups there - which, against her
+    // folder, is every photograph and every copy she has. config() reads the
+    // global on every call, so this reaches every path derived from it.
+    $GLOBALS['config']['maintenance_file'] = test_run_dir().'/maintenance.flag';
+
+    // !== 'sqlite' rather than === 'mysql': these guard the branch below that
+    // drops every table, and that branch runs for everything that is not sqlite.
+    if ($driver !== 'sqlite' && !test_database_name_allowed((string)(config('db')['database'] ?? ''))) {
+        fwrite(STDERR, "Refusing to run: the configured database name is not letters, digits and underscores ending in _test.\n");
         exit(2);
+    }
+    // The suite drops every table in the database it is given. A _test suffix
+    // on the portal's own database is unlikely, but it is her families' data on
+    // the other side of "unlikely", so it is checked rather than assumed. The
+    // same rule tests/existing-database.sh applies before it gets this far.
+    $live = APP_ROOT.'/config/config.php';
+    if ($driver !== 'sqlite' && is_file($live)) {
+        $liveConfig = (static fn() => require $live)();
+        if (test_resolved_path((string)getenv('CRM_CONFIG')) === test_resolved_path($live)
+            || strcasecmp((string)($liveConfig['db']['database'] ?? ''), (string)config('db')['database']) === 0) {
+            fwrite(STDERR, "Refusing to run: that is the database config/config.php gives the portal itself.\n");
+            exit(2);
+        }
     }
 
     $sql = '';
@@ -263,6 +365,11 @@ function test_reset(): void {
     } finally {
         db()->exec($sqlite ? 'PRAGMA foreign_keys = ON' : 'SET FOREIGN_KEY_CHECKS=1');
     }
+    // A running portal always has the migrations ledger: schema_apply() creates
+    // it before anything else, and pages read it (presence_recorded_since()).
+    // The harness applies the migration files directly, and the install suite
+    // drops the ledger on purpose, so it is put back - empty - for every suite.
+    run('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
     // The counter connection is separate by design, so clear it through itself.
     run_counter('DELETE FROM rate_limits');
     setting_cache_clear();
@@ -271,8 +378,11 @@ function test_reset(): void {
     setting_cache_clear();
     // Request-scoped memos outlive a request here, because a test run is one
     // process. Emptying them keeps every suite measuring a cold page, the way
-    // a real first request would be.
+    // a real first request would be - and lets each suite capture its own
+    // error, since a request captures only one.
     payment_cache_clear();
+    setup_cache_clear();
+    error_capture_reset();
 }
 
 function test_has_table(string $name): bool {
@@ -297,10 +407,15 @@ function make_account(array $over=[]): int {
     static $n = 0; $n++;
     return fixture('accounts', array_merge([
         'name' => 'Account '.$n, 'email' => 'a'.$n.'@example.test',
+        // Unique by the counter, as accounts.username must be since 023 (ADR
+        // 0019), and what username_from_full_name() makes of 'Account N'.
+        'username' => 'account.'.$n,
         'password_hash' => password_hash('Test-Only-Password-2026', PASSWORD_DEFAULT),
         'role' => 'student', 'state' => 'active', 'verified_at' => now(),
         'locale' => 'de', 'theme' => 'auto', 'text_scale' => 'normal',
-        'auth_version' => 1, 'newsletter' => 0, 'notifications' => 1, 'payment_notices' => 1,
+        // newsletter is left to the schema's default (on since 021, ADR 0018),
+        // so a fixture starts a login the way the portal does.
+        'auth_version' => 1, 'notifications' => 1, 'payment_notices' => 1,
         'created_at' => now(),
     ], $over));
 }
@@ -385,6 +500,18 @@ function make_enrolment(int $classId, int $studentId, array $over=[]): int {
         'left_on' => null, 'tariff_id' => null, 'price_cents' => null, 'price_note' => '', 'due_day' => 0,
     ], $over));
     return $classId;
+}
+
+/**
+ * Mail as a portal on its first evening has it (false), or as a set-up one does
+ * (true): a saved server, a connection test that passed, and a released notice.
+ * The one fixture for it, because account_mail_ready() asks all three, and a
+ * suite that set two of them by hand would be testing a portal that refuses.
+ */
+function mail_ready(bool $on): void {
+    set_setting('smtp', $on ? ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B'] : []);
+    set_setting('smtp_last_test', $on ? ['ok'=>true, 'summary'=>'', 'transcript'=>'', 'sent_to'=>'', 'at'=>now()] : []);
+    set_setting('privacy_ready', $on);
 }
 
 /** Pretend a given account is signed in, for code that calls current_user(). */

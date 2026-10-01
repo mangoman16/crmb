@@ -198,9 +198,7 @@ function class_payment_profile_id(int $classId): int {
 
 /** The remittance reference for a charge, from the operator's template. */
 function charge_reference(array $charge, array $student): string {
-    $period = $charge['period_from'] && $charge['period_to']
-        ? fmt_date($charge['period_from']).'-'.fmt_date($charge['period_to'])
-        : '';
+    $period = charge_period_text($charge, '-');
     $text = strtr((string)setting('payment_reference_template'), [
         '{label}'   => (string)$charge['label'],
         '{student}' => $student['first_name'].' '.$student['last_name'],

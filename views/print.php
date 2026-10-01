@@ -65,10 +65,15 @@ $minor = $student ? (($age = student_age($student['birth_date'] ?? null)) !== nu
                     $student ? ($student['birth_date'] ? fmt_date($student['birth_date']) : '') : '',
                     t('TT.MM.JJJJ','DD.MM.YYYY'));
         // Its own row: an address is longer than a name, and one broken over
-        // two rows of boxes is one nobody can read back.
-        print_field(t('E-Mail-Adresse für das Portal','Email address for the portal'), 34,
+        // two rows of boxes is one nobody can read back. It signs in, the
+        // invitation goes to it and so do the invoices, and it is the
+        // student's own (ADR 0020, §1). No username: the address signs in, so
+        // the sheet needs none.
+        // print_field() brackets its hint, so the label carries none of its
+        // own: two bracket pairs on one line read like a form generator.
+        print_field(t('E-Mail-Adresse für Anmeldung, Einladung und Rechnungen','Email address for signing in, invitations and invoices'), 34,
                     $student ? student_email($student) : '',
-                    t('Bei einem Kind die Adresse eines Elternteils','For a child, a parent’s address'), true);
+                    t('die eigene des Mitglieds – die der Eltern gehört unten zu den Notfallkontakten','the member’s own – a parent’s goes under Emergency contacts below'), true);
         // Asked for on paper by every club form and, above 400 €, by § 11 UStG.
         print_field(t('Anschrift','Postal address'), 34, (string)($student['address'] ?? ''),
                     t('Straße, PLZ und Ort','Street, postcode and town'), true);
@@ -135,9 +140,19 @@ $minor = $student ? (($age = student_age($student['birth_date'] ?? null)) !== nu
     <section class="sheet-block">
         <h2><?=e(t('Einverständnis','Consent'))?></h2>
         <?php
-        print_tick(t('Ich habe die Datenschutzerklärung gelesen.','I have read the privacy notice.'), $student ? null : null);
-        print_tick(t('Ja, ich möchte die Neuigkeiten per E-Mail bekommen.','Yes, send me the news by email.'), null);
-        print_tick(t('Ja, bitte per E-Mail an neue Nachrichten erinnern.','Yes, email me when there is a new message.'), null);
+        print_tick(t('Ich habe die Datenschutzerklärung gelesen.','I have read the privacy notice.'), null);
+        // Both kinds of email are on unless somebody says no (ADR 0018), so the
+        // paper asks for the no. A pre-printed tick cannot be taken back with a
+        // pen; an empty box for "please don't" can simply be left alone. A data
+        // sheet shows what the portal holds, so a no already given is ticked
+        // there to be checked; without a login there is nothing to show yet.
+        $login = !empty($student['account_id'])
+            ? one('SELECT newsletter, notifications FROM accounts WHERE id=?', [(int)$student['account_id']])
+            : null;
+        print_tick(t('Bitte keine Neuigkeiten des Vereins per E-Mail schicken.','Please do not send me club news by email.'),
+            $login ? !(int)$login['newsletter'] : null);
+        print_tick(t('Bitte keine E-Mail bei neuen Nachrichten schicken.','Please do not email me when there is a new message.'),
+            $login ? !(int)$login['notifications'] : null);
         ?>
         <?php /* The long version of this is in the intro at the top of a blank
                  form, and two paragraphs saying the same thing cost the sheet a

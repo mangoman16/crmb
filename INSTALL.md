@@ -77,7 +77,8 @@ public_html/
 
 Die `.htaccess` ganz oben leitet jede Anfrage nach `public/` weiter, und jeder
 andere Ordner sperrt sich selbst. `app/`, `config/` und `storage/` sind dadurch
-von außen nicht erreichbar, obwohl sie im Webverzeichnis liegen.
+von außen nicht erreichbar, obwohl sie im Webverzeichnis liegen. Versteckte
+Ordner wie `.git` beantwortet sie mit „nicht gefunden“.
 
 `config/` und `storage/` müssen beschreibbar sein (Rechte `755`). Bei den
 meisten Anbietern sind sie das nach dem Entpacken bereits. Falls nicht, sagt es
@@ -92,6 +93,10 @@ Dort werden abgefragt:
 - die vier Datenbank-Angaben aus Schritt 1,
 - Name, E-Mail-Adresse und Passwort für das erste Konto (mindestens 12 Zeichen),
 - Adresse und Zeitzone, beide bereits ausgefüllt.
+
+Darunter steht **Beispieldaten anlegen**. Nur ankreuzen, wenn das Portal erst
+ausprobiert werden soll – für ein Portal, das gleich echte Familien bekommt,
+frei lassen.
 
 **Installieren** drücken. Das war die Installation. Danach führt ein Link direkt
 zur Anmeldung.
@@ -115,20 +120,46 @@ angelegt werden und keine Einladung per E-Mail brauchen. Das Passwort wird
 einmalig auf derselben Seite angezeigt.
 
 Beispieldaten sind in der Datenbank gekennzeichnet und lassen sich mit einem
-Klick vollständig wieder entfernen. Echte Daten bleiben dabei unberührt.
+Klick vollständig wieder entfernen. Echte Daten bleiben dabei unberührt. Auf
+der Liste „Dein Portal einrichten“ (nächster Abschnitt) haken Beispieldaten nie
+einen Schritt ab.
 
-## Danach: zwei Dinge in den Einstellungen
+## Danach: „Dein Portal einrichten“
 
-Einladungen bleiben gesperrt, bis beides erledigt ist.
+Nach der ersten Anmeldung öffnet sich die Seite **„Dein Portal einrichten“**.
+Sie zählt die neun Dinge auf, die ein Portal braucht, bevor Familien kommen,
+und führt mit einem Tippen jeweils dorthin, wo es erledigt wird:
 
-1. **Einstellungen → SMTP**: Server, Port, Verschlüsselung, Benutzer, Passwort
-   und Absenderadresse eintragen, dann **Testmail vormerken**. Die Mail geht an
-   die eigene Adresse und wird innerhalb einer Minute verschickt; der Stand steht
-   im **Postausgang**.
-2. **Einstellungen → Datenschutz**: beide Entwürfe an den tatsächlichen
-   Betreiber, das Hosting und den E-Mail-Anbieter anpassen und freigeben. Die
-   Einordnung von Krankmeldungen und Minderjährigen ist im Entwurf ausdrücklich
-   als offener Punkt markiert.
+1. **Name und Anschrift** – stehen auf jeder Rechnung und in der
+   Datenschutzerklärung.
+2. **Bankkonto** – damit Rechnungen und der QR-Code sagen, wohin das Geld geht.
+3. **Ersten Kurs anlegen**
+4. **Preis für jeden Kurs** – jeder Kurs braucht einen Trainingstag und einen
+   Tarif.
+5. **Kinder eintragen** – jedes Kind in einem Kurs mit Preis.
+6. **Beiträge** – automatisch anlegen lassen oder einmal selbst anlegen.
+7. **E-Mails verschicken** – unter **Einstellungen → SMTP** Server, Port,
+   Verschlüsselung, Benutzer, Passwort und Absenderadresse eintragen und
+   speichern, dann **„Nur Verbindung prüfen“** oder **„Verbindung prüfen und
+   Testmail senden“** drücken. Das Portal fragt den Mailserver sofort und zeigt
+   das Ergebnis; erst ein grünes **Erfolgreich** hakt diesen Schritt ab. Wer die
+   SMTP-Angaben später ändert, muss noch einmal prüfen.
+8. **Datenschutzerklärung** – unter **Einstellungen → Datenschutz** den
+   deutschen Entwurf an den tatsächlichen Betreiber, das Hosting und den
+   E-Mail-Anbieter anpassen und freigeben. Die Einordnung von Krankmeldungen und
+   Minderjährigen ist im Entwurf ausdrücklich als offener Punkt markiert. Eine
+   englische Fassung ist freiwillig; wer das Portal auf Englisch nutzt, sieht
+   sonst die deutsche mit einem Hinweis darauf.
+9. **Familien einladen** – geht erst, wenn 7 und 8 erledigt sind. Jedes Kind
+   bekommt seine Einladung auf seiner eigenen Seite, an seine eigene
+   E-Mail-Adresse; Geschwister brauchen jeweils eine eigene.
+
+Jeder Schritt wird aus den Daten abgehakt, nicht von Hand. Wer von der Liste
+aus einen Schritt öffnet, findet nach dem Speichern oben auf der Seite
+**„← Zurück zur Einrichtung“**. Bis alles erledigt ist, führt jede Anmeldung
+als Administratorin auf diese Seite. Danach lässt sich die Liste
+**ausblenden** und unter **Einstellungen → Einrichtung ansehen** wieder
+hervorholen.
 
 Beim E-Mail-Anbieter noch SPF und DKIM für die Absenderadresse einrichten,
 sonst landen die Einladungen im Spam.
@@ -137,6 +168,23 @@ sonst landen die Einladungen im Spam.
 
 Die neuen Dateien über die alten hochladen und das Portal öffnen. Die Datenbank
 passt sich beim ersten Aufruf selbst an. Kein weiterer Schritt.
+
+> **Beim Update eines Portals, in dem schon Familien sind, auf Version 0.6.0:**
+> **vor** dem Hochladen unter **Einstellungen → Datenschutz** zwei Absätze in
+> die Datenschutzerklärung übernehmen – einen darüber, dass das Portal jetzt
+> speichert, wann jemand online war, und einen, der den alten Absatz zum
+> Newsletter ersetzt, weil Neuigkeiten per E-Mail bei neuen Konten jetzt
+> eingeschaltet sind. Beide Absätze zum Kopieren stehen in
+> [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060); die
+> Rechtsgrundlage an der Stelle in eckigen Klammern selbst eintragen. Nach dem
+> Hochladen einmal unter **Einstellungen → SMTP** auf **„Nur Verbindung prüfen“**
+> tippen und das grüne **Erfolgreich** abwarten. Vorher gehen keine
+> Einladungen und keine „Passwort vergessen?“-Links hinaus. Außerdem hat ab
+> dieser Version jedes Kind einen eigenen Zugang: Geschwister, die sich bisher
+> eine Anmeldung geteilt haben, werden getrennt – das zuerst angelegte Kind
+> behält sie, die anderen brauchen eine eigene E-Mail-Adresse und eine eigene
+> Einladung. Gelöscht wird dabei nichts. Einzelheiten:
+> [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060).
 
 Mit Shell-Zugang macht `bin/update.sh` dasselbe in einem Befehl: es holt die
 neuen Dateien per Git, installiert die Abhängigkeiten, schaltet den
@@ -235,7 +283,10 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 | „Vor der Aktualisierung konnte keine Sicherung angelegt werden“ | Rechte für `storage` auf `755` setzen. Oder im Panel selbst eine Sicherung anlegen und danach im Ordner `storage` eine leere Datei `skip-backup` erstellen; sie gilt für genau ein Update. |
 | „Die hochgeladenen Dateien sind älter als die Datenbank“ | Das falsche Paket hochgeladen. Die neueste Version holen und noch einmal entpacken. |
 | „Die hochgeladenen Dateien sind unvollständig“ | Das Entpacken ist abgebrochen, oder der Upload lief über FTP im Textmodus. Noch einmal hochladen, FTP auf Binärmodus stellen. |
-| E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang**, dort steht der Fehler der letzten Zustellung. |
+| E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang** (unter **Nachrichten**), dort steht der Fehler der letzten Zustellung. |
+| „Eine Einladung lässt sich noch nicht verschicken. E-Mail-Versand zuerst testen …“ | **Einstellungen → SMTP** → **„Nur Verbindung prüfen“**. Erst wenn dort **Erfolgreich** steht, gehen Einladungen hinaus. Nach jeder Änderung der SMTP-Angaben noch einmal prüfen. |
+| „Jede Schülerin und jeder Schüler braucht eine eigene E-Mail-Adresse …“ | Die Adresse ist schon die Anmeldung eines anderen Kindes, oft eines Geschwisters. Für dieses Kind eine andere Adresse eintragen. |
+| Jemand sieht „Die Anwendung ist vorübergehend nicht verfügbar“ oder „Speichern fehlgeschlagen. Bitte erneut versuchen.“ | Das Portal hat den Fehler selbst festgehalten: **Einstellungen → Rückmeldungen**, Eintrag „Automatisch erfasst“, mit der Zahl, wie oft er vorkam. Unter **„Für den Support kopieren“** steht ein Text ohne Namen, E-Mail-Adressen und Eingaben, der an die Person gehen kann, die hilft. |
 
 ## Was geprüft wurde
 
@@ -243,6 +294,18 @@ Die Einrichtung über den Browser, das Anwenden neuer Migrationen beim
 Seitenaufruf und jede der vier Prüfungen vor einem Update sind gegen
 **MariaDB 10.11.14** mit echten HTTP-Anfragen durchgespielt worden – samt einer
 Sicherung, die anschließend in eine zweite Datenbank zurückgespielt wurde und
-dort vollständig ankam. Die gesamte Testsuite läuft dort ebenfalls durch. **MySQL 8.0 selbst ist nicht geprüft**, und
-auf einem konkreten Hosting-Paket ist das Ganze noch nicht gelaufen. Stand und
+dort vollständig ankam. Die gesamte Testsuite läuft dort ebenfalls durch, mit
+allen einundzwanzig Datenbankänderungen.
+
+Für Version 0.6.0 wurde außerdem der erste Abend von Anfang bis Ende in einem
+echten Browser in Telefonbreite durchgespielt, gegen MariaDB 10.11.14: die
+Einrichtungsseite, alle neun Schritte von „Dein Portal einrichten“ über ihre
+eigenen Knöpfe, eine Einladung über einen Mailserver auf demselben Rechner, die
+Anmeldung als Familie, ein Zahlungsbeleg, eine Problemmeldung, eine Rechnung
+und ein absichtlich ausgelöster Fehler. Das war Chromium, kein iPhone, und kein
+echter E-Mail-Anbieter.
+
+**MySQL 8.0 selbst ist nicht geprüft**, und auf einem konkreten Hosting-Paket
+ist das Ganze noch nicht gelaufen – auch die neue Sperre für versteckte Ordner
+in der `.htaccess` nicht, denn der Testserver liest keine `.htaccess`. Stand und
 offene Punkte: [VALIDATION.md](VALIDATION.md).

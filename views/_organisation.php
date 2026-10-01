@@ -42,6 +42,8 @@
         <span><?=e(setting('org_tax_note'))?></span>
         <?php endif ?>
     </div>
+    <details class="why"><summary><?=e(t('Warum?','Why?'))?></summary>
     <p class="muted"><?=e(t('Rechtlicher Hintergrund: Eine österreichische Rechnung braucht Name und Anschrift des Ausstellers, Name des Empfängers, Art und Umfang der Leistung, Leistungszeitraum, Entgelt, Steuersatz und Steuerbetrag oder einen Hinweis auf die Steuerbefreiung, Ausstellungsdatum und eine fortlaufende Nummer (§ 11 Abs 1 UStG). Kleinunternehmer nach § 6 Abs 1 Z 27 UStG weisen keine Umsatzsteuer aus und müssen stattdessen auf die Befreiung hinweisen. Das Portal setzt all das aus diesen Feldern zusammen; ob die Einordnung stimmt, entscheidet die Steuerberatung.',
         'Legal background: an Austrian invoice needs the issuer’s name and address, the recipient’s name, the type and extent of the supply, the period of supply, the amount, the tax rate and tax amount or a note about the exemption, the issue date and a consecutive number (§ 11 Abs 1 UStG). A small business under § 6 Abs 1 Z 27 UStG shows no VAT and must state the exemption instead. The portal assembles all of that from these fields; whether the classification is right is a question for your accountant.'))?></p>
+    </details>
 </section>

@@ -31,29 +31,45 @@ function invoice_dir(): string { return dirname(maintenance_file()) . '/proofs';
  * Returned as sentences rather than a boolean, because "you cannot issue an
  * invoice" without saying what is missing is the kind of message that makes
  * somebody give up and use Word.
+ *
+ * Keyed by what each one is about - 'name', 'address', 'tax', 'iban' - so the
+ * start checklist can tell „Name und Anschrift“ from „Bankkonto“ by asking this
+ * function rather than spelling the rules a second time (ADR 0011). A page that
+ * only prints them loops over the values and never sees the keys. Two tax
+ * problems at once are one entry of two sentences: they are fixed in one place.
  */
 function invoice_issuer_problems(): array {
     $missing = [];
     if (trim((string)setting('org_name')) === '')
-        $missing[] = t('Name oder Firma des Betreibers fehlt.', 'The operator’s name or company is missing.');
+        $missing['name'] = t('Name oder Firma des Betreibers fehlt.', 'The operator’s name or company is missing.');
     if (trim((string)setting('org_street')) === '' || trim((string)setting('org_city')) === '')
-        $missing[] = t('Die Anschrift des Betreibers fehlt.', 'The operator’s address is missing.');
+        $missing['address'] = t('Die Anschrift des Betreibers fehlt.', 'The operator’s address is missing.');
+    $tax = [];
     if (setting('org_tax_mode') === 'small' && trim((string)setting('org_tax_note')) === '')
-        $missing[] = t('Ohne Umsatzsteuer muss ein Hinweis auf die Steuerbefreiung auf der Rechnung stehen.',
-                       'Without VAT, a note about the tax exemption has to appear on the invoice.');
+        $tax[] = t('Ohne Umsatzsteuer muss ein Hinweis auf die Steuerbefreiung auf der Rechnung stehen.',
+                   'Without VAT, a note about the tax exemption has to appear on the invoice.');
     if (setting('org_tax_mode') === 'vat' && (int)setting('org_vat_rate') <= 0)
-        $missing[] = t('Mit Umsatzsteuer muss ein Steuersatz angegeben sein.', 'With VAT, a tax rate has to be set.');
+        $tax[] = t('Mit Umsatzsteuer muss ein Steuersatz angegeben sein.', 'With VAT, a tax rate has to be set.');
     if (setting('org_tax_mode') === 'vat' && trim((string)setting('org_vat_id')) === '')
-        $missing[] = t('Mit Umsatzsteuer gehört die UID-Nummer auf die Rechnung.', 'With VAT, the VAT identification number belongs on the invoice.');
+        $tax[] = t('Mit Umsatzsteuer gehört die UID-Nummer auf die Rechnung.', 'With VAT, the VAT identification number belongs on the invoice.');
+    if ($tax) $missing['tax'] = implode(' ', $tax);
     // The installer seeds a recipient called Vereinskonto with the SEPA payload
     // ready and no account number in it, waiting to be filled in - and being the
     // default, it is what every course and every charge picks up. Left as it
     // comes, the portal produces invoices with nowhere to send the money, and
     // the first anybody knows is the phone call. Said here so it is read on the
     // invoices page, before there is a family waiting for the document.
+    //
+    // No default at all is the same gap one step earlier: a charge from a course
+    // without a recipient of its own falls back to the default, and with none it
+    // falls back to nothing. An archived default counts as none, because that is
+    // how charge_payment_profile() resolves it.
     $house = payment_profile((int)setting('default_payment_profile'));
-    if ($house && trim((string)$house['iban']) === '')
-        $missing[] = t('Beim Zahlungsempfänger „', 'The payment recipient “') . $house['name']
+    if (!$house)
+        $missing['iban'] = t('Es ist kein Standard-Zahlungsempfänger gewählt – unter „Verwaltung → Geld & Zahlungen“ einen mit IBAN anlegen und als Standard wählen.',
+                             'No default payment recipient is chosen – under “Manage → Money and payments”, add one with an IBAN and choose it as the default.');
+    elseif (trim((string)$house['iban']) === '')
+        $missing['iban'] = t('Beim Zahlungsempfänger „', 'The payment recipient “') . $house['name']
             . t('“ fehlt die IBAN – einzutragen unter „Verwaltung → Zahlungsempfänger“.',
                 '” has no IBAN — add it under “Manage → Payment recipients”.');
     return $missing;
@@ -87,9 +103,11 @@ function invoice_recipient(array $student): array {
     $account = $student['account_id'] ? one('SELECT * FROM accounts WHERE id=?', [(int)$student['account_id']]) : null;
     $name = $student['first_name'] . ' ' . $student['last_name'];
     // Not the emergency contact any more: that list is people to ring, and the
-    // grandmother at the top of it is not who the invoice is for. A child with
-    // no account is addressed by their own name at their own address, which for
-    // a child is a parent's address - that is what the field is for.
+    // grandmother at the top of it is not who the invoice is for. The address
+    // is the one the family keeps on its own „Profil" tab (ADR 0020, §7),
+    // frozen into each invoice when it is issued: create_invoice() copies this
+    // into snapshot_json, so a later move changes the next invoice and never
+    // an earlier one.
     return [
         'name'    => $account ? (string)$account['name'] : $name,
         'address' => (string)($student['address'] ?? ''),
@@ -111,6 +129,14 @@ function invoice_recipient(array $student): array {
 const INVOICE_ADDRESS_FROM_CENTS = 40000;
 
 /**
+ * Whether a student's postal address is missing: trimmed, it is empty. One rule
+ * for create_invoice(), which refuses an invoice above the threshold without
+ * one, and for family_next_steps(), which puts „Anschrift eintragen" on the
+ * family's list for exactly that reason (ADR 0020, §7 and §11).
+ */
+function postal_address_missing(array $student): bool { return trim((string)($student['address'] ?? '')) === ''; }
+
+/**
  * The span one charge actually paid for, as [from, to].
  *
  * Two dates on a charge answer two different questions. period_from and
@@ -127,6 +153,17 @@ function charge_supplied(array $charge): array {
     $from = $charge['covered_from'] ?? null ?: ($charge['period_from'] ?? null);
     $to   = $charge['covered_to']   ?? null ?: ($charge['period_to']   ?? null);
     return [$from ?: null, $to ?: null];
+}
+
+/**
+ * The span a charge paid for, as it is written for a person: "28.09.2026 –
+ * 30.09.2026", or '' for a charge with none. Every place that shows a family
+ * the period - the charge on their page, the bank reference - says what the
+ * invoice says, because all of them read charge_supplied().
+ */
+function charge_period_text(array $charge, string $between = ' – '): string {
+    [$from, $to] = charge_supplied($charge);
+    return $from && $to ? fmt_date($from) . $between . fmt_date($to) : '';
 }
 
 /** Charges of one student that no live invoice covers yet. */
@@ -173,7 +210,12 @@ function invoice_next_number(int $year): array {
  * one made from today's settings.
  */
 function create_invoice(int $studentId, array $chargeIds, string $issuedOn = '', int $termDays = -1): int {
-    if ($problems = invoice_issuer_problems())
+    // Who is issuing it has to be on every invoice. Where the money goes is not
+    // asked of the default here: it is checked below against the recipient these
+    // charges actually resolve to - their own, their course's, then the default
+    // - so a portal whose courses each name one can invoice with no default, and
+    // an invoice with nowhere to pay is still refused.
+    if ($problems = array_diff_key(invoice_issuer_problems(), ['iban' => true]))
         throw new UserError(t('Bitte zuerst die Angaben zum Betreiber vervollständigen: ',
                               'Please complete the operator’s details first: ') . implode(' ', $problems));
     $ids = array_values(array_unique(array_map('intval', $chargeIds)));
@@ -259,11 +301,10 @@ function create_invoice(int $studentId, array $chargeIds, string $issuedOn = '',
         }
 
         $recipient = invoice_recipient($student);
-        $recipientAddress = $recipient['address'];
         // The threshold is on the gross of this document, so it cannot be known
         // from the settings the way the issuer's own details can: it is checked
         // here, where the charges are finally added up.
-        if ($gross > INVOICE_ADDRESS_FROM_CENTS && trim((string)$recipientAddress) === '')
+        if ($gross > INVOICE_ADDRESS_FROM_CENTS && postal_address_missing($student))
             throw new UserError(t('Über 400 € gehört die Anschrift der Rechnungsempfängerin oder des Rechnungsempfängers auf die Rechnung (§ 11 Abs 1 UStG). Sie steht beim Kind unter „Anschrift“.',
                                   'Above 400 € the recipient’s postal address belongs on the invoice (§ 11 Abs 1 UStG). It goes on the child’s record under “Anschrift”.'));
 

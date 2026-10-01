@@ -22,9 +22,16 @@ $waiting=pending_contact_count((int)$user['id']);
 
 page_head(t('Nachrichten','Messages'),
     t('Nur die Beteiligten lesen mit.','Only the people in a conversation can read it.'),
-    ($staff?link_button(t('An eine Gruppe schreiben','Write to a group'),'compose',[],'secondary'):'')
-    .link_button(t('Neue Nachricht','New message'),'messages',['contacts'=>1]));
-?>
+    link_button(t('Neue Nachricht','New message'),'messages',['contacts'=>1]));
+/* The pages that belong to Nachrichten without a menu entry of their own
+   (nav_owner()): writing to a group, the news, and what went out by email. */
+if($staff): ?>
+<nav class="page-links" aria-label="<?=e(t('Mehr zu Nachrichten','More about messages'))?>">
+    <a class="chip" href="<?=e(url('compose'))?>"><?=e(t('Gruppe anschreiben','Message a group'))?></a>
+    <a class="chip" href="<?=e(url('news'))?>"><?=e(t('Neuigkeiten','News'))?></a>
+    <a class="chip" href="<?=e(url('outbox'))?>"><?=e(t('Postausgang','Outbox'))?></a>
+</nav>
+<?php endif ?>
 <div class="messages-grid">
 <aside class="card thread-list">
     <div class="section-heading">
@@ -35,7 +42,7 @@ page_head(t('Nachrichten','Messages'),
     <?php foreach($threads as $thread): $isNew=isset($unread[(int)$thread['id']]); ?>
     <a class="thread-item <?=$id===(int)$thread['id']?'selected':''?> <?=$isNew?'unread':''?>" href="<?=e(url('messages',['id'=>$thread['id']]))?>">
         <div><strong><?=e(thread_title($thread,$user))?><?php if($isNew):?> <span class="dot" aria-hidden="true"></span><span class="visually-hidden"><?=e(t('ungelesen','unread'))?></span><?php endif ?></strong><small><?=e(fmt_date($thread['updated_at']))?></small></div>
-        <h3><?=e($thread['subject'])?><?php if($thread['kind']==='direct')badge(t('Privat','Private'));?></h3>
+        <h3 class="badge-line"><span><?=e($thread['subject'])?></span><?php if($thread['kind']==='direct')badge(t('Privat','Private'));?></h3>
         <p><?=e(mb_substr((string)($thread['last_message']??''),0,90) ?: ((int)$thread['file_count']?t('Anhang','Attachment'):''))?></p>
     </a>
     <?php endforeach ?>
@@ -50,7 +57,10 @@ if($showContacts): $contacts=contacts_for($user); $requests=contact_requests_for
     <h3><?=e(t('Möchte dir schreiben','Would like to write to you'))?></h3>
     <?php foreach($requests as $r): ?>
     <div class="record-row">
-        <div class="account-identity"><?=avatar($r+['name'=>$r['from_name']])?>
+        <?php /* The row is the request, so its id is the request's, not the sender's:
+                 the picture has to be asked for by the sender's account id, and
+                 whether it may be shown at all depends on the sender's role. */ ?>
+        <div class="account-identity"><?=avatar(['id'=>(int)$r['from_account_id'],'role'=>$r['from_role'],'name'=>$r['from_name'],'avatar_name'=>$r['avatar_name']])?>
             <div><strong><?=e($r['from_name'])?></strong><?php if($r['message']):?><p><?=e($r['message'])?></p><?php endif ?></div></div>
         <div class="row-actions">
             <?php start_form('contact_decide',['id'=>$r['id'],'decision'=>'accept'],'inline-form');submit_button(t('Zustimmen','Agree'),'secondary');?></form>
@@ -62,14 +72,12 @@ if($showContacts): $contacts=contacts_for($user); $requests=contact_requests_for
 
     <h3><?=e(t('An wen?','Who to?'))?></h3>
     <?php foreach($contacts as $c): ?>
-    <div class="record-row">
+    <div class="record-row with-form">
         <div class="account-identity"><?=avatar($c)?>
             <div><strong><?=e($c['name'])?></strong><small><?=e(role_label((string)$c['role']))?></small></div></div>
-        <div class="row-actions">
-            <?php start_form('message_send',['to'=>$c['id']],'inline-form');
-            input('body',t('Nachricht','Message'),'','text',true,'',t('Schreiben …','Write …'));
-            submit_button(t('Senden','Send'),'secondary');?></form>
-        </div>
+        <?php start_form('message_send',['to'=>$c['id']],'row-form');
+        input('body',t('Nachricht','Message'),'','text',true,'',t('Schreiben …','Write …'));
+        submit_button(t('Senden','Send'),'secondary');?></form>
     </div>
     <?php endforeach ?>
 
@@ -79,13 +87,11 @@ if($showContacts): $contacts=contacts_for($user); $requests=contact_requests_for
     <h3><?=e(t('Jemand anderen fragen','Ask somebody else'))?></h3>
     <p class="muted"><?=e(t('Andere Familien bekommen erst eine Nachricht von dir, wenn sie zugestimmt haben. Der Trainerin kannst du immer schreiben.','Other families only get a message from you once they have agreed. You can always write to the trainer.'))?></p>
     <?php foreach($others as $c): ?>
-    <div class="record-row">
+    <div class="record-row with-form">
         <div class="account-identity"><?=avatar($c)?><div><strong><?=e($c['name'])?></strong></div></div>
-        <div class="row-actions">
-            <?php start_form('contact_request',['to'=>$c['id']],'inline-form');
-            input('message',t('Kurz dazu','A word about it'),'','text',false,'',t('Wer bist du?','Who are you?'));
-            submit_button(t('Anfragen','Ask'),'subtle');?></form>
-        </div>
+        <?php start_form('contact_request',['to'=>$c['id']],'row-form');
+        input('message',t('Kurz dazu','A word about it'),'','text',false,'',t('Wer bist du?','Who are you?'));
+        submit_button(t('Anfragen','Ask'),'subtle');?></form>
     </div>
     <?php endforeach ?>
     <?php endif; endif ?>

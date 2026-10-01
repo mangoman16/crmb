@@ -34,12 +34,14 @@ function start_form(string $action,array $hidden=[],string $class='form',bool $m
  * The limit shown is upload_limit(), which is the smaller of what the operator
  * asked for and what this server will actually accept - because a form that
  * promises more than PHP allows fails in a way that looks like a broken portal.
+ * $maxBytes is a smaller limit of the upload's own, such as the logo's, which
+ * is then the one stated.
  */
-function file_field(string $name,string $label,string $kind='proof',string $hint=''): void {
+function file_field(string $name,string $label,string $kind='proof',string $hint='',?int $maxBytes=null): void {
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
     echo '<div class="field"><label for="'.e($id).'">'.e($label).'</label>';
     echo '<input id="'.e($id).'" name="'.e($name).'" type="file" accept="'.e(implode(',',array_keys(upload_types($kind)))).'">';
-    echo '<small>'.e(($hint?$hint.' ':'').t('Höchstens ','At most ').upload_limit_label().'.').'</small></div>';
+    echo '<small>'.e(($hint?$hint.' ':'').t('Höchstens ','At most ').upload_limit_label($maxBytes).'.').'</small></div>';
 }
 /**
  * A saved filter, in the words that made it.
@@ -67,34 +69,103 @@ function filter_summary(array $f): string {
  * $placeholder is for compact rows where a visible label would crowd the
  * layout; the label is still rendered for screen readers rather than dropped,
  * because a bare box tells a sighted user nothing either.
+ *
+ * $attributes adds to the box, each value escaped: a key input() already sets
+ * is replaced, and null removes it. A password box asks for a new password by
+ * default (autocomplete="new-password", at least 12 characters), which is right
+ * for choosing one and wrong for the box that asks for the existing one: an
+ * iPhone then offers to invent a password where it should fill in the saved
+ * one. Those boxes pass current_password_attributes().
  */
-function input(string $name,string $label,mixed $value='',string $type='text',bool $required=false,string $hint='',string $placeholder=''): void {
+function input(string $name,string $label,mixed $value='',string $type='text',bool $required=false,string $hint='',string $placeholder='',array $attributes=[]): void {
     // What she typed wins over what the record holds, so a form rejected for one
     // bad character comes back filled in rather than blank.
     $held=held_input($name,$value); if(!is_array($held)) $value=$held;
+    $defaults=match($type) {
+        'password' => ['autocomplete'=>'new-password','minlength'=>'12','maxlength'=>'72'],
+        'number'   => ['step'=>'any'],
+        default    => [],
+    };
+    // Built before anything is printed, so a refused name leaves no half a
+    // field on the page.
+    $extra='';
+    foreach(array_merge($defaults,$attributes) as $key=>$attribute) {
+        // A name cannot be escaped into safety, only refused: it is always one
+        // written in the code, and this makes sure it stays one.
+        if(!is_string($key) || !preg_match('/^[a-z][a-z-]*$/D',$key) || in_array($key,['id','name','type','value','required','placeholder'],true))
+            throw new LogicException('input() cannot take the attribute '.json_encode($key).'.');
+        if($attribute!==null) $extra.=' '.$key.'="'.e((string)$attribute).'"';
+    }
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
     $labelClass=$label===''?' class="visually-hidden"':'';
     echo '<div class="field"><label'.$labelClass.' for="'.e($id).'">'.e($label!==''?$label:($placeholder!==''?$placeholder:$name)).($required?' <span aria-hidden="true">*</span>':'').'</label>';
     $ph=$placeholder!==''?' placeholder="'.e($placeholder).'"':'';
-    if($type==='textarea')echo '<textarea id="'.e($id).'" name="'.e($name).'" rows="5"'.$ph.' '.($required?'required':'').'>'.e($value).'</textarea>';
-    else echo '<input id="'.e($id).'" name="'.e($name).'" type="'.e($type).'" value="'.e($value).'"'.$ph.' '.($required?'required ':'').($type==='password'?'autocomplete="new-password" minlength="12" maxlength="72"':'').($type==='number'?' step="any"':'').'>';
+    if($type==='textarea')echo '<textarea id="'.e($id).'" name="'.e($name).'" rows="5"'.$ph.$extra.($required?' required':'').'>'.e($value).'</textarea>';
+    else echo '<input id="'.e($id).'" name="'.e($name).'" type="'.e($type).'" value="'.e($value).'"'.$ph.$extra.($required?' required':'').'>';
     if($hint)echo '<small>'.e($hint).'</small>';echo '</div>';
 }
-function select_field(string $name,string $label,array $options,mixed $value='',bool $required=false,bool $multiple=false): void {
+
+/**
+ * What every box a username is typed into, or read from, carries - the
+ * sign-in and „vergessen" box, which takes a username or an address (ADR
+ * 0020, §3), included: the browser's password manager pairs it with the
+ * password beside it, and an iPhone neither capitalises the first letter, nor
+ * "corrects" lena.mueller into a word, nor underlines it as a spelling mistake.
+ *
+ * Not inputmode="email": that puts „@" on the first keyboard layer, which the
+ * one box that may be given an address wants and a box for a username alone
+ * does not. Those two pages add it themselves.
+ */
+function username_attributes(): array {
+    return ['autocomplete'=>'username','autocapitalize'=>'none','autocorrect'=>'off','spellcheck'=>'false'];
+}
+
+/** A box that asks for the password somebody already has, not a new one. */
+function current_password_attributes(): array {
+    return ['autocomplete'=>'current-password','minlength'=>null];
+}
+function select_field(string $name,string $label,array $options,mixed $value='',bool $required=false,bool $multiple=false,string $hint=''): void {
     $value=held_input($name,$value);
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
-    echo '<div class="field"><label for="'.e($id).'">'.e($label).($required?' *':'').'</label><select id="'.e($id).'" name="'.e($name).($multiple?'[]':'').'" '.($required?'required ':'').($multiple?'multiple size="4"':'').'>';
+    // The mark as input() prints it, so a required box and a required choice
+    // look alike: a plain " *" was ink where every other one is teal.
+    echo '<div class="field"><label for="'.e($id).'">'.e($label).($required?' <span aria-hidden="true">*</span>':'').'</label><select id="'.e($id).'" name="'.e($name).($multiple?'[]':'').'" '.($required?'required ':'').($multiple?'multiple size="4"':'').'>';
     if(!$multiple) echo select_options(['' => t('Auswählen','Select')]+$options,$value);
     else foreach($options as $k=>$v)
         echo '<option value="'.e($k).'" '.(in_array((string)$k,array_map('strval',is_array($value)?$value:[]),true)?'selected':'').'>'.e($v).'</option>';
-    echo '</select></div>';
+    echo '</select>'.($hint!==''?'<small>'.e($hint).'</small>':'').'</div>';
 }
-function check_field(string $name,string $label,bool $value=false): void {
+/**
+ * A tick box with its label. $hint is said under the label, inside it, where
+ * every other field's hint sits and in the same size - and inside the label, so
+ * it is part of what a thumb can tap. As a paragraph of its own beside the box
+ * it was louder than any hint on the page. $required prints the mark input()
+ * prints; the action decides whether an unticked box is refused, so the box
+ * itself carries no required attribute.
+ */
+function check_field(string $name,string $label,bool $value=false,string $hint='',bool $required=false): void {
     // An unticked box sends nothing at all, so "held, and absent" means unticked
     // rather than "no opinion" - checking holding_input() first is what tells the
     // two apart.
     if(holding_input()) $value=held_input($name,null)!==null;
-    echo '<label class="check"><input type="checkbox" name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label).'</span></label>';
+    echo '<label class="check"><input type="checkbox" name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label).($required?' <span aria-hidden="true">*</span>':'')
+        .($hint!==''?'<small>'.e($hint).'</small>':'').'</span></label>';
+}
+
+/**
+ * Why an invitation cannot go out yet, in one wording for the three places it
+ * can be blocked: the create form, a student's access card and Konten (ADR
+ * 0020, §10d). account_mail_missing() names the missing steps. The setup
+ * checklist is an administrator's page, so a trainer is told who does it
+ * instead of being given a link she cannot open. It only reads.
+ */
+function mail_not_ready_notice(array $user): void {
+    $missing=account_mail_missing();
+    if($missing==='') return;
+    echo '<div class="notice"><strong>'.e(t('Einladen geht noch nicht','Inviting is not possible yet')).'</strong><p>'.e($missing).'</p>';
+    if(is_admin($user)) echo '<div class="row-actions">'.link_button(t('Zur Einrichtung','Go to the setup'),'start',[],'secondary').'</div>';
+    else echo '<p>'.e(t('Das richtet eine Administratorin unter „Einstellungen“ ein.','An administrator sets this up under “Settings”.')).'</p>';
+    echo '</div>';
 }
 
 /**
@@ -136,21 +207,62 @@ function submit_button(string $label='',string $class='primary',string $name='',
 function page_head(string $title,string $description='',string $action=''): void { echo '<div class="page-heading"><div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>'; }
 function link_button(string $label,string $page,array $params=[],string $class='primary'): string { return '<a class="button '.e($class).'" href="'.e(url($page,$params)).'">'.e($label).'</a>'; }
 function empty_state(string $title,string $body='',string $action=''): void { echo '<div class="empty"><div class="empty-icon">'.icon('users').'</div><h2>'.e($title).'</h2>'.($body?'<p>'.e($body).'</p>':'').$action.'</div>'; }
-function tabs(array $items,string $active,string $page,array $params=[]): void { echo '<nav class="tabs" aria-label="'.e(t('Bereiche','Sections')).'">';foreach($items as $key=>$label)echo '<a '.($key===$active?'aria-current="page"':'').' href="'.e(url($page,['tab'=>$key]+$params)).'">'.e($label).'</a>';echo '</nav>'; }
+/**
+ * A row of tabs. An item is a label, which opens $page with tab=<key>, or
+ * ['label'=>…, 'page'=>…, 'params'=>[…]], which opens a page of its own - the
+ * „Beiträge · Rechnungen" switch is two pages that read as one.
+ */
+function tabs(array $items,string $active,string $page,array $params=[]): void {
+    echo '<nav class="tabs" aria-label="'.e(t('Bereiche','Sections')).'">';
+    foreach($items as $key=>$item) {
+        $href=is_array($item)?url($item['page'],$item['params']??[]):url($page,['tab'=>$key]+$params);
+        echo '<a '.($key===$active?'aria-current="page"':'').' href="'.e($href).'">'.e(is_array($item)?$item['label']:$item).'</a>';
+    }
+    echo '</nav>';
+}
+/** Beiträge and Rechnungen, one of Geld's two pages each (ADR 0011). */
+function money_switch(string $active): void {
+    tabs(['payments'=>['label'=>t('Beiträge','Payments'),'page'=>'payments'],
+          'invoices'=>['label'=>t('Rechnungen','Invoices'),'page'=>'invoices']],$active,$active);
+}
 function badge(string $text,string $style=''): void {echo '<span class="badge '.e($style).'">'.e($text).'</span>';}
 /**
  * One student in a list.
  *
- * $s['due_cents'] may be supplied by a caller that resolved every balance in one
- * query; without it the card falls back to looking up its own, which is correct
- * but costs a query per card.
+ * $s['due_cents'] and $s['course_price'] may be supplied by a caller that
+ * resolved every card in one query (balances(), course_prices_by_student());
+ * without them the card looks up its own, which is correct but costs queries
+ * per card.
  */
 function student_card(array $s): void {
     $due=array_key_exists('due_cents',$s)?(int)$s['due_cents']:balance((int)$s['id'],true);
-    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s,'','student').'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$s['level_name']??'',age_group_name($s),$s['tariff_name']?:t('Kein Tarif','No tariff')]))).'</p></div><div class="student-card-status">';
+    $price=array_key_exists('course_price',$s)?(string)$s['course_price']:course_price_label(student_enrolments((int)$s['id']));
+    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s,'','student').'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$s['level_name']??'',age_group_name($s),$price]))).'</p></div><div class="student-card-status">';
     badge(status_label($s['status']),$s['status']==='active'?'green':'');
     if($due)echo '<span class="due">'.e(money($due)).' '.e(t('überfällig','overdue')).'</span>';
     echo '</div>'.icon('arrow').'</a>';
+}
+/**
+ * What a child pays, from the courses they are in now: the price is the
+ * course's (ADR 0011), so a list that said „Kein Tarif" from the child's own,
+ * unused tariff was saying something about nothing. $enrolments are rows as
+ * student_enrolments() and billing_enrolments() give them.
+ */
+function course_price_label(array $enrolments): string {
+    $current=array_filter($enrolments,fn($row)=>$row['left_on']===null);
+    if(!$current) return t('in keinem Kurs','in no course');
+    $prices=[];
+    foreach($current as $row) {
+        $cents=enrolment_price($row)['cents'];
+        if($cents!==null) $prices[]=money($cents).' '.billing_interval_label((int)($row['interval_months']??1));
+    }
+    return $prices?implode(' + ',$prices):t('Kurs ohne Preis','course without a price');
+}
+/** course_price_label() for every child at once, id => label: one query for a whole list. */
+function course_prices_by_student(): array {
+    $by=[];
+    foreach(billing_enrolments() as $row) $by[(int)$row['student_id']][]=$row;
+    return array_map('course_price_label',$by);
 }
 function render_filters(array $f,string $target='students'): void {
     // A GET form is never rejected, so it has no held submission to offer back.
@@ -173,97 +285,154 @@ function render_filters(array $f,string $target='students'): void {
 }
 
 /**
- * The main menu, as sections rather than one long list.
+ * The main menu: one flat list, no sections (ADR 0011).
  *
- * An administrator has thirteen destinations. In a row they made the panel
- * taller than a laptop window at 110% zoom, and a menu you have to scroll is a
- * menu whose last three entries nobody finds. So the six that clearly belong to
- * a subject sit inside it, and only the section you are working in is open.
+ * Seven entries for staff, because a section hides what it holds and seven fit
+ * on a phone. Every page that has no entry of its own is reached from the page
+ * that owns it (nav_owner()), and that entry is the one highlighted there.
  *
- * What stays at the top level is what she reaches for without thinking:
- * Übersicht, Schüler, Nachrichten, Neuigkeiten, and the lists under Verwaltung.
+ *   administrator  (Einrichtung, while unfinished) · Übersicht · Schüler · Kurse
+ *                  · Anwesenheit · Geld · Nachrichten · Einstellungen
+ *   trainer        the same, with Verwaltung last: Einstellungen is an
+ *                  administrator's page, Verwaltung is what she can open
+ *   family         Übersicht · Profil · Nachrichten · Neuigkeiten
  *
- * Returns an ordered list of entries, each either
- *   ['route'=>…, 'icon'=>…, 'label'=>…, 'count'=>int]   a destination, or
- *   ['section'=>…, 'icon'=>…, 'label'=>…, 'items'=>[…]] a section of them.
+ * Each entry is ['route'=>…, 'params'=>[…], 'icon'=>…, 'label'=>…, 'count'=>int].
  */
 function nav_entries(array $user): array {
-    $staff=is_staff($user); $admin=is_admin($user);
     $entry=fn(string $route,string $symbol,string $label,int $count=0)=>
-        ['route'=>$route,'icon'=>$symbol,'label'=>$label,'count'=>$count];
-    $out=[$entry('dashboard','home',t('Übersicht','Overview')),
-          $entry('students','users',t('Schüler','Students'))];
-    if($staff) {
-        $out[]=['section'=>'training','icon'=>'calendar','label'=>t('Training','Training'),'items'=>[
-            $entry('classes','calendar',t('Kurse','Courses'),pending_request_count()),
-            $entry('attendance','check',t('Anwesenheit','Attendance'))]];
-        $out[]=['section'=>'money','icon'=>'wallet','label'=>t('Geld','Money'),'items'=>[
-            $entry('payments','wallet',t('Beiträge','Payments')),
-            $entry('invoices','news',t('Rechnungen','Invoices'))]];
+        ['route'=>$route,'params'=>[],'icon'=>$symbol,'label'=>$label,'count'=>$count];
+    if(!is_staff($user)) {
+        $out=[$entry('dashboard','home',t('Übersicht','Overview'))];
+        if($people=people_nav_entry($user)) $out[]=$people;
+        $out[]=$entry('messages','mail',t('Nachrichten','Messages'),unread_count($user));
+        $out[]=$entry('news','news',t('Neuigkeiten','News'));
+        return $out;
     }
+    $admin=is_admin($user);
+    $out=[];
+    if($admin && setup_unfinished()) $out[]=$entry('start','check',t('Einrichtung','Setup'));
+    $out[]=$entry('dashboard','home',t('Übersicht','Overview'));
+    $out[]=people_nav_entry($user);
+    $out[]=$entry('classes','calendar',t('Kurse','Courses'),pending_request_count());
+    $out[]=$entry('attendance','check',t('Anwesenheit','Attendance'));
+    $out[]=$entry('payments','wallet',t('Geld','Money'));
     $out[]=$entry('messages','mail',t('Nachrichten','Messages'),unread_count($user));
-    $out[]=$entry('news','news',t('Neuigkeiten','News'));
-    if($staff) {
-        $out[]=$entry('manage','settings',t('Verwaltung','Management'));
-        $system=[$entry('accounts','lock',t('Konten','Accounts')),
-                 $entry('outbox','mail',t('Postausgang','Outbox'))];
-        if($admin) {
-            $system[]=$entry('history','calendar',t('Änderungen','Changes'));
-            $system[]=$entry('settings','settings',t('Einstellungen','Settings'));
-        }
-        $out[]=['section'=>'system','icon'=>'lock','label'=>t('System','System'),'items'=>$system];
-    }
+    $out[]=$admin?$entry('settings','settings',t('Einstellungen','Settings'))
+                 :$entry('manage','settings',t('Verwaltung','Management'));
     return $out;
 }
 
 /**
- * Whether a menu entry is the page being looked at.
+ * The route of the menu entry that stands for $page, for $user.
  *
- * Three pages have no entry of their own because they are opened from one:
- * a single student, a new message, and the page that is not there.
+ * The one table of which page belongs where. A page with an entry of its own
+ * is its own owner; a page without one names the entry it is reached from,
+ * and that entry is highlighted while it is open:
+ *
+ *   invoices                  → payments (Geld): the „Beiträge · Rechnungen" switch
+ *   compose, outbox           → messages: the links at the top of Nachrichten
+ *   news                      → messages for staff (same links); a family's own entry
+ *   manage, accounts, history → settings for an administrator (the hub at the top
+ *                               of Einstellungen); manage for a trainer, whose
+ *                               Verwaltung links to Team und Zugänge
+ *   start                     → itself while it is in the menu; settings once hidden
+ *                               („Einrichtung ansehen" on the hub)
+ *   student                   → students for staff (the list); a family's Profil
+ *   students                  → itself for staff; a family's Profil, because a
+ *                               family's list holds their one child and no menu
+ *                               entry of theirs leads to it (ADR 0010)
+ *   print                     → students (the child's page links to it)
+ *   download                  → payments for staff (invoices), Profil for a family
+ *
+ *   profile                   → '' for staff (the account in the top bar); a
+ *                               family's „Konto" on the phone bar
+ *
+ * '' for a page that belongs to no entry: profile for staff, privacy (Mein
+ * Konto and the side menu's foot) and the pages shown to nobody signed in.
  */
-function nav_is_current(string $route,string $page): bool {
-    return $route===$page
-        || ($route==='students' && $page==='student')
-        || ($route==='messages' && $page==='compose');
+function nav_owner(string $page,?array $user=null): string {
+    $user??=current_user();
+    if(!$user) return '';
+    $staff=is_staff($user); $admin=is_admin($user);
+    return match($page) {
+        'invoices'                    => 'payments',
+        'compose','outbox'            => 'messages',
+        'news'                        => $staff?'messages':'news',
+        'manage','accounts','history' => $admin?'settings':'manage',
+        'start'                       => $admin && setup_unfinished()?'start':'settings',
+        'student'                     => $staff?'students':'student',
+        'print'                       => 'students',
+        'download'                    => $staff?'payments':'student',
+        'students'                    => $staff?'students':'student',
+        'dashboard','classes','attendance','payments','messages','settings' => $page,
+        'profile'                     => $staff?'':'profile',
+        default                       => '',
+    };
+}
+
+/** Whether a menu entry is the one standing for the page being looked at. */
+function nav_is_current(string $route,string $page,?array $user=null): bool {
+    return $route!=='' && $route===nav_owner($page,$user);
+}
+
+/**
+ * The menu's "people" entry, the same in the side menu and the bar at the bottom.
+ *
+ * Staff get the list of students. A family has one student and nothing to list
+ * (ADR 0010), so theirs goes straight to that student's page and is called
+ * "Profil" - the child's record. "Mein Konto" stays what it is, the login: its
+ * address, its password, how the portal looks. A login with no student has no
+ * record to show, and gets no entry rather than one that leads nowhere.
+ */
+function people_nav_entry(array $user): ?array {
+    if(is_staff($user)) return ['route'=>'students','params'=>[],'icon'=>'users','label'=>t('Schüler','Students'),'count'=>0];
+    $id=(int)(scalar('SELECT id FROM students WHERE account_id=?',[(int)$user['id']])?:0);
+    return $id?['route'=>'student','params'=>['id'=>$id],'icon'=>'users','label'=>t('Profil','Profile'),'count'=>0]:null;
+}
+
+/**
+ * The bar along the bottom of a phone: four places and, for staff, „Mehr",
+ * which the layout adds as the button that opens the side menu.
+ *
+ *   staff   Übersicht · Schüler · Nachrichten · Anwesenheit (· Mehr)
+ *   family  Übersicht · Profil · Nachrichten · Neues · Konto
+ *
+ * A family has no „Mehr": everything in their side menu is already on the
+ * bar, and the privacy notice and the version are on „Mein Konto".
+ * 'short' is the label the bar prints, 'label' the full name a screen reader
+ * says; at five to a 320px screen „Nachrichten" does not fit.
+ */
+function mobile_nav_entries(array $user): array {
+    $entry=fn(string $route,string $symbol,string $label,string $short='',int $count=0)=>
+        ['route'=>$route,'params'=>[],'icon'=>$symbol,'label'=>$label,'short'=>$short!==''?$short:$label,'count'=>$count];
+    $messages=$entry('messages','mail',t('Nachrichten','Messages'),t('Post','Messages'),unread_count($user));
+    if(is_staff($user))
+        return [$entry('dashboard','home',t('Übersicht','Overview')),
+                people_nav_entry($user)+['short'=>t('Schüler','Students')],
+                $messages,
+                $entry('attendance','check',t('Anwesenheit','Attendance'),t('Anwesend','Attendance'))];
+    $out=[$entry('dashboard','home',t('Übersicht','Overview'))];
+    if($people=people_nav_entry($user)) $out[]=$people+['short'=>$people['label']];
+    $out[]=$messages;
+    $out[]=$entry('news','news',t('Neuigkeiten','News'),t('Neues','News'));
+    $out[]=$entry('profile','lock',t('Mein Konto','My account'),t('Konto','Account'));
+    return $out;
 }
 
 /** One menu row: the link, its label, and the number waiting behind it. */
-function nav_link(array $item,string $page): string {
+function nav_link(array $item,string $page,?array $user=null): string {
     $count=(int)($item['count']??0);
-    return '<a href="'.e(url($item['route'])).'" '.(nav_is_current($item['route'],$page)?'aria-current="page"':'').'>'
+    return '<a href="'.e(url($item['route'],$item['params']??[])).'" '.(nav_is_current($item['route'],$page,$user)?'aria-current="page"':'').'>'
         .icon($item['icon']).'<span>'.e($item['label']).'</span>'
         .($count?'<span class="count" aria-label="'.e($count.' '.t('wartet','waiting')).'">'.e((string)$count).'</span>':'')
         .'</a>';
 }
 
-/**
- * The main menu as markup.
- *
- * The open section is decided here rather than in the browser, so the menu is
- * already showing where you are on the first paint and without JavaScript. The
- * name attribute makes the browser close the other sections when one is opened,
- * which is what keeps the panel one section tall; a browser too old for it
- * simply lets two stand open.
- */
+/** The main menu as markup. */
 function sidebar_nav(array $user,string $page): string {
     $html='<nav aria-label="'.e(t('Hauptmenü','Main menu')).'">';
-    foreach(nav_entries($user) as $entry) {
-        if(isset($entry['route'])) {$html.=nav_link($entry,$page);continue;}
-        $open=false; $waiting=0; $inner='';
-        foreach($entry['items'] as $item) {
-            $open=$open || nav_is_current($item['route'],$page);
-            $waiting+=(int)($item['count']??0);
-            $inner.=nav_link($item,$page);
-        }
-        $html.='<details class="nav-section" name="nav-section"'.($open?' open':'').'>'
-            .'<summary>'.icon($entry['icon']).'<span>'.e($entry['label']).'</span>'
-            // Shown by the stylesheet only while the section is closed: the count
-            // is on the entry itself once you can see the entry.
-            .($waiting?'<span class="count section-count" aria-label="'.e($waiting.' '.t('wartet','waiting')).'">'.e((string)$waiting).'</span>':'')
-            .'<span class="chevron" aria-hidden="true">'.icon('arrow').'</span></summary>'
-            .'<div class="nav-sub">'.$inner.'</div></details>';
-    }
+    foreach(nav_entries($user) as $entry) $html.=nav_link($entry,$page,$user);
     return $html.'</nav>';
 }
 
@@ -275,11 +444,8 @@ function sidebar_nav(array $user,string $page): string {
  * other, which reads as a question about ownership rather than a request for
  * the person's name - and "Beziehung, z. B. Mutter" put the example inside the
  * label, where it stays on screen after the box has been filled in.
- *
- * $standard says whether this contact is, or would become, the one invoices and
- * reminders are sent to, which is the only reason the email address is required.
  */
-function contact_fields(array $contact=[], bool $standard=false): void {
+function contact_fields(array $contact=[]): void {
     echo '<div class="grid two">';
     input('owner_name',t('Name der Kontaktperson','Name of the contact'),$contact['owner_name']??'','text',true,
           '',t('z. B. Maria Hofer','e.g. Maria Hofer'));
@@ -390,17 +556,447 @@ function print_signature(string $label): void {
 }
 
 /**
- * The list of things still to do on a record that has just been created.
+ * A numbered list of things to do, each leading to where it is done.
  *
- * Numbered, because it is a sequence rather than a list of complaints, and
- * shown at the top of the record: the bottom of a page is where things go to
- * be forgotten. Disappears the moment there is nothing left on it.
+ * On a record that has just been created it is what is still missing, in the
+ * order she would do it, at the top of the record: the bottom of a page is
+ * where things go to be forgotten. It disappears the moment nothing is left.
+ *
+ * The start checklist (ADR 0011) is the same list with a state on every step:
+ * a step carrying 'done' is shown whether or not it is done - with its number
+ * or a tick, the word „Erledigt" (a tick alone says nothing to a screen
+ * reader, or to anybody unsure what a tick means here), and a button rather
+ * than a linked title: „Eintragen", filled for the one to do next ('next'),
+ * or „Ändern" once done. A step with 'blocked' has no button, and says which
+ * steps it waits for; $numbers maps each key to the number it is shown with,
+ * so "Schritt 7 und 8" is worked out rather than written down.
+ *
+ * $heading is the card's title and $start the number of its first step, so one
+ * list can be shown as several groups.
  */
-function next_steps_card(array $steps): void {
+function next_steps_card(array $steps, string $heading = '', int $start = 1, array $numbers = []): void {
     if (!$steps) return;
-    echo '<section class="card next-steps"><h2>'.e(t('Noch zu tun','Still to do')).'</h2><ol>';
-    foreach ($steps as $step)
-        echo '<li><a href="'.e(url($step['page'],$step['params'])).'">'.e($step['what']).'</a>'
-            .'<small>'.e($step['why']).'</small></li>';
+    $checklist = array_key_exists('done', $steps[0]);
+    echo '<section class="card next-steps'.($checklist ? ' is-checklist' : '').'"><h2>'.e($heading !== '' ? $heading : t('Noch zu tun','Still to do')).'</h2>'
+        .'<ol'.($start !== 1 ? ' start="'.$start.'"' : '').'>';
+    foreach (array_values($steps) as $i => $step) {
+        $href = url($step['page'], $step['params']).(!empty($step['anchor']) ? '#'.$step['anchor'] : '');
+        if (!$checklist) {
+            echo '<li><a href="'.e($href).'">'.e($step['what']).'</a><small>'.e($step['why']).'</small></li>';
+            continue;
+        }
+        $state = $step['done'] ? 'is-done' : (!empty($step['blocked']) ? 'is-blocked' : 'is-open');
+        echo '<li class="step '.$state.'">'
+            .'<span class="step-mark">'.($step['done'] ? icon('check').'<span class="visually-hidden">'.e((string)($start + $i)).'</span>' : e((string)($start + $i))).'</span>'
+            .'<div class="step-text"><p class="badge-line"><strong>'.e($step['what']).'</strong>';
+        if ($step['done']) badge(t('Erledigt','Done'),'green');
+        echo '</p><small>'.e($step['why']).'</small>';
+        if (!$step['done'] && !empty($step['blocked'])) {
+            $waiting = [];
+            foreach ($step['blocked_by'] as $key) if (isset($numbers[$key]) && !($numbers[$key]['done'] ?? false)) $waiting[] = $numbers[$key]['n'];
+            // Whole sentences with the numbers dropped in, so each language
+            // keeps its own word order; a step blocked by nothing numbered here
+            // still says why it has no button.
+            $list = count($waiting) > 1 ? implode(', ', array_slice($waiting, 0, -1)).t(' und ',' and ').end($waiting) : (string)($waiting[0] ?? '');
+            echo '<p class="step-blocked">'.e(match (true) {
+                $waiting === []     => t('Geht, sobald die Schritte davor erledigt sind.','Possible once the steps before it are done.'),
+                count($waiting) === 1 => strtr(t('Geht, sobald Schritt {n} erledigt ist.','Possible once step {n} is done.'), ['{n}' => $list]),
+                default             => strtr(t('Geht, sobald Schritt {n} erledigt sind.','Possible once steps {n} are done.'), ['{n}' => $list]),
+            }).'</p>';
+        }
+        echo '</div>';
+        if ($step['done'] || empty($step['blocked']))
+            echo '<a class="button '.($step['done'] || empty($step['next']) ? 'secondary' : 'primary').' step-button" href="'.e($href).'">'
+                .e($step['done'] ? t('Ändern','Change') : t('Eintragen','Fill in'))
+                .'<span class="visually-hidden">: '.e($step['what']).'</span></a>';
+        echo '</li>';
+    }
     echo '</ol></section>';
+}
+
+/**
+ * The password for the example accounts, just after they were made, and the
+ * usernames to type it with.
+ *
+ * Held in the session by demo_data and nowhere else, and shown wherever the
+ * fill returns to - the System tab or the checklist - because its message
+ * says the password is shown below it. The usernames are read back from the
+ * database (demo_logins()), because a fill beside real data may have had to
+ * number one: lena.hofer2 rather than lena.hofer.
+ */
+function demo_password_notice(): void {
+    if (empty($_SESSION['demo_password']) || !demo_present()) return;
+    $names = array_map(fn($login) => '<span class="mono">'.e((string)$login['username']).'</span>', demo_logins());
+    echo '<div class="notice">'.e(t('Passwort für alle Beispielkonten','Password for every example account')).': <strong class="mono">'.e((string)$_SESSION['demo_password']).'</strong><br>'
+        .e(t('Es wird nur hier gezeigt und nirgends gespeichert. Benutzernamen: ','Shown only here and stored nowhere. Usernames: '))
+        .implode(', ', $names)
+        .'</div>';
+}
+
+/**
+ * A notice naming children who still need something, each name a way in.
+ *
+ * One copy for every such list - nobody to ring, no address - on the students
+ * list. Each name is a button rather than a word in a sentence: as a
+ * comma-separated list they were 17px tall and touching each other, so on a
+ * phone the way to fix one child's record was a target a third of the minimum
+ * with another one beside it.
+ *
+ * $params and $anchor say where on the child's page the name leads. $tone is
+ * 'warn' for something that costs somebody something while it waits, and ''
+ * for a plain notice.
+ */
+function students_notice(array $students,string $heading,string $body='',array $params=[],string $anchor='',string $tone='warn'): void {
+    if (!$students) return;
+    echo '<div class="notice'.($tone!==''?' '.e($tone):'').'"><strong>'.e($heading).'</strong>';
+    if ($body !== '') echo '<p>'.e($body).'</p>';
+    echo '<p class="gap-names">';
+    foreach (array_slice($students,0,6) as $m)
+        echo '<a class="chip" href="'.e(url('student',['id'=>$m['id']]+$params).($anchor!==''?'#'.$anchor:'')).'">'.e($m['first_name'].' '.$m['last_name']).'</a>';
+    if (count($students) > 6) echo '<span class="muted">'.e(t('und weitere','and more')).'</span>';
+    echo '</p></div>';
+}
+
+/**
+ * Where a login stands, as a badge: the same four words and colours on the
+ * student page and on the Konten page. $account is null for "no login yet".
+ */
+function login_state_badge(?array $account): void {
+    $state = $account['state'] ?? 'none';
+    badge(match ($state) {
+        'active'    => t('Aktiv','Active'),
+        'invited'   => t('Eingeladen','Invited'),
+        'suspended' => t('Gesperrt','Suspended'),
+        default     => t('Kein Zugang','No access'),
+    }, match ($state) { 'active' => 'green', 'invited' => 'amber', 'suspended' => 'red', default => '' });
+}
+
+/**
+ * How a login signs in and where its mail goes, as text to read rather than
+ * boxes to type in: the username, then the address, either of which signs in
+ * (ADR 0020, §3). One copy
+ * for Mein Konto and the access card, so the two say it in the same order and
+ * the same words. $addressNote follows the address in a lighter weight - „·
+ * bestätigt" on Mein Konto - in a <small>, because a plain span took on the
+ * bold of the value beside it.
+ *
+ * Only for the login's holder and for staff (ADR 0019, §8).
+ */
+function login_facts(array $account,string $addressNote=''): void {
+    echo '<dl class="facts login-facts">'
+        .'<div class="fact-wide"><dt>'.e(t('Benutzername','Username')).'</dt><dd class="mono">'.e((string)$account['username']).'</dd></div>'
+        .'<div class="fact-wide"><dt>'.e(t('E-Mail-Adresse','Email address')).'</dt><dd>'.e((string)$account['email'])
+        .($addressNote!==''?'<small class="muted">'.e(' · '.$addressNote).'</small>':'').'</dd></div>'
+        .'</dl>';
+}
+
+/*
+ * Presence, as the pages show it (ADR 0015). Who may see what is decided in
+ * app/presence.php and asked here before anything is drawn, so a view that
+ * calls these cannot show a family - or anybody presence_visible_to() refuses -
+ * more than '' or an empty history.
+ */
+
+/** The dot itself, for a state; its label for a screen reader unless the text beside it already says it. */
+function presence_dot_for(string $state, bool $labelled=true): string {
+    $state = in_array($state, ['online','recent','away','offline'], true) ? $state : 'offline';
+    return '<span class="presence-dot is-'.$state.'"'.($labelled ? '' : ' aria-hidden="true"').'>'
+        .($labelled ? '<span class="visually-hidden">'.e(presence_state_label($state)).'</span>' : '').'</span>';
+}
+
+/**
+ * Whether a page shows $account's presence to $viewer at all. An invitation
+ * nobody has taken up has never been used, so it has nothing to show rather
+ * than a grey „Offline"; beyond that it is presence_visible_to()'s answer.
+ */
+function presence_shown_for(array $viewer, ?array $account): bool {
+    return $account !== null && ($account['state'] ?? '') !== 'invited' && presence_visible_to($viewer, $account);
+}
+
+/** $subject's dot as $viewer may see it, or '' - which is what a family always gets. */
+function presence_dot(array $viewer, array $subject): string {
+    return presence_visible_to($viewer, $subject) ? presence_dot_for(presence_state($subject)) : '';
+}
+
+/**
+ * $subject's dot and, in words, what it means: „Online“, or the state and when
+ * they were last here, as $viewer may know it. '' for a viewer who may not see
+ * presence. An administrator looking at somebody who appears offline is told
+ * so, because the time shown is then one a trainer does not see.
+ */
+function presence_line(array $viewer, array $subject): string {
+    if (!presence_visible_to($viewer, $subject)) return '';
+    $state = presence_state($subject);
+    $text = presence_state_label($state);
+    if ($state !== 'online' && ($seen = presence_last_seen_for($viewer, $subject)) !== null)
+        $text .= ' · '.t('zuletzt ', 'last seen ').fmt_datetime($seen);
+    if (is_admin($viewer) && presence_choice($subject) === 'hidden')
+        $text .= t(' (als offline angezeigt)', ' (appearing offline)');
+    return '<span class="presence-line">'.presence_dot_for($state, false).'<span>'.e($text).'</span></span>';
+}
+
+/**
+ * When somebody was online over the days kept, folded away: how many days, a
+ * strip of them, and the times, newest first. $periods is this account's entry
+ * from presence_history(), which has already left out what $viewer may not see
+ * - a trainer gets no hidden periods but her own - so whatever hidden period
+ * arrives here is marked rather than dropped. $recordedSince is
+ * presence_recorded_since(), which the page asks once for all its people.
+ */
+function presence_history_details(array $viewer, array $periods, ?string $recordedSince): void {
+    if (!is_staff($viewer)) return;
+    $n = presence_history_days();
+    $days = presence_days($periods);
+    $today = $days[count($days) - 1]['date'];
+    $yesterday = $days[count($days) - 2]['date'] ?? '';
+    $active = array_values(array_filter(array_reverse($days), fn($d) => $d['state'] !== 'none'));
+    $label = function (string $date) use ($today, $yesterday): string {
+        if ($date === $today) return t('Heute', 'Today');
+        if ($date === $yesterday) return t('Gestern', 'Yesterday');
+        $d = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        return locale() === 'de' ? mb_substr(weekdays()[(int)$d->format('N')], 0, 2).' '.$d->format('d.m.') : $d->format('D j M');
+    };
+    echo '<details class="presence-history"><summary>'
+        .e(t('Wann online? Letzte ', 'When online? Last ').plural($n, 'Tag', 'Tage', 'day', 'days')).'</summary>';
+    echo '<p>'.e($active
+        ? t('An ', 'Online on ').count($active).t(' von ', ' of the last ').plural($n, 'Tag', 'Tagen', 'day', 'days').t(' online.', '.')
+        : t('In den letzten ', 'Not online in the last ').plural($n, 'Tag', 'Tagen', 'day', 'days').t(' nicht online.', '.')).'</p>';
+    // For the first weeks after the update the record is shorter than the
+    // window, and "not online in 30 days" would be untrue of somebody who was
+    // simply not recorded yet. presence_recorded_since(), asked once by the
+    // page rather than once per person on a list.
+    if ($recordedSince !== null)
+        echo '<p class="muted">'.e(t('Aufgezeichnet wird seit dem ', 'Recorded since ').fmt_date($recordedSince).'.').'</p>';
+    // The strip repeats the list below at a glance, so it is hidden from a
+    // screen reader, which would otherwise read thirty empty cells.
+    echo '<div class="presence-strip" aria-hidden="true">';
+    foreach ($days as $day) echo '<span class="is-'.($day['state'] === 'on' ? 'on' : ($day['state'] === 'hidden' ? 'hidden' : 'none')).'"></span>';
+    echo '</div><div class="presence-strip-scale" aria-hidden="true">'
+        // The oldest cell is N-1 days back: today is a cell of its own.
+        .($n > 1 ? '<span>'.e(t('vor ', '').plural($n - 1, 'Tag', 'Tagen', 'day', 'days').t('', ' ago')).'</span>' : '<span></span>')
+        .'<span>'.e(t('heute', 'today')).'</span></div>';
+    if ($active) {
+        echo '<dl class="presence-days">';
+        foreach ($active as $day) {
+            // Within a day in the order they happened, as one reads a timetable.
+            $times = array_map(fn($p) => ($p['from'] === $p['to'] ? $p['from'] : $p['from'].'–'.$p['to'])
+                .($p['hidden'] ? t(' (als offline angezeigt)', ' (appearing offline)') : ''), $day['periods']);
+            echo '<div><dt>'.e($label($day['date'])).'</dt><dd>'.e(implode(', ', $times)).'</dd></div>';
+        }
+        echo '</dl>';
+    }
+    echo '</details>';
+}
+
+/**
+ * Deleting a login, folded away, with its username typed to confirm.
+ *
+ * Its own form and a <details> of its own, so it can sit in a row of buttons
+ * without being one: the typed username is what stands between a thumb and a
+ * login that cannot be brought back. The username rather than the address
+ * (ADR 0019, §9): every login has its own address now (ADR 0020), so either
+ * would do, and changing it back would be churn for the same safety.
+ *
+ * The username is said in the sentence above the box, not in its label: the
+ * label's <span> is the teal of the required mark, and a name inside it read
+ * as part of the asterisk.
+ */
+function login_delete_details(array $account,string $summary,string $explanation,string $button): void {
+    echo '<details class="account-delete"><summary>'.e($summary).'</summary>'
+        .'<p>'.e($explanation.' '.t('Zur Bestätigung den Benutzernamen eintippen: ','To confirm, type the username: '))
+        .'<strong class="mono">'.e((string)$account['username']).'</strong></p>';
+    start_form('account_state',['id'=>$account['id'],'mode'=>'delete']);
+    input('confirmation',t('Benutzername','Username'),'','text',true,'','',['autocomplete'=>'off']+username_attributes());
+    submit_button($button,'danger');
+    echo '</form></details>';
+}
+
+/**
+ * The club's name and mark, top left (ADR 0014): its logo on a white plate,
+ * else its icon, else the „B". brand_header() decides which and whether the
+ * name and the line under it are shown; this only draws it.
+ *
+ *   $where  'sidebar'  the menu, with the „Verwaltung“ / „Mein Portal“ line
+ *           'public'   the sign-in page's header, without that line
+ *           'bar'      the phone's top bar: the logo alone, or the icon alone
+ *                      when the name is switched off, or else the name
+ *   $href   where it leads; null draws it without a link, for the preview on
+ *           the „Aussehen" card
+ *
+ * A name that is switched off stays in the markup for a screen reader, and the
+ * pictures have an empty alt, so the name is read once, never twice.
+ */
+function brand_block(?array $user, string $where, ?string $href): void {
+    $b = brand_header($user);
+    $name = $b['name'];
+    $kind = $b['logo'] !== '' ? 'logo' : ($b['icon'] !== '' ? 'icon' : 'mark');
+    $bar = $where === 'bar';
+    // In the bar there is room for one thing: the logo, or the icon when the
+    // name is switched off, or else the name as it always was.
+    if ($bar && $kind === 'icon' && $b['show_name']) $kind = 'none';
+    if ($bar && $kind === 'mark') $kind = 'none';
+    $tag = $href === null ? 'span' : 'a';
+    echo '<'.$tag.' class="'.($bar ? 'mobile-brand' : 'brand').' brand-is-'.$kind.'"'.($href === null ? '' : ' href="'.e($href).'"').'>';
+    if ($kind === 'logo')
+        echo '<span class="brand-plate"><img class="brand-logo" src="'.e($b['logo']).'" alt="" width="'.(int)$b['logo_width'].'" height="'.(int)$b['logo_height'].'"></span>';
+    elseif ($kind === 'icon')
+        echo '<span class="brand-mark brand-icon"><img src="'.e($b['icon']).'" alt="" width="44" height="44"></span>';
+    elseif ($kind === 'mark')
+        echo '<span class="brand-mark">B<span></span></span>';
+    if ($bar) {
+        // The name only where it is the whole of it; beside a picture it is for
+        // a screen reader. Two lines at most, so a long name cannot push the
+        // bar taller than the bar.
+        echo '<span class="'.($kind === 'none' ? 'mobile-brand-name' : 'visually-hidden').'">'.e($name).'</span>';
+    } else {
+        $sub = $where === 'sidebar' ? '<small'.($b['show_subtitle'] ? '' : ' class="visually-hidden"').'>'.e($b['subtitle']).'</small>' : '';
+        echo '<span class="brand-name"><span'.($b['show_name'] ? '' : ' class="visually-hidden"').'>'.e($name).'</span>'.$sub.'</span>';
+    }
+    echo '</'.$tag.'>';
+}
+
+/** The address of a file that ships in public/assets/. */
+function asset_url(string $file): string { return rtrim((string)config('app_url'), '/') . '/assets/' . $file; }
+
+/*
+ * A problem report's way there, as Einstellungen → Rückmeldungen shows it
+ * (ADR 0009). Two shapes are stored, and both are read here rather than in the
+ * view, because the view is rendered once per report and a rule written twice
+ * - once for each shape - is the one that drifts.
+ */
+
+/**
+ * Where a report was sent from, what came before it, and the steps.
+ *
+ * Reports filed since the trail exists carry `steps` (the last requests,
+ * oldest first) and `on` (the page, record and tab the report's own form was
+ * on). Older ones carry `query` and `referer`, which were empty in every report
+ * ever filed; they get an address from the page name and no "before", because
+ * nothing was recorded that could say.
+ *
+ * The page it was sent from is the last GET that showed `on`, not simply the
+ * last step: "Zurück" shows a page without asking for it again, and then the
+ * last step is the page she went back from.
+ *
+ *   address   path and query of the page the report was sent from
+ *   before    the step before it, one line; '' when that was outside the
+ *             portal; null when the report is too old to say
+ *   steps     oldest first: time, line, flash, flash_kind
+ *   here      index of the reported page in steps, or null
+ *   recorded  whether the report carries a trail at all
+ *
+ * Whether the typed values are still there is not asked here: the page says so
+ * from values_dropped_at, which feedback_forget_typed_values() writes.
+ */
+function report_trail(array $context): array {
+    $recorded = array_key_exists('steps', $context);
+    $steps = array_values(array_filter(is_array($context['steps'] ?? null) ? $context['steps'] : [], 'is_array'));
+    $on = is_array($context['on'] ?? null) ? $context['on'] : null;
+    $here = null;
+    for ($i = count($steps) - 1; $i >= 0 && $here === null; $i--)
+        if (($steps[$i]['method'] ?? '') === 'GET' && ($on === null || report_step_shows($steps[$i], $on))) $here = $i;
+
+    if ($here !== null) $address = report_scalar($steps[$here]['url'] ?? '');
+    elseif ($on !== null) $address = '?' . http_build_query(array_filter(['page' => report_scalar($on['page'] ?? ''),
+                                           'id' => (int)report_scalar($on['id'] ?? 0), 'tab' => report_scalar($on['tab'] ?? '')]));
+    elseif (is_array($context['query'] ?? null) && $context['query']) $address = '?' . http_build_query($context['query']);
+    else $address = '?page=' . report_scalar($context['page'] ?? '');
+
+    if (!$recorded) {
+        $referer = report_scalar($context['referer'] ?? '');
+        $before = $referer !== '' ? preg_replace('~^[a-z][a-z0-9+.-]*://[^/?#]*~i', '', $referer) : null;
+    } else {
+        $prior = $here !== null ? $here - 1 : count($steps) - 1;
+        $before = $prior >= 0 ? report_step_address($steps[$prior]) : '';
+    }
+
+    $shown = [];
+    foreach ($steps as $step) {
+        $at = local_time(report_scalar($step['at'] ?? ''));
+        $flash = is_array($step['flash'] ?? null) ? $step['flash'] : [];
+        $shown[] = ['time' => $at ? $at->format('H:i:s') : '', 'line' => report_step_line($step),
+                    'flash' => report_scalar($flash['text'] ?? ''), 'flash_kind' => report_scalar($flash['kind'] ?? '')];
+    }
+    return ['address' => $address, 'before' => $before, 'steps' => $shown, 'here' => $here, 'recorded' => $recorded];
+}
+
+/** A stored value as text: a report is decoded JSON, so anything may be anything. */
+function report_scalar(mixed $value): string { return is_scalar($value) ? (string)$value : ''; }
+
+/** Whether a recorded request showed the page, record and tab a form was on. */
+function report_step_shows(array $step, array $on): bool {
+    parse_str((string)parse_url(report_scalar($step['url'] ?? ''), PHP_URL_QUERY), $query);
+    // The router's own default, so index.php with no page is the start page.
+    return report_scalar($query['page'] ?? 'dashboard') === report_scalar($on['page'] ?? '')
+        && (int)report_scalar($query['id'] ?? 0) === (int)report_scalar($on['id'] ?? 0)
+        && report_scalar($query['tab'] ?? '') === report_scalar($on['tab'] ?? '');
+}
+
+/** A step as an address: the path and query of a page, or the action a form sent. */
+function report_step_address(array $step): string {
+    return ($step['method'] ?? '') === 'POST'
+        ? 'POST ?action=' . report_scalar($step['action'] ?? '')
+        : report_scalar($step['url'] ?? '');
+}
+
+/**
+ * A step on one line: "GET ?page=student&id=4" or
+ * "POST ?action=enrolment_save  class_id=2 · tariff_id=5".
+ *
+ * The path is left out, because it is the same on every line; what was posted
+ * follows the action, nested fields written the way the form named them.
+ */
+function report_step_line(array $step): string {
+    if (($step['method'] ?? '') !== 'POST') {
+        $url = report_scalar($step['url'] ?? '');
+        return 'GET ' . (($q = strpos($url, '?')) !== false ? substr($url, $q) : $url);
+    }
+    $parts = array_merge(report_values(is_array($step['fields'] ?? null) ? $step['fields'] : []),
+                         report_files_text(is_array($step['files'] ?? null) ? $step['files'] : []));
+    return report_step_address($step) . ($parts ? '  ' . implode(' · ', $parts) : '');
+}
+
+/**
+ * Posted values as name=value, flattened: custom[3]=… for a nested field.
+ *
+ * null is a value deleted when the report was marked done, and says so; a key
+ * '…' is where the recorder stopped keeping fields.
+ */
+function report_values(array $values, string $prefix = ''): array {
+    $out = [];
+    foreach ($values as $key => $value) {
+        if ($key === '…') { $out[] = '…'; continue; }
+        $name = $prefix === '' ? (string)$key : $prefix . '[' . $key . ']';
+        if (is_array($value)) array_push($out, ...report_values($value, $name));
+        else $out[] = $name . '=' . ($value === null ? t('(gelöscht)', '(deleted)') : report_scalar($value));
+    }
+    return $out;
+}
+
+/**
+ * Attached files as name=size and type. Never more: the recorder keeps
+ * neither the file's name nor its content.
+ */
+function report_files_text(array $files, string $prefix = ''): array {
+    $out = [];
+    foreach ($files as $field => $file) {
+        $name = $prefix === '' ? (string)$field : $prefix . '[' . $field . ']';
+        if ($file === null) $out[] = $name . '=' . t('(gelöscht)', '(deleted)');
+        elseif (is_array($file) && array_is_list($file)) array_push($out, ...report_files_text($file, $name));
+        elseif (is_array($file)) $out[] = $name . '=' . report_file_text($file);
+    }
+    return $out;
+}
+
+/** One file: its size and type, or why there was none. */
+function report_file_text(array $file): string {
+    $error = (int)report_scalar($file['error'] ?? 0);
+    if ($error === UPLOAD_ERR_NO_FILE) return t('(keine Datei)', '(no file)');
+    // The upload's own failure is the clue, and PHP's number for it is what to look up.
+    if ($error !== UPLOAD_ERR_OK) return t('(Upload-Fehler ', '(upload error ') . $error . ')';
+    $bytes = (int)report_scalar($file['bytes'] ?? 0);
+    $size = $bytes < 1024 ? $bytes . ' B'
+          : ($bytes < 1048576 ? round($bytes / 1024) . ' kB'
+          : megabytes_label($bytes));
+    return trim($size . ' ' . report_scalar($file['type'] ?? ''));
 }

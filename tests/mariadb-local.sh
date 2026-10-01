@@ -17,7 +17,14 @@ PORT="${CRM_MARIADB_PORT:-3307}"
 DB=badminton_crm_test
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-command -v mariadbd >/dev/null || { echo "mariadbd not found. Install mariadb-server first." >&2; exit 2; }
+# Shared hosting has no mariadbd and never will, so saying "install it" there
+# sends the reader nowhere. Name the way that does work on such a host.
+command -v mariadbd >/dev/null || {
+    echo "mariadbd not found, so there is no server this script can start." >&2
+    echo "On your own machine: install mariadb-server and run this again." >&2
+    echo "On shared hosting: create an empty database whose name ends in _test in the" >&2
+    echo "hosting panel, then run tests/existing-database.sh instead." >&2
+    exit 2; }
 
 mkdir -p "$WORK/data" "$WORK/run"
 if [ ! -d "$WORK/data/mysql" ]; then
@@ -48,20 +55,13 @@ mariadb --socket="$SOCK" -e "
     GRANT ALL ON \`$DB\`.* TO 'crm'@'localhost';
     FLUSH PRIVILEGES;"
 
+# Written by the helper existing-database.sh uses too, so the two cannot drift
+# apart, and $WORK reaches the PHP source quoted rather than pasted in.
 CONFIG="$WORK/config.php"
-cat > "$CONFIG" <<PHP
-<?php
-declare(strict_types=1);
-return [
-    'app_url' => 'http://127.0.0.1:4192',
-    'app_key' => '$(php "$ROOT/bin/console.php" key)',
-    'db' => ['host'=>'127.0.0.1','port'=>$PORT,'database'=>'$DB','username'=>'crm','password'=>'crmpass'],
-    'timezone' => 'Europe/Vienna',
-    'secure_cookies' => false,
-    'session_idle_minutes' => 120,
-    'maintenance_file' => '$WORK/maintenance.flag',
-];
-PHP
+php -r 'require $argv[1];
+    write_run_config($argv[2], ["host" => "127.0.0.1", "port" => (int)$argv[3], "database" => $argv[4],
+                                "username" => "crm", "password" => "crmpass"], $argv[5]);' \
+    "$ROOT/tests/run-config.php" "$CONFIG" "$PORT" "$DB" "$WORK"
 
 echo "MariaDB: $(mariadb --socket="$SOCK" -sN -e 'SELECT VERSION()')"
 echo

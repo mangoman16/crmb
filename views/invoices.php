@@ -17,6 +17,7 @@ foreach($all as $i){ $counts[$i['status']]=($counts[$i['status']]??0)+1;
 
 page_head(t('Rechnungen','Invoices'),
     t('Rechnungen entstehen aus Beiträgen und werden beim jeweiligen Kind angelegt.','Invoices are made from charges, on each child’s page.'));
+money_switch('invoices');
 
 $problems=invoice_issuer_problems();
 if($problems): ?>

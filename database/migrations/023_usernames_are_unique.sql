@@ -1,0 +1,26 @@
+-- No two logins share a username.
+--
+-- The usernames are designed in
+-- docs/decisions/0019-sign-in-with-a-username-and-an-address-may-be-shared.md;
+-- docs/decisions/0020-every-login-has-its-own-address-and-people-set-themselves-up.md
+-- keeps them and withdrew the shared addresses, so 001's unique address stays
+-- beside this unique username.
+--
+-- Before the rule can be put in the database, every login that 022 left with ''
+-- is given a placeholder that is unique because its id is: '#' followed by the
+-- id. '#' is outside the username alphabet (a-z, 0-9, dot and hyphen), so a
+-- placeholder can never be the same as a real username, never passes the
+-- sign-in lookup, and is easy for the runner's PHP step to find and replace with
+-- a real one straight after this update.
+--
+-- The UPDATE touches only rows still at '', so running it a second time after an
+-- interrupted update changes nothing. The index is the one statement that
+-- cannot run twice (MySQL 8.0 has no CREATE INDEX IF NOT EXISTS), so it is last.
+-- The name account_username is unique across the whole schema, which SQLite
+-- requires of an index name.
+--
+-- Under the tables' collation, utf8mb4_unicode_ci, the index also refuses
+-- "Lena.Mueller" beside "lena.mueller". The code only ever writes lower case, so
+-- that is a second guard rather than the rule.
+UPDATE accounts SET username = CONCAT('#', id) WHERE username = '';
+CREATE UNIQUE INDEX account_username ON accounts (username);

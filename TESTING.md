@@ -1,33 +1,144 @@
 # Testing
 
-What this portal does, and how to prove each part of it still works.
-
-Written for the administrator, to be used **after every code change and before
-every release**. The checks are in the order you would naturally walk through
-the app, and each one says what to do and what you should see. Nothing here
-needs a debugger: if a check fails, write down its number, and that number is
-enough for somebody else to reproduce it.
+What this portal does, and how to prove each part of it still works. The checks
+are in the order you would naturally walk through the app, and each one says
+what to do and what you should see.
 
 German labels are quoted the way the portal shows them, because the portal is
 German by default and searching for the English word will not find the button.
 
+## Start here
+
+**You do not have to do this whole list every time.** You test the portal the
+way you use it — on your phone, signed in as yourself. Most of this file is for
+looking things up.
+
+**After every update** — about fifteen minutes, on your phone:
+
+1. Walk [the five-minute sweep](#the-five-minute-sweep--after-every-update).
+2. Walk [what changed in this update](#what-changed-in-this-update--check-these),
+   leaving out every check marked **(release)**. All fine: **you are done.**
+
+Checks marked **(release)** are for whoever makes the release: they need a second
+copy of the portal, a shell or the database. So do [the automatic tests](#the-test-commands-in-detail),
+which that person runs before handing an update to you.
+
+**When something specific changed**, the top entry of `CHANGELOG.md` names it.
+Walk the matching section as well, and no other:
+
+- signing in, passwords, accounts → [Sign in, roles and access](#sign-in-roles-and-access)
+- the top bar, the bell, the report button, colours → [The shell](#the-shell-the-bar-notifications-feedback-impersonation), [Appearance](#appearance-and-personal-preferences)
+- children, contacts, printed forms → [Students and contacts](#students-contacts-levels-and-age-groups)
+- courses, prices, joining, attendance → [Courses](#courses-dates-and-tariffs), [Enrolment](#enrolment-asked-for-and-decided), [Attendance](#attendance)
+- money → [Charges](#charges-and-billing), [Payments](#payments-and-proof), [Invoices](#invoices)
+- messages, news, email → [Messages](#messages), [News and email](#news-email-and-the-queue), [Email templates](#email-templates)
+- installing, updating, backups → [Installation and update](#installation-and-update), [Data safety](#data-safety)
+
+**The whole list** — [twenty minutes to an invoice](#twenty-minutes-from-nothing-to-an-invoice),
+then everything from [Preparation](#preparation-for-the-full-sweep) down — before an update
+you would not want to roll back, and once a term. It installs from empty and issues
+invoices: use a second copy of the portal, never the one with the families in it.
+
+**When a check fails**, note its number (1.4, say), tap „Etwas funktioniert hier
+nicht" at the bottom of that page (phone: **Mehr → Etwas funktioniert nicht**), and
+write the number and what you saw; the page goes with it by itself. Cannot sign
+in at all? Then there is no button: email the number. Carry on where you can.
+
 ---
 
-## The two commands, first
+## The five-minute sweep — after every update
+
+On your phone, as the administrator. Six checks that catch a broken update, with
+nothing to read first. Only 1.4 changes anything, and you put it back.
+
+- [ ] **1.1** Open the portal in a private tab (Safari: the tabs button, then
+  **Privat**), so you arrive signed out. The club's name is at the top and a
+  card headed **Anmelden** below it, in the portal's colours — not black text on
+  a white page, and not a blank page.
+- [ ] **1.2** Sign in. The page says **Hallo** and your first name, with
+  **Aktive Schüler** and three more figures under it, your picture or initials
+  at the top right, and no red box anywhere. Scroll down: the bar at the top
+  stays where it is.
+- [ ] **1.3** Tap **Schüler** in the bar at the bottom, then any child. Their
+  page opens with their name as the heading and the boxes under **Persönliche
+  Daten** filled in.
+- [ ] **1.4** Further down the same page, tap **Interne Notizen**, add one word
+  at the end, and tap **Schüler speichern**. A green box says **„Schüler
+  gespeichert."** and your word is there. Take the word out and save again.
+- [ ] **1.5** Tap **Mehr** at the bottom right, then **Einstellungen**. Swipe the
+  row of tabs under the cards to the left and tap the last one, **System**. Under **Installation** it says **„Dateien und Datenbank gehören zur
+  selben Version."**, and **Version der Dateien** and **Version in der
+  Datenbank** show the same number — the one at the top of the release notes.
+  A yellow box, or any other sentence, fails this check.
+- [ ] **1.6** Tap **Post** in the bar at the bottom. **Nachrichten** opens with
+  its list of **Unterhaltungen**; tap one and its messages appear. With none yet
+  it says „Noch keine Nachrichten.", and that passes too.
+
+---
+
+## What changed in this update — check these
+
+Each line is one change; its checks are in
+[New in this release](#new-in-this-release--the-checks-in-detail). Walk the ones
+not marked **(release)**, straight after the five-minute sweep. Filled in for each
+release and emptied again for the next.
+
+- A shorter menu of seven, a hub at the top of **Einstellungen**, links at the top of **Nachrichten** and **Geld**: U.45–U.52
+- A start checklist, **„Einrichtung"**, until the portal is ready: U.31–U.39
+- The rarely needed fields wait under **„Mehr Möglichkeiten"**, VAT fields only with VAT: U.53–U.55
+- One login is one student; invitations need a passing mail test: U.20–U.28b, U.57
+- A problem report says how she got there; errors report themselves: U.13–U.19, U.40–U.44
+- The portal's own icon: U.2–U.8 · the sign-in line: U.1 · rows that line up: U.9–U.12
+- The privacy notice in English is optional: U.35, U.56
+- A profile picture is kept by the browser instead of fetched on every page, and another family's is never shown: U.58–U.62
+- News by email starts switched on for a new login, can be unticked when accepting the invitation, and the printed form asks for the no: [15.2, 15.7, 15.8](#news-email-and-the-queue), in News and email
+- The bell no longer jumps when opened, its panel stays on a phone's screen, its number is a badge in the portal's colour like the one on **Post**, and a tap elsewhere or Escape closes it: [5.3a–5.3g](#the-shell-the-bar-notifications-feedback-impersonation), in The shell
+- A status to choose — „Automatisch", „Abwesend", „Als offline anzeigen" — for trainers and administrators, a coloured dot, and when each account was online over the last 30 days: [P.1–P.10](#online-status-and-when-somebody-was-online)
+- Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
+- The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
+- Everybody has a username and an address of their own, and signs in with either in one box; logins are made by invitation only; families fill in their own details, and every change is in the change log (ADR 0020): A.1–A.27
+
+---
+
+## The test commands, in detail
 
 ```bash
 php tests/run.php                 # the whole suite, no database server needed
-tests/mariadb-local.sh            # the same suite against a real MariaDB
+tests/existing-database.sh        # the same suite against an empty _test database you made
+tests/mariadb-local.sh            # the same suite against a throwaway MariaDB it starts itself
 ```
 
-`php tests/run.php` must end in **`0 failed`**. It takes about ten seconds.
-Anything else and the manual sweep below is a waste of your time — fix that
+`php tests/run.php` must end in **`0 failed`**. It takes under a minute.
+Anything else and the manual sweep is a waste of time — stop and report that
 first.
 
+Run it over SSH in the Git copy (the upload ZIP leaves `tests/` out). Its second
+line must read `files: /tmp/crm-test-…`: those tests keep everything they write
+in that folder and refuse every database but a `_test` one, so the live folder is
+safe to run them in. No such line means older tests that write into the portal's
+own files: run those from a copy, never inside the live `public_html`.
+
+`tests/existing-database.sh` is the real-engine run for shared hosting. Once, in
+the hosting panel, create a new, **empty** database whose name ends in `_test`
+(the panel puts your account name in front, as in `konto_crm_test`) and a user
+for it. The first run asks for that name, the user, the password, the server and
+the port, and keeps them in `tests/.test-database.php`, readable by you alone;
+later runs just start. It refuses a name that does not end in `_test`, the
+database the portal itself uses, and any database holding an account with a real
+email address; the first time, also any that is not empty. The suite deletes
+every table in the database it is given, so those refusals are the point. Delete
+that file to use a different database. The first lines it prints name the
+database server; that is the engine the run has proven.
+
+`tests/mariadb-local.sh` starts a throwaway database server of its own, which
+needs `mariadbd` installed. Shared hosting does not have it; use
+`tests/existing-database.sh` there.
+
 The run ends by printing what it could **not** cover. On SQLite that is foreign
-keys on three tables and the MySQL-dialect backup, which `tests/mariadb-local.sh`
-covers — it is the run to quote when you say a release works. On MariaDB it is
-the data carried across by migrations 015 and 016: the `migrations` suite has to
+keys on four tables, the MySQL-dialect backup and two spellings of one address
+sharing a sign-in count, which `tests/mariadb-local.sh` covers — it is the run
+to quote when you say a release works. On MariaDB it is the data carried across
+by migrations 015, 016 and 019: the `migrations` suite has to
 apply the migrations in two halves with rows in between, which the run's own
 database cannot do because it has all of them applied already, so it does that in
 a second process against its own SQLite file whichever engine the run is using.
@@ -35,6 +146,7 @@ Those lines are not a warning, they are the honest edge of the measurement.
 
 | Suite | What it holds the line on |
 |---|---|
+| `accounts` | One login is one student: invitations, own addresses, the access card's states |
 | `attendance` | Statuses, the suggested training day, the summary figures |
 | `billing` | Charge periods, intervals, discounts, proration, due and overdue dates |
 | `contacts` | Somebody to ring, one standard contact, and an address to invoice |
@@ -42,6 +154,7 @@ Those lines are not a warning, they are the honest edge of the measurement.
 | `demo` | Example data fills, is recognisable, and comes out again completely |
 | `pages` | Every page opens for every role with data behind it, warnings included |
 | `enrolment` | Timetables, joining and leaving, who decides |
+| `errors` | Unexpected errors written down once, counted, told to the administrators, and passed on without personal data |
 | `forms` | A rejected form comes back filled in; defaults are visible as defaults |
 | `groups` | Levels and age groups, and the difference between them |
 | `history` | The change log records what differed, and only that |
@@ -50,9 +163,11 @@ Those lines are not a warning, they are the honest edge of the measurement.
 | `messaging` | Who may read a conversation and who may write to whom |
 | `migrations` | An update carries the data with it: prices, discounts, addresses |
 | `performance` | Query counts, so a page does not issue one query per row |
+| `reports` | A problem report's trail of steps, and nothing in it that must never be kept |
 | `security` | Authorisation boundaries, credentials, what must not leak |
 | `settings` | Every setting has a type and a usable default |
 | `shell` | Notifications, impersonation, avatars, themes, feedback |
+| `start` | The start checklist: each tick read from the data, example data never counting, the way on and back |
 | `structure` | That no file has been silently destroyed, every value is escaped, every page classified |
 | `transactions` | A failed write leaves nothing behind |
 | `uploads` | Limits, allowed kinds, and files swept once their record has gone |
@@ -86,24 +201,44 @@ in with. It only ever reads: every page is opened with GET.
 > role. If it reports that it could not sign in, wait fifteen minutes or clear
 > `rate_limits`.
 
----
+### The first evening, end to end (release)
 
-## The five-minute sweep — after any code change
+```bash
+tests/e2e.sh                        # the working tree
+CRM_E2E_REF=HEAD tests/e2e.sh       # one commit exactly
+```
 
-If you changed one thing, these six are the ones that catch a broken deploy.
+It installs a fresh copy through `setup.php` against its own MariaDB, walks the
+nine steps of „Dein Portal einrichten" through their own buttons to „Alles
+eingerichtet", invites a family and follows the link out of the captured mail,
+has the family upload a proof and send „Etwas funktioniert hier nicht", confirms
+the payment, issues an invoice and parses its PDF, and breaks a table on purpose
+to check the friendly page and Rückmeldungen. It must end in **`RESULT: PASS`**;
+its first lines name the commit, the MariaDB and the PHP it ran on, and those
+are the only ones it has proven. **Notes** at the end are things the design
+intends that are worth a decision; they do not fail it. Details:
+[tests/README.md](tests/README.md#the-first-evening-end-to-end-in-a-browser).
 
-- [ ] **1.1** Open the portal signed out. The sign-in page appears, styled — not
-  a wall of unstyled text, and not a blank page.
-- [ ] **1.2** Sign in as administrator. The overview opens with the top bar
-  pinned, your name at the right, and no red error strip.
-- [ ] **1.3** Open **Schüler** and then one child. Their details show, with no
-  empty boxes where a name should be.
-- [ ] **1.4** Change something small (a note) and save. The green confirmation
-  appears and the new value is on the page after the reload.
-- [ ] **1.5** Open **Einstellungen → System**. The version shown there matches
-  the version in `VERSION`, and the database says it is on the same one.
-- [ ] **1.6** Open **Nachrichten**. The conversation list draws, and a
-  conversation opens.
+**Last walked:** 91520db on 28.09.2026, `RESULT: PASS`, 279 checks, against
+MariaDB 10.11.14 with PHP 8.4.19 and again with 8.5.11 (`php -S`), in Chromium
+at 390px and 320px. The U.x checks it walked are marked below where they stand:
+ticked when the walk covers the whole check and it is one for whoever makes the
+release, annotated when it covers part, or when the check is yours to do on your
+own phone.
+
+It stands in for a phone, not for these, which stay by hand when the change
+touches them:
+
+- [ ] **T.1** The invoice PDF the run saves (`invoice.pdf` in its work folder,
+  printed at the end) opened in Preview or Adobe Reader and on the iPhone: one
+  page, the address block, the amount, the IBAN in groups of four.
+  *Not done. At 91520db the walk parsed `invoice.pdf`, and pypdf (strict) read one page with Leistungszeitraum 14.09.2026 – 30.09.2026 and 19,83 €. That is a parser, not a reader.*
+- [ ] **T.2** The invitation through the real mail provider, opened on an
+  iPhone in Mail: the link opens „Konto einrichten" in Safari, not a blank page.
+  *Not done. At 91520db the walk received the invitation through a local SMTP sink, not a real provider.*
+- [ ] **T.3** On the iPhone, as the family: the bell at the top right shows the
+  bell alone. (Chromium draws a small ▸ above it; check whether Safari does.)
+  *Not done. No iPhone here; Chromium at 91520db still draws the ▸.*
 
 ---
 
@@ -163,19 +298,21 @@ child, **Datenblatt drucken**. Each is one sheet of A4 with headers and footers
 turned off in the print dialog. The blank one carries the price list as lines to
 tick.
 
-**8 · Be somebody else.** **Konten → „Portal als diese Person ansehen"** on
-Familie Berger. A red strip names whose eyes you are using; the portal shows
-their children only. **Ansicht beenden** gives you yourself back.
+**8 · Be somebody else.** Open the child that `familie.berger@beispiel.test`
+signs in for, and on its card **„Zugang zum Portal"** choose **„Portal als …
+ansehen"**. A red strip names whose eyes you are using; the portal shows that one
+child only. **Ansicht beenden** gives you yourself back.
 
 **9 · Sign in as a family for real.** Sign out, sign in as
-`familie.hofer@beispiel.test`. Four menu entries, their own children only, their
-own charges. Try `?page=student&id=` with a number that is not theirs: it
-answers 404.
+`familie.hofer@beispiel.test`. Four menu entries — Übersicht, **Profil**,
+Nachrichten, Neuigkeiten — and **Profil** opens their one child; one login is
+one child, so there is no list of children. Their own charges only. Try
+`?page=student&id=` with a number that is not theirs: it answers 404.
 
-**10 · Make a login without email.** Back as the administrator, **Konten → +
-Konto direkt anlegen (ohne E-Mail)**. Give it a name, an address and a password.
-Sign out, sign in as it — it works with no SMTP configured anywhere. If the
-address matches a child's, that child is attached to it.
+**10 · Make a login without email.** Back as the administrator, open the child
+you added at step 4, and on **„Zugang zum Portal"** choose **„Ohne E-Mail anlegen
+(mit Passwort)"**: its address and a password. Sign out, sign in with them — it
+works with no SMTP configured anywhere, and opens that child's **Profil**.
 
 **11 · Put it back.** **Einstellungen → System → „Beispieldaten entfernen"**.
 Every invented child, course and charge goes; anything you made yourself stays.
@@ -195,7 +332,8 @@ Every invented child, course and charge goes; anything you made yourself stays.
   you need it for the family checks further down.
 
 > Never fill example data into a portal holding real students. The button
-> refuses on its own, but the rule is yours to keep as well.
+> refuses unless you tick „Mir ist klar, dass sich Beispieldaten unter die
+> echten Schüler mischen." — so the rule is yours to keep: do not tick it.
 
 ---
 
@@ -238,6 +376,17 @@ Skip on an ordinary code change; do all of it before a release.
   > **Installieren** on a count of three is worth one try, and the only thing to
   > read is the administrator count in **Konten**. **Two administrators after an
   > install is the symptom**, whenever it appears and however it was produced.
+- [ ] **3.4e** `php bin/console.php create-admin` on a host that does not allow
+  `shell_exec`, which is most shared hosting: `php -r
+  'var_dump(function_exists("shell_exec"));'` prints `bool(false)` there. Walk it on
+  the second copy, not on the portal with the families in it; a portal that already
+  has an administrator needs `create-admin --force`. After the name and the
+  address, and **before** it asks for the password, it warns „This server does not
+  allow hiding what you type: the password will be visible on screen." and says
+  how to stop. The password is then readable as you type it, twice — expected on
+  such a host. It ends with „Administrator created.", and that account signs in.
+  What must never happen is a PHP error in place of the prompt, with no account
+  made: that is what it did before.
 - [ ] **3.5** Open `setup.php` again. It answers 403 and creates nothing.
 - [ ] **3.6** `bash bin/update.sh --check` on an installed copy reports the file
   version, the database version and whether anything is pending, and changes
@@ -278,133 +427,51 @@ Skip on an ordinary code change; do all of it before a release.
   the menu, and typing their addresses by hand is refused.
 - [ ] **4.3** As the administrator, everything the trainer can reach, you can
   reach too. There is no screen she has and you do not.
-- [ ] **4.4** Sign in as a family. They see the overview, their own children,
-  **Nachrichten** and **Neuigkeiten** — and no other child.
+- [ ] **4.4** Sign in as a family. They see the overview, **Profil** — their one
+  child's page, since one login is one child — **Nachrichten** and
+  **Neuigkeiten**, and no other child.
 - [ ] **4.5** As a family, open another family's child by editing the address.
   Refused, in words, not with a blank page.
-- [ ] **4.6** Wrong password repeatedly (more than ten times for one address,
+- [ ] **4.6** Wrong password repeatedly (more than ten times for one username,
   within fifteen minutes) is refused with „Zu viele Versuche", and a correct
-  password immediately afterwards is refused too — that is the point.
-- [ ] **4.6a** The same address signs in **correctly** twelve times in a row —
+  password immediately afterwards is refused too — that is the point. The same
+  login's **email address** with the right password still signs in: the two
+  names are counted separately (ADR 0020, §3).
+- [ ] **4.6a** The same username signs in **correctly** twelve times in a row —
   sign out, sign in, twelve times, which is one afternoon of three children
   sharing a phone. All twelve work. A correct password must never produce „Zu
   viele Versuche": the attempt is counted before the password can be checked,
-  and a sign-in that succeeds clears that count again.
-- [ ] **4.6b** Wrong password for one address until „Zu viele Versuche"
-  appears, then „Passwort vergessen", open the link and set a new password. You
-  are signed in; sign out and sign in again with the new password and it works
-  straight away, rather than being refused for the rest of the fifteen minutes.
-  *This one needs email actually working first* — SMTP set up (15.3) and the
-  mail worker running (1.4), or the link is written and never sent. If you would
-  rather not wait for mail, **Postausgang** shows the message that was queued.
-- [ ] **4.6c** The wait itself, which is the only step here that takes fifteen
-  minutes and the only one that proves the sentence „Bitte später erneut
-  versuchen" is true. Type the wrong password for one address until „Zu viele
-  Versuche" appears. Now put the phone down for **sixteen minutes** by the
-  clock — longer than fifteen, not exactly fifteen. Come back and sign in with
-  the **right** password. You are in, first try. If it still says „Zu viele
-  Versuche", the lockout never ends on its own and a family that mistyped a
-  password is shut out of her portal until somebody with a database touches it.
-  Nothing automated can check this: the suite ages the stored counter instead of
-  waiting, so the clock itself is only ever proven here.
-- [ ] **4.6d** Not a step to perform — a symptom to recognise. „Zu viele
-  Versuche" for an address where nobody typed a wrong password ten times, and
-  for **more than one family at the same time**, is not the lockout above:
-  everyone who reaches the portal through the same internet address — one
-  shared connection at the hosting, or one mobile network — shares a single
-  budget of attempts, and attempts that are already being refused spend it too.
-  Waiting a quarter of an hour clears it. If it keeps coming back, it is the
-  connection and not the portal — a question for the hosting, not something to
-  go looking for in the accounts.
-- [ ] **4.6e** Spelling the address differently must not buy a fresh ten
-  guesses. **Only meaningful on MariaDB or MySQL.** On the test suite's SQLite
-  file this step proves nothing at all — see the note below before you run it.
-  Take a family address with an accented letter available in it, say
-  `familie@beispiel.at`. Type the **wrong** password ten times at `familie@…`
-  until „Zu viele Versuche" appears. Now type the same address **with an
-  accent** — `famílie@…` — and any password at all. It must say **„Zu viele
-  Versuche"** as well. If it says „Anmeldung nicht möglich" instead, the
-  accented spelling has started its own fresh ten, and whoever is guessing at
-  that family's password has as many sets of ten as they can invent spellings.
-  > Why the engine decides this: the portal's database compares addresses under
-  > `utf8mb4_unicode_ci`, which reads `i` and `í`, upper and lower case, `ss`
-  > and `ß` as the same letter, so both spellings find the one family and the
-  > attempt is counted against that family. The SQLite translation the default
-  > suite runs on compares the bytes, finds two unrelated addresses, and cannot
-  > show the fault either way — which is why `php tests/run.php` prints
-  > *„two spellings of one address sharing a throttle bucket (needs the MySQL
-  > collation)"* in its own footer. That line is the reason this step exists.
-  > Walk it against the portal on the real server, or after
-  > `tests/mariadb-local.sh`, and never against the SQLite run.
-  > Afterwards either wait the quarter of an hour or sign in once correctly to
-  > clear the count — a sign-in that works empties that counter, which is 4.6a.
-- [ ] **4.6f** A limit that trips **inside** an action must refuse, not hang.
-  **Only meaningful on MariaDB or MySQL** — it needs two real connections, and
-  the SQLite file the default suite runs on cannot show it. Sign in as any
-  family, open **Mein Konto → „E-Mail-Adresse ändern"**, and send a
-  confirmation link to a new address **six times in a row**, giving the correct
-  current password each time. The sixth must come back with **„Zu viele
-  Versuche. Bitte später erneut versuchen."** within a second or so, and the
-  address at the top of the page must still be the old one.
-  > What this is watching for: the attempt counter is written on a **second**
-  > database connection on purpose, so that a refused attempt is not handed
-  > back by the rollback of the action it was guarding. That second connection
-  > is also why the order inside the handler matters. Every one of these
-  > counters is taken before the action writes anything. If one were ever moved
-  > below a write, the action's own transaction would be holding rows on the
-  > first connection while the second connection waited for them, and the
-  > second connection is the one the first is waiting on to return. Nothing
-  > times out and nothing rolls back: the page simply never finishes loading,
-  > and the only visible symptom is a spinner. A browser tab that hangs here —
-  > rather than a sentence in German — is that fault, and it is worth stopping
-  > the release for.
-  > The ordering itself is locked by the `structure` suite, which names all six
-  > places it applies (sending a message, asking to write to somebody, the
-  > payment reminder run, a problem report, the SMTP test and this address
-  > change). This step is the half no suite can reach: that the portal actually
-  > answers under a real engine with real connections.
+  and a correct sign-in clears the count for the username and the address alike.
   > Afterwards, wait the hour or use a different account — this counter is
   > deliberately not cleared by anything you can do from the portal.
-- [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
-  once and not twice. Asking for a link ten times for one address is still
-  refused afterwards — that counter is never cleared, because typing an address
+- [ ] **4.7** „Passwort vergessen" with the username, and again with the email
+  address, sends a link each time to the login's own address; the link sets a new
+  password once and not twice. Asking four times in an hour with one of them is
+  refused the fourth time — that counter is never cleared, because typing a name
   proves nothing about who typed it.
-- [ ] **4.7a** Every signed-out page — sign in, forgotten password, invitation,
-  the privacy notice — carries the line about the privacy notice, the necessary
-  cookies and the data not being sold or passed on, above the footer links, and
-  it reads at 320px without the page scrolling sideways.
-- [ ] **4.8** **Konten → + Konto direkt anlegen (ohne E-Mail)** as an
-  administrator: a name, an address and a password of at least 12 characters.
-  The new account signs in straight away with **no SMTP configured at all**, and
-  a weak password is refused here exactly as everywhere else.
+- [ ] **4.7a** The sign-in page carries one small line under the form, „Mit der
+  Anmeldung akzeptierst du die Datenschutzerklärung.", the last word a link to the
+  notice. Every signed-out page — sign in, forgotten password, invitation, the
+  notice itself — ends with the link to the Datenschutzerklärung and the version,
+  and nothing longer. At 320px no page scrolls sideways.
+- [ ] **4.8** **Konten** offers **„+ Teammitglied einladen"** and nothing that
+  makes a login with a password (ADR 0020, §5). Invite a trainer: **Postausgang**
+  holds the invitation, whose text you cannot read there; the new login is
+  „Eingeladen" until its holder opens the link and chooses a password.
 - [ ] **4.8a** A trainer is not offered that form and cannot post to it.
-- [ ] **4.8b** Creating one with role *Schüler* at an address a child already
-  carries attaches that child to it. Creating a trainer or administrator
-  attaches nobody.
-- [ ] **4.8c** The same form with an address that already has an account says
-  „Diese Adresse hat schon ein Konto." Then tap **Anlegen** twice in quick
-  succession: the second tap says **the same sentence**, word for word. Read it
-  rather than glancing at it — the wrong outcome here is not an error page but a
-  *different* sentence, „Die Eingabe ist nicht möglich: Adresse bereits vergeben
-  oder verknüpfte Daten vorhanden", which is the database complaining in the
-  portal's voice and means the two taps raced each other. Either way it must
-  never be the „vorübergehend nicht verfügbar" page.
-- [ ] **4.8d** The same question asked from the *invitation* side. **Konten →
-  „+ Konto einladen"**, an address that already has an account — the one from
-  4.8 will do — then **„Einladung senden"**. It says **„Diese Adresse hat schon
-  ein Konto."**: word for word the sentence the direct-creation form gives at
-  4.8c, because it is now literally the same sentence in the code. Read it
-  rather than glancing at it. Inviting used to write the row without looking
-  first, so this path answered with „Die Eingabe ist nicht möglich: Adresse
-  bereits vergeben oder verknüpfte Daten vorhanden" — the database complaining
-  in the portal's voice, about an address it declined to name. Then check three
-  things: **Konten** still lists that address **once**; its **role is
-  unchanged**, so a refused invitation has not quietly turned a trainer into a
-  family; and **Postausgang** holds **no new invitation** to it, because a
-  second invitation replaces a password that already works. Tap **„Einladung
-  senden"** twice in quick succession too: the second tap gives the same
-  sentence, never the database one.
-- [ ] **4.9** Suspending an account in **Konten** stops that person signing in.
+- [ ] **4.8b** The role list on that form offers **Trainerin** and
+  **Administrator** only — no Schüler. Inviting either attaches no child.
+- [ ] **4.8c** Invite with an address that already has a login. It says
+  „Diese E-Mail-Adresse gehört schon zu einem anderen Zugang. Jede Person
+  braucht ihre eigene. Es ist der Zugang von …", naming whose. Tap **„Einladung
+  senden"** twice in quick succession: the second tap says **the same sentence**,
+  word for word. The wrong outcome is not an error page but a *different*
+  sentence, „Die Eingabe ist nicht möglich: ein Wert ist schon vergeben …",
+  which is the database complaining and means the two taps raced each other.
+  Then check: **Konten** lists that address **once**, its **role is unchanged**,
+  and **Postausgang** holds **no new invitation** to it.
+- [ ] **4.9** Suspending a team member in **Konten**, or a family's login with
+  **„Zugang sperren"** on the child's page, stops that person signing in.
 
 ---
 
@@ -431,6 +498,45 @@ Skip on an ordinary code change; do all of it before a release.
   the bottom of the menu.
 - [ ] **5.3** The bell shows a number when something is waiting. Opening it
   lists the notifications newest first; „Alle gelesen" clears the number.
+- [ ] **5.3a** On a real iPhone, in Safari, with at least one unread
+  notification (a family's message does it, 5.4). Walk 5.3a–5.3d at **390**
+  pixels wide (an iPhone 12 to 16 held upright) and at **320** (an iPhone SE of
+  the first generation), once with the phone in light mode and once in dark. No
+  320 iPhone to hand? Write down that 320 was not checked on an iPhone, rather
+  than ticking it. Now **watch the portal's name at the top left, not the bell**,
+  and tap the bell: the name does not move, not by a hair, as the panel opens —
+  nor as it closes when you tap the bell again. The bell itself stays exactly
+  where it was too. It used to jump by about 7 pixels — „das Logo springt" —
+  and a desktop browser could not show that happening, so only an iPhone can
+  pass this check.
+- [ ] **5.3b** With the bell open: no small triangle beside it, open or shut,
+  and nothing turning. The panel's left and right edges are both on the screen,
+  with a little space on each side — it used to run off the left edge — and
+  nothing on the page scrolls sideways. The first word of each notification is
+  readable, and „Alle gelesen" can be tapped.
+- [ ] **5.3c** The number on the bell is a badge in the portal's colour, the
+  same as the number on **Post** in the bar at the bottom, and its figure can be
+  read — in light mode and in dark. In dark, the open panel is dark too and
+  every line in it can be read.
+- [ ] **5.3d** With the bell open, **swipe the page to scroll**: the panel stays
+  open. Then **tap an empty part of the page** — the heading, say, not a link:
+  the panel closes. Open it and tap the bell again: it closes.
+- [ ] **5.3e** On a laptop with a keyboard: press **Tab** until the bell has
+  its outline, **Enter** to open it, **Tab** once more into the panel, then
+  **Escape**. The panel closes and the outline is back on the bell. Open it
+  again, press **Tab** until the outline has left the panel (on your name, next
+  to the bell), then **Escape**: the panel closes and the outline stays where it
+  was — it does not jump back to the bell.
+- [ ] **5.3f** Opening one menu in the top bar closes the other. Open the bell,
+  then tap your picture: the bell's panel closes as the account menu opens. Then
+  the other way round — only one is ever open. The same with the keyboard: Tab
+  to the picture and press Enter while the bell is open.
+- [ ] **5.3g** In Chrome on a laptop, switch JavaScript off (developer tools,
+  then ⌘/Ctrl+Shift+P, type „Disable JavaScript", Enter; it stays off while
+  the developer tools are open) and reload a page. The bell still opens
+  when clicked and closes when clicked again. A click elsewhere leaving it open
+  is expected without JavaScript and passes. Close the developer tools to
+  switch JavaScript back on.
 - [ ] **5.4** A family sends a message. Both the trainer *and* the
   administrator get a notification — not only one of them.
 - [ ] **5.5** Clicking a notification lands on the thing it is about.
@@ -466,6 +572,159 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **6.6** Upload something that is not a picture. Refused in words, and the
   form still holds everything else you had typed.
 
+### The club's colours and logo (Einstellungen → Portal)
+
+Signed in as an **administrator**. Keep a second browser signed out on the
+sign-in page, and a family's login at hand. Before you start, note what the
+**Aussehen** card shows, so you can put it back.
+
+- [ ] **6.7** Nothing set: every colour field on **Aussehen** is empty and says
+  „Standard". Open the sign-in page with the browser's developer tools on the
+  network tab and reload: there is **no** request for `page=brand`. The portal
+  looks exactly as before the update.
+- [ ] **6.8** Set **Hauptfarbe** `#8a1538`, **Menüfarbe** `#0a1030`,
+  **Hervorhebung** `#ffcc00`, **Hintergrund** `#fffaf0` and save. The message
+  reads „Vorgaben gespeichert. Vorher: Hauptfarbe Standard, Menüfarbe Standard,
+  Hervorhebung Standard, Hintergrund Standard." Buttons, links, the menu, the dot
+  on the „B" and the page background all change — signed in, and on the sign-in
+  page in the other browser.
+- [ ] **6.9** Switch the phone (or the computer) to dark mode, then choose
+  **Dunkel** under **Mein Konto**. Both show the dark shades worked out from
+  your colours; no text disappears into its background, and the text on a
+  button stays readable.
+- [ ] **6.10** On an iPhone, the bar at the very top of Safari (and of the
+  home-screen app) is the menu colour in light mode and the dark background in
+  dark mode.
+- [ ] **6.11** Set **Hauptfarbe** to a pale yellow, `#fdf6b2`. It is saved, not
+  refused, and the card says „Für gute Lesbarkeit verwendet: #837703" next to
+  your choice — a dark mustard that still looks yellow, not a grey. White text
+  on the buttons is readable. In dark mode the buttons show the pale yellow
+  itself, with dark text.
+- [ ] **6.11a** Now set **Hauptfarbe** to `#f5e663`, a stronger yellow, and
+  save. The message names the colour it replaced: „Vorgaben gespeichert.
+  Vorher: Hauptfarbe #fdf6b2." The card again says „Für gute Lesbarkeit
+  verwendet: …" with your choice beside it. Look at the sign-in page in the
+  other browser and at the menu, each in light and in dark mode: every button,
+  link and menu entry can be read.
+- [ ] **6.12** Set **Hintergrund** to `#444444`. Refused: „Hintergrund: Auf
+  diesem Hintergrund wäre die graue Schrift schwer zu lesen …" and **nothing**
+  else from that save has changed — change the main colour in the same save to
+  prove it. Your typed values are still in the form. Type `gelb` into a colour:
+  refused with „Bitte eine Farbe wie #1f5fa9 eingeben."
+- [ ] **6.12a** Beside each colour box is a small colour swatch. Tap it and pick
+  a colour: the box fills with that colour's code. „Standard übernehmen" empties
+  the box again; saved empty, that colour goes back to the built-in one. Then
+  switch JavaScript off, as in 5.3g: there is no swatch and no „Standard
+  übernehmen", and a colour typed into the box as `#1f5fa9` is saved all the
+  same.
+- [ ] **6.13** The way back: retype the values the last „Vorher: …" message
+  named, save, and the portal looks as it did.
+- [ ] **6.14** A family who picked their own colour under **Mein Konto** keeps
+  it; one who left „Wie eingestellt" gets the club's main colour.
+- [ ] **6.15** Under „Erweitert", set **Hauptfarbe im Dunkelmodus** without a
+  light **Hauptfarbe**: nothing changes, as the hint says. With the light one
+  set, it applies in dark mode only.
+- [ ] **6.16** Clear every colour and save. The message names the colours you
+  had. Reload with the network tab open: no `page=brand` request again.
+- [ ] **6.17** **Logo**: upload a wide PNG, then an iPhone JPEG, then a WebP.
+  Each replaces the last, top left in the menu, on the sign-in page, and in the
+  phone's top bar at 320 px, on a white plate in light and dark mode.
+- [ ] **6.18** Upload a logo 40 pixels tall, a 6:1 banner, a GIF and a
+  photograph over 1 MB. Each is refused with its size and what is needed, and
+  the logo you had stays.
+- [ ] **6.19** On **Aussehen**, tick „Portalnamen neben dem Logo ausblenden" and
+  „Zeile „Verwaltung“ / „Mein Portal“ … ausblenden". Check each with a logo, with
+  only the portal icon, and with neither: with neither, the name still shows.
+  Saving the **Logo** card leaves both ticks as they were.
+- [ ] **6.20** „Logo entfernen": the portal icon comes back top left, and after
+  removing the icon too, the „B". The message says which.
+
+**Known limit, not a failure:** a photo taken on a phone held upright is often
+stored sideways with a note saying "turn me" (EXIF orientation). The browser
+turns it, but the portal measures the picture as stored, without the turn. Such
+a logo can be refused as "too tall" when it looks wide, or drawn with its width
+and height swapped. Reading that note needs PHP's exif extension, which shared
+hosting does not promise. The way round is to save the logo from an image
+editor or as a screenshot, which stores it the right way up. A logo from a
+designer is not affected.
+
+---
+
+## Online status and when somebody was online
+
+You need two phones or browsers: one signed in as an **administrator**, one as a
+**trainer**, and a family's login you can view through (**Portal als diese
+Person ansehen**). The dot and the status block are in the account menu — tap
+your picture at the top right.
+
+- [ ] **P.1** As the trainer, open the account menu. Under **Status** the three
+  rows read „Automatisch", „Abwesend", „Als offline anzeigen", and the one you
+  have now is marked, not a button. Tap „Abwesend": the page you were on comes
+  back — try it on a child's page with a tab open, and the same child and tab
+  are still showing — with „Dein Status ist jetzt „Abwesend"." Your dot is
+  yellow.
+- [ ] **P.2** Tap „Automatisch": „Dein Status richtet sich wieder nach deiner
+  Aktivität." and the dot is green again. Nothing new appears under
+  **Einstellungen → Änderungen**: a status is not a change to undo.
+- [ ] **P.3** Sign in as a family. The account menu has „Mein Konto" and
+  „Abmelden" only: no status, and no dot on their own picture.
+- [ ] **P.4** As the trainer, view the portal as that family. The account menu
+  has no status block. Stop viewing, then open the family's page: their „zuletzt
+  online" has **not** moved to just now — it was you in the portal, not them.
+- [ ] **P.5** As the trainer, choose „Als offline anzeigen": „Du wirst jetzt als
+  offline angezeigt." Keep using the portal for a few minutes. On the
+  administrator's phone, under **Konten**, the trainer shows the true time and
+  „(als offline angezeigt)". Have a second trainer look instead (or view the
+  portal as one): the dot is grey and „zuletzt" stays at the moment you hid.
+- [ ] **P.6** As the administrator, open a child's page whose family has signed
+  in this month: **„Wann online? Letzte 30 Tage"** opens to the days they were
+  in, newest first, with times in your own time zone. A visit that ran past
+  midnight is listed once, under the evening it began. A period while
+  somebody appeared offline is marked „(als offline angezeigt)"; a trainer
+  looking at the same account does not see it at all.
+- [ ] **P.7** In the first month after this update the history also says
+  „Aufgezeichnet wird seit dem …" with the day of the update. Nothing before
+  that day is shown as „nicht online".
+- [ ] **P.8** **Einstellungen → Portal**: the online field reads „Grün –
+  „online": aktiv innerhalb von (Minuten)". Under **Erweitert**, blue in
+  minutes and yellow in hours. **Einstellungen → System → Erweitert**: „Wann
+  jemand online war, aufbewahren (Tage)" refuses 31 and accepts 30 or less.
+- [ ] **P.9** With the bell open on a child's page, „Alle gelesen" leaves you on
+  that same child, not on „Nicht gefunden".
+- [ ] **P.10** **(release)** In the database, set one `online_periods` row's
+  `last_seen_at` to 31 days ago and let the nightly cleanup run (or
+  `php bin/console.php maintenance`): that row is gone and one from 29 days ago is
+  still there.
+- [ ] **P.11** On a real iPhone, in Safari, as the trainer — once in light mode
+  and once in dark: tap your picture at the top right. Under **Status** the one
+  you have now is marked with a tick, not a button. Tap „Abwesend": the page
+  comes back with „Dein Status ist jetzt „Abwesend"." at the top, and the dot on
+  your picture has turned from green to yellow. „Als offline anzeigen" turns it
+  grey. Put it back to „Automatisch".
+- [ ] **P.12** On the iPhone, signed in as a family, tap the picture: the menu
+  holds „Mein Konto" and „Abmelden" and nothing else, and the picture has no
+  dot — P.3, on the phone.
+- [ ] **P.13** As the administrator, **Konten → „Portal als diese Person
+  ansehen"** on a family, then tap the picture: no **Status** in the menu, and
+  no dot. (P.4 is the same for the trainer.) „Ansicht beenden" afterwards.
+- [ ] **P.14** On an iPhone 320 pixels wide (an iPhone SE of the first
+  generation), as the trainer, tap your picture: „Abmelden" is above the bar at
+  the bottom, or can be reached by scrolling inside the menu — never hidden
+  behind the bar. Safari's own bars leave a small iPhone less height than a
+  desktop browser set to 320 has, so only the phone can pass this; a menu that
+  scrolls passes as long as „Abmelden" can be tapped. Tap it: you are signed
+  out. No such iPhone to hand? Write down that this was not checked.
+- [ ] **P.15** **Konten**, and a child's page whose family has a login: open
+  **„Wann online? Letzte 30 Tage"** on your own row. The days and times match
+  when you really used the portal this week. Then the trainer who chose „Als
+  offline anzeigen" in P.5: as the administrator, those times are listed and
+  marked „(als offline angezeigt)"; through a second trainer's eyes they are not
+  listed at all.
+- [ ] **P.16** With JavaScript switched off, as in 5.3g: tap your picture — the
+  menu opens, and tapping the picture again closes it. Choose „Abwesend": the
+  message appears and the dot is yellow; put it back to „Automatisch". Then
+  „Abmelden": you are signed out.
+
 ---
 
 ## Students, contacts, levels and age groups
@@ -485,23 +744,28 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **7.7** A child with no contact is named on the **Schüler** list — "1 Kind
   ohne Standardkontakt" — with a link straight to their contacts.
 - [ ] **7.8** The first contact you add becomes the **Standardkontakt** without
-  being asked, and it cannot be saved without an email address: that is where
-  invoices and reminders go.
+  being asked. It saves with only a telephone number: invoices, reminders and
+  invitations go to the child's own address, not to a contact.
 - [ ] **7.8a** „Kontakt hinzufügen" and „Kontakt bearbeiten" ask for the same
   things, in the same words: the first box is the contact person's own name, not
   a question about whose contact it is.
 - [ ] **7.8b** A contact with a phone number and **no** email address saves.
   That is the grandmother who answers the telephone, and she is the reason this
   list and the portal's address are two different things now.
-- [ ] **7.8c** On the child's own page, **Zugang zum Portal** holds the address
-  the portal writes to. For a child that is a parent's address.
-- [ ] **7.8d** **Zugang einladen** on a child with no account creates one and
-  queues the invitation to that address. Check the outbox.
-- [ ] **7.8e** Invite a *second* child at the same address: one account, both
-  children on it, and — once that account has set a password — no second
-  invitation, which would have replaced a password that works.
+- [ ] **7.8c** On the child's own page, the **E-Mail-Adresse** is where the
+  portal writes to and, once the child has a login, what it signs in with. For
+  a young child that is usually a parent's address — but each child needs one of
+  its own, so a brother or sister needs a different one.
+- [ ] **7.8d** **„Einladung senden"** on **„Zugang zum Portal"**, for a child with
+  no login, creates one and queues the invitation to that address. Check the
+  outbox.
+- [ ] **7.8e** Invite a *second* child at an address that already signs in for
+  another child: refused, with „Jede Schülerin und jeder Schüler braucht eine
+  eigene E-Mail-Adresse. …". No login is made, no invitation is queued, and the
+  first child's login is untouched. (It used to put both children on one login;
+  one login is one child now.)
 - [ ] **7.8f** Inviting a child at an address that belongs to a trainer or an
-  administrator is refused, and the child stays unattached.
+  administrator is refused the same way, and the child stays without a login.
 - [ ] **7.8g** An invoice for a child with no account is addressed to the child
   at the child's own address, whatever email any contact has.
 - [ ] **7.8h** The **Schüler** list names two gaps separately: children with
@@ -613,8 +877,8 @@ Skip on an ordinary code change; do all of it before a release.
 
 ## Enrolment, asked for and decided
 
-- [ ] **9.1** As a family, open a child and look at **Kurse**. Courses with room
-  in them are offered.
+- [ ] **9.1** As a family, open **Profil** and look at **Kurse**. Courses with
+  room in them are offered.
 - [ ] **9.2** Ask to join one. Nothing is enrolled yet; the request is waiting.
 - [ ] **9.3** As the trainer, the count beside **Kurse** in the menu shows the
   waiting request. Accept it: the child is enrolled from the date you agreed.
@@ -761,8 +1025,9 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **13.12** Cancelling an invoice keeps it, marked storniert, with its
   number — it is never deleted and never renumbered.
 - [ ] **13.13** A family can download their own invoice, and nobody else's.
-- [ ] **13.14** A child whose family has no portal account: the invoice is
-  addressed to their standard contact, and can be emailed there.
+- [ ] **13.14** A child with no portal login: the invoice is addressed to the
+  child at the child's own **E-Mail-Adresse**, and can be emailed there — not to
+  a contact (7.8g).
 - [ ] **13.15** Two courses collecting into different bank accounts: putting a
   charge from each on one invoice is refused in words. One invoice carries one
   IBAN, and it has to be the right one.
@@ -802,7 +1067,10 @@ Skip on an ordinary code change; do all of it before a release.
 ## News, email and the queue
 
 - [ ] **15.1** Publish a news item. Families see it under **Neuigkeiten**.
-- [ ] **15.2** With the newsletter ticked, an email is queued per subscriber.
+- [ ] **15.2** Save a news item with **„Diese Fassung auch an alle senden, die
+  Neuigkeiten per E-Mail erhalten"** ticked. **Postausgang** holds one email for
+  each family whose **„Neuigkeiten per E-Mail erhalten"** is on under **Mein
+  Konto**, and none for a family who switched it off.
 - [ ] **15.3** **Einstellungen → SMTP → Verbindung testen**: with a target
   address filled in, the page comes back with the outcome on it, not with a
   message in a list to go and find. It arrives, or the summary says which step
@@ -821,6 +1089,25 @@ Skip on an ordinary code change; do all of it before a release.
   signing in, and only unsubscribes that one person.
 - [ ] **15.6** Changing the SMTP password and saving does not print it back to
   the page.
+- [ ] **15.7** News by email starts switched on, and saying no sticks. You need
+  two email addresses of your own that have no login yet. On a child,
+  **„Zugang zum Portal" → „Einladung senden"** to the first; open the invitation
+  and its link. **„Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit
+  abbestellbar."** is **already ticked**. Untick it, tick „Ich habe die
+  Datenschutzhinweise gelesen.", choose a password and tap **„Konto
+  aktivieren"**. Signed in as that family, **Mein Konto** shows **„Neuigkeiten
+  per E-Mail erhalten"** switched off. Do the same for the second address on
+  another child, but leave the box ticked. Now save a news item as in 15.2:
+  **Postausgang** has one for the second address and **none for the first**, and
+  only the second inbox receives it. Without the second address, a news mail
+  that reached nobody would pass this check. Keep both logins for 15.8.
+- [ ] **15.8** **Schüler → Leeres Formular drucken**: under **Einverständnis**
+  there are two **empty** boxes, **„Bitte keine Neuigkeiten des Vereins per
+  E-Mail schicken."** and **„Bitte keine E-Mail bei neuen Nachrichten
+  schicken."** — the paper asks for the no, because both emails are on unless
+  somebody refuses. No „Ja, ich möchte …" line is left. On the **Datenblatt** of
+  the first child from 15.7 the news box is **ticked** and the message box is
+  not. Afterwards delete both logins from 15.7 in **Konten**.
 
 ---
 
@@ -876,9 +1163,16 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **20.1** **Einstellungen → Datenschutz**: the German and English drafts
   are editable, and the operator's own details are filled into them from
   **Betrieb** rather than typed twice.
-- [ ] **20.2** Editing the notice asks each person to acknowledge the new
-  version once, and records that they did.
+- [ ] **20.2** Editing the notice changes the **Fassung** number printed under
+  it. Nobody is asked to acknowledge it again: the number is recorded when a
+  family accepts an invitation, and never compared afterwards.
 - [ ] **20.3** The notice is readable signed out.
+- [ ] **20.4** The notice she has released says what this version stores and
+  sends: a paragraph on when each account was online (last visit, 30 days of
+  periods, seen only by trainers and administrators) and one on club news by
+  email being on for new accounts. A portal that was updated keeps the text she
+  saved before, so these arrive only if she pasted them in (UPDATING.md). No
+  „[…]" note is left in the released text.
 
 ---
 
@@ -940,6 +1234,441 @@ Do this last, on a real phone, not a resized desktop window.
 
 ---
 
+## New in this release — the checks in detail
+
+The checks behind [What changed in this update](#what-changed-in-this-update--check-these).
+The ones marked **(release)** are for whoever makes the release; the rest are
+yours.
+
+**The sign-in page**
+
+- [ ] **U.1** Open the portal signed out. Under the sign-in form there is one
+  small line, „Mit der Anmeldung akzeptierst du die Datenschutzerklärung." —
+  the last word a link that opens the notice. The long paragraph about cookies
+  is gone, and at the bottom of every signed-out page there is only the link to
+  the Datenschutzerklärung and the version number. At 320px nothing scrolls
+  sideways.
+
+**The portal's own icon** — **Einstellungen → Portal**, card **„Symbol des Portals"**
+
+- [ ] **U.2** Choose a square PNG of at least 180 × 180 pixels (512 × 512 is
+  best) and tap **„Symbol speichern"**. Reload: the browser tab shows it, and so
+  does the tab of the sign-in page in a private window.
+- [ ] **U.3** Try three pictures that must not be taken: a PNG of 400 × 300, a
+  PNG of 120 × 120 and a JPEG. Each is refused with a sentence that says what is
+  wrong with it — not square, too small, not a PNG — and the icon you had stays.
+- [ ] **U.4** On an iPhone: **Zum Home-Bildschirm** before you change the icon,
+  again after changing it — the old home-screen icon does not change on its own,
+  it has to be removed and added again, and the card says so — and once more
+  after going back to the built-in one.
+- [ ] **U.5** On an Android phone, **Installieren** / **Zum Startbildschirm
+  hinzufügen** shows your icon and the club name.
+- [ ] **U.6** **(release)** Change the club name under **Einstellungen → Portal**, then open
+  `?page=manifest`: it carries the new name. A phone may keep the old one for up
+  to a day.
+- [ ] **U.7** **(release)** More than an hour after uploading, the file is still in
+  `storage/uploads/icon/` (the hourly sweep keeps it, because the setting points
+  at it).
+- [ ] **U.8** **„Standard-Symbol verwenden"** brings the built-in icon back in
+  the tab after a reload.
+
+**Rows that line up**
+
+- [ ] **U.9** On a child, **Kurse → „In einen Kurs eintragen"**, at 1280, 390
+  and 320 pixels wide: each course's name, its tariff choice and its button sit
+  on one line, the buttons all the same height as the choice beside them — no
+  button stretched taller than its row.
+- [ ] **U.10** On a desktop screen at 1280, scroll to the end of a long page
+  (a child's **Profil** with every card open): the last button or field is not
+  covered by the pinned „Etwas funktioniert hier nicht" button.
+- [ ] **U.11** A long conversation under **Nachrichten**, on a screen at least
+  761 pixels wide: the help button sits at the end of the page rather than over
+  the message box, and **„Nachricht senden"** can be clicked.
+- [ ] **U.12** On a child with two contacts, the **„Standardkontakt"** badge
+  sits beside the name it belongs to and covers nothing on the line below, at
+  1280 and at 320.
+
+**A problem report says how she got there** — read under **Einstellungen →
+Rückmeldungen**, „Technische Einzelheiten"
+
+- [ ] **U.13** **(release)** As a family, on a phone: open three or four pages, then under
+  **Mein Konto → „Passwort ändern"** type a wrong current password and save, then
+  tap „Etwas funktioniert hier nicht" and send a report. As the administrator the
+  report lists those steps in order, every password as `***`, and the red message
+  the portal showed on the page after the refused save.
+- [ ] **U.14** Open a page, go on to another, press the browser's back button,
+  then report. **Adresse** still names the page the report's form was on — the
+  one you went back to — and the steps say it was shown without a new request.
+- [ ] **U.15** **(release)** Open an unsubscribe link from a newsletter, then report: the
+  step shows `signature=***`, never the signature itself.
+- [ ] **U.16** Upload a picture (a profile picture will do), then report: the
+  step shows the file's size and type, never its name.
+  *Also walked by `tests/e2e.sh` with a payment proof instead of a picture: size and type, no name. Passed at 91520db.*
+- [ ] **U.17** Mark a report **„Erledigt"**. Every typed value in its steps now
+  reads `(gelöscht)`; the addresses stay. **„Wieder offen"** does not bring the
+  values back.
+- [ ] **U.18** **(release)** Sign out, sign in as a different account on the same phone,
+  report: its steps start after the new sign-in, with nothing of the previous
+  account's.
+- [ ] **U.19** A report marked **„Erledigt"** is gone from **Rückmeldungen**
+  30 days after it was marked done: the portal's background maintenance deletes
+  it on its first run after day 30. One marked done, reopened and done again is
+  kept 30 days from the second time; one still open is never deleted. Note the
+  date you mark one done and look again a month later — no suite waits 30 days,
+  so this is where the clock itself is proven.
+
+**One login is one student** (see `docs/decisions/0010-one-account-is-one-student.md`)
+— on a child's own page, card **„Zugang zum Portal"**
+
+- [ ] **U.20** **(release)** A new child with an address nobody uses yet: on
+  **„Zugang zum Portal"** the badge says **Kein Zugang**; tap **„Einladung
+  senden"**. The badge turns to **Eingeladen** and the invitation is in
+  **Postausgang**. Now **+ Schüler anlegen** for a brother with the **same**
+  address: saving is refused with „Jede Schülerin und jeder Schüler braucht eine
+  eigene E-Mail-Adresse. … ist schon die Anmeldung eines anderen Kontos. Bitte
+  eine andere Adresse eintragen." — and nothing is created: no brother in
+  **Schüler**, no login in **Konten**, nothing new in Postausgang. A child with
+  no address at all shows „Trag oben zuerst eine E-Mail-Adresse ein und
+  speichere." on the card, and no button.
+  *`tests/e2e.sh` at 91520db walks the first half and it passed: no address, „Kein Zugang“ and the sentence with no button; the invitation, „Eingeladen an …“, Postausgang. The brother with the same address is still by hand.*
+- [ ] **U.21** **(release)** As the administrator, **„Ohne E-Mail anlegen (mit
+  Passwort)"** on a child, with a password of at least 12 characters: sign out
+  and sign in with that address and password. It works with no SMTP at all, and
+  lands on that child's **Profil**.
+- [ ] **U.22** **(release)** A child invited but not signed up yet: change the
+  address on the child's page and save. The link in the first invitation no
+  longer works, and a new invitation to the new address is in Postausgang. With
+  SMTP not set up, the save is refused with a sentence and nothing changes.
+- [ ] **U.23** **(release)** A child whose login is active: the address on the
+  child's page can't be changed there — a change is refused with „Die Adresse
+  ist die Anmeldung dieses Kontos und kann hier nicht geändert werden. …",
+  pointing to „Mein Konto". Signed in as that family, **Mein Konto →
+  „E-Mail-Adresse ändern"** and the confirmation link: afterwards the child's
+  page and **Konten** both show the new address.
+- [ ] **U.24** **(release)** From the child's page: **„Zugang sperren"**, then
+  **„Zugang entsperren"**, **„Einladung erneut senden"** on an invited one, and
+  **„Zugang löschen"**. Each one lands back on the same child's page, not on
+  Konten.
+- [ ] **U.25** **(release)** As the trainer, **Konten** offers to invite and create team
+  members only; there is no way to invite a family from there.
+- [ ] **U.26** A mail to a family — an invitation, a reminder — starts
+  „Hallo <Vorname des Kindes>,".
+  *The invitation part is walked by `tests/e2e.sh` („Hallo Jonas,“), passed at 91520db. The reminder is still by hand.*
+- [ ] **U.27** **Änderungen** on a child whose login changed shows the login as
+  its address, or as „gelöschter Zugang" once it is gone — never a bare number.
+- [ ] **U.28** **(release)** With example data filled in, neither the overview nor
+  the **Schüler** list shows the notice „… Kinder brauchen eine eigene
+  E-Mail-Adresse" — every example child has an address of its own. (Where two
+  children do share one from before this rule, that notice names them, each card
+  says „Diese Adresse nutzt schon … Trag oben eine eigene ein." with no button,
+  and **Noch zu tun** offers „Eigene E-Mail-Adresse eintragen", which jumps to the
+  address field.)
+- [ ] **U.28a** **(release)** The badge on **„Zugang zum Portal"** matches the login
+  in each state — **Kein Zugang**, **Eingeladen** („Eingeladen an …, noch nicht
+  angenommen."), **Aktiv** („Meldet sich an mit …") and **Gesperrt** — and
+  **Konten** uses the same four words and colours.
+- [ ] **U.28b** **(release)** Delete a child that has a login, after first reading
+  the warning that its login would be left over. **Konten** then shows that login
+  under **„Zugänge ohne Schüler"**, where it can be locked or deleted and nothing
+  else. With no such logins the section is not there at all.
+
+**Setup**
+
+- [ ] **U.29** **(release)** On a fresh install, type the administrator password in
+  `setup.php` with a space at the end. Signing in with the password, with or
+  without that space, works — the installer trims it exactly as the sign-in
+  form does.
+
+**The console**
+
+- [ ] **U.30** **(release)** `create-admin` on a host without `shell_exec`: check
+  [3.4e](#installation-and-update).
+
+**The start checklist** (see `docs/decisions/0011-the-start-checklist-and-a-seven-entry-menu.md`)
+
+- [ ] **U.31** **(release)** On a fresh install, sign in as the administrator: you
+  land on **„Einrichtung"**, „0 von 9 erledigt". Sign out and in again: you land there
+  again. Sign in as a trainer, and as a family: both land on the overview, and
+  `?page=start` answers „Nur für Administratoren."
+  *`tests/e2e.sh` at 91520db walks the administrator (0 von 9, and again after signing in a second time) and the family (`?page=start` refused) and passed. The trainer is still by hand.*
+- [ ] **U.32** **(release)** Fill in the example data (**Einstellungen → System**):
+  „Ersten Kurs anlegen", „Preis für jeden Kurs", „Kinder eintragen", „Beiträge"
+  and „Familien einladen" all stay undone. Example data never ticks a step.
+- [x] **U.33** **(release)** From the checklist, open „Name und Anschrift", fill it in and
+  save. The page the save returns to still offers the way back to the
+  checklist, and so does any page you open next; opening the checklist ticks the
+  step and the way back is gone.
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
+- [x] **U.34** **(release)** Save SMTP and run **„Nur Verbindung prüfen"** successfully:
+  „E-Mails verschicken" is ticked. Change the server name and save: the step is
+  undone again and the SMTP tab shows no last test until you test again.
+  Re-saving without changing anything keeps the tick.
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
+- [ ] **U.35** **(release)** **Einstellungen → Datenschutz** with the English box empty:
+  releasing is accepted. Open the notice with `&lang=en`: the German text is
+  shown, with the line „This privacy notice is only available in German. …" Put a short English
+  text in and release: refused, naming „English". Put a full English text in:
+  released, and the version number under the notice has changed.
+  *`tests/e2e.sh` at 91520db releases with the English box empty and the family sees the German notice with the line under `&lang=en`: passed. The short and full English texts are still by hand.*
+- [ ] **U.36** **(release)** As the administrator, switch **„Monatsbeiträge automatisch
+  anlegen"** on and off on the **Beiträge** page. A trainer is not offered it. Under **Einstellungen → System** it is no
+  longer listed.
+  *`tests/e2e.sh` at 91520db switches it on from the Beiträge page: passed. Off, the trainer and the System tab are still by hand.*
+- [ ] **U.37** **(release)** On an existing child whose record still has a tariff and an agreed
+  price from before, save the child's page twice with other changes. **Änderungen**
+  shows neither the tariff nor the price changing.
+- [ ] **U.38** **(release)** **Verwaltung → Geld & Zahlungen**: the default payment recipient is
+  a choice of recipients, not a number. Archive the one chosen: the invoices page
+  now says that no default recipient is chosen, and „Bankkonto" on the checklist is
+  undone.
+- [ ] **U.39** With every step done, **„Ausblenden"**: signing in lands on the
+  overview. **„Wieder anzeigen"** brings the checklist back.
+  *Also walked by `tests/e2e.sh` in Chromium, passed at 91520db; on the phone it is still yours.*
+
+**Errors that report themselves** (see `docs/decisions/0012-unexpected-errors-report-themselves.md`)
+
+- [x] **U.40** **(release)** In the hosting panel's phpMyAdmin, on the copy's
+  database only, rename the table `news` to `news_x`. Signed in as a family, open
+  **Neuigkeiten**: the page „Die Anwendung ist vorübergehend nicht verfügbar"
+  appears, nothing technical. Open it twice more. Rename the table back.
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
+- [x] **U.41** **(release)** As the administrator: one notification, and under **Einstellungen →
+  Rückmeldungen** one new entry „Fehler auf Seite news: PDOException", seen three
+  times — not three entries, and only one notification.
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
+- [ ] **U.42** **(release)** Copy the entry's text for support and paste it into a note. It says
+  what broke, where, the version and the device, and the pages visited — and no
+  name, no email address, no IP address and nothing anybody typed. A search
+  (`q=…`) shows as `…`.
+  *`tests/e2e.sh` at 91520db reads the support text: what broke, where, the version, the device and the pages; no name, email address, IP address or typed note: passed. A search showing as `…` is still by hand.*
+- [x] **U.43** **(release)** Mark it **„Erledigt"**, then repeat U.40 once: the same entry is new
+  again, counted four times, with a new notification.
+  *Walked by `tests/e2e.sh` at 91520db (MariaDB 10.11.14; PHP 8.4.19 and 8.5.11): passed.*
+- [ ] **U.44** **(release)** Note the date. An entry nothing has repeated is gone from
+  Rückmeldungen 30 days after it was last seen, whatever its state; a report a
+  person wrote is not affected by that.
+
+**The menu and where things went** (see `docs/decisions/0011-the-start-checklist-and-a-seven-entry-menu.md`)
+
+- [ ] **U.45** On a laptop, as yourself: the menu on the left is one list —
+  Übersicht, Schüler, Kurse, Anwesenheit, Geld, Nachrichten, Einstellungen, with
+  **„Einrichtung"** above them while the checklist is unfinished. Nothing in it
+  folds open or shut. Open **Rechnungen** or a single child: **Geld** or
+  **Schüler** stays marked, so you always see where you are.
+- [ ] **U.46** On your phone, the bar at the bottom reads **Übersicht, Schüler,
+  Post, Anwesend, Mehr**. **Mehr** opens the same seven.
+  *`tests/e2e.sh` reads the bar at 390px in Chromium, passed at 91520db. „Mehr“ opening the seven is still by hand.*
+- [ ] **U.47** **(release)** As a trainer, the seventh entry is **Verwaltung**, not
+  Einstellungen, and the phone bar is the same as yours.
+- [ ] **U.48** On a child that has a login, **„Portal als … ansehen"**, on your
+  phone: the family's bar reads **Übersicht, Profil, Post, Neues, Konto**, with no
+  **Mehr**. **Konto** opens their **Mein Konto**. **Ansicht beenden** afterwards.
+  *`tests/e2e.sh` reads the family's bar signed in as the family, not through „Portal als … ansehen“, passed at 91520db.*
+- [ ] **U.49** **Einstellungen** opens with cards above the tabs: **Verwaltung**,
+  **Konten**, **Änderungen**, **Einrichtung ansehen** and **Erweitert**. Each card
+  opens its page, and **Einstellungen** stays marked in the menu. Postausgang is
+  not among them — it is under Nachrichten (U.50).
+- [ ] **U.50** At the top of **Nachrichten**: **„Gruppe anschreiben"**,
+  **„Neuigkeiten"** and **„Postausgang"**. Each opens its page, with
+  **Nachrichten** still marked.
+- [ ] **U.51** At the top of **Beiträge** and of **Rechnungen**, a switch
+  **Beiträge · Rechnungen** takes you from one to the other; **Geld** stays marked
+  on both.
+- [ ] **U.52** **Mein Konto** ends with **„Datenschutz und Hilfe"**: the
+  Datenschutzerklärung, „Etwas funktioniert nicht", the version and **Abmelden**.
+  On a family's phone (U.48) this is the only way to the privacy notice, so check
+  it there too.
+  *`tests/e2e.sh` checks it as the family, passed at 91520db. As yourself it is still by hand.*
+
+**Fewer fields at first**
+
+- [ ] **U.53** On a course, **Tarife → + Neu**: the name and the prices are shown;
+  everything else waits under **„Mehr Möglichkeiten"**. On a child's **Kurse**
+  tab, the agreed price, the payment day, the dates and the discount wait there
+  too — and the box opens by itself on a child that already has one of them set.
+  Nothing has to be opened to save.
+  *`tests/e2e.sh` saves a new tariff without opening „Mehr Möglichkeiten“, passed at 91520db. The child's Kurse tab is still by hand.*
+- [ ] **U.54** **Einstellungen → Betrieb**, the Umsatzsteuer choice: with
+  „Kleinunternehmer (keine Umsatzsteuer)" there is no „Steuersatz in Prozent" and
+  no „UID-Nummer"; pick „Mit Umsatzsteuer" and both appear. **Leave without
+  saving** if yours is Kleinunternehmer. **„Warum?"** opens the legal background.
+- [ ] **U.55** **Verwaltung → Geld & Zahlungen**: „Standard-Zahlungsempfänger" is a
+  list of your recipients by name — not a number to type — and an archived one is
+  not offered.
+- [ ] **U.56** Switch the portal to **EN** at the top, open the privacy notice
+  (**Mein Konto → Datenschutz und Hilfe**). With no English text written, you see
+  the German one with „This privacy notice is only available in German. …" above
+  it. Switch back to **DE**.
+  *Also walked by `tests/e2e.sh` as the family, passed at 91520db.*
+- [ ] **U.57** **(release)** On the copy, save SMTP and do not test it. **„Einladung
+  senden"** on a child is refused with „Eine Einladung lässt sich noch nicht
+  verschicken. E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP" die
+  Verbindung prüfen." After **„Nur Verbindung prüfen"** succeeds, the invitation
+  goes out. Change the server and save: refused again until the next passing test.
+
+**A profile picture is kept by the browser, and shown only to who may see it**
+
+- [ ] **U.58** With a profile picture of your own, move between four or five
+  pages on the phone: the picture in the top bar is there the moment each page
+  appears, not blank for a moment and then filled in.
+- [ ] **U.59** **Mein Konto**: upload a different picture. The top bar shows the
+  new one on the very next page — never the old one — and so does a child's
+  page after changing the child's picture. „Bild entfernen" puts the initials
+  back on the next page.
+- [ ] **U.60** **(release)** In a desktop browser's developer tools
+  (**Netzwerk** / **Network**), open a page: the picture's request answers with
+  `Cache-Control: private, max-age=604800` and no `Pragma` or `Expires`. Go to
+  another page: it comes „from memory cache" / „from disk cache". An invoice PDF
+  or a message attachment still answers `private, no-store`. Sign out: the
+  logout's response carries `Clear-Site-Data: "cache"`. (Safari may ignore that
+  header; the picture's copy then runs out on its own within a week.)
+- [ ] **U.61** **(release)** On the copy, signed in as family A, open
+  `?page=download&what=avatar&kind=student&id=` with the id of a child of
+  another family who has a picture: „Nicht gefunden", no picture. The same with
+  `kind=account` and another family's account id. Your own child's, your own
+  and the trainer's still show.
+- [ ] **U.62** As a family, **Nachrichten → Neue Nachricht**: other families in
+  the list show their initials, never their photograph; the trainer shows her
+  picture. As the trainer, every family shows its picture.
+
+**One login, one address, either name signs in** (ADR 0020) — on the iPhone
+where it says so, after the views for it are in
+
+- [ ] **A.1** Signed out, the sign-in page has **one** box for „Benutzername
+  oder E-Mail-Adresse" and a password. Sign in with the username; sign out;
+  sign in with the email address; sign out. Both work. On the iPhone the
+  Keychain offers the saved username, or the address, in that one box, and saves
+  the password under it.
+- [ ] **A.2** Type the username with capitals or an umlaut, `Lena.Müller` for
+  `lena.mueller`, and the address in capitals, `LENA@Beispiel.AT`. Both sign in
+  as the same login.
+- [ ] **A.3** A wrong password, an unknown username, an unknown address, a
+  suspended login and an invitation not yet opened each give **the same**
+  sentence: „Anmeldung nicht möglich. Bitte Benutzername oder E-Mail-Adresse und
+  Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link in der
+  Einladung öffnen." Read it each time; none of them says „Zugangsdaten".
+- [ ] **A.4** „Passwort vergessen" with an unknown name and with a known one:
+  the page says the same thing, „Wenn es dazu einen Zugang gibt, ist eine E-Mail
+  an dessen Adresse unterwegs.", and names no address. Only the known one puts a
+  mail in **Postausgang**, to the login's own address, naming the username.
+- [ ] **A.5** „Passwort vergessen" for a login that is still only invited: the
+  mail that arrives is **the invitation** again, not a reset link. For a
+  suspended login nothing arrives.
+- [ ] **A.6** In **Postausgang**, as the trainer, open any invitation or reset
+  mail: its text is not shown. Nobody but the mailbox reads a link that sets a
+  password.
+
+**Invitations, and nothing else**
+
+- [ ] **A.7** A child's page, card „Zugang zum Portal", **„Einladung senden"**:
+  the flash names the username. Open the invitation from the real mailbox: it
+  names the username, says it can be changed while setting up, and that the
+  address signs in too.
+- [ ] **A.8** On the page the invitation opens, change the suggested username
+  (say to `lena.m`), set a password, tick the privacy notice, save. You are
+  signed in; the flash names `lena.m` and the address. **Änderungen** shows the
+  username change.
+- [ ] **A.9** **(release, MariaDB)** Do A.8 with a username somebody else has.
+  The page comes back with „Dieser Benutzername ist schon vergeben", the typed
+  name still in the box and **both password boxes empty**; the login is still
+  „Eingeladen" on the child's page. Choose another and it works.
+- [ ] **A.10** The page a reset link opens shows the username read-only; typing
+  into it is not possible, and the saved password is the only thing that changes.
+- [ ] **A.11** A second child with the address of a child who already has a
+  login: the card does not offer the invitation; its „Noch zu tun" asks for
+  „Eigene E-Mail-Adresse eintragen". Pressing an invitation from an old page
+  anyway is refused with „Diese E-Mail-Adresse gehört schon zu einem anderen
+  Zugang …", and nothing is written. Put the parent's address on **Kontakte**
+  instead and give the child their own: the invitation then works.
+- [ ] **A.12** **Schüler anlegen** with first name, last name, the child's own
+  address and **„Gleich einladen"** ticked: the child's page opens, the flash
+  names the username, the card says „Eingeladen", and **Postausgang** holds the
+  invitation. With mail not ready (SMTP not tested) the tick is not offered or
+  is refused saying what is missing — and **no child was created**. Without the
+  tick only the child is created.
+- [ ] **A.13** On an active login's card, **„Link für neues Passwort senden"**
+  (frontend wording may differ): the flash says a link is on its way; the link
+  arrives at the login's own address; you see neither link nor password
+  anywhere. Not offered for your own login, for an invitation (send it again
+  instead) or for a suspended login. As a trainer, it is not offered for
+  another trainer.
+
+**Families fill in their own details**
+
+- [ ] **A.14** Sign in as a family whose child has no birth date, address,
+  emergency contact or a required „Ansehen und bearbeiten" field filled in.
+  Their overview and their child's „Profil" tab say „Noch zu ergänzen" with each
+  of those — and never the phone number.
+- [ ] **A.15** As the family, on „Profil", fill in the birth date, the postal
+  address, the phone and the custom fields, and save. As the administrator,
+  **Änderungen** shows **one** line for that save, under the family's name, with
+  each field before and after — the custom fields by their names, a date as
+  „27.01.2019", a ticked box as „ja".
+- [ ] **A.16** **Änderungen → „Von Familien"** lists that line and none of the
+  trainer's own. Change something while viewing the portal as that family
+  („Portal als … ansehen"): it is listed under your name, not under „Von
+  Familien".
+- [ ] **A.17** As the family, add, change and remove an emergency contact. Each
+  is one line in **Änderungen**, named „Kind · Kontakt", and the removal's line
+  keeps the whole contact so it can be typed in again. A contact's line does
+  not show a student number.
+- [ ] **A.18** As the trainer, on the same child, set every one of those fields
+  back by hand — names, birth date, address, phone, every custom field, every
+  contact. Nothing a family can write is read-only for her: typing the old value
+  back is the undo.
+- [ ] **A.19** A required field at „Ansehen und bearbeiten" left empty: the
+  family's save is refused with „Pflichtfeld: …", the trainer's is not. A
+  required field at „Nur intern" left empty refuses the trainer's save of that
+  child. Creating a new child with either kind of required field defined is
+  never refused.
+- [ ] **A.20** On the Kontakte tab with two contacts, change the first one's
+  phone to something invalid in its „Kontakt bearbeiten" and save: the refusal
+  opens **that** contact with what you typed; the other contact's form still
+  shows the other person's own values. Saving the other one changes only it.
+
+**The address on invoices**
+
+- [ ] **A.21** Issue an invoice for a child, then, as the family, change the
+  postal address. Download the old invoice and send it again from
+  **Rechnungen**: both show **the old address**, opened in a real PDF reader.
+  The next invoice issued shows the new one.
+- [ ] **A.22** As the family, empty the address. An invoice above 400 € for
+  that child is refused, saying the address is missing; one below is issued.
+
+**Still the same for everybody who signed in with an address**
+
+- [ ] **A.23** **(release)** On a copy of a real portal, upload this version.
+  Every existing login signs in with its email address exactly as before, and
+  now also with a username made from its name (Mein Konto shows it). Nobody was
+  mailed about it.
+**After the reviews of the first build**
+
+- [ ] **A.25** On the phone, as the trainer, „Portal als {Familie} ansehen", then
+  leave the phone until the session times out (or set „Abmelden nach (Minuten)"
+  low on a copy). Open the portal again: the sign-in page, and **no** „Ansicht
+  beenden" anywhere. Sign in as somebody else on that phone: they are
+  themselves, with no bar about viewing anybody, and nothing they tap makes them
+  the trainer. The same after opening an invitation link on that phone.
+- [ ] **A.26** As the administrator, **Änderungen**: the username chosen on an
+  invitation page is listed under the name of the person who chose it, not as
+  „automatisch". A „Passwort vergessen" asked on a phone where a view had timed
+  out names nobody in the audit log.
+- [ ] **A.27** The flashes say what happened, in plain words: a family's save,
+  „Deine Angaben sind gespeichert."; a family's save after somebody else saved
+  the same child, „Inzwischen hat jemand anderes etwas an diesem Profil
+  gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal
+  speichern." with the typed values still in the boxes; removing a contact,
+  „Entfernt: {Name} ({Beziehung}), {Telefon}. Aus Versehen? …"; the access
+  card's invitation, resend and reset link each name the address the mail went
+  to.
+
+- [ ] **A.24** **(release)** `php tests/run.php` and `tests/mariadb-local.sh`
+  are green apart from what the run lists as not covered; the collation cases
+  (an address stored with capitals, ß read as ss) are covered only by the
+  MariaDB run.
+
+---
+
 ## What none of this proves
 
 Say what you ran, not what you hope is true.
@@ -949,6 +1678,8 @@ Say what you ran, not what you hope is true.
   could not cover at the end of every run.
 - `tests/mariadb-local.sh` proves **MariaDB 10.11**. **MySQL 8.0 is still
   unverified** — it is one of the two supported engines, not both.
+  `tests/existing-database.sh` proves whichever engine the hosting runs: quote the
+  „Database server:" line it prints, not what you expect it to be.
 - No automated check opens the generated PDF in Adobe Reader, sends real email
   through a real provider, or renders a page in Safari on a real iPhone. Checks
   13.4, 15.3 and 22.x exist because nothing else covers them.

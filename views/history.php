@@ -12,7 +12,11 @@
 $entity=(string)($_GET['entity']??'');
 $recordId=(int)($_GET['record']??0);
 $scoped=$entity!=='' && $recordId>0 && isset(tracked_entities()[$entity]);
-$versions=$scoped?history_for($entity,$recordId):history_recent(80);
+/* „Von Familien" (ADR 0020, §10b): what families changed on their own
+   records, which is how she sees it and types a value back if she must. The
+   actor's role is read now, not stored with the change. */
+$tab=!$scoped && ($_GET['tab']??'')==='family'?'family':'all';
+$versions=$scoped?history_for($entity,$recordId):history_recent(80,$tab==='family');
 
 page_head(
     t('Änderungen','Changes'),
@@ -20,6 +24,7 @@ page_head(
            :t('Was zuletzt geändert wurde, und von wem.','What changed recently, and who changed it.'),
     $scoped?link_button(t('Alle Änderungen','All changes'),'history',[],'secondary'):''
 );
+if(!$scoped) tabs(['all'=>t('Alle','All'),'family'=>t('Von Familien','By families')],$tab,'history');
 
 if(!$versions): empty_state(t('Noch keine Änderungen','No changes yet'),
     t('Sobald jemand etwas ändert, steht hier was es war und was daraus wurde.','Once somebody changes something, this says what it was and what it became.'));
@@ -36,7 +41,9 @@ else: ?>
     <div class="history-row">
         <div class="history-what">
             <strong><?=e($operation)?>: <?=e(entity_label($v['entity']))?><?=$v['label']!==''?' · '.e($v['label']):''?></strong>
-            <small><?=e(fmt_datetime($v['created_at']))?><?=$v['actor_name']?' · '.e($v['actor_name']):' · '.e(t('automatisch','automatically'))?></small>
+            <?php /* „(Familie)" as plain words rather than a badge: as a badge it
+                     wrapped onto a line of its own at 320px. */ ?>
+            <small><?=e(fmt_datetime($v['created_at']))?><?=$v['actor_name']?' · '.e($v['actor_name'].(($v['actor_role']??'')==='student'?t(' (Familie)',' (family)'):'')):' · '.e(t('automatisch','automatically'))?></small>
             <?php if($changes): ?>
             <?php /* Open for a single record's history, folded on the list of
                      everything: on the list it is the headline that is being
@@ -47,7 +54,7 @@ else: ?>
                 <?php foreach($changes as $column=>$pair): ?>
                     <div>
                         <dt><?=e(history_field_label((string)$column))?></dt>
-                        <dd><span class="was"><?=e(history_value($pair['from']))?></span> → <?=e(history_value($pair['to']))?></dd>
+                        <dd><span class="was"><?=e(history_value($pair['from'],(string)$column))?></span> → <?=e(history_value($pair['to'],(string)$column))?></dd>
                     </div>
                 <?php endforeach ?>
                 </dl>

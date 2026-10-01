@@ -21,7 +21,11 @@ sort($files);
 
 $state = test_state();
 $start = microtime(true);
-printf("driver: %s\n\n", test_driver());
+// Where everything this run writes goes. Printed because it is the one line an
+// operator can check to know these are tests that stay out of the portal's own
+// folder - TESTING.md tells her to look for it - and because a run the host
+// kills part-way leaves that folder behind for her to find.
+printf("driver: %s\nfiles:  %s (removed when the run ends)\n\n", test_driver(), test_run_dir());
 
 foreach ($files as $file) {
     $name = basename($file, '.php');
