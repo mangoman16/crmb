@@ -404,6 +404,14 @@ function setting_schema(): array {
             'kind' => 'raw', 'default' => [], 'group' => 'system', 'internal' => true,
             'label' => ['Letzte Datenbankaktualisierung', 'Last database update'],
         ],
+        // What a refused sign-in checks the password against when there is no
+        // real hash to check (ADR 0019, M2): a hash of random bytes, never a
+        // password anybody has. '' until the migration runner makes it; kept at
+        // PASSWORD_DEFAULT's cost by refresh_sign_in_dummy_hash().
+        'sign_in_dummy_hash' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Vergleichswert für abgelehnte Anmeldungen', 'Comparison value for refused sign-ins'],
+        ],
         'schema_fingerprint' => [
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
             'label' => ['Stand der Migrationen', 'Applied migration set'],

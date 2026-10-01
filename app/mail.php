@@ -16,9 +16,15 @@ const MAIL_STRUCTURED = "\x01crm-mail\n";
  * $attach describes files rather than carrying them: ['kind'=>'invoice','id'=>7].
  * The file is built when the message is sent, which keeps a queue of invoices
  * from being a queue of PDFs and means what goes out is the current document.
+ *
+ * The recipient is asked only whether mail can go there (email_deliverable()),
+ * never whether it could be written today (email_value()). Every stored address
+ * passed the first; a legacy one may fail the second, and a throw here rolls
+ * back the whole action - a newsletter to every other family with it (ADR 0019,
+ * R2).
  */
 function queue_mail(?int $accountId,string $recipient,string $subject,string $body,string $category,array $attach=[]): void {
-    email_value($recipient);
+    if(!email_deliverable(email_normalised($recipient))) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.'));
     if(preg_match('/[\r\n]/',$subject) || mb_strlen($subject)>255) throw new UserError(t('Ungültiger Betreff.','Invalid subject.'));
     $payload=$attach
         ? MAIL_STRUCTURED.json_encode(['body'=>$body,'attach'=>$attach],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)
@@ -45,6 +51,38 @@ function mail_attachment(array $described): ?array {
     $invoice=one('SELECT * FROM invoices WHERE id=?',[(int)($described['id']??0)]);
     if(!$invoice) return null;
     return ['name'=>invoice_filename($invoice),'mime'=>'application/pdf','body'=>invoice_pdf($invoice)];
+}
+/**
+ * Whether two addresses are one mailbox, compared the way they are stored.
+ *
+ * Not byte for byte: an address saved with capitals, before email_value()
+ * lower-cased everything, would otherwise cancel a real reset mail to it
+ * (ADR 0019, R7).
+ */
+function same_address(string $a, string $b): bool { return email_normalised($a)===email_normalised($b); }
+
+/**
+ * Whether every sign-in link in a security mail may still go to $recipient.
+ *
+ * Asked by the sender at the moment of sending, because a lot can happen while a
+ * mail waits: a link replaced, a login suspended, an address moved. Every mail
+ * send_account_token() writes carries one link today; every link found is still
+ * checked, not the first, so a body that ever carries more cannot let a stale
+ * one through [S1]. A mail with no link in it is not a security mail and is not
+ * sent.
+ * Each link must be live, belong to a login that is not suspended, and belong to
+ * this recipient: the login's own address, or for a changed address the new one
+ * it is confirming.
+ */
+function security_mail_links_live(string $body, string $recipient): bool {
+    if(!preg_match_all('/[?&]token=([a-f0-9]{64})\b/',$body,$found)) return false;
+    foreach($found[1] as $token) {
+        $record=token_record(hash('sha256',$token));
+        if(!$record || $record['state']==='suspended') return false;
+        $address=$record['purpose']==='email' ? (string)$record['target_email'] : (string)$record['email'];
+        if(!same_address($address,$recipient)) return false;
+    }
+    return true;
 }
 function cancel_account_mail(int $id): void { run("UPDATE mail_jobs SET status='cancelled',payload='',error=NULL WHERE account_id=? AND status IN ('queued','failed')",[$id]); }
 function notify_thread(array $account,int $threadId,string $subject): void {
@@ -397,12 +435,8 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                 $eligible=$a && $a['state']!=='suspended';
                 $stored=$job['payload']!==''?mail_payload(unseal($job['payload'])):['body'=>'','attach'=>[]];
                 $plainBody=$stored['body'];
-                if($eligible && $job['category']==='security') {
-                    preg_match('/[?&]token=([a-f0-9]{64})\b/',$plainBody,$match);
-                    $token=isset($match[1])?token_record(hash('sha256',$match[1])):null;
-                    $eligible=$token && (int)$token['account_id']===(int)$a['id'] && ($token['target_email']??$a['email'])===$job['recipient'];
-                }
-                if($eligible && $job['category']!=='security') $eligible=$a['state']==='active' && $a['verified_at'] && $a['email']===$job['recipient'];
+                if($eligible && $job['category']==='security') $eligible=security_mail_links_live($plainBody,(string)$job['recipient']);
+                if($eligible && $job['category']!=='security') $eligible=$a['state']==='active' && $a['verified_at'] && same_address((string)$a['email'],(string)$job['recipient']);
                 $switch=['newsletter'=>'newsletter','notifications'=>'notifications','payments'=>'payment_notices'][$job['category']]??null;
                 if($eligible && $switch!==null) $eligible=(bool)($a[$switch]??1);
                 if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='',retry_after=NULL WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}

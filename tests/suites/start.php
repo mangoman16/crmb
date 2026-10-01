@@ -143,12 +143,12 @@ case_('Sign-in lands an administrator on the checklist while it is unfinished, a
 set_setting('org_name', '');
 setup_cache_clear();
 sign_out();
-$signIn = function (string $email) { setup_cache_clear(); return submit('login', ['email'=>$email, 'password'=>'Test-Only-Password-2026']); };
-is_same(['start', []], $signIn('chefin@beispiel.test'), 'an administrator signing in is taken to the checklist');
-is_same(['start', []], $signIn('chefin@beispiel.test'), 'at every sign-in, not only the first');
-$trainerEmail = (string)scalar('SELECT email FROM accounts WHERE id=?', [$trainer]);
-is_same(['dashboard', []], $signIn($trainerEmail), 'a trainer is taken to the overview');
-is_same(['dashboard', []], $signIn((string)scalar('SELECT email FROM accounts WHERE id=?', [$family])), 'and so is a family');
+$signIn = function (int $id) { setup_cache_clear();
+    return submit('login', ['username'=>(string)scalar('SELECT username FROM accounts WHERE id=?', [$id]), 'password'=>'Test-Only-Password-2026']); };
+is_same(['start', []], $signIn($admin), 'an administrator signing in is taken to the checklist');
+is_same(['start', []], $signIn($admin), 'at every sign-in, not only the first');
+is_same(['dashboard', []], $signIn($trainer), 'a trainer is taken to the overview');
+is_same(['dashboard', []], $signIn($family), 'and so is a family');
 is_same(['dashboard', []], landing_after_sign_in(one('SELECT * FROM accounts WHERE id=?', [$trainer])),
         'landing_after_sign_in() is the one rule');
 

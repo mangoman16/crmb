@@ -70,20 +70,35 @@ function csrf(): string { return $_SESSION['csrf'] ??= bin2hex(random_bytes(32))
 function current_page(): string { return (string)($GLOBALS['page'] ?? 'dashboard'); }
 
 /**
- * Which form is being written out right now.
+ * Which form is being written out right now: its action, and the record it
+ * edits when it has one (form_record()).
  *
  * Set by form_open() and read by held_input(), so a rejected submission is
  * offered back to the form it came from and to no other. Without it, a filter
- * box and a student's first name would both answer to the name "q" or "name".
+ * box and a student's first name would both answer to the name "q" or "name" -
+ * and without the record, a refused edit of one contact was written into every
+ * contact's form on the page (ADR 0020, §10a).
  */
-function form_context(string $action=''): string {
-    static $current='';
-    if (func_num_args()) $current=$action;
-    return $current;
+function &form_context_state(): array { static $state=['action'=>'','record'=>null]; return $state; }
+function form_context(string $action='', ?int $record=null): string {
+    $state=&form_context_state();
+    if (func_num_args()) $state=['action'=>$action,'record'=>$record];
+    return $state['action'];
+}
+/** The record the form being written out edits, or null for a form with none. */
+function form_record(): ?int { return form_context_state()['record']; }
+
+/**
+ * The record a form edits, from the id it carries: a positive integer, or null
+ * for a form that has none - an add form, a create form. One reading for the
+ * form written out and the form posted back, so the two can be compared.
+ */
+function form_record_id(mixed $id): ?int {
+    return (is_int($id) && $id>0) || (is_string($id) && preg_match('/^[1-9][0-9]{0,18}$/D',$id)) ? (int)$id : null;
 }
 
 function form_open(string $action, array $hidden=[], string $class='', bool $multipart=false): void {
-    form_context($action);
+    form_context($action, form_record_id($hidden['id'] ?? null));
     // A form carrying a file has to say so, or PHP receives an empty $_FILES and
     // the upload looks to the person like nothing happened.
     echo '<form method="post" action="'.e(url()).'" class="'.e($class).'"'.($multipart?' enctype="multipart/form-data"':'').'>';
@@ -154,8 +169,10 @@ function remember_input(string $action): void {
         $fields[$key]=$value;
     }
     if (!$fields) return;
+    // 'id' is the page's record, from return_id; 'record' is the form's own -
+    // one contact of several on a student's page, say.
     $_SESSION['form_input']=['action'=>$action,'page'=>post('return_page'),'id'=>(string)(int)post('return_id'),
-                             'tab'=>post('return_tab'),'fields'=>$fields];
+                             'tab'=>post('return_tab'),'record'=>form_record_id($_POST['id'] ?? null),'fields'=>$fields];
 }
 
 /** Take the held submission out of the session. Called once, before a page renders. */
@@ -165,23 +182,39 @@ function take_held_input(): void {
 }
 
 /**
- * Whether the held submission belongs to the form being written out right now.
+ * What was typed into the form for $action, when that is the form refused last
+ * and it was refused on this page, on this tab, for this page's record and -
+ * where both have one - for this form's own $record; or [].
  *
- * Same form, same page, same record, same tab. Anything less and a rejected edit
- * of one student could hand their details to the form for another.
+ * Same form, same page, same records, same tab. Anything less and a rejected
+ * edit of one student could hand their details to the form for another, or a
+ * refused edit of one contact be written into every contact's form and saved
+ * over the wrong person (ADR 0020, §10a). A form with no record of its own - an
+ * add form - matches as it always did. The one place that match is made:
+ * holding_input() and held_input() ask this for the form being written out, and
+ * a view asks it by name to react to a refusal before it opens the form - the
+ * username change left open, a refused contact's details opened (ADR 0019, I4).
+ * It reads the held copy only, so a view that asks still writes nothing.
+ * remember_input() never holds an empty set, so [] means nothing is held.
  */
-function holding_input(): bool {
+function held_for(string $action, ?int $record = null): array {
     $held=$GLOBALS['crm_held_input'] ?? null;
-    return $held!==null && form_context()!=='' && $held['action']===form_context()
-        && (string)$held['page']===current_page()
-        && (string)$held['id']===(string)(int)($_GET['id'] ?? 0)
-        && (string)$held['tab']===(string)($_GET['tab'] ?? '');
+    if ($held===null || $action==='' || $held['action']!==$action
+        || (string)$held['page']!==current_page()
+        || (string)$held['id']!==(string)(int)($_GET['id'] ?? 0)
+        || (string)$held['tab']!==(string)($_GET['tab'] ?? '')) return [];
+    // A submission held before records were stored has none, and matches.
+    $heldRecord=$held['record'] ?? null;
+    if ($record!==null && $heldRecord!==null && (int)$heldRecord!==$record) return [];
+    return (array)$held['fields'];
 }
+
+/** Whether the held submission belongs to the form being written out right now. */
+function holding_input(): bool { return held_for(form_context(),form_record())!==[]; }
 
 /** The value this field should show: what was typed, or what the caller passed. */
 function held_input(string $name, mixed $fallback): mixed {
-    if (!holding_input()) return $fallback;
-    $fields=$GLOBALS['crm_held_input']['fields'];
+    $fields=held_for(form_context(),form_record());
     return array_key_exists($name,$fields) ? $fields[$name] : $fallback;
 }
 /**
@@ -341,7 +374,173 @@ function copy_name(string $name, array $taken=[], int $max=120): string {
  * address can never be two accounts, or one account that cannot be found.
  */
 function email_normalised(string $value): string { return mb_strtolower(trim($value)); }
-function email_value(string $value): string { $v=email_normalised($value); if(!filter_var($v,FILTER_VALIDATE_EMAIL) || strlen($v)>254) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.')); return $v; }
+
+/*
+ * Two questions are asked of an address, and they have different answers
+ * (ADR 0019, M1 and R2).
+ *
+ * "Can a mail be sent there?" is email_deliverable(): FILTER_VALIDATE_EMAIL and
+ * at most 254 bytes, the check every address the portal has ever stored went
+ * through. The mail queue asks only this, so no stored address - a legacy one
+ * with a quoted local part included - can make queue_mail() throw and roll back
+ * a newsletter to every other family with it.
+ *
+ * "May it be written, or looked up?" is email_is_dot_atom(): plain ASCII in
+ * lower case, a dot-atom local part and LDH labels, nothing else. That is
+ * stricter on purpose. FILTER_VALIDATE_EMAIL accepts a quoted local part, which
+ * may hold control characters, and the database's collation ignores those when
+ * it compares - so one mailbox had any number of spellings, each a fresh
+ * throttle bucket for „vergessen". With only atext on both sides there is
+ * nothing for the collation to ignore or fold.
+ */
+
+/** Whether a mail can be sent to this address. $normalised has been through email_normalised(). */
+function email_deliverable(string $normalised): bool {
+    return strlen($normalised)<=254 && filter_var($normalised,FILTER_VALIDATE_EMAIL)!==false;
+}
+
+/**
+ * An address that may be written or looked up: at most 64 characters of RFC 5322
+ * atext in dot-separated runs, '@', then dot-separated LDH labels of at most 63.
+ * Lower case only, because it is only ever asked of a normalised address - so
+ * anything that lower-casing left in capitals, and anything not ASCII, fails.
+ */
+const EMAIL_DOT_ATOM = '/^(?=[^@]{1,64}@)[a-z0-9!#$%&\'*+\/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&\'*+\/=?^_`{|}~-]+)*'
+    .'@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/D';
+
+function email_is_dot_atom(string $normalised): bool {
+    return strlen($normalised)<=254 && preg_match(EMAIL_DOT_ATOM,$normalised)===1;
+}
+
+/**
+ * The address to write, from what was typed - or a refusal.
+ *
+ * Both checks, so what is stored can be sent to and looked up alike. An address
+ * written before the stricter one keeps receiving mail; saving its record asks
+ * for it to be replaced.
+ */
+function email_value(string $value): string {
+    $v=email_normalised($value);
+    if(!email_deliverable($v) || !email_is_dot_atom($v)) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.'));
+    return $v;
+}
+
+/*
+ * Usernames (ADR 0019): what everybody signs in with, such as lena.mueller.
+ *
+ * Lower-case a-z, digits, dot and hyphen; starting with a letter, ending with a
+ * letter or digit, never two separators in a row, 3 to 40 characters. No
+ * underscore, because username_for_new_account() builds a LIKE pattern from a
+ * username and '_' is a LIKE wildcard: without it the pattern is literal.
+ *
+ * Pure functions, here beside the address rules, because the migration runner's
+ * PHP step gives existing accounts their usernames with exactly these, and a
+ * second copy of the rule anywhere else could only drift from this one.
+ */
+const USERNAME_PATTERN = '/^[a-z](?:[a-z0-9]|[.-](?=[a-z0-9])){2,39}$/D';
+
+/**
+ * Letters written the German way or stripped to their base letter, keyed by
+ * what they become. Lower case only: everything is lower-cased first.
+ *
+ * One table in this file rather than ext-intl or iconv('…//TRANSLIT'). The first
+ * is not a requirement of the portal and a shared host may lack it; the second
+ * depends on the locale and answers differently on glibc and musl. This gives
+ * the same username on every host, and the suite can test it.
+ */
+const USERNAME_LETTERS = [
+    'ae' => 'äæ', 'oe' => 'öœ', 'ue' => 'ü', 'ss' => 'ßẞ', 'th' => 'þ', 'ij' => 'ĳ',
+    'a' => 'àáâãåāăą', 'c' => 'çćĉċč', 'd' => 'ðďđ', 'e' => 'èéêëēĕėęě', 'g' => 'ĝğġģ', 'h' => 'ĥħ',
+    'i' => 'ìíîïĩīĭįı', 'j' => 'ĵ', 'k' => 'ķĸ', 'l' => 'ĺļľŀł', 'n' => 'ñńņňŉŋ', 'o' => 'òóôõøōŏő',
+    'r' => 'ŕŗř', 's' => 'śŝşšſ', 't' => 'ţťŧ', 'u' => 'ùúûũūŭůűų', 'w' => 'ŵ', 'y' => 'ýÿŷ', 'z' => 'źżž',
+];
+
+/** A text in lower case with USERNAME_LETTERS applied, and nothing else changed. */
+function username_transliterated(string $text): string {
+    static $map=null;
+    if($map===null) {
+        // mb_strtolower() turns the Turkish capital İ into i and a combining dot
+        // above, which is not a letter of its own; it goes with the capital.
+        $map=["i\u{307}"=>'i'];
+        foreach(USERNAME_LETTERS as $to=>$letters) foreach(mb_str_split($letters) as $letter) $map[$letter]=$to;
+    }
+    return strtr(mb_strtolower($text),$map);
+}
+
+/**
+ * A typed username in the one form it is stored and looked up in.
+ *
+ * Everything outside the table is kept, so a value that still does not match the
+ * pattern is refused rather than quietly turned into somebody else's name. That
+ * way `Lena.Müller`, capitalised by an iPhone, signs in as lena.mueller.
+ */
+function username_normalised(string $typed): string { return username_transliterated(trim($typed)); }
+
+/** The username to write, from what was typed - or a refusal that says the rule. The only way a typed username reaches a write. */
+function username_value(string $typed): string {
+    $username=username_normalised($typed);
+    if(!preg_match(USERNAME_PATTERN,$username))
+        throw new UserError(t('Ein Benutzername hat 3 bis 40 Zeichen: Kleinbuchstaben a–z, Ziffern, Punkt und Bindestrich. Er beginnt mit einem Buchstaben, endet mit einem Buchstaben oder einer Ziffer, und Punkt oder Bindestrich stehen nie zweimal hintereinander.',
+                              'A username has 3 to 40 characters: lower-case letters a–z, digits, dot and hyphen. It starts with a letter, ends with a letter or a digit, and never has two dots or hyphens in a row.'));
+    return $username;
+}
+
+/**
+ * The username a person's name suggests, with no number: lena.mueller.
+ *
+ * Inside each name a run of spaces, hyphens or dots becomes one hyphen,
+ * apostrophes are dropped (O'Neill is oneill) and so is anything else outside
+ * the alphabet. The two parts are joined with a dot. The result is cut to 36
+ * characters, leaving room for a number up to 9999, at a separator where that
+ * still leaves a name. A name that leaves nothing usable - written only in
+ * Cyrillic, Greek or Chinese, say - gives 'konto', which is numbered like any
+ * other.
+ */
+function username_from_name(string $first, string $last): string {
+    $parts=[];
+    foreach([$first,$last] as $name) {
+        $part=preg_replace("/['’ʼ‘`´]/u",'',username_transliterated($name));
+        $part=preg_replace('/[^a-z0-9\s.-]/u','',(string)$part);
+        $part=trim((string)preg_replace('/[\s.-]+/u','-',(string)$part),'-');
+        if($part!=='') $parts[]=$part;
+    }
+    $base=implode('.',$parts);
+    if(strlen($base)>36) {
+        $cut=substr($base,0,36);
+        $boundary=max((int)strrpos($cut,'.'),(int)strrpos($cut,'-'));
+        // At the last separator, unless the next character is one anyway or
+        // cutting there would leave too little to be a name.
+        $base=rtrim(($base[36]==='.' || $base[36]==='-' || $boundary<3) ? $cut : substr($cut,0,$boundary),'.-');
+    }
+    return preg_match(USERNAME_PATTERN,$base) ? $base : 'konto';
+}
+
+/**
+ * The first and the last word of a one-field name, as [first, last].
+ *
+ * For staff logins and for logins without a student, whose name is one field.
+ * Middle names are dropped; a single word is the first name alone.
+ */
+function full_name_parts(string $name): array {
+    $words=preg_split('/\s+/u',trim($name),-1,PREG_SPLIT_NO_EMPTY) ?: [];
+    return [(string)($words[0]??''), count($words)>1 ? (string)end($words) : ''];
+}
+
+/** username_from_name() for a name kept in one field. */
+function username_from_full_name(string $name): string { return username_from_name(...full_name_parts($name)); }
+
+/**
+ * $base if nobody has it, otherwise $base2, $base3 … - the lowest that is free.
+ *
+ * So a number appears only when the name is taken, and a number freed by a
+ * deleted login is handed out again.
+ */
+function username_first_free(string $base, array $taken): string {
+    $taken=array_flip($taken);
+    if(!isset($taken[$base])) return $base;
+    for($n=2;$n<=9999;$n++) if(!isset($taken[$base.$n])) return $base.$n;
+    throw new RuntimeException('No free username left for '.$base);
+}
 function choose(string $value,array $allowed): string { if(!in_array($value,$allowed,true)) throw new UserError(t('Ungültige Auswahl.','Invalid choice.')); return $value; }
 /**
  * The privacy notice, with the operator's own details filled in.

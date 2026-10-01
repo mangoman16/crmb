@@ -29,6 +29,16 @@ declare(strict_types=1);
  * log is worth keeping at all.
  */
 function history_field_label(string $column): string {
+    // A custom field's value, recorded with the student it belongs to
+    // (entity_snapshot()), is named as the settings page names the field. That
+    // reads field_definitions through app/domain.php, which is loaded after
+    // this file - safe, because this runs only while a page is drawn, never
+    // while files load. The same arrangement as avatar() calling
+    // upload_version().
+    if (preg_match('/^field:([0-9]+)$/D', $column, $m)) {
+        $field = one('SELECT label,label_en FROM field_definitions WHERE id=?', [(int)$m[1]]);
+        return $field ? field_label($field) : t('Gelöschtes eigenes Feld', 'Deleted custom field');
+    }
     return match ($column) {
         'first_name' => t('Vorname', 'First name'),
         'last_name' => t('Nachname', 'Last name'),
@@ -58,6 +68,7 @@ function history_field_label(string $column): string {
         'internal_notes' => t('Interne Notizen', 'Internal notes'),
         'name' => t('Name', 'Name'),
         'email' => t('E-Mail-Adresse', 'Email address'),
+        'username' => t('Benutzername', 'Username'),
         'role' => t('Rolle', 'Role'),
         'state' => t('Zustand', 'State'),
         'description' => t('Beschreibung', 'Description'),
@@ -85,6 +96,13 @@ function history_field_label(string $column): string {
         'min_age' => t('Ab Alter', 'From age'),
         'max_age' => t('Bis Alter', 'To age'),
         'iban' => 'IBAN', 'bic' => 'BIC', 'recipient' => t('Empfänger', 'Recipient'),
+        // What a family writes on its own page (ADR 0020, §7). 'phone' is the
+        // student's and a contact's alike.
+        'address' => t('Anschrift', 'Postal address'),
+        'phone' => t('Telefonnummer', 'Telephone number'),
+        'owner_name' => t('Name', 'Name'),
+        'relation_label' => t('Beziehung', 'Relationship'),
+        'is_primary' => t('Standardkontakt', 'Standard contact'),
         default => $column,
     };
 }
@@ -95,6 +113,11 @@ function history_field_label(string $column): string {
  * An allowlist rather than "any table": entity_snapshot() reads SELECT * from a
  * name that reaches it from a caller, so the set of tables it can touch belongs
  * in one visible place.
+ *
+ * 'hidden' names columns a line about that entity does not show. A contact's
+ * student_id only repeats the label, which already names the child; on a
+ * charge it is the one thing saying whose charge it was, so it is hidden for
+ * contacts only (ADR 0020, §10b).
  */
 function tracked_entities(): array {
     return [
@@ -106,7 +129,7 @@ function tracked_entities(): array {
         'payment_profiles' => ['label' => ['Zahlungsempfänger', 'Payment profile'], 'title' => ['name']],
         'levels'           => ['label' => ['Leistungsgruppe', 'Level'],      'title' => ['name']],
         'age_groups'       => ['label' => ['Altersgruppe', 'Age group'],     'title' => ['name']],
-        'contacts'         => ['label' => ['Kontakt', 'Contact'],            'title' => ['owner_name']],
+        'contacts'         => ['label' => ['Kontakt', 'Contact'],            'title' => ['owner_name'], 'hidden' => ['student_id']],
         'accounts'         => ['label' => ['Konto', 'Account'],              'title' => ['name']],
         'news'             => ['label' => ['Neuigkeit', 'News'],             'title' => ['title']],
         'message_templates'=> ['label' => ['Vorlage', 'Template'],           'title' => ['name']],
@@ -134,10 +157,44 @@ function entity_title(string $entity, ?array $row): string {
     return implode(' ', $parts);
 }
 
-/** The current state of a row, or null when it does not exist. */
+/**
+ * The current state of a row, or null when it does not exist.
+ *
+ * A student's custom fields are part of the student (ADR 0020, §7):
+ * field_values has no id of its own to be tracked by, so each of its rows for
+ * this student is added as a pseudo-column field:<field_id> holding its
+ * value_json. A save of the student and its fields is then one line, and a
+ * deleted student's line keeps their custom values. A row holding nothing - an
+ * empty text, no option - is left out, so a save that merely wrote empty rows
+ * for fields nobody filled in is no change. These keys never reach SQL: there
+ * is no undo to write them back.
+ */
 function entity_snapshot(string $entity, int $id): ?array {
     tracked_entity($entity);
-    return one('SELECT * FROM '.$entity.' WHERE id=?', [$id]);
+    $row = one('SELECT * FROM '.$entity.' WHERE id=?', [$id]);
+    if ($row === null || $entity !== 'students') return $row;
+    foreach (rows('SELECT field_id,value_json FROM field_values WHERE student_id=? ORDER BY field_id', [$id]) as $value)
+        if (!in_array((string)$value['value_json'], ['""', '[]', 'null'], true))
+            $row['field:'.(int)$value['field_id']] = (string)$value['value_json'];
+    return $row;
+}
+
+/**
+ * Columns of a table that the change log never holds, whatever the operation.
+ *
+ * A password hash is a secret, and a copy in record_versions would outlive every
+ * change of password; auth_version and last_seen_at change without anybody
+ * editing anything and say nothing she could act on. Stripped from both sides
+ * of an insert, an update and a delete alike (ADR 0019, S6 and R5): stripping
+ * them on update only would still write the hash with every new or deleted
+ * login, and a future tracked('accounts', …) around a password write would
+ * put it in the log.
+ */
+function history_never_recorded(string $entity): array {
+    return match ($entity) {
+        'accounts' => ['password_hash', 'auth_version', 'last_seen_at'],
+        default => [],
+    };
 }
 
 /**
@@ -153,10 +210,15 @@ function entity_snapshot(string $entity, int $id): ?array {
  */
 function history_record(string $entity, int $id, string $operation, string $label, ?array $before, ?array $after): int {
     tracked_entity($entity);
+    $never = array_flip(history_never_recorded($entity));
+    if ($before !== null) $before = array_diff_key($before, $never);
+    if ($after !== null) $after = array_diff_key($after, $never);
     if ($operation === 'update' && $before !== null && $after !== null) {
         $differing = [];
-        foreach ($before as $column => $value)
-            if ((string)$value !== (string)($after[$column] ?? null)) $differing[$column] = true;
+        // Both sides' columns: a custom field filled in for the first time is
+        // on the after side only (entity_snapshot()).
+        foreach (array_keys($before + $after) as $column)
+            if ((string)($before[$column] ?? null) !== (string)($after[$column] ?? null)) $differing[$column] = true;
         $before = array_intersect_key($before, $differing);
         $after  = array_intersect_key($after,  $differing);
     }
@@ -203,16 +265,28 @@ function tracked_insert(string $entity, string $label, callable $create): int {
     });
 }
 
-/** Versions for one record, newest first. */
+/**
+ * Versions for one record, newest first, each with its actor's name and role
+ * as they are now - read when the page is read, not stored with the change.
+ */
 function history_for(string $entity, int $id, int $limit = 50): array {
     tracked_entity($entity);
-    return rows('SELECT v.*, a.name AS actor_name FROM record_versions v LEFT JOIN accounts a ON a.id=v.actor_id'
+    return rows('SELECT v.*, a.name AS actor_name, a.role AS actor_role FROM record_versions v LEFT JOIN accounts a ON a.id=v.actor_id'
         .' WHERE v.entity=? AND v.entity_id=? ORDER BY v.id DESC LIMIT '.max(1, min(200, $limit)), [$entity, $id]);
 }
 
-/** The most recent changes across every tracked record, for the admin view. */
-function history_recent(int $limit = 60): array {
-    return rows('SELECT v.*, a.name AS actor_name FROM record_versions v LEFT JOIN accounts a ON a.id=v.actor_id'
+/**
+ * The most recent changes across every tracked record, for the admin view.
+ *
+ * $familiesOnly is the „Von Familien" tab (ADR 0020, §10b): changes whose actor
+ * is a family's login. A change made while staff viewed the portal as a family
+ * is recorded under the staff member (history_record()), so it is not one of
+ * them; one whose login has since been deleted has no actor, and shows under
+ * „Alle" only.
+ */
+function history_recent(int $limit = 60, bool $familiesOnly = false): array {
+    return rows('SELECT v.*, a.name AS actor_name, a.role AS actor_role FROM record_versions v LEFT JOIN accounts a ON a.id=v.actor_id'
+        .($familiesOnly ? " WHERE a.role='student'" : '')
         .' ORDER BY v.id DESC LIMIT '.max(1, min(200, $limit)));
 }
 
@@ -227,11 +301,13 @@ function version_changes(array $version): array {
     $before = $version['before_json'] ? json_decode($version['before_json'], true) : null;
     $after  = $version['after_json']  ? json_decode($version['after_json'],  true) : null;
     $columns = array_keys(($before ?? []) + ($after ?? []));
+    $hidden = isset(tracked_entities()[$version['entity'] ?? '']) ? (tracked_entity($version['entity'])['hidden'] ?? []) : [];
     $out = [];
     foreach ($columns as $column) {
         // Bookkeeping columns change on every save and say nothing about what
         // was actually edited.
         if (in_array($column, ['id', 'updated_at', 'created_at', 'revision'], true)) continue;
+        if (in_array($column, $hidden, true)) continue;
         $from = $before[$column] ?? null;
         $to   = $after[$column]  ?? null;
         if ((string)$from === (string)$to) continue;
@@ -244,28 +320,39 @@ function version_changes(array $version): array {
  * A stored column value as a short readable string.
  *
  * $column is the field it came from, for the values whose raw form means
- * nothing to her: a login is stored as a number and read as its address.
+ * nothing to her: a login is stored as a number and read as its username, and
+ * a custom field (field:<id>) as JSON, read as its text, its options joined with
+ * commas, or ja / nein for a box. A calendar date - a value shaped exactly
+ * YYYY-MM-DD, a custom date field's included - reads as she writes one;
+ * fmt_date() does not shift a DATE, so it stays the day it was. A DATETIME has
+ * a time part and is left alone (ADR 0020, §10b).
  */
 function history_value(mixed $v, string $column = ''): string {
+    if (str_starts_with($column, 'field:') && is_string($v)) {
+        $v = json_decode($v, true);
+        if (is_array($v)) $v = implode(', ', array_map('strval', $v));
+    }
     if ($v === null || $v === '') return '—';
     if ($column === 'account_id') return history_login((int)$v);
     if (is_bool($v)) return $v ? t('ja', 'yes') : t('nein', 'no');
     $s = (string)$v;
+    if (preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/D', $s) && local_time($s)) return fmt_date($s);
     return mb_strlen($s) > 60 ? mb_substr($s, 0, 57).'…' : $s;
 }
 
 /**
- * A login as the change log names it: the address it signs in with, or that
- * it no longer exists.
+ * A login as the change log names it: its username, or that it no longer exists.
  *
- * Looked up when the page is read rather than stored with the change, because
- * the address can move (change_login_address()) and the line should name the
- * login as it is now. Not memoised: a login in the log is rare, and a memo
- * would outlive a language switch.
+ * The username, because that is what the login is called wherever staff see it
+ * (ADR 0019, §8); the address would say as much now that none is shared (ADR
+ * 0020), but two names for one thing in one log is churn. Looked up when the page is
+ * read rather than stored with the change, because its holder can change it
+ * and the line should name the login as it is now. Not memoised: a login in the
+ * log is rare, and a memo would outlive a language switch.
  */
 function history_login(int $accountId): string {
-    $email = scalar('SELECT email FROM accounts WHERE id=?', [$accountId]);
-    return $email !== false && $email !== null ? (string)$email : t('gelöschter Zugang', 'deleted login');
+    $username = scalar('SELECT username FROM accounts WHERE id=?', [$accountId]);
+    return $username !== false && $username !== null ? (string)$username : t('gelöschter Zugang', 'deleted login');
 }
 
 /**

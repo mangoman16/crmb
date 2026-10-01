@@ -33,7 +33,11 @@ if(!$staff):
         empty_state(t('Hier ist noch nichts','Nothing here yet'),
             t('Zu diesem Zugang gehört gerade keine Mitgliedschaft. Schreib deiner Trainerin, wenn das nicht stimmt.','No membership belongs to this login at the moment. Write to your coach if that is not right.'),
             link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]));
-    } else { ?>
+    } else {
+        /* What the family still has to fill in, first: the same list as on
+           their Profil tab (ADR 0020, §7), each step a way to where it is
+           done. It disappears once nothing is left. */
+        next_steps_card(family_next_steps((int)$mine['id']),t('Noch zu ergänzen','Still to fill in')); ?>
 <div class="card own-student"><?php student_card($mine+['due_cents'=>$overdueBy[(int)$mine['id']]??0]); ?></div>
 <div class="stats-grid single"><div class="stat"><span><?=e(t('Offen','Outstanding'))?></span><strong class="<?=$open?'due':''?>"><?=e(money($open))?></strong><small><?=e($open?t('Einzeln unter „Beiträge“ in deinem Profil','Itemised under “Payments” in your profile'):t('Alles bezahlt','All paid'))?></small><?=icon('wallet')?></div></div>
 <?php /* Uploading the proof is voluntary and nobody will chase it, so it has to
@@ -68,8 +72,7 @@ if(is_admin($user) && setup_unfinished()): $setup=setup_progress();$left=$setup[
 <div class="stat"><span><?=e(t('Davon überfällig','Of which overdue'))?></span><strong class="<?=$overdue?'due':''?>"><?=e(money($overdue))?></strong><small><?=e(t('Fälligkeit überschritten','Past the due date'))?></small><?=icon('calendar')?></div>
 <div class="stat"><span><?=e(t('Heute abwesend','Absent today'))?></span><strong><?=$absent?></strong><small><?=e(t('Krank, Urlaub oder abgemeldet','Sick, away or unavailable'))?></small><?=icon('calendar')?></div>
 </div>
-<?php own_address_notice();
-endif ?>
+<?php endif ?>
 <?php
 /* The timeline: what happened, what is on today, and what is next.
    Built for the question she actually opens the portal with - "when is the next

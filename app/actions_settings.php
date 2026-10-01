@@ -64,7 +64,7 @@ function dispatch_settings_or_messages(string $action): array {
         if($type==='checkbox')$def=post('default_checked')==='1';
         if($type==='multiselect')$def=array_values(array_filter(array_map('trim',explode("\n",$def)),fn($x)=>$x!==''));
         $label=required_text('label',120);$optionsJson=json_encode($options,JSON_UNESCAPED_UNICODE);
-        $def=validate_custom(['options_json'=>$optionsJson,'field_type'=>$type,'required'=>0,'label'=>$label],$def);
+        $def=validate_custom(['options_json'=>$optionsJson,'field_type'=>$type,'label'=>$label],$def,null,false);
         $args=[$label,text_limit('label_en',120),$type,text_limit('section_name',120),$optionsJson,json_encode($def,JSON_UNESCAPED_UNICODE),post('required')?1:0,choose(post('visibility'),['internal','view','edit']),(int)post('sort_order'),post('archived')?1:0];
         if($id)run('UPDATE field_definitions SET label=?,label_en=?,field_type=?,section_name=?,options_json=?,default_json=?,required=?,visibility=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
         else {run('INSERT INTO field_definitions (label,label_en,field_type,section_name,options_json,default_json,required,visibility,sort_order,archived) VALUES (?,?,?,?,?,?,?,?,?,?)',$args);$id=(int)db()->lastInsertId();}
@@ -135,10 +135,13 @@ function dispatch_settings_or_messages(string $action): array {
         return ['settings',['tab'=>'portal']];
     case 'privacy_save':
         require_admin();$de=text_limit('privacy_de',30000);$en=text_limit('privacy_en',30000);
-        // The text is always saved. Only the release tick is refused, and it says
-        // which version and which placeholder is in the way: "complete both and
-        // replace the placeholders" sent an operator hunting through two walls of
-        // text, and looked from the outside as though saving had done nothing.
+        // A draft saves whenever the release tick is not set. With the tick, a
+        // text that is not ready is refused, and like every refusal that rolls
+        // the whole save back, text included - so the refusal says which version
+        // and which placeholder is in the way, and the router offers the typed
+        // text back (remember_input()): "complete both and replace the
+        // placeholders" sent an operator hunting through two walls of text, and
+        // looked from the outside as though saving had done nothing.
         // Only the German text is required (ADR 0011); an English reader is shown
         // it, with a line saying so. An English text that is there is checked the
         // same way, because a half-translated notice is not one to release.
@@ -215,10 +218,37 @@ function dispatch_settings_or_messages(string $action): array {
         });
         return form_return();
     case 'email_change':
+        /* The holder moves their own address, confirmed by a link to the new
+           one. Whether the address is already another login's is asked only
+           when the link is opened (change_account_email()), never here: the
+           address signs in, so "does this address have a login?" is half a
+           credential, and a page that answered it would undo what the sign-in
+           and „vergessen" pages are built not to say. Whoever reads the refusal
+           then is whoever reads that mailbox, who knows already (ADR 0020, §1). */
         $u=require_user();throttle('email-change',(string)$u['id'],5,3600);
         if(!password_verify(post('password'),$u['password_hash']))throw new UserError(t('Passwort nicht korrekt.','Incorrect password.'));
-        $email=email_value(post('email'));if($email===$u['email'] || scalar('SELECT id FROM accounts WHERE email=?',[$email]))throw new UserError(t('Diese Adresse kann nicht verwendet werden.','This address cannot be used.'));
+        $email=email_value(post('email'));
+        if(same_address($email,(string)$u['email']))throw new UserError(t('Das ist schon die Adresse dieses Kontos.','That is already this account’s address.'));
         send_account_token($u,'email',$email);flash(t('Bitte die neue E-Mail-Adresse über den zugesendeten Link bestätigen.','Please verify the new email address using the link sent to it.'));return ['profile',[]];
+    case 'username_change':
+        /* Only the holder changes a username (ADR 0019, §8): a trainer who
+           renamed a family's login would lock them out of that name without
+           their knowing. With the password, because anybody holding an unlocked
+           phone could otherwise rename a child's login. The rules are
+           change_own_username()'s, shared with the activation page. */
+        if(impersonator())throw new UserError(t('Den Benutzernamen kann nur die Person selbst ändern. Beende zuerst die Ansicht.','Only the person themselves can change their username. Stop viewing first.'));
+        $u=require_user();
+        if(!password_verify(post('current_password'),(string)$u['password_hash']))throw new UserError(t('Passwort nicht korrekt.','Incorrect password.'));
+        $outcome=change_own_username($u,post('username'));
+        if($outcome==='unchanged'){flash(t('Das ist schon dein Benutzername.','That is already your username.'));return ['profile',[]];}
+        if($outcome==='taken') {
+            flash(t('Dieser Benutzername ist schon vergeben. Bitte einen anderen wählen.','That username is already taken. Please choose another one.'),'error');
+            remember_input('username_change');
+            return ['profile',[]];
+        }
+        flash(t('Dein Benutzername ist jetzt ','Your username is now ').username_value(post('username'))
+            .t('. Melde dich damit oder mit deiner E-Mail-Adresse an.','. Sign in with it or with your email address.'));
+        return ['profile',[]];
     case 'password_change':
         $u=require_user();if(!password_verify(post('current_password'),$u['password_hash']))throw new UserError(t('Passwort nicht korrekt.','Incorrect password.'));
         $p=strong_password(post('password'));if($p!==post('password_confirm'))throw new UserError(t('Die Passwörter stimmen nicht überein.','Passwords do not match.'));

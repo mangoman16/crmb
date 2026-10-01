@@ -1,7 +1,57 @@
 <?php /* The login, not the person: how you sign in and how the portal looks to
          you. A family's record - name, courses, payments - is their "Profil" in
          the menu, and the two must not read as the same page. */
-page_head(t('Mein Konto','My account'),t('Wie du dich anmeldest und wie das Portal für dich aussieht.','How you sign in and how the portal looks for you.')); ?>
+page_head(t('Mein Konto','My account'),t('Wie du dich anmeldest und wie das Portal für dich aussieht.','How you sign in and how the portal looks for you.'));
+/* Everything about signing in, in one card and first, as the heading promises:
+   the username and the address - either signs in (ADR 0020, §3) - whether a
+   mailed link set the password lately, and the three changes. */
+$resets=password_resets_for((int)$user['id'],PASSWORD_RESET_SHOWN_DAYS); ?>
+<section class="card" id="sign-in">
+    <h2><?=e(t('Anmeldung','Signing in'))?></h2>
+    <?php login_facts($user,t('bestätigt','verified')); ?>
+    <p class="muted"><?=e(t('Anmelden kannst du dich mit dem Benutzernamen oder mit der E-Mail-Adresse.','You can sign in with the username or with the email address.'))?></p>
+    <?php if($resets): ?>
+    <div class="notice warn"><strong><?=e(t('Dein Passwort wurde per E-Mail-Link neu gesetzt','Your password was set anew through an email link'))?></strong>
+        <?php foreach($resets as $reset): ?><p><?=e(fmt_datetime((string)$reset['created_at']))?></p><?php endforeach ?>
+        <?php /* A family asks the trainer; the trainer, or an administrator, would
+                 be sent to herself (ADR 0019, I2). */ ?>
+        <p><?=e(is_staff($user)
+            ? t('Warst du das nicht? Ändere dein Passwort gleich hier unten.','Wasn’t that you? Change your password just below.')
+            : t('Warst du das nicht? Ändere dein Passwort gleich hier unten und sag deiner Trainerin Bescheid.','Wasn’t that you? Change your password just below and let your coach know.'))?></p></div>
+    <?php endif ?>
+    <?php /* Open again after a refusal, with what was typed still in the box. No
+             pattern attribute: the server turns Lena.Müller into lena.mueller,
+             and a browser pattern would refuse it before the server could. */ ?>
+    <details id="username" <?=held_for('username_change')!==[]?'open':''?>><summary><?=e(t('Benutzernamen ändern','Change the username'))?></summary>
+    <?php if(impersonator()):
+        // The action refuses anyway (ADR 0019, §8); this says so before anybody tries.
+        $holderFirst=(string)(scalar('SELECT first_name FROM students WHERE account_id=?',[(int)$user['id']]) ?: strtok(trim((string)$user['name']),' ')); ?>
+        <p class="muted"><?=e(strtr(t('Den Benutzernamen ändert nur {name} selbst.','Only {name} can change the username.'),['{name}'=>$holderFirst]))?></p>
+    <?php else:
+        start_form('username_change');
+        input('username',t('Neuer Benutzername','New username'),$user['username'],'text',true,
+              t('3 bis 40 Zeichen: Kleinbuchstaben, Ziffern, Punkt oder Bindestrich. Aus ä, ö, ü und ß wird ae, oe, ue und ss.',
+                '3 to 40 characters: lower-case letters, digits, full stop or hyphen. ä, ö, ü and ß become ae, oe, ue and ss.'),
+              '',username_attributes()+['maxlength'=>'40','class'=>'mono']);
+        input('current_password',t('Aktuelles Passwort','Current password'),'','password',true,'','',current_password_attributes());
+        submit_button(t('Benutzernamen ändern','Change the username'));?></form>
+    <?php endif ?>
+    </details>
+    <details><summary><?=e(t('E-Mail-Adresse ändern','Change email address'))?></summary><?php start_form('email_change');
+    /* An address that is another login's is refused when the link is opened,
+       not here (ADR 0020, §1): asked now, this box would tell a signed-in
+       family whether an address has a login. */
+    input('email',t('Neue E-Mail-Adresse','New email address'),'','email',true,
+          t('Deine eigene, die kein anderer Zugang nutzt. Der Bestätigungslink geht an sie.','Your own, not used by another login. The confirmation link goes to it.'),
+          '',['autocomplete'=>'email']);
+    input('password',t('Aktuelles Passwort','Current password'),'','password',true,'','',current_password_attributes());
+    submit_button(t('Bestätigungslink senden','Send verification link'));?></form></details>
+    <details><summary><?=e(t('Passwort ändern','Change password'))?></summary><?php start_form('password_change');
+    input('current_password',t('Aktuelles Passwort','Current password'),'','password',true,'','',current_password_attributes());
+    input('password',t('Neues Passwort','New password'),'','password',true);
+    input('password_confirm',t('Passwort wiederholen','Repeat password'),'','password',true);
+    submit_button();?></form></details>
+</section>
 <section class="card">
     <h2><?=e(t('Bild','Picture'))?></h2>
     <div class="avatar-editor">
@@ -36,11 +86,9 @@ foreach(accents() as $key=>$label): ?>
         <input type="radio" name="accent" value="<?=e($key)?>" <?=($user['accent']??'')===$key?'checked':''?>>
         <span class="accent-dot accent-<?=e($key)?>"></span><small><?=e($label)?></small></label>
 <?php endforeach ?>
-</div><p class="muted"><?=e(t('„Wie am Gerät eingestellt“ übernimmt den Dunkelmodus von iPhone, iPad oder Mac automatisch.','“Match my device” follows the dark mode setting on your iPhone, iPad or Mac automatically.'))?></p><p class="muted"><?=e($user['email'])?> · <?=e(t('bestätigt','verified'))?></p><?php check_field('newsletter',t('Neuigkeiten per E-Mail erhalten','Receive news by email'),(bool)$user['newsletter']);check_field('notifications',t('E-Mail-Hinweise bei privaten Nachrichten erhalten','Receive email notifications for private messages'),(bool)$user['notifications']);
+</div><p class="muted"><?=e(t('„Wie am Gerät eingestellt“ übernimmt den Dunkelmodus von iPhone, iPad oder Mac automatisch.','“Match my device” follows the dark mode setting on your iPhone, iPad or Mac automatically.'))?></p><?php check_field('newsletter',t('Neuigkeiten per E-Mail erhalten','Receive news by email'),(bool)$user['newsletter']);check_field('notifications',t('E-Mail-Hinweise bei privaten Nachrichten erhalten','Receive email notifications for private messages'),(bool)$user['notifications']);
 check_field('payment_notices',t('Erinnerung, wenn ein Beitrag offen ist','Remind me when a payment is outstanding'),(bool)($user['payment_notices']??true));
 submit_button();?></form></section>
-<section class="card"><details><summary><?=e(t('E-Mail-Adresse ändern','Change email address'))?></summary><?php start_form('email_change');input('email',t('Neue E-Mail-Adresse','New email address'),'','email',true);input('password',t('Aktuelles Passwort','Current password'),'','password',true);submit_button(t('Bestätigungslink senden','Send verification link'));?></form></details></section>
-<section class="card"><details><summary><?=e(t('Passwort ändern','Change password'))?></summary><?php start_form('password_change');input('current_password',t('Aktuelles Passwort','Current password'),'','password',true);input('password',t('Neues Passwort','New password'),'','password',true);input('password_confirm',t('Passwort wiederholen','Repeat password'),'','password',true);submit_button();?></form></details></section>
 <?php /* The foot of the side menu holds these, and on a phone a family has no
          „Mehr" to open it with (ADR 0011), so they are here as well. */ ?>
 <section class="card help-card"><h2><?=e(t('Datenschutz und Hilfe','Privacy and help'))?></h2>

@@ -407,6 +407,9 @@ function make_account(array $over=[]): int {
     static $n = 0; $n++;
     return fixture('accounts', array_merge([
         'name' => 'Account '.$n, 'email' => 'a'.$n.'@example.test',
+        // Unique by the counter, as accounts.username must be since 023 (ADR
+        // 0019), and what username_from_full_name() makes of 'Account N'.
+        'username' => 'account.'.$n,
         'password_hash' => password_hash('Test-Only-Password-2026', PASSWORD_DEFAULT),
         'role' => 'student', 'state' => 'active', 'verified_at' => now(),
         'locale' => 'de', 'theme' => 'auto', 'text_scale' => 'normal',

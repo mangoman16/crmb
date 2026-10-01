@@ -65,10 +65,13 @@ $minor = $student ? (($age = student_age($student['birth_date'] ?? null)) !== nu
                     $student ? ($student['birth_date'] ? fmt_date($student['birth_date']) : '') : '',
                     t('TT.MM.JJJJ','DD.MM.YYYY'));
         // Its own row: an address is longer than a name, and one broken over
-        // two rows of boxes is one nobody can read back.
-        print_field(t('E-Mail-Adresse für das Portal','Email address for the portal'), 34,
+        // two rows of boxes is one nobody can read back. It signs in, the
+        // invitation goes to it and so do the invoices, and it is the
+        // student's own (ADR 0020, §1). No username: the address signs in, so
+        // the sheet needs none.
+        print_field(t('E-Mail-Adresse (Anmeldung, Einladung, Rechnungen)','Email address (sign-in, invitation, invoices)'), 34,
                     $student ? student_email($student) : '',
-                    t('Bei einem Kind die Adresse eines Elternteils','For a child, a parent’s address'), true);
+                    t('Die eigene Adresse der Schülerin oder des Schülers – die der Eltern gehört zu den Kontakten','The student’s own address – a parent’s belongs with the contacts'), true);
         // Asked for on paper by every club form and, above 400 €, by § 11 UStG.
         print_field(t('Anschrift','Postal address'), 34, (string)($student['address'] ?? ''),
                     t('Straße, PLZ und Ort','Street, postcode and town'), true);

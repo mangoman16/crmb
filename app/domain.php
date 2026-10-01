@@ -51,12 +51,20 @@ function contact_gap(int $studentId): string {
 function contact_email(): string { $email=post('email'); return $email===''?'':email_value($email); }
 
 /**
+ * How a contact's line in the change log is labelled: the student's name and
+ * the contact's (ADR 0020, §7), because "Oma" alone does not say whose.
+ */
+function contact_history_label(array $student, string $owner): string {
+    return $student['first_name'].' '.$student['last_name'].' · '.$owner;
+}
+
+/**
  * The address the portal writes to for one student.
  *
- * Their own login's where they have one, because that is the address they
- * actually sign in with and changing it goes through a confirmation step;
+ * Their own login's where they have one, because that is the address their
+ * reset links go to and changing it goes through a confirmation step;
  * otherwise what is written on the student, which is what an invitation would
- * be sent to. The two are kept equal (change_login_address()), so preferring
+ * be sent to. The two are kept equal (change_account_email()), so preferring
  * the login only matters for a row written before that rule.
  */
 function student_email(array $student): string {
@@ -65,65 +73,17 @@ function student_email(array $student): string {
 }
 
 /**
- * The account signing in with an address, if any - for a page to say so.
+ * The login an address already belongs to, if any - for a page to say so
+ * before she taps. A plain read: the refusal itself is refuse_address_in_use(),
+ * which holds what it reads.
  *
- * A plain read. An action that is about to write an account uses
- * account_using_email(), which holds the address until it commits.
+ * Two callers: student_next_steps(), and the access card on the student page,
+ * which say that the address on a student without a login is somebody else's
+ * login, and that the student needs one of their own (ADR 0020, §1).
  */
 function account_with_address(string $email): ?array {
     $email=email_normalised($email);
     return $email===''?null:one('SELECT * FROM accounts WHERE email=?',[$email]);
-}
-
-/**
- * Why a student without a login cannot be given one at the address on their
- * record, as SQL: the address is already somebody's login, or another current
- * member has it too, and only the first of them could be invited with it.
- *
- * One condition for the list and for the single student's next step, so the
- * two cannot disagree about who needs asking. $s is the students alias.
- */
-function own_address_missing_sql(string $s='s'): string {
-    $s=sql_name($s,'alias');
-    return "$s.account_id IS NULL AND $s.email<>'' AND (EXISTS (SELECT 1 FROM accounts oa WHERE oa.email=$s.email)"
-        ." OR EXISTS (SELECT 1 FROM students os WHERE os.email=$s.email AND os.id<>$s.id AND os.status<>'ended'))";
-}
-
-/**
- * Current members who need an address of their own before they can be invited.
- *
- * Usually brothers and sisters taken off a shared login by the update to one
- * login per member: they keep the parent's address for their invoices, and
- * that address is the sibling's login. Worked out from the data rather than
- * stored, so it is in her language and disappears once it is fixed. `reason`
- * is 'login' when the address signs somebody in, 'shared' when two members
- * without a login have it.
- */
-function students_needing_own_address(): array {
-    return rows('SELECT s.id,s.first_name,s.last_name,s.email,'
-        ." CASE WHEN EXISTS (SELECT 1 FROM accounts a WHERE a.email=s.email) THEN 'login' ELSE 'shared' END AS reason"
-        ." FROM students s WHERE s.status<>'ended' AND ".own_address_missing_sql('s')
-        .' ORDER BY s.first_name,s.last_name');
-}
-
-/**
- * Who else is using this student's address, by name, when that is what stands
- * between the student and a login of their own; '' when nothing does.
- *
- * The same condition as the list and the next step (own_address_missing_sql),
- * so the student page never offers an invitation the other two say cannot be
- * sent. A login is named before a brother or sister, because it is the login
- * that makes the invitation fail.
- */
-function own_address_taken_by(int $studentId): string {
-    $s=one('SELECT s.id,s.email FROM students s WHERE s.id=? AND '.own_address_missing_sql('s'),[$studentId]);
-    if(!$s) return '';
-    if($account=account_with_address((string)$s['email'])) {
-        $holder=one('SELECT first_name,last_name FROM students WHERE account_id=?',[(int)$account['id']]);
-        return $holder?$holder['first_name'].' '.$holder['last_name']:(string)$account['name'];
-    }
-    $other=one("SELECT first_name,last_name FROM students WHERE email=? AND id<>? AND status<>'ended' ORDER BY id LIMIT 1",[$s['email'],$studentId]);
-    return $other?$other['first_name'].' '.$other['last_name']:'';
 }
 
 /**
@@ -200,12 +160,14 @@ function student_next_steps(int $studentId): array {
         $steps[] = ['what' => t('E-Mail-Adresse eintragen', 'Add an email address'),
                     'why'  => t('Dorthin gehen Einladung, Rechnungen und Erinnerungen.', 'The invitation, the invoices and the reminders go there.'),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
-    // Asked before "invite": an invitation to this address would be refused,
-    // and a button that can only fail is not a next step.
-    elseif ((bool)scalar('SELECT 1 FROM students s WHERE s.id=? AND '.own_address_missing_sql('s'), [$studentId]))
+    // Asked before "invite": an invitation to this address would be refused
+    // (refuse_address_in_use()), and a button that can only fail is not a next
+    // step. Typically a brother's or a parent's address, typed in before the
+    // rule came back; a parent's belongs on the contacts.
+    elseif ($student['account_id'] === null && account_with_address((string)$student['email']))
         $steps[] = ['what' => t('Eigene E-Mail-Adresse eintragen', 'Enter an email address of their own'),
-                    'why'  => t('Die eingetragene Adresse hat schon ein anderes Konto oder ein anderes Kind. Jede Schülerin und jeder Schüler braucht eine eigene, um sich anzumelden.',
-                                'The address on the record already belongs to another account or another student. Every student needs their own to sign in.'),
+                    'why'  => t('Die eingetragene Adresse ist schon der Zugang einer anderen Person. Jede Person braucht ihre eigene; die Adresse der Eltern gehört zu den Kontakten.',
+                                'The address on the record is already somebody else’s login. Everybody needs their own; a parent’s address belongs on the contacts.'),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
     elseif ($student['account_id'] === null)
         $steps[] = ['what' => t('Zugang einladen', 'Invite them in'),
@@ -230,6 +192,44 @@ function student_next_steps(int $studentId): array {
             : ['what' => t('Preis eintragen', 'Enter a price'),
                'why'  => t('Eine Kursteilnahme hat einen Tarif ohne Preis, dafür entstehen keine Beiträge.', 'One of their courses is on a tariff with no price, so it bills nothing.'),
                'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'courses'];
+    return $steps;
+}
+
+/**
+ * What a family still has to fill in on their own student, as next steps in
+ * the shape student_next_steps() has, so next_steps_card() draws it (ADR 0020,
+ * §7). Shown to the family on their dashboard and their student page; the
+ * staff page keeps student_next_steps().
+ *
+ * A birth date, a postal address - every family has one, and an invoice above
+ * 400 € needs it (create_invoice()) - somebody to ring, and every custom field
+ * the family fills in ('edit') that is required and still empty. Not the
+ * phone: it is the member's own number, a child may have none, and an item some
+ * families can never tick off teaches every family to ignore the card.
+ *
+ * Each step names the element on the page it is about ('anchor').
+ */
+function family_next_steps(int $studentId): array {
+    $student = one('SELECT birth_date,address FROM students WHERE id=?', [$studentId]);
+    if (!$student) return [];
+    $steps = [];
+    if ((string)($student['birth_date'] ?? '') === '')
+        $steps[] = ['what' => t('Geburtsdatum eintragen', 'Enter the date of birth'),
+                    'why'  => t('Danach richtet sich die Altersgruppe.', 'It decides the age group.'),
+                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'birth-date'];
+    if (trim((string)$student['address']) === '')
+        $steps[] = ['what' => t('Anschrift eintragen', 'Enter the postal address'),
+                    'why'  => t('Sie steht auf den Rechnungen.', 'It goes on the invoices.'),
+                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'address'];
+    if (!primary_contact($studentId))
+        $steps[] = ['what' => t('Notfallkontakt eintragen', 'Add an emergency contact'),
+                    'why'  => t('Wen die Trainerin anruft, wenn etwas ist.', 'Who the coach rings if something happens.'),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'contacts'], 'anchor' => 'add-contact'];
+    foreach (field_definitions() as $f)
+        if ($f['visibility'] === 'edit' && $f['required'] && custom_value_empty(field_value($studentId, (int)$f['id'])))
+            $steps[] = ['what' => field_label($f).t(' ausfüllen', ': fill it in'),
+                        'why'  => t('Ein Pflichtfeld.', 'A required field.'),
+                        'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'field-'.$f['id']];
     return $steps;
 }
 
@@ -319,7 +319,22 @@ function student_charges(int $id): array { return rows('SELECT c.*,'.charge_paid
 function field_definitions(bool $archived=false): array { return rows('SELECT * FROM field_definitions'.($archived?'':' WHERE archived=0').' ORDER BY sort_order,id'); }
 function field_label(array $f): string { return locale()==='en' && $f['label_en']?$f['label_en']:$f['label']; }
 function field_value(int $studentId,int $fieldId): mixed { $v=scalar('SELECT value_json FROM field_values WHERE student_id=? AND field_id=?',[$studentId,$fieldId]); return $v===false?null:json_decode($v,true); }
-function validate_custom(array $f,mixed $v,mixed $old=null): mixed {
+/**
+ * Whether a custom field's value counts as not filled in: nothing, an empty
+ * text, no option chosen, or a box not ticked. One rule for the refusal of a
+ * required field and for the family's list of what is still missing, so the two
+ * cannot disagree about whether something was done.
+ */
+function custom_value_empty(mixed $v): bool { return $v===null || $v==='' || $v===false || $v===[]; }
+/**
+ * A custom field's value, checked and in the shape it is stored, or a refusal.
+ *
+ * The type checks - a date, a number, an offered option - apply to every value
+ * that is not empty, for everybody. Whether an empty one is refused is the
+ * caller's to say ($emptyRefused): a required field is required of whoever
+ * fills it in, which save_custom_fields() works out (ADR 0020, §7).
+ */
+function validate_custom(array $f,mixed $v,mixed $old,bool $emptyRefused): mixed {
     $opts=json_decode($f['options_json'],true);
     if($f['field_type']==='multiselect') {
         if(!is_array($v)) $v=[];
@@ -337,16 +352,30 @@ function validate_custom(array $f,mixed $v,mixed $old=null): mixed {
             if($f['field_type']==='select' && !in_array($v,$opts,true) && $v!==$old) throw new UserError(t('Ungültige Option: ','Invalid option: ').$f['label']);
         }
     }
-    if($f['required'] && ($v==='' || $v===false || $v===[] || $v===null)) throw new UserError(t('Pflichtfeld: ','Required field: ').$f['label']);
+    if($emptyRefused && custom_value_empty($v)) throw new UserError(t('Pflichtfeld: ','Required field: ').$f['label']);
     return $v;
 }
+/**
+ * Write the custom fields posted with a student's form. Called inside the
+ * student's own tracked() or tracked_insert(), so the values are part of that
+ * one change-log line (entity_snapshot()).
+ *
+ * A family writes only the fields at 'edit'; the rest are skipped, whatever is
+ * posted. A required field is required of whoever fills it in (ADR 0020, §7):
+ * an 'edit' field refuses the family's save while empty and never staff's - she
+ * may fill it in and need not - and a 'view' or 'internal' field refuses
+ * staff's save of an existing student. Creating a student ($new) refuses none,
+ * because the create form carries no custom fields at all.
+ */
 function save_custom_fields(int $id,bool $new): void {
     $input=$_POST['custom']??[]; if(!is_array($input)) throw new UserError('Invalid fields');
+    $staff=is_staff();
     foreach(field_definitions() as $f) {
-        if(!is_staff() && $f['visibility']!=='edit') continue;
+        $families=$f['visibility']==='edit';
+        if(!$staff && !$families) continue;
         $old=field_value($id,(int)$f['id']);
         $value=$input[$f['id']]??($f['field_type']==='checkbox'?false:($f['field_type']==='multiselect'?[]:''));
-        $value=validate_custom($f,$value,$old);
+        $value=validate_custom($f,$value,$old,!$new && (bool)$f['required'] && $families!==$staff);
         run('INSERT INTO field_values (student_id,field_id,value_json) VALUES (?,?,?) ON DUPLICATE KEY UPDATE value_json=VALUES(value_json)',[$id,$f['id'],json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)]);
     }
 }

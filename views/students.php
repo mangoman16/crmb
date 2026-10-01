@@ -7,17 +7,18 @@ page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in thi
     $staff?link_button(t('Leeres Formular drucken','Print a blank form'),'print',[],'secondary')
            .link_button(t('+ Schüler anlegen','+ Add student'),'student'):'');
 if($staff): ?>
-<?php /* Three different gaps, said separately because they are filled in
-         different places and none is found on the day it matters: somebody to
-         ring, somewhere to write, and an address of their own to sign in with.
-         All three are warnings: without a login of their own, no invoice or
-         reminder reaches the family by email. */
+<?php /* Two different gaps, said separately because they are filled in
+         different places and neither is found on the day it matters: somebody
+         to ring, and somewhere to write. Both are warnings: without an address
+         there is no login, and without a login no invoice or reminder reaches
+         the family by email. An address that is already somebody else's login
+         is said on that child's own page, before anybody taps „Einladung
+         senden" (ADR 0020, §1). */
 $noContact=students_missing_contact();$noEmail=students_missing_email();
 students_notice($noContact,plural(count($noContact),'Kind ohne Notfallkontakt','Kinder ohne Notfallkontakt','child with nobody to ring','children with nobody to ring'),
     '',['tab'=>'contacts'],'add-contact');
 students_notice($noEmail,plural(count($noEmail),'Kind ohne E-Mail-Adresse','Kinder ohne E-Mail-Adresse','child with no email address','children with no email address'),
     '',[],'email');
-own_address_notice();
 ?>
 <?php /* Saved filters are the "views" she asked for: a named selection she opens
          instead of rebuilding. Each chip carries what it selects underneath its

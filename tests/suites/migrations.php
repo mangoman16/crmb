@@ -10,9 +10,9 @@
  * signed out" were claims with nothing behind them, and they are the two claims
  * a trainer is trusting with her families' money.
  *
- * tests/migration-data.php builds a portal as it stood before 015 and again as
- * it stood before 019, applies the rest, and prints what it finds. This reads
- * that and holds it to the promise.
+ * tests/migration-data.php builds a portal as it stood before 015, 019, 020 and
+ * 022, applies the rest, and prints what it finds. This reads that and holds it
+ * to the promise.
  *
  * What it does not yet hold to it: 017 backfills covered_from and covered_to on
  * every charge that carries a period, and no case below looks at a charge. The
@@ -32,7 +32,7 @@ if (!function_exists('exec')) {
     // Shared hosting often lists exec in disable_functions. The run says what it
     // could not do rather than stopping on an undefined function.
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved or kept by migrations 015, 016, 019, 020 and 021 (this PHP disables exec, which the run with data in between needs)']));
+        ['the data moved or kept by migrations 015, 016 and 019 to 023 (this PHP disables exec, which the run with data in between needs)']));
     return;
 }
 $out = [];
@@ -50,7 +50,7 @@ if (!is_array($after)) {
 }
 if ($after['engine'] === 'sqlite' && test_driver() !== 'sqlite')
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved or kept by migrations 015, 016, 019, 020 and 021 (checked on sqlite; set CRM_MIGRATION_CONFIG'
+        ['the data moved or kept by migrations 015, 016 and 019 to 023 (checked on sqlite; set CRM_MIGRATION_CONFIG'
          . ' to the config of an empty *_test database to check it on this engine)']));
 
 $ids = $after['ids'];
@@ -287,13 +287,223 @@ foreach ($w['retried'] as $stopped => $state) {
 }
 
 case_('On this run’s own engine, a new login has news on and status auto, and its history goes with it');
-run("INSERT INTO accounts (name, email, role, created_at) VALUES ('Neu', 'neu@example.test', 'student', ?)", [now()]);
+// The username is named because 023 makes it unique: '' is taken once at most.
+run("INSERT INTO accounts (name, email, username, role, created_at) VALUES ('Neu', 'neu@example.test', 'neu', 'student', ?)", [now()]);
 $fresh = one("SELECT id, newsletter, presence FROM accounts WHERE email = 'neu@example.test'");
 is_same([1, 'auto'], [(int)$fresh['newsletter'], $fresh['presence']], 'news by email on, status auto');
 run('INSERT INTO online_periods (account_id, started_at, last_seen_at, hidden) VALUES (?, ?, ?, 0)', [$fresh['id'], now(), now()]);
 run('DELETE FROM accounts WHERE id = ?', [$fresh['id']]);
 is_same(0, (int)scalar('SELECT COUNT(*) FROM online_periods WHERE account_id = ?', [$fresh['id']]),
         'deleting a login deletes when it was online, rather than leaving periods nobody can be named for');
+
+// ---------------------------------------------------------------------------
+// 022 and 023: a username for every login, beside an address that stays its own
+// (ADR 0019, and 0020, which withdrew 0019's shared addresses before they
+// shipped). The usernames made from names are the runner's PHP step after these
+// files, not these files, and are tested where that step is.
+$u = $after['twentytwo'];
+$named = (int)$u['logins']['named'];
+$loginsBefore = array_column($u['before']['accounts'], null, 'id');
+$loginsAfter = array_column($u['after']['accounts'], null, 'id');
+$usernamePattern = '/^[a-z](?:[a-z0-9]|[.-](?=[a-z0-9])){2,39}$/D';
+
+case_('022 and 023 keep every login the previous version wrote, value for value');
+ok(count($loginsBefore) >= 10, 'there were logins to keep: ' . count($loginsBefore));
+is_same(array_keys($loginsBefore), array_keys(array_diff_key($loginsAfter, [$named => 1])),
+        'the same logins afterwards, and no other but the one written in between');
+foreach ($loginsBefore as $loginId => $row)
+    is_same($row, array_diff_key($loginsAfter[$loginId] ?? [], ['username' => 1]),
+            'login ' . $loginId . ' (' . $row['name'] . ') has every other value it had, its password and address included');
+$expectedCounts = $u['before']['counts'];
+$expectedCounts['accounts']++;
+is_same($expectedCounts, $u['after']['counts'],
+        'every guarded table has as many rows as before but for that one login, so the guard stays as it is');
+
+case_('022 gives every login from before it the empty username, never NULL');
+is_same(array_fill_keys(array_keys($loginsBefore), ''),
+        array_diff_key(array_column($u['after_022']['accounts'], 'username', 'id'), [$named => 1]),
+        'each is at "" - not given one yet - which can never sign in, because it fails the pattern');
+ok(!preg_match($usernamePattern, ''), 'and "" does fail it');
+if ($after['engine'] !== 'sqlite') {
+    $columns = $u['after_022']['columns'];
+    is_same(array_search('email', $columns, true) + 1, array_search('username', $columns, true),
+            'the column sits after email, where a person reading the table looks for it');
+}
+
+case_('023 gives each of them a placeholder of its own, and touches no other login');
+foreach ($loginsBefore as $loginId => $row)
+    is_same('#' . $loginId, $loginsAfter[$loginId]['username'], $row['name'] . ' is #' . $loginId);
+is_same('schon.benannt', $loginsAfter[$named]['username'],
+        'a login that already had a username keeps it: the UPDATE reached only the rows still at ""');
+$usernames = array_column($u['after']['accounts'], 'username');
+is_same(count($usernames), count(array_unique($usernames)), 'no two logins have the same one');
+is_same([], array_values(array_filter(array_diff($usernames, ['schon.benannt']), fn($p) => preg_match($usernamePattern, $p))),
+        'and no placeholder is a username anybody could sign in with or choose');
+is_same('23000', $u['placeholder_taken'], 'the database refuses a second login at a placeholder that is taken');
+
+case_('After 023 the address is still one login’s, and so is the username [0020 §1]');
+// 001's inline UNIQUE on accounts.email is the backstop behind
+// refuse_address_in_use(): with that bypassed, the database still says no.
+$onlyEmail = fn(array $indexes): array => array_keys(array_filter($indexes, fn($columns) => $columns === ['email']));
+is_same(1, count($onlyEmail($u['before']['unique'])), 'before 022 one unique index covered the address alone');
+if ($after['engine'] !== 'sqlite')
+    is_same(['email'], $onlyEmail($u['before']['unique']), 'and it was named email, after its column, as 001 left it');
+$expectedIndexes = $u['before']['unique'] + ['account_username' => ['username']];
+ksort($expectedIndexes);
+is_same($expectedIndexes, $u['after']['unique'],
+        'afterwards every unique index from before is still there, the address’s included, and account_username covers the username');
+is_same('23000', $u['same_address'],
+        'a second login on the address of a login the update carried through is refused, with a username nobody has');
+is_same('23000', $u['legacy_address_taken'], 'and so is one on the legacy quoted address, which is its login’s alone as well [R2]');
+is_same(null, $u['own_address'], 'while the same write on an address of its own is taken: what refused the others was the address');
+is_same('23000', $u['same_username'], 'a second login with a username that is taken is refused');
+if ($after['engine'] !== 'sqlite') {
+    is_same('23000', $u['address_other_case'], 'the address in other capitals is refused too, under the tables’ collation');
+    is_same('23000', $u['other_case'], 'and so is a username differing only in capitals');
+}
+
+case_('A legacy address with a quoted local part comes through the update untouched [R2]');
+$legacyId = (int)$u['logins']['legacy'];
+$legacy = $loginsBefore[$legacyId]['email'] ?? null;
+is_same('"familie..alt"@beispiel.test', $legacy, 'the portal held one before the update');
+ok(filter_var($legacy, FILTER_VALIDATE_EMAIL) !== false,
+   'which is realistic: FILTER_VALIDATE_EMAIL, the only check an address ever went through, lets it pass');
+is_same($legacy, $loginsAfter[$legacyId]['email'] ?? null, 'and it is the same address, byte for byte, afterwards');
+is_same('#' . $legacyId, $loginsAfter[$legacyId]['username'] ?? null, 'with a placeholder username like every other login');
+
+case_('023 stopped partway and started again, and its UPDATE run twice, end as one run does');
+is_same($u['statements'] - 1, count($u['retried']), 'it was stopped after each statement but the last');
+// Each retry builds its portal afresh, and the login from before 015 is dated
+// the moment it was written, so times are left out as they are for 019.
+$undated = fn(array $rows) => array_map(fn($row) => array_diff_key($row, ['created_at' => 1, 'verified_at' => 1]), $rows);
+foreach ($u['retried'] as $stopped => $state) {
+    $when = 'stopped after statement ' . $stopped . ' of ' . $u['statements'] . ' and run from the first: ';
+    is_same($undated($u['after']['accounts']), $undated($state['accounts']), $when . 'every login has the values and placeholder of one run');
+    is_same($u['after']['unique'], $state['unique'], $when . 'the same unique indexes, the address’s included');
+}
+is_same($u['after']['accounts'], $u['again'], 'the UPDATE run again after the file finished changes nothing, "#" and all');
+
+case_('After 023 the runner’s step names every login carried through, oldest first, once, and mails nobody [§4]');
+// database/defaults.php run on the portal 022 and 023 were applied to, rather
+// than on logins a fixture wrote after the fact: the placeholders here are the
+// ones 023 made. How a name becomes a username is tests/suites/usernames.php's.
+$r = $u['runner'];
+$runBefore = array_column($r['before']['accounts'], null, 'id');
+$runAfter = array_column($r['first']['accounts'], null, 'id');
+$withoutUsername = fn(array $logins) => array_map(fn($row) => array_diff_key($row, ['username' => 1]), $logins);
+is_same(array_keys($runBefore), array_keys($runAfter), 'the same logins afterwards, none added and none lost');
+is_same($r['before']['counts'], $r['first']['counts'], 'and every guarded table has as many rows as before');
+is_same($withoutUsername($runBefore), $withoutUsername($runAfter),
+        'every other value of every login is as it was, its password and its address included');
+is_same(['lena.mueller', 'lena.mueller2', 'hans-juergen.gross-oezdemir', 'trainerin', 'kurt.novak', 'eva.hofer', 'familie.alt'],
+        array_map(fn($case) => $runAfter[$u['logins'][$case]]['username'] ?? null, ['mueller', 'mueller2', 'gross', 'staff', 'orphan', 'invited', 'legacy']),
+        'a student’s login after the student, the older Lena keeping the plain name; a one-word trainer, a login whose student is gone, an invitation and a legacy address after their own');
+is_same(['', 'familie.leer'], [$runBefore[$r['never_named']]['username'] ?? null, $runAfter[$r['never_named']]['username'] ?? null],
+        'a login at "" is named like one at a placeholder');
+$runUsernames = array_column($r['first']['accounts'], 'username');
+is_same([], array_values(array_filter($runUsernames, fn($name) => !preg_match($usernamePattern, (string)$name))),
+        'every login now has a username that can sign in');
+is_same(count($runUsernames), count(array_unique($runUsernames)), 'and no two have the same one');
+// The negative: a step that renamed everybody would pass every line above.
+$wasUnnamed = array_keys(array_filter($runBefore, fn($row) => $row['username'] === '' || $row['username'][0] === '#'));
+$renamed = array_keys(array_filter($runAfter, fn($row) => $row['username'] !== $runBefore[$row['id']]['username']));
+is_same($wasUnnamed, $renamed, 'it changed exactly the logins at a placeholder or at "", ' . count($wasUnnamed) . ' of ' . count($runBefore));
+is_same('schon.benannt', $runAfter[$u['logins']['named']]['username'] ?? null, 'a login that already had a username keeps it');
+is_same($r['before']['mail'], $r['first']['mail'], 'no mail was queued: nobody is told their username by the update');
+is_same('', $r['before']['dummy_hash'], 'the portal had no sign-in comparison hash before the update');
+ok(password_get_info($r['first']['dummy_hash'])['algo'] === PASSWORD_DEFAULT && !password_needs_rehash($r['first']['dummy_hash'], PASSWORD_DEFAULT),
+   'and has one afterwards, made with PASSWORD_DEFAULT at today’s cost [R9]');
+is_same([$r['first']['accounts'], $r['first']['dummy_hash'], $r['first']['counts']], [$r['second']['accounts'], $r['second']['dummy_hash'], $r['second']['counts']],
+        'the next update’s run changes nothing: no login, no hash, no count');
+
+case_('On this run’s own engine, no two logins share an address, nor a username');
+// On the run's own database, so a run on MariaDB proves this on MariaDB.
+// refuse_address_in_use() gives the sentence a person reads; this is the
+// database behind it, which refuses under any isolation level (ADR 0020 §1).
+make_account(['email' => 'eigene.adresse@example.test', 'username' => 'eigene.eins']);
+$refusal = null;
+try { make_account(['email' => 'eigene.adresse@example.test', 'username' => 'eigene.zwei']); } catch (PDOException $e) { $refusal = $e; }
+is_same('23000', (string)$refusal?->getCode(), 'a second login on an address that is taken is refused, with a username of its own');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['eigene.adresse@example.test']), 'and only the first is there');
+does_not_throw(fn() => make_account(['email' => 'eigene.zwei@example.test', 'username' => 'eigene.zwei']),
+               'the same login on an address of its own is taken, so what refused it was the address');
+$refusal = null;
+try { make_account(['username' => 'eigene.eins']); } catch (PDOException $e) { $refusal = $e; }
+is_same('23000', (string)$refusal?->getCode(), 'a username that is taken is refused by the database');
+if (test_driver() === 'sqlite') {
+    test_unsupported(array_merge(test_unsupported(),
+        ['an address or a username differing only in capitals refused by its unique index (SQLite compares bytes; utf8mb4_unicode_ci does not)']));
+} else {
+    $refusal = null;
+    try { make_account(['email' => 'Eigene.Adresse@Example.TEST']); } catch (PDOException $e) { $refusal = $e; }
+    is_same('23000', (string)$refusal?->getCode(), 'the taken address in other capitals is refused too, under the tables’ collation');
+    $refusal = null;
+    try { make_account(['username' => 'Eigene.Eins']); } catch (PDOException $e) { $refusal = $e; }
+    is_same('23000', (string)$refusal?->getCode(), 'and so is the taken username in other capitals');
+    $refusal = null;
+    try { make_account(['email' => 'eigene-adresse@example.test']); make_account(['email' => 'eigeneadresse@example.test']); }
+    catch (PDOException $e) { $refusal = $e; }
+    is_same(null, $refusal, 'while a dot, a hyphen and nothing at all are three different addresses to it');
+    $refusal = null;
+    try { make_account(['username' => 'eigene-eins']); make_account(['username' => 'eigeneeins']); } catch (PDOException $e) { $refusal = $e; }
+    is_same(null, $refusal, 'and three different usernames');
+}
+
+if (test_driver() !== 'sqlite') {
+    case_('On this run’s own engine, a locking read also locks the gap where a row would go [R8]');
+    // refuse_address_in_use() and username_for_new_account() read FOR UPDATE and
+    // rely on REPEATABLE READ locking the gap a missing row would fill; under
+    // READ COMMITTED two requests could both see "free" and both write, and the
+    // second would meet the unique index's 23000 rather than a sentence. The
+    // portal never changes the level, so this checks the server's own - here,
+    // not in tests/mariadb-local.sh, so that tests/existing-database.sh asks a
+    // hosting provider's server too. The variable has two names: MySQL 8.0 knows
+    // only transaction_isolation, MariaDB 10.11 only tx_isolation.
+    $isolation = null;
+    foreach (['@@transaction_isolation', '@@tx_isolation'] as $variable) {
+        try { $isolation = (string)scalar('SELECT ' . $variable); break; }
+        catch (PDOException) { /* this engine's other name */ }
+    }
+    is_same('REPEATABLE-READ', $isolation, 'the connection the portal opens reads at REPEATABLE READ');
+}
+
+case_('On this run’s own engine, the runner’s step names a login at a placeholder and leaves a named one alone');
+// What runs after every update's migrations is database/defaults.php, required
+// here the way schema_apply() requires it, and in a scope of its own so its loop
+// variables do not land in this file's. On this run's database, so a run on
+// MariaDB proves the backfill's statements there; migration-data.php proves it
+// on a portal 022 and 023 were applied to.
+$runnerStep = static function (): void { require ROOT . '/database/defaults.php'; setting_cache_clear(); };
+$namedTrainer = make_account(['role' => 'trainer', 'name' => 'Trainerin Benannt', 'email' => 'trainerin.benannt@example.test', 'username' => 'trainerin.benannt']);
+$placeholderFamily = make_account(['role' => 'student', 'name' => 'Familie Platzhalter', 'email' => 'platzhalter@example.test', 'username' => 'wird.ersetzt']);
+run('UPDATE accounts SET username=? WHERE id=?', ['#' . $placeholderFamily, $placeholderFamily]);
+$pairOf = fn(string $columns) => rows('SELECT ' . $columns . ' FROM accounts WHERE id IN (?, ?) ORDER BY id', [$namedTrainer, $placeholderFamily]);
+$pairBefore = $pairOf('id, email, role');
+$runnerStep();
+is_same($pairBefore, $pairOf('id, email, role'), 'both logins are still there, each on its own address, with the same role');
+is_same(['trainerin.benannt', 'familie.platzhalter'], array_column($pairOf('username'), 'username'),
+        'the trainer keeps her username and the family’s login is given one');
+
+case_('After the runner the sign-in comparison hash exists at today’s cost, and a request refreshes nothing [R9]');
+// Hashing is slower than verifying, so a sign-in that hashed would say by its
+// time whether a username or an address has a login. The runner and the nightly
+// prune make and refresh the hash; a request may only repair a missing one
+// (security.php).
+run("DELETE FROM settings WHERE setting_key='sign_in_dummy_hash'"); setting_cache_clear();
+$runnerStep();
+$dummy = (string)setting('sign_in_dummy_hash');
+is_same(PASSWORD_DEFAULT, password_get_info($dummy)['algo'], 'the runner made one, with PASSWORD_DEFAULT');
+ok(!password_needs_rehash($dummy, PASSWORD_DEFAULT), 'at today’s cost');
+$runnerStep();
+is_same($dummy, (string)setting('sign_in_dummy_hash'), 'the next update keeps a current one rather than hashing again');
+$outdated = password_hash('x', PASSWORD_BCRYPT, ['cost' => 4]);
+set_setting('sign_in_dummy_hash', $outdated);
+throws(fn() => submit('login', ['username' => 'niemand.hier', 'password' => 'falsch']), 'a sign-in with no such username is refused', 'Anmeldung nicht möglich');
+setting_cache_clear();
+is_same($outdated, (string)setting('sign_in_dummy_hash'), 'and leaves even an outdated hash alone: a request refreshes nothing');
+throttle_clear('login', username_identity('niemand.hier'));
+$runnerStep();
+ok(!password_needs_rehash((string)setting('sign_in_dummy_hash'), PASSWORD_DEFAULT), 'the next update brings that one to today’s cost');
 
 if (test_driver() === 'sqlite') {
     case_('The SQLite translation of SET DEFAULT changes the default and no stored value');

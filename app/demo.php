@@ -25,6 +25,15 @@ function demo_names(): array {
     ];
 }
 
+/**
+ * An example student's own address: lena.hofer@beispiel.test. Built with the
+ * username rule, so an umlaut becomes plain ASCII the way the address check
+ * wants it, and every example name gives a different one.
+ */
+function demo_address(string $first, string $last): string {
+    return username_from_name($first, $last).'@beispiel.test';
+}
+
 /** Whether the portal currently holds any example data. */
 function demo_present(): bool {
     return (int)scalar('SELECT COUNT(*) FROM students WHERE is_demo=1') > 0
@@ -62,8 +71,9 @@ function demo_password(): string {
  * of thirty children cannot tell at a glance which ones are pretend.
  */
 function demo_fill(bool $force = false): array {
-    // Refused even with $force: a second fill would collide on the demo accounts'
-    // addresses, and two sets of pretend children is nobody's idea of a test.
+    // Refused even with $force: two sets of pretend children is nobody's idea
+    // of a test, and a second set's logins could not have the first one's
+    // addresses (refuse_address_in_use()).
     if (demo_present())
         throw new UserError(t(
             'Es gibt schon Beispieldaten. Bitte zuerst die vorhandenen entfernen.',
@@ -85,14 +95,20 @@ function demo_fill(bool $force = false): array {
         // first require working email and a released privacy notice.
         $accounts = [];
         // Each family login is one student's own and carries that student's
-        // name (ADR 0010). The addresses stay as they were, because the settings
-        // page and the testing notes tell her to sign in with them.
+        // name (ADR 0010), and a username made from it like any other login's
+        // (ADR 0019, R1) - so beside real data, where a real Lena Hofer may
+        // already sign in, the example one is lena.hofer2. The usernames are
+        // read back by demo_logins(), not assumed. Every login has an address
+        // of its own (ADR 0020): one already somebody's refuses the fill
+        // rather than being shared.
         [$first, $second] = demo_names();
-        foreach ([['Trainerin Beispiel','trainerin@beispiel.test','trainer'],
-                  [$first[0].' '.$first[1],'familie.hofer@beispiel.test','student'],
-                  [$second[0].' '.$second[1],'familie.berger@beispiel.test','student']] as [$name,$email,$role]) {
-            run('INSERT INTO accounts (name,email,password_hash,role,state,verified_at,locale,created_at,is_demo)'
-                .' VALUES (?,?,?,?,?,?,?,?,1)', [$name, $email, $hash, $role, 'active', now(), 'de', now()]);
+        foreach ([['Trainerin', 'Beispiel', 'trainerin@beispiel.test', 'trainer'],
+                  [$first[0], $first[1], demo_address($first[0], $first[1]), 'student'],
+                  [$second[0], $second[1], demo_address($second[0], $second[1]), 'student']] as [$given, $family, $email, $role]) {
+            refuse_address_in_use($email);
+            $username = username_for_new_account($given, $family);
+            run('INSERT INTO accounts (name,email,username,password_hash,role,state,verified_at,locale,created_at,is_demo)'
+                .' VALUES (?,?,?,?,?,?,?,?,?,1)', [$given.' '.$family, $email, $username, $hash, $role, 'active', now(), 'de', now()]);
             $accounts[$email] = (int)db()->lastInsertId();
             $counts['accounts']++;
         }
@@ -156,18 +172,16 @@ function demo_fill(bool $force = false): array {
             // tariff at all, which is what the billing preview has to be able to
             // explain rather than skip silently.
             $price = $i === 4 ? 4000 : ($i === 9 ? 5000 : null);
-            // The address the portal writes to. The first two are the two
-            // family logins, one student each; everybody else has an address of
-            // their own and no login yet, which is what "Zugang einladen" is for.
-            // No two share one, because a shared address is exactly what the
-            // portal would ask her to fix.
-            $writeTo = $i === 0 ? 'familie.hofer@beispiel.test'
-                     : ($i === 1 ? 'familie.berger@beispiel.test'
-                     : ($age < 18 ? 'eltern.' : '') . mb_strtolower($n[1]) . '@beispiel.test');
+            // The address the portal writes to, and that a login signs in with:
+            // every student's own, children's included (ADR 0020) - a parent's
+            // is on the emergency contacts below. The first two are the two
+            // family logins, one student each; everybody else has no login yet,
+            // which is what "Zugang einladen" is for.
+            $writeTo = demo_address($n[0], $n[1]);
             run('INSERT INTO students (account_id,first_name,last_name,email,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,'
                 .'price_cents,price_note,billing_paused,billing_note,internal_notes,revision,created_at,updated_at,is_demo)'
                 .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,1)',
-                [$i === 0 ? $accounts['familie.hofer@beispiel.test'] : ($i === 1 ? $accounts['familie.berger@beispiel.test'] : null),
+                [$i < 2 ? $accounts[$writeTo] : null,
                  $n[0], $n[1], $writeTo, $birth->format('Y-m-d'), $joined->format('Y-m-d'),
                  $status === 'ended' ? $today->modify('-30 days')->format('Y-m-d') : null,
                  $status,
@@ -278,21 +292,21 @@ function demo_fill(bool $force = false): array {
             ['Entwurf: Vereinsmeisterschaft', 'Termin steht noch nicht fest.', now(), now()]);
 
         run('INSERT INTO threads (account_id,subject,updated_at) VALUES (?,?,?)',
-            [$accounts['familie.hofer@beispiel.test'], 'Frage zum Schläger', now()]);
+            [$accounts[demo_address($first[0], $first[1])], 'Frage zum Schläger', now()]);
         $thread = (int)db()->lastInsertId();
         // Who is in a thread is a row of its own, and without it the example
         // family opened Nachrichten and was told they had none - while the
         // trainer could see the conversation, because staff see every staff
         // thread. Example data that lies about the app is worse than none.
         run('INSERT INTO thread_participants (thread_id,account_id,joined_at) VALUES (?,?,?)',
-            [$thread, $accounts['familie.hofer@beispiel.test'], now()]);
+            [$thread, $accounts[demo_address($first[0], $first[1])], now()]);
         // Who is in a thread is a row of its own, and without it the example
         // family opened Nachrichten and was told they had none - while the
         // trainer could see the conversation, because staff see every staff
         // thread. Example data that lies about the app is worse than none.
 
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',
-            [$thread, $accounts['familie.hofer@beispiel.test'], 'Hallo! Welchen Schläger sollen wir für Lena kaufen?', now()]);
+            [$thread, $accounts[demo_address($first[0], $first[1])], 'Hallo! Welchen Schläger sollen wir für Lena kaufen?', now()]);
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',
             [$thread, $trainerId, 'Hallo! Für den Anfang reicht ein leichter Schläger, ich bringe am Montag zwei zum Ausprobieren mit.', now()]);
 
@@ -301,7 +315,19 @@ function demo_fill(bool $force = false): array {
     });
 
     $result['password'] = $password;
+    $result['logins'] = demo_logins();
     return $result;
+}
+
+/**
+ * The example logins, as username, role and address, staff first.
+ *
+ * Read from the database rather than from a list here, because the usernames
+ * are made at fill time and may carry a number (demo_fill()). For the setup
+ * page, the console and the notice that shows the password.
+ */
+function demo_logins(): array {
+    return rows("SELECT username,role,email FROM accounts WHERE is_demo=1 ORDER BY role='student', id");
 }
 
 /**

@@ -18,9 +18,9 @@ case_('The suite dispatches an action into the transaction a real request opens'
    whole run was green against a weaker portal than the one that ships. A
    refactor found it; no test did. This is that test.
 
-   account_invite is what the probe dispatches because account_using_email()
+   account_invite is what the probe dispatches because refuse_address_in_use()
    inside it refuses outright when no transaction is open, rather than quietly
-   handing back an unlocked row - which turns "was a transaction open" into
+   handing back an unlocked answer - which turns "was a transaction open" into
    something a suite can ask instead of something it has to trust.
 
    The case builds the portal state it needs: a released privacy notice and an
@@ -30,7 +30,7 @@ mail_ready(true);
 test_load_actions();
 
 /* First the measurement itself, so the two passes underneath cannot be vacuous.
-   If account_using_email() ever stops refusing, this fails and says so instead
+   If refuse_address_in_use() ever stops refusing, this fails and says so instead
    of letting the rest of the case report a transaction that was never there. */
 $_POST = ['name'=>'Ohne Transaktion', 'email'=>'bare@beispiel.test', 'role'=>'trainer', 'locale'=>'de'];
 throws(fn() => without_session_id_warning(fn() => dispatch_action('account_invite')),

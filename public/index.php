@@ -50,7 +50,7 @@ try {
                 flash(t('Diese Eingabe wurde bereits verarbeitet.','This submission has already been processed.'),'error');
             else {
                 capture_error($ex);
-                flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: Adresse bereits vergeben oder verknüpfte Daten vorhanden.','Cannot save: email already used or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
+                flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: ein Wert ist schon vergeben, oder verknüpfte Daten sind vorhanden.','Cannot save: a value is already taken, or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
             }
         }
         [$back,$params]=form_return(current_user()?'dashboard':'login',$allowed);

@@ -70,11 +70,11 @@ try{
         // It said "the password printed above" and printed no password, so the
         // three accounts it had just made could not be signed in to at all.
         // Generated once and never stored in the clear, so this is the only
-        // moment it can be shown.
-        echo "\n  trainerin@beispiel.test        (trainer)\n"
-            ."  familie.hofer@beispiel.test    (family)\n"
-            ."  familie.berger@beispiel.test   (family)\n\n"
-            ."All three sign in with: ".$result['password']."\n"
+        // moment it can be shown. The usernames are read back rather than
+        // written here: beside real data one may carry a number.
+        echo "\n";
+        foreach($result['logins'] as $login)printf("  %-24s (%s)\n",$login['username'],$login['role']==='student'?'family':$login['role']);
+        echo "\nAll of them sign in with: ".$result['password']."\n"
             ."Write it down: it is not shown again. Remove everything with demo:clear.\n";exit;
     }
     if($command==='demo:clear'){
@@ -137,8 +137,11 @@ try{
         if($password!==ask('Repeat password',true))throw new RuntimeException('Passwords do not match.');
         // A second administrator can be created deliberately with --force; without
         // it the guard stays, so a stray run cannot quietly add one.
-        create_admin_account($name,$email,$password,($argv[2]??'')==='--force');
-        echo "Administrator created. Sign in to configure SMTP and the privacy notice.\n";exit;
+        $made=create_admin_account($name,$email,$password,($argv[2]??'')==='--force');
+        // Nobody chose it (ADR 0019): this is the one place it is told. The
+        // address signs in as well (ADR 0020).
+        echo "Administrator created. Sign in with the username ".$made['username']." or with the email address ".email_normalised($email).".\n"
+            ."Then configure SMTP and the privacy notice.\n";exit;
     }
     if($command==='billing:plan'){
         $period=billing_valid_period($argv[2]??billing_current_period());

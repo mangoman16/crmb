@@ -48,6 +48,11 @@ function prune_expired(): void {
     // The change log is informative, not evidence, so it has a horizon. The
     // audit log next to it does not, because that one is evidence.
     history_prune((int)setting('history_months'));
+    // After a PHP upgrade raises PASSWORD_DEFAULT's cost, the hash a refused
+    // sign-in is checked against must cost the same as a real one again, or
+    // the time a refusal takes says whether the username exists (ADR 0019, M2).
+    // Here and in the migration runner, never in a sign-in.
+    refresh_sign_in_dummy_hash();
     prune_done_feedback();
     prune_quiet_errors();
     prune_uploads();

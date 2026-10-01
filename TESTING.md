@@ -96,6 +96,7 @@ release and emptied again for the next.
 - A status to choose — „Automatisch", „Abwesend", „Als offline anzeigen" — for trainers and administrators, a coloured dot, and when each account was online over the last 30 days: [P.1–P.10](#online-status-and-when-somebody-was-online)
 - Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
+- Everybody has a username and an address of their own, and signs in with either in one box; logins are made by invitation only; families fill in their own details, and every change is in the change log (ADR 0020): A.1–A.24
 
 ---
 
@@ -431,130 +432,44 @@ Skip on an ordinary code change; do all of it before a release.
   **Neuigkeiten**, and no other child.
 - [ ] **4.5** As a family, open another family's child by editing the address.
   Refused, in words, not with a blank page.
-- [ ] **4.6** Wrong password repeatedly (more than ten times for one address,
+- [ ] **4.6** Wrong password repeatedly (more than ten times for one username,
   within fifteen minutes) is refused with „Zu viele Versuche", and a correct
-  password immediately afterwards is refused too — that is the point.
-- [ ] **4.6a** The same address signs in **correctly** twelve times in a row —
+  password immediately afterwards is refused too — that is the point. The same
+  login's **email address** with the right password still signs in: the two
+  names are counted separately (ADR 0020, §3).
+- [ ] **4.6a** The same username signs in **correctly** twelve times in a row —
   sign out, sign in, twelve times, which is one afternoon of three children
   sharing a phone. All twelve work. A correct password must never produce „Zu
   viele Versuche": the attempt is counted before the password can be checked,
-  and a sign-in that succeeds clears that count again.
-- [ ] **4.6b** Wrong password for one address until „Zu viele Versuche"
-  appears, then „Passwort vergessen", open the link and set a new password. You
-  are signed in; sign out and sign in again with the new password and it works
-  straight away, rather than being refused for the rest of the fifteen minutes.
-  *This one needs email actually working first* — SMTP set up (15.3) and the
-  mail worker running (1.4), or the link is written and never sent. If you would
-  rather not wait for mail, **Postausgang** shows the message that was queued.
-- [ ] **4.6c** The wait itself, which is the only step here that takes fifteen
-  minutes and the only one that proves the sentence „Bitte später erneut
-  versuchen" is true. Type the wrong password for one address until „Zu viele
-  Versuche" appears. Now put the phone down for **sixteen minutes** by the
-  clock — longer than fifteen, not exactly fifteen. Come back and sign in with
-  the **right** password. You are in, first try. If it still says „Zu viele
-  Versuche", the lockout never ends on its own and a family that mistyped a
-  password is shut out of her portal until somebody with a database touches it.
-  Nothing automated can check this: the suite ages the stored counter instead of
-  waiting, so the clock itself is only ever proven here.
-- [ ] **4.6d** Not a step to perform — a symptom to recognise. „Zu viele
-  Versuche" for an address where nobody typed a wrong password ten times, and
-  for **more than one family at the same time**, is not the lockout above:
-  everyone who reaches the portal through the same internet address — one
-  shared connection at the hosting, or one mobile network — shares a single
-  budget of attempts, and attempts that are already being refused spend it too.
-  Waiting a quarter of an hour clears it. If it keeps coming back, it is the
-  connection and not the portal — a question for the hosting, not something to
-  go looking for in the accounts.
-- [ ] **4.6e** Spelling the address differently must not buy a fresh ten
-  guesses. **Only meaningful on MariaDB or MySQL.** On the test suite's SQLite
-  file this step proves nothing at all — see the note below before you run it.
-  Take a family address with an accented letter available in it, say
-  `familie@beispiel.at`. Type the **wrong** password ten times at `familie@…`
-  until „Zu viele Versuche" appears. Now type the same address **with an
-  accent** — `famílie@…` — and any password at all. It must say **„Zu viele
-  Versuche"** as well. If it says „Anmeldung nicht möglich" instead, the
-  accented spelling has started its own fresh ten, and whoever is guessing at
-  that family's password has as many sets of ten as they can invent spellings.
-  > Why the engine decides this: the portal's database compares addresses under
-  > `utf8mb4_unicode_ci`, which reads `i` and `í`, upper and lower case, `ss`
-  > and `ß` as the same letter, so both spellings find the one family and the
-  > attempt is counted against that family. The SQLite translation the default
-  > suite runs on compares the bytes, finds two unrelated addresses, and cannot
-  > show the fault either way — which is why `php tests/run.php` prints
-  > *„two spellings of one address sharing a throttle bucket (needs the MySQL
-  > collation)"* in its own footer. That line is the reason this step exists.
-  > Walk it against the portal on the real server, or after
-  > `tests/mariadb-local.sh`, and never against the SQLite run.
-  > Afterwards either wait the quarter of an hour or sign in once correctly to
-  > clear the count — a sign-in that works empties that counter, which is 4.6a.
-- [ ] **4.6f** A limit that trips **inside** an action must refuse, not hang.
-  **Only meaningful on MariaDB or MySQL** — it needs two real connections, and
-  the SQLite file the default suite runs on cannot show it. Sign in as any
-  family, open **Mein Konto → „E-Mail-Adresse ändern"**, and send a
-  confirmation link to a new address **six times in a row**, giving the correct
-  current password each time. The sixth must come back with **„Zu viele
-  Versuche. Bitte später erneut versuchen."** within a second or so, and the
-  address at the top of the page must still be the old one.
-  > What this is watching for: the attempt counter is written on a **second**
-  > database connection on purpose, so that a refused attempt is not handed
-  > back by the rollback of the action it was guarding. That second connection
-  > is also why the order inside the handler matters. Every one of these
-  > counters is taken before the action writes anything. If one were ever moved
-  > below a write, the action's own transaction would be holding rows on the
-  > first connection while the second connection waited for them, and the
-  > second connection is the one the first is waiting on to return. Nothing
-  > times out and nothing rolls back: the page simply never finishes loading,
-  > and the only visible symptom is a spinner. A browser tab that hangs here —
-  > rather than a sentence in German — is that fault, and it is worth stopping
-  > the release for.
-  > The ordering itself is locked by the `structure` suite, which names all six
-  > places it applies (sending a message, asking to write to somebody, the
-  > payment reminder run, a problem report, the SMTP test and this address
-  > change). This step is the half no suite can reach: that the portal actually
-  > answers under a real engine with real connections.
+  and a correct sign-in clears the count for the username and the address alike.
   > Afterwards, wait the hour or use a different account — this counter is
   > deliberately not cleared by anything you can do from the portal.
-- [ ] **4.7** „Passwort vergessen" sends a link; the link sets a new password
-  once and not twice. Asking for a link ten times for one address is still
-  refused afterwards — that counter is never cleared, because typing an address
+- [ ] **4.7** „Passwort vergessen" with the username, and again with the email
+  address, sends a link each time to the login's own address; the link sets a new
+  password once and not twice. Asking four times in an hour with one of them is
+  refused the fourth time — that counter is never cleared, because typing a name
   proves nothing about who typed it.
 - [ ] **4.7a** The sign-in page carries one small line under the form, „Mit der
   Anmeldung akzeptierst du die Datenschutzerklärung.", the last word a link to the
   notice. Every signed-out page — sign in, forgotten password, invitation, the
   notice itself — ends with the link to the Datenschutzerklärung and the version,
   and nothing longer. At 320px no page scrolls sideways.
-- [ ] **4.8** **Konten → „+ Teammitglied direkt anlegen (ohne E-Mail)"** as an
-  administrator: a name, an address, a role and a password of at least 12
-  characters. The new account signs in straight away with **no SMTP configured
-  at all**, and a weak password is refused here exactly as everywhere else. A
-  family's login is not made here any more: it is made on the child's own page
-  (U.20, U.21).
+- [ ] **4.8** **Konten** offers **„+ Teammitglied einladen"** and nothing that
+  makes a login with a password (ADR 0020, §5). Invite a trainer: **Postausgang**
+  holds the invitation, whose text you cannot read there; the new login is
+  „Eingeladen" until its holder opens the link and chooses a password.
 - [ ] **4.8a** A trainer is not offered that form and cannot post to it.
 - [ ] **4.8b** The role list on that form offers **Trainerin** and
-  **Administrator** only — no Schüler. Creating either attaches no child.
-- [ ] **4.8c** The same form with an address that already has an account says
-  „Diese Adresse hat schon ein Konto." Then tap **Anlegen** twice in quick
-  succession: the second tap says **the same sentence**, word for word. Read it
-  rather than glancing at it — the wrong outcome here is not an error page but a
-  *different* sentence, „Die Eingabe ist nicht möglich: Adresse bereits vergeben
-  oder verknüpfte Daten vorhanden", which is the database complaining in the
-  portal's voice and means the two taps raced each other. Either way it must
-  never be the „vorübergehend nicht verfügbar" page.
-- [ ] **4.8d** The same question asked from the *invitation* side. **Konten →
-  „+ Teammitglied einladen"**, an address that already has an account — the one from
-  4.8 will do — then **„Einladung senden"**. It says **„Diese Adresse hat schon
-  ein Konto."**: word for word the sentence the direct-creation form gives at
-  4.8c, because it is now literally the same sentence in the code. Read it
-  rather than glancing at it. Inviting used to write the row without looking
-  first, so this path answered with „Die Eingabe ist nicht möglich: Adresse
-  bereits vergeben oder verknüpfte Daten vorhanden" — the database complaining
-  in the portal's voice, about an address it declined to name. Then check three
-  things: **Konten** still lists that address **once**; its **role is
-  unchanged**, so a refused invitation has not quietly turned a trainer into a
-  family; and **Postausgang** holds **no new invitation** to it, because a
-  second invitation replaces a password that already works. Tap **„Einladung
-  senden"** twice in quick succession too: the second tap gives the same
-  sentence, never the database one.
+  **Administrator** only — no Schüler. Inviting either attaches no child.
+- [ ] **4.8c** Invite with an address that already has a login. It says
+  „Diese E-Mail-Adresse gehört schon zu einem anderen Zugang. Jede Person
+  braucht ihre eigene. Es ist der Zugang von …", naming whose. Tap **„Einladung
+  senden"** twice in quick succession: the second tap says **the same sentence**,
+  word for word. The wrong outcome is not an error page but a *different*
+  sentence, „Die Eingabe ist nicht möglich: ein Wert ist schon vergeben …",
+  which is the database complaining and means the two taps raced each other.
+  Then check: **Konten** lists that address **once**, its **role is unchanged**,
+  and **Postausgang** holds **no new invitation** to it.
 - [ ] **4.9** Suspending a team member in **Konten**, or a family's login with
   **„Zugang sperren"** on the child's page, stops that person signing in.
 
@@ -1615,6 +1530,121 @@ Rückmeldungen**, „Technische Einzelheiten"
 - [ ] **U.62** As a family, **Nachrichten → Neue Nachricht**: other families in
   the list show their initials, never their photograph; the trainer shows her
   picture. As the trainer, every family shows its picture.
+
+**One login, one address, either name signs in** (ADR 0020) — on the iPhone
+where it says so, after the views for it are in
+
+- [ ] **A.1** Signed out, the sign-in page has **one** box for „Benutzername
+  oder E-Mail-Adresse" and a password. Sign in with the username; sign out;
+  sign in with the email address; sign out. Both work. On the iPhone the
+  Keychain offers the saved username, or the address, in that one box, and saves
+  the password under it.
+- [ ] **A.2** Type the username with capitals or an umlaut, `Lena.Müller` for
+  `lena.mueller`, and the address in capitals, `LENA@Beispiel.AT`. Both sign in
+  as the same login.
+- [ ] **A.3** A wrong password, an unknown username, an unknown address, a
+  suspended login and an invitation not yet opened each give **the same**
+  sentence: „Anmeldung nicht möglich. Bitte Benutzername oder E-Mail-Adresse und
+  Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link in der
+  Einladung öffnen." Read it each time; none of them says „Zugangsdaten".
+- [ ] **A.4** „Passwort vergessen" with an unknown name and with a known one:
+  the page says the same thing, „Wenn es dazu einen Zugang gibt, ist eine E-Mail
+  an dessen Adresse unterwegs.", and names no address. Only the known one puts a
+  mail in **Postausgang**, to the login's own address, naming the username.
+- [ ] **A.5** „Passwort vergessen" for a login that is still only invited: the
+  mail that arrives is **the invitation** again, not a reset link. For a
+  suspended login nothing arrives.
+- [ ] **A.6** In **Postausgang**, as the trainer, open any invitation or reset
+  mail: its text is not shown. Nobody but the mailbox reads a link that sets a
+  password.
+
+**Invitations, and nothing else**
+
+- [ ] **A.7** A child's page, card „Zugang zum Portal", **„Einladung senden"**:
+  the flash names the username. Open the invitation from the real mailbox: it
+  names the username, says it can be changed while setting up, and that the
+  address signs in too.
+- [ ] **A.8** On the page the invitation opens, change the suggested username
+  (say to `lena.m`), set a password, tick the privacy notice, save. You are
+  signed in; the flash names `lena.m` and the address. **Änderungen** shows the
+  username change.
+- [ ] **A.9** **(release, MariaDB)** Do A.8 with a username somebody else has.
+  The page comes back with „Dieser Benutzername ist schon vergeben", the typed
+  name still in the box and **both password boxes empty**; the login is still
+  „Eingeladen" on the child's page. Choose another and it works.
+- [ ] **A.10** The page a reset link opens shows the username read-only; typing
+  into it is not possible, and the saved password is the only thing that changes.
+- [ ] **A.11** A second child with the address of a child who already has a
+  login: the card does not offer the invitation; its „Noch zu tun" asks for
+  „Eigene E-Mail-Adresse eintragen". Pressing an invitation from an old page
+  anyway is refused with „Diese E-Mail-Adresse gehört schon zu einem anderen
+  Zugang …", and nothing is written. Put the parent's address on **Kontakte**
+  instead and give the child their own: the invitation then works.
+- [ ] **A.12** **Schüler anlegen** with first name, last name, the child's own
+  address and **„Gleich einladen"** ticked: the child's page opens, the flash
+  names the username, the card says „Eingeladen", and **Postausgang** holds the
+  invitation. With mail not ready (SMTP not tested) the tick is not offered or
+  is refused saying what is missing — and **no child was created**. Without the
+  tick only the child is created.
+- [ ] **A.13** On an active login's card, **„Link für neues Passwort senden"**
+  (frontend wording may differ): the flash says a link is on its way; the link
+  arrives at the login's own address; you see neither link nor password
+  anywhere. Not offered for your own login, for an invitation (send it again
+  instead) or for a suspended login. As a trainer, it is not offered for
+  another trainer.
+
+**Families fill in their own details**
+
+- [ ] **A.14** Sign in as a family whose child has no birth date, address,
+  emergency contact or a required „Ansehen und bearbeiten" field filled in.
+  Their overview and their child's „Profil" tab say „Noch zu ergänzen" with each
+  of those — and never the phone number.
+- [ ] **A.15** As the family, on „Profil", fill in the birth date, the postal
+  address, the phone and the custom fields, and save. As the administrator,
+  **Änderungen** shows **one** line for that save, under the family's name, with
+  each field before and after — the custom fields by their names, a date as
+  „27.01.2019", a ticked box as „ja".
+- [ ] **A.16** **Änderungen → „Von Familien"** lists that line and none of the
+  trainer's own. Change something while viewing the portal as that family
+  („Portal als … ansehen"): it is listed under your name, not under „Von
+  Familien".
+- [ ] **A.17** As the family, add, change and remove an emergency contact. Each
+  is one line in **Änderungen**, named „Kind · Kontakt", and the removal's line
+  keeps the whole contact so it can be typed in again. A contact's line does
+  not show a student number.
+- [ ] **A.18** As the trainer, on the same child, set every one of those fields
+  back by hand — names, birth date, address, phone, every custom field, every
+  contact. Nothing a family can write is read-only for her: typing the old value
+  back is the undo.
+- [ ] **A.19** A required field at „Ansehen und bearbeiten" left empty: the
+  family's save is refused with „Pflichtfeld: …", the trainer's is not. A
+  required field at „Nur intern" left empty refuses the trainer's save of that
+  child. Creating a new child with either kind of required field defined is
+  never refused.
+- [ ] **A.20** On the Kontakte tab with two contacts, change the first one's
+  phone to something invalid in its „Kontakt bearbeiten" and save: the refusal
+  opens **that** contact with what you typed; the other contact's form still
+  shows the other person's own values. Saving the other one changes only it.
+
+**The address on invoices**
+
+- [ ] **A.21** Issue an invoice for a child, then, as the family, change the
+  postal address. Download the old invoice and send it again from
+  **Rechnungen**: both show **the old address**, opened in a real PDF reader.
+  The next invoice issued shows the new one.
+- [ ] **A.22** As the family, empty the address. An invoice above 400 € for
+  that child is refused, saying the address is missing; one below is issued.
+
+**Still the same for everybody who signed in with an address**
+
+- [ ] **A.23** **(release)** On a copy of a real portal, upload this version.
+  Every existing login signs in with its email address exactly as before, and
+  now also with a username made from its name (Mein Konto shows it). Nobody was
+  mailed about it.
+- [ ] **A.24** **(release)** `php tests/run.php` and `tests/mariadb-local.sh`
+  are green apart from what the run lists as not covered; the collation cases
+  (an address stored with capitals, ß read as ss) are covered only by the
+  MariaDB run.
 
 ---
 

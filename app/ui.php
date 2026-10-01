@@ -69,34 +69,101 @@ function filter_summary(array $f): string {
  * $placeholder is for compact rows where a visible label would crowd the
  * layout; the label is still rendered for screen readers rather than dropped,
  * because a bare box tells a sighted user nothing either.
+ *
+ * $attributes adds to the box, each value escaped: a key input() already sets
+ * is replaced, and null removes it. A password box asks for a new password by
+ * default (autocomplete="new-password", at least 12 characters), which is right
+ * for choosing one and wrong for the box that asks for the existing one: an
+ * iPhone then offers to invent a password where it should fill in the saved
+ * one. Those boxes pass current_password_attributes().
  */
-function input(string $name,string $label,mixed $value='',string $type='text',bool $required=false,string $hint='',string $placeholder=''): void {
+function input(string $name,string $label,mixed $value='',string $type='text',bool $required=false,string $hint='',string $placeholder='',array $attributes=[]): void {
     // What she typed wins over what the record holds, so a form rejected for one
     // bad character comes back filled in rather than blank.
     $held=held_input($name,$value); if(!is_array($held)) $value=$held;
+    $defaults=match($type) {
+        'password' => ['autocomplete'=>'new-password','minlength'=>'12','maxlength'=>'72'],
+        'number'   => ['step'=>'any'],
+        default    => [],
+    };
+    // Built before anything is printed, so a refused name leaves no half a
+    // field on the page.
+    $extra='';
+    foreach(array_merge($defaults,$attributes) as $key=>$attribute) {
+        // A name cannot be escaped into safety, only refused: it is always one
+        // written in the code, and this makes sure it stays one.
+        if(!is_string($key) || !preg_match('/^[a-z][a-z-]*$/D',$key) || in_array($key,['id','name','type','value','required','placeholder'],true))
+            throw new LogicException('input() cannot take the attribute '.json_encode($key).'.');
+        if($attribute!==null) $extra.=' '.$key.'="'.e((string)$attribute).'"';
+    }
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
     $labelClass=$label===''?' class="visually-hidden"':'';
     echo '<div class="field"><label'.$labelClass.' for="'.e($id).'">'.e($label!==''?$label:($placeholder!==''?$placeholder:$name)).($required?' <span aria-hidden="true">*</span>':'').'</label>';
     $ph=$placeholder!==''?' placeholder="'.e($placeholder).'"':'';
-    if($type==='textarea')echo '<textarea id="'.e($id).'" name="'.e($name).'" rows="5"'.$ph.' '.($required?'required':'').'>'.e($value).'</textarea>';
-    else echo '<input id="'.e($id).'" name="'.e($name).'" type="'.e($type).'" value="'.e($value).'"'.$ph.' '.($required?'required ':'').($type==='password'?'autocomplete="new-password" minlength="12" maxlength="72"':'').($type==='number'?' step="any"':'').'>';
+    if($type==='textarea')echo '<textarea id="'.e($id).'" name="'.e($name).'" rows="5"'.$ph.$extra.($required?' required':'').'>'.e($value).'</textarea>';
+    else echo '<input id="'.e($id).'" name="'.e($name).'" type="'.e($type).'" value="'.e($value).'"'.$ph.$extra.($required?' required':'').'>';
     if($hint)echo '<small>'.e($hint).'</small>';echo '</div>';
+}
+
+/**
+ * What every box a username is typed into, or read from, carries - the
+ * sign-in and „vergessen" box, which takes a username or an address (ADR
+ * 0020, §3), included: the browser's password manager pairs it with the
+ * password beside it, and an iPhone neither capitalises the first letter, nor
+ * "corrects" lena.mueller into a word, nor underlines it as a spelling mistake.
+ *
+ * Not inputmode="email": that puts „@" on the first keyboard layer, which the
+ * one box that may be given an address wants and a box for a username alone
+ * does not. Those two pages add it themselves.
+ */
+function username_attributes(): array {
+    return ['autocomplete'=>'username','autocapitalize'=>'none','autocorrect'=>'off','spellcheck'=>'false'];
+}
+
+/** A box that asks for the password somebody already has, not a new one. */
+function current_password_attributes(): array {
+    return ['autocomplete'=>'current-password','minlength'=>null];
 }
 function select_field(string $name,string $label,array $options,mixed $value='',bool $required=false,bool $multiple=false,string $hint=''): void {
     $value=held_input($name,$value);
     $id='f_'.preg_replace('/[^a-zA-Z0-9_]/','_',$name).'_'.random_int(1000,9999);
-    echo '<div class="field"><label for="'.e($id).'">'.e($label).($required?' *':'').'</label><select id="'.e($id).'" name="'.e($name).($multiple?'[]':'').'" '.($required?'required ':'').($multiple?'multiple size="4"':'').'>';
+    // The mark as input() prints it, so a required box and a required choice
+    // look alike: a plain " *" was ink where every other one is teal.
+    echo '<div class="field"><label for="'.e($id).'">'.e($label).($required?' <span aria-hidden="true">*</span>':'').'</label><select id="'.e($id).'" name="'.e($name).($multiple?'[]':'').'" '.($required?'required ':'').($multiple?'multiple size="4"':'').'>';
     if(!$multiple) echo select_options(['' => t('Auswählen','Select')]+$options,$value);
     else foreach($options as $k=>$v)
         echo '<option value="'.e($k).'" '.(in_array((string)$k,array_map('strval',is_array($value)?$value:[]),true)?'selected':'').'>'.e($v).'</option>';
     echo '</select>'.($hint!==''?'<small>'.e($hint).'</small>':'').'</div>';
 }
-function check_field(string $name,string $label,bool $value=false): void {
+/**
+ * A tick box with its label. $hint is said under the label, inside it, where
+ * every other field's hint sits and in the same size - and inside the label, so
+ * it is part of what a thumb can tap. As a paragraph of its own beside the box
+ * it was louder than any hint on the page.
+ */
+function check_field(string $name,string $label,bool $value=false,string $hint=''): void {
     // An unticked box sends nothing at all, so "held, and absent" means unticked
     // rather than "no opinion" - checking holding_input() first is what tells the
     // two apart.
     if(holding_input()) $value=held_input($name,null)!==null;
-    echo '<label class="check"><input type="checkbox" name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label).'</span></label>';
+    echo '<label class="check"><input type="checkbox" name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label)
+        .($hint!==''?'<small>'.e($hint).'</small>':'').'</span></label>';
+}
+
+/**
+ * Why an invitation cannot go out yet, in one wording for the three places it
+ * can be blocked: the create form, a student's access card and Konten (ADR
+ * 0020, §10d). account_mail_missing() names the missing steps. The setup
+ * checklist is an administrator's page, so a trainer is told who does it
+ * instead of being given a link she cannot open. It only reads.
+ */
+function mail_not_ready_notice(array $user): void {
+    $missing=account_mail_missing();
+    if($missing==='') return;
+    echo '<div class="notice"><strong>'.e(t('Einladen geht noch nicht','Inviting is not possible yet')).'</strong><p>'.e($missing).'</p>';
+    if(is_admin($user)) echo '<div class="row-actions">'.link_button(t('Zur Einrichtung','Go to the setup'),'start',[],'secondary').'</div>';
+    else echo '<p>'.e(t('Das richtet eine Administratorin unter „Einstellungen“ ein.','An administrator sets this up under “Settings”.')).'</p>';
+    echo '</div>';
 }
 
 /**
@@ -549,27 +616,32 @@ function next_steps_card(array $steps, string $heading = '', int $start = 1, arr
 }
 
 /**
- * The password for the example accounts, just after they were made.
+ * The password for the example accounts, just after they were made, and the
+ * usernames to type it with.
  *
  * Held in the session by demo_data and nowhere else, and shown wherever the
  * fill returns to - the System tab or the checklist - because its message
- * says the password is shown below it.
+ * says the password is shown below it. The usernames are read back from the
+ * database (demo_logins()), because a fill beside real data may have had to
+ * number one: lena.hofer2 rather than lena.hofer.
  */
 function demo_password_notice(): void {
     if (empty($_SESSION['demo_password']) || !demo_present()) return;
+    $names = array_map(fn($login) => '<span class="mono">'.e((string)$login['username']).'</span>', demo_logins());
     echo '<div class="notice">'.e(t('Passwort für alle Beispielkonten','Password for every example account')).': <strong class="mono">'.e((string)$_SESSION['demo_password']).'</strong><br>'
-        .e(t('Es wird nur hier gezeigt und nirgends gespeichert. Konten: trainerin@beispiel.test, familie.hofer@beispiel.test, familie.berger@beispiel.test','Shown only here and stored nowhere. Accounts: trainerin@beispiel.test, familie.hofer@beispiel.test, familie.berger@beispiel.test'))
+        .e(t('Es wird nur hier gezeigt und nirgends gespeichert. Benutzernamen: ','Shown only here and stored nowhere. Usernames: '))
+        .implode(', ', $names)
         .'</div>';
 }
 
 /**
  * A notice naming children who still need something, each name a way in.
  *
- * One copy for every such list - nobody to ring, no address, no address of
- * their own - on the students list and the overview alike. Each name is a
- * button rather than a word in a sentence: as a comma-separated list they were
- * 17px tall and touching each other, so on a phone the way to fix one child's
- * record was a target a third of the minimum with another one beside it.
+ * One copy for every such list - nobody to ring, no address - on the students
+ * list. Each name is a button rather than a word in a sentence: as a
+ * comma-separated list they were 17px tall and touching each other, so on a
+ * phone the way to fix one child's record was a target a third of the minimum
+ * with another one beside it.
  *
  * $params and $anchor say where on the child's page the name leads. $tone is
  * 'warn' for something that costs somebody something while it waits, and ''
@@ -587,23 +659,6 @@ function students_notice(array $students,string $heading,string $body='',array $
 }
 
 /**
- * Members who share an address and so cannot have a login of their own yet
- * (students_needing_own_address()), on the students list and the overview.
- * A warning, because something is lost while they wait: every invoice and
- * reminder mail goes to a login, so a student without one gets none of them,
- * and the invoice has to reach the family some other way. The portal sends
- * the families nothing about it (ADR 0010); this notice is the only signal.
- */
-function own_address_notice(): void {
-    $detached = students_needing_own_address();
-    students_notice($detached,
-        plural(count($detached),'Kind braucht eine eigene E-Mail-Adresse','Kinder brauchen eine eigene E-Mail-Adresse','child needs an email address of their own','children need an email address of their own'),
-        t('Sie teilen sich eine Adresse mit einem anderen Zugang oder Kind. Bis sie einen eigenen Zugang haben, gehen Rechnungen und Zahlungserinnerungen nicht per E-Mail hinaus – Rechnungen kannst du auf der Seite des Kindes herunterladen. Einen eigenen Zugang gibt es mit einer eigenen Adresse.',
-          'They share an address with another login or child. Until they have a login of their own, invoices and payment reminders are not sent by email – you can download the invoices on the child’s page. A login of their own comes with an address of their own.'),
-        [], 'email', 'warn');
-}
-
-/**
  * Where a login stands, as a badge: the same four words and colours on the
  * student page and on the Konten page. $account is null for "no login yet".
  */
@@ -615,6 +670,25 @@ function login_state_badge(?array $account): void {
         'suspended' => t('Gesperrt','Suspended'),
         default     => t('Kein Zugang','No access'),
     }, match ($state) { 'active' => 'green', 'invited' => 'amber', 'suspended' => 'red', default => '' });
+}
+
+/**
+ * How a login signs in and where its mail goes, as text to read rather than
+ * boxes to type in: the username, then the address, either of which signs in
+ * (ADR 0020, §3). One copy
+ * for Mein Konto and the access card, so the two say it in the same order and
+ * the same words. $addressNote follows the address in a lighter weight - „·
+ * bestätigt" on Mein Konto - in a <small>, because a plain span took on the
+ * bold of the value beside it.
+ *
+ * Only for the login's holder and for staff (ADR 0019, §8).
+ */
+function login_facts(array $account,string $addressNote=''): void {
+    echo '<dl class="facts login-facts">'
+        .'<div class="fact-wide"><dt>'.e(t('Benutzername','Username')).'</dt><dd class="mono">'.e((string)$account['username']).'</dd></div>'
+        .'<div class="fact-wide"><dt>'.e(t('E-Mail-Adresse','Email address')).'</dt><dd>'.e((string)$account['email'])
+        .($addressNote!==''?'<small class="muted">'.e(' · '.$addressNote).'</small>':'').'</dd></div>'
+        .'</dl>';
 }
 
 /*
@@ -716,16 +790,24 @@ function presence_history_details(array $viewer, array $periods, ?string $record
 }
 
 /**
- * Deleting a login, folded away, with its address typed to confirm.
+ * Deleting a login, folded away, with its username typed to confirm.
  *
  * Its own form and a <details> of its own, so it can sit in a row of buttons
- * without being one: the typed address is what stands between a thumb and a
- * login that cannot be brought back.
+ * without being one: the typed username is what stands between a thumb and a
+ * login that cannot be brought back. The username rather than the address
+ * (ADR 0019, §9): every login has its own address now (ADR 0020), so either
+ * would do, and changing it back would be churn for the same safety.
+ *
+ * The username is said in the sentence above the box, not in its label: the
+ * label's <span> is the teal of the required mark, and a name inside it read
+ * as part of the asterisk.
  */
 function login_delete_details(array $account,string $summary,string $explanation,string $button): void {
-    echo '<details class="account-delete"><summary>'.e($summary).'</summary><p>'.e($explanation).'</p>';
+    echo '<details class="account-delete"><summary>'.e($summary).'</summary>'
+        .'<p>'.e($explanation.' '.t('Zur Bestätigung den Benutzernamen eintippen: ','To confirm, type the username: '))
+        .'<strong class="mono">'.e((string)$account['username']).'</strong></p>';
     start_form('account_state',['id'=>$account['id'],'mode'=>'delete']);
-    input('confirmation',t('Zur Bestätigung die E-Mail-Adresse eingeben','Enter the email address to confirm'),'','email',true);
+    input('confirmation',t('Benutzername','Username'),'','text',true,'','',['autocomplete'=>'off']+username_attributes());
     submit_button($button,'danger');
     echo '</form></details>';
 }

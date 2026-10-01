@@ -103,9 +103,11 @@ function invoice_recipient(array $student): array {
     $account = $student['account_id'] ? one('SELECT * FROM accounts WHERE id=?', [(int)$student['account_id']]) : null;
     $name = $student['first_name'] . ' ' . $student['last_name'];
     // Not the emergency contact any more: that list is people to ring, and the
-    // grandmother at the top of it is not who the invoice is for. A child with
-    // no account is addressed by their own name at their own address, which for
-    // a child is a parent's address - that is what the field is for.
+    // grandmother at the top of it is not who the invoice is for. The address
+    // is the one the family keeps on its own „Profil" tab (ADR 0020, §7),
+    // frozen into each invoice when it is issued: create_invoice() copies this
+    // into snapshot_json, so a later move changes the next invoice and never
+    // an earlier one.
     return [
         'name'    => $account ? (string)$account['name'] : $name,
         'address' => (string)($student['address'] ?? ''),

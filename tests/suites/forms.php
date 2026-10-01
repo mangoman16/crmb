@@ -112,6 +112,65 @@ ob_start(); input('first_name', 'Vorname', 'aus der Datenbank'); $field = (strin
 ok(str_contains($field, 'value="Lena"'), 'while a field she filled in keeps her value');
 unset($GLOBALS['page'], $GLOBALS['crm_held_input']); $_GET = []; form_context('');
 
+case_('A view can ask what was held for one form by name, and gets the same answer the fields get');
+/* ADR 0019, I4: a page reacts to a refusal before it opens the form - a
+   username change left open, a refused contact's details opened. held_for() is
+   where the form, page, record and tab are matched, and holding_input() is
+   built on it, so the two cannot disagree about what was refused where. */
+$_POST = ['return_page'=>'student','return_id'=>'5','return_tab'=>'','invite'=>'','email'=>'eltern@beispiel.test'];
+remember_input('student_invite');
+take_held_input();
+$GLOBALS['page'] = 'student'; $_GET = ['id'=>5];
+is_same(['invite'=>'', 'email'=>'eltern@beispiel.test'], held_for('student_invite'), 'the refused form, asked for by name, on its page and record');
+is_same([], held_for('student_save'), 'nothing for another form on the same page');
+$_GET = ['id'=>6];
+is_same([], held_for('student_invite'), 'nor for the same form on another record');
+$_GET = ['id'=>5, 'tab'=>'contacts'];
+is_same([], held_for('student_invite'), 'nor on another tab');
+$_GET = ['id'=>5];
+foreach (['student_invite', 'student_save', ''] as $context) {
+    form_context($context);
+    is_same(held_for($context) !== [], holding_input(), 'holding_input() agrees with held_for() for '.json_encode($context));
+}
+unset($GLOBALS['page'], $GLOBALS['crm_held_input']); $_GET = []; form_context('');
+
+case_('A refused edit of one contact comes back in that contact’s form, and in no other');
+/* ADR 0020, §10a, reproduced by the designer: a refused contact_save was held
+   for the action, the page and the tab - never for the record - so every
+   contact's edit form on the page showed what was typed for one of them, and
+   saving the wrong one overwrote a person. held_for() now also matches the
+   record a form edits; a form with no id of its own still matches as before. */
+$child = make_student(['first_name'=>'Mia', 'last_name'=>'Kontakt']);
+$oma = fixture('contacts', ['student_id'=>$child, 'owner_name'=>'Oma Erika', 'relation_label'=>'Großmutter',
+                            'phone'=>'+43 660 1000001', 'email'=>'', 'is_primary'=>1]);
+$papa = fixture('contacts', ['student_id'=>$child, 'owner_name'=>'Papa Jonas', 'relation_label'=>'Vater',
+                             'phone'=>'+43 660 1000002', 'email'=>'', 'is_primary'=>0]);
+$reject('contact_save', ['return_page'=>'student', 'return_id'=>(string)$child, 'return_tab'=>'contacts',
+    'student_id'=>(string)$child, 'id'=>(string)$papa, 'owner_name'=>'Papa Getippt', 'relation_label'=>'Vater',
+    'phone'=>'+43 660 1000002', 'email'=>'kein-at-zeichen']);
+$page = render_view('student', ['id'=>$child, 'tab'=>'contacts']);
+$formOf = function (string $html, int $contact): string {
+    // The edit form, not the delete form beside it, which carries the id too.
+    return preg_match('~<form[^>]*><input type="hidden" name="action" value="contact_save">(?:(?!</form>).)*name="id" value="'.$contact.'"(?:(?!</form>).)*</form>~s', $html, $m) ? $m[0] : '';
+};
+ok($formOf($page, $papa) !== '' && $formOf($page, $oma) !== '', 'both contacts have their edit form on the page');
+ok(str_contains($formOf($page, $papa), 'value="Papa Getippt"'), 'the refused contact’s form has what was typed');
+ok(str_contains($formOf($page, $oma), 'value="Oma Erika"'), 'the other contact’s form shows her own stored name');
+ok(!str_contains($formOf($page, $oma), 'Getippt') && !str_contains($formOf($page, $oma), 'kein-at-zeichen'),
+   'and nothing typed for somebody else');
+unset($GLOBALS['crm_held_input']);
+$reject('contact_add', ['return_page'=>'student', 'return_id'=>(string)$child, 'return_tab'=>'contacts',
+    'student_id'=>(string)$child, 'owner_name'=>'Neue Tante', 'relation_label'=>'Tante', 'phone'=>'', 'email'=>'kein-at-zeichen']);
+$page = render_view('student', ['id'=>$child, 'tab'=>'contacts']);
+ok(str_contains($page, 'value="Neue Tante"'), 'a refused new contact, which has no id of its own, is still held in the add form');
+ok(!str_contains($formOf($page, $oma), 'Neue Tante') && !str_contains($formOf($page, $papa), 'Neue Tante'), 'and in no edit form');
+unset($GLOBALS['crm_held_input']);
+is_same(['owner_name'=>'x'], (function () {
+    $GLOBALS['crm_held_input'] = ['action'=>'contact_save', 'page'=>'student', 'id'=>'0', 'tab'=>'', 'fields'=>['owner_name'=>'x']];
+    $GLOBALS['page'] = 'student'; $_GET = [];
+    try { return held_for('contact_save', 4); } finally { unset($GLOBALS['crm_held_input'], $GLOBALS['page']); }
+})(), 'a submission held before records were stored has none, and still matches');
+
 case_('A default is shown rather than only referred to');
 // "Leave blank to use the tariff's default price" never said what that price
 // was, so the only way to find out was to save and look. The child's own
@@ -279,3 +338,27 @@ is_same(['student', ['id' => 4]], form_return('dashboard', ['dashboard', 'studen
 $_POST = [];
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
 ok(str_contains($router, "form_return(current_user()?'dashboard':'login',\$allowed)"), 'and the router hands its list of pages to the way back');
+
+case_('A box takes extra attributes, each escaped, and can drop the ones it sets itself');
+/* One helper draws every box (ADR 0019 added what a username box and a
+   current-password box need), so an attribute is either printed through e() or
+   refused by name - there is no third way for a value to reach the page. */
+test_load_actions();
+form_context('');
+$draw = function (string $type, array $attributes): string { ob_start(); input('x', 'X', '', $type, true, '', '', $attributes); return (string)ob_get_clean(); };
+$box = $draw('text', ['data-note'=>'"><script>alert(1)</script>']);
+ok(str_contains($box, 'data-note="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"'), 'a value is escaped');
+ok(!str_contains($box, '<script>'), 'and nothing of it reaches the page as markup');
+$password = $draw('password', []);
+ok(str_contains($password, 'autocomplete="new-password"') && str_contains($password, 'minlength="12"'), 'a password box asks for a new password by default');
+$current = $draw('password', current_password_attributes());
+ok(str_contains($current, 'autocomplete="current-password"') && !str_contains($current, 'new-password'), 'a passed value replaces the default');
+ok(!str_contains($current, 'minlength'), 'and null drops it');
+ok(str_contains($current, 'maxlength="72"') && str_contains($current, ' required'), 'while the rest stays');
+foreach (['onclick x', 'Onfocus', 'value', 'name', 'type', 'required', 7] as $bad) {
+    ob_start();
+    try { input('x', 'X', '', 'text', false, '', '', [$bad => 'y']); $refused = false; }
+    catch (LogicException) { $refused = true; }
+    $printed = (string)ob_get_clean();
+    ok($refused && $printed === '', 'a name that is not a plain attribute, or one input() owns, is refused before anything is printed: '.json_encode($bad));
+}
