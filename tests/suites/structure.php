@@ -525,9 +525,8 @@ case_('A test run stores nothing in the portal\'s own folder');
    one her portal is served from. The suites sweep uploads that no test record
    points at and prune backups; pointed at her storage/, that is every photograph,
    voice note, payment proof and backup she has. The harness moves all of it into
-   a folder of the run's own - checked here path by path, whatever driver and
-   whatever configuration the run was started with, because a new kind of upload
-   is a new folder. */
+   a folder of the run's own - checked here path by path, whatever configuration
+   the run was started with, because a new kind of upload is a new folder. */
 $runDir = test_run_dir();
 ok(!test_path_inside($runDir, APP_ROOT), 'the run\'s own folder is outside the portal: '.$runDir);
 $stored = ['the maintenance flag' => maintenance_file(), 'the backups' => backup_dir(),
@@ -541,8 +540,6 @@ foreach ($stored as $what => $path) {
     ok(test_path_inside($path, $runDir), $what.' goes into the run\'s own folder, not '.$path);
     ok(!test_path_inside($path, APP_ROOT), $what.' is not inside the portal\'s folder');
 }
-if (test_driver() === 'sqlite')
-    ok(test_path_inside(config_path(), $runDir), 'the configuration this run wrote is in its own folder, not in tests/');
 
 case_('Every file the application stores is placed beside the maintenance flag');
 /* That is what lets the harness move all of them with one setting. A folder the
@@ -685,48 +682,54 @@ foreach (array_merge(glob(TEST_ROOT.'/*.php'), glob(TEST_ROOT.'/suites/*.php')) 
 ok($writesChecked >= 20, 'the tests\' own writes were found and followed ('.$writesChecked.'), so a pass here is not an empty search');
 
 case_('A run refuses a database it could destroy, before it connects');
-/* The suite drops every table in the database it is given. The guards once
-   asked for the driver "mysql" while the dropping ran for anything that was not
-   "sqlite", so CRM_TEST_DRIVER=MySQL skipped every check and emptied whatever
-   the configuration named. Each refusal is watched from outside, in a run of its
-   own, against a server address where nothing listens - so a guard that gave way
-   would show as a connection attempt, never as a dropped table. */
+/* The suite drops every table in the database it is given. Each refusal is
+   watched from outside, in a run of its own, against a server address where
+   nothing listens - so a guard that gave way would show as a connection
+   attempt, never as a dropped table. Without CRM_CONFIG the application would
+   read config/config.php, which on her host is the portal's own. */
 $boot = defined_functions_in(TEST_ROOT.'/harness.php')['test_boot'] ?? '';
-ok(str_contains($boot, "if ( \$driver === 'sqlite' )"), 'test_boot() still decides between building and dropping on "sqlite"');
-ok(preg_match("/\\\$driver\s*={2,3}\s*'mysql'/", $boot) === 0,
-   'so no guard in it asks for "mysql": each asks for "not sqlite", the exact complement of the branch that drops');
-ok(substr_count($boot, "\$driver !== 'sqlite'") >= 2, 'both guards, the name and the portal\'s own database, are written that way');
+$firstStatement = strpos($boot, 'db ( )');
+ok($firstStatement !== false, 'test_boot() was found and sends statements, so the order below is measured');
+foreach (["getenv ( 'CRM_CONFIG' )" => 'the missing configuration', 'test_database_name_allowed' => 'the name',
+          "'/config/config.php'" => 'the portal\'s own database'] as $guard => $what) {
+    $at = strpos($boot, $guard);
+    ok($at !== false && $firstStatement !== false && $at < $firstStatement, 'test_boot() checks '.$what.' before its first statement');
+}
 if (!function_exists('exec')) {
     test_unsupported(array_merge(test_unsupported(),
-        ['a run refusing a misspelled driver or a database name (this PHP disables exec)']));
+        ['a run refusing a missing configuration or a database name (this PHP disables exec)']));
 } else {
-    $attempt = function (string $driver, string $database): array {
+    $attempt = function (?string $database, string $env = ''): array {
         $config = test_run_dir().'/refusal-'.bin2hex(random_bytes(4)).'.php';
         // Port 1 on this machine: nothing answers, so the only way to reach it
         // at all is to have got past every refusal.
-        write_run_config($config,
-            ['host' => '127.0.0.1', 'port' => 1, 'database' => $database, 'username' => 'nobody', 'password' => ''],
-            test_run_dir());
-        exec('CRM_TEST_DRIVER='.escapeshellarg($driver).' CRM_CONFIG='.escapeshellarg($config).' '
-            .escapeshellarg(PHP_BINARY).' '.escapeshellarg(TEST_ROOT.'/run.php').' no-such-suite 2>&1', $out, $code);
+        if ($database !== null)
+            write_run_config($config,
+                ['host' => '127.0.0.1', 'port' => 1, 'database' => $database, 'username' => 'nobody', 'password' => ''],
+                test_run_dir());
+        $setting = $env !== '' ? $env : 'CRM_CONFIG='.escapeshellarg($config);
+        exec($setting.' '.escapeshellarg(PHP_BINARY).' '.escapeshellarg(TEST_ROOT.'/run.php').' no-such-suite 2>&1', $out, $code);
         @unlink($config);
         return ['code' => $code, 'out' => implode("\n", $out)];
     };
     // The control first: a run that is allowed through really does try to
     // connect, so a refusal below is a refusal and not a run that never started.
-    $through = $attempt('mysql', 'crm_test');
+    $through = $attempt('crm_test');
     ok($through['code'] !== 2 && str_contains($through['out'], 'SQLSTATE'),
        'a correctly named test database gets past every refusal and tries to connect');
-    foreach ([['MySQL', 'crm_test', 'the driver spelled MySQL'], ['mariadb', 'crm_test', 'the driver called mariadb'],
-              ['mysql ', 'crm_test', 'the driver with a trailing space'],
-              ['mysql', 'badminton', 'a database whose name does not end in _test'],
-              ['mysql', 'x;dbname=badminton;y=z_test', 'a name ending in _test that carries a second dbname'],
-              ['mysql', 'crm-test', 'a name with a character a connection string could use']] as [$driver, $database, $what]) {
-        $refused = $attempt($driver, $database);
+    foreach ([[null, 'env -u CRM_CONFIG', 'no CRM_CONFIG at all'], [null, 'CRM_CONFIG=', 'an empty CRM_CONFIG'],
+              ['badminton', '', 'a database whose name does not end in _test'],
+              ['x;dbname=badminton;y=z_test', '', 'a name ending in _test that carries a second dbname'],
+              ['crm-test', '', 'a name with a character a connection string could use']] as [$database, $env, $what]) {
+        $refused = $attempt($database, $env);
         is_same(2, $refused['code'], 'refused: '.$what);
         ok(str_starts_with($refused['out'], 'Refusing to run') && !str_contains($refused['out'], 'SQLSTATE'),
            'and it said so before any connection was attempted: '.$what);
     }
+    $unset = $attempt(null, 'env -u CRM_CONFIG');
+    is_same(1, substr_count(trim($unset['out']), "\n") + 1, 'without a configuration it says so in one line');
+    ok(str_contains($unset['out'], 'tests/mariadb-local.sh') && str_contains($unset['out'], 'tests/existing-database.sh'),
+       'naming the two scripts that set one up: '.$unset['out']);
 }
 foreach (['crm_test' => true, 'konto_crm_test' => true, 'CRM_TEST' => false, 'crm_test ' => false,
           "crm_test\n" => false, 'x;dbname=live;y=z_test' => false, '_test' => false, 'crm_testing' => false] as $name => $allowed)

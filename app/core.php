@@ -15,11 +15,6 @@ class UserError extends RuntimeException {}
 class NotFound extends UserError {}
 function config(string $key): mixed { global $config; return $config[$key] ?? null; }
 function connect(): PDO {
-    // Seam for the test harness, which supplies its own connection so the suite
-    // can run without a database server. Nothing in the application sets this;
-    // if it is unset, the normal MySQL connection below is used.
-    $override = $GLOBALS['crm_connect_override'] ?? null;
-    if ($override instanceof Closure) return $override();
     $c = config('db');
     $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};dbname={$c['database']};charset=utf8mb4", $c['username'], $c['password'], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false]);
     $pdo->exec("SET time_zone = '+00:00'");

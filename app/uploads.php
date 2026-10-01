@@ -186,8 +186,7 @@ function upload_references(): array {
         'message' => ['SELECT stored_name AS name FROM message_files'],
         // A setting is stored as JSON, so the name sits inside quotes. Compared
         // with the quotes still on, nothing would match and the live icon would
-        // be swept an hour after it was uploaded. REPLACE(x,y,z) is spelled the
-        // same in MariaDB, MySQL and SQLite.
+        // be swept an hour after it was uploaded.
         'icon'    => ["SELECT REPLACE(setting_value,'\"','') AS name FROM settings WHERE setting_key='portal_icon'"],
         'logo'    => ["SELECT REPLACE(setting_value,'\"','') AS name FROM settings WHERE setting_key='portal_logo'"],
     ];

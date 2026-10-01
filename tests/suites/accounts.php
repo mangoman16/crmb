@@ -93,8 +93,8 @@ case_('Everything about the new login comes from the student, and a long name is
 /* The page offers a button, not a form. The action used to read an address, a
    name and a language that nothing sends - a way round the student's own
    address for anybody writing their own POST. And a name built from two
-   100-character halves is 201 characters, where a login's name holds 160:
-   MariaDB refused the insert, SQLite stored it whole. */
+   100-character halves is 201 characters, where a login's name holds 160,
+   and MariaDB refused the insert. */
 $longName = make_student(['first_name'=>str_repeat('Ä', 100), 'last_name'=>str_repeat('B', 100), 'email'=>'lang@beispiel.test']);
 is_same(201, mb_strlen(student($longName)['first_name'].' '.student($longName)['last_name']), 'the name really is 201 characters');
 act('student_invite', ['student_id'=>(string)$longName, 'email'=>'anders@beispiel.test', 'name'=>'Jemand Anderes', 'locale'=>'en']);

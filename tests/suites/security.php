@@ -305,36 +305,15 @@ is_same($lena, (int)(current_user()['id'] ?? 0), 'as the same login');
 sign_out();
 
 case_('An address that reaches a login only through the collation signs nobody in');
-/* ADR 0020, §3: a row is used only if it is exactly what was typed. On the real
-   engine utf8mb4_unicode_ci reads ß as ss, so 'strasse@…' finds a legacy row
-   stored as 'straße@…'; the exact-match check refuses it. SQLite compares bytes
-   and would never find the row, which would prove nothing. */
-if (test_driver() === 'sqlite') {
-    test_unsupported(array_merge(test_unsupported(), ['a sign-in that reaches a row only through the collation (ß read as ss) refused by the exact match (needs the MySQL collation)']));
-} else {
-    $folded = make_account(['username' => 'strasse.kind', 'email' => 'straße@beispiel.test', 'password_hash' => password_hash($familyPassword, PASSWORD_DEFAULT)]);
-    ok(one('SELECT id FROM accounts WHERE email=?', ['strasse@beispiel.test']) !== null, 'the collation does find the row, so this is a real test');
-    throws(fn() => submit('login', ['username' => 'strasse@beispiel.test', 'password' => $familyPassword]), 'but it does not sign in', 'Anmeldung nicht möglich');
-    is_same(null, current_user(), 'nobody is signed in');
-    throttle_clear('login', address_identity('strasse@beispiel.test'));
-    run('DELETE FROM accounts WHERE id=?', [$folded]);
-}
-
-case_('A value that fails its format is never looked up');
-if (test_driver() !== 'sqlite') {
-    test_unsupported(array_merge(test_unsupported(), ['a sign-in sending no statement for a value that fails its format (counted by the sqlite driver)']));
-} else {
-    $ownBuckets = [];
-    $statements = function (string $typed) use (&$ownBuckets) {
-        $_POST = ['username' => $typed, 'password' => 'x'];
-        $ownBuckets[] = sign_in_identity(attempted_sign_in());
-        return query_count(function () { try { act('login', $_POST); } catch (UserError $e) {} });
-    };
-    ok($statements('familie.sieber') > 0 && $statements('familie@beispiel.test') > 0, 'a username and a plain address are looked up');
-    foreach (['"familie"@beispiel.test', "familie\x01@beispiel.test", 'famílie@beispiel.test', 'a..b', 'fa', 'fa_mi'] as $bad)
-        is_same(0, $statements($bad), 'and not a single statement is sent for '.json_encode($bad));
-    $_POST = [];
-}
+/* ADR 0020, §3: a row is used only if it is exactly what was typed.
+   utf8mb4_unicode_ci reads ß as ss, so 'strasse@…' finds a legacy row stored as
+   'straße@…'; the exact-match check refuses it. */
+$folded = make_account(['username' => 'strasse.kind', 'email' => 'straße@beispiel.test', 'password_hash' => password_hash($familyPassword, PASSWORD_DEFAULT)]);
+ok(one('SELECT id FROM accounts WHERE email=?', ['strasse@beispiel.test']) !== null, 'the collation does find the row, so this is a real test');
+throws(fn() => submit('login', ['username' => 'strasse@beispiel.test', 'password' => $familyPassword]), 'but it does not sign in', 'Anmeldung nicht möglich');
+is_same(null, current_user(), 'nobody is signed in');
+throttle_clear('login', address_identity('strasse@beispiel.test'));
+run('DELETE FROM accounts WHERE id=?', [$folded]);
 
 case_('Every refusal checks one password, says the same words, and never uses a hash written into the code');
 /* M2. A missing name, a value that cannot be one, an invitation without a

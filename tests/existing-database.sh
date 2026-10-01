@@ -51,4 +51,4 @@ unset CRM_DB_NAME CRM_DB_USER CRM_DB_PASSWORD CRM_DB_HOST CRM_DB_PORT
 
 echo "Database server: $VERSION"
 echo
-CRM_TEST_DRIVER=mysql CRM_CONFIG="$WORK/config.php" php "$ROOT/tests/run.php" "$@"
+CRM_CONFIG="$WORK/config.php" php "$ROOT/tests/run.php" "$@"

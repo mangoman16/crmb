@@ -262,11 +262,11 @@ function run_migration_statement(string $statement): void {
     $result = db()->query($statement);
     if (!$result instanceof PDOStatement) return;
     $result->fetchAll();
-    // nextRowset() is how a CALL that returns several result sets is drained.
-    // SQLite has no such thing and says so rather than returning false, which is
-    // not a failure of the migration.
-    try { while ($result->nextRowset()) $result->fetchAll(); }
-    catch (PDOException) { /* one rowset is all this driver has */ }
+    // nextRowset() is how a CALL that returns several result sets is drained,
+    // and an error raised after the first one arrives here. It is let through:
+    // caught, the statement would count as run and the migration be recorded
+    // as applied when it failed half way.
+    while ($result->nextRowset()) $result->fetchAll();
     $result->closeCursor();
 }
 

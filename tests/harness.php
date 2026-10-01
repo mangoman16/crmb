@@ -6,23 +6,19 @@ declare(strict_types=1);
  *
  * Builds a disposable database from the real migration files and boots the real
  * application code against it, so a test exercises what ships rather than a
- * re-implementation.
+ * re-implementation - on the engine the portal runs on, MariaDB or MySQL, so
+ * what passes here is the SQL that ships as well as the PHP.
  *
- * Two drivers:
- *   sqlite  (default) no server needed, so the suite runs anywhere. The
- *           migrations are translated on the way in - see sqlite_translate().
- *           This proves the PHP logic, not the MySQL dialect.
- *   mysql   set CRM_TEST_DRIVER=mysql and point CRM_CONFIG at a config whose
- *           database name ends in _test. This is the one that proves the SQL.
+ * CRM_CONFIG names the configuration of a database whose name ends in _test.
+ * The two scripts write one and run the suite with it:
  *
- * Usage:  php tests/run.php            all suites, sqlite
- *         php tests/run.php billing    one suite
- *         CRM_TEST_DRIVER=mysql php tests/run.php
+ *   tests/mariadb-local.sh                 a throwaway server, then stops it
+ *   tests/existing-database.sh             an empty *_test database from the hosting panel
+ *   CRM_CONFIG=<config> php tests/run.php  a *_test database you already have
  */
 
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 
-require_once __DIR__.'/sqlite-driver.php';
 require_once __DIR__.'/database-name.php';
 require_once __DIR__.'/run-config.php';
 require_once __DIR__.'/css.php';
@@ -95,58 +91,12 @@ function case_(string $name): void { test_state()->case = $name; }
 // ---------------------------------------------------------------------------
 
 /**
- * Which engine this run uses: exactly "sqlite" (the default) or "mysql".
+ * What this run could not check, for the report footer.
  *
- * Anything else is refused rather than read as "not sqlite". The guards that
- * keep a run off a live database once asked for "mysql" while the branch that
- * drops every table ran for anything that was not "sqlite", so "MySQL" or
- * "mariadb" skipped the one and reached the other. Refused here, before any
- * connection is made, and the guards below test the same condition as the
- * branch they protect.
+ * A suite that has to reach outside the run's own database - another process,
+ * a second database, node - and cannot, says so here rather than passing as
+ * though it had checked.
  */
-function test_driver(): string {
-    $driver = getenv('CRM_TEST_DRIVER') ?: 'sqlite';
-    if ($driver !== 'sqlite' && $driver !== 'mysql') {
-        fwrite(STDERR, "Refusing to run: CRM_TEST_DRIVER must be exactly \"sqlite\" or \"mysql\", not \"$driver\".\n");
-        exit(2);
-    }
-    return $driver;
-}
-
-/**
- * Translate the MySQL migrations into something SQLite accepts.
- *
- * Deliberately narrow: it handles only the constructs these migrations use, and
- * anything it cannot express is reported rather than skipped silently, so the
- * suite can never quietly stop covering a table.
- */
-function sqlite_translate(string $sql): array {
-    $sql = preg_replace('/ENGINE=InnoDB[^;]*/', '', $sql) ?? $sql;
-    $sql = str_replace('BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY', 'INTEGER PRIMARY KEY AUTOINCREMENT', $sql);
-    // Whole words only. A plain str_replace of DATETIME turned UTC_TIMESTAMP()
-    // into UTC_TEXTSTAMP(), which failed at the one moment it mattered - inside a
-    // migration, where the error names a statement rather than a function.
-    $sql = preg_replace_callback('/\b(LONGTEXT|DATETIME|TINYINT|TIME)\b|DECIMAL\(6,2\)/',
-        fn($m) => ['LONGTEXT'=>'TEXT','DATETIME'=>'TEXT','TINYINT'=>'INTEGER','TIME'=>'TEXT'][$m[0]] ?? 'REAL',
-        $sql) ?? $sql;
-    $out = ['statements' => [], 'unsupported' => []];
-    foreach (split_sql($sql) as $statement) {
-        $statement = preg_replace('/\s+AFTER\s+`?\w+`?/', '', $statement) ?? $statement;
-        $statement = preg_replace('/,\s*INDEX\s+\w+\s*\([^)]*\)/', '', $statement) ?? $statement;
-        $statement = preg_replace('/,\s*UNIQUE KEY\s+\w+\s*\(([^)]*)\)/', ', UNIQUE ($1)', $statement) ?? $statement;
-        // SQLite cannot add a foreign key to an existing table. The column and
-        // its index are created; only the constraint is missing, which is
-        // recorded so a reader knows what this driver does not cover.
-        if (preg_match('/^ALTER TABLE\s+(\w+)\s+ADD CONSTRAINT/i', $statement, $m)) {
-            $out['unsupported'][] = 'foreign key on '.$m[1];
-            continue;
-        }
-        $out['statements'][] = $statement;
-    }
-    return $out;
-}
-
-/** Statements the sqlite driver could not represent, for the report footer. */
 function test_unsupported(?array $set=null): array {
     static $held = [];
     if ($set !== null) $held = $set;
@@ -232,63 +182,36 @@ function test_remove_run_dir(string $dir): void {
  * Called once per run; each suite then resets the data with test_reset().
  */
 function test_boot(): void {
-    $driver = test_driver();
-    if ($driver === 'sqlite') {
-        $file = test_run_dir().'/test.sqlite';
-        putenv('CRM_TEST_SQLITE='.$file);
-        // A config the application will accept, pointing at nothing real: the
-        // sqlite driver replaces connect() below. The same layout the two
-        // real-engine scripts write, from the same function, into the run's own
-        // folder rather than into tests/, which is part of the portal's tree.
-        $config = test_run_dir().'/config.php';
-        write_run_config($config,
-            ['host'=>'127.0.0.1','port'=>3306,'database'=>'unused_test','username'=>'u','password'=>''],
-            test_run_dir());
-        putenv('CRM_CONFIG='.$config);
-    } elseif (!getenv('CRM_CONFIG')) {
-        fwrite(STDERR, "CRM_TEST_DRIVER=mysql needs CRM_CONFIG pointing at a *_test database config.\n");
+    // Before anything reads a configuration: the application falls back to
+    // config/config.php when CRM_CONFIG is empty, and run from the folder the
+    // portal is served from, that is hers.
+    if ((string)getenv('CRM_CONFIG') === '') {
+        fwrite(STDERR, "Refusing to run: no test database is set up. Run tests/mariadb-local.sh, which starts a throwaway MariaDB, or tests/existing-database.sh to use an empty *_test database.\n");
         exit(2);
-    }
-
-    if ($driver === 'sqlite') {
-        // Production opens one connection per connect() call, and the rate-limit
-        // counter deliberately gets its own so its writes survive the rollback of
-        // the action they guard. The harness has to do the same or that property
-        // is untestable. WAL plus a busy timeout lets the two coexist on one file.
-        $GLOBALS['crm_connect_override'] = function (): PDO {
-            // The MySQL functions the application calls come with the connection;
-            // see TestSqlitePdo::addMysqlFunctions().
-            $pdo = new TestSqlitePdo('sqlite:'.getenv('CRM_TEST_SQLITE'), null, null,
-                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-            $pdo->exec('PRAGMA journal_mode=WAL');
-            $pdo->exec('PRAGMA busy_timeout=4000');
-            $pdo->exec('PRAGMA foreign_keys=ON');
-            return $pdo;
-        };
     }
 
     $_SESSION = ['locale' => 'de'];
     require APP_ROOT.'/app/bootstrap.php';
 
-    // Whatever the configuration said. A config copied from the live one for the
-    // mysql driver still names the live storage/, and the suites delete uploads
-    // no test record points at and prune backups there - which, against her
-    // folder, is every photograph and every copy she has. config() reads the
-    // global on every call, so this reaches every path derived from it.
+    // Whatever the configuration said. A config copied from the live one still
+    // names the live storage/, and the suites delete uploads no test record
+    // points at and prune backups there - which, against her folder, is every
+    // photograph and every copy she has. config() reads the global on every
+    // call, so this reaches every path derived from it.
     $GLOBALS['config']['maintenance_file'] = test_run_dir().'/maintenance.flag';
 
-    // !== 'sqlite' rather than === 'mysql': these guard the branch below that
-    // drops every table, and that branch runs for everything that is not sqlite.
-    if ($driver !== 'sqlite' && !test_database_name_allowed((string)(config('db')['database'] ?? ''))) {
+    // Both refusals come before the first statement: below them is the step
+    // that drops every table in the database the configuration names.
+    if (!test_database_name_allowed((string)(config('db')['database'] ?? ''))) {
         fwrite(STDERR, "Refusing to run: the configured database name is not letters, digits and underscores ending in _test.\n");
         exit(2);
     }
-    // The suite drops every table in the database it is given. A _test suffix
-    // on the portal's own database is unlikely, but it is her families' data on
-    // the other side of "unlikely", so it is checked rather than assumed. The
-    // same rule tests/existing-database.sh applies before it gets this far.
+    // A _test suffix on the portal's own database is unlikely, but it is her
+    // families' data on the other side of "unlikely", so it is checked rather
+    // than assumed. The same rule tests/existing-database.sh applies before it
+    // gets this far.
     $live = APP_ROOT.'/config/config.php';
-    if ($driver !== 'sqlite' && is_file($live)) {
+    if (is_file($live)) {
         $liveConfig = (static fn() => require $live)();
         if (test_resolved_path((string)getenv('CRM_CONFIG')) === test_resolved_path($live)
             || strcasecmp((string)($liveConfig['db']['database'] ?? ''), (string)config('db')['database']) === 0) {
@@ -297,35 +220,20 @@ function test_boot(): void {
         }
     }
 
-    $sql = '';
-    foreach (glob(APP_ROOT.'/database/migrations/*.sql') as $file) $sql .= file_get_contents($file)."\n";
-
-    if ($driver === 'sqlite') {
-        $t = sqlite_translate($sql);
-        test_unsupported($t['unsupported']);
-        db()->exec('PRAGMA foreign_keys = ON');
-        foreach ($t['statements'] as $statement) {
-            try { db()->exec($statement); }
-            catch (Throwable $e) {
-                fwrite(STDERR, "Migration statement failed:\n  ".substr(preg_replace('/\s+/', ' ', $statement) ?? '', 0, 140)."\n  ".$e->getMessage()."\n");
-                exit(2);
-            }
-        }
-    } else {
-        /* Dropping in a hand-kept order means getting the foreign keys right by
-           hand, and MySQL refuses to drop a parent while a child still points at
-           it (error 1451). The list is therefore read from the database, and the
-           constraints are switched off for the duration: on a fresh database the
-           drops are all no-ops and any order looks correct, so this only shows up
-           on the second run. */
-        db()->exec('SET FOREIGN_KEY_CHECKS=0');
-        try {
-            foreach (test_tables() as $table) db()->exec('DROP TABLE IF EXISTS `'.sql_name($table, 'table').'`');
-        } finally {
-            db()->exec('SET FOREIGN_KEY_CHECKS=1');
-        }
-        foreach (split_sql($sql) as $statement) db()->exec($statement);
+    /* Dropping in a hand-kept order means getting the foreign keys right by
+       hand, and the engine refuses to drop a parent while a child still points
+       at it (error 1451). The list is therefore read from the database, and the
+       constraints are switched off for the duration: on a fresh database the
+       drops are all no-ops and any order looks correct, so this only shows up
+       on the second run. */
+    db()->exec('SET FOREIGN_KEY_CHECKS=0');
+    try {
+        foreach (test_tables() as $table) db()->exec('DROP TABLE IF EXISTS `'.sql_name($table, 'table').'`');
+    } finally {
+        db()->exec('SET FOREIGN_KEY_CHECKS=1');
     }
+    foreach (glob(APP_ROOT.'/database/migrations/*.sql') as $file)
+        foreach (split_sql((string)file_get_contents($file)) as $statement) db()->exec($statement);
 }
 
 /**
@@ -335,8 +243,6 @@ function test_boot(): void {
  * silently stops matching the schema the first time a migration adds a table.
  */
 function test_tables(): array {
-    if (test_driver() === 'sqlite')
-        return array_column(rows("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"), 'name');
     return array_column(rows('SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()'), 'name');
 }
 
@@ -349,11 +255,10 @@ function test_tables(): array {
  * the failure turns up somewhere unrelated as a count that is one too high.
  */
 function test_reset(): void {
-    // Emptying parents before children is a foreign-key violation on MySQL just
-    // as it is on SQLite, so both engines get the constraints switched off here
-    // rather than only the one the suite usually runs on.
-    $sqlite = test_driver() === 'sqlite';
-    db()->exec($sqlite ? 'PRAGMA foreign_keys = OFF' : 'SET FOREIGN_KEY_CHECKS=0');
+    // Emptying a parent before its children is a foreign-key violation, and the
+    // list comes from the database in no particular order, so the constraints
+    // are off while it is emptied.
+    db()->exec('SET FOREIGN_KEY_CHECKS=0');
     try {
         foreach (test_tables() as $table) {
             // schema_migrations is the record of what this database is, not data
@@ -361,9 +266,8 @@ function test_reset(): void {
             if ($table === 'schema_migrations') continue;
             db()->exec('DELETE FROM ' . sql_name($table, 'table'));
         }
-        if ($sqlite) db()->exec('DELETE FROM sqlite_sequence');
     } finally {
-        db()->exec($sqlite ? 'PRAGMA foreign_keys = ON' : 'SET FOREIGN_KEY_CHECKS=1');
+        db()->exec('SET FOREIGN_KEY_CHECKS=1');
     }
     // A running portal always has the migrations ledger: schema_apply() creates
     // it before anything else, and pages read it (presence_recorded_since()).
@@ -386,10 +290,8 @@ function test_reset(): void {
 }
 
 function test_has_table(string $name): bool {
-    try {
-        if (test_driver() === 'sqlite') return (bool)scalar("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", [$name]);
-        return (bool)scalar('SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?', [$name]);
-    } catch (Throwable) { return false; }
+    try { return (bool)scalar('SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?', [$name]); }
+    catch (Throwable) { return false; }
 }
 
 // ---------------------------------------------------------------------------
@@ -533,15 +435,24 @@ function sign_out(): void {
 /**
  * How many statements $fn causes the application to prepare.
  *
- * Counted by the driver rather than by instrumenting the application, so the
- * measurement cannot drift from what actually runs.
+ * Counted by the server, from this session's Com_stmt_prepare, rather than by
+ * instrumenting the application, so the measurement cannot drift from what
+ * actually runs. connect() turns emulated prepares off, so every run(), rows(),
+ * one() and scalar() is one prepare on the server; exec(), which is how
+ * transactional() sets its savepoints, is none. The rate-limit counter has a
+ * connection of its own and is not in the count.
+ *
+ * Reading the counter is a prepared statement itself. What one reading adds is
+ * measured once, from two in a row, rather than assumed - the performance suite
+ * checks the result against statements it can count by hand.
  */
 function query_count(callable $fn): int {
-    $pdo = db();
-    if (!$pdo instanceof TestSqlitePdo) { $fn(); return 0; }
-    $before = $pdo->statementsPrepared();
+    static $reading;
+    $read = static fn(): int => (int)db()->query("SHOW SESSION STATUS LIKE 'Com_stmt_prepare'")->fetch(PDO::FETCH_NUM)[1];
+    if ($reading === null) { $first = $read(); $reading = $read() - $first; }
+    $before = $read();
     $fn();
-    return $pdo->statementsPrepared() - $before;
+    return $read() - $before - $reading;
 }
 
 /**

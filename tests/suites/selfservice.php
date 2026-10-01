@@ -75,8 +75,8 @@ $versions = history_for('students', $lena);
 is_same(1, count($versions), 'one save is one line in the change log');
 is_same($familyLogin, (int)$versions[0]['actor_id'], 'with the family as the actor');
 is_same('Deine Angaben sind gespeichert.', $_SESSION['flash']['message'] ?? null, 'and the family is told their details are saved, in their words');
-// Sorted: the order is the table's column order, which differs between an
-// engine whose columns were added by migration and the SQLite translation.
+// Sorted: what is checked is which fields changed, not the order of the
+// table's columns, which is the migrations' business.
 $named = array_keys(version_changes($versions[0])); sort($named);
 $expected = ['address', 'birth_date', 'field:'.$shirt, 'field:'.$photos, 'first_name', 'phone']; sort($expected);
 is_same($expected, $named, 'naming each field that changed, the custom ones included');

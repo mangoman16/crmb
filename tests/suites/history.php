@@ -98,7 +98,7 @@ is_same(2, count($list), 'both versions');
 ok((int)$list[0]['id'] > (int)$list[1]['id'], 'newest first');
 
 case_('Only a table on the allowlist can be written about');
-throws(fn() => history_record('sqlite_master', 1, 'update', 'x', null, null), 'an unknown entity is refused');
+throws(fn() => history_record('schema_migrations', 1, 'update', 'x', null, null), 'a table that is not on it is refused, though it exists');
 
 case_('The log has a horizon, and the audit log does not');
 $auditBefore = (int)scalar('SELECT COUNT(*) FROM audit_log');

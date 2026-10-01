@@ -10,11 +10,10 @@
  * behind, not a description of it.
  *
  * send() records exactly what a browser posts, token and request id included,
- * and then runs the action through act() rather than handle_post(). On SQLite a
- * write locks the whole file: handle_post() claims the request id on the main
- * connection, and a throttle inside feedback_send or email_change then waits on
- * the counter connection for a lock that is never released. MariaDB locks rows,
- * so the portal is fine; the harness is not, and the trail is the same either way.
+ * and then runs the action through act() rather than handle_post(): the trail
+ * is written before either runs, so it is the same through both, and what
+ * handle_post() adds - the token, the throttles, the request-id claim - is not
+ * what this suite is about.
  */
 $admin  = make_account(['role'=>'admin', 'name'=>'Chefin']);
 $family = make_account(['role'=>'student', 'name'=>'Familie Hofer']);
