@@ -128,10 +128,10 @@ function web_manifest(): array {
                    'type' => 'image/png', 'purpose' => 'any']];
     } else {
         $icons = [
-            ['src' => $base . '/assets/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any'],
-            ['src' => $base . '/assets/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any'],
-            ['src' => $base . '/assets/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
-            ['src' => $base . '/assets/favicon.svg', 'sizes' => 'any', 'type' => 'image/svg+xml'],
+            ['src' => asset_url('icon-192.png'), 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any'],
+            ['src' => asset_url('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any'],
+            ['src' => asset_url('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
+            ['src' => asset_url('favicon.svg'), 'sizes' => 'any', 'type' => 'image/svg+xml'],
         ];
     }
     return [

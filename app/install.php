@@ -69,6 +69,33 @@ function install_submission(array $post, array $form): array {
 function config_path(): string { return getenv('CRM_CONFIG') ?: ROOT . '/config/config.php'; }
 
 /**
+ * Where a file that ships in public/assets/ is, seen from public/, with a hash
+ * of its bytes in the address: "assets/app.css?v=3f9c0a1b2c4d".
+ *
+ * Its bytes, not the release number and not the file's date. VERSION stayed the
+ * same across the release that brought the account menu's styles, so app.css
+ * kept its address, browsers went on using the copy they had, and the menu
+ * opened unstyled across the page while the bell jumped as it used to. An FTP
+ * client can also keep a file's old date on new bytes. The hash changes exactly
+ * when the file does, so an unchanged file stays cached and a changed one is
+ * fetched on the next page, whatever the server says about caching.
+ *
+ * Here rather than in app/core.php because setup.php links the stylesheet too,
+ * before there is a configuration to take the portal's address from. Read once
+ * per file per request. A file that is missing gets no hash; its link answers
+ * 404 either way.
+ */
+function asset_path(string $file): string {
+    static $paths = [];
+    if (!isset($paths[$file])) {
+        $bytes = ROOT . '/public/assets/' . $file;
+        $hash = is_file($bytes) ? hash_file('sha256', $bytes) : false;
+        $paths[$file] = 'assets/' . $file . ($hash !== false ? '?v=' . substr($hash, 0, 12) : '');
+    }
+    return $paths[$file];
+}
+
+/**
  * The address the portal answers on, derived from the request that is asking.
  *
  * This ends up in config as app_url, which builds every link and every email

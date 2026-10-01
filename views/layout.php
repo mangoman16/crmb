@@ -33,11 +33,15 @@ $realUser=$public?null:impersonator();
     <meta name="format-detection" content="telephone=no">
     <meta name="description" content="<?=e(setting('club_name').' – '.t('Schüler, Beiträge und Nachrichten.','students, payments and messages.'))?>">
     <title><?=e(setting('club_name','Badminton'))?></title>
-    <link rel="stylesheet" href="<?=e(asset_url('app.css'))?>?v=<?=e(app_version())?>">
+    <?php /* asset_url() puts a hash of the file's bytes in the address, so a
+             changed stylesheet or script is fetched on the next page. Nothing
+             is appended here: the release number stayed the same across a
+             release that changed both, and browsers kept the old ones. */ ?>
+    <link rel="stylesheet" href="<?=e(asset_url('app.css'))?>">
     <?php /* The club's colours, after app.css so they win at equal specificity;
              no request at all while none is set (ADR 0013). */
     if(($brandCss=brand_css_url())!==''): ?><link rel="stylesheet" href="<?=e($brandCss)?>"><?php endif ?>
-    <script defer src="<?=e(asset_url('app.js'))?>?v=<?=e(app_version())?>"></script>
+    <script defer src="<?=e(asset_url('app.js'))?>"></script>
 </head>
 <body class="<?=$public?'public-page':'app-page'?>">
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
