@@ -218,10 +218,17 @@ function brand_css_rule(string $selector, array $declarations): string {
  * everybody who has not picked a colour of their own: a personal accent keeps
  * winning, and if this file fails to load, no rule matches and the built-in
  * teal applies.
+ *
+ * Memoised per set of choices, like brand_palette(): every page asks for it
+ * through brand_css_url(), and the route asks twice, for the body and for the
+ * address the body is cached at.
  */
 function brand_css(): string {
-    $palette = brand_palette();
+    static $memo = [];
     $chosen = brand_chosen();
+    $memoKey = implode(',', $chosen);
+    if (isset($memo[$memoKey])) return $memo[$memoKey];
+    $palette = brand_palette();
     $primary = ['--teal', '--teal-ink', '--teal-soft', '--teal-border', '--focus', '--on-accent'];
     $split = function (array $tokens) use ($primary): array {
         return [array_intersect_key($tokens, array_flip($primary)), array_diff_key($tokens, array_flip($primary))];
@@ -249,18 +256,24 @@ function brand_css(): string {
     if ($autoDark !== '') $css .= "@media(prefers-color-scheme:dark){\n" . $autoDark . "}\n";
     $css .= brand_css_rule('html[data-theme=dark][data-accent=brand]', $darkAccent)
           . brand_css_rule('html[data-theme=dark]', $darkRoot);
-    return $css === '' ? '' : "/* The club's colours, from Einstellungen → Portal → Aussehen. Generated; see app/brand.php. */\n" . $css;
+    return $memo[$memoKey] = $css === '' ? '' : "/* The club's colours, from Einstellungen → Portal → Aussehen. Generated; see app/brand.php. */\n" . $css;
 }
 
 /**
- * The part of the stylesheet's address that changes when the colours do.
+ * The part of the stylesheet's address that changes when the stylesheet does:
+ * a hash of its bytes, as asset_path() gives app.css.
  *
- * The version of the portal is in it too: a release that changes how the
- * tokens are worked out changes the address, and nobody keeps last year's
- * derivation from a cache.
+ * Its bytes, not her choices and the release number. The address is kept for a
+ * year, immutable, so whatever it is made of has to change whenever the text
+ * does. It used to be made of those two, and a release changed how the colours
+ * are worked out while VERSION stayed 0.6.0: the address stayed the same, and
+ * a browser that had the old colours could keep them for a year. Made of the
+ * bytes, it also stays put when nothing on the page changes - a dark colour
+ * whose light one is not set, or an update that leaves the colours alone,
+ * costs nobody a download.
  */
 function brand_css_version(): string {
-    return substr(hash('sha256', app_version() . json_encode(brand_chosen())), 0, 12);
+    return substr(hash('sha256', brand_css()), 0, 12);
 }
 
 /**

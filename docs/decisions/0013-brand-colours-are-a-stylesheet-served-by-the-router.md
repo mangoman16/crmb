@@ -179,8 +179,10 @@ Lesbarkeit verwendet: #…" beside it.
   - When `v` equals `brand_css_version()`, it sends
     `shared_cache_control(CLUB_ASSET_MAX_AGE, true)`. Otherwise it sends `no-cache`.
   - With nothing customised, it serves an empty stylesheet, not an error.
-- **The version.** `brand_css_version()` is the first 12 characters of
-  `sha256(app_version() . json_encode(brand_chosen()))`.
+- **The version.** `brand_css_version()` is the first 12 characters of `sha256(brand_css())`,
+  the stylesheet's own bytes. *(Amended 2026-10-01: it was the release number plus her choices,
+  and the release number did not change when the colour calculation did, so a year-long cache
+  kept the old colours.)*
 - **When there is no request.** `brand_css_url()` is `''` when no light colour is set. A dark
   override alone does not apply yet, so it costs no request.
 - **Where it loads.** The layout links the stylesheet directly after `app.css`, only when the

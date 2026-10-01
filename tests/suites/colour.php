@@ -225,7 +225,7 @@ is_same('', brand_chosen()['brand_background'], 'a background the form would ref
 ok(brand_css_rule('x', ['--teal' => 'red;}', 'color' => '#ffffff', '--ok' => '#123456']) === "x{--ok:#123456}\n",
    'and the rule builder drops anything but a token set to a colour, as the last line of defence');
 
-case_('The address changes when a colour does, and the old one is not kept');
+case_('The address changes when the stylesheet does, and the old one is not kept');
 branding_clear();
 set_setting('brand_primary', '#1f5fa9');
 $first = brand_css_version();
@@ -234,17 +234,45 @@ ok(str_contains(brand_css_url(), 'page=brand') && str_contains(brand_css_url(), 
 set_setting('brand_primary', '#1f5fa8');
 $second = brand_css_version();
 ok($first !== $second, 'one step of one channel is a new address');
+set_setting('brand_primary_dark', '#ff9900');
+$third = brand_css_version();
+ok($second !== $third, 'and so is a dark override that applies');
 set_setting('brand_background_dark', '#0a0a0a');
-ok($second !== brand_css_version(), 'and so is a dark override');
+is_same($third, brand_css_version(),
+        'one whose light colour is not set changes nothing on the page, so the address and every cached copy stay');
 is_same('public, max-age=31536000, immutable', brand_css_cache_control(brand_css_version()),
         'the current address is kept for a year, by any cache');
 is_same('no-cache', brand_css_cache_control($first), 'an old address is asked again every time');
 is_same('no-cache', brand_css_cache_control(null), 'and one with no version');
 is_same('no-cache', brand_css_cache_control(['x']), 'or with a version that is not text');
-$reflection = new ReflectionFunction('brand_css_version');
-$versionSource = implode('', array_slice(file($reflection->getFileName()), $reflection->getStartLine() - 1,
-                                          $reflection->getEndLine() - $reflection->getStartLine() + 1));
-ok(str_contains($versionSource, 'app_version()'), 'a release that changes the derivation changes the address too');
+
+case_('The address is a hash of the stylesheet itself, not of her colours and the release number');
+/* Commit 667367a changed how the colours are worked out, and VERSION stayed
+   0.6.0. The address was a hash of the release number and her choices, so it
+   stayed the same, and the route had told every browser to keep that address
+   for a year, unchanged. A run of the suite cannot change the derivation
+   half way, so the rule is held as what it is: whatever the page links is the
+   hash of the bytes the route sends. Then other bytes are another address,
+   whatever made them other - her colours, or a release. */
+$configurations = [
+    'the main colour alone' => ['brand_primary' => '#8a1538'],
+    'the menu colour alone' => ['brand_secondary' => '#0a1030'],
+    'all four, with a dark override' => ['brand_primary' => '#8a1538', 'brand_secondary' => '#0a1030',
+        'brand_highlight' => '#ffcc00', 'brand_background' => '#fffaf0', 'brand_primary_dark' => '#ff9900'],
+];
+$versions = [];
+foreach ($configurations as $what => $colours) {
+    branding_clear();
+    foreach ($colours as $key => $colour) set_setting($key, $colour);
+    $body = brand_css();
+    parse_str((string)parse_url(brand_css_url(), PHP_URL_QUERY), $query);
+    ok($body !== '', $what.': there is a stylesheet to send');
+    is_same(substr(hash('sha256', $body), 0, 12), $query['v'] ?? null, $what.': the page links the hash of the bytes the route sends');
+    is_same('public, max-age=31536000, immutable', brand_css_cache_control($query['v'] ?? null),
+            $what.': and the route lets that address be kept');
+    $versions[$what] = $query['v'] ?? '';
+}
+is_same(count($configurations), count(array_unique($versions)), 'each stylesheet has an address of its own');
 
 case_('Everybody without a colour of their own gets the club’s main colour');
 branding_clear();
