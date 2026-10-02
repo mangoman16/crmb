@@ -110,7 +110,7 @@ throws(fn() => act('account_invite', ['name' => 'Neue Trainerin', 'email' => 'Fa
        'account_invite refuses a family’s address for a staff login, however it is capitalised', 'Jede Person braucht ihre eigene');
 is_same(1, (int)scalar("SELECT COUNT(*) FROM accounts WHERE email='familie.berg@beispiel.test'"), 'and wrote nothing');
 /* Bypassing the sentence: the unique index from 001 is the backstop, under any
-   isolation level, on SQLite and on the real engine alike. */
+   isolation level. */
 $code = '';
 try { make_account(['email' => 'familie.berg@beispiel.test', 'username' => 'zweites.konto']); } catch (PDOException $e) { $code = (string)$e->getCode(); }
 is_same('23000', $code, 'a second row written past the guard is refused by the database with 23000');
@@ -196,18 +196,12 @@ is_same($flash, (string)($_SESSION['flash']['message'] ?? ''), 'and the answer i
 mail_ready(true);
 /* "To the stored address, never the typed one" can only be told apart where the
    two differ and still find each other: an address saved with capitals before
-   everything was lower-cased, which the real collation matches and SQLite's
-   byte comparison does not. */
-if (test_driver() === 'sqlite') {
-    test_unsupported(array_merge(test_unsupported(),
-        ['„vergessen“ and sign-in finding an address stored with capitals, and mailing it as stored (needs the MySQL collation)']));
-} else {
-    $capitalised = make_account(['email' => 'Gross.Familie@Beispiel.test', 'username' => 'gross.kind']);
-    $freshIp();
-    submit('forgot', ['username' => 'gross.familie@beispiel.test']);
-    is_same('Gross.Familie@Beispiel.test', (string)scalar("SELECT recipient FROM mail_jobs WHERE account_id=? AND category='security'", [$capitalised]),
-            'a stored address with capitals gets its mail at the address as stored');
-}
+   everything was lower-cased, which the tables' collation matches. */
+$capitalised = make_account(['email' => 'Gross.Familie@Beispiel.test', 'username' => 'gross.kind']);
+$freshIp();
+submit('forgot', ['username' => 'gross.familie@beispiel.test']);
+is_same('Gross.Familie@Beispiel.test', (string)scalar("SELECT recipient FROM mail_jobs WHERE account_id=? AND category='security'", [$capitalised]),
+        'a stored address with capitals gets its mail at the address as stored');
 
 case_('The sender checks every link in the mail, and compares addresses as they are stored [S1, R7]');
 $younger = make_account(['email' => 'tim.stein@beispiel.test', 'username' => 'tim.stein']);
@@ -227,20 +221,6 @@ ok(!security_mail_links_live($link, 'lena@example.at'), 'nor one for a suspended
 $moving = make_account(['email' => 'alt@beispiel.test', 'username' => 'umzug']);
 ok(security_mail_links_live(url('activate', ['token' => make_token($moving, 'email', 'neu@beispiel.test')]), 'neu@beispiel.test'),
    'a changed address is confirmed at the address it is changing to');
-
-case_('„Vergessen“ looks up nothing that is not a plain address [M1]');
-mail_ready(true);
-/* Counted by the SQLite driver, which is the one that can count: elsewhere
-   query_count() answers 0 for everything, and a nought would prove nothing.
-   The plain address comes first, so the noughts after it are a measurement. */
-if (test_driver() !== 'sqlite') {
-    test_unsupported(array_merge(test_unsupported(), ['„vergessen“ sending no statement for a spelling that is not plain (counted by the sqlite driver)']));
-} else {
-    ok(query_count(fn() => act('forgot', ['username' => 'mia.stein@beispiel.test'])) > 0, 'a plain address is looked up');
-    ok(query_count(fn() => act('forgot', ['username' => 'mia.stein'])) > 0, 'and so is a username');
-    foreach (['"mia.stein"@beispiel.test', "mia.stein\x01@beispiel.test", 'mía.stein@beispiel.test', 'a..b', '1mia', 'mia_stein'] as $spelling)
-        is_same(0, query_count(fn() => act('forgot', ['username' => $spelling])), 'and not a single statement is sent for '.json_encode($spelling));
-}
 
 case_('„Vergessen“ counts per typed name and per requester, and both on every request [S7]');
 $freshIp();
@@ -340,29 +320,23 @@ foreach (['app/actions.php' => "case 'activate':", 'app/actions_settings.php' =>
 
 case_('A username that is taken is answered, not thrown, and at most five times a day [R3, S2]');
 /* Only a "taken" answer counts, so the count comes after the lookup - inside a
-   transaction that has already read. InnoDB lets the counter connection write
-   then; SQLite in WAL mode does not let the first connection write afterwards
-   (SQLITE_BUSY_SNAPSHOT), so this runs on MariaDB and MySQL only. */
-if (test_driver() === 'sqlite') {
-    test_unsupported(array_merge(test_unsupported(),
-        ['a taken username answered, audited and throttled inside its transaction (SQLite cannot write after a second connection has; InnoDB can)']));
-} else {
-    throttle_clear('username-taken', account_identity($lisa));
-    $answers = [];
-    for ($i = 0; $i < 5; $i++) {
-        unset($_SESSION['flash'], $_SESSION['form_input']);
-        $answers[] = act('username_change', ['current_password' => $password, 'username' => 'Vergeben', 'return_page' => 'profile']);
-    }
-    is_same(array_fill(0, 5, ['profile', []]), $answers, 'five times the answer is a return to Mein Konto, not a refusal thrown');
-    is_same('error', $_SESSION['flash']['kind'] ?? null, 'with the answer as an error flash');
-    is_same('Diesen Benutzernamen hat schon jemand. Such dir einen anderen aus, zum Beispiel mit einer Zahl am Ende.', $_SESSION['flash']['message'] ?? null, 'saying the name is taken');
-    is_same('Vergeben', $_SESSION['form_input']['fields']['username'] ?? null, 'the typed name is offered back');
-    ok(!isset($_SESSION['form_input']['fields']['current_password']), 'and the password is not');
-    is_same(5, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.username_taken' AND entity_id=?", [$lisa]),
-            'each of the five stayed in the audit log, which a throw would have rolled back');
-    throws(fn() => act('username_change', ['current_password' => $password, 'username' => 'vergeben']), 'the sixth in a day is throttled', 'Zu viele');
-    is_same('lisa.b', (string)scalar('SELECT username FROM accounts WHERE id=?', [$lisa]), 'and she is still lisa.b');
+   transaction that has already read, on the counter's own connection, which
+   InnoDB lets write while the action's transaction is still open. */
+throttle_clear('username-taken', account_identity($lisa));
+$answers = [];
+for ($i = 0; $i < 5; $i++) {
+    unset($_SESSION['flash'], $_SESSION['form_input']);
+    $answers[] = act('username_change', ['current_password' => $password, 'username' => 'Vergeben', 'return_page' => 'profile']);
 }
+is_same(array_fill(0, 5, ['profile', []]), $answers, 'five times the answer is a return to Mein Konto, not a refusal thrown');
+is_same('error', $_SESSION['flash']['kind'] ?? null, 'with the answer as an error flash');
+is_same('Diesen Benutzernamen hat schon jemand. Such dir einen anderen aus, zum Beispiel mit einer Zahl am Ende.', $_SESSION['flash']['message'] ?? null, 'saying the name is taken');
+is_same('Vergeben', $_SESSION['form_input']['fields']['username'] ?? null, 'the typed name is offered back');
+ok(!isset($_SESSION['form_input']['fields']['current_password']), 'and the password is not');
+is_same(5, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.username_taken' AND entity_id=?", [$lisa]),
+        'each of the five stayed in the audit log, which a throw would have rolled back');
+throws(fn() => act('username_change', ['current_password' => $password, 'username' => 'vergeben']), 'the sixth in a day is throttled', 'Zu viele');
+is_same('lisa.b', (string)scalar('SELECT username FROM accounts WHERE id=?', [$lisa]), 'and she is still lisa.b');
 sign_out();
 
 case_('The invitation page lets the person choose their username, through the same rules [§2]');
@@ -395,28 +369,23 @@ fixture('contacts', ['student_id' => $completeKid, 'owner_name' => 'Mutter', 're
 $_SESSION['activation_hash'] = hash('sha256', make_token($complete, 'invite')); $freshIp();
 is_same(['dashboard', []], submit('activate', $setUp + ['username' => 'fertig.kind']), 'one with nothing missing lands where every sign-in does');
 sign_out();
-if (test_driver() === 'sqlite') {
-    test_unsupported(array_merge(test_unsupported(),
-        ['a taken username on the invitation page, answered and audited inside its transaction (SQLite cannot write after a second connection has; InnoDB can)']));
-} else {
-    $late = make_account(['username' => 'spaet.dran', 'email' => 'spaet@beispiel.test', 'state' => 'invited', 'verified_at' => null, 'password_hash' => null]);
-    throttle_clear('username-taken', account_identity($late));
-    $_SESSION['activation_hash'] = hash('sha256', make_token($late, 'invite')); $freshIp();
-    unset($_SESSION['form_input']);
-    $_SESSION['impersonator_id'] = $trainer;   // a view left over on this browser
-    is_same(['activate', []], submit('activate', $setUp + ['username' => 'neu.ankunft-lena']), 'a taken name comes back to the page');
-    ok(!isset($_SESSION['impersonator_id']), 'with no view left over, though nobody is signed in afterwards (F1)');
-    is_same($late, (int)scalar("SELECT actor_id FROM audit_log WHERE action='account.username_taken' AND entity_id=? ORDER BY id DESC LIMIT 1", [$late]),
-            'and the attempt put down to the holder of the link');
-    is_same(['invited', null], [scalar('SELECT state FROM accounts WHERE id=?', [$late]), scalar('SELECT password_hash FROM accounts WHERE id=?', [$late])],
-            'having activated nothing');
-    is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.username_taken' AND entity_id=?", [$late]), 'with the attempt in the audit log [R3]');
-    is_same('Diesen Benutzernamen hat schon jemand. Such dir einen anderen aus, zum Beispiel mit einer Zahl am Ende.', $_SESSION['flash']['message'] ?? null, 'and the answer said');
-    is_same('neu.ankunft-lena', $_SESSION['form_input']['fields']['username'] ?? null, 'the typed name is offered back');
-    ok(!isset($_SESSION['form_input']['fields']['password']) && !isset($_SESSION['form_input']['fields']['password_confirm']), 'and the passwords are not');
-    ok(token_record((string)$_SESSION['activation_hash']) !== null, 'the link still works for the next try');
-    sign_out();
-}
+$late = make_account(['username' => 'spaet.dran', 'email' => 'spaet@beispiel.test', 'state' => 'invited', 'verified_at' => null, 'password_hash' => null]);
+throttle_clear('username-taken', account_identity($late));
+$_SESSION['activation_hash'] = hash('sha256', make_token($late, 'invite')); $freshIp();
+unset($_SESSION['form_input']);
+$_SESSION['impersonator_id'] = $trainer;   // a view left over on this browser
+is_same(['activate', []], submit('activate', $setUp + ['username' => 'neu.ankunft-lena']), 'a taken name comes back to the page');
+ok(!isset($_SESSION['impersonator_id']), 'with no view left over, though nobody is signed in afterwards (F1)');
+is_same($late, (int)scalar("SELECT actor_id FROM audit_log WHERE action='account.username_taken' AND entity_id=? ORDER BY id DESC LIMIT 1", [$late]),
+        'and the attempt put down to the holder of the link');
+is_same(['invited', null], [scalar('SELECT state FROM accounts WHERE id=?', [$late]), scalar('SELECT password_hash FROM accounts WHERE id=?', [$late])],
+        'having activated nothing');
+is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.username_taken' AND entity_id=?", [$late]), 'with the attempt in the audit log [R3]');
+is_same('Diesen Benutzernamen hat schon jemand. Such dir einen anderen aus, zum Beispiel mit einer Zahl am Ende.', $_SESSION['flash']['message'] ?? null, 'and the answer said');
+is_same('neu.ankunft-lena', $_SESSION['form_input']['fields']['username'] ?? null, 'the typed name is offered back');
+ok(!isset($_SESSION['form_input']['fields']['password']) && !isset($_SESSION['form_input']['fields']['password_confirm']), 'and the passwords are not');
+ok(token_record((string)$_SESSION['activation_hash']) !== null, 'the link still works for the next try');
+sign_out();
 
 case_('A changed address is asked for without saying whether it is taken, and refused when the link is opened [§1]');
 /* Asking would tell a signed-in family whether an address has a login - half a

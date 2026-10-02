@@ -855,9 +855,6 @@ function brand_block(?array $user, string $where, ?string $href): void {
     echo '</'.$tag.'>';
 }
 
-/** The address of a file that ships in public/assets/. */
-function asset_url(string $file): string { return rtrim((string)config('app_url'), '/') . '/assets/' . $file; }
-
 /*
  * A problem report's way there, as Einstellungen → Rückmeldungen shows it
  * (ADR 0009). Two shapes are stored, and both are read here rather than in the

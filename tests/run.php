@@ -5,9 +5,12 @@ declare(strict_types=1);
 /**
  * Runs the test suites in tests/suites/.
  *
- *   php tests/run.php                 every suite, sqlite driver
- *   php tests/run.php billing dates   only those suites
- *   CRM_TEST_DRIVER=mysql php tests/run.php     against a real *_test database
+ *   tests/mariadb-local.sh                   every suite, on a throwaway MariaDB
+ *   tests/mariadb-local.sh billing dates     only those suites
+ *   CRM_CONFIG=<config> php tests/run.php    on a *_test database you already have
+ *
+ * Without CRM_CONFIG it refuses and says which of the two scripts to run; see
+ * test_boot() in tests/harness.php for every database it refuses.
  *
  * Exit code 0 when everything passed, 1 on any failure, 2 on a setup problem.
  */
@@ -21,11 +24,13 @@ sort($files);
 
 $state = test_state();
 $start = microtime(true);
-// Where everything this run writes goes. Printed because it is the one line an
-// operator can check to know these are tests that stay out of the portal's own
-// folder - TESTING.md tells her to look for it - and because a run the host
-// kills part-way leaves that folder behind for her to find.
-printf("driver: %s\nfiles:  %s (removed when the run ends)\n\n", test_driver(), test_run_dir());
+// Which database the run empties, on which server, and where everything it
+// writes goes. Printed because these are the lines an operator can check to know
+// the run is on a test database and stays out of the portal's own folder -
+// TESTING.md tells her to look for the second - and because a run the host kills
+// part-way leaves that folder behind for her to find.
+printf("database: %s on %s\nfiles:  %s (removed when the run ends)\n\n",
+    (string)config('db')['database'], (string)scalar('SELECT VERSION()'), test_run_dir());
 
 foreach ($files as $file) {
     $name = basename($file, '.php');
@@ -54,13 +59,10 @@ if ($state->failures) {
     foreach ($state->failures as $f) echo "  - ".$f."\n";
 }
 
-// Printed on every driver, not just sqlite: a suite that has to reach outside
-// the run's own database says so here, and on mysql that note is the only place
-// it would appear.
+// A suite that has to reach outside the run's own database, and could not, says
+// so here; a green run that skipped it would otherwise read as one that checked.
 if (test_unsupported()) {
-    echo test_driver() === 'sqlite'
-        ? "\nNot covered by the sqlite driver (run with CRM_TEST_DRIVER=mysql to cover these):\n"
-        : "\nNot covered by this run:\n";
+    echo "\nNot covered by this run:\n";
     foreach (array_unique(test_unsupported()) as $u) echo "  - ".$u."\n";
 }
 

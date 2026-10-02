@@ -129,8 +129,7 @@ $A = $account($admin); $T = $account($trainer); $F = $account($family);
 $seen = [];
 presence_history_days();   // the setting is read once per request, not per list
 $queries = query_count(function () use ($T, $second, $other, $admin, &$seen) { $seen = presence_history($T, [$second, $other, $admin]); });
-// Counted by the sqlite driver only; on a real engine query_count() is 0.
-if (test_driver() === 'sqlite') is_same(1, $queries, 'three accounts, one query');
+is_same(1, $queries, 'three accounts, one query');
 is_same([$second, $other, $admin], array_keys($seen), 'every account asked about is answered');
 is_same([], $seen[$admin], 'an account with no periods has an empty list');
 is_same(1, count($seen[$second]), 'a trainer sees the visible period and not the hidden one or the old one');

@@ -30,25 +30,12 @@ function backup_dir(): string { return dirname(maintenance_file()) . '/backups';
 const BACKUP_KEEP = 5;
 
 /**
- * Whether this connection is one the dump understands.
- *
- * The dump is written in MySQL's own dialect, read back by MySQL's own import.
- * Rather than translate it for the SQLite the test suite runs on, it says so.
- */
-function backup_supported(): bool {
-    try { return db()->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql'; }
-    catch (Throwable) { return false; }
-}
-
-/**
  * Write a full copy of the database and return the path.
  *
  * $reason becomes part of the file name, so the operator opening the folder can
  * see what each copy was taken before.
  */
 function backup_database(string $reason = 'update'): string {
-    if (!backup_supported())
-        throw new BackupError('A backup can only be written from MySQL or MariaDB.');
     $dir = backup_dir();
     if (!is_dir($dir) && !@mkdir($dir, 0750, true))
         throw new BackupError('Cannot create ' . $dir);
@@ -62,13 +49,16 @@ function backup_database(string $reason = 'update'): string {
     // Seconds, not minutes: two copies in the same minute would otherwise be
     // ordered by their random part, and pruning would pick a victim at random.
     $path = $dir . '/' . gmdate('Y-m-d-His') . '-' . $slug . '-' . bin2hex(random_bytes(4)) . '.sql';
-    $handle = @fopen($path . '.part', 'wb');
-    if (!$handle) throw new BackupError('Cannot write into ' . $dir);
 
     // Its own connection, unbuffered: a table with years of messages in it is
-    // streamed row by row rather than loaded into memory all at once.
+    // streamed row by row rather than loaded into memory all at once. Opened
+    // before the file, so a database it cannot reach leaves no empty half-file
+    // behind; its error is not wrapped, because the page an update shows when
+    // it stops is public and a connection error names the database user.
     $reader = connect();
     $reader->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+    $handle = @fopen($path . '.part', 'wb');
+    if (!$handle) throw new BackupError('Cannot write into ' . $dir);
     try {
         backup_write($handle, $reader, $reason);
     } catch (Throwable $e) {

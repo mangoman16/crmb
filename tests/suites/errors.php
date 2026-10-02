@@ -156,19 +156,10 @@ is_same(false, str_contains($stored, 'doppelt.familie@beispiel.test'), 'the addr
 is_same(false, str_contains($stored, json_encode(mb_substr($raised?->getMessage() ?? 'x', 0, 40), JSON_UNESCAPED_UNICODE) ?: 'x')
                || str_contains($stored, 'constraint') || str_contains($stored, 'Duplicate'), 'nor any of its message');
 is_same(['23000', ''], [$c['sqlstate'] ?? null, $c['message'] ?? null], 'the SQLSTATE is, and the message is empty');
-ok(is_int($c['code'] ?? null) && $c['code'] > 0, 'and the driver’s own code ('.test_show($c['code'] ?? null).')');
-// SQLite says "UNIQUE constraint failed" and names no value, so the wording
-// MariaDB uses is thrown as well: that is the one that carries the address.
-run('DELETE FROM feedback WHERE account_id IS NULL');
-error_capture_reset();
-$maria = new PDOException("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'doppelt.familie@beispiel.test' for key 'email'");
-$maria->errorInfo = ['23000', 1062, "Duplicate entry 'doppelt.familie@beispiel.test' for key 'email'"];
-capture_error($maria);
-$stored = (string)(one('SELECT context_json FROM feedback WHERE account_id IS NULL')['context_json'] ?? '');
-is_same(false, str_contains($stored, 'doppelt.familie@beispiel.test') || str_contains($stored, 'Duplicate'),
-        'MariaDB’s wording, address and all, is not kept either');
-is_same(['23000', 1062], [json_decode($stored, true)['sqlstate'] ?? null, json_decode($stored, true)['code'] ?? null],
-        'only its SQLSTATE and code');
+is_same(1062, $c['code'] ?? null, 'and the driver’s own code, 1062 for a duplicate');
+// The control: the message really did carry the address, so leaving it out
+// above is something the capture did and not something the engine spared it.
+ok(str_contains($raised?->getMessage() ?? '', 'doppelt.familie@beispiel.test'), 'the database’s message named the address');
 
 case_('A password posted at the moment of the error is kept nowhere');
 run('DELETE FROM feedback WHERE account_id IS NULL');

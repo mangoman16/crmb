@@ -264,13 +264,35 @@ case_('A migration statement that returns rows does not poison the rest of the r
 // PDO::exec() leaves an open result set behind for anything that returns rows -
 // a SELECT that checks something before altering it, a SHOW - and every query
 // after it on the same connection then fails with "unbuffered queries are
-// active", blaming a statement two lines further down. Only MySQL raises that;
-// the SQLite translation cannot, so this is the engine-specific half of the run.
+// active", blaming a statement two lines further down.
 run_migration_statement('SELECT 1');
 does_not_throw(fn() => scalar('SELECT COUNT(*) FROM accounts'),
                'the connection is still usable afterwards');
 run_migration_statement('SELECT 1');
 does_not_throw(fn() => run_migration_statement('SELECT 2'), 'and so is the next statement of the migration');
+
+case_('A CALL is drained to its last result set, and fails the migration if that one fails');
+/* A CALL can answer with several result sets, and an error raised after the
+   first arrives only when the next is asked for. Swallowing it there - which the
+   runner once did, for a test engine that had no second result set - records the
+   migration as applied when its statement failed half way. Routines are made
+   here because a hosting panel's database user may not be allowed to. */
+$routine = function (string $name, string $body): bool {
+    try { db()->exec('DROP PROCEDURE IF EXISTS '.$name); db()->exec('CREATE PROCEDURE '.$name.'() BEGIN '.$body.' END'); return true; }
+    catch (PDOException) { return false; }
+};
+if (!$routine('crm_test_two_answers', 'SELECT 1; SELECT 2;') || !$routine('crm_test_fails_second', "SELECT 1; SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'zweite Hälfte';")) {
+    test_unsupported(array_merge(test_unsupported(),
+        ['a migration statement that CALLs a procedure with several result sets (this database user may not create one)']));
+} else {
+    does_not_throw(fn() => run_migration_statement('CALL crm_test_two_answers()'), 'a CALL answering twice is drained');
+    does_not_throw(fn() => scalar('SELECT COUNT(*) FROM accounts'), 'and the connection is usable afterwards');
+    throws(fn() => run_migration_statement('CALL crm_test_fails_second()'),
+           'a CALL that fails after its first answer fails the statement, so the migration is not recorded as applied', 'zweite Hälfte');
+    does_not_throw(fn() => scalar('SELECT COUNT(*) FROM accounts'), 'and the connection is still usable for the error to be reported');
+}
+foreach (['crm_test_two_answers', 'crm_test_fails_second'] as $name)
+    try { db()->exec('DROP PROCEDURE IF EXISTS '.$name); } catch (PDOException) { /* never made */ }
 
 case_('The guarded tables are the ones a family would notice');
 foreach (['accounts', 'students', 'charges', 'payments', 'messages'] as $table)
@@ -280,14 +302,6 @@ foreach (schema_guarded_tables() as $table)
 ok(array_key_exists('students', schema_counts()), 'counts are taken for it');
 
 case_('A backup is required before migrating, and the way past it is deliberate');
-is_same(test_driver() === 'mysql', backup_supported(),
-        'a dump is offered exactly where its dialect is understood');
-if (!backup_supported()) {
-    // Said out loud in the run's footer rather than left as a silent gap: the
-    // dump itself is only proven by tests/mariadb-local.sh.
-    test_unsupported(array_merge(test_unsupported(), ['the pre-update database backup (MySQL dialect)']));
-    throws(fn() => backup_database('test'), 'and elsewhere it throws rather than writing an unusable file', 'MySQL');
-}
 @unlink(backup_override_file());
 ok(!backup_override_claimed(), 'without the override file there is no way past the backup');
 file_put_contents(backup_override_file(), '');
@@ -295,46 +309,56 @@ ok(backup_override_claimed(), 'the file in storage/ lets an operator who backed 
 ok(!is_file(backup_override_file()), 'and it is consumed, so it cannot quietly disable the next update too');
 ok(!backup_override_claimed(), 'a second update needs a fresh one');
 
-if (test_driver() === 'mysql') {
-    case_('The backup is real SQL carrying the real data');
-    /* Only reachable on the engine whose dialect it is written in. The proof
-       that it imports again lives outside this suite, because importing needs a
-       second database; see VALIDATION.md. */
-    foreach (glob(backup_dir().'/*.sql') ?: [] as $stale) @unlink($stale);
-    make_student(['first_name' => 'Sofía', 'last_name' => "O'Brien-Müller", 'internal_notes' => "a\\b \"c\"\nzweite Zeile"]);
-    make_student(['first_name' => 'Jonas', 'last_name' => 'Groß']);
-    $path = backup_database('suite');
-    ok(is_file($path), 'a file was written');
-    ok(str_ends_with($path, '.sql'), 'named .sql, which is what the panel import expects');
-    ok(!glob(backup_dir().'/*.part'), 'and no half-written file is left beside it');
-    $dump = (string)file_get_contents($path);
-    ok(str_contains($dump, 'SET FOREIGN_KEY_CHECKS=0'), 'constraints are relaxed so table order cannot break the import');
-    ok(str_contains($dump, 'SET NAMES utf8mb4'), 'and the charset is declared, or every umlaut comes back wrong');
-    ok(str_contains($dump, 'CREATE TABLE `students`'), 'the structure is in it');
-    ok(str_contains($dump, 'DROP TABLE IF EXISTS `students`'), 'and it is safe to import twice');
-    is_same(2, substr_count($dump, 'INSERT INTO `students` VALUES'), 'one statement per row, so a failed import names the row');
-    ok(str_contains($dump, 'Sofía') && str_contains($dump, 'Groß'), 'the data is there, umlauts intact');
-    ok(str_contains($dump, 'Restore by importing'), 'and it opens with what to do with it');
+case_('The backup is real SQL carrying the real data');
+/* The proof that it imports again lives outside this suite, because importing
+   needs a second database; see VALIDATION.md. */
+foreach (glob(backup_dir().'/*.sql') ?: [] as $stale) @unlink($stale);
+make_student(['first_name' => 'Sofía', 'last_name' => "O'Brien-Müller", 'internal_notes' => "a\\b \"c\"\nzweite Zeile"]);
+make_student(['first_name' => 'Jonas', 'last_name' => 'Groß']);
+$path = backup_database('suite');
+ok(is_file($path), 'a file was written');
+ok(str_ends_with($path, '.sql'), 'named .sql, which is what the panel import expects');
+ok(!glob(backup_dir().'/*.part'), 'and no half-written file is left beside it');
+$dump = (string)file_get_contents($path);
+ok(str_contains($dump, 'SET FOREIGN_KEY_CHECKS=0'), 'constraints are relaxed so table order cannot break the import');
+ok(str_contains($dump, 'SET NAMES utf8mb4'), 'and the charset is declared, or every umlaut comes back wrong');
+ok(str_contains($dump, 'CREATE TABLE `students`'), 'the structure is in it');
+ok(str_contains($dump, 'DROP TABLE IF EXISTS `students`'), 'and it is safe to import twice');
+is_same(2, substr_count($dump, 'INSERT INTO `students` VALUES'), 'one statement per row, so a failed import names the row');
+ok(str_contains($dump, 'Sofía') && str_contains($dump, 'Groß'), 'the data is there, umlauts intact');
+ok(str_contains($dump, 'Restore by importing'), 'and it opens with what to do with it');
 
-    case_('Only the most recent copies are kept, and never the newest one');
-    /* The decoys are older than the copy that follows them but carry names that
-       sort above anything it can produce. Sorting by name rather than by age
-       would therefore prune the one file that must not be pruned: the copy taken
-       moments before a migration. */
-    foreach (backups() as $copy) @unlink($copy['path']);
-    for ($i = 0; $i <= BACKUP_KEEP; $i++) {
-        $decoy = backup_dir() . '/9999-12-31-235959-decoy' . $i . '-ffffffff.sql';
-        file_put_contents($decoy, '-- older, but named as though it were newer');
-        touch($decoy, time() - 3600);
-    }
-    $newest = backup_database('vor-update');
-    is_same(BACKUP_KEEP, count(backups()), 'a portal nobody prunes would eventually fill the disk quota');
-    ok(is_file($newest), 'and the copy just written survived its own pruning');
-    is_same(basename($newest), backups()[0]['name'], 'it is listed first, because the list is by age and not by name');
-    ok(backups()[0]['bytes'] > 0, 'with something in it');
-    foreach (backups() as $copy) @unlink($copy['path']);
-    run('DELETE FROM students');
+case_('Only the most recent copies are kept, and never the newest one');
+/* The decoys are older than the copy that follows them but carry names that
+   sort above anything it can produce. Sorting by name rather than by age
+   would therefore prune the one file that must not be pruned: the copy taken
+   moments before a migration. */
+foreach (backups() as $copy) @unlink($copy['path']);
+for ($i = 0; $i <= BACKUP_KEEP; $i++) {
+    $decoy = backup_dir() . '/9999-12-31-235959-decoy' . $i . '-ffffffff.sql';
+    file_put_contents($decoy, '-- older, but named as though it were newer');
+    touch($decoy, time() - 3600);
 }
+$newest = backup_database('vor-update');
+is_same(BACKUP_KEEP, count(backups()), 'a portal nobody prunes would eventually fill the disk quota');
+ok(is_file($newest), 'and the copy just written survived its own pruning');
+is_same(basename($newest), backups()[0]['name'], 'it is listed first, because the list is by age and not by name');
+ok(backups()[0]['bytes'] > 0, 'with something in it');
+foreach (backups() as $copy) @unlink($copy['path']);
+run('DELETE FROM students');
+
+case_('A backup that cannot reach the database leaves nothing behind');
+/* Its connection is opened before its file. The other way round, every attempt
+   that could not connect left an empty .part file in the folder she opens to
+   restore from. A login that does not exist fails on any host, over a socket or
+   a port alike; db() keeps the connection it already has. */
+$kept = $GLOBALS['config']['db'];
+$GLOBALS['config']['db']['username'] = 'niemand_'.bin2hex(random_bytes(3));
+$GLOBALS['config']['db']['password'] = 'falsch';
+try { throws(fn() => backup_database('test'), 'a backup the database refuses to talk to is refused'); }
+finally { $GLOBALS['config']['db'] = $kept; }
+is_same([], glob(backup_dir().'/*.part') ?: [], 'and leaves no half-written file behind');
+is_same([], backups(), 'nor a copy that would look restorable');
 
 case_('A migration that stops partway says which one and where');
 $stopped = new SchemaError('007_example.sql', 4, 12, 'ALTER TABLE students ADD COLUMN x INT', 'Duplicate column name');

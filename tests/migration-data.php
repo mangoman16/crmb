@@ -34,19 +34,19 @@ declare(strict_types=1);
  * what it found as JSON; tests/suites/migrations.php does the asserting, so the
  * failures read like every other failure in the run.
  *
- *   php tests/migration-data.php [<sqlite-file>]     on a SQLite file, rebuilt for each run
- *   php tests/migration-data.php --mysql=<config>    on the MySQL or MariaDB database
- *                                                    that config names
+ *   php tests/migration-data.php <config>     on the database that config names
  *
- * The second is the one that proves the dialect. The database must be empty and
- * its name must end in _test, because every table in it is dropped again and
- * again; empty is the one thing that proves it is not a database somebody uses.
+ * tests/mariadb-local.sh makes that database and passes its config to the suite
+ * as CRM_MIGRATION_CONFIG. It must be empty and its name must end in _test,
+ * because every table in it is dropped again and again; empty is the one thing
+ * that proves it is not a database somebody uses.
  */
 
 require_once __DIR__ . '/harness.php';
-// sqlite_translate() splits statements with the application's own split_sql(),
-// and connect() is how the MySQL target is reached. This process has no
-// database to boot against, so the files are taken on their own.
+// The statements are split with the application's own split_sql(), and
+// connect() is how the database is reached, with the session set up the way the
+// runner's is: UTC, real prepares. This process has no database to boot
+// against, so the files are taken on their own.
 require_once APP_ROOT . '/app/core.php';
 // schema_guarded_tables(): what an update must not lose a row of, read from the
 // runner rather than listed a second time here.
@@ -58,47 +58,31 @@ require_once APP_ROOT . '/app/tx.php';
 require_once APP_ROOT . '/app/defaults.php';
 require_once APP_ROOT . '/app/auth.php';
 
-$mysql = null;
-$sqliteFile = null;
-foreach (array_slice($argv, 1) as $arg) {
-    if (str_starts_with($arg, '--mysql=')) $mysql = substr($arg, 8);
-    else $sqliteFile ??= $arg;
+$target = (string)($argv[1] ?? '');
+if ($target === '' || !is_file($target)) {
+    fwrite(STDERR, "Usage: php tests/migration-data.php <config of an empty *_test database>\n");
+    exit(2);
 }
-$sqliteFile ??= sys_get_temp_dir() . '/crm-migration-' . getmypid() . '-' . bin2hex(random_bytes(4)) . '.sqlite';
-
-if ($mysql !== null) {
-    $GLOBALS['config'] = is_file($mysql) ? require $mysql : [];
-    $name = (string)(config('db')['database'] ?? '');
-    if (!str_ends_with($name, '_test')) {
-        fwrite(STDERR, "Refusing: the database in $mysql must have a name ending in _test.\n");
-        exit(2);
-    }
-    $tables = (int)connect()->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn();
-    if ($tables > 0) {
-        fwrite(STDERR, "Refusing: $name is not empty ($tables tables), and this drops every table in it. Give it an empty database.\n");
-        exit(2);
-    }
-    // Empty when it started, so everything in it is this run's own - also when
-    // a migration fails half way, which would otherwise leave the next run
-    // refusing a database that is no longer empty.
-    register_shutdown_function(fn() => drop_every_table(connect()));
+$GLOBALS['config'] = require $target;
+$name = (string)(config('db')['database'] ?? '');
+// The harness's own rule: a name that merely ends in _test can still carry a
+// second dbname into the connection string.
+if (!test_database_name_allowed($name)) {
+    fwrite(STDERR, "Refusing: the database in $target must have a name of letters, digits and underscores ending in _test.\n");
+    exit(2);
 }
+$tables = (int)connect()->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn();
+if ($tables > 0) {
+    fwrite(STDERR, "Refusing: $name is not empty ($tables tables), and this drops every table in it. Give it an empty database.\n");
+    exit(2);
+}
+// Empty when it started, so everything in it is this run's own - also when a
+// migration fails half way, which would otherwise leave the next run refusing a
+// database that is no longer empty.
+register_shutdown_function(fn() => drop_every_table(connect()));
 
-/**
- * An empty database to build a portal in, and the connection to it.
- *
- * MySQL through the application's own connect(), so the session is set up the
- * way the runner's is: UTC, real prepares.
- */
+/** An empty database to build a portal in, and a connection of its own to it. */
 function fresh_database(): PDO {
-    global $mysql, $sqliteFile;
-    if ($mysql === null) {
-        @unlink($sqliteFile);
-        $pdo = new TestSqlitePdo('sqlite:' . $sqliteFile, null, null,
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-        $pdo->exec('PRAGMA foreign_keys=OFF');   // the halves are applied out of order for nobody
-        return $pdo;
-    }
     $pdo = connect();
     drop_every_table($pdo);
     return $pdo;
@@ -111,11 +95,9 @@ function drop_every_table(PDO $pdo): void {
     $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 }
 
-/** The statements of one migration file, in the dialect of the target. */
+/** The statements of one migration file, split as the runner splits them. */
 function migration_statements(string $path): array {
-    global $mysql;
-    $sql = (string)file_get_contents($path);
-    return $mysql === null ? sqlite_translate($sql)['statements'] : split_sql($sql);
+    return split_sql((string)file_get_contents($path));
 }
 
 /** Run statements, stopping the whole process with the file named if one fails. */
@@ -293,28 +275,19 @@ function portal_state(PDO $pdo): array {
 
 /** The index 019 ends with, as the engine describes it. */
 function one_account_index(PDO $pdo): array {
-    global $mysql;
-    if ($mysql !== null) {
-        $rows = $pdo->query("SELECT non_unique AS non_unique, column_name AS name FROM information_schema.statistics"
-            . " WHERE table_schema = DATABASE() AND table_name = 'students' AND index_name = 'student_one_account'"
-            . ' ORDER BY seq_in_index')->fetchAll();
-        return ['exists' => $rows !== [], 'unique' => $rows !== [] && (int)$rows[0]['non_unique'] === 0,
-                'columns' => array_column($rows, 'name')];
-    }
-    foreach ($pdo->query('PRAGMA index_list(students)')->fetchAll() as $index) {
-        if ($index['name'] !== 'student_one_account') continue;
-        return ['exists' => true, 'unique' => (int)$index['unique'] === 1,
-                'columns' => array_column($pdo->query('PRAGMA index_info(student_one_account)')->fetchAll(), 'name')];
-    }
-    return ['exists' => false, 'unique' => false, 'columns' => []];
+    $rows = $pdo->query("SELECT non_unique AS non_unique, column_name AS name FROM information_schema.statistics"
+        . " WHERE table_schema = DATABASE() AND table_name = 'students' AND index_name = 'student_one_account'"
+        . ' ORDER BY seq_in_index')->fetchAll();
+    return ['exists' => $rows !== [], 'unique' => $rows !== [] && (int)$rows[0]['non_unique'] === 0,
+            'columns' => array_column($rows, 'name')];
 }
 
+/** A table's columns, in the order the engine keeps them. */
 function table_columns(PDO $pdo, string $table): array {
-    global $mysql;
-    return $mysql === null
-        ? array_column($pdo->query('PRAGMA table_info(' . $table . ')')->fetchAll(), 'name')
-        : array_column($pdo->query("SELECT column_name AS name FROM information_schema.columns WHERE table_schema = DATABASE()"
-            . " AND table_name = '" . $table . "' ORDER BY ordinal_position")->fetchAll(), 'name');
+    $columns = $pdo->prepare('SELECT column_name AS name FROM information_schema.columns WHERE table_schema = DATABASE()'
+        . ' AND table_name = ? ORDER BY ordinal_position');
+    $columns->execute([$table]);
+    return array_column($columns->fetchAll(), 'name');
 }
 
 /** Each login's news-by-email choice, and its status once 020 has given it one. */
@@ -337,15 +310,8 @@ function new_login(PDO $pdo, string $email): array {
     return $row;
 }
 
-/**
- * The indexes 020 gives online_periods, as MySQL or MariaDB describes them.
- *
- * null on SQLite, whose translation drops an index written inside CREATE TABLE
- * for every table alike; that they exist is a fact about the real engine only.
- */
-function online_period_indexes(PDO $pdo): ?array {
-    global $mysql;
-    if ($mysql === null) return null;
+/** The indexes 020 gives online_periods, as the engine describes them. */
+function online_period_indexes(PDO $pdo): array {
     $indexes = [];
     foreach ($pdo->query("SELECT index_name AS name, column_name AS col FROM information_schema.statistics"
         . " WHERE table_schema = DATABASE() AND table_name = 'online_periods' ORDER BY index_name, seq_in_index")->fetchAll() as $row)
@@ -408,24 +374,16 @@ function every_login(PDO $pdo): array {
 /**
  * The unique indexes on accounts, each as the list of its columns, keyed by name.
  *
- * SQLite names the index behind an inline UNIQUE itself (sqlite_autoindex_…),
- * so what is compared across engines is the columns; the name is kept, because
- * on MariaDB it shows the address is still guarded by the index 001 made,
- * which the engine called email after its column.
+ * The name is kept as well as the columns, because it shows the address is
+ * still guarded by the index 001 made, which the engine called email after its
+ * column.
  */
 function login_unique_indexes(PDO $pdo): array {
-    global $mysql;
     $indexes = [];
-    if ($mysql !== null) {
-        foreach ($pdo->query("SELECT index_name AS name, column_name AS col FROM information_schema.statistics"
-            . " WHERE table_schema = DATABASE() AND table_name = 'accounts' AND non_unique = 0 AND index_name <> 'PRIMARY'"
-            . ' ORDER BY index_name, seq_in_index')->fetchAll() as $row)
-            $indexes[$row['name']][] = $row['col'];
-    } else {
-        foreach ($pdo->query('PRAGMA index_list(accounts)')->fetchAll() as $index)
-            if ((int)$index['unique'] === 1 && $index['origin'] !== 'pk')
-                $indexes[$index['name']] = array_column($pdo->query('PRAGMA index_info("' . $index['name'] . '")')->fetchAll(), 'name');
-    }
+    foreach ($pdo->query("SELECT index_name AS name, column_name AS col FROM information_schema.statistics"
+        . " WHERE table_schema = DATABASE() AND table_name = 'accounts' AND non_unique = 0 AND index_name <> 'PRIMARY'"
+        . ' ORDER BY index_name, seq_in_index')->fetchAll() as $row)
+        $indexes[$row['name']][] = $row['col'];
     ksort($indexes);
     return $indexes;
 }
@@ -506,7 +464,7 @@ $result = [
     'students' => $fetch('SELECT id, first_name, account_id, email FROM students ORDER BY id'),
     'tariff_columns' => table_columns($pdo, 'tariffs'),
     'ids' => $ids,
-    'engine' => $mysql === null ? 'sqlite' : (string)$pdo->query('SELECT VERSION()')->fetchColumn(),
+    'engine' => (string)$pdo->query('SELECT VERSION()')->fetchColumn(),
     'nineteen' => ['statements' => count($statements), 'before' => $before, 'after' => $after,
                    'index' => $index, 'again' => $again, 'retried' => []],
 ];
@@ -575,13 +533,13 @@ $result['twentytwo']['again'] = every_login($pdo);
 // The placeholders become usernames in database/defaults.php, which
 // schema_apply() requires after the files on every update (ADR 0019 §4, kept by
 // 0020), not in a migration. So it is run here, through the application's own
-// functions, on this portal's connection - twice, the second time as the next
+// functions on the application's own connections to this portal's database -
+// the one configuration this process has - twice, the second time as the next
 // update would. The portal is marked as set up, as every portal being updated
 // is, so only the part that runs on every update runs. One login at '' is
 // written in first, beside the placeholders 023 made.
 $result['twentytwo']['runner'] = ['never_named' => add_login_never_named($pdo)];
 $pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
-$GLOBALS['crm_connect_override'] = fn(): PDO => $pdo;
 $runnerState = function () use ($pdo): array {
     setting_cache_clear();
     return ['accounts' => every_login($pdo), 'counts' => portal_state($pdo)['counts'],
@@ -594,8 +552,6 @@ $runnerStep();
 $result['twentytwo']['runner']['first'] = $runnerState();
 $runnerStep();
 $result['twentytwo']['runner']['second'] = $runnerState();
-// db() keeps the connection it has; nothing below asks it for another.
-unset($GLOBALS['crm_connect_override']);
 
 // --- 023 interrupted after each statement, then started again from the first --
 for ($stopped = 1; $stopped < count($twentyThreeStatements); $stopped++) {
@@ -605,5 +561,4 @@ for ($stopped = 1; $stopped < count($twentyThreeStatements); $stopped++) {
     $result['twentytwo']['retried'][$stopped] = ['accounts' => every_login($pdo), 'unique' => login_unique_indexes($pdo)];
 }
 
-if ($mysql === null) @unlink($sqliteFile);
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

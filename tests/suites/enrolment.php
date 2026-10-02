@@ -240,19 +240,15 @@ case_('A tariff outlives the course it belonged to, as something unattached');
 $migration = (string)file_get_contents(APP_ROOT.'/database/migrations/014_tariffs_belong_to_a_course.sql');
 ok(str_contains($migration, 'REFERENCES classes(id) ON DELETE SET NULL'),
    'the constraint says what happens: the tariff stays, its course does not');
-if (test_driver() === 'mysql') {
-    // The sqlite driver cannot add a constraint to an existing table and says so
-    // in the run's footer, so the behaviour itself is checked on the engine that
-    // has it rather than asserted twice in two different ways.
-    $doomed = make_class(['name'=>'Wird gelöscht', 'days'=>[]]);
-    $price = make_tariff(['class_id'=>$doomed, 'name'=>'Preis des gelöschten Kurses']);
-    run('DELETE FROM classes WHERE id=?', [$doomed]);
-    $kept = one('SELECT * FROM tariffs WHERE id=?', [$price]);
-    ok($kept !== null, 'the tariff is still there');
-    is_same(null, $kept['class_id'], 'and belongs to no course any more');
-    ok(in_array($price, array_map(fn($t) => (int)$t['id'], unattached_tariffs()), true),
-       'so the trainer can see it and attach it to another course');
-}
+// And the database does what it says, which is the half that counts.
+$doomed = make_class(['name'=>'Wird gelöscht', 'days'=>[]]);
+$price = make_tariff(['class_id'=>$doomed, 'name'=>'Preis des gelöschten Kurses']);
+run('DELETE FROM classes WHERE id=?', [$doomed]);
+$kept = one('SELECT * FROM tariffs WHERE id=?', [$price]);
+ok($kept !== null, 'the tariff is still there');
+is_same(null, $kept['class_id'], 'and belongs to no course any more');
+ok(in_array($price, array_map(fn($t) => (int)$t['id'], unattached_tariffs()), true),
+   'so the trainer can see it and attach it to another course');
 
 // ---------------------------------------------------------------------------
 case_('The trainer chooses how a family pays, and what they were given');

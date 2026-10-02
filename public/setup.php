@@ -147,7 +147,7 @@ header('X-Robots-Tag: noindex');
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title><?=install_e(install_t('Einrichtung', 'Setup'))?> – Badminton</title>
-<link rel="stylesheet" href="assets/app.css">
+<link rel="stylesheet" href="<?=install_e(asset_path('app.css'))?>">
 </head>
 <body class="public-page">
 <header class="public-header">

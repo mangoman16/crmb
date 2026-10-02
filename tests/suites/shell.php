@@ -671,3 +671,72 @@ if ($node === '') {
     foreach (is_array($results) ? $results : [] as $result)
         ok($result['pass'] === true, $result['what'].($result['pass'] ? '' : ' — '.$result['detail']));
 }
+
+case_('A file from public/assets/ is linked at an address that changes when its bytes do');
+/* The release that brought the steady bell and the account menu changed app.css
+   and app.js, and VERSION stayed 0.6.0 - which was all their address carried. So
+   after the upload browsers kept the stylesheet they had: the bell jumped as it
+   used to, and the account menu opened unstyled across the page, and both were
+   reported as "still" broken. The address now carries a hash of the file's
+   bytes. Asked of a PHP of its own, because it is worked out once per request:
+   a file rewritten with the same length and the same date - which an FTP client
+   that keeps dates leaves behind - still gets a new address. */
+$tree = test_run_dir().'/asset-tree';
+if (!is_dir($tree.'/public/assets')) mkdir($tree.'/public/assets', 0777, true);
+$probe = $tree.'/public/assets/probe.css';
+$addressFor = function (string $bytes) use ($tree, $probe): string {
+    file_put_contents($probe, $bytes);
+    touch($probe, 1700000000);
+    clearstatcache();
+    $output = [];
+    exec(escapeshellarg(PHP_BINARY).' -r '.escapeshellarg('define("ROOT", $argv[1]); require $argv[2]; echo asset_path("probe.css");')
+        .' '.escapeshellarg($tree).' '.escapeshellarg(APP_ROOT.'/app/install.php').' 2>&1', $output, $status);
+    return $status === 0 ? implode("\n", $output) : 'failed: '.implode("\n", $output);
+};
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['whether an asset\'s address follows its bytes (needs exec)']));
+} else {
+    $first = $addressFor('a{color:red}');
+    $second = $addressFor('b{color:red}');
+    ok(preg_match('~^assets/probe\.css\?v=[0-9a-f]{8,}$~', $first) === 1, 'the address names the file and a hash ('.$first.')');
+    ok($second !== $first, 'the same length and the same date with other bytes is another address ('.$second.')');
+    is_same($first, $addressFor('a{color:red}'), 'and the same bytes again are the same address, so an unchanged file stays cached');
+}
+
+/* What the pages actually link: every file from public/assets/ in the drawn
+   layout is at exactly the address asset_url() gives it, with nothing appended,
+   for staff and for a family. */
+foreach (['the administrator' => $admin, 'a family' => $family] as $who => $accountId) {
+    sign_in_as($accountId);
+    preg_match_all('~\b(?:href|src)="([^"]*/assets/([^"?]+)[^"]*)"~', shell_page('dashboard'), $linked, PREG_SET_ORDER);
+    $names = array_column($linked, 2);
+    foreach (['app.css', 'app.js'] as $needed) ok(in_array($needed, $names, true), 'the page drawn for '.$who.' links '.$needed);
+    foreach ($linked as [, $address, $name])
+        is_same(e(asset_url($name)), $address, $name.' is linked for '.$who.' at the address of its bytes');
+}
+foreach (glob(APP_ROOT.'/public/assets/*') as $shipped)
+    ok(str_ends_with(asset_url(basename($shipped)), '?v='.substr((string)hash_file('sha256', $shipped), 0, 12)),
+       basename($shipped).' is offered at the hash of its own bytes');
+$manifestIcons = array_column(web_manifest()['icons'], 'src');
+ok(count($manifestIcons) >= 1, 'the manifest offers the built-in icons ('.count($manifestIcons).')');
+foreach ($manifestIcons as $src)
+    is_same(asset_url(basename((string)parse_url($src, PHP_URL_PATH))), $src, 'the manifest offers '.basename((string)parse_url($src, PHP_URL_PATH)).' at the address of its bytes');
+
+/* And nothing builds such an address by hand: an "assets/" or a "?v=" written
+   into the PHP anywhere else - the release number appended in the layout, the
+   setup page's own link - is a second way, and the second way is the one that
+   goes stale. A path on disk (…/public/assets/…) is not an address. */
+$byHand = [];
+$sources = array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php'));
+foreach ($sources as $source) {
+    $relative = substr($source, strlen(APP_ROOT) + 1);
+    foreach (token_get_all((string)file_get_contents($source)) as $token) {
+        if (!is_array($token) || !in_array($token[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE, T_INLINE_HTML], true)) continue;
+        $text = str_replace('public/assets/', '', $token[1]);
+        if ($relative === 'app/install.php' && in_array($token[1], ["'assets/'", "'?v='"], true)) continue;   // asset_path() itself
+        if (str_contains($text, 'assets/') || str_contains($text, '?v='))
+            $byHand[] = $relative.':'.$token[2].' '.trim(substr($token[1], 0, 80));
+    }
+}
+ok(count($sources) > 60, count($sources).' PHP files read');
+is_same([], $byHand, 'no address of a shipped file is built anywhere but asset_path()');

@@ -624,6 +624,17 @@ sign-in page, and a family's login at hand. Before you start, note what the
 - [ ] **6.15** Under „Erweitert", set **Hauptfarbe im Dunkelmodus** without a
   light **Hauptfarbe**: nothing changes, as the hint says. With the light one
   set, it applies in dark mode only.
+- [ ] **6.15a** The colours are never kept stale. With the network tab open,
+  reload twice: the second time the `page=brand` stylesheet comes from the
+  cache, with no request to the server. Note the `v=` in its address. Change
+  **Hauptfarbe** by one digit and save: the very next page asks for a new
+  `v=` and shows the new colour, without a forced reload. Now empty
+  **Hervorhebung**, save, and note the `v=`; then set **Hervorhebung im
+  Dunkelmodus** alone and save. Nothing on the page changes, so the `v=`
+  stays the same and the stylesheet still comes from the cache. After the next
+  update is uploaded, look once more: if the release changed how the colours
+  are worked out, the first page asks for a new `v=`; if not, the old one
+  still answers from the cache.
 - [ ] **6.16** Clear every colour and save. The message names the colours you
   had. Reload with the network tab open: no `page=brand` request again.
 - [ ] **6.17** **Logo**: upload a wide PNG, then an iPhone JPEG, then a WebP.

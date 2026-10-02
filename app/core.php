@@ -15,11 +15,6 @@ class UserError extends RuntimeException {}
 class NotFound extends UserError {}
 function config(string $key): mixed { global $config; return $config[$key] ?? null; }
 function connect(): PDO {
-    // Seam for the test harness, which supplies its own connection so the suite
-    // can run without a database server. Nothing in the application sets this;
-    // if it is unset, the normal MySQL connection below is used.
-    $override = $GLOBALS['crm_connect_override'] ?? null;
-    if ($override instanceof Closure) return $override();
     $c = config('db');
     $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};dbname={$c['database']};charset=utf8mb4", $c['username'], $c['password'], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false]);
     $pdo->exec("SET time_zone = '+00:00'");
@@ -53,6 +48,8 @@ function locale(): string { return $_SESSION['locale'] ?? 'de'; }
 function t(string $de, string $en): string { return locale()==='en' ? $en : $de; }
 function e(mixed $value): string { return htmlspecialchars((string)($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function url(string $page='', array $params=[]): string { return rtrim(config('app_url'),'/') . '/index.php' . ($page ? '?' . http_build_query(['page'=>$page]+$params) : ''); }
+/** The address of a file that ships in public/assets/, which changes when its bytes do (asset_path()). */
+function asset_url(string $file): string { return rtrim((string)config('app_url'),'/') . '/' . asset_path($file); }
 function go(string $page, array $params=[]): never {
     tx_abandon_open('redirect to '.$page);
     header('Location: '.url($page,$params),true,303); exit;

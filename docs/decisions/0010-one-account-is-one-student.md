@@ -1,9 +1,15 @@
 ---
-status: accepted, amended by 0019, 0020
+status: accepted, amended by 0019, 0020, 0021
 date: 2026-09-24
 ---
 
 # 0010. One account is one student
+
+> **Amended a third time by ADR 0021 (2026-10-01).** Sign-in is by the address only; usernames
+> are gone. `students.account_id` is also written by `create_own_student()`, when somebody invited
+> by address alone sets up their own record. „Zugänge ohne Schüler" on Konten lists only logins
+> that were set up; open invitations are listed apart, and `student_delete` removes a login that
+> was never set up. Everything else stands as the notes below leave it.
 
 > **Amended by ADR 0019 (2026-09-29).** The owner reversed one half of this record. Several
 > accounts may now share one email address; siblings use a parent's. Sign-in is by username.

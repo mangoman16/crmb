@@ -1,9 +1,13 @@
 ---
-status: proposed
+status: proposed, amended by 0021
 date: 2026-09-22
 ---
 
 # 0005. What continuous integration is for on a project with no deployment
+
+> **Amended by ADR 0021 (2026-10-01).** SQLite is dropped, so there is no fast SQLite run: job 1
+> becomes the MariaDB 10.11 run that job 2 describes, and open question 2 is closed. Everything
+> else stands.
 
 ## Context
 

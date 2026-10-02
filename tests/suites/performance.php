@@ -6,6 +6,15 @@
  * one query per row, so it looks fine with five students and crawls with fifty.
  * The thresholds are deliberately loose — they catch growth, not milliseconds.
  */
+case_('The count is checked before it is trusted');
+/* query_count() reads the server's own counter, and a reading that came back 0
+   for everything would pass every ceiling below. So it is held to statements
+   counted by hand first, the zero included. */
+is_same(0, query_count(fn() => null), 'nothing sent counts nothing');
+is_same(1, query_count(fn() => scalar('SELECT 1')), 'one statement counts one');
+is_same(3, query_count(function () { rows('SELECT 1'); one('SELECT 2'); run('SELECT 3'); }), 'three count three');
+is_same(0, query_count(fn() => run_counter('SELECT 1')), 'and the rate-limit counter’s own connection is not in it');
+
 $trainer = make_account(['role'=>'trainer']); sign_in_as($trainer);
 $tariff = make_tariff();
 $class = make_class(['tariff_id'=>$tariff]);

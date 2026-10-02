@@ -231,7 +231,8 @@ is_same(url('dashboard'), $manifest['start_url'], 'an install opens at the overv
 is_same(rtrim((string)config('app_url'), '/').'/', $manifest['scope'], 'and stays within the portal');
 is_same(4, count($manifest['icons']), 'with no icon of her own, the built-in set');
 foreach ($manifest['icons'] as $entry) {
-    $file = APP_ROOT.'/public'.substr($entry['src'], strlen(rtrim((string)config('app_url'), '/')));
+    // The file is what comes before the ?v= that carries a hash of its bytes (asset_path()).
+    $file = APP_ROOT.'/public'.substr(explode('?', $entry['src'])[0], strlen(rtrim((string)config('app_url'), '/')));
     ok(is_file($file), $entry['src'].' is absolute and is a file that ships');
 }
 set_setting('portal_icon', $live);
