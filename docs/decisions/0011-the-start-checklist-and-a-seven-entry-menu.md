@@ -1,9 +1,13 @@
 ---
-status: accepted
+status: accepted, amended by 0022
 date: 2026-09-27
 ---
 
 # 0011. The start checklist, and a menu of seven
+
+> **Amended by ADR 0022 (2026-10-02).** The first chip at the top of Nachrichten is now
+> „An mehrere schreiben", not „Gruppe anschreiben": „Gruppe" now means a course's group chat.
+> Everything else stands.
 
 ## Context
 

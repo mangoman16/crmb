@@ -1,9 +1,15 @@
 ---
-status: accepted
+status: accepted, amended by 0022
 date: 2026-09-29
 ---
 
 # 0016. The account menu is a `<details>`, and a status is a POST
+
+> **Amended by ADR 0022 (2026-10-02).** Everybody's menu shows their own dot and an emoji picker:
+> one form posting `status_emoji_save`, a button per emoji and „Keins", the current one marked and
+> not a button. A family's panel is „Mein Konto", the emoji and „Abmelden". The status block stays
+> staff only and loses its line about „Als offline anzeigen". Neither shows while viewing as
+> somebody else. Everything else below stands.
 
 > **Updated 2026-09-29.** The owner has answered the question this record left to ADR 0015:
 > the status block and the dot are for staff only. A family's menu holds „Mein Konto" and

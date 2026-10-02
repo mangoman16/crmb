@@ -1,9 +1,15 @@
 ---
-status: accepted
+status: accepted, amended by 0022
 date: 2026-09-29
 ---
 
 # 0015. Presence: a chosen status, and thirty days of when somebody was online
+
+> **Amended by ADR 0022 (2026-10-02).** Presence is no longer for staff only: `presence_visible_to()`
+> is true for every signed-in viewer, so everybody sees dots in the chat and their own in the account
+> menu. Last-online times, history and `presence_line()` stay staff only, through the new
+> `presence_details_visible_to()`. A family's status is still always `auto`, and the menu's line about
+> „Als offline anzeigen" is gone. Everything else below stands.
 
 > **Updated 2026-09-29, twice.**
 >
