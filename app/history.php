@@ -68,6 +68,7 @@ function history_field_label(string $column): string {
         'internal_notes' => t('Interne Notizen', 'Internal notes'),
         'name' => t('Name', 'Name'),
         'email' => t('E-Mail-Adresse', 'Email address'),
+        // Gone with ADR 0021, but change-log lines written before keep the key.
         'username' => t('Benutzername', 'Username'),
         'role' => t('Rolle', 'Role'),
         'state' => t('Zustand', 'State'),
@@ -213,8 +214,8 @@ function history_never_recorded(string $entity): array {
  *
  * The actor is who is really signed in (audit()'s rule), unless the caller
  * names one: $actor exists for the one change made before anybody is signed in
- * - the username chosen while accepting an invitation, whose actor is the
- * holder of the link (change_own_username()). Nothing else passes it.
+ * - the student an invitation's holder makes for themselves, whose actor is the
+ * holder of the link (create_own_student()). Nothing else passes it.
  */
 function history_record(string $entity, int $id, string $operation, string $label, ?array $before, ?array $after, ?int $actor = null): int {
     tracked_entity($entity);
@@ -247,15 +248,14 @@ function history_record(string $entity, int $id, string $operation, string $labe
  * happen.
  *
  * $operation is 'update' normally, or 'delete' when $mutate removes the row.
- * $actor is history_record()'s, for the one caller that has to name it.
  */
-function tracked(string $entity, int $id, string $label, callable $mutate, string $operation = 'update', ?int $actor = null): mixed {
+function tracked(string $entity, int $id, string $label, callable $mutate, string $operation = 'update'): mixed {
     tracked_entity($entity);
-    return transactional(function () use ($entity, $id, $label, $mutate, $operation, $actor) {
+    return transactional(function () use ($entity, $id, $label, $mutate, $operation) {
         $before = entity_snapshot($entity, $id);
         $result = $mutate();
         $after = $operation === 'delete' ? null : entity_snapshot($entity, $id);
-        history_record($entity, $id, $operation, $label, $before, $after, $actor);
+        history_record($entity, $id, $operation, $label, $before, $after);
         return $result;
     });
 }
@@ -264,12 +264,13 @@ function tracked(string $entity, int $id, string $label, callable $mutate, strin
  * Run a change that creates a row and record it.
  *
  * $create must return the new id, since there is nothing to snapshot first.
+ * $actor is history_record()'s, for the one caller that has to name it.
  */
-function tracked_insert(string $entity, string $label, callable $create): int {
+function tracked_insert(string $entity, string $label, callable $create, ?int $actor = null): int {
     tracked_entity($entity);
-    return transactional(function () use ($entity, $label, $create) {
+    return transactional(function () use ($entity, $label, $create, $actor) {
         $id = (int)$create();
-        history_record($entity, $id, 'insert', $label, null, entity_snapshot($entity, $id));
+        history_record($entity, $id, 'insert', $label, null, entity_snapshot($entity, $id), $actor);
         return $id;
     });
 }
@@ -329,7 +330,7 @@ function version_changes(array $version): array {
  * A stored column value as a short readable string.
  *
  * $column is the field it came from, for the values whose raw form means
- * nothing to her: a login is stored as a number and read as its username, and
+ * nothing to her: a login is stored as a number and read as its holder, and
  * a custom field (field:<id>) as JSON, read as its text, its options joined with
  * commas, or ja / nein for a box. A calendar date - a value shaped exactly
  * YYYY-MM-DD, a custom date field's included - reads as she writes one;
@@ -350,18 +351,16 @@ function history_value(mixed $v, string $column = ''): string {
 }
 
 /**
- * A login as the change log names it: its username, or that it no longer exists.
+ * A login as the change log names it: its name, its address while it has none
+ * (login_holder_name()), or that it no longer exists.
  *
- * The username, because that is what the login is called wherever staff see it
- * (ADR 0019, §8); the address would say as much now that none is shared (ADR
- * 0020), but two names for one thing in one log is churn. Looked up when the page is
- * read rather than stored with the change, because its holder can change it
- * and the line should name the login as it is now. Not memoised: a login in the
- * log is rare, and a memo would outlive a language switch.
+ * Looked up when the page is read rather than stored with the change, so the
+ * line names the login as it is now. Not memoised: a login in the log is rare,
+ * and a memo would outlive a language switch.
  */
 function history_login(int $accountId): string {
-    $username = scalar('SELECT username FROM accounts WHERE id=?', [$accountId]);
-    return $username !== false && $username !== null ? (string)$username : t('gelöschter Zugang', 'deleted login');
+    $account = one('SELECT id,role,name,email FROM accounts WHERE id=?', [$accountId]);
+    return $account ? login_holder_name($account) : t('gelöschter Zugang', 'deleted login');
 }
 
 /**

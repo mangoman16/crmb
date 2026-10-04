@@ -1,13 +1,8 @@
 <?php if($user)go('dashboard');
-/* One box for the username or the address, whichever somebody remembers (ADR
-   0020, §3). Posted as `username`; the action decides by the „@", which a
-   username can never contain. inputmode="email" puts „@" and „." on the
-   iPhone's first keyboard layer, and „." is in most usernames too. A refusal
-   is one sentence for every failure and brings back what was typed, so this
-   page says nothing about what was typed. */ ?>
+/* The address is the only name a login has (ADR 0021, §1); sign_in_address_attributes() says why the box looks as it does. */ ?>
 <div class="auth-card card"><h1><?=e(t('Anmelden','Sign in'))?></h1>
 <?php start_form('login');
-input('username',t('Benutzername oder E-Mail-Adresse','Username or email address'),'','text',true,'','',username_attributes()+['inputmode'=>'email']);
+input('email',t('E-Mail-Adresse','Email address'),'','email',true,'','',sign_in_address_attributes());
 input('password',t('Passwort','Password'),'','password',true,'','',current_password_attributes());
 submit_button(t('Anmelden','Sign in')); ?></form>
 <?php /* Said where it applies: under the button that signs you in. Setting up an
@@ -15,6 +10,6 @@ submit_button(t('Anmelden','Sign in')); ?></form>
          (activate.php); the forgotten-password and unsubscribe pages sign nobody
          in, so they do not carry it. The noun alone is the link, so the sentence
          still reads as a sentence. No sign-up is offered anywhere: only people
-         who were invited get in (ADR 0020, R-d). */ ?>
+         who were invited get in (ADR 0021, §3). */ ?>
 <p class="signin-consent"><?=e(t('Mit der Anmeldung akzeptierst du die ','By signing in you accept the '))?><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','privacy notice'))?></a>.</p>
-<a class="text-link" href="<?=e(url('forgot'))?>"><?=e(t('Benutzername oder Passwort vergessen?','Forgot your username or password?'))?></a></div>
+<a class="text-link" href="<?=e(url('forgot'))?>"><?=e(t('Passwort vergessen?','Forgot your password?'))?></a></div>

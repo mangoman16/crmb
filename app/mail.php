@@ -110,6 +110,15 @@ function greeting_name(array $account): string {
     return (string)($account['name']??'');
 }
 /**
+ * The line every mail opens with, and the empty line after it: „Hallo Lena,“,
+ * or „Hallo,“ for a login nobody has named yet - an invitation by address
+ * (ADR 0021, §3) - never „Hallo ,“.
+ */
+function mail_greeting(array $account): string {
+    $name=trim(greeting_name($account));
+    return (($account['locale']??'')==='en'?'Hello':'Hallo').($name!==''?' '.$name:'').",\n\n";
+}
+/**
  * Queue a payment reminder for a student's own login.
  *
  * Returns false when nothing was queued, so the caller can report how many
@@ -120,7 +129,7 @@ function notify_payment(array $account, array $student, int $amountCents, string
     if($account['state']!=='active' || !$account['verified_at'] || empty($account['payment_notices'])) return false;
     $en=$account['locale']==='en';
     $name=$student['first_name'].' '.$student['last_name'];
-    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
+    $body=mail_greeting($account)
         .($en?'There is an outstanding amount for ':'Für ').$name
         .($en?' of ':' ist noch ein Betrag von ').money($amountCents)
         .($en?', due ':' offen, fällig am ').fmt_date($dueOn).".\n\n"
@@ -154,7 +163,7 @@ function notify_class_change(array $class, string $date, ?array $entry, string $
             'changed'   => $en?'has changed':'hat sich geändert',
             default     => $en?'is going ahead':'findet statt',
         };
-        $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
+        $body=mail_greeting($account)
             .$class['name'].' '.($en?'on ':'am ').fmt_date($date).' '.$what.".\n"
             .($entry?session_label($entry)."\n":'')
             .($note!==''?"\n".$note."\n":'')
@@ -173,7 +182,7 @@ function notify_enrolment_decision(array $request, bool $approved, string $note)
     $student=one('SELECT first_name,last_name FROM students WHERE id=?',[(int)$request['student_id']]);
     $class=one('SELECT name FROM classes WHERE id=?',[(int)$request['class_id']]);
     $en=$account['locale']==='en';
-    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
+    $body=mail_greeting($account)
         .request_kind_label((string)$request['kind']).' – '.$student['first_name'].' '.$student['last_name']
         .' · '.$class['name'].":\n"
         .($approved?($en?'Approved.':'Angenommen.'):($en?'Not approved.':'Leider nicht angenommen.'))."\n"
@@ -195,7 +204,7 @@ function notify_invoice(array $invoice): bool {
     $account=$invoice['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$invoice['account_id']]):null;
     if(!$account || $account['state']!=='active' || !$account['verified_at']) return false;
     $en=$account['locale']==='en';
-    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
+    $body=mail_greeting($account)
         .($en?'Invoice ':'Rechnung ').$invoice['number'].' '.($en?'over':'über').' '.money((int)$invoice['gross_cents'])
         .', '.($en?'payable by ':'zahlbar bis ').fmt_date((string)$invoice['due_on']).".\n\n"
         .($en?'The invoice is attached as a PDF and is also in the portal:':'Die Rechnung hängt als PDF an und steht auch im Portal:')."\n"

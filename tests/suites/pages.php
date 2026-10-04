@@ -349,70 +349,130 @@ ok(!str_contains($activation, 'Freiwillig') && !str_contains($activation, 'zusä
 unset($_SESSION['activation_hash']);
 
 // ---------------------------------------------------------------------------
-// Signing in with a username (ADR 0019): the pages that show one, ask for one,
-// or say who else is on an address. A refusal is simulated by holding what it
-// held, the way the router does after remember_input().
+// Signing in by address (ADR 0021): the pages that ask for the address, show it
+// beside a new password, or have it typed to confirm. A refusal is simulated by
+// holding what it held, the way the router does after remember_input().
 // ---------------------------------------------------------------------------
 $tag = fn(string $html, string $name) => preg_match('/<input\b[^>]*\bname="'.$name.'"[^>]*>/', $html, $m) ? $m[0] : '';
 $hold = function (string $action, string $page, int $id, array $fields): void {
     $GLOBALS['crm_held_input'] = ['action'=>$action, 'page'=>$page, 'id'=>(string)$id, 'tab'=>'', 'fields'=>$fields];
 };
-$usernameOf = fn(int $account) => (string)scalar('SELECT username FROM accounts WHERE id=?', [$account]);
+/** The markup of the first form that contains $marker, up to its closing tag. */
+$formWith = function (string $html, string $marker): string {
+    $at = strpos($html, $marker);
+    if ($at === false) return '';
+    $start = strrpos(substr($html, 0, $at), '<form');
+    return substr($html, $start, strpos($html, '</form>', $at) - $start);
+};
+/** The markup of the first form that posts $action. */
+$formOf = fn(string $html, string $action): string => $formWith($html, 'name="action" value="'.$action.'"');
+$addressBox = ['type="email"', 'autocomplete="username"', 'autocapitalize="none"', 'autocorrect="off"', 'spellcheck="false"'];
 
-case_('The sign-in page has one box, for the username or the address');
+case_('The sign-in page has one box, for the address, which the password is saved under');
 sign_out();
 $signIn = render_view('login');
-$box = $tag($signIn, 'username');
-ok($box !== '', 'there is one box, posted as username');
-ok(str_contains($signIn, e('Benutzername oder E-Mail-Adresse')), 'labelled for either');
-foreach (['autocomplete="username"', 'autocapitalize="none"', 'autocorrect="off"', 'spellcheck="false"', 'inputmode="email"', ' required'] as $attribute)
+$box = $tag($signIn, 'email');
+ok($box !== '', 'there is one box, posted as email');
+ok(str_contains($signIn, e('E-Mail-Adresse')), 'labelled as the address');
+foreach ([...$addressBox, ' required'] as $attribute)
     ok(str_contains($box, $attribute), 'it carries '.$attribute);
-ok(str_contains($box, 'type="text"'), 'as a text box, so a username is not refused as a malformed address');
-is_same('', $tag($signIn, 'email'), 'and no second box, not even a hidden one');
+ok(!str_contains($box, 'inputmode='), 'and no inputmode, which type="email" already gives');
+is_same('', $tag($signIn, 'username'), 'there is no username box, not even a hidden one');
+ok(!str_contains($signIn, e('Benutzername')), 'nor the word anywhere on the page');
 ok(str_contains($tag($signIn, 'password'), 'autocomplete="current-password"'), 'the password box offers the saved password');
 ok(!str_contains($tag($signIn, 'password'), 'minlength'), 'without asking an existing password to be twelve characters');
-ok(str_contains($signIn, e('Benutzername oder Passwort vergessen?')), 'the way to a forgotten username is named on it');
+ok(str_contains($signIn, e('Passwort vergessen?')), 'the way to a forgotten password is on it');
 ok(!str_contains($signIn, 'class="notice'), 'and nothing else is said before anybody typed anything');
 
 case_('A refused sign-in brings back what was typed, and says nothing about it');
 /* One refusal for every failure (ADR 0020, §3), so the page cannot add a word
    of its own about what kind of thing was typed. */
-foreach (['Maria@Beispiel.test', 'lena.hofr'] as $typed) {
-    $hold('login', 'login', 0, ['username'=>$typed]);
+foreach (['Maria@Beispiel.test', 'lena@beispiel'] as $typed) {
+    $hold('login', 'login', 0, ['email'=>$typed]);
     $signIn = render_view('login');
-    ok(str_contains($tag($signIn, 'username'), 'value="'.e($typed).'"'), 'what was typed is back in the box: '.$typed);
-    ok(!str_contains($signIn, 'class="notice') && !str_contains($signIn, e('Benutzernamen anfordern')), 'with no notice beside it: '.$typed);
+    ok(str_contains($tag($signIn, 'email'), 'value="'.e($typed).'"'), 'what was typed is back in the box: '.$typed);
+    ok(!str_contains($signIn, 'class="notice'), 'with no notice beside it: '.$typed);
 }
 unset($GLOBALS['crm_held_input']);
 
-case_('„Vergessen" has the same one box, and says who else can help');
+case_('„Passwort vergessen" has the same one box, and says who else can help');
 $forgot = render_view('forgot');
-$box = $tag($forgot, 'username');
-foreach (['autocomplete="username"', 'autocapitalize="none"', 'inputmode="email"', 'type="text"', ' required'] as $attribute)
+$box = $tag($forgot, 'email');
+foreach ([...$addressBox, ' required'] as $attribute)
     ok(str_contains($box, $attribute), 'the box carries '.$attribute);
-is_same('', $tag($forgot, 'email'), 'and there is no address box beside it');
-ok(str_contains($forgot, e('Benutzername oder E-Mail-Adresse')), 'labelled for either');
-ok(!str_contains($forgot, e('Geschwister')), 'with nothing about brothers and sisters sharing an address');
-ok(str_contains($forgot, e('Oder frag deine Trainerin – sie kann dir deinen Benutzernamen sagen.')), 'and the trainer is named as the other way');
+is_same('', $tag($forgot, 'username'), 'and there is no username box beside it');
+ok(str_contains($forgot, '<h1>'.e('Passwort vergessen').'</h1>') && !str_contains($forgot, e('Benutzername')), 'headed for the password alone');
+ok(str_contains($forgot, e('Oder frag deine Trainerin – sie sieht, mit welcher Adresse du eingetragen bist.')), 'and the trainer is named as the other way');
 
-case_('A reset link shows the username it resets, to read and to save the password under (N10)');
-run('UPDATE accounts SET username=? WHERE id=?', ['lena.hofer', $family]);
-$_SESSION['activation_hash'] = hash('sha256', make_token($family, 'reset'));
-$reset = render_view('activate');
-$box = $tag($reset, 'username');
-ok(str_contains($box, 'value="lena.hofer"'), 'the page shows the username');
-ok(str_contains($box, 'readonly="readonly"') && !str_contains($box, 'disabled'), 'read-only, not disabled, which autofill would skip');
-ok(str_contains($box, 'autocomplete="username"'), 'marked as the username, so the new password is saved under it');
-ok(str_contains($reset, e('Neues Passwort')) && str_contains($reset, e('Passwort speichern')), 'and the button says what it does');
+case_('Every page that sets a password shows the address read-only, directly above it');
+/* The three forms (ADR 0021, §1, §3): an invitation by address alone, an
+   invitation to a person staff created, and a reset. Each pairs the address with
+   the new password in one form, which is what an iPhone saves the password
+   under - visible, read-only, and neither hidden nor disabled, which the
+   password manager would skip. */
+$byAddress = make_account(['role'=>'student', 'name'=>'', 'email'=>'neu.per.adresse@beispiel.test', 'state'=>'invited',
+                           'verified_at'=>null, 'password_hash'=>null]);
+$created = make_account(['role'=>'student', 'name'=>'Jonas Berger', 'email'=>'jonas@beispiel.test', 'state'=>'invited',
+                         'verified_at'=>null, 'password_hash'=>null]);
+make_student(['first_name'=>'Jonas', 'last_name'=>'Berger', 'email'=>'jonas@beispiel.test', 'account_id'=>$created]);
+set_setting('club_name', 'Federball Nord');
+foreach (['by address'=>[$byAddress, 'invite'], 'created by staff'=>[$created, 'invite'], 'reset'=>[$family, 'reset']] as $which => [$account, $purpose]) {
+    $_SESSION['activation_hash'] = hash('sha256', make_token($account, $purpose));
+    $page = render_view('activate');
+    $form = $formOf($page, 'activate');
+    $address = (string)scalar('SELECT email FROM accounts WHERE id=?', [$account]);
+    $box = $tag($form, 'email');
+    ok(str_contains($box, 'value="'.e($address).'"'), $which.': the login’s address is in the form');
+    ok(str_contains($box, 'readonly="readonly"') && !str_contains($box, 'disabled') && !str_contains($box, 'type="hidden"'),
+       $which.': read-only, neither disabled nor hidden');
+    ok(!str_contains($box, ' required'), $which.': and not required, since nothing is typed into it');
+    foreach ($addressBox as $attribute) ok(str_contains($box, $attribute), $which.': it carries '.$attribute);
+    $password = $tag($form, 'password');
+    $after = strpos($form, $box) + strlen($box);
+    $between = $password === '' ? '<input' : substr($form, $after, strpos($form, $password) - $after);
+    ok(!str_contains($between, '<input') && !str_contains($between, '<select'), $which.': directly above the new password, with no box between');
+    is_same($which === 'by address' ? ['first_name', 'last_name', 'birth_date'] : [],
+            array_values(array_filter(['first_name', 'last_name', 'birth_date'], fn($name) => $tag($form, $name) !== '')),
+            $which === 'by address' ? $which.': asks for first name, last name and birth date' : $which.': asks for no details');
+    if ($which === 'by address') {
+        $birth = $tag($form, 'birth_date');
+        ok(str_contains($birth, 'type="date"') && str_contains($birth, ' required') && str_contains($birth, 'autocomplete="bday"')
+           && str_contains($birth, 'max="'.today().'"'), 'the birth date is a required date box, no later than today');
+        ok(str_contains($tag($form, 'first_name'), 'autocomplete="given-name"') && str_contains($tag($form, 'last_name'), 'autocomplete="family-name"'),
+           'the names are offered from the phone’s own card');
+        ok(strpos($form, 'name="birth_date"') < strpos($form, 'name="email"'), 'the details come before the sign-in');
+        ok(str_contains($page, '<span class="eyebrow">'.e('Federball Nord').'</span>'), 'with the portal’s name above, since the login has none yet');
+        ok(str_contains($page, e('Danach wählst du deinen Kurs.')), 'and it says the course comes next');
+    }
+    if ($which === 'created by staff') ok(str_contains($page, '<span class="eyebrow">'.e('Jonas Berger').'</span>'), 'a person staff created is named above');
+    if ($which === 'reset') ok(str_contains($page, e('Neues Passwort')) && str_contains($page, e('Passwort speichern')), 'a reset says what the button does');
+    else ok(str_contains($form, 'name="privacy_seen"') && str_contains($form, e('Konto aktivieren')), $which.': an invitation asks for the privacy notice and activates');
+    ok(!str_contains($page, e('Benutzername')), $which.': and no username anywhere');
+}
+unset($_SESSION['activation_hash']);
+set_setting('club_name', 'Badminton');
+
+case_('An expired link says signing in is still possible, and how to get a new one');
+$_SESSION['activation_hash'] = hash('sha256', 'no such link');
+$gone = render_view('activate');
+ok(str_contains($gone, e('Schon eingerichtet? Dann melde dich einfach mit deiner E-Mail-Adresse an.')), 'somebody already set up is told to sign in');
+ok(str_contains($gone, e('Unter „Passwort vergessen“ bekommst du einen neuen Link')), 'and the way to a new link is named as the sign-in page names it');
 unset($_SESSION['activation_hash']);
 
-case_('Mein Konto shows the username, and nothing about sharing an address');
-/* No address can be shared any more (ADR 0020), so there is nobody to count. */
+case_('Mein Konto shows the address it signs in with, and nothing else to sign in with');
+/* No address can be shared (ADR 0020) and no username exists (ADR 0021), so
+   there is nobody to count and nothing to change but the address. */
 sign_in_as($family);
 $familyEmail = (string)scalar('SELECT email FROM accounts WHERE id=?', [$family]);
 $mine = render_view('profile');
-ok(str_contains($mine, '<dd class="mono">lena.hofer</dd>'), 'the holder reads their own username');
-ok(!str_contains($mine, e('Diese E-Mail-Adresse nutz')), 'with nothing about sharing');
+ok(str_contains($mine, '<dd>'.e($familyEmail).'<small'), 'the holder reads their own address');
+ok(str_contains($mine, e('Mit dieser Adresse meldest du dich an.')), 'and that it is what they sign in with');
+ok(!str_contains($mine, 'username') && !str_contains($mine, e('Benutzername')), 'with no username and no way to change one');
+ok(!str_contains($mine, e('Diese E-Mail-Adresse nutz')), 'and nothing about sharing');
+ok(str_contains($mine, e('bis du ihn öffnest, meldest du dich mit der bisherigen an.')), 'changing the address says the old one works until it is confirmed');
+ok(str_contains($tag($formOf($mine, 'email_change'), 'password'), 'autocomplete="current-password"'), 'asking for the current password as the current one');
+ok(!str_contains($tag($formOf($mine, 'password_change'), 'current_password'), 'new-password'), 'not as a new one an iPhone would offer to invent');
+is_same(1, deepest_form_nesting($mine), 'and no form on Mein Konto is inside another');
 
 case_('Mein Konto lists a recent reset, and tells a family and staff different things to do (I2)');
 $resetAt = gmdate('Y-m-d H:i:s', time() - 3 * 86400);
@@ -427,37 +487,20 @@ ok(str_contains($staffOwn, e('Warst du das nicht? Ändere dein Passwort gleich h
 ok(!str_contains($staffOwn, e('Trainerin Bescheid')), 'and are not sent to themselves');
 run("DELETE FROM audit_log WHERE action='account.password_reset'");
 
-case_('Mein Konto offers the username change, and opens it again after a refusal');
-sign_in_as($family);
-$mine = render_view('profile');
-ok(str_contains($mine, 'value="username_change"'), 'the form is there');
-ok(str_contains($tag($mine, 'current_password'), 'autocomplete="current-password"'), 'asking for the current password as the current one');
-ok(!str_contains($tag($mine, 'current_password'), 'new-password'), 'not as a new one an iPhone would offer to invent');
-ok(!str_contains($tag($mine, 'username'), 'pattern='), 'with no pattern, so Lena.Müller reaches the server that fixes it');
-ok(!str_contains($mine, '<details id="username" open'), 'folded away until wanted');
-$hold('username_change', 'profile', 0, ['username'=>'lena.neu']);
-$mine = render_view('profile');
-ok(str_contains($mine, '<details id="username" open'), 'open after a refusal');
-ok(str_contains($tag($mine, 'username'), 'value="lena.neu"'), 'with what was typed still in the box');
-unset($GLOBALS['crm_held_input']);
-$_SESSION['impersonator_id'] = $trainer;
-$viewed = render_view('profile');
-ok(!str_contains($viewed, 'value="username_change"'), 'somebody looking through the family’s eyes is not offered it');
-ok(str_contains($viewed, e('Den Benutzernamen ändert nur Lena selbst.')), 'and is told who changes it');
-unset($_SESSION['impersonator_id']);
-is_same(1, deepest_form_nesting($mine), 'and no form on Mein Konto is inside another');
-
-case_('The student page shows the username first, and the access card says who else uses the address');
+case_('The student page shows the address first, and deleting the access asks for it');
 sign_in_as($trainer);
 $page = render_view('student', ['id'=>$lena]);
-ok(preg_match('~<div id="email"><div class="field"><label>'.preg_quote(e('Benutzername'), '~').'</label><div class="readonly mono">lena\.hofer</div>~', $page) === 1,
-   'the username is the first thing in the personal details');
-ok(str_contains($page, '<dd class="mono">lena.hofer</dd>'), 'and it is in the access card');
+ok(preg_match('~<div id="email"><div class="field"><label>'.preg_quote(e('E-Mail-Adresse'), '~').'</label><div class="readonly">'.preg_quote(e($familyEmail), '~').'</div>~', $page) === 1,
+   'the address is the first thing in the personal details, to read');
+ok(!str_contains($page, e('Benutzername')) && !str_contains($page, e('Benutzernamen')), 'and no username anywhere on the page');
 ok(!str_contains($page, e('Diese Adresse nutzen auch')), 'with no count of others on the address, which nobody shares');
-ok(str_contains($page, e('Zur Bestätigung den Benutzernamen eintippen: ').'</p>') === false
-   && str_contains($page, e(' Zur Bestätigung den Benutzernamen eintippen: ').'<strong class="mono">lena.hofer</strong></p>'),
-   'deleting the access asks for the username, named outside the label');
-ok(!preg_match('/<input\b[^>]*name="confirmation"[^>]*type="email"/', $page), 'in a text box, not an address box');
+$delete = $formWith($page, 'name="mode" value="delete"');
+ok(str_contains($page, e(' Zur Bestätigung die E-Mail-Adresse eintippen: ').'<strong class="mono">'.e($familyEmail).'</strong></p>'),
+   'deleting the access asks for the address, named outside the label');
+$confirm = $tag($delete, 'confirmation');
+ok(str_contains($confirm, 'type="email"') && str_contains($confirm, ' required'), 'in a required address box');
+ok(str_contains($confirm, 'autocomplete="off"') && !str_contains($confirm, 'autocomplete="username"'), 'which the browser does not fill in, so the typing still means something');
+ok(str_contains($confirm, 'autocapitalize="none"') && str_contains($confirm, 'spellcheck="false"'), 'and which takes an address the way the sign-in box does');
 $paul = make_student(['first_name'=>'Paul', 'last_name'=>'Hofer', 'email'=>$familyEmail, 'account_id'=>null]);
 sign_in_as($admin);
 $page = render_view('student', ['id'=>$paul]);
@@ -465,8 +508,8 @@ ok(!str_contains($page, 'name="same_family"'), 'a child at somebody’s login ad
 ok(str_contains($page, e('Eigene E-Mail-Adresse eintragen')), 'and is asked for an address of their own before anybody taps');
 is_same(1, deepest_form_nesting($page), 'every form on the card beside the record’s rather than inside it');
 
-case_('An invited login’s card names the username, and a refused re-address asks nothing more');
-$invitedLogin = make_account(['role'=>'student', 'name'=>'Mia Hofer', 'email'=>'mia@beispiel.test', 'username'=>'mia.hofer',
+case_('An invited login’s card says until when the link works, and withdrawing it asks nothing typed');
+$invitedLogin = make_account(['role'=>'student', 'name'=>'Mia Hofer', 'email'=>'mia@beispiel.test',
                               'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
 $mia = make_student(['first_name'=>'Mia', 'last_name'=>'Hofer', 'email'=>'mia@beispiel.test', 'account_id'=>$invitedLogin]);
 /* The invitation's dates (ADR 0020, §10c): none for a token pruned overnight,
@@ -479,11 +522,14 @@ ok(preg_match('~<button class="button primary" type="submit">'.preg_quote(e('Ein
 make_token($invitedLogin, 'invite');
 $sent = invitation_dates($invitedLogin);
 $page = render_view('student', ['id'=>$mia]);
-ok(str_contains($page, e('Eingeladen am '.fmt_datetime((string)$sent['created_at']).'; der Link gilt bis '.fmt_datetime((string)$sent['expires_at']).'.')),
-   'a live invitation says when it was sent and until when it works');
-ok(str_contains($page, e('Beim Einrichten kann Mia den Benutzernamen noch ändern.')), 'and that the username can still be changed');
+ok(str_contains($page, e('Eingeladen am '.fmt_datetime((string)$sent['created_at']).'; der Link gilt bis '.fmt_datetime((string)$sent['expires_at']).'.').'</p>'),
+   'a live invitation says when it was sent and until when it works, and nothing about a username');
 ok(preg_match('~<button class="button secondary" type="submit">'.preg_quote(e('Einladung erneut senden'), '~').'</button>~', $page) === 1,
    'with sending it again a quiet button while the link still works');
+$withdraw = $formWith($page, 'name="mode" value="withdraw"');
+ok($withdraw !== '' && str_contains($withdraw, 'name="id" value="'.$invitedLogin.'"'), 'withdrawing is offered, for this login');
+ok(!str_contains($withdraw, 'name="confirmation"'), 'with nothing to type: nothing is lost, and inviting again is the way back');
+ok(!str_contains($page, 'name="mode" value="delete"'), 'and no deletion asking for the address instead');
 run("UPDATE auth_tokens SET expires_at=? WHERE account_id=? AND purpose='invite'", [gmdate('Y-m-d H:i:s', time() - 3600), $invitedLogin]);
 ok(str_contains(render_view('student', ['id'=>$mia]), e('Die Einladung vom '.fmt_date((string)$sent['created_at']).' ist abgelaufen.')),
    'an expired invitation not yet pruned names the day it was sent');
@@ -491,27 +537,106 @@ $hold('student_save', 'student', $mia, ['email'=>$familyEmail, 'first_name'=>'Mi
 ok(!str_contains(render_view('student', ['id'=>$mia]), 'name="same_family"'), 'and no „Gleiche Familie“ tick after a refusal either (ADR 0020)');
 unset($GLOBALS['crm_held_input']);
 
-case_('Konten shows usernames');
+case_('Konten names each login and its address, and no username');
 /* The R10 flag for a staff login sharing an address cannot arise any more: the
    unique index refuses the pair (ADR 0020, §8). */
 sign_in_as($admin);
-run('UPDATE accounts SET username=? WHERE id=?', ['trainerin.beispiel', $trainer]);
 $team = render_view('accounts');
-ok(str_contains($team, '<p class="mono">trainerin.beispiel</p>'), 'each login shows its username');
+$trainerEmail = (string)scalar('SELECT email FROM accounts WHERE id=?', [$trainer]);
+ok(str_contains($team, '<h3>'.e('Trainerin Beispiel').'</h3><p>'.e($trainerEmail).'</p>'), 'each login shows its name and its address');
+ok(!str_contains($team, '<p class="mono">'), 'and no username line');
 ok(!str_contains($team, e('Ein Konto für Trainerin oder Administrator braucht eine eigene E-Mail-Adresse.')), 'with no sharing flag');
+ok(str_contains($team, e('Zur Bestätigung die E-Mail-Adresse eintippen: ')), 'deleting a team login asks for the address too');
+sign_out();
+
+case_('Inviting by address is on the students list for staff, with the invitations still open');
+/* Option 1 (ADR 0021, §3): the card only when asked for, the list whenever an
+   invitation is open, and neither ever for a family. */
+mail_ready(true);
+sign_in_as($trainer);
+$list = render_view('students');
+ok(str_contains($list, e(url('students', ['invite'=>1]).'#invite')) && str_contains($list, e('Per E-Mail einladen')), 'the heading offers „Per E-Mail einladen"');
+ok(!str_contains($list, e(url('print'))), 'and the blank form moved to „Neuen Schüler anlegen"');
+ok(str_contains(render_view('student'), e(url('print')).'"'), 'where it is');
+ok(!str_contains($list, 'id="invite"') && !str_contains($list, 'value="email_invite"'), 'the card is not there until asked for');
+$card = render_view('students', ['invite'=>1]);
+$inviteForm = $formOf($card, 'email_invite');
+ok(str_contains($card, '<section class="card invite-card" id="invite">') && $inviteForm !== '', 'asked for, the card is there with its form');
+$box = $tag($inviteForm, 'email');
+ok(str_contains($box, 'type="email"') && str_contains($box, ' required') && str_contains($box, 'autocomplete="off"') && !str_contains($box, 'autocomplete="username"'),
+   'an address box her iPhone does not fill with her own address');
+ok(str_contains($inviteForm, 'name="locale"') && str_contains($inviteForm, e('Einladung senden')), 'with the invitation’s language and the button');
+is_same(1, deepest_form_nesting($card), 'and no form inside another');
+// The invitations by address: the one above, never set up and with no
+// student, is open; one more, whose link has expired.
+$expiredInvite = make_account(['role'=>'student', 'name'=>'', 'email'=>'abgelaufen@beispiel.test', 'state'=>'invited',
+                               'verified_at'=>null, 'password_hash'=>null]);
+make_token($expiredInvite, 'invite');
+run("UPDATE auth_tokens SET expires_at=? WHERE account_id=?", [gmdate('Y-m-d H:i:s', time() - 3600), $expiredInvite]);
+$open = open_invitations();
+$list = render_view('students');
+ok(str_contains($list, 'id="invitations"') && !str_contains($list, 'id="invitations" open'), 'the open invitations are listed, folded away');
+ok(str_contains($list, e('Offene Einladungen').'</span><span class="badge amber">'.count($open).'</span>'), 'with how many there are');
+foreach ($open as $a) ok(str_contains($list, '<strong>'.e($a['email']).'</strong>'), 'naming each address: '.$a['email']);
+ok(str_contains($list, e('Der Link ist abgelaufen.')) && str_contains($list, e('Abgelaufen')), 'an expired link says so');
+$expiredRow = $formWith($list, 'name="id" value="'.$expiredInvite.'"');
+ok(str_contains($expiredRow, 'value="reinvite"') && str_contains($expiredRow, '<button class="button primary"'), 'and sending it again is the button that stands out');
+$withdraw = $formWith($list, 'name="mode" value="withdraw"');
+ok($withdraw !== '' && !str_contains($withdraw, 'name="confirmation"'), 'withdrawing asks nothing typed');
+ok(str_contains(render_view('students', ['invitations'=>1]), 'id="invitations" open'), 'just after sending, the list is open');
+is_same(1, deepest_form_nesting($list), 'and every row’s forms sit side by side');
+mail_ready(false);
+$card = render_view('students', ['invite'=>1]);
+ok(!str_contains($card, 'value="email_invite"') && str_contains($card, e('Einladen geht noch nicht')), 'with mail not ready the card says why instead of a form');
+ok(!str_contains(render_view('students'), 'value="reinvite"'), 'and nothing is sent again that could only be refused');
+mail_ready(true);
+// A refusal comes back with what was typed; an address on a student without
+// a login is shown with the way to that student.
+$hold('email_invite', 'students', 0, ['email'=>'neu.mitadresse@example.test', 'locale'=>'en']);
+$card = render_view('students');
+ok(str_contains($card, 'id="invite"') && str_contains($tag($formOf($card, 'email_invite'), 'email'), 'value="neu.mitadresse@example.test"'),
+   'a refused invitation comes back open, with the address typed');
+ok(str_contains($card, e('Diese Adresse steht schon bei einem Schüler')) && str_contains($card, e(url('student', ['id'=>$addressed])).'#access"'),
+   'and an address a student without a login carries leads to that student’s access card');
+unset($GLOBALS['crm_held_input']);
+foreach ([$admin, $family] as $who) {
+    sign_in_as($who);
+    $seen = render_view('students', ['invite'=>1, 'invitations'=>1]);
+    $staffSees = $who === $admin;
+    is_same($staffSees, str_contains($seen, 'id="invite"'), ($staffSees ? 'an administrator' : 'a family').($staffSees ? ' sees' : ' never sees').' the invite card');
+    is_same($staffSees, str_contains($seen, 'id="invitations"'), ($staffSees ? 'an administrator' : 'a family').($staffSees ? ' sees' : ' never sees').' the open invitations');
+    is_same($staffSees, str_contains($seen, 'abgelaufen@beispiel.test'), 'nor any invited address'.($staffSees ? ', unlike staff' : ''));
+}
+run('DELETE FROM accounts WHERE id IN (?,?)', [$expiredInvite, $byAddress]);
+
+case_('A family with no course is told when none has a free place, and how to reach the trainer');
+$oleLogin = make_account(['role'=>'student', 'name'=>'Ole Neu']);
+$ole = make_student(['first_name'=>'Ole', 'last_name'=>'Neu', 'account_id'=>$oleLogin]);
+$full = make_class(['name'=>'Voller Kurs', 'capacity'=>1]);
+make_enrolment($full, $lena, ['tariff_id'=>null]);
+$running = array_map('intval', array_column(rows('SELECT id FROM classes WHERE archived=0 AND id<>?', [$full]), 'id'));
+foreach ($running as $courseId) run('UPDATE classes SET archived=1 WHERE id=?', [$courseId]);
+sign_in_as($oleLogin);
+$courses = render_view('student', ['id'=>$ole, 'tab'=>'classes']);
+$notice = '<strong>'.e('Gerade ist kein Kurs frei').'</strong>';
+$card = strpos($courses, 'id="courses"');
+ok(str_contains($courses, $notice), 'the Kurse tab says no course is free');
+ok($card !== false && strpos($courses, $notice, $card) < strpos($courses, '</section>', $card), 'inside the Kurse card, where „Kurs wählen" leads');
+ok(str_contains($courses, e(url('messages', ['new'=>1]))), 'with the way to write to the trainer');
+run('UPDATE classes SET capacity=0 WHERE id=?', [$full]);
+ok(!str_contains(render_view('student', ['id'=>$ole, 'tab'=>'classes']), $notice), 'and says nothing of the kind once a place is free');
+run('UPDATE classes SET capacity=1 WHERE id=?', [$full]);
+sign_in_as($trainer);
+ok(!str_contains(render_view('student', ['id'=>$ole, 'tab'=>'classes']), $notice), 'staff are not told to write to themselves');
+foreach ($running as $courseId) run('UPDATE classes SET archived=0 WHERE id=?', [$courseId]);
+run('DELETE FROM class_students WHERE class_id=?', [$full]);
+run('UPDATE classes SET archived=1 WHERE id=?', [$full]);
 sign_out();
 
 // ---------------------------------------------------------------------------
 // The screens of ADR 0020: families completing their own details, inviting in
 // one step, the access card's states, and „Von Familien".
 // ---------------------------------------------------------------------------
-/** The markup of the first form that posts $action, up to its closing tag. */
-$formOf = function (string $html, string $action): string {
-    $at = strpos($html, 'name="action" value="'.$action.'"');
-    if ($at === false) return '';
-    $start = strrpos(substr($html, 0, $at), '<form');
-    return substr($html, $start, strpos($html, '</form>', $at) - $start);
-};
 
 case_('A family completes its own details on the Profil tab, in the one student form');
 mail_ready(true);

@@ -114,7 +114,7 @@ unset($GLOBALS['page'], $GLOBALS['crm_held_input']); $_GET = []; form_context(''
 
 case_('A view can ask what was held for one form by name, and gets the same answer the fields get');
 /* ADR 0019, I4: a page reacts to a refusal before it opens the form - a
-   username change left open, a refused contact's details opened. held_for() is
+   refused invitation's card left open, a refused contact's details opened. held_for() is
    where the form, page, record and tab are matched, and holding_input() is
    built on it, so the two cannot disagree about what was refused where. */
 $_POST = ['return_page'=>'student','return_id'=>'5','return_tab'=>'','invite'=>'','email'=>'eltern@beispiel.test'];
@@ -340,9 +340,10 @@ $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
 ok(str_contains($router, "form_return(current_user()?'dashboard':'login',\$allowed)"), 'and the router hands its list of pages to the way back');
 
 case_('A box takes extra attributes, each escaped, and can drop the ones it sets itself');
-/* One helper draws every box (ADR 0019 added what a username box and a
-   current-password box need), so an attribute is either printed through e() or
-   refused by name - there is no third way for a value to reach the page. */
+/* One helper draws every box (what the sign-in address box and a
+   current-password box need included), so an attribute is either printed
+   through e() or refused by name - there is no third way for a value to reach
+   the page. */
 test_load_actions();
 form_context('');
 $draw = function (string $type, array $attributes): string { ob_start(); input('x', 'X', '', $type, true, '', '', $attributes); return (string)ob_get_clean(); };
@@ -355,6 +356,17 @@ $current = $draw('password', current_password_attributes());
 ok(str_contains($current, 'autocomplete="current-password"') && !str_contains($current, 'new-password'), 'a passed value replaces the default');
 ok(!str_contains($current, 'minlength'), 'and null drops it');
 ok(str_contains($current, 'maxlength="72"') && str_contains($current, ' required'), 'while the rest stays');
+/* The address box (ADR 0021, §1): what the password manager saves the password
+   under, unless the caller says off first - the invitation and the delete
+   confirmation, where the browser must not fill in her own address. */
+$address = $draw('email', sign_in_address_attributes());
+foreach (['autocomplete="username"', 'autocapitalize="none"', 'autocorrect="off"', 'spellcheck="false"'] as $attribute)
+    ok(str_contains($address, $attribute), 'the sign-in address box carries '.$attribute);
+ok(!str_contains($address, 'inputmode'), 'and no inputmode, which type="email" already brings');
+$off = $draw('email', ['autocomplete'=>'off'] + sign_in_address_attributes());
+ok(str_contains($off, 'autocomplete="off"') && !str_contains($off, 'autocomplete="username"'), 'an off put first wins over the helper’s username');
+ok(str_contains($off, 'autocapitalize="none"'), 'and the rest of the helper still applies');
+ok(!function_exists('username_attributes'), 'username_attributes() is gone, so no box asks for a username');
 foreach (['onclick x', 'Onfocus', 'value', 'name', 'type', 'required', 7] as $bad) {
     ob_start();
     try { input('x', 'X', '', 'text', false, '', '', [$bad => 'y']); $refused = false; }

@@ -86,14 +86,72 @@ function account_with_address(string $email): ?array {
     return $email===''?null:one('SELECT * FROM accounts WHERE email=?',[$email]);
 }
 
+/*
+ * A student login that no student points to is one of two things, and
+ * verified_at says which (ADR 0021, §4): the first activation sets it and
+ * nothing clears it. Never set up, it is an invitation by address still waiting
+ * for its holder to make their student; set up, it was left behind by a deleted
+ * student. That holds only because student_delete takes a never-set-up login
+ * with its student. A suspended invitation is still an open one.
+ */
+function student_login_without_student_sql(string $account = 'a'): string {
+    $a = sql_name($account, 'alias');
+    return $a.".role='student' AND NOT EXISTS (SELECT 1 FROM students s WHERE s.account_id=".$a.'.id)';
+}
+function open_invitation_sql(string $account = 'a'): string {
+    return student_login_without_student_sql($account).' AND '.sql_name($account, 'alias').'.verified_at IS NULL';
+}
+
+/** Invitations by address nobody has taken up yet, newest first, for the students page. */
+function open_invitations(): array {
+    return rows('SELECT a.* FROM accounts a WHERE '.open_invitation_sql().' ORDER BY a.created_at DESC, a.id DESC');
+}
+
+/** Whether a login is one of open_invitations(). */
+function is_open_invitation(int $accountId): bool {
+    return (bool)scalar('SELECT 1 FROM accounts a WHERE a.id=? AND '.open_invitation_sql(), [$accountId]);
+}
+
 /**
- * Student logins that no student points to any more - left behind when the
- * student was deleted before the login was. Without a list of their own on the
- * Konten page they could neither be seen nor switched off (ADR 0010).
+ * Whether deleting a student also deletes their login (ADR 0021, §4): a
+ * student's login nobody ever set up. A staff login on a student's record, left
+ * from before ADR 0010, is never taken with it - a trainer may not touch one.
+ */
+function login_goes_with_student(?array $login): bool {
+    return $login !== null && ($login['role'] ?? '') === 'student' && ($login['verified_at'] ?? null) === null;
+}
+
+/**
+ * Student logins left behind by a deleted student, which was set up and so
+ * stays (ADR 0010). Without a list of their own on the Konten page they could
+ * neither be seen nor switched off.
  */
 function orphan_logins(): array {
-    return rows("SELECT a.* FROM accounts a WHERE a.role='student'"
-        .' AND NOT EXISTS (SELECT 1 FROM students s WHERE s.account_id=a.id) ORDER BY a.name,a.id');
+    return rows('SELECT a.* FROM accounts a WHERE '.student_login_without_student_sql()
+        .' AND a.verified_at IS NOT NULL ORDER BY a.name,a.id');
+}
+
+/**
+ * The student without a login of their own who already carries this address,
+ * or null. An invitation by address to it would make the same person twice, so
+ * email_invite refuses it and points to that student's own page (ADR 0021, §3).
+ */
+function student_without_login_at(string $email): ?array {
+    return one('SELECT id,first_name,last_name FROM students WHERE email=? AND account_id IS NULL ORDER BY id LIMIT 1', [$email]);
+}
+
+/**
+ * What a new student starts with that nobody typed: the create form shows these,
+ * and a student made through an invitation by address gets them
+ * (create_own_student()), so the two ways in cannot start differently.
+ *
+ * level_default() is in app/groups.php, loaded after this file: safe, because
+ * this runs only while a request runs, never while files load.
+ */
+function new_student_defaults(): array {
+    return ['joined_on' => today(), 'status' => (string)setting('default_status', 'active'),
+            'level_id' => level_default()['id'] ?? null, 'age_group_id' => null,
+            'address' => '', 'phone' => '', 'internal_notes' => ''];
 }
 
 /** The student a login belongs to (ADR 0010), or 0 when it belongs to none. */
@@ -149,7 +207,9 @@ function students_missing_contact(): array {
  * link to the page she is already on did nothing she could see.
  */
 function student_next_steps(int $studentId): array {
-    $student = one('SELECT * FROM students WHERE id=?', [$studentId]);
+    // The waiting join request comes with the row, so the page pays nothing
+    // extra for it on every tab.
+    $student = one('SELECT s.*, '.pending_join_sql().' AS pending_join FROM students s WHERE s.id=?', [$studentId]);
     if (!$student) return [];
     $steps = [];
     if (!primary_contact($studentId))
@@ -177,7 +237,12 @@ function student_next_steps(int $studentId): array {
     // needs a course again, and saying otherwise would tick the box for ever on
     // the strength of a membership that ended in March.
     $enrolments = array_filter(student_enrolments($studentId), 'enrolment_is_current');
-    if (!$enrolments)
+    if (!$enrolments && $student['pending_join'] !== null)
+        $steps[] = ['what' => t('Kursanfrage beantworten', 'Answer the course request'),
+                    'why'  => strtr(t('{name} möchte in „{course}“.', '{name} would like to join “{course}”.'),
+                                    ['{name}' => $student['first_name'], '{course}' => $student['pending_join']]),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'requests'];
+    elseif (!$enrolments)
         $steps[] = ['what' => t('In einen Kurs eintragen', 'Put them in a course'),
                     'why'  => t('Ohne Kurs entstehen keine Beiträge.', 'Without a course there are no charges.'),
                     'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'add-course'];
@@ -201,11 +266,12 @@ function student_next_steps(int $studentId): array {
  * §7). Shown to the family on their dashboard and their student page; the
  * staff page keeps student_next_steps().
  *
- * Somebody to ring, a birth date, a postal address - every family has one,
- * and an invoice above 400 € needs it (create_invoice()) - and every custom field
- * the family fills in ('edit') that is required and still empty. Not the
- * phone: it is the member's own number, a child may have none, and an item some
- * families can never tick off teaches every family to ignore the card.
+ * A course first, then somebody to ring, a birth date, a postal address -
+ * every family has one, and an invoice above 400 € needs it (create_invoice())
+ * - and every custom field the family fills in ('edit') that is required and
+ * still empty. Not the phone: it is the member's own number, a child may have
+ * none, and an item some families can never tick off teaches every family to
+ * ignore the card.
  *
  * Each step names the element on the page it is about ('anchor').
  */
@@ -213,6 +279,12 @@ function family_next_steps(int $studentId): array {
     $student = one('SELECT birth_date,address FROM students WHERE id=?', [$studentId]);
     if (!$student) return [];
     $steps = [];
+    // First, because it is why they came (ADR 0021, §3).
+    if (wants_a_course($studentId)) {
+        $steps[] = ['what' => t('Kurs wählen', 'Choose a course'),
+                    'why'  => t('Such dir einen Kurs aus. Deine Trainerin bestätigt die Anmeldung.', 'Pick a course. Your coach confirms your place.'),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => free_courses_for($studentId) ? 'add-course' : 'courses'];
+    }
     // Safety first, then what the age group and the invoices need, then her
     // own questions; the words are the designer's (spec §6.1). The anchors are
     // the ids the student page gives those boxes.
@@ -238,6 +310,28 @@ function family_next_steps(int $studentId): array {
                         'why'  => t('Bitte ausfüllen – deine Trainerin bittet darum.', 'Please fill this in – your coach has asked for it.'),
                         'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'field-'.$f['id']];
     return $steps;
+}
+
+/**
+ * Whether a family still has a course to choose: a membership that has not
+ * ended, no course they are in now, and no request to join one waiting. The
+ * trainer confirms a place, because joining bills (ADR 0021, §3). One rule for
+ * the „Kurs wählen" step and the Kurse tab's word when no course is free.
+ */
+function wants_a_course(int $studentId): bool {
+    $student = one('SELECT s.status, '.pending_join_sql().' AS pending_join FROM students s WHERE s.id=?', [$studentId]);
+    return $student && $student['status'] !== 'ended' && $student['pending_join'] === null
+        && !array_filter(student_enrolments($studentId), 'enrolment_is_current');
+}
+
+/**
+ * SQL for the course of the oldest join request still waiting for the student
+ * aliased $student, by name, or NULL. Both lists of next steps ask it, so a
+ * family who asked is not asked again and the trainer is told to answer.
+ */
+function pending_join_sql(string $student = 's'): string {
+    return "(SELECT c.name FROM enrolment_requests r JOIN classes c ON c.id=r.class_id WHERE r.student_id=".sql_name($student, 'alias')
+        .".id AND r.kind='join' AND r.state='pending' ORDER BY r.created_at, r.id LIMIT 1)";
 }
 
 /** The children with nowhere to send an invitation or an invoice. */

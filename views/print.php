@@ -67,8 +67,7 @@ $minor = $student ? (($age = student_age($student['birth_date'] ?? null)) !== nu
         // Its own row: an address is longer than a name, and one broken over
         // two rows of boxes is one nobody can read back. It signs in, the
         // invitation goes to it and so do the invoices, and it is the
-        // student's own (ADR 0020, §1). No username: the address signs in, so
-        // the sheet needs none.
+        // student's own (ADR 0020, §1).
         // print_field() brackets its hint, so the label carries none of its
         // own: two bracket pairs on one line read like a form generator.
         print_field(t('E-Mail-Adresse für Anmeldung, Einladung und Rechnungen','Email address for signing in, invitations and invoices'), 34,

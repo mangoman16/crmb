@@ -3,13 +3,13 @@
          the menu, and the two must not read as the same page. */
 page_head(t('Mein Konto','My account'),t('Wie du dich anmeldest und wie das Portal für dich aussieht.','How you sign in and how the portal looks for you.'));
 /* Everything about signing in, in one card and first, as the heading promises:
-   the username and the address - either signs in (ADR 0020, §3) - whether a
-   mailed link set the password lately, and the three changes. */
+   the address - the only name a login has (ADR 0021, §1) - whether a mailed
+   link set the password lately, and the two changes. */
 $resets=password_resets_for((int)$user['id'],PASSWORD_RESET_SHOWN_DAYS); ?>
 <section class="card" id="sign-in">
     <h2><?=e(t('Anmeldung','Signing in'))?></h2>
     <?php login_facts($user,t('bestätigt','verified')); ?>
-    <p class="muted"><?=e(t('Anmelden kannst du dich mit dem Benutzernamen oder mit der E-Mail-Adresse.','You can sign in with the username or with the email address.'))?></p>
+    <p class="muted"><?=e(t('Mit dieser Adresse meldest du dich an.','You sign in with this address.'))?></p>
     <?php if($resets): ?>
     <div class="notice warn"><strong><?=e(t('Dein Passwort wurde per E-Mail-Link neu gesetzt','Your password was set anew through an email link'))?></strong>
         <?php foreach($resets as $reset): ?><p><?=e(fmt_datetime((string)$reset['created_at']))?></p><?php endforeach ?>
@@ -19,30 +19,13 @@ $resets=password_resets_for((int)$user['id'],PASSWORD_RESET_SHOWN_DAYS); ?>
             ? t('Warst du das nicht? Ändere dein Passwort gleich hier unten.','Wasn’t that you? Change your password just below.')
             : t('Warst du das nicht? Ändere dein Passwort gleich hier unten und sag deiner Trainerin Bescheid.','Wasn’t that you? Change your password just below and let your coach know.'))?></p></div>
     <?php endif ?>
-    <?php /* Open again after a refusal, with what was typed still in the box. No
-             pattern attribute: the server turns Lena.Müller into lena.mueller,
-             and a browser pattern would refuse it before the server could. */ ?>
-    <details id="username" <?=held_for('username_change')!==[]?'open':''?>><summary><?=e(t('Benutzernamen ändern','Change the username'))?></summary>
-    <?php if(impersonator()):
-        // The action refuses anyway (ADR 0019, §8); this says so before anybody tries.
-        $holderFirst=(string)(scalar('SELECT first_name FROM students WHERE account_id=?',[(int)$user['id']]) ?: strtok(trim((string)$user['name']),' ')); ?>
-        <p class="muted"><?=e(strtr(t('Den Benutzernamen ändert nur {name} selbst.','Only {name} can change the username.'),['{name}'=>$holderFirst]))?></p>
-    <?php else:
-        start_form('username_change');
-        input('username',t('Neuer Benutzername','New username'),$user['username'],'text',true,
-              t('3 bis 40 Zeichen: Kleinbuchstaben, Ziffern, Punkt oder Bindestrich. Aus ä, ö, ü und ß wird ae, oe, ue und ss.',
-                '3 to 40 characters: lower-case letters, digits, full stop or hyphen. ä, ö, ü and ß become ae, oe, ue and ss.'),
-              '',username_attributes()+['maxlength'=>'40','class'=>'mono']);
-        input('current_password',t('Aktuelles Passwort','Current password'),'','password',true,'','',current_password_attributes());
-        submit_button(t('Benutzernamen ändern','Change the username'));?></form>
-    <?php endif ?>
-    </details>
     <details><summary><?=e(t('E-Mail-Adresse ändern','Change email address'))?></summary><?php start_form('email_change');
     /* An address that is another login's is refused when the link is opened,
        not here (ADR 0020, §1): asked now, this box would tell a signed-in
        family whether an address has a login. */
     input('email',t('Neue E-Mail-Adresse','New email address'),'','email',true,
-          t('Deine eigene, die kein anderer Zugang nutzt. Der Bestätigungslink geht an sie.','Your own, not used by another login. The confirmation link goes to it.'),
+          t('Deine eigene, die kein anderer Zugang nutzt. Der Bestätigungslink geht an sie; bis du ihn öffnest, meldest du dich mit der bisherigen an.',
+            'Your own, which no other login uses. The confirmation link goes to it; until you open it, you keep signing in with the current one.'),
           '',['autocomplete'=>'email']);
     input('password',t('Aktuelles Passwort','Current password'),'','password',true,'','',current_password_attributes());
     submit_button(t('Bestätigungslink senden','Send verification link'));?></form></details>

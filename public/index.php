@@ -60,6 +60,7 @@ try {
         throttle('token-view',$_SERVER['REMOTE_ADDR']??'local',60);
         $token=is_scalar($_GET['token'])?(string)$_GET['token']:'';
         $_SESSION['activation_hash']=preg_match('/^[a-f0-9]{64}$/D',$token)?hash('sha256',$token):'';
+        adopt_link_language(token_record($_SESSION['activation_hash']));
         go('activate');
     }
     $public=in_array($page,['login','forgot','activate','unsubscribe','privacy','not_found','icon','manifest','brand','logo'],true);

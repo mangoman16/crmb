@@ -37,7 +37,6 @@ $form = [
 ];
 $withDemo = false;
 $demo = null;     // what demo_fill() created, to be shown on the finish page
-$adminUsername = '';   // what create_admin_account() named the first login
 if ($state === 'configured' && $stored) {
     $form['db_host'] = (string)($stored['db']['host'] ?? '');
     $form['db_port'] = (string)($stored['db']['port'] ?? '3306');
@@ -114,7 +113,7 @@ if ($post && $state !== 'installed' && !$blockers) {
             // No safeguards on a first install: there is no earlier release to be
             // older than, and an empty database has nothing worth copying.
             schema_apply(null, safeguards: false);
-            $adminUsername = create_admin_account($form['admin_name'], $form['admin_email'], $password)['username'];
+            create_admin_account($form['admin_name'], $form['admin_email'], $password);
             // Example data here rather than only afterwards, because the portal
             // is unrecognisable empty: no courses, no children, no charges, and
             // every page an empty state. Trying it out meant inventing a term's
@@ -169,14 +168,9 @@ header('X-Robots-Tag: noindex');
 <div class="card setup-step">
     <p class="eyebrow"><?=install_e(install_t('Fertig', 'Done'))?></p>
     <h1><?=install_e(install_t('Das Portal ist eingerichtet', 'The portal is ready'))?></h1>
-    <?php /* The username was made from the name, not typed (ADR 0019, §7), so
-             this is the moment it has to be read - large and in a fixed-width
-             face, where l and 1 cannot be mistaken for each other. */ ?>
-    <p><?=install_e(install_t('Dein Benutzername zum Anmelden:', 'Your username for signing in:'))?></p>
-    <p class="setup-username mono"><?=install_e($adminUsername)?></p>
-    <p class="muted"><?=install_e(install_t(
-        'Melde dich jetzt mit diesem Benutzernamen oder mit der eben eingegebenen E-Mail-Adresse an, und mit dem eben gewählten Passwort. Den Benutzernamen kannst du später unter „Mein Konto“ ändern.',
-        'Sign in now with this username or with the email address you just entered, and the password you just chose. You can change the username later under “My account”.'))?></p>
+    <p><?=install_e(install_t('Du meldest dich mit deiner E-Mail-Adresse an:', 'You sign in with your email address:'))?></p>
+    <p class="mono"><?=install_e(email_normalised($form['admin_email']))?></p>
+    <p class="muted"><?=install_e(install_t('Und mit dem Passwort, das du eben gewählt hast.', 'And with the password you have just chosen.'))?></p>
     <p><a class="button" href="<?=install_e($portal)?>"><?=install_e(install_t('Zur Anmeldung', 'Go to sign-in'))?></a></p>
 </div>
 <?php if ($demo): ?>
@@ -188,7 +182,7 @@ header('X-Robots-Tag: noindex');
     <p><?=install_e(install_t('Diese Konten kannst du zum Anprobieren verwenden:', 'These accounts are there to try it with:'))?></p>
     <ul>
         <?php foreach ($demo['logins'] as $login): ?>
-        <li><span class="mono"><?=install_e($login['username'])?></span> <?=install_e($login['role'] === 'student' ? install_t('(Familie)', '(family)') : install_t('(Trainerin)', '(trainer)'))?></li>
+        <li><span class="mono"><?=install_e($login['email'])?></span> <?=install_e($login['role'] === 'student' ? install_t('(Familie)', '(family)') : install_t('(Trainerin)', '(trainer)'))?></li>
         <?php endforeach ?>
     </ul>
     <p><?=install_e(install_t('Passwort für alle: ', 'The password for all of them: '))?>

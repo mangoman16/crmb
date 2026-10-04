@@ -796,6 +796,12 @@ a.account-menu-row:hover,button.account-menu-row:hover{background:var(--surface-
 @media(max-width:760px){
   .page-heading>.button+.button{margin-left:0}
   .page-heading>.button{flex:1;min-width:140px}
+  /* With two, the title takes its own row and the buttons share the next:
+     beside the title the first was squeezed into two lines while the second
+     had a row to itself. Stretched, so a label that wraps does not leave its
+     neighbour shorter. Where :has() is missing, the row stays as it was. */
+  .page-heading:has(>.button+.button){align-items:stretch}
+  .page-heading:has(>.button+.button)>div{flex-basis:100%}
 }
 
 /* Two columns on paper. A registration form in one column runs to a second
@@ -974,7 +980,7 @@ a.account-menu-row:hover,button.account-menu-row:hover{background:var(--surface-
 .next-steps a{display:inline-flex;align-items:center;min-height:44px}
 /* Where a next step or a name in a notice lands. Clear of the top bar, which
    stays pinned over the page and would otherwise cover the heading it jumped to. */
-#email,#access,#add-contact,#add-course,#courses,#demo,#icon,#advanced,#auto-charges,#personal,#more-details,#birth-date,#address,[id^=field-]{scroll-margin-top:96px}
+#email,#access,#add-contact,#add-course,#courses,#requests,#demo,#icon,#advanced,#auto-charges,#personal,#more-details,#birth-date,#address,#sign-in,#invite,#invitations,[id^=field-]{scroll-margin-top:96px}
 /* An address is one long word to a browser. */
 .readonly{overflow-wrap:anywhere}
 .access-title{margin-bottom:10px}
@@ -1182,21 +1188,29 @@ details.why{margin-top:14px}
 .logo-remove p{font-size:.8125rem;margin-top:4px}
 
 /* ---------------------------------------------------------------------------
-   Signing in with a username or an address (ADR 0019, 0020).
+   Signing in by address, and two ways to add a person (ADR 0021).
    --------------------------------------------------------------------------- */
-/* A box to read, not to type in: the username on the activation page. As
+/* A box to read, not to type in: the address beside a new password. As
    specific as the rule that draws every box, so it wins. The size stays 1rem,
    because an iPhone zooms into any box set smaller than 16px when it is tapped. */
 input[readonly]:not([type=checkbox]):not([type=radio]){background:var(--surface-2);border-color:var(--border)}
-/* Mein Konto's first card holds three changes one below the other; a rule
+/* Mein Konto's first card holds two changes one below the other; a rule
    between them says where one ends. */
 #sign-in>details{border-top:1px solid var(--border);padding-top:4px}
 #sign-in>details+details{margin-top:4px}
-#sign-in,#username{scroll-margin-top:96px}
-/* The first administrator's username on the setup page's last step: read once,
-   large, in a face where l and 1 differ. A long one breaks rather than running
-   off a phone's screen. */
-.setup-step>p.setup-username{font-size:1.5rem;font-weight:650;line-height:1.3;margin:4px 0 16px;overflow-wrap:anywhere}
+/* Setting up from an invitation by address asks for the person's details and
+   then the sign-in, under a heading each; the second sits clear of the boxes
+   above it. */
+.auth-card .form>h2{font-size:1rem;margin:8px 0 14px}
+.auth-card .form>h2~h2{margin-top:26px}
+/* „Per E-Mail einladen" on the students list: the sentence under the heading,
+   with the gap the sign-in card leaves under its own. */
+.invite-card>.muted{font-size:.9375rem;margin-bottom:20px}
+/* A disclosure keeps its own triangle on a desktop screen, and a flex row
+   inside it would drop onto a line below it; inline, the count stays beside
+   the words. */
+.invitation-list>summary .badge-line{display:inline-flex;vertical-align:middle}
+.invitation-list>summary+.muted{font-size:.875rem}
 
 /* ---------------------------------------------------------------------------
    Families completing their own details, and inviting in one step (ADR 0020).

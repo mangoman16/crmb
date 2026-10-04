@@ -373,24 +373,22 @@ run('DELETE FROM accounts');
 $made = create_admin_account('Trainerin', 'Trainerin@Example.Test', 'korrektesPferdBatterie');
 $id = (int)($made['id'] ?? 0);
 ok($id > 0, 'the first one is created');
-is_same('trainerin', $made['username'] ?? null, 'and handed back with the username it was given, for setup and the console to show');
 $admin = one('SELECT * FROM accounts WHERE id=?', [$id]);
 is_same('admin', $admin['role'], 'with the administrator role');
 is_same('active', $admin['state'], 'active');
 ok($admin['verified_at'] !== null, 'and already verified, because no invitation confirmed it');
 is_same('trainerin@example.test', $admin['email'], 'the address is normalised the way every lookup expects it');
-is_same('trainerin', $admin['username'], 'the username is stored, made from the name: there is no field for it (ADR 0019, §7)');
 ok(password_verify('korrektesPferdBatterie', $admin['password_hash']), 'the password is hashed, and verifies');
 throws(fn() => create_admin_account('Zweite', 'zweite@example.test', 'korrektesPferdBatterie'),
        'a second one is refused, which is what closes the setup page afterwards');
 is_same(1, (int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'"), 'and nothing was written');
 does_not_throw(fn() => create_admin_account('Zweite', 'zweite@example.test', 'korrektesPferdBatterie', true),
                'the console can still force one, which is sometimes the only way back in');
-is_same('zweite', (string)scalar("SELECT username FROM accounts WHERE email='zweite@example.test'"),
-        'with a username of its own, from a name of one word');
+is_same(['Zweite', 'admin'], array_values(one("SELECT name,role FROM accounts WHERE email='zweite@example.test'") ?? []),
+        'as an administrator of that name');
 run('DELETE FROM accounts');
 
-case_('Setup and the console give no administrator an address another login uses (ADR 0019, R1; 0020, §1)');
+case_('Setup and the console give no administrator an address another login uses (ADR 0021, §5)');
 /* Every creator asks refuse_address_in_use(), the setup page and the console
    with --force included, so the person reads a sentence rather than a 23000. */
 make_account(['role' => 'student', 'email' => 'familie@example.test']);
@@ -401,8 +399,7 @@ throws(fn() => create_admin_account('Trainerin', 'Familie@Example.Test', 'korrek
 is_same(0, (int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'"), 'and no administrator was written');
 $first = create_admin_account('Lena Müller', 'lena@example.test', 'korrektesPferdBatterie');
 $second = create_admin_account('Lena Müller', 'lena2@example.test', 'korrektesPferdBatterie', true);
-is_same(['lena.mueller', 'lena.mueller2'], [$first['username'], $second['username']],
-        'two administrators with one name get lena.mueller and lena.mueller2');
+ok($first['id'] > 0 && $second['id'] > $first['id'], 'two administrators may share a name: each has an address of their own');
 run('DELETE FROM accounts');
 
 case_('The password chosen at setup is the one sign-in accepts');
@@ -417,11 +414,19 @@ is_same(post('password'), $sent['password'], 'setup reads the password exactly a
 is_same($sent['password'], $sent['repeat'], 'and its repetition the same way');
 is_same('Trainerin', $sent['form']['admin_name'], 'and the other fields too');
 is_same(' vom Panel ', $sent['db_password'], 'only the database password arrives as typed: the server checks it, not the portal');
-$setupUsername = create_admin_account($sent['form']['admin_name'], $sent['form']['admin_email'], $sent['password'])['username'];
-does_not_throw(fn() => submit('login', ['username' => $setupUsername, 'password' => ' korrektesPferdBatterie ']),
-               'signing in with the username setup showed and the password typed there works');
+create_admin_account($sent['form']['admin_name'], $sent['form']['admin_email'], $sent['password']);
+does_not_throw(fn() => submit('login', ['email' => $sent['form']['admin_email'], 'password' => ' korrektesPferdBatterie ']),
+               'signing in with the address and the password typed at setup works');
 sign_out();
 run('DELETE FROM accounts');
+
+case_('Setup and the console name the address to sign in with, and the example logins by theirs');
+$console = (string)file_get_contents(APP_ROOT.'/bin/console.php');
+$setup = (string)file_get_contents(APP_ROOT.'/public/setup.php');
+ok(str_contains($setup, "install_e(email_normalised(\$form['admin_email']))") && str_contains($console, 'Sign in with the email address'),
+   'both tell the first administrator to sign in with the address they typed');
+ok(str_contains($setup, "install_e(\$login['email'])") && str_contains($console, "\$login['email']"),
+   'and list the example logins by address');
 
 case_('The page after installing points to the checklist rather than listing steps');
 /* It listed two steps - the mail settings and "both" privacy drafts - after the

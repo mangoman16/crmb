@@ -26,12 +26,12 @@ function demo_names(): array {
 }
 
 /**
- * An example student's own address: lena.hofer@beispiel.test. Built with the
- * username rule, so an umlaut becomes plain ASCII the way the address check
- * wants it, and every example name gives a different one.
+ * An example student's own address: lena.hofer@beispiel.test. The example names
+ * are plain ASCII (demo_names()), so lower-casing them is all it takes, and
+ * every one gives a different address.
  */
 function demo_address(string $first, string $last): string {
-    return username_from_name($first, $last).'@beispiel.test';
+    return strtolower($first.'.'.$last).'@beispiel.test';
 }
 
 /** Whether the portal currently holds any example data. */
@@ -95,20 +95,15 @@ function demo_fill(bool $force = false): array {
         // first require working email and a released privacy notice.
         $accounts = [];
         // Each family login is one student's own and carries that student's
-        // name (ADR 0010), and a username made from it like any other login's
-        // (ADR 0019, R1) - so beside real data, where a real Lena Hofer may
-        // already sign in, the example one is lena.hofer2. The usernames are
-        // read back by demo_logins(), not assumed. Every login has an address
-        // of its own (ADR 0020): one already somebody's refuses the fill
-        // rather than being shared.
+        // name (ADR 0010). Every login has an address of its own (ADR 0020):
+        // one already somebody's refuses the fill rather than being shared.
         [$first, $second] = demo_names();
         foreach ([['Trainerin', 'Beispiel', 'trainerin@beispiel.test', 'trainer'],
                   [$first[0], $first[1], demo_address($first[0], $first[1]), 'student'],
                   [$second[0], $second[1], demo_address($second[0], $second[1]), 'student']] as [$given, $family, $email, $role]) {
             refuse_address_in_use($email);
-            $username = username_for_new_account($given, $family);
-            run('INSERT INTO accounts (name,email,username,password_hash,role,state,verified_at,locale,created_at,is_demo)'
-                .' VALUES (?,?,?,?,?,?,?,?,?,1)', [$given.' '.$family, $email, $username, $hash, $role, 'active', now(), 'de', now()]);
+            run('INSERT INTO accounts (name,email,password_hash,role,state,verified_at,locale,created_at,is_demo)'
+                .' VALUES (?,?,?,?,?,?,?,?,1)', [$given.' '.$family, $email, $hash, $role, 'active', now(), 'de', now()]);
             $accounts[$email] = (int)db()->lastInsertId();
             $counts['accounts']++;
         }
@@ -316,14 +311,11 @@ function demo_fill(bool $force = false): array {
 }
 
 /**
- * The example logins, as username, role and address, staff first.
- *
- * Read from the database rather than from a list here, because the usernames
- * are made at fill time and may carry a number (demo_fill()). For the setup
- * page, the console and the notice that shows the password.
+ * The example logins, as address and role, staff first. For the setup page,
+ * the console and the notice that shows the password.
  */
 function demo_logins(): array {
-    return rows("SELECT username,role,email FROM accounts WHERE is_demo=1 ORDER BY role='student', id");
+    return rows("SELECT email,role FROM accounts WHERE is_demo=1 ORDER BY role='student', id");
 }
 
 /**

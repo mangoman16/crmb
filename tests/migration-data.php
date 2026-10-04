@@ -13,7 +13,7 @@ declare(strict_types=1);
  * keeping only one of them. "Nobody's next invoice changes" was a claim with
  * nothing behind it.
  *
- * Three pauses. Before 015, a portal as it stood with prices on the tariff and
+ * Five pauses. Before 015, a portal as it stood with prices on the tariff and
  * addresses on the contacts. Before 019, a portal where one login holds several
  * brothers and sisters and a child's address has drifted from its login's. 019
  * is then applied three ways: straight through; stopped after each of its
@@ -21,13 +21,17 @@ declare(strict_types=1);
  * page view does after an interrupted update, each on a fresh copy; and once
  * more after it has finished. Before 020, logins with news by email both off
  * and on, which 020 and 021 must leave as they are; 020 is stopped and started
- * again the same way, and 021 run twice. Before 022, logins whose names make
- * the same username, a staff login with a one-word name, a name with umlauts and
- * a hyphen, a login whose student is gone, one still at the invitation and one
- * whose address has a quoted local part, which 022 and 023 must keep as they were
- * but for a unique placeholder username; 023 is stopped and started again the
- * same way, and its UPDATE run twice. After 023, a second login on an address
- * that is already a login's, which the database must still refuse.
+ * again the same way, and 021 run twice. Before 022, logins as the version
+ * before usernames wrote them - a staff login, a name with umlauts and a hyphen,
+ * a login whose student is gone, one still at the invitation and one whose
+ * address has a quoted local part - which 022, 023 and 024 together must bring
+ * through with every value they had; 023 is stopped and started again the same
+ * way, and its UPDATE run twice. Before 024, the same portal with the usernames
+ * the previous version gave it and logins that version wrote itself, which 024
+ * must keep with every value but the username; afterwards two logins made
+ * without one must both be taken, a second on an address that is already a
+ * login's must still be refused, and the runner's step after the files must
+ * change no login.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -51,8 +55,8 @@ require_once APP_ROOT . '/app/core.php';
 // schema_guarded_tables(): what an update must not lose a row of, read from the
 // runner rather than listed a second time here.
 require_once APP_ROOT . '/app/schema.php';
-// The runner's step after the files (database/defaults.php): the usernames and
-// the sign-in comparison hash, with what those need to write and to read a
+// The runner's step after the files (database/defaults.php): the sign-in
+// comparison hash among it, with what that needs to write and to read a
 // setting.
 require_once APP_ROOT . '/app/tx.php';
 require_once APP_ROOT . '/app/defaults.php';
@@ -320,13 +324,12 @@ function online_period_indexes(PDO $pdo): array {
 }
 
 /**
- * Logins as the previous version wrote them, for 022 and 023 to give usernames to.
+ * Logins as the version before usernames wrote them, for 022, 023 and 024.
  *
- * The cases ADR 0019 names for the backfill that follows these migrations: two
- * people whose names make the same username, a staff login with a one-word name,
- * a name with umlauts and a hyphen, a student login whose student is gone, and a
- * login still at the invitation. Their addresses are lower-case ASCII, because
- * every address the portal stores has been through email_value().
+ * A staff login, a name with umlauts and a hyphen, a student login whose student
+ * is gone, a login still at the invitation and an address with a quoted local
+ * part. Their addresses are lower-case ASCII, because every address the portal
+ * stores has been through email_value().
  */
 function add_logins_before_022(PDO $pdo): array {
     $earlier = '2025-10-01 08:00:00';
@@ -354,49 +357,40 @@ function add_logins_before_022(PDO $pdo): array {
             'legacy' => $login('Familie Alt', '"familie..alt"@beispiel.test')];
 }
 
-/**
- * A login at "", as 022 leaves every login and 023 leaves none.
- *
- * The runner's step looks for both "" and a '#' placeholder. Without a row at
- * each, a step that stopped looking for one of them would fail nothing. On an
- * address of its own, like every login.
- */
-function add_login_never_named(PDO $pdo): int {
-    return insert_row($pdo, 'accounts', ['name' => 'Familie Leer', 'email' => 'leer@beispiel.test', 'username' => '',
-        'role' => 'student', 'state' => 'active', 'verified_at' => '2025-10-03 08:00:00', 'created_at' => '2025-10-03 08:00:00']);
-}
-
-/** Every login, every column, in id order: what 022 and 023 must not change but for username. */
+/** Every login, every column, in id order. */
 function every_login(PDO $pdo): array {
     return $pdo->query('SELECT * FROM accounts ORDER BY id')->fetchAll();
 }
 
 /**
- * The unique indexes on accounts, each as the list of its columns, keyed by name.
+ * Every index on accounts but the primary key, keyed by name: whether it is
+ * unique, and its columns.
  *
  * The name is kept as well as the columns, because it shows the address is
  * still guarded by the index 001 made, which the engine called email after its
  * column.
  */
-function login_unique_indexes(PDO $pdo): array {
+function login_indexes(PDO $pdo): array {
     $indexes = [];
-    foreach ($pdo->query("SELECT index_name AS name, column_name AS col FROM information_schema.statistics"
-        . " WHERE table_schema = DATABASE() AND table_name = 'accounts' AND non_unique = 0 AND index_name <> 'PRIMARY'"
-        . ' ORDER BY index_name, seq_in_index')->fetchAll() as $row)
-        $indexes[$row['name']][] = $row['col'];
+    foreach ($pdo->query("SELECT index_name AS name, non_unique AS non_unique, column_name AS col FROM information_schema.statistics"
+        . " WHERE table_schema = DATABASE() AND table_name = 'accounts' AND index_name <> 'PRIMARY'"
+        . ' ORDER BY index_name, seq_in_index')->fetchAll() as $row) {
+        $indexes[$row['name']]['unique'] = (int)$row['non_unique'] === 0;
+        $indexes[$row['name']]['columns'][] = $row['col'];
+    }
     ksort($indexes);
     return $indexes;
 }
 
 /**
- * What the database says to a write, as its SQLSTATE, or null if it took it.
+ * What the database says to a login written with these values, as its
+ * SQLSTATE, or null if it took it.
  *
- * Each write is undone again, so the next one meets the logins as 023 left them.
+ * The write is undone again, so the next one meets the logins as they were.
  */
-function refusal(PDO $pdo, string $name, string $email, string $username): ?string {
+function refusal(PDO $pdo, array $row): ?string {
     try {
-        $id = insert_row($pdo, 'accounts', ['name' => $name, 'email' => $email, 'username' => $username,
-            'role' => 'student', 'created_at' => gmdate('Y-m-d H:i:s')]);
+        $id = insert_row($pdo, 'accounts', $row + ['role' => 'student', 'created_at' => gmdate('Y-m-d H:i:s')]);
     } catch (PDOException $e) {
         return (string)$e->getCode();
     }
@@ -405,25 +399,77 @@ function refusal(PDO $pdo, string $name, string $email, string $username): ?stri
 }
 
 /**
- * 001 to 021 with the logins above, then 022.
+ * Two logins written the way the portal writes one after 024, naming no
+ * username, each on an address of its own: what the database said to each.
  *
- * Also returns every login as it was before 022, which is what 022 and 023 are
- * held to afterwards.
+ * Both are undone again. With a username column still unique at '', the second
+ * is the one refused - which is what shows this looks at the right thing.
  */
-function build_portal_before_023(): array {
+function two_logins_without_a_username(PDO $pdo): array {
+    [$said, $made] = [[], []];
+    foreach (['erste.neue@beispiel.test', 'zweite.neue@beispiel.test'] as $email) {
+        try {
+            $made[] = insert_row($pdo, 'accounts', ['name' => '', 'email' => $email, 'role' => 'student', 'created_at' => gmdate('Y-m-d H:i:s')]);
+            $said[] = null;
+        } catch (PDOException $e) {
+            $said[] = (string)$e->getCode();
+        }
+    }
+    foreach ($made as $id) $pdo->exec('DELETE FROM accounts WHERE id = ' . $id);
+    return $said;
+}
+
+/** 001 to 021 with a portal's data, and the logins above written in. */
+function build_portal_before_022(): array {
     [$pdo] = build_portal_before_019();
     apply_migrations($pdo, '019', '021');
-    $logins = add_logins_before_022($pdo);
-    $before = ['accounts' => every_login($pdo), 'counts' => portal_state($pdo)['counts'], 'unique' => login_unique_indexes($pdo)];
-    apply_migrations($pdo, '022', '022');
-    // A login that already has a username when 023 runs. An update cannot make
-    // one - it applies 022 and 023 before any code writes a username - so it is
-    // here only as the row an UPDATE that forgot its WHERE would overwrite:
-    // "touched only the rows still at ''" is then checked against a row it must
-    // leave alone, not only against rows it was meant to change.
-    $logins['named'] = insert_row($pdo, 'accounts', ['name' => 'Schon Benannt', 'email' => 'benannt@beispiel.test',
-        'username' => 'schon.benannt', 'role' => 'student', 'created_at' => '2025-10-02 08:00:00']);
-    return [$pdo, $logins, $before];
+    return [$pdo, add_logins_before_022($pdo)];
+}
+
+/**
+ * The same portal as the previous version left it, for 024 to run on.
+ *
+ * 022 and 023 applied, and every login given a username the way that version's
+ * update gave them - written here as data, since the code that made them is
+ * gone. The cases above get the names its rule made of theirs; the logins from
+ * before 015 and 019 one after their id, which is as unique and is all 024 can
+ * tell apart. One is left at its '#' placeholder, as an update to that version
+ * that stopped in its runner step would have left it. Beside them, logins that
+ * version wrote itself, named as they were made: an invitation never taken up,
+ * with its link, and a suspended trainer. And a change-log line about a username
+ * change, which the history page keeps reading under its old label.
+ */
+function build_portal_before_024(): array {
+    [$pdo, $logins] = build_portal_before_022();
+    apply_migrations($pdo, '022', '023');
+    $name = $pdo->prepare('UPDATE accounts SET username = ? WHERE id = ?');
+    foreach (['mueller' => 'lena.mueller', 'mueller2' => 'lena.mueller2', 'gross' => 'hans-juergen.gross-oezdemir',
+              'staff' => 'trainerin', 'invited' => 'eva.hofer', 'legacy' => 'familie.alt'] as $key => $username)
+        $name->execute([$username, $logins[$key]]);
+    $pdo->prepare("UPDATE accounts SET username = CONCAT('login.', id) WHERE username LIKE '#%' AND id <> ?")->execute([$logins['orphan']]);
+    $later = '2026-09-15 08:00:00';
+    $logins['invitation'] = insert_row($pdo, 'accounts', ['name' => 'Jana Berger', 'email' => 'jana@beispiel.test',
+        'username' => 'jana.berger', 'role' => 'student', 'state' => 'invited', 'locale' => 'en', 'created_at' => $later]);
+    insert_row($pdo, 'auth_tokens', ['account_id' => $logins['invitation'], 'token_hash' => hash('sha256', 'einladung-jana'),
+        'purpose' => 'invite', 'expires_at' => '2026-09-17 08:00:00', 'created_at' => $later]);
+    $logins['suspended'] = insert_row($pdo, 'accounts', ['name' => 'Co-Trainer', 'email' => 'co@beispiel.test',
+        'username' => 'co-trainer', 'role' => 'trainer', 'state' => 'suspended',
+        'password_hash' => '$2y$10$abcdefghijklmnopqrstuuOLDHASHkeptbytheupdateYYYYYYYYYY', 'verified_at' => $later, 'created_at' => $later]);
+    insert_row($pdo, 'record_versions', ['entity' => 'accounts', 'entity_id' => $logins['mueller'], 'operation' => 'update',
+        'label' => 'Familie Müller', 'before_json' => json_encode(['username' => 'lena.m']),
+        'after_json' => json_encode(['username' => 'lena.mueller']), 'actor_id' => $logins['mueller'], 'created_at' => $later]);
+    return [$pdo, $logins];
+}
+
+/**
+ * What 024 is held to, read back: every login, the table's columns and indexes,
+ * every guarded count, the sign-in links and the change log about logins.
+ */
+function login_state(PDO $pdo): array {
+    return ['accounts' => every_login($pdo), 'columns' => table_columns($pdo, 'accounts'), 'indexes' => login_indexes($pdo),
+            'counts' => portal_state($pdo)['counts'],
+            'tokens' => $pdo->query('SELECT * FROM auth_tokens ORDER BY id')->fetchAll(),
+            'versions' => $pdo->query("SELECT * FROM record_versions WHERE entity = 'accounts' ORDER BY id")->fetchAll()];
 }
 
 $nineteen = migration_path('019');
@@ -496,49 +542,68 @@ for ($stopped = 1; $stopped < count($twentyStatements); $stopped++) {
         'online_periods' => table_columns($pdo, 'online_periods'), 'new_login' => new_login($pdo, 'neu@beispiel.test')];
 }
 
-// --- 022 and 023 on logins that already exist --------------------------------
-// Every login the previous version wrote keeps every value it had, and gains a
-// placeholder username that is unique. The rule that one address is one login
-// stays, and the rule that one username is one login comes (ADR 0020 §1, §9).
-// The usernames made from names are the runner's PHP step afterwards, below.
+// --- 022, 023 and 024 on logins from before usernames ---------------------------
+// A portal still on 021 runs all three in one update. The column 022 adds is the
+// one 024 drops, so every login the version before usernames wrote must come out
+// exactly as it went in (ADR 0021 §1).
 $twentyThree = migration_path('023');
 $twentyThreeStatements = migration_statements($twentyThree);
-[$pdo, $logins, $twentyTwoBefore] = build_portal_before_023();
-$withUsername = ['accounts' => every_login($pdo), 'columns' => table_columns($pdo, 'accounts')];
-run_statements($pdo, $twentyThree, $twentyThreeStatements);
-$result['twentytwo'] = [
-    'logins' => $logins, 'statements' => count($twentyThreeStatements),
-    'before' => $twentyTwoBefore, 'after_022' => $withUsername,
-    'after' => ['accounts' => every_login($pdo), 'counts' => portal_state($pdo)['counts'], 'unique' => login_unique_indexes($pdo)],
-    // A second login on the address of a login the update carried through,
-    // with a username nobody has: only the address can be what refuses it. As
-    // typed, in other capitals, and on the legacy quoted address [R2].
-    'same_address' => refusal($pdo, 'Zweiter Zugang', 'mueller@beispiel.test', 'zweiter.zugang'),
-    'address_other_case' => refusal($pdo, 'Zweiter Zugang', 'Mueller@Beispiel.test', 'zweiter.zugang'),
-    'legacy_address_taken' => refusal($pdo, 'Zweiter Zugang', '"familie..alt"@beispiel.test', 'zweiter.zugang'),
-    // The negative: the same write on an address of its own is taken, so the
-    // refusals above are the address's and not every write's.
-    'own_address' => refusal($pdo, 'Zweiter Zugang', 'zweiter.zugang@beispiel.test', 'zweiter.zugang'),
-    'same_username' => refusal($pdo, 'Doppelt', 'doppelt@beispiel.test', 'schon.benannt'),
-    'other_case' => refusal($pdo, 'Doppelt', 'doppelt@beispiel.test', 'Schon.Benannt'),
-    'placeholder_taken' => refusal($pdo, 'Doppelt', 'doppelt@beispiel.test', '#' . $logins['mueller']),
-    'retried' => [],
-];
-// A second run of 023's UPDATE, as a retry after the file finished but before
-// the ledger recorded it: every login is at a placeholder or a name by now.
-run_statements($pdo, $twentyThree, array_slice($twentyThreeStatements, 0, -1));
-$result['twentytwo']['again'] = every_login($pdo);
+$twentyFour = migration_path('024');
+$twentyFourStatements = migration_statements($twentyFour);
+[$pdo, $logins] = build_portal_before_022();
+$usernamesBefore = login_state($pdo);
+apply_migrations($pdo, '022', '024');
+$result['usernames'] = ['logins' => $logins, 'statements' => count($twentyThreeStatements),
+                        'before' => $usernamesBefore, 'after' => login_state($pdo), 'retried' => []];
 
-// --- the runner's step after 023, on the logins carried through ----------------
-// The placeholders become usernames in database/defaults.php, which
-// schema_apply() requires after the files on every update (ADR 0019 §4, kept by
-// 0020), not in a migration. So it is run here, through the application's own
-// functions on the application's own connections to this portal's database -
-// the one configuration this process has - twice, the second time as the next
-// update would. The portal is marked as set up, as every portal being updated
-// is, so only the part that runs on every update runs. One login at '' is
-// written in first, beside the placeholders 023 made.
-$result['twentytwo']['runner'] = ['never_named' => add_login_never_named($pdo)];
+// --- 023 interrupted after each statement and started again, then 024 ----------
+// The last round lets 023 finish and runs its UPDATE once more, as a retry after
+// the file finished but before the ledger recorded it would.
+for ($stopped = 1; $stopped <= count($twentyThreeStatements); $stopped++) {
+    [$pdo] = build_portal_before_022();
+    apply_migrations($pdo, '022', '022');
+    run_statements($pdo, $twentyThree, array_slice($twentyThreeStatements, 0, $stopped));
+    run_statements($pdo, $twentyThree, $stopped < count($twentyThreeStatements)
+        ? $twentyThreeStatements : array_slice($twentyThreeStatements, 0, -1));
+    run_statements($pdo, $twentyFour, $twentyFourStatements);
+    $result['usernames']['retried'][$stopped] = ['accounts' => every_login($pdo), 'indexes' => login_indexes($pdo)];
+}
+
+// --- 024 on the logins the previous version left --------------------------------
+// Every login keeps every value but its username; the column and its index go and
+// nothing else does; afterwards a login can be made without a username, twice,
+// and the address still refuses a second login.
+[$pdo, $logins] = build_portal_before_024();
+$twentyFourBefore = login_state($pdo) + ['two_new' => two_logins_without_a_username($pdo)];
+run_statements($pdo, $twentyFour, $twentyFourStatements);
+$address = fn(string $email): ?string => refusal($pdo, ['name' => 'Zweiter Zugang', 'email' => $email]);
+$result['twentyfour'] = [
+    'logins' => $logins, 'statements' => count($twentyFourStatements), 'before' => $twentyFourBefore,
+    'after' => login_state($pdo) + ['two_new' => two_logins_without_a_username($pdo)],
+    // A second login on the address of a login 024 carried through: as typed, in
+    // other capitals, and on the legacy quoted address [R2]. The negative: the
+    // same write on an address of its own is taken, so what refused the others
+    // was the address.
+    'same_address' => $address('mueller@beispiel.test'),
+    'address_other_case' => $address('Mueller@Beispiel.test'),
+    'legacy_address_taken' => $address('"familie..alt"@beispiel.test'),
+    'own_address' => $address('zweiter.zugang@beispiel.test'),
+];
+// A second run, as the next page view would make it after an update that
+// applied the file but stopped before the ledger recorded it.
+$refused = null;
+try { foreach ($twentyFourStatements as $statement) $pdo->exec($statement); }
+catch (PDOException $e) { $refused = (string)$e->getCode(); }
+$result['twentyfour']['again'] = ['refused' => $refused, 'state' => login_state($pdo)];
+
+// --- the runner's step after 024 -------------------------------------------------
+// database/defaults.php, which schema_apply() requires after the files on every
+// update, run through the application's own functions on the application's own
+// connection to this portal's database, twice, the second time as the next
+// update would. The portal is marked as set up, as every portal being updated is,
+// so only the part that runs on every update runs. Up to 023 that step gave out
+// usernames; after 024 it must not reach for the column at all, or every request
+// would meet a failed update and the portal would stay closed.
 $pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
 $runnerState = function () use ($pdo): array {
     setting_cache_clear();
@@ -546,19 +611,16 @@ $runnerState = function () use ($pdo): array {
             'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn(),
             'dummy_hash' => (string)setting('sign_in_dummy_hash')];
 };
-$runnerStep = static function (): void { require APP_ROOT . '/database/defaults.php'; };
-$result['twentytwo']['runner']['before'] = $runnerState();
-$runnerStep();
-$result['twentytwo']['runner']['first'] = $runnerState();
-$runnerStep();
-$result['twentytwo']['runner']['second'] = $runnerState();
-
-// --- 023 interrupted after each statement, then started again from the first --
-for ($stopped = 1; $stopped < count($twentyThreeStatements); $stopped++) {
-    [$pdo] = build_portal_before_023();
-    run_statements($pdo, $twentyThree, array_slice($twentyThreeStatements, 0, $stopped));
-    run_statements($pdo, $twentyThree, $twentyThreeStatements);
-    $result['twentytwo']['retried'][$stopped] = ['accounts' => every_login($pdo), 'unique' => login_unique_indexes($pdo)];
-}
+// What it threw, if anything, so a failure reads as an assertion in the suite
+// rather than as this process stopping.
+$runnerStep = static function (): string {
+    try { require APP_ROOT . '/database/defaults.php'; return ''; }
+    catch (Throwable $e) { return get_class($e) . ': ' . $e->getMessage(); }
+};
+$runner = ['before' => $runnerState(), 'first_error' => $runnerStep()];
+$runner['first'] = $runnerState();
+$runner['second_error'] = $runnerStep();
+$runner['second'] = $runnerState();
+$result['twentyfour']['runner'] = $runner;
 
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

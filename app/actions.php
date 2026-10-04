@@ -51,93 +51,116 @@ function change_account_email(int $accountId, string $email): void {
 }
 
 /**
- * Change a login's username, for its holder only (ADR 0020, §2). The one way a
- * username is changed: from Mein Konto (username_change) and from the
- * invitation's activation page, so both follow the same rules.
+ * Make an invited login and send its invitation - every login made in the
+ * portal comes from here (ADR 0021, §5): a team member's (account_invite), a
+ * student's own (invite_student()) and one by address alone (email_invite).
+ * Returns its id.
  *
- * Returns 'unchanged', 'taken' or 'changed'. A taken name is answered rather
- * than thrown [R3]: a throw would roll back the audit row that makes each of
- * these attributable. Five a day per login, on a bucket of its own, so nobody
- * signed in can walk the list of names [S2]. The row is locked before tracked()
- * takes its snapshot, and history_never_recorded() keeps the hash out of it, so
- * the change log line says only what changed [S6]. Not auth_version: a username
- * is not a secret, and its holder changes it back the same way.
+ * Every refusal comes before the write: an address that is another login's,
+ * and mail that cannot go out yet, because a login nobody can be invited to is
+ * somebody locked out of something they never saw. Nobody sets another
+ * person's password; they choose their own on the page the link opens.
  *
- * The caller flashes, holds the form and chooses the page. It also decides who
- * may ask: this trusts that $account is the person asking. $actor is for the
- * activation page only, where nobody is signed in yet: it passes the token's
- * own login, so the change log names who chose the name rather than
- * „automatisch" (ADR 0020, §2 as amended). Mein Konto passes none; the session
- * names the holder.
+ * $attach links the login to what it belongs to before the invitation is
+ * written, because the mail's words depend on it: a login no student points to
+ * is asked for the person's details (send_account_token()).
  */
-function change_own_username(array $account, string $typed, ?int $actor = null): string {
-    $username=username_value($typed);
-    if($username===(string)$account['username']) return 'unchanged';
-    lock_row('accounts',(int)$account['id']);
-    if(one('SELECT id FROM accounts WHERE username=? FOR UPDATE',[$username])) {
-        throttle('username-taken',account_identity((int)$account['id']),5,86400);
-        audit('account.username_taken','account',(int)$account['id'],$actor);
-        return 'taken';
-    }
-    tracked('accounts',(int)$account['id'],(string)$account['name'],
-        fn()=>run('UPDATE accounts SET username=? WHERE id=?',[$username,(int)$account['id']]),'update',$actor);
-    audit('account.username_changed','account',(int)$account['id'],$actor);
-    return 'changed';
+function invite_login(string $name, string $email, string $role, string $locale, ?Closure $attach = null): int {
+    refuse_address_in_use($email);
+    if(!account_mail_ready())
+        throw new UserError(t('Eine Einladung lässt sich noch nicht verschicken. ','An invitation cannot be sent yet. ').account_mail_missing());
+    run('INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,?,?,?)',[$name,$email,$role,$locale,now()]);
+    $accountId=(int)db()->lastInsertId();
+    if($attach) $attach($accountId);
+    send_account_token(one('SELECT * FROM accounts WHERE id=?',[$accountId]),'invite');
+    audit('account.invited','account',$accountId);
+    return $accountId;
 }
 
 /**
- * What a person choosing a username is told when it is taken, on Mein Konto and
- * on the activation page alike (spec §4.5): the one bounded answer that a name
- * has a login (ADR 0020, §2, N3), with a way out.
+ * Delete a login, its links and the mail still waiting for it - the one way a
+ * login is deleted: on Konten, by withdrawing an invitation, and with a student
+ * whose login was never set up. Conversations, notifications and presence go
+ * by their foreign keys. The caller refuses whatever it refuses first.
  */
-function username_taken_answer(): string {
-    return t('Diesen Benutzernamen hat schon jemand. Such dir einen anderen aus, zum Beispiel mit einer Zahl am Ende.',
-             'Somebody already has that username. Choose another one, for example with a number at the end.');
+function delete_login(int $accountId): void {
+    run('DELETE FROM auth_tokens WHERE account_id=?',[$accountId]);
+    run('DELETE FROM mail_jobs WHERE account_id=?',[$accountId]);
+    run('DELETE FROM accounts WHERE id=?',[$accountId]);
+}
+
+/** A login's name from a student's two, cut to what accounts.name holds. */
+function login_name_for(string $first, string $last): string {
+    return rtrim(mb_substr($first.' '.$last,0,TEXT_LINE_MAX));
 }
 
 /**
- * A student's own login, made by invitation - the only code that sets
- * students.account_id (ADR 0010, as moved by ADR 0020 §6), apart from
- * demo_fill(), whose example families are made with their logins already in
- * use. Returns the account_id and the username it was given.
+ * A student's own login, made by invitation - one of the three places that set
+ * students.account_id (ADR 0021), with create_own_student() and demo_fill().
+ * Returns the login's id.
  *
  * For the access card's button (student_invite) and for creating a student with
  * „Gleich einladen" (student_save). The caller holds the student's row.
- *
- * Every refusal comes before the first write: a student who already has a
- * login, an address that cannot be written, an address that is another login's
- * - a brother or sister gets an address of their own, and a parent's belongs on
- * the contacts - and mail that cannot be sent yet, because a login nobody can be
- * invited to is a family locked out of something they never saw.
  *
  * The invitation goes to the address on the student rather than to one of the
  * people on their emergency list. Those are two different questions - who do I
  * ring when she falls over, who reads the invoices - and one row answering both
  * is how a grandmother with no email ended up being the reason a family could
  * not sign in. Everything else about the login comes from the student too: the
- * page offers a button, not a form.
+ * page offers a button, not a form. German until they choose, like every page
+ * before they sign in.
  */
-function invite_student(array $student): array {
+function invite_student(array $student): int {
     if($student['account_id'])
         throw new UserError(t('Dieses Kind hat schon ein eigenes Konto. Zugang, Einladung und Adresse werden dort verwaltet.',
                               'This student already has an account of their own. Access, invitation and address are managed there.'));
     $email=email_value((string)$student['email']);
-    refuse_address_in_use($email);
-    if(!account_mail_ready())
-        throw new UserError(t('Eine Einladung lässt sich noch nicht verschicken. ','An invitation cannot be sent yet. ').account_mail_missing());
-    $name=rtrim(mb_substr($student['first_name'].' '.$student['last_name'],0,TEXT_LINE_MAX));
-    $username=username_for_new_account((string)$student['first_name'],(string)$student['last_name']);
-    // German until they choose, like every page before they sign in.
-    run("INSERT INTO accounts (name,email,username,role,locale,created_at) VALUES (?,?,?,'student','de',?)",[$name,$email,$username,now()]);
-    $accountId=(int)db()->lastInsertId();
+    $name=login_name_for((string)$student['first_name'],(string)$student['last_name']);
     // Tracked, so the student's change log says when they got their login and
     // at which address - the one line that writes account_id is the one line
     // worth being able to read back.
-    tracked('students',(int)$student['id'],$student['first_name'].' '.$student['last_name'],
-        fn()=>run('UPDATE students SET account_id=?,email=?,updated_at=?,revision=revision+1 WHERE id=?',[$accountId,$email,now(),$student['id']]));
-    send_account_token(one('SELECT * FROM accounts WHERE id=?',[$accountId]),'invite');
-    audit('account.invited','account',$accountId);
-    return ['account_id'=>$accountId,'username'=>$username];
+    return invite_login($name,$email,'student','de',fn(int $accountId)=>tracked('students',(int)$student['id'],$student['first_name'].' '.$student['last_name'],
+        fn()=>run('UPDATE students SET account_id=?,email=?,updated_at=?,revision=revision+1 WHERE id=?',[$accountId,$email,now(),$student['id']])));
+}
+
+/**
+ * The first name, last name and birth date typed on the page an invitation by
+ * address opens (ADR 0021, §3) - the only things read from that post for the
+ * student - checked, or a refusal. Asked before anything is written.
+ */
+function own_student_details(): array {
+    $first=post('first_name'); $last=post('last_name');
+    if($first==='' || $last==='' || mb_strlen($first)>100 || mb_strlen($last)>100)
+        throw new UserError(t('Bitte Vor- und Nachnamen eintragen.','Please enter the first and last name.'));
+    return ['first_name'=>$first,'last_name'=>$last,'birth_date'=>(string)birth_date_value(post('birth_date'),true)];
+}
+
+/**
+ * The student an invitation by address makes for its holder, in the transaction
+ * that activates the login (ADR 0021, §3). Returns the student's id.
+ *
+ * Only activate calls it, and only when setup_creates_student() says so for the
+ * locked link. The address is the login's own, the rest is what any new student
+ * starts with (new_student_defaults()). Nobody is signed in yet, so the change
+ * log and the audit name the link's own login - the one place an actor is
+ * passed. The unique index on students.account_id refuses a second student, so
+ * a form sent twice cannot make two.
+ */
+function create_own_student(int $accountId, string $email, array $details): int {
+    $d=new_student_defaults();
+    $name=$details['first_name'].' '.$details['last_name'];
+    $id=tracked_insert('students',$name,function() use ($accountId,$email,$details,$d): int {
+        run('INSERT INTO students (account_id,first_name,last_name,email,address,phone,birth_date,joined_on,status,level_id,age_group_id,internal_notes,updated_at,created_at)'
+            .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            [$accountId,$details['first_name'],$details['last_name'],$email,$d['address'],$d['phone'],$details['birth_date'],
+             $d['joined_on'],$d['status'],$d['level_id'],$d['age_group_id'],$d['internal_notes'],now(),now()]);
+        return (int)db()->lastInsertId();
+    },$accountId);
+    // The login is called what its holder is called, so staff see a name
+    // where they saw the address until now.
+    run('UPDATE accounts SET name=? WHERE id=?',[login_name_for($details['first_name'],$details['last_name']),$accountId]);
+    audit('student.saved','student',$id,$accountId);
+    return $id;
 }
 
 /**
@@ -155,51 +178,24 @@ function refuse_unless_student_login(array $account): void {
 }
 
 /**
- * What was typed into the one box of the sign-in and „vergessen" pages, as
- * [kind, value] (ADR 0020, §3).
- *
- * An '@' anywhere makes it an address, normalised the way addresses are stored;
- * anything else is a username, normalised the way usernames are. A username can
- * never hold an '@' - its alphabet is a-z, 0-9, dot and hyphen - so the two
- * kinds cannot overlap and the shape alone decides. One derivation for the
- * lookup and for the throttle: two spellings of it would mean a sign-in that
- * succeeds while its counter keeps climbing under a key nothing ever clears.
+ * The address typed into the sign-in or „vergessen" box, normalised the way
+ * addresses are stored. One derivation for the lookup and for the throttle: two
+ * spellings of it would mean a sign-in that succeeds while its counter keeps
+ * climbing under a key nothing ever clears.
  */
-function attempted_sign_in(): array {
-    $typed=post('username');
-    return str_contains($typed,'@') ? ['address',email_normalised($typed)] : ['username',username_normalised($typed)];
-}
-
-/**
- * The bucket attempts at one account are counted into.
- *
- * Spelled in one place, for the same reason rate_limit_bucket() is: counting
- * and clearing have to agree, and a clear that spelled the key differently
- * would empty nothing, silently, and leave the family locked out.
- */
-function account_identity(int $accountId): string { return 'account:'.$accountId; }
+function attempted_address(): string { return email_normalised(post('email')); }
 
 /*
- * The buckets a sign-in and „vergessen" count into: the typed value, normalised
- * - and deliberately not the row it names. Do not "improve" this by looking the
- * account up first. That lookup is what made the form answer, through the
- * throttle, whether an address had an account (ADR 0007), and now that a login
- * has two names it would add a second oracle: fill the username's bucket, try
- * the address once, and the answer says whether the two are one login (ADR
- * 0020, §3). A known value and an unknown one are counted exactly alike.
+ * The bucket a sign-in and „vergessen" count into: the typed address,
+ * normalised - and deliberately not the row it names. Spelled in one place,
+ * because counting and clearing have to agree: a clear that spelled the key
+ * differently would empty nothing, silently, and leave the family locked out.
  *
- * The cost is accepted: a login has two buckets, so 10 + 10 guesses a quarter
- * hour for whoever knows both names, inside the per-IP 60; and locking
- * lena.mueller leaves her address open, and the other way round (S3, softened).
- * Each spelled once, here, because counting and clearing have to agree.
+ * Do not "improve" this by looking the account up first: that lookup is what
+ * made the form answer, through the throttle, whether an address had an
+ * account (ADR 0007). A known address and an unknown one are counted alike.
  */
-function username_identity(string $username): string { return 'username:'.$username; }
 function address_identity(string $address): string { return 'address:'.$address; }
-/** The bucket for one attempted_sign_in(). */
-function sign_in_identity(array $attempt): string {
-    [$kind,$value]=$attempt;
-    return $kind==='address' ? address_identity($value) : username_identity($value);
-}
 
 function handle_post(): array {
     $action=post('action');
@@ -207,18 +203,18 @@ function handle_post(): array {
     $ip=$_SERVER['REMOTE_ADDR']??'local';
     if(in_array($action,['login','forgot','activate'],true)) throttle('auth-ip',$ip,60);
     if($action==='login') {
-        throttle('login',sign_in_identity(attempted_sign_in()),10);
+        throttle('login',address_identity(attempted_address()),10);
         // Made here, outside the action's transaction, on the one occasion it
         // is missing: inside, a refused sign-in would roll it back and the next
         // one would make it again (sign_in_dummy_hash()).
         sign_in_dummy_hash();
     }
-    // Both counted on every request: three an hour per typed name, so nobody
-    // can fill a family's inbox or keep replacing the link they are about to
-    // use; ten an hour from one IP, so nobody can walk through many names (S7).
-    // A login has two names, so up to six mails an hour can reach one mailbox.
-    if($action==='forgot') throttle_all([['forgot',sign_in_identity(attempted_sign_in()),3,3600],['forgot-ip',$ip,10,3600]]);
-    if(in_array($action,['password_change','email_change','username_change'],true)) {
+    // Both counted on every request: three an hour per typed address, so
+    // nobody can fill a family's inbox or keep replacing the link they are
+    // about to use; ten an hour from one IP, so nobody can walk through many
+    // addresses (S7).
+    if($action==='forgot') throttle_all([['forgot',address_identity(attempted_address()),3,3600],['forgot-ip',$ip,10,3600]]);
+    if(in_array($action,['password_change','email_change'],true)) {
         $actor=require_user();throttle('account-security',(string)$actor['id'],10);
     }
     $request=post('request_id');
@@ -244,17 +240,16 @@ function handle_post(): array {
  * end in sign_in(): a password typed correctly, and a one-time link opened out
  * of the mailbox the address belongs to. Every purpose such a link carries
  * proves it - an invitation accepted, a password reset, a changed address
- * confirmed - so all three clear the buckets rather than 'reset' alone. Without
+ * confirmed - so all three clear the bucket rather than 'reset' alone. Without
  * the link half, the reset sent to a locked-out family lets them in once and
  * leaves them locked out of the next sign-in until the window runs down.
  *
- * Both of the proven login's buckets are cleared - its username's and its
- * address's - because either may be what was being typed (ADR 0020, §3). A
- * wrong password stays counted; the per-IP limit is never cleared, because one
- * valid account must not be able to refresh the limit that slows down guessing
- * at all the others; and neither 'forgot' limit is ever cleared, since typing a
- * name proves nothing about who typed it and clearing it would hand anybody an
- * unlimited mailer pointed at one family's inbox.
+ * The proven login's bucket, its address's, is cleared. A wrong password stays
+ * counted; the per-IP limit is never cleared, because one valid account must not
+ * be able to refresh the limit that slows down guessing at all the others; and
+ * neither 'forgot' limit is ever cleared, since typing an address proves nothing
+ * about who typed it and clearing it would hand anybody an unlimited mailer
+ * pointed at one family's inbox.
  *
  * It runs after the transaction rather than inside the action because this is
  * the first moment at which "the attempt succeeded" is a fact - throttle_clear()
@@ -268,30 +263,29 @@ function forget_attempts_after_success(string $action): void {
     // another file and this one should not depend on knowing it.
     $who=current_user();
     if(!$who) return;
-    throttle_clear('login',username_identity((string)$who['username']));
     throttle_clear('login',address_identity(email_normalised((string)$who['email'])));
 }
 
 function dispatch_action(string $action): array {
     switch($action) {
     case 'login':
-        /* By username or by address, in one box (ADR 0020, §3). The lookup is
-           account_for_sign_in(), which looks nothing up that fails its format
-           and uses no row that does not match exactly what was typed.
+        /* By address (ADR 0021, §1). The lookup is account_for_sign_in(), which
+           looks nothing up that fails its format and uses no row that does not
+           match exactly what was typed.
 
            Every refusal runs exactly one password_verify(): against the login's
            own hash where there is one - a suspended login, an invitation
            somebody already set a password on - and against sign_in_dummy_hash()
-           where there is none - nothing found, a value that cannot be a name, an
-           invitation not yet accepted. So how long the answer takes does not
-           say whether the login exists, and the words are the same for every
-           failure. Nothing is hashed on the way to a refusal. */
-        $a=account_for_sign_in(...attempted_sign_in());
+           where there is none - nothing found, a value that cannot be an
+           address, an invitation not yet accepted. So how long the answer takes
+           does not say whether the login exists, and the words are the same for
+           every failure. Nothing is hashed on the way to a refusal. */
+        $a=account_for_sign_in(attempted_address());
         $hash=(string)($a['password_hash']??'');
         $real=$hash!=='';
         if(!password_verify(post('password'),$real?$hash:sign_in_dummy_hash()) || !$real || $a['state']!=='active' || !$a['verified_at'])
-            throw new UserError(t('Anmeldung nicht möglich. Bitte Benutzername oder E-Mail-Adresse und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link in der Einladung öffnen.',
-                                  'Could not sign you in. Please check your username or email address and your password. Not set up yet? Open the link in your invitation first.'));
+            throw new UserError(t('Anmeldung nicht möglich. Bitte E-Mail-Adresse und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link in der Einladung öffnen.',
+                                  'Could not sign you in. Please check your email address and password. Not set up yet? Open the link in your invitation first.'));
         // Over the very hash just verified, and nothing else: a password changed
         // in the meantime is not overwritten with this one, and so the read
         // above needs no lock (security review F2).
@@ -311,8 +305,8 @@ function dispatch_action(string $action): array {
         if(!headers_sent()) header('Clear-Site-Data: "cache"');
         return ['login',[]];
     case 'forgot':
-        /* „Passwort vergessen", by username or by address (ADR 0020, §4). The
-           answer is the same whatever happened, and names no address, so the
+        /* „Passwort vergessen", by address (ADR 0021, §1). The answer is the
+           same whatever happened, and names no address, so the
            page does not say whether a login exists (ADR 0019 closed ADR 0007's
            channel; this keeps it closed). The mail goes to the address as
            stored, never to what was typed [S1].
@@ -321,39 +315,32 @@ function dispatch_action(string $action): array {
            again: that is its way in, and accepting it records the privacy
            acknowledgement a reset would skip - sending nothing meant a call to
            the trainer. A suspended login gets nothing. */
-        $a=account_for_sign_in(...attempted_sign_in(),lock:true);
+        $a=account_for_sign_in(attempted_address(),lock:true);
         if($a && account_mail_ready()) {
             if($a['state']==='active' && $a['verified_at']) send_account_token($a,'reset');
             elseif($a['state']==='invited') { cancel_account_mail((int)$a['id']); send_account_token($a,'invite'); }
         }
-        flash(t('Wenn es dazu einen Zugang gibt, ist eine E-Mail an dessen Adresse unterwegs.',
-                'If there is a login for it, an email is on its way to its address.'));
+        flash(t('Wenn zu dieser Adresse ein Zugang gehört, ist eine E-Mail dorthin unterwegs.',
+                'If this address has a login, an email is on its way to it.'));
         return ['forgot',[]];
     case 'activate':
         $r=token_record($_SESSION['activation_hash']??'',true);
         if(!$r || $r['state']==='suspended') throw new UserError(t('Dieser Link ist ungültig oder abgelaufen. Bitte eine neue Einladung bzw. einen neuen Link anfordern.','This link is invalid or expired. Please request a new invitation or reset link.'));
+        $ownStudent=0;
         if($r['purpose']==='invite') {
+            // Everything read and checked before anything is written. Whether
+            // the person's student is made here is decided by the locked link,
+            // never by what was posted (ADR 0021, §3).
+            $details=setup_creates_student($r) ? own_student_details() : null;
             if(!post('privacy_seen') || !setting('privacy_ready',false)) throw new UserError(t('Bitte die Datenschutzhinweise lesen und bestätigen.','Please read and acknowledge the privacy notice.'));
             $pass=strong_password(post('password'));
             if($pass!==post('password_confirm')) throw new UserError(t('Die Passwörter stimmen nicht überein.','Passwords do not match.'));
             // Whoever this browser was signed in as - or was viewing the portal
             // as - is not who is setting up this login. Their session ends
-            // here, even when the username below is taken and nobody is signed
-            // in afterwards: a view left behind would hand the next person
-            // „Ansicht beenden" (security review F1). The change log names the
-            // link's holder explicitly: the locked token's own login, never
-            // anything posted.
+            // here: a view left behind would hand the next person „Ansicht
+            // beenden" (security review F1).
             unset($_SESSION['user_id'],$_SESSION['auth_version'],$_SESSION['impersonator_id']); current_user(true);
-            // The username, as the person chose it on this page (ADR 0020, §2).
-            // The link proves the holder, so no current password is asked. A
-            // taken name comes back to this page with what was typed, having
-            // activated nothing; the password boxes come back empty, because
-            // is_secret_field() never holds them.
-            if(post('username')!=='' && change_own_username(one('SELECT * FROM accounts WHERE id=?',[$r['account_id']]),post('username'),(int)$r['account_id'])==='taken') {
-                flash(username_taken_answer(),'error');
-                remember_input('activate');
-                return ['activate',[]];
-            }
+            if($details) $ownStudent=create_own_student((int)$r['account_id'],(string)$r['email'],$details);
             run("UPDATE accounts SET password_hash=?,state='active',verified_at=?,auth_version=auth_version+1,privacy_version=?,newsletter=?,notifications=?,locale=? WHERE id=?",[password_hash($pass,PASSWORD_DEFAULT),now(),notice_version(),post('newsletter')?1:0,post('notifications')?1:0,locale(),$r['account_id']]);
             record_consent((int)$r['account_id'],'privacy_acknowledged',true);
             record_consent((int)$r['account_id'],'newsletter',(bool)post('newsletter'));
@@ -380,20 +367,23 @@ function dispatch_action(string $action): array {
         // rather than whoever this browser was signed in as. Mein Konto and the
         // access card list it for a fortnight (password_resets_for()).
         if($r['purpose']==='reset') audit('account.password_reset','account',(int)$r['account_id']);
-        // Both names that sign in, said once more now that they are final (spec §4.5).
-        $bothNames=t(' Anmelden kannst du dich mit ',' You can sign in with ').$signed['username']
-            .t(' oder mit ',' or with ').$signed['email'].'.';
+        if($ownStudent) {
+            // Staff hear about somebody new, with a link to their page (spec S1).
+            notify_staff('request',t('Neu im Portal: ','New in the portal: ').login_holder_name($signed),
+                strtr(t('Hat sich über die Einladung an {email} eingerichtet. Noch in keinem Kurs.','Set up through the invitation to {email}. Not in a course yet.'),['{email}'=>(string)$signed['email']]),
+                'student',['id'=>$ownStudent]);
+        }
         if($r['purpose']==='invite') {
-            flash(t('Dein Konto ist bereit.','Your account is ready.').$bothNames);
+            flash(strtr(t('Dein Konto ist bereit. Du meldest dich ab jetzt mit {email} an.','Your account is ready. From now on you sign in with {email}.'),['{email}'=>(string)$signed['email']]));
             // A family that has only just arrived is shown what is still missing
-            // on their own page (family_next_steps()), once; every later
-            // sign-in lands where landing_after_sign_in() says.
+            // on their own page (family_next_steps()), once - a course first;
+            // every later sign-in lands where landing_after_sign_in() says.
             $own=login_student_id((int)$signed['id']);
             if($own && family_next_steps($own)) return ['student',['id'=>$own]];
         } elseif($r['purpose']==='reset') {
-            flash(t('Dein neues Passwort gilt ab sofort.','Your new password works from now on.').$bothNames);
+            flash(t('Dein neues Passwort gilt ab sofort.','Your new password works from now on.'));
         } else {
-            flash(t('Deine neue E-Mail-Adresse ist bestätigt. Du meldest dich mit ihr oder mit deinem Benutzernamen an.','Your new email address is confirmed. You sign in with it or with your username.'));
+            flash(t('Deine neue E-Mail-Adresse ist bestätigt. Du meldest dich ab jetzt mit ihr an.','Your new email address is confirmed. From now on you sign in with it.'));
         }
         return landing_after_sign_in($signed);
     case 'unsubscribe':
@@ -407,15 +397,10 @@ function dispatch_action(string $action): array {
         flash(t('Du wurdest für diese E-Mails abgemeldet.','You have unsubscribed from these emails.')); return ['login',[]];
     case 'account_invite':
         /* A trainer's or an administrator's login, by invitation - the only way
-           one is made in the portal (ADR 0020, §5). Nobody sets another person's
-           password: they choose their own on the page the link opens. */
+           one is made in the portal (ADR 0021, §5). */
         $u=require_admin(); $role=choose(staff_role_posted(),assignable_roles($u));
         $email=email_value(required_text('email',254)); $name=required_text('name');
-        refuse_address_in_use($email);
-        $username=username_for_new_account(...full_name_parts($name));
-        run('INSERT INTO accounts (name,email,username,role,locale,created_at) VALUES (?,?,?,?,?,?)',[$name,$email,$username,$role,choose(post('locale','de'),['de','en']),now()]);
-        $id=(int)db()->lastInsertId();
-        send_account_token(one('SELECT * FROM accounts WHERE id=?',[$id]),'invite');audit('account.invited','account',$id);
+        invite_login($name,$email,$role,choose(post('locale','de'),['de','en']));
         flash(t('Konto angelegt. Die Einladung liegt im Postausgang.','Account created. The invitation is in the outbox.'));return ['accounts',[]];
     case 'student_invite':
         /* The access card's button. A post from a page that still offers
@@ -423,22 +408,42 @@ function dispatch_action(string $action): array {
            here reads either (ADR 0020, §5). */
         require_staff();
         $s=lock_row('students',(int)student((int)post('student_id'))['id']);
-        $made=invite_student($s);
-        flash(t('Die Einladung an ','The invitation to ').email_normalised((string)$s['email']).t(' ist unterwegs. Benutzername: ',' is on its way. Username: ').$made['username'].'.');
+        invite_student($s);
+        flash(strtr(t('Die Einladung an {email} ist unterwegs.','The invitation to {email} is on its way.'),['{email}'=>email_normalised((string)$s['email'])]));
         return ['student',['id'=>$s['id']]];
+    case 'email_invite':
+        /* Option 1 of ADR 0021, §3: staff type an address and a language, and
+           the person makes their own student on the page the link opens. A
+           refusal comes back to the students page with what was typed, which
+           opens the form again (held_for()). */
+        require_staff();
+        $email=email_value(post('email'));
+        $locale=choose(post('locale','de'),['de','en']);
+        // A login at the address is the first thing to sort out; invite_login()
+        // asks it again as it writes.
+        refuse_address_in_use($email);
+        if($student=student_without_login_at($email))
+            throw new UserError(strtr(t('Diese Adresse steht schon bei {name}. Lade dort unter „Zugang zum Portal“ ein – sonst gibt es die Person zweimal.',
+                                        'This address is already on {name}. Invite from there under “Access to the portal” – otherwise the person exists twice.'),
+                                      ['{name}'=>$student['first_name'].' '.$student['last_name']]));
+        invite_login('',$email,'student',$locale);
+        flash(strtr(t('Die Einladung an {email} ist unterwegs.','The invitation to {email} is on its way.'),['{email}'=>$email]));
+        return ['students',['invitations'=>1]];
     case 'account_state':
-        $u=require_staff();$id=(int)post('id');$mode=choose(post('mode'),['suspend','restore','delete','reinvite','reset_link']);
+        $u=require_staff();$id=(int)post('id');$mode=choose(post('mode'),['suspend','restore','delete','withdraw','reinvite','reset_link']);
         $a=one('SELECT * FROM accounts WHERE id=? FOR UPDATE',[$id]);
         // Nobody acts on their own login here - that is Mein Konto or
         // „vergessen" - and a trainer only on a student's.
         if(!$a || (int)$u['id']===$id || ($u['role']!=='admin' && $a['role']!=='student')) throw new UserError(t('Dieses Konto kann hier nicht geändert werden.','This account cannot be changed here.'));
         // Lock all administrators so concurrent requests cannot remove the last one.
         $admins=rows("SELECT id FROM accounts WHERE role='admin' AND state='active' FOR UPDATE");
-        if($a['role']==='admin' && $a['state']==='active' && count($admins)<=1 && in_array($mode,['suspend','delete'],true)) throw new UserError(t('Der letzte Administrator muss erhalten bleiben.','The last administrator must remain active.'));
+        if($a['role']==='admin' && $a['state']==='active' && count($admins)<=1 && in_array($mode,['suspend','delete','withdraw'],true)) throw new UserError(t('Der letzte Administrator muss erhalten bleiben.','The last administrator must remain active.'));
         // A student's login is managed from that student's page, so that is where
-        // she lands again. Looked up now, because after a delete the foreign key
-        // has already cut the link and there is nobody left to find.
+        // she lands again, and an invitation by address from the students page's
+        // list. Looked up now, because after a delete the foreign key has
+        // already cut the link and there is nobody left to find.
         $studentId=$a['role']==='student'?login_student_id($id):0;
+        $back=$studentId?['student',['id'=>$studentId]]:(is_open_invitation($id)?['students',['invitations'=>1]]:['accounts',[]]);
         $said=t('Konto aktualisiert.','Account updated.');
         if($mode==='reinvite') {
             if($a['state']!=='invited') throw new UserError(t('Nur offene Einladungen können erneut versendet werden.','Only pending invitations can be resent.'));
@@ -458,22 +463,27 @@ function dispatch_action(string $action): array {
             // The address, so she can tell the family where to look; never the link.
             $said=t('Ein Link für ein neues Passwort ist an ','A link for a new password is on its way to ').$a['email']
                 .t(' unterwegs. Er gilt eine Stunde; bis dahin gilt das alte Passwort weiter.','. It is valid for one hour; until then the old password keeps working.');
+        } elseif($mode==='delete') {
+            // The address, which says which login this is (ADR 0021, §1).
+            if(email_normalised(post('confirmation'))!==email_normalised((string)$a['email'])) throw new UserError(t('Zum Löschen die E-Mail-Adresse eingeben.','Enter the email address to delete the login.'));
+            delete_login($id);
+        } elseif($mode==='withdraw') {
+            // Nothing is lost that inviting again would not bring back, so
+            // nothing is typed to confirm it - but only for a login never set up.
+            if($a['verified_at']!==null) throw new UserError(t('Zurückziehen lässt sich nur eine Einladung, die noch nicht angenommen ist.','Only an invitation not yet accepted can be withdrawn.'));
+            delete_login($id);
+            $said=strtr(t('Die Einladung an {email} ist zurückgezogen. Versehentlich? Lade die Adresse einfach neu ein.',
+                          'The invitation to {email} has been withdrawn. By mistake? Just invite the address again.'),['{email}'=>(string)$a['email']]);
         } else {
             run('DELETE FROM auth_tokens WHERE account_id=?',[$id]);cancel_account_mail($id);
-            if($mode==='delete') {
-                // The username, which says which login this is (ADR 0019, §9;
-                // kept by 0020, §8).
-                if(username_normalised(post('confirmation'))!==$a['username']) throw new UserError(t('Zum Löschen den Benutzernamen eingeben.','Enter the username to delete the account.'));
-                run('DELETE FROM mail_jobs WHERE account_id=?',[$id]);
-                run('DELETE FROM accounts WHERE id=?',[$id]);
-            } else run('UPDATE accounts SET state=?,auth_version=auth_version+1 WHERE id=?',[$mode==='suspend'?'suspended':($a['verified_at']?'active':'invited'),$id]);
+            run('UPDATE accounts SET state=?,auth_version=auth_version+1 WHERE id=?',[$mode==='suspend'?'suspended':($a['verified_at']?'active':'invited'),$id]);
         }
         audit('account.'.$mode,'account',$id);flash($said);
-        return $studentId?['student',['id'=>$studentId]]:['accounts',[]];
+        return $back;
     case 'student_save':
         $u=require_user();$id=(int)post('id');$existing=$id?student($id):null;
         if(!$existing) require_staff();
-        $first=required_text('first_name',100);$last=required_text('last_name',100);$birth=date_value(post('birth_date'));
+        $first=required_text('first_name',100);$last=required_text('last_name',100);$birth=birth_date_value(post('birth_date'));
         // One line, the way the paper form asks it, because it is typed once and
         // printed once and never sorted on. Her own number rather than an
         // emergency contact's: for an adult member those are the same person,
@@ -485,7 +495,7 @@ function dispatch_action(string $action): array {
         // the held form does bring back what they typed (spec §6.2).
         $stale=fn()=>new UserError(t('Inzwischen hat jemand anderes etwas an diesem Profil gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal speichern.',
                                      'Somebody else saved something on this profile in the meantime. What you typed is still here – please check it and save again.'));
-        $made=null;$readdress=false;
+        $made=false;$readdress=false;
         if(is_staff($u)) {
             // account_id is neither read nor written here: a login is given by
             // invite_student() and taken away by deleting it, nothing else
@@ -588,7 +598,7 @@ function dispatch_action(string $action): array {
                     save_custom_fields($new,true);
                     return $new;
                 });
-                if($invite) $made=invite_student(one('SELECT * FROM students WHERE id=?',[$id]));
+                if($invite) $made=(bool)invite_student(one('SELECT * FROM students WHERE id=?',[$id]));
             }
         } else {
             /* A family completing its own details (ADR 0020, §7): names, birth
@@ -610,8 +620,8 @@ function dispatch_action(string $action): array {
             });
         }
         audit('student.saved','student',$id);
-        if($made) flash($first.' '.$last.t(' ist angelegt. Die Einladung an ',' has been added. The invitation to ').$email
-            .t(' ist unterwegs; Benutzername: ',' is on its way; username: ').$made['username'].'.');
+        if($made) flash(strtr(t('{name} ist angelegt. Die Einladung an {email} ist unterwegs.','{name} has been added. The invitation to {email} is on its way.'),
+            ['{name}'=>$first.' '.$last,'{email}'=>$email]));
         else flash((is_staff($u)?t('Schüler gespeichert.','Student saved.'):t('Deine Angaben sind gespeichert.','Your details are saved.'))
             .($readdress?' '.t('Die Einladung ist an die neue Adresse unterwegs; der Link an die alte gilt nicht mehr.','The invitation is on its way to the new address; the link sent to the old one no longer works.'):''));
         return ['student',['id'=>$id]];
@@ -619,11 +629,22 @@ function dispatch_action(string $action): array {
         require_staff();$s=student((int)post('id'));
         if(post('confirmation')!==$s['first_name'].' '.$s['last_name']) throw new UserError(t('Bitte den vollständigen Namen eingeben.','Please enter the full name.'));
         if(scalar('SELECT COUNT(*) FROM charges WHERE student_id=?',[$s['id']])) throw new UserError(t('Es sind Beiträge vorhanden. Mitgliedschaft stattdessen beenden; Zahlungsdaten bleiben erhalten.','Charges exist. End the membership instead to retain payment records.'));
+        $login=$s['account_id']?lock_row('accounts',(int)$s['account_id']):null;
         tracked('students',(int)$s['id'],$s['first_name'].' '.$s['last_name'],fn()=>run('DELETE FROM students WHERE id=?',[$s['id']]),'delete');
         audit('student.deleted','student',(int)$s['id']);
+        // A student's login never set up goes with them (ADR 0021, §4): its
+        // live link would otherwise let the person make the record again. One
+        // that was set up stays, as a login left behind on Konten (ADR 0010).
+        $withdrawn=login_goes_with_student($login);
+        if($withdrawn) {
+            delete_login((int)$login['id']);
+            audit('account.withdraw','account',(int)$login['id']);
+        }
         // The change log keeps the deleted row to read, not to restore (app/history.php).
         flash(t('Schüler gelöscht. Unter „Änderungen“ steht, was gelöscht wurde; wiederherstellen lässt es sich nicht.',
-                'Student deleted. “Changes” shows what was deleted; it cannot be restored.'));return ['students',[]];
+                'Student deleted. “Changes” shows what was deleted; it cannot be restored.')
+            .($withdrawn?' '.strtr(t('Die Einladung an {email} gilt nicht mehr.','The invitation to {email} no longer works.'),['{email}'=>(string)$login['email']]):''));
+        return ['students',[]];
     /* Contacts: a child always has one, and one of them is the one to try first.
        They are people to ring and nothing else now - a phone number is what
        makes one useful, and an email address on one is a convenience, not the

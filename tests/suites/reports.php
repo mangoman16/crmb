@@ -118,19 +118,19 @@ ok(!array_key_exists('query', $context), 'no query string, which was empty in ev
 ok(!array_key_exists('referer', $context), 'and no Referer, which the portal never lets a browser send');
 
 case_('Not recorded: anybody not signed in');
-/* Which leaves out the login form and the username typed into it, and every
+/* Which leaves out the login form and the address typed into it, and every
    token link opened by nobody in particular. */
 act('logout', []);
 is_same(null, current_user(), 'nobody is signed in');
 $familyRow = one('SELECT * FROM accounts WHERE id=?', [$family]);
 visit('login');
-send('login', ['username'=>$familyRow['username'], 'password'=>'Test-Only-Password-2026'] + on_page('login'));
+send('login', ['email'=>$familyRow['email'], 'password'=>'Test-Only-Password-2026'] + on_page('login'));
 is_same($family, (int)(current_user()['id'] ?? 0), 'the sign-in worked');
 /* Read from the session itself, not through recent_steps(): a step recorded
    for nobody would be hidden by the change of account at sign-in, and the
-   password would be masked anyway - the username is what would give it away. */
+   password would be masked anyway - the address is what would give it away. */
 is_same([], $_SESSION['steps'] ?? [], 'neither the page nor the form was written down');
-ok(!str_contains(serialize($_SESSION), $familyRow['username']), 'so the username typed into it is nowhere in the session');
+ok(!str_contains(serialize($_SESSION), $familyRow['email']), 'so the address typed into it is nowhere in the session');
 ok(!str_contains(serialize($_SESSION), 'Test-Only-Password-2026'), 'and nor is the password');
 
 case_('The trail belongs to one account');

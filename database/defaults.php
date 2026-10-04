@@ -32,17 +32,10 @@ if(!(int)scalar('SELECT COUNT(*) FROM age_groups')) {
 // new child starts; only rows that have never been given one are touched.
 run('UPDATE students SET level_id=(SELECT id FROM levels WHERE is_default=1 ORDER BY id LIMIT 1) WHERE level_id IS NULL');
 
-// Usernames (ADR 0019 §4, kept by 0020): 022 and 023 leave every existing login
-// at a '#<id>' placeholder, so the update is not finished until each has a name.
-// Here rather than in the migration because the rule for making one lives once,
-// in app/core.php. Once every login has one, this finds nothing. Nobody is
-// mailed about it and nobody needs to be: whoever signed in with their address
-// still does, and has a username as well.
-give_every_account_a_username();
 // The hash a refused sign-in is checked against, made once and brought to
 // today's PASSWORD_DEFAULT cost after a PHP upgrade [M2, R9]. Here and in the
 // nightly prune, because a sign-in that hashed would give away by how long it
-// took which usernames and addresses have a login.
+// took which addresses have a login.
 refresh_sign_in_dummy_hash();
 
 if(setting('defaults_initialized',false))return;

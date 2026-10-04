@@ -144,7 +144,7 @@ set_setting('org_name', '');
 setup_cache_clear();
 sign_out();
 $signIn = function (int $id) { setup_cache_clear();
-    return submit('login', ['username'=>(string)scalar('SELECT username FROM accounts WHERE id=?', [$id]), 'password'=>'Test-Only-Password-2026']); };
+    return submit('login', ['email'=>(string)scalar('SELECT email FROM accounts WHERE id=?', [$id]), 'password'=>'Test-Only-Password-2026']); };
 is_same(['start', []], $signIn($admin), 'an administrator signing in is taken to the checklist');
 is_same(['start', []], $signIn($admin), 'at every sign-in, not only the first');
 is_same(['dashboard', []], $signIn($trainer), 'a trainer is taken to the overview');
@@ -157,11 +157,11 @@ $_SESSION['activation_hash'] = hash('sha256', make_token($admin, 'reset'));
 setup_cache_clear();
 is_same(['start', []], submit('activate', ['password'=>'Federball-2026-Halle!', 'password_confirm'=>'Federball-2026-Halle!']),
         'an administrator resetting a password lands on the checklist');
-$newcomer = make_account(['role'=>'student', 'email'=>'neu@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+$newcomer = make_account(['role'=>'trainer', 'email'=>'neu@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
 $_SESSION['activation_hash'] = hash('sha256', make_token($newcomer, 'invite'));
 setup_cache_clear();
 is_same(['dashboard', []], submit('activate', ['password'=>'Federball-2026-Halle!', 'password_confirm'=>'Federball-2026-Halle!', 'privacy_seen'=>'1']),
-        'a family accepting an invitation lands on the overview');
+        'a trainer accepting an invitation lands on the overview');
 sign_in_as($admin);
 
 case_('The way back survives a save and ends on the checklist');

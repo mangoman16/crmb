@@ -144,7 +144,7 @@ case_('A view that timed out is not handed to whoever signs in next on that brow
    session - by time, by a changed password, by signing in, by an invitation
    accepted - ends the view with it, and stopping a view needs somebody signed
    in to stop it for. */
-$visitor = make_account(['username'=>'naechste.person', 'email'=>'naechste@beispiel.test',
+$visitor = make_account(['email'=>'naechste@beispiel.test',
                          'password_hash'=>password_hash('Federball-2026-Halle!', PASSWORD_DEFAULT)]);
 sign_in_as($trainer);
 act('impersonate', ['id'=>(string)$family, 'mode'=>'start']);
@@ -175,14 +175,15 @@ throttle_clear('auth-ip', $_SERVER['REMOTE_ADDR'] ?? 'local');
 // Left over in the raw session, where only sign_in() itself can drop it:
 // nothing asks who is signed in before the sign-in does.
 $_SESSION['impersonator_id'] = $trainer;
-submit('login', ['username'=>'naechste.person', 'password'=>'Federball-2026-Halle!']);
+submit('login', ['email'=>'naechste@beispiel.test', 'password'=>'Federball-2026-Halle!']);
 is_same($visitor, (int)(current_user()['id'] ?? 0), 'the next person signs in as themselves');
 ok(!isset($_SESSION['impersonator_id']), 'into a session that carries no view of anybody');
 is_same(null, impersonator(), 'with no view of anybody else’s left over');
 throws(fn() => act('impersonate', ['mode'=>'stop']), 'and „Ansicht beenden“ does not make them the trainer', 'nicht als jemand anderer');
 is_same($visitor, (int)current_user()['id'], 'they are still themselves');
 sign_out();
-$invited = make_account(['username'=>'neu.eingeladen', 'email'=>'neu.eingeladen@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+$invited = make_account(['email'=>'neu.eingeladen@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+make_student(['first_name'=>'Neu', 'last_name'=>'Eingeladen', 'email'=>'neu.eingeladen@beispiel.test', 'account_id'=>$invited]);
 set_setting('privacy_ready', true);
 $_SESSION['impersonator_id'] = $trainer;
 $_SESSION['activation_hash'] = hash('sha256', make_token($invited, 'invite'));

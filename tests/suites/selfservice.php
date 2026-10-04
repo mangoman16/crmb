@@ -42,7 +42,7 @@ foreach (['internal', 'view', 'edit'] as $visibility) {
 }
 
 // ---------------------------------------------------------------------------
-$familyLogin = make_account(['role'=>'student', 'name'=>'Lena Hofer', 'email'=>'lena@beispiel.test', 'username'=>'lena.hofer']);
+$familyLogin = make_account(['role'=>'student', 'name'=>'Lena Hofer', 'email'=>'lena@beispiel.test']);
 $lena = make_student(['first_name'=>'Lena', 'last_name'=>'Hofer', 'email'=>'lena@beispiel.test', 'account_id'=>$familyLogin,
                       'status'=>'active', 'internal_notes'=>'Nur für uns', 'price_cents'=>4500]);
 $neighbour = make_student(['first_name'=>'Nachbar', 'last_name'=>'Kind', 'account_id'=>make_account(['role'=>'student'])]);
@@ -186,6 +186,7 @@ throws(fn() => act('contact_delete', ['student_id'=>(string)$lena, 'id'=>(string
 
 case_('The family is shown what is still missing, and not the phone');
 $fresh = make_student(['first_name'=>'Frisch', 'last_name'=>'Da', 'account_id'=>make_account(['role'=>'student'])]);
+make_enrolment(make_class(), $fresh);   // in a course, so the course step is not what this case is about
 $mustPhoto = make_field('Hausordnung gelesen', 'edit', true, 'checkbox');
 $what = fn() => array_column(family_next_steps($fresh), 'what');
 is_same(['Notfallkontakt eintragen', 'Geburtsdatum eintragen', 'Anschrift eintragen', 'Allergien', 'Hausordnung gelesen'], $what(),
@@ -238,3 +239,38 @@ $familySave(['address'=>'', 'custom'=>[$shirt=>'S']]);
 sign_in_as($trainer);
 throws(fn() => create_invoice($lena, [$charge(45000)]), 'with the address emptied, an invoice above 400 € is refused', 'Anschrift');
 does_not_throw(fn() => create_invoice($lena, [$charge(4500)]), 'and one below is issued');
+
+// ---------------------------------------------------------------------------
+case_('A family in no course is asked to choose one first, until they are in one or have asked (ADR 0021, §3)');
+/* Spec S4. Joining bills, so choosing is a request the trainer approves; the
+   step goes as soon as the request is sent, and the trainer's list says to
+   answer it instead of to put them in a course. */
+sign_in_as($trainer);
+run('UPDATE classes SET archived=1');
+$newcomer = make_student(['first_name'=>'Neu', 'last_name'=>'Hier', 'account_id'=>make_account(['role'=>'student'])]);
+$first = fn(int $id) => family_next_steps($id)[0] ?? [];
+$course = make_class(['name'=>'Montagstraining', 'capacity'=>1]);
+is_same(['Kurs wählen', 'Such dir einen Kurs aus. Deine Trainerin bestätigt die Anmeldung.', ['id'=>$newcomer, 'tab'=>'classes'], 'add-course'],
+        [$first($newcomer)['what'] ?? null, $first($newcomer)['why'] ?? null, $first($newcomer)['params'] ?? null, $first($newcomer)['anchor'] ?? null],
+        'the first step, pointing at the courses with a free place');
+make_enrolment($course, make_student(['first_name'=>'Schon', 'last_name'=>'Drin']));
+is_same('courses', $first($newcomer)['anchor'] ?? null, 'with every course full, it points at the Kurse card, which says so');
+run("UPDATE students SET status='ended' WHERE id=?", [$newcomer]);
+ok(!in_array('Kurs wählen', array_column(family_next_steps($newcomer), 'what'), true), 'never for a membership that has ended');
+run("UPDATE students SET status='active' WHERE id=?", [$newcomer]);
+$open = make_class(['name'=>'Mittwochstraining']);
+ok(in_array('In einen Kurs eintragen', array_column(student_next_steps($newcomer), 'what'), true), 'staff are told to put them in a course');
+request_enrolment($newcomer, $open, 'join', null, '');
+ok(!in_array('Kurs wählen', array_column(family_next_steps($newcomer), 'what'), true), 'once they have asked, the family is not asked again');
+$staffSteps = array_column(student_next_steps($newcomer), null, 'what');
+ok(!isset($staffSteps['In einen Kurs eintragen']), 'and staff are not told to put them in a course');
+is_same(['Neu möchte in „Mittwochstraining“.', 'requests'],
+        [$staffSteps['Kursanfrage beantworten']['why'] ?? null, $staffSteps['Kursanfrage beantworten']['anchor'] ?? null],
+        'but to answer the request, naming the course, at the requests card');
+run("UPDATE enrolment_requests SET state='declined' WHERE student_id=?", [$newcomer]);
+is_same('Kurs wählen', $first($newcomer)['what'] ?? null, 'a request declined brings the step back');
+make_enrolment($open, $newcomer);
+ok(!in_array('Kurs wählen', array_column(family_next_steps($newcomer), 'what'), true), 'and being in a course ends it');
+make_enrolment($course, $newcomer, ['left_on'=>'2025-06-30']);
+run('DELETE FROM class_students WHERE class_id=? AND student_id=?', [$open, $newcomer]);
+is_same('Kurs wählen', $first($newcomer)['what'] ?? null, 'a course they have left does not count');

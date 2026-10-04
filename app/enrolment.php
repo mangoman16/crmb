@@ -102,6 +102,11 @@ function course_is_full(array $class): bool {
     return (int)$class['capacity'] > 0 && (int)($class['member_count'] ?? 0) >= (int)$class['capacity'];
 }
 
+/** The courses a student could ask to join that still have a place. */
+function free_courses_for(int $studentId): array {
+    return array_values(array_filter(courses_open_to($studentId), fn($c) => !course_is_full($c)));
+}
+
 /** Requests waiting on the trainer, or a student's own history. */
 function open_requests(?int $studentId = null): array {
     return rows('SELECT r.*, s.first_name, s.last_name, c.name AS class_name, t.name AS tariff_name'

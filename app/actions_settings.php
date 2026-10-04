@@ -230,25 +230,6 @@ function dispatch_settings_or_messages(string $action): array {
         $email=email_value(post('email'));
         if(same_address($email,(string)$u['email']))throw new UserError(t('Das ist schon die Adresse dieses Kontos.','That is already this account’s address.'));
         send_account_token($u,'email',$email);flash(t('Bitte die neue E-Mail-Adresse über den zugesendeten Link bestätigen.','Please verify the new email address using the link sent to it.'));return ['profile',[]];
-    case 'username_change':
-        /* Only the holder changes a username (ADR 0019, §8): a trainer who
-           renamed a family's login would lock them out of that name without
-           their knowing. With the password, because anybody holding an unlocked
-           phone could otherwise rename a child's login. The rules are
-           change_own_username()'s, shared with the activation page. */
-        if(impersonator())throw new UserError(t('Den Benutzernamen kann nur die Person selbst ändern. Beende zuerst die Ansicht.','Only the person themselves can change their username. Stop viewing first.'));
-        $u=require_user();
-        if(!password_verify(post('current_password'),(string)$u['password_hash']))throw new UserError(t('Passwort nicht korrekt.','Incorrect password.'));
-        $outcome=change_own_username($u,post('username'));
-        if($outcome==='unchanged'){flash(t('Das ist schon dein Benutzername.','That is already your username.'));return ['profile',[]];}
-        if($outcome==='taken') {
-            flash(username_taken_answer(),'error');
-            remember_input('username_change');
-            return ['profile',[]];
-        }
-        flash(t('Dein Benutzername ist jetzt ','Your username is now ').username_value(post('username'))
-            .t('. Melde dich damit oder mit deiner E-Mail-Adresse an.','. Sign in with it or with your email address.'));
-        return ['profile',[]];
     case 'password_change':
         $u=require_user();if(!password_verify(post('current_password'),$u['password_hash']))throw new UserError(t('Passwort nicht korrekt.','Incorrect password.'));
         $p=strong_password(post('password'));if($p!==post('password_confirm'))throw new UserError(t('Die Passwörter stimmen nicht überein.','Passwords do not match.'));

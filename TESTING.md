@@ -96,7 +96,9 @@ release and emptied again for the next.
 - A status to choose — „Automatisch", „Abwesend", „Als offline anzeigen" — for trainers and administrators, a coloured dot, and when each account was online over the last 30 days: [P.1–P.10](#online-status-and-when-somebody-was-online)
 - Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
-- Everybody has a username and an address of their own, and signs in with either in one box; logins are made by invitation only; families fill in their own details, and every change is in the change log (ADR 0020): A.1–A.27
+- After an update the browser fetches the new stylesheet and script by itself: the account menu is styled and the bell stays still without clearing the cache: A.0
+- Everybody signs in with their own e-mail address; usernames are gone. A person is added either by inviting an address — they fill in their own details and choose a course — or by creating them; nobody sets another person's password (ADR 0021): A.1–A.13
+- Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
 
 ---
 
@@ -432,23 +434,20 @@ Skip on an ordinary code change; do all of it before a release.
   **Neuigkeiten**, and no other child.
 - [ ] **4.5** As a family, open another family's child by editing the address.
   Refused, in words, not with a blank page.
-- [ ] **4.6** Wrong password repeatedly (more than ten times for one username,
+- [ ] **4.6** Wrong password repeatedly (more than ten times for one address,
   within fifteen minutes) is refused with „Zu viele Versuche", and a correct
-  password immediately afterwards is refused too — that is the point. The same
-  login's **email address** with the right password still signs in: the two
-  names are counted separately (ADR 0020, §3).
-- [ ] **4.6a** The same username signs in **correctly** twelve times in a row —
+  password immediately afterwards is refused too — that is the point.
+- [ ] **4.6a** The same address signs in **correctly** twelve times in a row —
   sign out, sign in, twelve times, which is one afternoon of three children
   sharing a phone. All twelve work. A correct password must never produce „Zu
   viele Versuche": the attempt is counted before the password can be checked,
-  and a correct sign-in clears the count for the username and the address alike.
+  and a correct sign-in clears the count.
   > Afterwards, wait the hour or use a different account — this counter is
   > deliberately not cleared by anything you can do from the portal.
-- [ ] **4.7** „Passwort vergessen" with the username, and again with the email
-  address, sends a link each time to the login's own address; the link sets a new
-  password once and not twice. Asking four times in an hour with one of them is
-  refused the fourth time — that counter is never cleared, because typing a name
-  proves nothing about who typed it.
+- [ ] **4.7** „Passwort vergessen" with the email address sends a link to the
+  login's own address; the link sets a new password once and not twice. Asking
+  four times in an hour is refused the fourth time — that counter is never
+  cleared, because typing an address proves nothing about who typed it.
 - [ ] **4.7a** The sign-in page carries one small line under the form, „Mit der
   Anmeldung akzeptierst du die Datenschutzerklärung.", the last word a link to the
   notice. Every signed-out page — sign in, forgotten password, invitation, the
@@ -1542,26 +1541,29 @@ Rückmeldungen**, „Technische Einzelheiten"
   the list show their initials, never their photograph; the trainer shows her
   picture. As the trainer, every family shows its picture.
 
-**One login, one address, either name signs in** (ADR 0020) — on the iPhone
-where it says so, after the views for it are in
+**After an update** — on the phone and on the computer, without clearing anything
 
-- [ ] **A.1** Signed out, the sign-in page has **one** box for „Benutzername
-  oder E-Mail-Adresse" and a password. Sign in with the username; sign out;
-  sign in with the email address; sign out. Both work. On the iPhone the
-  Keychain offers the saved username, or the address, in that one box, and saves
-  the password under it.
-- [ ] **A.2** Type the username with capitals or an umlaut, `Lena.Müller` for
-  `lena.mueller`, and the address in capitals, `LENA@Beispiel.AT`. Both sign in
-  as the same login.
-- [ ] **A.3** A wrong password, an unknown username, an unknown address, a
-  suspended login and an invitation not yet opened each give **the same**
-  sentence: „Anmeldung nicht möglich. Bitte Benutzername oder E-Mail-Adresse und
-  Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link in der
-  Einladung öffnen." Read it each time; none of them says „Zugangsdaten".
-- [ ] **A.4** „Passwort vergessen" with an unknown name and with a known one:
-  the page says the same thing, „Wenn es dazu einen Zugang gibt, ist eine E-Mail
-  an dessen Adresse unterwegs.", and names no address. Only the known one puts a
-  mail in **Postausgang**, to the login's own address, naming the username.
+- [ ] **A.0** Upload the new version and open the portal in the browser that
+  had it open before. The page source links `app.css?v=` and `app.js?v=`
+  followed by twelve letters and digits, not the version number. The account
+  menu at the top right opens as a styled list, and the bell does not move when
+  tapped. Club colours, if set, are the current ones.
+
+**One person, one address, and the address signs in** (ADR 0021) — on the iPhone
+where it says so
+
+- [ ] **A.1** Signed out, the sign-in page asks for „E-Mail-Adresse" and
+  „Passwort", nothing else. Sign in with the address in odd capitals,
+  `LENA@Beispiel.AT`: it works. On the iPhone the Keychain offers the saved
+  address and fills the password.
+- [ ] **A.2** An old username (from before this update) does not sign in.
+- [ ] **A.3** A wrong password, an unknown address, a suspended login and an
+  invitation not yet opened each give **the same** sentence: „Anmeldung nicht
+  möglich. Bitte E-Mail-Adresse und Passwort prüfen. Noch nicht eingerichtet?
+  Dann zuerst den Link in der Einladung öffnen."
+- [ ] **A.4** „Passwort vergessen" with an unknown address and with a known one:
+  the page says the same thing and names no address. Only the known one puts a
+  mail in **Postausgang**, to the login's own address.
 - [ ] **A.5** „Passwort vergessen" for a login that is still only invited: the
   mail that arrives is **the invitation** again, not a reset link. For a
   suspended login nothing arrives.
@@ -1569,40 +1571,39 @@ where it says so, after the views for it are in
   mail: its text is not shown. Nobody but the mailbox reads a link that sets a
   password.
 
-**Invitations, and nothing else**
+**Two ways to add a person** (ADR 0021)
 
-- [ ] **A.7** A child's page, card „Zugang zum Portal", **„Einladung senden"**:
-  the flash names the username. Open the invitation from the real mailbox: it
-  names the username, says it can be changed while setting up, and that the
-  address signs in too.
-- [ ] **A.8** On the page the invitation opens, change the suggested username
-  (say to `lena.m`), set a password, tick the privacy notice, save. You are
-  signed in; the flash names `lena.m` and the address. **Änderungen** shows the
-  username change.
-- [ ] **A.9** **(release, MariaDB)** Do A.8 with a username somebody else has.
-  The page comes back with „Dieser Benutzername ist schon vergeben", the typed
-  name still in the box and **both password boxes empty**; the login is still
-  „Eingeladen" on the child's page. Choose another and it works.
-- [ ] **A.10** The page a reset link opens shows the username read-only; typing
-  into it is not possible, and the saved password is the only thing that changes.
-- [ ] **A.11** A second child with the address of a child who already has a
-  login: the card does not offer the invitation; its „Noch zu tun" asks for
-  „Eigene E-Mail-Adresse eintragen". Pressing an invitation from an old page
-  anyway is refused with „Diese E-Mail-Adresse gehört schon zu einem anderen
-  Zugang …", and nothing is written. Put the parent's address on **Kontakte**
-  instead and give the child their own: the invitation then works.
-- [ ] **A.12** **Schüler anlegen** with first name, last name, the child's own
-  address and **„Gleich einladen"** ticked: the child's page opens, the flash
-  names the username, the card says „Eingeladen", and **Postausgang** holds the
-  invitation. With mail not ready (SMTP not tested) the tick is not offered or
-  is refused saying what is missing — and **no child was created**. Without the
-  tick only the child is created.
-- [ ] **A.13** On an active login's card, **„Link für neues Passwort senden"**
-  (frontend wording may differ): the flash says a link is on its way; the link
-  arrives at the login's own address; you see neither link nor password
-  anywhere. Not offered for your own login, for an invitation (send it again
-  instead) or for a suspended login. As a trainer, it is not offered for
-  another trainer.
+- [ ] **A.7** **Schüler → „Per E-Mail einladen"**, a real second address,
+  language English. The flash says the invitation is on its way, and „Offene
+  Einladungen" lists the address with the date it was sent. The mail opens
+  "Hello," with no name and says the person fills in their details and then
+  chooses a course.
+- [ ] **A.8** Open that link on a phone that has never chosen a language: the
+  page is in English and says whose invitation it is. Leave the names empty,
+  then try a birth date in the future: both are refused, and what was typed
+  comes back (not the passwords). Fill everything in: you land on your own
+  page, „Kurs wählen" first in „Noch zu ergänzen". The trainer's bell shows
+  „Neu im Portal: …" linking to the new child, and **Änderungen** names the
+  child as the one who made the record.
+- [ ] **A.9** **(release)** Double-tap „Konto aktivieren" on a slow connection:
+  exactly one child is made.
+- [ ] **A.10** As the family from A.8, „Kurs wählen" → ask to join a course. As
+  the trainer, the child's page says „Kursanfrage beantworten"; approve it. The
+  family's „Kurs wählen" is gone.
+- [ ] **A.11** „Per E-Mail einladen" with an address that is already a login,
+  that has an invitation on its way, or that is on a child who has no login yet:
+  each is refused, saying why — the last one names the child and leads to their
+  page, where „Einladung senden" is the way. Nothing is written.
+- [ ] **A.12** „Offene Einladungen": „Erneut senden" sends a new link (the old
+  one stops working); „Zurückziehen" asks for nothing typed, and the old link
+  then says „Link nicht mehr gültig". Inviting the address again works.
+- [ ] **A.13** **Schüler anlegen** with name, the child's own address and
+  **„Gleich einladen"**, then put the child into a course straight away. The
+  invitation asks only for the password and the privacy notice; afterwards the
+  family is already in the course. Delete a child whose invitation was never
+  accepted: the old link is dead, and no login is left behind on **Team und
+  Zugänge**. As a trainer, deleting a child that is linked to a team member's
+  login never deletes that login.
 
 **Families fill in their own details**
 
@@ -1646,12 +1647,11 @@ where it says so, after the views for it are in
 - [ ] **A.22** As the family, empty the address. An invoice above 400 € for
   that child is refused, saying the address is missing; one below is issued.
 
-**Still the same for everybody who signed in with an address**
+**Still the same for everybody who signed in before**
 
 - [ ] **A.23** **(release)** On a copy of a real portal, upload this version.
-  Every existing login signs in with its email address exactly as before, and
-  now also with a username made from its name (Mein Konto shows it). Nobody was
-  mailed about it.
+  Every existing login signs in with its email address exactly as before.
+  Nobody was mailed about it.
 **After the reviews of the first build**
 
 - [ ] **A.25** On the phone, as the trainer, „Portal als {Familie} ansehen", then
@@ -1660,8 +1660,8 @@ where it says so, after the views for it are in
   beenden" anywhere. Sign in as somebody else on that phone: they are
   themselves, with no bar about viewing anybody, and nothing they tap makes them
   the trainer. The same after opening an invitation link on that phone.
-- [ ] **A.26** As the administrator, **Änderungen**: the username chosen on an
-  invitation page is listed under the name of the person who chose it, not as
+- [ ] **A.26** As the administrator, **Änderungen**: a child who set themselves
+  up from an invitation is listed as having made their own record, not as
   „automatisch". A „Passwort vergessen" asked on a phone where a view had timed
   out names nobody in the audit log.
 - [ ] **A.27** The flashes say what happened, in plain words: a family's save,
@@ -1673,10 +1673,8 @@ where it says so, after the views for it are in
   card's invitation, resend and reset link each name the address the mail went
   to.
 
-- [ ] **A.24** **(release)** `php tests/run.php` and `tests/mariadb-local.sh`
-  are green apart from what the run lists as not covered; the collation cases
-  (an address stored with capitals, ß read as ss) are covered only by the
-  MariaDB run.
+- [ ] **A.24** **(release)** `tests/mariadb-local.sh` is green, and
+  `tests/e2e.sh` ends in `RESULT: PASS`, on the MariaDB and PHP her host runs.
 
 ---
 

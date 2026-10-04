@@ -106,17 +106,21 @@ function input(string $name,string $label,mixed $value='',string $type='text',bo
 }
 
 /**
- * What every box a username is typed into, or read from, carries - the
- * sign-in and „vergessen" box, which takes a username or an address (ADR
- * 0020, §3), included: the browser's password manager pairs it with the
- * password beside it, and an iPhone neither capitalises the first letter, nor
- * "corrects" lena.mueller into a word, nor underlines it as a spelling mistake.
+ * What every box the sign-in address is typed into, or read from, carries
+ * (ADR 0021, §1): sign-in, „vergessen", the read-only address beside a new
+ * password, the invitation and the delete confirmation.
  *
- * Not inputmode="email": that puts „@" on the first keyboard layer, which the
- * one box that may be given an address wants and a box for a username alone
- * does not. Those two pages add it themselves.
+ * autocomplete="username" although it is an address: that is the word the
+ * password manager pairs with the password beside it, so an iPhone saves the
+ * new password under this address and offers it again at sign-in. And it
+ * neither capitalises the first letter, nor "corrects" lena.hofer into a word,
+ * nor underlines it as a spelling mistake. No inputmode: every caller draws the
+ * box as type="email", which already brings „@" and „." to the first keyboard
+ * layer. Where the browser must not fill in anything - the invitation, the
+ * delete confirmation - the caller puts ['autocomplete'=>'off'] first in the
+ * union, so it wins.
  */
-function username_attributes(): array {
+function sign_in_address_attributes(): array {
     return ['autocomplete'=>'username','autocapitalize'=>'none','autocorrect'=>'off','spellcheck'=>'false'];
 }
 
@@ -205,7 +209,10 @@ function submit_button(string $label='',string $class='primary',string $name='',
         .e($label?:t('Speichern','Save')).'</button>';
 }
 function page_head(string $title,string $description='',string $action=''): void { echo '<div class="page-heading"><div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>'; }
-function link_button(string $label,string $page,array $params=[],string $class='primary'): string { return '<a class="button '.e($class).'" href="'.e(url($page,$params)).'">'.e($label).'</a>'; }
+/** A link drawn as a button. $fragment is the id on that page it lands on, without the „#". */
+function link_button(string $label,string $page,array $params=[],string $class='primary',string $fragment=''): string {
+    return '<a class="button '.e($class).'" href="'.e(url($page,$params).($fragment!==''?'#'.$fragment:'')).'">'.e($label).'</a>';
+}
 function empty_state(string $title,string $body='',string $action=''): void { echo '<div class="empty"><div class="empty-icon">'.icon('users').'</div><h2>'.e($title).'</h2>'.($body?'<p>'.e($body).'</p>':'').$action.'</div>'; }
 /**
  * A row of tabs. An item is a label, which opens $page with tab=<key>, or
@@ -616,31 +623,31 @@ function next_steps_card(array $steps, string $heading = '', int $start = 1, arr
 
 /**
  * The password for the example accounts, just after they were made, and the
- * usernames to type it with.
+ * addresses to sign in with (ADR 0021, §1).
  *
  * Held in the session by demo_data and nowhere else, and shown wherever the
  * fill returns to - the System tab or the checklist - because its message
- * says the password is shown below it. The usernames are read back from the
- * database (demo_logins()), because a fill beside real data may have had to
- * number one: lena.hofer2 rather than lena.hofer.
+ * says the password is shown below it. The addresses are read back from the
+ * database (demo_logins()) rather than written here, so the notice cannot name
+ * a login the fill did not make.
  */
 function demo_password_notice(): void {
     if (empty($_SESSION['demo_password']) || !demo_present()) return;
-    $names = array_map(fn($login) => '<span class="mono">'.e((string)$login['username']).'</span>', demo_logins());
+    $addresses = array_map(fn($login) => '<span class="mono">'.e((string)$login['email']).'</span>', demo_logins());
     echo '<div class="notice">'.e(t('Passwort für alle Beispielkonten','Password for every example account')).': <strong class="mono">'.e((string)$_SESSION['demo_password']).'</strong><br>'
-        .e(t('Es wird nur hier gezeigt und nirgends gespeichert. Benutzernamen: ','Shown only here and stored nowhere. Usernames: '))
-        .implode(', ', $names)
+        .e(t('Es wird nur hier gezeigt und nirgends gespeichert. Anmelden mit: ','Shown only here and stored nowhere. Sign in with: '))
+        .implode(', ', $addresses)
         .'</div>';
 }
 
 /**
  * A notice naming children who still need something, each name a way in.
  *
- * One copy for every such list - nobody to ring, no address - on the students
- * list. Each name is a button rather than a word in a sentence: as a
- * comma-separated list they were 17px tall and touching each other, so on a
- * phone the way to fix one child's record was a target a third of the minimum
- * with another one beside it.
+ * One copy for every such list on the students page - nobody to ring, no
+ * address, an address to invite that a student already carries. Each name is a
+ * button rather than a word in a sentence: as a comma-separated list they were
+ * 17px tall and touching each other, so on a phone the way to fix one child's
+ * record was a target a third of the minimum with another one beside it.
  *
  * $params and $anchor say where on the child's page the name leads. $tone is
  * 'warn' for something that costs somebody something while it waits, and ''
@@ -672,19 +679,16 @@ function login_state_badge(?array $account): void {
 }
 
 /**
- * How a login signs in and where its mail goes, as text to read rather than
- * boxes to type in: the username, then the address, either of which signs in
- * (ADR 0020, §3). One copy
- * for Mein Konto and the access card, so the two say it in the same order and
- * the same words. $addressNote follows the address in a lighter weight - „·
- * bestätigt" on Mein Konto - in a <small>, because a plain span took on the
- * bold of the value beside it.
+ * The address a login signs in with and its mail goes to, as text to read
+ * rather than a box to type in (ADR 0021, §1). One copy for Mein Konto and the
+ * access card, so the two say it in the same words. $addressNote follows the
+ * address in a lighter weight - „· bestätigt" on Mein Konto - in a <small>,
+ * because a plain span took on the bold of the value beside it.
  *
  * Only for the login's holder and for staff (ADR 0019, §8).
  */
 function login_facts(array $account,string $addressNote=''): void {
     echo '<dl class="facts login-facts">'
-        .'<div class="fact-wide"><dt>'.e(t('Benutzername','Username')).'</dt><dd class="mono">'.e((string)$account['username']).'</dd></div>'
         .'<div class="fact-wide"><dt>'.e(t('E-Mail-Adresse','Email address')).'</dt><dd>'.e((string)$account['email'])
         .($addressNote!==''?'<small class="muted">'.e(' · '.$addressNote).'</small>':'').'</dd></div>'
         .'</dl>';
@@ -789,25 +793,40 @@ function presence_history_details(array $viewer, array $periods, ?string $record
 }
 
 /**
- * Deleting a login, folded away, with its username typed to confirm.
+ * Deleting a login, folded away, with its address typed to confirm.
  *
  * Its own form and a <details> of its own, so it can sit in a row of buttons
- * without being one: the typed username is what stands between a thumb and a
- * login that cannot be brought back. The username rather than the address
- * (ADR 0019, §9): every login has its own address now (ADR 0020), so either
- * would do, and changing it back would be churn for the same safety.
+ * without being one: the typed address is what stands between a thumb and a
+ * login that cannot be brought back. The action compares both sides after
+ * email_normalised(), so „Lena@Beispiel.test" confirms lena@beispiel.test.
  *
- * The username is said in the sentence above the box, not in its label: the
- * label's <span> is the teal of the required mark, and a name inside it read
- * as part of the asterisk.
+ * The address is said in the sentence above the box, not in its label: the
+ * label's <span> is the teal of the required mark, and an address inside it
+ * read as part of the asterisk. autocomplete="off" first, so the browser does
+ * not fill in the signed-in person's own address and make the typing pointless.
  */
 function login_delete_details(array $account,string $summary,string $explanation,string $button): void {
     echo '<details class="account-delete"><summary>'.e($summary).'</summary>'
-        .'<p>'.e($explanation.' '.t('Zur Bestätigung den Benutzernamen eintippen: ','To confirm, type the username: '))
-        .'<strong class="mono">'.e((string)$account['username']).'</strong></p>';
+        .'<p>'.e($explanation.' '.t('Zur Bestätigung die E-Mail-Adresse eintippen: ','To confirm, type the email address: '))
+        .'<strong class="mono">'.e((string)$account['email']).'</strong></p>';
     start_form('account_state',['id'=>$account['id'],'mode'=>'delete']);
-    input('confirmation',t('Benutzername','Username'),'','text',true,'','',['autocomplete'=>'off']+username_attributes());
+    input('confirmation',t('E-Mail-Adresse','Email address'),'','email',true,'','',['autocomplete'=>'off']+sign_in_address_attributes());
     submit_button($button,'danger');
+    echo '</form></details>';
+}
+
+/**
+ * Withdrawing an invitation nobody has taken up, folded away like deleting a
+ * login but with nothing to type (ADR 0021, §3): nothing is lost - no password
+ * was ever set, and a student stays where they were - and the way back is to
+ * invite again, which the explanation says. One copy for the open invitations
+ * on the students list and for the access card, so the two cannot drift. The
+ * action allows it only for a login never set up (verified_at IS NULL).
+ */
+function invitation_withdraw_details(array $account,string $summary,string $explanation): void {
+    echo '<details class="account-delete"><summary>'.e($summary).'</summary><p>'.e($explanation).'</p>';
+    start_form('account_state',['id'=>$account['id'],'mode'=>'withdraw']);
+    submit_button(t('Einladung zurückziehen','Withdraw the invitation'),'danger');
     echo '</form></details>';
 }
 

@@ -236,3 +236,26 @@ is_same([$familyLogin], array_map('intval', array_column($byFamilies, 'actor_id'
 is_same('student', $byFamilies[0]['actor_role'] ?? null, 'with the actor’s role, read when the page is read');
 is_same(3, count(history_recent()), 'while „Alle“ has all three, the change made while viewing as the family under the administrator');
 is_same(['admin', 'admin', 'student'], array_column(history_for('students', $theirs), 'actor_role'), 'and a record’s own history carries the role too');
+
+// ---------------------------------------------------------------------------
+case_('The change log never holds a password hash, a session counter or a last visit [R5, S6]');
+/* Moved from the usernames suite when usernames went (ADR 0021). */
+sign_in_as($admin);
+run("DELETE FROM record_versions");
+$recorded = fn() => array_merge(...array_map(fn($v) => array_keys((array)json_decode((string)$v['before_json'], true) + (array)json_decode((string)$v['after_json'], true)),
+    rows("SELECT before_json, after_json FROM record_versions WHERE entity='accounts'")));
+$logged = tracked_insert('accounts', 'Neu', fn() => make_account(['last_seen_at' => now()]));
+tracked('accounts', $logged, 'Neu', fn() => run("UPDATE accounts SET password_hash='x', auth_version=auth_version+1, last_seen_at=? WHERE id=?", [now(), $logged]));
+tracked('accounts', $logged, 'Neu', fn() => run('DELETE FROM accounts WHERE id=?', [$logged]), 'delete');
+is_same(3, (int)scalar("SELECT COUNT(*) FROM record_versions WHERE entity='accounts'"), 'an insert, an update and a delete were recorded');
+is_same([], array_values(array_intersect($recorded(), ['password_hash', 'auth_version', 'last_seen_at'])), 'and none of them holds any of the three');
+ok(in_array('email', $recorded(), true), 'while the rest of the row is there');
+
+case_('A creation is put down to who is signed in, unless its caller names the one person who is not yet');
+/* ADR 0021, §3: the student an invitation by address makes is recorded before
+   anybody is signed in, so create_own_student() names the link's own login. */
+$holderOfLink = make_account(['role' => 'student']);
+$byAdmin = tracked_insert('students', 'Vom Admin', fn() => make_student());
+$named = tracked_insert('students', 'Selbst angelegt', fn() => make_student(), $holderOfLink);
+is_same([$admin, $holderOfLink], [(int)history_for('students', $byAdmin)[0]['actor_id'], (int)history_for('students', $named)[0]['actor_id']],
+        'the signed-in administrator for one, the named login for the other');

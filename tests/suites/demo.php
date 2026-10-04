@@ -110,3 +110,16 @@ ok(str_contains((string)$theirs[0]['subject'], 'Schläger'), 'the one the exampl
 ok(str_contains((string)$theirs[0]['last_message'], 'Schläger'), 'with the trainer’s answer in it');
 sign_in_as($admin);
 demo_clear();
+
+case_('The example logins are made the way everybody else’s are: at an address nobody else has');
+/* Moved from the usernames suite (ADR 0021). Every creator asks
+   refuse_address_in_use(), the fill included. */
+$shared = make_account(['email' => 'trainerin@beispiel.test']);
+throws(fn() => demo_fill(true), 'a fill whose trainer would take an address another login has is refused', 'Jede Person braucht ihre eigene');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE is_demo=1'), 'and wrote nothing');
+run('DELETE FROM accounts WHERE id=?', [$shared]);
+$filled = demo_fill(true);
+is_same(['trainerin@beispiel.test', 'lena.hofer@beispiel.test', 'jonas.berger@beispiel.test'], array_column($filled['logins'], 'email'),
+        'with it gone, the fill makes its three, staff first, and hands their addresses back');
+foreach ($filled['logins'] as $login) is_same($login['email'], email_value($login['email']), 'each a plain address: '.$login['email']);
+demo_clear();

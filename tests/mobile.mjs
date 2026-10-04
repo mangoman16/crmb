@@ -18,6 +18,10 @@
  *     figure this project has used since its first review
  *   - text below 12px
  *   - a JavaScript error, or a resource the page asked for and did not get
+ *   - a sweep that measured nothing: a page that came back as the sign-in page,
+ *     without the signed-in menu, with an error status or without app.css is
+ *     not the page it was asked for, and a role with no page measured fails.
+ *     (A run once printed „admin: 0 pages at 320px“ and passed.)
  */
 // Playwright is a developer's tool, not a dependency of the portal: it is not in
 // composer.json and it is not on the server. Found where it is installed rather
@@ -54,7 +58,8 @@ if (!ACCOUNTS.admin || !PASSWORD) {
 const pages = async (page, role) => {
     const first = async (sql) => await page.evaluate(() => 0);   // ids come from the links below
     const common = ['dashboard', 'students', 'messages', 'news', 'profile'];
-    const staff = ['classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox', 'compose',
+    // students&invite=1 opens „Per E-Mail einladen“ and the open invitations (ADR 0021).
+    const staff = ['students&invite=1', 'classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox', 'compose',
                    'manage', 'manage&tab=ages', 'manage&tab=tariffs', 'manage&tab=payments'];
     const admin = ['settings', 'settings&tab=organisation', 'settings&tab=fields', 'settings&tab=smtp',
                    'settings&tab=privacy', 'settings&tab=system', 'history'];
@@ -109,13 +114,30 @@ const inspect = ({ label, expected }) => {
     }
     if (vw > expected + 1)
         add({ kind: 'the page zoomed out to fit', screen: expected, neededToFit: vw });
-    return { label, problems: found, sideways: document.documentElement.scrollWidth > vw + 1 };
+    // What was measured, so the caller can tell it was the page it asked for.
+    const sheet = [...document.styleSheets].find(s => (s.href || '').includes('app.css'));
+    let rules = 0; try { rules = sheet ? sheet.cssRules.length : 0; } catch { rules = -1; }
+    return { label, problems: found, sideways: document.documentElement.scrollWidth > vw + 1,
+             styled: !!sheet && rules !== 0, signedIn: !!document.querySelector('.mobile-nav'),
+             page: new URL(location.href).searchParams.get('page') || '' };
 };
 
 const run = async () => {
     const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {});
     const failures = [];
     let screens = 0;
+    const measured = {};   // role -> screens that were the page asked for
+    /** Whether the page measured is the one asked for; a problem on the result when not. */
+    const isThePage = (result, query, status, signedIn) => {
+        const wanted = query.split('&')[0];
+        const wrong = [];
+        if (status >= 400) wrong.push(`HTTP ${status}`);
+        if (!result.styled) wrong.push('app.css not applied');
+        if (signedIn && !result.signedIn) wrong.push('no signed-in menu');
+        if (signedIn && result.page !== wanted) wrong.push(`landed on ?page=${result.page || '(none)'}`);
+        if (wrong.length) result.problems.push({ kind: 'not the page asked for, so nothing measured on it counts', text: wrong.join(', ') });
+        return !wrong.length;
+    };
 
     // The pages somebody sees before they are signed in, and the one they see
     // when a link has gone stale. They use a different header and footer from
@@ -125,9 +147,12 @@ const run = async () => {
         const ctx = await browser.newContext({ viewport: { width, height: 780 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
         const page = await ctx.newPage();
         for (const query of ['login', 'forgot', 'privacy', 'student&id=999999']) {
-            await page.goto(BASE + '?page=' + query, { waitUntil: 'networkidle' });
+            const res = await page.goto(BASE + '?page=' + query, { waitUntil: 'networkidle' });
             const result = await page.evaluate(inspect, { label: `signed out ${width}px ?page=${query}`, expected: width });
             screens++;
+            // A stale link is answered with the sign-in page, on purpose; the
+            // others must be what they say and styled.
+            if (isThePage(result, query, query.startsWith('student') ? 200 : res.status(), false)) measured['signed out'] = (measured['signed out'] || 0) + 1;
             if (result.sideways) result.problems.push({ kind: 'the page scrolls sideways' });
             if (result.problems.length) failures.push(result);
         }
@@ -136,6 +161,7 @@ const run = async () => {
 
     for (const [role, email] of Object.entries(ACCOUNTS)) {
         if (!email) continue;
+        measured[role] = 0;
         // Signed in once per role: the portal rate-limits sign-ins, as it should.
         const session = await browser.newContext({ viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true });
         const door = await session.newPage();
@@ -164,10 +190,11 @@ const run = async () => {
                 page.on('pageerror', e => noise.push('JavaScript error: ' + e.message));
                 page.on('response', r => { if (r.status() >= 400) noise.push(r.status() + ' ' + r.url().replace(BASE, '')); });
                 for (const query of await pages(page, role)) {
-                    await page.goto(BASE + '?page=' + query, { waitUntil: 'networkidle' });
+                    const res = await page.goto(BASE + '?page=' + query, { waitUntil: 'networkidle' });
                     const label = `${role} ${width}px ${scheme} ?page=${query}`;
                     const result = await page.evaluate(inspect, { label, expected: width });
                     screens++;
+                    if (isThePage(result, query, res.status(), true)) measured[role]++;
                     if (result.sideways) result.problems.push({ kind: 'the page scrolls sideways' });
                     for (const n of noise.splice(0)) result.problems.push({ kind: 'browser complained', text: n });
                     if (result.problems.length) failures.push(result);
@@ -178,7 +205,11 @@ const run = async () => {
     }
     await browser.close();
 
-    console.log(`${screens} screens opened`);
+    console.log(`${screens} screens opened; measured as asked: ${Object.entries(measured).map(([r, n]) => `${r} ${n}`).join(', ')}`);
+    // A sweep that looked at nothing has proved nothing.
+    for (const [role, n] of Object.entries(measured))
+        if (n === 0) failures.push({ label: `${role}: no page measured`, problems: [{ kind: 'the sweep measured nothing for this role' }] });
+    if (!screens) failures.push({ label: 'the sweep', problems: [{ kind: 'no screen was opened at all' }] });
     for (const f of failures) {
         console.log('\n' + f.label);
         for (const p of f.problems) console.log('   ', JSON.stringify(p));
