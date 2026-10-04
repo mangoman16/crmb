@@ -271,16 +271,19 @@ throws(fn() => invoice($third), 'somebody else’s', 'nicht gefunden');
 
 case_('A discount is explained on the document rather than only subtracted');
 sign_in_as($trainer);
+// The year after today's, so no invoice issued today has already started its
+// sequence: written as 2027, this broke on 1 January 2027.
+$nextYear = (string)((int)substr(today(), 0, 4) + 1);
 $discounted = fixture('charges', ['student_id'=>$other, 'label'=>'Beitrag Jänner', 'amount_cents'=>3150,
     'gross_cents'=>4500, 'discount_cents'=>1350, 'discount_note'=>'Willkommensrabatt: 30 %',
-    'period_from'=>'2027-01-01', 'period_to'=>'2027-01-31', 'due_on'=>'2027-01-01', 'overdue_on'=>'2027-01-08',
+    'period_from'=>$nextYear.'-01-01', 'period_to'=>$nextYear.'-01-31', 'due_on'=>$nextYear.'-01-01', 'overdue_on'=>$nextYear.'-01-08',
     'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
-$withDiscount = invoice(create_invoice($other, [$discounted], '2027-01-02'));
+$withDiscount = invoice(create_invoice($other, [$discounted], $nextYear.'-01-02'));
 $discountText = $pdfText(invoice_pdf($withDiscount));
 ok(str_contains($discountText, 'Willkommensrabatt'), 'the reason is on the invoice');
 ok(str_contains($discountText, '45,00'), 'with the price before it');
 ok(str_contains($discountText, '31,50'), 'and the amount actually owed');
-is_same(1, (int)$withDiscount['sequence'], 'and 2027 starts its own sequence at one');
+is_same(1, (int)$withDiscount['sequence'], 'and a new year starts its own sequence at one');
 
 case_('The privacy notice fills itself in from the same details');
 set_setting('privacy_de', 'Verantwortlich ist {{org_name}}, {{org_address}}. Kontakt: {{org_email}}.');

@@ -243,22 +243,29 @@ run('UPDATE students SET billing_due_day=0 WHERE id=?', [$child]);
 run('UPDATE class_students SET due_day=0 WHERE class_id=? AND student_id=?', [$second, $child]);
 
 // ---------------------------------------------------------------------------
+/* billing_run() never dates a charge before the day it is written, so a run for
+   a month that has begun is due today, not on the tariff day. These cases ran
+   on '2026-10' and broke on 2 October 2026. Next month, taken from the clock,
+   is always ahead of today, so its tariff day is what the charge must carry. */
+$ahead = date('Y-m', strtotime('first day of next month', strtotime(today())));
+$afterAhead = date('Y-m', strtotime('first day of next month', strtotime($ahead.'-01')));
+
 case_('Running the same month twice creates nothing the second time');
-$first = billing_run('2026-10');
+$first = billing_run($ahead);
 ok($first['created'] > 0, 'the first run creates charges');
-is_same(0, billing_run('2026-10')['created'], 'the second creates nothing');
-is_same(0, billing_run('2026-10')['created'], 'nor the third');
+is_same(0, billing_run($ahead)['created'], 'the second creates nothing');
+is_same(0, billing_run($ahead)['created'], 'nor the third');
 
 case_('A generated charge carries the right numbers');
-$c = one('SELECT * FROM charges WHERE student_id=? AND class_id=? AND period_from=?', [$child, $course, '2026-10-01']);
+$c = one('SELECT * FROM charges WHERE student_id=? AND class_id=? AND period_from=?', [$child, $course, $ahead.'-01']);
 ok($c !== null, 'the charge exists');
 is_same(4500, (int)$c['amount_cents'], 'the amount');
 is_same(4500, (int)$c['gross_cents'], 'the price before any discount');
 is_same(0, (int)$c['discount_cents'], 'no discount on this one');
-is_same('2026-10-01', $c['period_from'], 'coverage starts on the first');
-is_same('2026-10-31', $c['period_to'], 'and ends on the last day');
-is_same('2026-10-01', $c['due_on'], 'due on the tariff day');
-is_same('2026-10-08', $c['overdue_on'], 'and late a week after');
+is_same($ahead.'-01', $c['period_from'], 'coverage starts on the first');
+is_same(date('Y-m-t', strtotime($ahead.'-01')), $c['period_to'], 'and ends on the last day');
+is_same($ahead.'-01', $c['due_on'], 'due on the tariff day');
+is_same(date('Y-m-d', strtotime($ahead.'-08')), $c['overdue_on'], 'and late a week after');
 is_same('auto', $c['origin'], 'marked as generated');
 is_same((int)$monthly, (int)$c['tariff_id'], 'and it says which tariff produced it');
 
@@ -273,11 +280,18 @@ run('UPDATE charges SET overdue_on=NULL, due_on=? WHERE id=?', [date('Y-m-d', st
 is_same(4500, balance((int)$child, true), 'its due date is the answer');
 
 case_('A failed run leaves no partial month behind');
+/* A month nobody has billed yet: one already billed creates nothing, and then
+   "nothing left behind" would pass without anything to roll back. */
 $before = (int)scalar('SELECT COUNT(*) FROM charges');
-throws(function () {
-    transactional(function () { billing_run('2026-11'); throw new UserError('interrupted after generating'); });
+$generated = 0;
+throws(function () use ($afterAhead, &$generated) {
+    transactional(function () use ($afterAhead, &$generated) {
+        $generated = billing_run($afterAhead)['created'];
+        throw new UserError('interrupted after generating');
+    });
 }, 'the interruption propagates');
-is_same($before, (int)scalar('SELECT COUNT(*) FROM charges'), 'November was rolled back entirely');
+ok($generated > 0, 'the run had written charges before it was interrupted');
+is_same($before, (int)scalar('SELECT COUNT(*) FROM charges'), 'the month was rolled back entirely');
 
 case_('A tariff describes itself the way she would say it');
 /* Every way it may be paid, the usual one first: "37,00 € monatlich" is the
