@@ -51,13 +51,30 @@ function notify_admins(string $kind, string $title, string $body = '', string $p
     return $sent;
 }
 
+/**
+ * Which of an account's notifications the bell may show now, as one condition
+ * over `notifications` and its parameters. The pane and its count both ask it,
+ * so the bell never counts a notice its pane would not show.
+ *
+ * While staff look through somebody else's eyes, a chat notice is left out: its
+ * text quotes the message - and a contact request is one too - so the bell would
+ * hand a trainer the words of a child's private chat that thread_seen_sql()
+ * keeps from her in the chat itself (security review, ADR 0022 §9).
+ */
+function notifications_seen_sql(int $accountId): array {
+    if (impersonator()) return ["account_id=? AND kind<>'message'", [$accountId]];
+    return ['account_id=?', [$accountId]];
+}
+
 /** The pane's contents: newest first, read and unread together. */
 function notifications_for(int $accountId, int $limit = 30): array {
-    return rows('SELECT * FROM notifications WHERE account_id=? ORDER BY id DESC LIMIT ' . max(1, min(100, $limit)), [$accountId]);
+    [$seen, $params] = notifications_seen_sql($accountId);
+    return rows('SELECT * FROM notifications WHERE ' . $seen . ' ORDER BY id DESC LIMIT ' . max(1, min(100, $limit)), $params);
 }
 
 function unread_notifications(int $accountId): int {
-    return (int)scalar('SELECT COUNT(*) FROM notifications WHERE account_id=? AND read_at IS NULL', [$accountId]);
+    [$seen, $params] = notifications_seen_sql($accountId);
+    return (int)scalar('SELECT COUNT(*) FROM notifications WHERE ' . $seen . ' AND read_at IS NULL', $params);
 }
 
 /** Where a notification points, or the dashboard when it no longer points anywhere. */

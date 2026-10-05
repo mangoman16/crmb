@@ -499,6 +499,35 @@ function render_view(string $page, array $query = []): string {
 }
 
 /**
+ * A signed-in page whole: the view inside views/layout.php, as public/index.php
+ * draws it - the bell, the account menu, and the bar that says whose eyes you
+ * are looking through. render_view() is the view alone. A warning in the frame
+ * fails the check, as one in the view does.
+ */
+function render_page(string $page, array $query = []): string {
+    $content = render_view($page, $query);
+    $public = false; $user = current_user();
+    $restore = $_GET; $restorePage = $GLOBALS['page'] ?? null;
+    $_GET = $query; $GLOBALS['page'] = $page;
+    $level = ob_get_level();
+    ob_start();
+    set_error_handler(static function (int $no, string $message, string $file, int $line): bool {
+        throw new RuntimeException($message . ' @ ' . basename($file) . ':' . $line);
+    });
+    try {
+        require APP_ROOT . '/views/layout.php';
+        return (string)ob_get_clean();
+    } catch (Throwable $e) {
+        while (ob_get_level() > $level) ob_end_clean();
+        throw $e;
+    } finally {
+        restore_error_handler();
+        $_GET = $restore;
+        if ($restorePage === null) unset($GLOBALS['page']); else $GLOBALS['page'] = $restorePage;
+    }
+}
+
+/**
  * The fields one time box posts, written as the time a person would say.
  *
  * The form posts an hour and a minute separately, because <input type="time">

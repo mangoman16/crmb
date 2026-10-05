@@ -100,6 +100,7 @@ release and emptied again for the next.
 - Everybody signs in with their own e-mail address; usernames are gone. A person is added either by inviting an address — they fill in their own details and choose a course — or by creating them; nobody sets another person's password (ADR 0021): A.1–A.13
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
 - The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji (ADR 0022): C.1–C.13
+- Looking through somebody's eyes shows no chat notice in the bell and writes nothing in their name; a copied course has its group; a stored photo keeps only the picture: C.14–C.17
 
 ---
 
@@ -1727,6 +1728,29 @@ where it says so
 - [ ] **C.13** **(release)** On a copy of a real portal, upload this version:
   every existing course has its group, every chat between a child and a trainer
   is still there, and the update refuses nothing.
+- [ ] **C.14** As the trainer, write to a child in your chat with them, and as
+  another family that may write to the child, write to them too. Then, as the
+  trainer, „Portal als {Kind} ansehen": the bell shows neither message — no
+  „Neue Nachricht von …" line, and its number counts only the other notices.
+  „Alle gelesen", if it is shown at all, is refused with „Beende zuerst die
+  Ansicht". „Ansicht beenden", then sign in as the child: both notices are
+  there, and unread.
+- [ ] **C.15** As the administrator, „Portal als {Trainerin} ansehen": sending
+  „An mehrere schreiben" from its review step, „⋯" → „Nachricht entfernen" on a
+  group message, and saving a news item are each refused with „Beende zuerst die
+  Ansicht". „Ansicht beenden": nothing new is in the children's chats, the
+  message is still there, and no news item was added.
+- [ ] **C.16** **Kurse** → a course with a group that has messages → **Kopieren**.
+  Open **Nachrichten** straight away, with no update in between: the copy has a
+  group of its own, empty, and the original's group still has its messages.
+- [ ] **C.17** A photo that holds more than one picture: on a Samsung or a Pixel
+  a motion photo („Bewegtes Foto"), on an iPhone a photo in HDR or a portrait
+  photo. Send it into a group and save it back from the chat: it opens as the
+  same photo, the right way up, is smaller than the original, plays no video, and
+  Preview → Werkzeuge → Informationen shows no GPS tab. On an HDR screen it may
+  look less bright than the original: the brightness map is a second picture in
+  the file, and it goes with the rest. Then send a screenshot (PNG) and a WebP
+  saved from a browser: both open and look as they did.
 
 ---
 

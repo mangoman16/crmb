@@ -10,9 +10,9 @@
  * signed out" were claims with nothing behind them, and they are the two claims
  * a trainer is trusting with her families' money.
  *
- * tests/migration-data.php builds a portal as it stood before 015, 019, 020, 022
- * and 024, applies the rest, and prints what it finds. This reads that and holds
- * it to the promise.
+ * tests/migration-data.php builds a portal as it stood before 015, 019, 020, 022,
+ * 024 and 025, applies the rest, and prints what it finds. This reads that and
+ * holds it to the promise.
  *
  * What it does not yet hold to it: 017 backfills covered_from and covered_to on
  * every charge that carries a period, and no case below looks at a charge. The
@@ -189,13 +189,13 @@ if (!function_exists('exec')) {
     // Shared hosting often lists exec in disable_functions. The run says what it
     // could not do rather than stopping on an undefined function.
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved or kept by migrations 015, 016 and 019 to 024 (this PHP disables exec, which the run with data in between needs)']));
+        ['the data moved or kept by migrations 015, 016 and 019 to 025 (this PHP disables exec, which the run with data in between needs)']));
     return;
 }
 $target = (string)getenv('CRM_MIGRATION_CONFIG');
 if ($target === '') {
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved or kept by migrations 015, 016 and 019 to 024 (set CRM_MIGRATION_CONFIG to the config of a'
+        ['the data moved or kept by migrations 015, 016 and 019 to 025 (set CRM_MIGRATION_CONFIG to the config of a'
          . ' second, empty *_test database; tests/mariadb-local.sh does)']));
     return;
 }
@@ -551,3 +551,39 @@ ok(password_get_info($r['first']['dummy_hash'])['algo'] === PASSWORD_DEFAULT && 
 is_same('', $r['second_error'], 'the next update’s run goes through as well');
 is_same([$r['first']['accounts'], $r['first']['dummy_hash'], $r['first']['counts']], [$r['second']['accounts'], $r['second']['dummy_hash'], $r['second']['counts']],
         'and changes nothing: no login, no hash, no count');
+
+// ---------------------------------------------------------------------------
+// 025: a group for every course, and the chats between a student and staff
+// turned into ones the club's administrators can read (ADR 0022 §5, §10). The
+// chats the previous version wrote go in before it, on the portal 024 left.
+$g = $after['twentyfive'];
+$chatIn = fn(array $state, string $key): ?array =>
+    array_values(array_filter($state['threads'], fn($t) => (int)$t['id'] === (int)$g['chats'][$key]))[0] ?? null;
+$kindAndOwner = fn(?array $t): array => [$t['kind'] ?? null, isset($t['account_id']) ? (int)$t['account_id'] : null];
+$login = fn(string $key): int => (int)$g['logins'][$key];
+
+case_('025 makes a chat between a trainer and a student one the administrators read, owned by the student');
+is_same(['direct', $login('staff')], $kindAndOwner($chatIn($g['before'], 'trainer_and_student')),
+        'before 025 it was a direct chat, owned by the trainer who started it');
+is_same(['staff_direct', $login('mueller')], $kindAndOwner($chatIn($g['after'], 'trainer_and_student')),
+        'afterwards it is staff_direct, owned by the student, so deleting the trainer’s login no longer takes it');
+
+case_('025 leaves a chat between two students, and the old desk, as they were');
+is_same(['direct', $login('mueller2')], $kindAndOwner($chatIn($g['after'], 'two_students')),
+        'two students: still direct, still owned by the one who started it');
+is_same($chatIn($g['before'], 'two_students'), $chatIn($g['after'], 'two_students'), 'not a value of it changed');
+is_same(['staff', $login('gross')], $kindAndOwner($chatIn($g['after'], 'desk')),
+        'the desk thread the trainer answered - a student and staff, two people, like the first - is still a desk thread, the student’s');
+is_same($chatIn($g['before'], 'desk'), $chatIn($g['after'], 'desk'), 'not a value of it changed either');
+
+case_('025 removes no chat, no message and nobody from a chat');
+is_same(['threads' => 3, 'messages' => 6, 'thread_participants' => 6], $g['before']['counts'],
+        'there were three chats with two people and two messages each, to lose');
+is_same($g['before']['counts'], $g['after']['counts'], 'and every one of them is there afterwards');
+
+case_('025 stopped after its UPDATE and started again, or its UPDATE run again after it finished, ends as one run does');
+is_same($g['statements'], count($g['retried']), 'stopped after each statement but the last, and once with its UPDATE run again after it finished');
+foreach ($g['retried'] as $stopped => $state)
+    is_same($g['after'], $state, ($stopped < $g['statements']
+        ? 'stopped after statement ' . $stopped . ' of ' . $g['statements'] . ' and run from the first: '
+        : 'its UPDATE run again after the file finished: ') . 'every chat has the kind and owner of one run, and nothing is lost');

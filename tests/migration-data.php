@@ -13,7 +13,7 @@ declare(strict_types=1);
  * keeping only one of them. "Nobody's next invoice changes" was a claim with
  * nothing behind it.
  *
- * Five pauses. Before 015, a portal as it stood with prices on the tariff and
+ * Six pauses. Before 015, a portal as it stood with prices on the tariff and
  * addresses on the contacts. Before 019, a portal where one login holds several
  * brothers and sisters and a child's address has drifted from its login's. 019
  * is then applied three ways: straight through; stopped after each of its
@@ -31,7 +31,11 @@ declare(strict_types=1);
  * must keep with every value but the username; afterwards two logins made
  * without one must both be taken, a second on an address that is already a
  * login's must still be refused, and the runner's step after the files must
- * change no login.
+ * change no login. Before 025, on that same portal, the chats the previous
+ * version wrote - a trainer's chat with a student, one between two students and
+ * a desk thread the trainer answered - which 025 must sort into the right kind
+ * and owner and lose nothing of; 025 is stopped and started again the same way,
+ * and its UPDATE run twice.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -464,6 +468,38 @@ function build_portal_before_024(): array {
 }
 
 /**
+ * Chats as the version before 025 wrote them, for 025 to sort (ADR 0022 §5).
+ *
+ * A two-person chat a trainer started with a student, and so owned; one between
+ * two students; and a thread of the old shared desk that the trainer answered,
+ * which made her a participant - two people, a student and staff, exactly like
+ * the first, and still not its kind. Each with a message from everybody in it,
+ * so a message lost would show.
+ */
+function add_chats_before_025(PDO $pdo, array $logins): array {
+    $at = '2026-09-20 08:00:00';
+    $chat = function (string $kind, int $owner, array $people) use ($pdo, $at): int {
+        $id = insert_row($pdo, 'threads', ['account_id' => $owner, 'kind' => $kind, 'subject' => '', 'updated_at' => $at]);
+        foreach ($people as $person) {
+            insert_row($pdo, 'thread_participants', ['thread_id' => $id, 'account_id' => $person, 'joined_at' => $at]);
+            insert_row($pdo, 'messages', ['thread_id' => $id, 'sender_id' => $person, 'body' => 'Hallo', 'created_at' => $at]);
+        }
+        return $id;
+    };
+    return ['trainer_and_student' => $chat('direct', $logins['staff'], [$logins['staff'], $logins['mueller']]),
+            'two_students' => $chat('direct', $logins['mueller2'], [$logins['mueller2'], $logins['gross']]),
+            'desk' => $chat('staff', $logins['gross'], [$logins['gross'], $logins['staff']])];
+}
+
+/** What 025 is held to, read back: every chat's kind and owner, and how many chats, messages and people in them. */
+function chat_state(PDO $pdo): array {
+    $count = fn(string $table): int => (int)$pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+    return ['threads' => $pdo->query('SELECT id, kind, account_id FROM threads ORDER BY id')->fetchAll(),
+            'counts' => ['threads' => $count('threads'), 'messages' => $count('messages'),
+                         'thread_participants' => $count('thread_participants')]];
+}
+
+/**
  * What 024 is held to, read back: every login, the table's columns and indexes,
  * every guarded count, the sign-in links and the change log about logins.
  */
@@ -598,6 +634,21 @@ try { foreach ($twentyFourStatements as $statement) $pdo->exec($statement); }
 catch (PDOException $e) { $refused = (string)$e->getCode(); }
 $result['twentyfour']['again'] = ['refused' => $refused, 'state' => login_state($pdo)];
 
+// --- 025 on the chats the previous version wrote ----------------------------------
+// It turns a two-person chat between a student and staff into 'staff_direct',
+// owned by the student, and leaves every other chat as it was (ADR 0022 §5). Its
+// UPDATE comes before its ALTER so that an update stopped between them can start
+// the file again from the top (§10). Straight through here, on the portal 024
+// left; stopped and started again at the end, where building a portal for each
+// round cannot take this one away from the runner's step below.
+$twentyFive = migration_path('025');
+$twentyFiveStatements = migration_statements($twentyFive);
+$chats = add_chats_before_025($pdo, $logins);
+$twentyFiveBefore = chat_state($pdo);
+run_statements($pdo, $twentyFive, $twentyFiveStatements);
+$result['twentyfive'] = ['chats' => $chats, 'logins' => $logins, 'statements' => count($twentyFiveStatements),
+                         'before' => $twentyFiveBefore, 'after' => chat_state($pdo), 'retried' => []];
+
 // --- the runner's step after 024 -------------------------------------------------
 // database/defaults.php, which schema_apply() requires after the files on every
 // update, run through the application's own functions on the application's own
@@ -607,10 +658,10 @@ $result['twentyfour']['again'] = ['refused' => $refused, 'state' => login_state(
 // usernames; after 024 it must not reach for the column at all, or every request
 // would meet a failed update and the portal would stay closed.
 $pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
-// The step runs after the newest file, so the files after 024 go in first, as
+// The step runs after the newest file, so the files after 025 go in first, as
 // an update applies them.
 foreach (glob(APP_ROOT . '/database/migrations/*.sql') as $file)
-    if (strcmp(basename($file), '025') >= 0)
+    if (strcmp(basename($file), '026') >= 0)
         foreach (split_sql((string)file_get_contents($file)) as $statement) $pdo->exec($statement);
 $runnerState = function () use ($pdo): array {
     setting_cache_clear();
@@ -630,5 +681,19 @@ $runner['first'] = $runnerState();
 $runner['second_error'] = $runnerStep();
 $runner['second'] = $runnerState();
 $result['twentyfour']['runner'] = $runner;
+
+// --- 025 interrupted after each statement and started again from the first -------
+// The last round lets it finish and runs its UPDATE once more, as a retry after
+// the file finished but before the ledger recorded it would. Each round starts
+// from a portal of its own, built and brought to 024 the same way as above.
+for ($stopped = 1; $stopped <= count($twentyFiveStatements); $stopped++) {
+    [$pdo, $logins] = build_portal_before_024();
+    run_statements($pdo, $twentyFour, $twentyFourStatements);
+    add_chats_before_025($pdo, $logins);
+    run_statements($pdo, $twentyFive, array_slice($twentyFiveStatements, 0, $stopped));
+    run_statements($pdo, $twentyFive, $stopped < count($twentyFiveStatements)
+        ? $twentyFiveStatements : array_slice($twentyFiveStatements, 0, -1));
+    $result['twentyfive']['retried'][$stopped] = chat_state($pdo);
+}
 
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

@@ -291,18 +291,16 @@ function demo_fill(bool $force = false): array {
         run('INSERT INTO news (title,body,published,created_at,updated_at,is_demo) VALUES (?,?,0,?,?,1)',
             ['Entwurf: Vereinsmeisterschaft', 'Termin steht noch nicht fest.', now(), now()]);
 
-        // A family's chat with the trainer, as direct_thread() would make it:
-        // owned by the student, both of them in it. Without the rows of who is
-        // in it, the example family opened Nachrichten and was told they had
-        // none. Example data that lies about the app is worse than none.
+        // A family's chat with the trainer, made by direct_thread() as every
+        // chat is, so it is the kind, the owner and the two people a real one
+        // would have: built by hand it once lacked the rows of who is in it, and
+        // the example family opened Nachrichten to be told they had none.
+        // Example data that lies about the app is worse than none.
         $family = $accounts[demo_address($first[0], $first[1])];
-        run("INSERT INTO threads (account_id,kind,subject,updated_at) VALUES (?,'staff_direct','',?)", [$family, now()]);
-        $thread = (int)db()->lastInsertId();
-        join_thread($thread, $family);
-        join_thread($thread, $trainerId);
+        $thread = direct_thread(one('SELECT * FROM accounts WHERE id=?', [$family]), $trainerId);
 
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',
-            [$thread, $accounts[demo_address($first[0], $first[1])], 'Hallo! Welchen Schläger sollen wir für Lena kaufen?', now()]);
+            [$thread, $family, 'Hallo! Welchen Schläger sollen wir für Lena kaufen?', now()]);
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',
             [$thread, $trainerId, 'Hallo! Für den Anfang reicht ein leichter Schläger, ich bringe am Montag zwei zum Ausprobieren mit.', now()]);
 

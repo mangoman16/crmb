@@ -1652,3 +1652,24 @@ foreach (glob(APP_ROOT.'/views/*.php') as $view) {
     ok(!$assigned[0], basename($view).' leaves $page, $user, $public and $content as the front controller set them'
        .($assigned[0] ? ': '.implode(', ', array_unique($assigned[0])) : ''));
 }
+
+// ---------------------------------------------------------------------------
+case_('Only direct_thread() puts somebody into a chat');
+/* ADR 0022: who is in a chat is written in one place, which decides the kind of
+   chat and its owner with it, and who is in a group is never stored at all. The
+   example data once made its chat by hand and left out the rows of who was in
+   it, so the example family was told they had no messages. */
+$joining = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'),
+                     glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/database/*.php')) as $path)
+    foreach (named_blocks_of($path) as $block => $code) {
+        $where = substr($path, strlen(APP_ROOT) + 1).' '.$block;
+        foreach (action_calls_in($code) as $call)
+            if ($call['name'] === 'join_thread' && !$call['method']) $joining[] = $where.' calls join_thread()';
+        foreach (sql_statements_in($code) as $sql)
+            if (preg_match('/^(INSERT|REPLACE) INTO `?thread_participants`?[\s(]/i', $sql)) $joining[] = $where.' writes thread_participants';
+    }
+$joining = array_values(array_unique($joining));
+sort($joining);
+is_same(['app/messaging.php direct_thread calls join_thread()', 'app/messaging.php join_thread writes thread_participants'], $joining,
+        'join_thread() writes who is in a chat, and direct_thread() is the only caller');

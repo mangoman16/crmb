@@ -2,10 +2,15 @@
 declare(strict_types=1);
 
 function dispatch_messages(string $action): array {
-    // Nobody writes, or agrees to be written to, under somebody else's name while
-    // looking through their eyes: a message would reach a whole course as the
-    // child's (security review, ADR 0022).
-    if(impersonator() && in_array($action,['message_send','contact_request','contact_decide'],true))
+    // Everything handled here speaks in the name of whoever is signed in: a
+    // message, a request to write or its answer, the circular into each child's
+    // chat, a group message taken down or put back, the news. None of it happens
+    // while looking through somebody else's eyes - an administrator may view the
+    // portal as a trainer, and would otherwise write into children's chats as
+    // her. So the whole dispatcher refuses rather than a list of its actions,
+    // which the next action added here would not be on (security review,
+    // ADR 0022 §9).
+    if(impersonator())
         throw new UserError(t('Schreiben kann nur die Person selbst. Beende zuerst die Ansicht.','Only the person themselves can write. Stop viewing first.'));
     switch($action) {
     case 'message_send':

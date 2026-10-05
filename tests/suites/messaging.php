@@ -202,6 +202,11 @@ sign_in_as($trainer);
 act('class_save', ['name'=>'Neuer Kurs', 'capacity'=>'0', 'sort_order'=>'0']);
 $made = (int)scalar("SELECT id FROM classes WHERE name='Neuer Kurs'");
 is_same(1, (int)scalar("SELECT COUNT(*) FROM threads WHERE class_id=? AND kind='course'", [$made]), 'saving a new course makes its group');
+// „Kopieren" makes a course too, and the copy is a course of its own (ADR 0022 §3).
+$copied = (int)(act('record_duplicate', ['table'=>'classes', 'id'=>(string)$course])[1]['id'] ?? 0);
+ok($copied > 0 && $copied !== $course, 'copying a course makes a new one');
+is_same(1, (int)scalar("SELECT COUNT(*) FROM threads WHERE class_id=? AND kind='course'", [$copied]),
+        'and the copy has exactly one group of its own, straight away');
 $old = make_class(['name'=>'Von früher']);
 ok(course_groups_fill() >= 1 && (int)scalar('SELECT COUNT(*) FROM threads WHERE class_id=?', [$old]) === 1, 'a course from before gets its group with the next update');
 is_same(0, course_groups_fill(), 'and the next update makes none');
@@ -273,7 +278,74 @@ unset($_SESSION['impersonator_id']);
 render_view('messages', ['id'=>(string)$group]);
 ok(!in_array($group, unread_thread_ids(current_user()), true), 'the child opening it does');
 
+case_('Looking through a child’s eyes, the bell quotes no chat, and nothing is marked read');
+/* A chat notice quotes the message, and a request to write is one too: the bell
+   handed the trainer the words of the child's chat with another family that
+   thread_record() refuses her (security review S1, ADR 0022 §9) - and „Alle
+   gelesen" marked every notice read before the child had seen it (S5). */
+sign_in_as($berger);
+act('message_send', ['thread_id'=>(string)$direct, 'body'=>'Ja, ich fahre mit dem Zug.']);
+notify($hofer, 'schedule', 'Training fällt aus', 'Am Montag ist die Halle zu.', 'dashboard');
+sign_in_as($hofer);
+$bell = fn(string $html): string => (string)strstr((string)strstr($html, 'notification-pane'), '</details>', true);
+$quotes = fn(array $notes, string $said): bool => in_array($said, array_column($notes, 'body'), true);
+$unread = (int)scalar('SELECT COUNT(*) FROM notifications WHERE account_id=? AND read_at IS NULL', [$hofer]);
+$chatNotes = (int)scalar("SELECT COUNT(*) FROM notifications WHERE account_id=? AND read_at IS NULL AND kind='message'", [$hofer]);
+ok($quotes(notifications_for($hofer), 'Ja, ich fahre mit dem Zug.') && str_contains($bell(render_page('dashboard')), 'Ja, ich fahre mit dem Zug.'),
+   'the child’s own bell quotes the other family’s message, so the lines below prove something');
+ok($chatNotes >= 2 && $unread > $chatNotes, 'and holds chat notices and one of another kind, all unread ('.$chatNotes.' of '.$unread.')');
+$_SESSION['impersonator_id'] = $trainer;
+is_same([], array_values(array_filter(notifications_for($hofer), fn($n) => $n['kind'] === 'message')),
+        'viewed by the trainer, the pane holds no chat notice');
+ok($quotes(notifications_for($hofer), 'Am Montag ist die Halle zu.'), 'but the other notice still');
+is_same($unread - $chatNotes, unread_notifications($hofer), 'and the bell counts that one only');
+$viewed = render_page('dashboard');
+ok(str_contains($bell($viewed), 'Training fällt aus'), 'the page draws the bell, with the notice she may see');
+foreach (['Ja, ich fahre mit dem Zug.', 'Bitte das Trikot mitbringen.'] as $said)
+    ok(!str_contains($viewed, $said), 'and nothing on the page quotes „'.$said.'“');
+throws(fn() => act('notifications_read', []), '„Alle gelesen" is refused', 'Ansicht');
+$oneNote = (int)scalar('SELECT id FROM notifications WHERE account_id=? AND read_at IS NULL ORDER BY id LIMIT 1', [$hofer]);
+throws(fn() => act('notifications_read', ['id'=>(string)$oneNote]), 'and so is marking one notice read', 'Ansicht');
+unset($_SESSION['impersonator_id']);
+is_same($unread, unread_notifications($hofer), 'signed in as the child, every notice is there and still unread');
+
+case_('An administrator looking through a trainer’s eyes writes nothing in her name');
+/* may_impersonate() lets an administrator view the portal as a trainer. Every
+   action of the chat would then speak as the trainer - the circular into each
+   chosen child's chat with her above all (security review S4, ADR 0022 §9). */
+sign_in_as($trainer);
+$_SESSION['impersonator_id'] = $admin;
+$_SESSION['bulk_preview'] = ['student_ids'=>[$lena], 'subject'=>'Training', 'body'=>'Bitte pünktlich sein.', 'email'=>false,
+                             'accounts'=>[$hofer=>'Familie Hofer'], 'created'=>time()];
+$groupMessage = (int)scalar('SELECT id FROM messages WHERE thread_id=? ORDER BY id DESC LIMIT 1', [$group]);
+$written = fn(): array => [(int)scalar('SELECT COUNT(*) FROM messages'), (int)scalar('SELECT COUNT(*) FROM news'),
+                           (int)scalar('SELECT COUNT(*) FROM messages WHERE removed_at IS NOT NULL')];
+$writtenBefore = $written();
+foreach ([['bulk_send', []], ['message_remove', ['id'=>(string)$groupMessage]],
+          ['news_save', ['title'=>'Hallenzeiten', 'body'=>'Ab Montag neu.', 'published'=>'1']]] as [$action, $fields])
+    throws(fn() => act($action, $fields), $action.' is refused', 'Ansicht');
+is_same($writtenBefore, $written(), 'and nothing was written: no message, no news, nothing taken down');
+unset($_SESSION['impersonator_id'], $_SESSION['bulk_preview']);
+
+case_('„Alle Direktchats" holds what the person looking may read, like every other list');
+/* An administrator may view the portal as another administrator, and sees her
+   „Alle Direktchats" as far as she may read them herself. Made a trainer while
+   that view is open, she may no longer read a child's chat with a trainer, and
+   the list must not hand it to her (ADR 0022 §2, §9). */
+$admin2 = make_account(['role'=>'admin', 'name'=>'Zweite Admin']);
+sign_in_as($admin2);
+$_SESSION['impersonator_id'] = $admin;
+$allDirect = fn(): array => array_map('intval', array_column(chat_list(current_user(), true), 'id'));
+ok(in_array($withOther, $allDirect(), true) && in_array((int)$thread['id'], $allDirect(), true),
+   'viewed by an administrator, it holds the child’s chats with each trainer');
+run("UPDATE accounts SET role='trainer' WHERE id=?", [$admin]);
+is_same([], array_values(array_intersect([$withOther, (int)$thread['id']], $allDirect())),
+        'viewed by her once she is a trainer, neither of them');
+run("UPDATE accounts SET role='admin' WHERE id=?", [$admin]);
+unset($_SESSION['impersonator_id']);
+
 case_('A child sees who reads the group, and only a number for the rest');
+sign_in_as($hofer);
 $mia = make_student(['first_name'=>'Mia', 'last_name'=>'Ohnezugang', 'account_id'=>null]);
 make_enrolment($course, $mia);
 $sheet = render_view('messages', ['id'=>(string)$group, 'members'=>'1']);
@@ -296,6 +368,23 @@ is_same(null, status_emoji(['status_emoji'=>'gibts-nicht']), 'a stored key that 
 $_SESSION['impersonator_id'] = $admin;
 throws(fn() => act('status_emoji_save', ['status_emoji'=>'cat']), 'nobody changes it while looking through somebody else’s eyes', 'Ansicht');
 unset($_SESSION['impersonator_id']);
+
+case_('Which kind of chat a pair makes is decided in one place');
+$as = fn(int $id): array => one('SELECT * FROM accounts WHERE id=?', [$id]);
+is_same('staff_direct', pair_kind($as($hofer), $as($trainer)), 'a student and a trainer: the administrators can read it');
+is_same('staff_direct', pair_kind($as($admin), $as($berger)), 'a student and an administrator, either way round');
+is_same('direct', pair_kind($as($hofer), $as($berger)), 'two students: nobody else reads it');
+is_same('direct', pair_kind($as($trainer), $as($admin)), 'two members of staff: nor that');
+is_same(pair_kind($as($hofer), $as($trainer)), (string)scalar('SELECT kind FROM threads WHERE id=?', [(int)$thread['id']]),
+        'and it is the kind direct_thread() gave their chat');
+
+case_('The chat list and a chat’s header draw a person from the same facts');
+sign_in_as($hofer);
+$row = array_values(array_filter(chat_list(current_user()), fn($c) => (int)$c['id'] === (int)$thread['id']))[0] ?? [];
+$header = array_values(array_filter(thread_people((int)$thread['id']), fn($p) => (int)$p['id'] === $trainer))[0] ?? [];
+is_same(CHAT_PERSON_COLUMNS, array_keys($header), 'the header reads the one list of what the chat shows of a person');
+is_same($header, chat_person_in($row, 'other_'), 'and the list’s row carries the same person, value for value');
+throws(fn() => chat_person_columns('a; DROP TABLE accounts'), 'an alias is a name, never a piece of SQL', 'Refusing');
 
 case_('The chat list is one query, however many chats there are');
 sign_in_as($trainer);

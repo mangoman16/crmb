@@ -15,14 +15,6 @@ $family   = make_account(['role' => 'student', 'name' => 'Familie Hofer']);
 $child    = make_student(['first_name' => 'Lena', 'last_name' => 'Hofer', 'account_id' => $family, 'email' => 'a4@example.test']);
 $ago      = fn(int $seconds): string => gmdate('Y-m-d H:i:s', time() - $seconds);
 
-/** The whole page, frame included, as views/layout.php draws it. */
-function presence_page_html(string $page, array $query = []): string {
-    $content = render_view($page, $query);
-    $public = false; $user = current_user(); $restore = $_GET; $_GET = $query; $GLOBALS['page'] = $page;
-    ob_start(); require APP_ROOT.'/views/layout.php'; $html = (string)ob_get_clean(); $_GET = $restore;
-    return $html;
-}
-
 /** An XPath over $html, and a way to name a class in it. */
 function presence_xpath(string $html): DOMXPath {
     $dom = new DOMDocument();
@@ -63,7 +55,7 @@ function account_menu_of(string $html): array {
 // ---------------------------------------------------------------------------
 case_('A family\'s account menu: „Mein Konto", the status emoji and „Abmelden", with their dot and no status');
 sign_in_as($family);
-$html = presence_page_html('dashboard');
+$html = render_page('dashboard');
 $menu = account_menu_of($html);
 ok($menu['found'], 'the top bar has an account menu');
 ok($menu['topbar'], 'and it is a top-bar menu, held to the same rules as the bell');
@@ -79,9 +71,9 @@ is_same(0, $menu['emojiIsButton'], 'and the marked one is not a button');
 ok(!str_contains($html, 'account-menu-note'), 'nobody\'s menu explains the status any more');
 run("UPDATE accounts SET status_emoji='fox' WHERE id=?", [$family]);
 sign_in_as($family);
-$menu = account_menu_of(presence_page_html('dashboard'));
+$menu = account_menu_of(render_page('dashboard'));
 is_same(['🦊 Fuchs (gewählt)'], $menu['emoji'], 'a chosen emoji is the marked one');
-ok(str_contains(presence_page_html('dashboard'), '<span class="status-emoji" aria-hidden="true">🦊</span>'), 'and stands beside their name');
+ok(str_contains(render_page('dashboard'), '<span class="status-emoji" aria-hidden="true">🦊</span>'), 'and stands beside their name');
 run("UPDATE accounts SET status_emoji='' WHERE id=?", [$family]);
 
 // ---------------------------------------------------------------------------
@@ -89,7 +81,7 @@ case_('Staff see their status: the current choice is a marked row, the other two
 foreach (['auto' => ['away', 'hidden'], 'away' => ['auto', 'hidden'], 'hidden' => ['auto', 'away']] as $chosen => $offered) {
     run('UPDATE accounts SET presence=? WHERE id=?', [$chosen, $trainer]);
     sign_in_as($trainer);
-    $menu = account_menu_of(presence_page_html('dashboard'));
+    $menu = account_menu_of(render_page('dashboard'));
     is_same(1, $menu['status'], 'with „'.$chosen.'" chosen there is a status block');
     is_same(1, count($menu['current']), 'one row is marked as chosen');
     ok(str_starts_with($menu['current'][0] ?? '', presence_choices()[$chosen]), 'and it is „'.presence_choices()[$chosen].'"');
@@ -102,16 +94,16 @@ foreach (['auto' => ['away', 'hidden'], 'away' => ['auto', 'hidden'], 'hidden' =
 }
 run('UPDATE accounts SET presence=? WHERE id=?', ['hidden', $trainer]);
 sign_in_as($trainer);
-ok(str_contains(account_menu_of(presence_page_html('dashboard'))['label'], 'Als offline angezeigt'), 'the label says when she appears offline');
+ok(str_contains(account_menu_of(render_page('dashboard'))['label'], 'Als offline angezeigt'), 'the label says when she appears offline');
 run('UPDATE accounts SET presence=? WHERE id=?', ['auto', $trainer]);
 sign_in_as($trainer);
-is_same('Konto-Menü: Trainerin Beispiel, Online', account_menu_of(presence_page_html('dashboard'))['label'], 'and that she is online, however long ago her last visit was stored');
+is_same('Konto-Menü: Trainerin Beispiel, Online', account_menu_of(render_page('dashboard'))['label'], 'and that she is online, however long ago her last visit was stored');
 
 // ---------------------------------------------------------------------------
 case_('While looking through somebody else\'s eyes there is no status to change');
 sign_in_as($trainer);
 $_SESSION['impersonator_id'] = $admin;
-$menu = account_menu_of(presence_page_html('dashboard'));
+$menu = account_menu_of(render_page('dashboard'));
 is_same(0, $menu['status'], 'no status block, even when the person looked at is staff');
 is_same(0, $menu['dots'], 'and no dot: it would show the person looked at as online this minute');
 is_same(['logout'], array_column($menu['posted'], 'action'), 'only signing out');
@@ -123,7 +115,7 @@ case_('Only staff see when somebody was online, on the student page and the team
 run('UPDATE accounts SET last_seen_at=? WHERE id=?', [$ago(3 * 3600), $family]);
 fixture('online_periods', ['account_id' => $family, 'started_at' => $ago(3 * 3600 + 600), 'last_seen_at' => $ago(3 * 3600), 'hidden' => 0]);
 sign_in_as($trainer);
-$page = presence_page_html('student', ['id' => $child]);
+$page = render_page('student', ['id' => $child]);
 $x = presence_xpath($page);
 is_same(1, $x->query('//*['.presence_class('access-card').']//*['.presence_class('presence-line').']')->length, 'a trainer sees the login\'s presence line on the student page');
 is_same(1, $x->query('//*['.presence_class('access-card').']//details['.presence_class('presence-history').']')->length, 'and its history');
@@ -131,11 +123,11 @@ ok(str_contains($page, 'Abwesend · zuletzt '.fmt_datetime($ago(3 * 3600))), 'th
 ok(str_contains($page, 'An 1 von 30 Tagen online.'), 'the history counts the day');
 ok(!str_contains($page, 'last_seen_at'), 'nothing leaks the column name');
 sign_in_as($family);
-$page = presence_page_html('student', ['id' => $child]);
+$page = render_page('student', ['id' => $child]);
 ok(!str_contains($page, 'presence-line') && !str_contains($page, 'presence-history') && !str_contains($page, 'zuletzt'),
    'the family sees none of it on their own page');
 sign_in_as($admin);
-$x = presence_xpath(presence_page_html('accounts'));
+$x = presence_xpath(render_page('accounts'));
 ok($x->query('//*['.presence_class('presence-line').']')->length >= 3, 'an administrator sees a presence line for each member of staff');
 ok($x->query('//details['.presence_class('presence-history').']')->length >= 3, 'and a history under each');
 
@@ -154,7 +146,7 @@ ok(str_contains(presence_line($T, $F), 'presence-dot'), 'while a trainer asking 
 case_('An invitation not yet taken up shows no presence');
 $invited = make_account(['role' => 'trainer', 'name' => 'Noch Eingeladen', 'state' => 'invited', 'verified_at' => null]);
 sign_in_as($admin);
-$x = presence_xpath(presence_page_html('accounts'));
+$x = presence_xpath(render_page('accounts'));
 $row = $x->query('//div['.presence_class('account-row').'][.//h3[text()="Noch Eingeladen"]]')->item(0);
 ok($row !== null, 'the invited trainer is listed');
 is_same(0, $row ? $x->query('.//*['.presence_class('presence-line').'] | .//details['.presence_class('presence-history').']', $row)->length : -1,
@@ -172,13 +164,13 @@ $rowOf = function (string $html, string $name): string {
     return $row ? (string)$row->ownerDocument->saveHTML($row) : '';
 };
 sign_in_as($admin);
-$asAdmin = $rowOf(presence_page_html('accounts'), 'Zweite Trainerin');
+$asAdmin = $rowOf(render_page('accounts'), 'Zweite Trainerin');
 ok(str_contains($asAdmin, '(als offline angezeigt)'), 'the administrator is told the person appears offline');
 ok(str_contains($asAdmin, 'class="is-hidden"'), 'the hidden day is drawn in the strip');
 ok(str_contains($asAdmin, 'zuletzt '.fmt_datetime($ago(7200))), 'with the true time');
 is_same(2, substr_count($asAdmin, 'class="is-hidden"') + substr_count($asAdmin, 'class="is-on"'), 'both days show');
 sign_in_as($trainer);
-$asTrainer = $rowOf(presence_page_html('accounts'), 'Zweite Trainerin');
+$asTrainer = $rowOf(render_page('accounts'), 'Zweite Trainerin');
 ok($asTrainer !== '', 'the trainer sees the row');
 ok(!str_contains($asTrainer, 'als offline angezeigt'), 'but is not told about hiding');
 ok(!str_contains($asTrainer, 'is-hidden'), 'nor shown the hidden period');
@@ -195,7 +187,7 @@ $kept = one('SELECT * FROM schema_migrations WHERE version=?', [$version]);
 run('DELETE FROM schema_migrations WHERE version=?', [$version]);
 run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)', [$version, str_repeat('0', 64), $ago(5 * 86400)]);
 sign_in_as($admin);
-$page = presence_page_html('accounts');
+$page = render_page('accounts');
 is_same(substr_count($page, 'class="presence-history"'), substr_count($page, 'Aufgezeichnet wird seit dem '.fmt_date($ago(5 * 86400)).'.'),
         'every history on the page says since when');
 $queries = fn() => query_count(fn() => render_view('accounts'));

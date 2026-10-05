@@ -112,9 +112,35 @@ function is_participant(int $threadId, int $accountId): bool {
     return (bool)one('SELECT 1 FROM thread_participants WHERE thread_id=? AND account_id=?', [$threadId, $accountId]);
 }
 
+/**
+ * What the chat shows of a person: who, their picture, their role, their emoji,
+ * and what their dot is drawn from. One list, so the header, the member sheet,
+ * the contacts and the chat list cannot draw one person from different facts.
+ */
+const CHAT_PERSON_COLUMNS = ['id', 'name', 'avatar_name', 'role', 'status_emoji', 'last_seen_at', 'presence', 'state'];
+
+/**
+ * Those columns as a select list over the accounts table under $alias. With a
+ * $prefix each is named with it, for a row that carries a person beside columns
+ * of its own; chat_person_in() takes the person back out of such a row.
+ */
+function chat_person_columns(string $alias, string $prefix = ''): string {
+    $alias = sql_name($alias, 'table alias');
+    if ($prefix !== '') $prefix = sql_name($prefix, 'column prefix');
+    return implode(', ', array_map(fn(string $column): string => $alias . '.' . $column . ($prefix !== '' ? ' AS ' . $prefix . $column : ''),
+                                   CHAT_PERSON_COLUMNS));
+}
+
+/** The person a row carries under $prefix, as the helpers that draw people expect one. */
+function chat_person_in(array $row, string $prefix): array {
+    $person = [];
+    foreach (CHAT_PERSON_COLUMNS as $column) $person[$column] = $row[$prefix . $column] ?? null;
+    return $person;
+}
+
 /** Everyone in a chat, for its header: who, their dot and their emoji. */
 function thread_people(int $threadId): array {
-    return rows('SELECT a.id, a.name, a.avatar_name, a.role, a.status_emoji, a.last_seen_at, a.presence, a.state'
+    return rows('SELECT ' . chat_person_columns('a')
         .' FROM thread_participants p JOIN accounts a ON a.id=p.account_id WHERE p.thread_id=? ORDER BY a.name', [$threadId]);
 }
 
@@ -150,15 +176,19 @@ function chat_list(array $user, bool $allDirect = false): array {
     $me = (int)$user['id'];
     if ($allDirect) {
         if (!is_admin($user)) throw new UserError(t('Nur für Administratoren.', 'Administrators only.'));
-        $where = "t.kind='staff_direct' AND NOT EXISTS (SELECT 1 FROM thread_participants p WHERE p.thread_id=t.id AND p.account_id=?)";
-        $whereParams = [$me];
+        // What she may open, narrowed to the chats between a student and staff
+        // that she is not in. Built on the one rule rather than beside it: if
+        // who reads those chats changes, or a view through somebody's eyes
+        // narrows it, this list follows (ADR 0022 §2, §9).
+        [$readable, $readableParams] = thread_seen_sql($user, false);
+        $where = "($readable) AND t.kind='staff_direct'"
+            .' AND NOT EXISTS (SELECT 1 FROM thread_participants p WHERE p.thread_id=t.id AND p.account_id=?)';
+        $whereParams = [...$readableParams, $me];
     } else {
         [$where, $whereParams] = thread_seen_sql($user, true);
     }
-    return rows('SELECT t.*, c.name AS class_name, c.archived AS class_archived, ow.name AS account_name,'
-        .' o.id AS other_id, o.name AS other_name, o.avatar_name AS other_avatar_name, o.role AS other_role,'
-        .' o.status_emoji AS other_status_emoji, o.last_seen_at AS other_last_seen_at, o.presence AS other_presence,'
-        .' o.state AS other_state,'
+    return rows('SELECT t.*, c.name AS class_name, c.archived AS class_archived, ow.name AS account_name, '
+        .chat_person_columns('o', 'other_').','
         .' EXISTS (SELECT 1 FROM thread_participants pm WHERE pm.thread_id=t.id AND pm.account_id=?) AS me_in,'
         ." (SELECT GROUP_CONCAT(pa.name ORDER BY pa.name SEPARATOR ' · ') FROM thread_participants pp"
         .'   JOIN accounts pa ON pa.id=pp.account_id WHERE pp.thread_id=t.id) AS people_names,'
@@ -255,7 +285,7 @@ function thread_messages(int $threadId, int $before = 0, int $limit = 50): array
  * can say who cannot read the group yet.
  */
 function course_group_people(int $classId): array {
-    $cols = 'a.id, a.name, a.avatar_name, a.role, a.status_emoji, a.last_seen_at, a.presence, a.state';
+    $cols = chat_person_columns('a');
     return [
         'staff' => rows("SELECT $cols FROM accounts a WHERE a.role IN ('admin','trainer','manager') AND a.state='active'"
             .' ORDER BY a.name, a.id'),
@@ -350,13 +380,13 @@ function pending_contact_count(int $accountId): int {
  * I ask about this" and should never be something to go looking for.
  */
 function contacts_for(array $user): array {
-    $cols = 'id, name, avatar_name, role, status_emoji, last_seen_at, presence, state';
-    $staff = rows("SELECT $cols FROM accounts WHERE role IN ('admin','trainer','manager')"
-        ." AND state='active' AND id<>? ORDER BY name", [(int)$user['id']]);
+    $cols = chat_person_columns('a');
+    $staff = rows("SELECT $cols FROM accounts a WHERE a.role IN ('admin','trainer','manager')"
+        ." AND a.state='active' AND a.id<>? ORDER BY a.name", [(int)$user['id']]);
     if (is_staff($user))
-        return array_merge($staff, rows("SELECT $cols FROM accounts WHERE role='student'"
-            ." AND state='active' ORDER BY name"));
-    $agreed = rows('SELECT a.id, a.name, a.avatar_name, a.role, a.status_emoji, a.last_seen_at, a.presence, a.state'
+        return array_merge($staff, rows("SELECT $cols FROM accounts a WHERE a.role='student'"
+            ." AND a.state='active' ORDER BY a.name"));
+    $agreed = rows("SELECT $cols"
         .' FROM contact_requests r JOIN accounts a ON a.id = IF(r.from_account_id=?, r.to_account_id, r.from_account_id)'
         ." WHERE r.state='accepted' AND (r.from_account_id=? OR r.to_account_id=?) AND a.state='active'"
         .' ORDER BY a.name', [(int)$user['id'], (int)$user['id'], (int)$user['id']]);
@@ -426,25 +456,36 @@ function pair_thread(int $a, int $b): int {
 }
 
 /**
+ * Which kind of chat two accounts make (ADR 0022 §1): a student and a member of
+ * staff a 'staff_direct' one, which the club's administrators can read; any
+ * other two a 'direct' one. Fixed when the chat is made - a later change of role
+ * never changes who reads it - and asked beforehand only by the page that shows
+ * the empty chat before its first message, so it says what the chat will be.
+ */
+function pair_kind(array $one, array $other): string {
+    return is_staff($one) !== is_staff($other) ? 'staff_direct' : 'direct';
+}
+
+/**
  * The conversation between two accounts, made if it does not exist yet.
  *
  * One per pair: a messenger that starts a new thread every time somebody writes
- * is a messenger nobody can find anything in. A student and a member of staff
- * get a 'staff_direct' one, owned by the student so it outlives a trainer's
- * login; any other two a 'direct' one. Both accounts are held first, so two
- * taps at once cannot make two.
+ * is a messenger nobody can find anything in. Its kind is pair_kind()'s, from
+ * the roles as they are when it is made. A 'staff_direct' one is owned by the
+ * student so it outlives a trainer's login; any other by whoever started it.
+ * Both accounts are held first, so two taps at once cannot make two.
  */
 function direct_thread(array $from, int $toId): int {
     if (!may_message($from, $toId))
         throw new UserError(t('Diese Person hat dem Schreiben noch nicht zugestimmt.', 'That person has not agreed to being written to yet.'));
     return transactional(function () use ($from, $toId): int {
-        $roles = array_column(rows('SELECT id, role FROM accounts WHERE id IN (?,?) ORDER BY id FOR UPDATE',
-            [(int)$from['id'], $toId]), 'role', 'id');
-        $student = array_search('student', $roles, true);
-        $kind = $student !== false && count(array_filter($roles, fn($r) => is_staff(['role' => $r]))) === 1 ? 'staff_direct' : 'direct';
+        $pair = array_column(rows('SELECT id, role FROM accounts WHERE id IN (?,?) ORDER BY id FOR UPDATE',
+            [(int)$from['id'], $toId]), null, 'id');
         if ($existing = pair_thread((int)$from['id'], $toId)) return $existing;
+        $starter = $pair[(int)$from['id']] ?? $from;
+        $kind = pair_kind($starter, $pair[$toId] ?? []);
         run("INSERT INTO threads (account_id,kind,subject,updated_at) VALUES (?,?,'',?)",
-            [$kind === 'staff_direct' ? (int)$student : (int)$from['id'], $kind, now()]);
+            [$kind === 'staff_direct' && is_staff($starter) ? $toId : (int)$from['id'], $kind, now()]);
         $id = (int)db()->lastInsertId();
         join_thread($id, (int)$from['id']);
         join_thread($id, $toId);

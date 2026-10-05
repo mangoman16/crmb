@@ -158,11 +158,13 @@ function store_upload(string $field, string $kind): array {
     // A photo can carry where it was taken - a family's home - and a picture
     // posted to a course's group reaches every child in it (ADR 0022). So a
     // picture is stored as its cleaned copy, written once; anything else is
-    // moved as it came.
+    // moved as it came. The upload was not empty, so an empty copy means the
+    // file could not be read, and storing it would keep nothing of the picture
+    // while saying it had been kept.
     $clean = str_starts_with($mime, 'image/')
         ? image_without_metadata((string)file_get_contents((string)$file['tmp_name']), $mime) : null;
     $saved = $clean === null ? @move_uploaded_file((string)$file['tmp_name'], $path)
-                             : @file_put_contents($path, $clean, LOCK_EX) === strlen($clean);
+                             : $clean !== '' && @file_put_contents($path, $clean, LOCK_EX) === strlen($clean);
     if (!$saved) {
         @unlink($path);     // half a file is no file
         throw new UserError(t('Die Datei konnte nicht gespeichert werden.', 'The file could not be stored.'));
@@ -173,11 +175,38 @@ function store_upload(string $field, string $kind): array {
 }
 
 /**
- * An image without what it says about where and how it was taken: GPS, camera,
- * date, comments. JPEG keeps one value, which way is up, so an iPhone photo is
- * not shown lying on its side; PNG loses its text and EXIF chunks, WebP its EXIF
- * and XMP. Anything else - or a file that does not read the way its format says
- * - comes back unchanged: better a file kept than one broken.
+ * An image as it may be stored: the picture, and nothing that says where, when
+ * or with what it was taken (ADR 0022 §4). Each format keeps a list of what it
+ * may keep rather than of what it loses, because the next phone will write a
+ * kind of metadata that no list of losses names yet.
+ *
+ * A JPEG keeps its frame, its tables and its picture data - SOFn, DHT and DAC
+ * (0xC0-0xCF), DQT, DNL, DRI, DHP and EXP (0xDB-0xDF), and every scan - the JFIF
+ * header (APP0), a colour profile (APP2 ICC_PROFILE) and Adobe's colour
+ * transform (APP14). Of its EXIF it keeps which way is up and nothing else, in a
+ * block of its own (jpeg_orientation_segment()), so an iPhone photo is not shown
+ * lying on its side. Everything else goes: the rest of EXIF, GPS with it, XMP,
+ * IPTC, the other APPn segments, comments, and all that follows the end of the
+ * picture, where a phone puts a second picture (MPF) or a motion photo's video.
+ *
+ * A PNG keeps IHDR, PLTE, IDAT, IEND, tRNS, gAMA, cHRM, sRGB, iCCP, sBIT, bKGD,
+ * pHYs, its animation (acTL, fcTL, fdAT) and how its colours are meant (cICP,
+ * mDCV, cLLI): no text, no EXIF, no time, no chunk private to some program, and
+ * nothing after IEND.
+ *
+ * A WebP keeps VP8X, its picture (VP8, VP8L, ALPH), its animation (ANIM, ANMF)
+ * and its colour profile (ICCP), with VP8X no longer saying that EXIF or XMP
+ * follow: no other chunk, and nothing past the length its RIFF header gives.
+ *
+ * A GIF is kept as it came. It can carry a comment and XMP, but it is not what a
+ * camera or a phone writes a photo as. So is anything that is not a picture.
+ *
+ * A file that does not read the way its format says comes back unchanged,
+ * metadata and all: a JPEG that goes wrong before its first scan, a PNG or a
+ * WebP with a chunk that runs past its end. Whether such a picture should be
+ * refused instead is a decision the owner has not made yet; until she does, it
+ * is kept as it came, as it always was. A JPEG cut off in the middle of its
+ * picture data keeps what was cleaned before it and the picture data as it is.
  */
 function image_without_metadata(string $bytes, string $mime): string {
     return match ($mime) {
@@ -188,30 +217,81 @@ function image_without_metadata(string $bytes, string $mime): string {
     };
 }
 
+/**
+ * Walked the way a decoder reads one: from marker to marker, past any stray byte
+ * between two segments and any fill byte (0xFF) in front of a marker, and over
+ * the markers that stand alone (TEM, a restart outside a scan). Each scan is
+ * copied with its picture data, and the walk goes on after it, because a
+ * progressive JPEG has several scans with tables between them. It ends at EOI.
+ *
+ * Something that cannot be read - a length running past the end, a second SOI,
+ * no scan at all before EOI - returns the input unchanged before the first scan
+ * (see image_without_metadata()); after one, the copy ends there, without it.
+ */
 function jpeg_without_metadata(string $b): string {
     $n = strlen($b);
     if ($n < 4 || substr($b, 0, 2) !== "\xFF\xD8") return $b;
     $out = "\xFF\xD8";
-    for ($i = 2; $i + 4 <= $n;) {
-        if ($b[$i] !== "\xFF") return $b;
-        $marker = ord($b[$i + 1]);
-        if ($marker === 0xFF) { $out .= "\xFF"; $i++; continue; }
-        // The image data starts here and runs to the end: copied as it is.
-        if ($marker === 0xDA) return $out . substr($b, $i);
-        // A length that is wrong needs no check of its own: the next step lands
-        // on a byte that is not a marker, or past the end before any picture
-        // data, and either way the file comes back as it was.
-        $length = unpack('n', substr($b, $i + 2, 2))[1];
-        $payload = substr($b, $i + 4, $length - 2);
-        if ($marker === 0xE1 && str_starts_with($payload, "Exif\0\0")) {
-            $orientation = exif_orientation(substr($payload, 6));
-            if ($orientation > 1) $out .= jpeg_orientation_segment($orientation);
-        } elseif ($marker !== 0xE1 && $marker !== 0xED) {
-            $out .= substr($b, $i, 2 + $length);    // everything else, APP1 (XMP) and APP13 apart
-        }
-        $i += 2 + $length;
+    $scanned = false;
+    for ($i = 2; ($i = strpos($b, "\xFF", $i)) !== false;) {
+        while ($i < $n && $b[$i] === "\xFF") $i++;
+        if ($i >= $n) break;
+        $marker = ord($b[$i++]);
+        // The end of the picture. What follows it is not part of it.
+        if ($marker === 0xD9) return $scanned ? $out . "\xFF\xD9" : $b;
+        // A stuffed zero outside a scan is a stray byte; TEM and a restart
+        // stand alone. None has a length, and none is anything to keep.
+        if ($marker === 0x00 || $marker === 0x01 || ($marker >= 0xD0 && $marker <= 0xD7)) continue;
+        if ($marker === 0xD8 || $i + 2 > $n) break;
+        $length = unpack('n', substr($b, $i, 2))[1];
+        if ($length < 2 || $i + $length > $n) break;
+        $segment = "\xFF" . chr($marker) . substr($b, $i, $length);
+        $i += $length;
+        if ($marker !== 0xDA) { $out .= jpeg_segment_cleaned($marker, $segment); continue; }
+        // A scan: its header, then its picture data up to the next marker.
+        $end = jpeg_scan_end($b, $i);
+        if ($end === null) return $out . $segment . substr($b, $i);
+        $out .= $segment . substr($b, $i, $end - $i);
+        $i = $end;
+        $scanned = true;
     }
-    return $b;
+    return $scanned ? $out : $b;
+}
+
+/**
+ * Where a scan's picture data ends: at the first marker that is not part of it -
+ * neither a stuffed zero (FF00) nor a restart (RST0-7) - counted from the first
+ * of any fill bytes in front of it. null when the file ends first.
+ */
+function jpeg_scan_end(string $b, int $from): ?int {
+    $n = strlen($b);
+    while (($at = strpos($b, "\xFF", $from)) !== false) {
+        $code = $at + 1;
+        while ($code < $n && $b[$code] === "\xFF") $code++;
+        if ($code >= $n) return null;
+        $marker = ord($b[$code]);
+        if ($marker !== 0x00 && ($marker < 0xD0 || $marker > 0xD7)) return $at;
+        $from = $code + 1;
+    }
+    return null;
+}
+
+/**
+ * One segment as the cleaned JPEG has it: whole if it is part of the picture,
+ * as the orientation alone if it is EXIF, and not at all otherwise. Which these
+ * are is image_without_metadata()'s list.
+ */
+function jpeg_segment_cleaned(int $marker, string $segment): string {
+    if (($marker >= 0xC0 && $marker <= 0xCF) || ($marker >= 0xDB && $marker <= 0xDF)) return $segment;
+    $payload = substr($segment, 4);
+    if ($marker === 0xE1 && str_starts_with($payload, "Exif\0\0")) {
+        $orientation = exif_orientation(substr($payload, 6));
+        return $orientation > 1 ? jpeg_orientation_segment($orientation) : '';
+    }
+    // APP0, APP2 and APP14 are kept only as the header, profile and transform
+    // named here: the same markers carry JFXX thumbnails and MPF.
+    $kept = [0xE0 => "JFIF\0", 0xE2 => "ICC_PROFILE\0", 0xEE => 'Adobe'];
+    return isset($kept[$marker]) && str_starts_with($payload, $kept[$marker]) ? $segment : '';
 }
 
 /** Which way is up (1-8) in an EXIF block, or 0 when it does not say. */
@@ -234,35 +314,58 @@ function jpeg_orientation_segment(int $orientation): string {
     return "\xFF\xE1" . pack('n', strlen($payload) + 2) . $payload;
 }
 
+/**
+ * Whether $length bytes from $at end by $end. A negative length never does: it
+ * is what unpack('N') and unpack('V') give on 32-bit PHP for 2^31 and more, and
+ * taken as it came it would walk a file backwards, for ever.
+ */
+function chunk_fits(int $at, int $length, int $end): bool {
+    return $length >= 0 && $length <= $end - $at;
+}
+
+/** The chunks a cleaned PNG keeps; which these are is image_without_metadata()'s list. */
+const PNG_KEPT_CHUNKS = ['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 'gAMA', 'cHRM', 'sRGB', 'iCCP', 'sBIT', 'bKGD', 'pHYs',
+                         'acTL', 'fcTL', 'fdAT', 'cICP', 'mDCV', 'cLLI'];
+
 function png_without_metadata(string $b): string {
     if (substr($b, 0, 8) !== "\x89PNG\r\n\x1A\n") return $b;
     $out = substr($b, 0, 8);
-    for ($i = 8, $n = strlen($b); $i < $n;) {
-        // Not even a chunk's frame left. A length running past the end needs no
-        // check of its own, as in a JPEG: the loop ends before IEND.
-        if ($i + 12 > $n) return $b;
+    for ($i = 8, $n = strlen($b); $i + 12 <= $n;) {
         $length = unpack('N', substr($b, $i, 4))[1];
+        // Its data, and the checksum after the data, have to be in the file.
+        if (!chunk_fits($i + 8, $length, $n - 4)) return $b;
         $type = substr($b, $i + 4, 4);
-        if (!in_array($type, ['eXIf', 'tEXt', 'iTXt', 'zTXt'], true)) $out .= substr($b, $i, 12 + $length);
-        $i += 12 + $length;
+        if (in_array($type, PNG_KEPT_CHUNKS, true)) $out .= substr($b, $i, 12 + $length);
         if ($type === 'IEND') return $out;
+        $i += 12 + $length;
     }
+    // No IEND: the file stops before its end.
     return $b;
 }
 
+/** The chunks a cleaned WebP keeps; which these are is image_without_metadata()'s list. */
+const WEBP_KEPT_CHUNKS = ['VP8X', 'VP8 ', 'VP8L', 'ALPH', 'ANIM', 'ANMF', 'ICCP'];
+
 function webp_without_metadata(string $b): string {
     if (strlen($b) < 12 || substr($b, 0, 4) !== 'RIFF' || substr($b, 8, 4) !== 'WEBP') return $b;
+    // The picture is as long as its RIFF header says. Bytes after that are no
+    // chunk of it, whatever they look like, and are not walked at all.
+    $riff = unpack('V', substr($b, 4, 4))[1];
+    if ($riff < 4 || !chunk_fits(8, $riff, strlen($b))) return $b;
+    $end = 8 + $riff;
     $chunks = '';
-    for ($i = 12, $n = strlen($b); $i < $n;) {
-        if ($i + 8 > $n) return $b;
+    for ($i = 12; $i < $end;) {
+        if ($i + 8 > $end) return $b;
         $type = substr($b, $i, 4);
         $size = unpack('V', substr($b, $i + 4, 4))[1];
-        $whole = 8 + $size + ($size % 2);
-        if ($i + 8 + $size > $n) return $b;
-        $chunk = substr($b, $i, $whole);
+        if (!chunk_fits($i + 8, $size, $end)) return $b;
+        // A chunk of odd size is followed by a byte of padding, which the last
+        // one in a file is sometimes written without.
+        $whole = 8 + $size + $size % 2;
+        $chunk = substr($b, $i, min($whole, $end - $i));
         // The extended header says whether EXIF (8) and XMP (4) follow; they no longer do.
         if ($type === 'VP8X' && $size >= 1) $chunk[8] = chr(ord($chunk[8]) & ~0x0C);
-        if ($type !== 'EXIF' && $type !== 'XMP ') $chunks .= $chunk;
+        if (in_array($type, WEBP_KEPT_CHUNKS, true)) $chunks .= $chunk;
         $i += $whole;
     }
     return 'RIFF' . pack('V', 4 + strlen($chunks)) . 'WEBP' . $chunks;

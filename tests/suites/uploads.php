@@ -501,7 +501,7 @@ foreach ([['image/jpeg', substr($phone, 0, 60), 'a JPEG cut off inside a segment
           ['image/jpeg', "\xFF\xD8" . jpeg_segment(0xE1, "Exif\0\0") . "\xFF\xD9", 'a JPEG with no picture in it'],
           ['image/png', substr($pngIn, 0, -2), 'a PNG cut off inside its last chunk'],
           ['image/webp', substr($webpIn, 0, -7), 'a WebP cut off inside a chunk'],
-          ['image/gif', "GIF89a" . $where, 'a GIF, which has no place for a location'],
+          ['image/gif', "GIF89a" . $where, 'a GIF, which can carry a comment and XMP but is not what a camera writes a photo as'],
           ['application/pdf', "%PDF-1.4\n" . $where, 'and anything that is not a picture']] as [$mime, $bytes, $what])
     is_same($bytes, image_without_metadata($bytes, $mime), $what);
 
@@ -511,4 +511,80 @@ case_('What is stored is the cleaned picture, not the one that arrived');
 $store = (string)strstr((string)strstr((string)file_get_contents(APP_ROOT.'/app/uploads.php'), 'function store_upload('), 'function image_without_metadata(', true);
 ok(str_contains($store, 'image_without_metadata((string)file_get_contents((string)$file[\'tmp_name\']), $mime)'), 'every picture goes through image_without_metadata()');
 ok(str_contains($store, '@file_put_contents($path, $clean, LOCK_EX) === strlen($clean)'), 'and the cleaned copy is what is written, all of it or nothing');
+ok(str_contains($store, "\$clean !== '' && @file_put_contents("),
+   'and an empty copy - a picture that could not be read - is never stored as though it were the picture');
 ok(str_contains($store, "'bytes' => \$clean === null ? (int)\$file['size'] : strlen(\$clean)"), 'and its own size is recorded');
+
+case_('A JPEG keeps what is on its list, and nothing after the end of its picture');
+/* What a phone writes besides EXIF, XMP and IPTC: a comment, other APPn
+   segments, the index of the pictures that follow (MPF) - and after the end of
+   the first picture a second one, or a motion photo's video, with EXIF of its
+   own. A stray byte between two segments, TEM and a restart outside a scan and
+   fill bytes in front of a marker are passed over, the way a decoder passes over
+   them, rather than being a reason to keep the file as it came. */
+$sof = (int)strpos($phone, "\xFF\xC0");
+$messy = substr($phone, 0, $sof)
+       . jpeg_segment(0xFE, 'Aufgenommen in ' . $where)
+       . jpeg_segment(0xEB, "JP\0\x01" . $where)
+       . jpeg_segment(0xE2, "MPF\0MM\0*" . $where)
+       . "\x00" . "\xFF\x01" . "\xFF\xD3" . "\xFF\xFF"
+       . substr($phone, $sof)
+       . jpeg_from_a_phone(1, $where);
+$tidied = image_without_metadata($messy, 'image/jpeg');
+is_same(9, substr_count($messy, $where), 'the fixture carries the address nine times: three in the photo, in its comment, APP11 and MPF, and three in the picture after it');
+ok(!str_contains($tidied, 'Gartenweg'), 'none of them is left');
+is_same(strlen($tidied) - 2, strpos($tidied, "\xFF\xD9"), 'and nothing follows the end of the first picture');
+is_same($clean, $tidied, 'what is left is exactly what is left of the photo without them');
+$size = getimagesizefromstring($tidied);
+is_same([600, 150, IMAGETYPE_JPEG], $size ? [$size[0], $size[1], $size[2]] : null, 'and it still reads as the same JPEG');
+is_same(6, exif_orientation(substr($tidied, (int)strpos($tidied, "Exif\0\0") + 6)), 'the right way up');
+
+case_('A progressive JPEG keeps every scan and the tables between them, and nothing else there');
+$dht = fn(int $table): string => jpeg_segment(0xC4, chr($table) . "\x01" . str_repeat("\x00", 15) . "\x05");
+$frame = "\xFF\xD8" . jpeg_segment(0xE0, "JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00")
+       . jpeg_segment(0xDB, "\x00" . str_repeat("\x01", 64))
+       . jpeg_segment(0xC2, "\x08" . pack('nn', 150, 600) . "\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01")
+       . jpeg_segment(0xDD, pack('n', 4));
+// Each scan with a stuffed zero and a restart in its data: both are part of it.
+$firstScan  = jpeg_segment(0xDA, "\x03\x01\x00\x02\x11\x03\x11\x00\x00\x00") . "\x11\xFF\x00\x22\xFF\xD0\x33";
+$secondScan = jpeg_segment(0xDA, "\x01\x01\x10\x01\x3F\x00") . "\x44\xFF\x00\x55\xFF\xD1\x66";
+$progressive = $frame . $dht(0x00) . $firstScan . "\xFF\xFF" . jpeg_segment(0xFE, $where) . $dht(0x10) . $secondScan . "\xFF\xD9";
+is_same($frame . $dht(0x00) . $firstScan . $dht(0x10) . $secondScan . "\xFF\xD9", image_without_metadata($progressive, 'image/jpeg'),
+        'both scans with all their data and the table between them, byte for byte; the comment between them goes');
+$size = getimagesizefromstring(image_without_metadata($progressive, 'image/jpeg'));
+is_same([600, 150, IMAGETYPE_JPEG], $size ? [$size[0], $size[1], $size[2]] : null, 'and it reads as the same JPEG');
+
+case_('A JPEG cut off in its picture data keeps that data, cleaned of what came before');
+$cut = substr($phone, 0, -2);
+ok(!str_contains($cut, "\xFF\xD9"), 'the fixture has lost its end, so its scan never reaches a marker');
+is_same(substr($clean, 0, -2), image_without_metadata($cut, 'image/jpeg'), 'the header is cleaned and the picture data kept as it came');
+
+case_('A PNG keeps only the chunks on its list');
+$listed = png_chunk('gAMA', pack('N', 45455)) . png_chunk('pHYs', pack('NNC', 2835, 2835, 1))
+        . png_chunk('iCCP', "Display P3\0\0" . gzcompress('profil'));
+$picture = png_chunk('IDAT', "\x78\x9C\x63\x00\x00\x00\x01\x00\x01") . png_chunk('IEND', '');
+$pngMessy = substr(png_header(600, 150), 0, -12) . png_chunk('tIME', pack('nCCCCC', 2026, 10, 5, 14, 30, 0)) . $listed
+          . png_chunk('caBX', 'jumb' . $where) . png_chunk('prVt', $where) . $picture;
+$pngTidied = image_without_metadata($pngMessy, 'image/png');
+ok(!str_contains($pngTidied, 'Gartenweg') && !preg_match('/tIME|caBX|prVt/', $pngTidied),
+   'its time, its content credentials and a chunk private to some program are gone');
+is_same(substr(png_header(600, 150), 0, -12) . $listed . $picture, $pngTidied, 'and every chunk on the list is there as it was, in its order');
+
+case_('A WebP keeps only the chunks on its list, and nothing past the length its RIFF header gives');
+// Behind the RIFF length: a chunk of a kind the list keeps, so only that length
+// can be what leaves it out.
+$inside = substr($webpIn, 12) . $riffChunk('Xtra', $where);
+$webpMessy = 'RIFF' . pack('V', 4 + strlen($inside)) . 'WEBP' . $inside . $riffChunk('ICCP', $where);
+$webpTidied = image_without_metadata($webpMessy, 'image/webp');
+ok(!str_contains($webpTidied, 'Gartenweg') && !str_contains($webpTidied, 'Xtra'), 'a chunk not on the list goes, and so does what follows the RIFF length');
+is_same($webpOut, $webpTidied, 'what is left is exactly what is left of the WebP without them');
+
+case_('A length of 2^31 or more is never walked');
+/* unpack('N') and unpack('V') give such a length as a negative number on 32-bit
+   PHP, and walked as one it would go backwards through the file for ever. */
+ok(!chunk_fits(8, -1, 100) && !chunk_fits(8, PHP_INT_MIN, 100), 'a negative length fits nowhere');
+ok(chunk_fits(8, 92, 100) && !chunk_fits(8, 93, 100), 'a length fits exactly as far as the end, and no further');
+$huge = substr(png_header(600, 150), 0, -12) . pack('N', 0xFFFFFFFF) . 'tEXt' . $where . png_chunk('IEND', '');
+is_same($huge, image_without_metadata($huge, 'image/png'), 'a PNG whose chunk says 2^32 - 1 bytes is kept as it came');
+$hugeWebp = 'RIFF' . pack('V', 0xFFFFFFF0) . 'WEBP' . substr($webpIn, 12);
+is_same($hugeWebp, image_without_metadata($hugeWebp, 'image/webp'), 'and so is a WebP whose RIFF header says as much');

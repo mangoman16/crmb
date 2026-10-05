@@ -420,6 +420,11 @@ function dispatch_config(string $action): array {
     // ---- the shell: notifications, pictures, colours, impersonation ------
 
     case 'notifications_read':
+        // Asked first, like the status: while staff look through a family's
+        // eyes the notices are the family's, and „Alle gelesen" would mark them
+        // read before the family ever saw them - the chat notices included,
+        // which the bell does not even show in that view.
+        if(impersonator())throw new UserError(t('Hinweise als gelesen markieren kann nur die Person selbst. Beende zuerst die Ansicht.','Only the person themselves can mark their notifications as read. Stop viewing first.'));
         $u=require_user();
         if(post('id')!=='') run('UPDATE notifications SET read_at=? WHERE id=? AND account_id=? AND read_at IS NULL',[now(),(int)post('id'),$u['id']]);
         else run('UPDATE notifications SET read_at=? WHERE account_id=? AND read_at IS NULL',[now(),$u['id']]);

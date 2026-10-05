@@ -82,6 +82,10 @@ function duplicate_record(string $table, int $id, bool $rename = true): int {
             $row[$spec['title']] = copy_name((string)$row[$spec['title']], duplicate_taken($table, $spec, $source));
 
         $copy = insert_row($table, $row);
+        // A course has its group chat from the moment it exists, however it
+        // came to exist (ADR 0022 §3); a copy without one would have no chat
+        // until the next update gave it one.
+        if ($table === 'classes') course_group_thread($copy);
         foreach ($spec['children'] as $child => $pointer)
             foreach (rows('SELECT * FROM ' . sql_name($child, 'table')
                      . ' WHERE ' . sql_name($pointer, 'column') . '=?', [$id]) as $childRow) {
