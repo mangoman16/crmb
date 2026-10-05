@@ -381,6 +381,21 @@ is_same('feedback', $help($fresh), 'and the help button is not pinned over it');
 is_same('feedback', $help(render_page('messages', ['id'=>(string)$withOther])), 'nor over a chat opened by its id');
 is_same('feedback is-pinned', $help(render_page('messages')), 'with no chat open it is pinned, as on every other page');
 is_same('feedback is-pinned', $help(render_page('messages', ['new'=>'1'])), 'and while choosing whom to write to');
+/* Whether the box is drawn is the chat page's to say. The layout once read it
+   off the address instead, and took the button out of its corner over every
+   chat - the ones that can only be read as well (code review). */
+$helpUnlessWriting = function (array $query) use ($help): string {
+    $html = render_page('messages', $query);
+    return str_contains($html, 'class="composer"') ? 'a writing box is drawn' : $help($html);
+};
+sign_in_as($trainer);
+is_same('feedback is-pinned', $helpUnlessWriting(['id'=>(string)$desk]), 'an earlier conversation, closed to new messages, keeps it pinned');
+sign_in_as($hofer);
+$_SESSION['impersonator_id'] = $trainer;
+is_same('feedback is-pinned', $helpUnlessWriting(['id'=>(string)$group]), 'so does a chat read through a child’s eyes');
+is_same('feedback is-pinned', $helpUnlessWriting(['with'=>(string)$trainer]),
+        'and a chat asked for by who it is with there, which shows the page that says only the child writes');
+unset($_SESSION['impersonator_id']);
 
 case_('Looking through a child’s eyes, the bell quotes no chat, and nothing is marked read');
 /* A chat notice quotes the message, and a request to write is one too: the bell
@@ -508,6 +523,16 @@ $writer = array_values(array_filter(thread_people((int)$thread['id']), fn($p) =>
 $bubble = array_values(array_filter(thread_messages((int)$thread['id'])['messages'], fn($m) => (int)$m['sender_id'] === $hofer))[0] ?? [];
 ok($writer !== [] && $bubble !== [], 'the child wrote in that chat, so the next line proves something');
 is_same($writer, chat_person_in($bubble, 'author_'), 'and a message carries who wrote it the same way, value for value');
+/* The group's page drew the name over a run from a copy of those columns made
+   for it alone; it reads the author the message carries. The emoji is what a
+   copy would leave out, so the trainer has one while this is looked at. */
+$emojiBefore = scalar('SELECT status_emoji FROM accounts WHERE id=?', [$trainer]);
+run("UPDATE accounts SET status_emoji='rocket' WHERE id=?", [$trainer]);
+$author = one('SELECT '.chat_person_columns('a').' FROM accounts a WHERE a.id=?', [$trainer]);
+ok(str_contains(chat_name($author), '🚀'), 'the trainer has an emoji, so the next line proves something');
+ok(str_contains(render_view('messages', ['id'=>(string)$group]), '<span class="bubble-sender hue-'.chat_hue($trainer).'">'.chat_name($author).'</span>'),
+   'and the group names her over her message as the chat draws her everywhere else, emoji and all, in her colour');
+run('UPDATE accounts SET status_emoji=? WHERE id=?', [$emojiBefore, $trainer]);
 throws(fn() => chat_person_columns('a; DROP TABLE accounts'), 'an alias is a name, never a piece of SQL', 'Refusing');
 
 case_('A chat not started yet looks as it will once the first message makes it');

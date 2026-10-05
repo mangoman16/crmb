@@ -276,10 +276,6 @@ function thread_messages(int $threadId, int $before = 0, int $limit = 50): array
         $m['removed'] = $m['removed_at'] !== null;
         if ($m['removed']) $m['body'] = '';
         $m['files'] = $m['removed'] ? [] : ($files[(int)$m['id']] ?? []);
-        // Only until views/messages.php draws the bubble's author with
-        // chat_person_in($m, 'author_'): the names it reads today, copied from
-        // that one list rather than selected a second time. Goes with that change.
-        foreach (['name', 'avatar_name', 'role', 'status_emoji'] as $column) $m['sender_'.$column] = $m['author_'.$column];
     }
     unset($m);
     return ['messages' => $rows, 'more' => $more];

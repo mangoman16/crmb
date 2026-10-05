@@ -613,9 +613,9 @@ a.account-menu-row:hover,button.account-menu-row:hover{background:var(--surface-
    sticky Save button; a third thing floating over those is how a Save button
    becomes unreachable. The menu drawer carries a link down to it instead.
 
-   Only a button the layout marks .is-pinned is pinned: a conversation, whose
-   writing box holds the bottom of the window at every width, keeps it in the
-   flow as a phone does (the reason is in layout.php).
+   Only a button the layout marks .is-pinned is pinned: a conversation with a
+   writing box, which holds the bottom of the window at every width, keeps it
+   in the flow as a phone does (the reason is in layout.php).
    --------------------------------------------------------------------------- */
 .feedback-link{display:none}
 @media(min-width:761px){

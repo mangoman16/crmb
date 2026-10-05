@@ -1724,9 +1724,7 @@ foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'),
         if (str_contains($code, 'Schreiben kann nur die Person selbst') || str_contains($code, 'Only the person themselves can write'))
             $refusalCopies[] = substr($path, strlen(APP_ROOT) + 1).' '.$block;
 sort($refusalCopies);
-// views/messages.php until its line where the writing box would be calls
-// viewing_refusal() too; that change takes it off this list.
-is_same(['app/shell.php viewing_refusal', 'views/messages.php messages.php (file)'], $refusalCopies,
+is_same(['app/shell.php viewing_refusal'], $refusalCopies,
         'viewing_refusal() is where the sentence is written');
 
 // ---------------------------------------------------------------------------

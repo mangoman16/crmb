@@ -18,12 +18,14 @@ $with=(int)($_GET['with']??0);
 // contacts=1 is what links in older notifications say.
 $picking=!empty($_GET['new']) || !empty($_GET['contacts']);
 /* While staff look through somebody's eyes nothing can be written (ADR 0022
-   §9), so nothing here offers to, and whom to write to and the chat with one
-   person give one answer whoever is asked for. Opened by who it is with, a chat
-   said „nicht gefunden" where the child has one this view does not show, and
-   opened empty where they have none; whom to write to is the child's requests,
-   their agreed contacts and every other family. A chat in the list still opens
-   by its id, to read. */
+   §9), so nothing here offers to. „Neue Nachricht" and a chat asked for by who
+   it is with both show the one page that says so, whoever is asked for: it lists
+   nobody, and offers nothing to ask or agree to. A chat in the list still opens
+   by its id, to read.
+   Before, a chat opened by who it was with said „nicht gefunden" where the child
+   had one this view did not show and opened empty where they had none, and the
+   picker listed the child's requests, their agreed contacts and every other
+   family - so typing addresses told the trainer whom the child writes to. */
 $viewing=impersonator()!==null;
 if($viewing && $with && !$id) { $picking=true; $with=0; }
 $allDirect=is_admin($user) && !empty($_GET['all']);
@@ -33,6 +35,10 @@ $before=max(0,(int)($_GET['before']??0));
 if($with && !$id) $id=pair_thread($me,$with);
 $showMembers=$id && !empty($_GET['members']);
 $open=$id || $with || $picking;
+// Whether this page draws a writing box: only an open chat that may be written
+// in does. views/layout.php reads it after this page, in the scope the two share,
+// to keep its help button off the box's Send button.
+$writable=false;
 $chats=chat_list($user,$allDirect);
 $waiting=($staff || $viewing)?0:pending_contact_count($me);
 
@@ -124,7 +130,7 @@ if($picking): ?>
     <?php /* The one answer while looking through somebody's eyes (above), in the
              words the actions refuse with: nobody listed, nothing to ask or agree to. */
     if($viewing): ?>
-    <p class="chat-empty"><?=e(t('Schreiben kann nur die Person selbst. Beende zuerst die Ansicht.','Only the person themselves can write. Stop viewing first.'))?></p>
+    <p class="chat-empty"><?=e(viewing_refusal())?></p>
     <?php else:
     $q=trim((string)($_GET['q']??''));
     $match=fn(array $p): bool => $q==='' || mb_stripos((string)$p['name'],$q)!==false;
@@ -280,7 +286,7 @@ elseif($id || $with):
         if($day!==$lastDay): $lastSender=null; ?><span class="day-separator"><?=e(day_label($day))?></span><?php endif;
         // A run: the same sender on the same day. Only its first bubble names them.
         $runStart=$m['sender_id']!==$lastSender; $lastDay=$day; $lastSender=$m['sender_id'];
-        $sender=['id'=>$m['sender_id'],'name'=>$m['sender_name'],'avatar_name'=>$m['sender_avatar_name'],'role'=>$m['sender_role'],'status_emoji'=>$m['sender_status_emoji']]; ?>
+        $sender=chat_person_in($m,'author_'); ?>
     <div class="message-row<?=$mine?' mine':''?><?=$runStart?' run-start':''?>" id="m<?=e($m['id'])?>">
         <?php if($group && !$mine) echo $runStart?avatar($sender,'tiny'):'<span class="avatar-slot"></span>'; ?>
         <article class="message-bubble<?=$mine?' mine':''?><?=$m['removed']?' removed':''?>">

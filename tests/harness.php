@@ -461,9 +461,23 @@ function query_count(callable $fn): int {
  * variables are in scope: $page, $public and $user.
  */
 function render_view(string $page, array $query = []): string {
+    return render_as_front_controller($page, $query, false);
+}
+
+/**
+ * A signed-in page whole: the view inside views/layout.php, as public/index.php
+ * draws it - the bell, the account menu, and the bar that says whose eyes you
+ * are looking through. render_view() is the view alone. A warning in the frame
+ * fails the check, as one in the view does.
+ */
+function render_page(string $page, array $query = []): string {
+    return render_as_front_controller($page, $query, true);
+}
+
+/** What render_view() and render_page() share: everything around the drawing. */
+function render_as_front_controller(string $page, array $query, bool $framed): string {
     test_load_actions();
-    $file = APP_ROOT . '/views/' . $page . '.php';
-    if (!is_file($file)) throw new RuntimeException('No such view: ' . $page);
+    if (!is_file(APP_ROOT . '/views/' . $page . '.php')) throw new RuntimeException('No such view: ' . $page);
 
     $public = in_array($page, ['login', 'forgot', 'activate', 'unsubscribe', 'privacy', 'not_found'], true);
     $user = current_user();
@@ -486,7 +500,7 @@ function render_view(string $page, array $query = []): string {
         throw new RuntimeException($message . ' @ ' . basename($file) . ':' . $line);
     });
     try {
-        require $file;
+        draw_in_one_scope($page, $public, $user, $framed);
         return (string)ob_get_clean();
     } catch (Throwable $e) {
         while (ob_get_level() > $level) ob_end_clean();
@@ -499,32 +513,19 @@ function render_view(string $page, array $query = []): string {
 }
 
 /**
- * A signed-in page whole: the view inside views/layout.php, as public/index.php
- * draws it - the bell, the account menu, and the bar that says whose eyes you
- * are looking through. render_view() is the view alone. A warning in the frame
- * fails the check, as one in the view does.
+ * The view, and with $framed the layout after it, required into one scope as
+ * public/index.php requires them. What a view leaves there the layout reads -
+ * views/layout.php asks views/messages.php's $writable whether to pin its help
+ * button - and a view that overwrote $page would break the frame here as it
+ * does on the server. Drawn in two scopes, the frame saw neither. Nothing of
+ * the harness's own is in this scope for a view to overwrite.
  */
-function render_page(string $page, array $query = []): string {
-    $content = render_view($page, $query);
-    $public = false; $user = current_user();
-    $restore = $_GET; $restorePage = $GLOBALS['page'] ?? null;
-    $_GET = $query; $GLOBALS['page'] = $page;
-    $level = ob_get_level();
+function draw_in_one_scope(string $page, bool $public, ?array $user, bool $framed): void {
+    if (!$framed) { require APP_ROOT . '/views/' . $page . '.php'; return; }
     ob_start();
-    set_error_handler(static function (int $no, string $message, string $file, int $line): bool {
-        throw new RuntimeException($message . ' @ ' . basename($file) . ':' . $line);
-    });
-    try {
-        require APP_ROOT . '/views/layout.php';
-        return (string)ob_get_clean();
-    } catch (Throwable $e) {
-        while (ob_get_level() > $level) ob_end_clean();
-        throw $e;
-    } finally {
-        restore_error_handler();
-        $_GET = $restore;
-        if ($restorePage === null) unset($GLOBALS['page']); else $GLOBALS['page'] = $restorePage;
-    }
+    require APP_ROOT . '/views/' . $page . '.php';
+    $content = (string)ob_get_clean();
+    require APP_ROOT . '/views/layout.php';
 }
 
 /**

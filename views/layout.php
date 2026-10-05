@@ -129,13 +129,15 @@ if(!$public && is_staff($user) && setup_return_active() && setup_unfinished()): 
          the sticky save button, and a third thing floating over them is how a
          Save button becomes unreachable. The menu carries a link down to it.
 
-         A conversation keeps it at the end of the page on a desktop screen too:
-         its writing box is pinned to the bottom of the window as well, and the
-         help button sat on its Send button there until the thread was scrolled
-         to its very end - so a click meant for Send opened this form instead.
-         That is a chat opened by its id, and a new one opened by who it is with,
-         which is where the picker and the member list lead. */
-$pinnedHelp=!($page==='messages' && ((int)($_GET['id']??0)>0 || (int)($_GET['with']??0)>0)); ?>
+         A conversation with a writing box keeps it at the end of the page on a
+         desktop screen too: the box is pinned to the bottom of the window as
+         well, and the help button sat on its Send button there until the thread
+         was scrolled to its very end - so a click meant for Send opened this
+         form instead. Whether the box is drawn is views/messages.php's to say,
+         as $writable, which it always sets and leaves in the scope this layout
+         shares with it. Read from the address here instead, the answer was a
+         second copy of that rule, and wrong for a chat that can only be read. */
+$pinnedHelp=!($page==='messages' && $writable); ?>
 <details class="feedback<?=$pinnedHelp?' is-pinned':''?>" id="feedback">
     <summary><?=icon('help')?><span><?=e(t('Etwas funktioniert hier nicht','Something is wrong on this page'))?></span></summary>
     <div class="feedback-panel">
