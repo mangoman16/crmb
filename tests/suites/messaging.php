@@ -278,6 +278,110 @@ unset($_SESSION['impersonator_id']);
 render_view('messages', ['id'=>(string)$group]);
 ok(!in_array($group, unread_thread_ids(current_user()), true), 'the child opening it does');
 
+case_('Looking through a child’s eyes, whom to write to is one answer, whoever is asked for');
+/* The picker showed the child's requests with their words, their agreed contacts
+   and every other family; and a chat opened by who it is with said „nicht
+   gefunden" where the child had one the view hides, and opened empty where they
+   had none - so typing addresses told the trainer whom the child writes to
+   (security review S3, ADR 0022 §9). Nothing is written in that view, so every
+   way in to writing gives the same page. */
+$neumann = make_account(['role'=>'student', 'name'=>'Familie Neumann']);
+$wagner  = make_account(['role'=>'student', 'name'=>'Familie Wagner']);
+$stern   = make_account(['role'=>'student', 'name'=>'Familie Stern']);
+fixture('contact_requests', ['from_account_id'=>$neumann, 'to_account_id'=>$hofer, 'state'=>'pending',
+                             'message'=>'Wir sind neu im Dienstagskurs.', 'created_at'=>now()]);
+fixture('contact_requests', ['from_account_id'=>$wagner, 'to_account_id'=>$hofer, 'state'=>'accepted',
+                             'message'=>'', 'created_at'=>now(), 'decided_at'=>now()]);
+// Berger is the agreed family with a chat ($direct), Wagner the one without, Stern
+// a family the child has not asked; Neumann's request waits, with its words.
+$theirs = ['Familie Neumann', 'Wir sind neu im Dienstagskurs.', 'Familie Berger', 'Familie Wagner', 'Familie Stern'];
+// A refusal is an answer too, so it is compared as one rather than ending the suite.
+$answer = function (array $query, string $draw = 'render_view'): string {
+    try { return $draw('messages', $query); }
+    catch (Throwable $e) { return get_class($e).': '.$e->getMessage(); }
+};
+$conversationOf = fn(string $html): string => (string)strstr($html, '<section class="card conversation">');
+$writeLink = e(url('messages', ['new'=>1]));
+sign_in_as($hofer);
+$asChild = $answer(['new'=>'1']);
+foreach ($theirs as $said)
+    ok(str_contains($conversationOf($asChild), e($said)), 'the child’s own picker shows „'.$said.'“, so the lines below prove something');
+$childList = $answer([]);
+ok(str_contains($childList, e('1 neue Anfrage')) && substr_count($childList, $writeLink) === 3,
+   'their list has the chip for the request, and „Neue Nachricht" above the list and in the empty conversation');
+ok(str_contains($answer(['with'=>(string)$wagner]), 'value="message_send"'), 'a chat with the agreed family not started yet opens empty, to write in');
+ok(str_contains($answer(['id'=>(string)$group, 'members'=>'1']), 'with='), 'and in the group’s member list the trainers lead to a chat');
+
+$_SESSION['impersonator_id'] = $trainer;
+$pickerViewed = $answer(['new'=>'1']);
+ok(str_contains($conversationOf($pickerViewed), '<h2>'.e('Neue Nachricht').'</h2>')
+   && str_contains($conversationOf($pickerViewed), e('Schreiben kann nur die Person selbst. Beende zuerst die Ansicht.')),
+   'viewed by the trainer, „Neue Nachricht" says that only the child can write');
+foreach ($theirs as $said) ok(!str_contains($pickerViewed, e($said)), 'and nothing on the page shows „'.$said.'“');
+ok(!str_contains($pickerViewed, 'contact_decide') && !str_contains($pickerViewed, 'contact_request') && !str_contains($pickerViewed, e('Jemand anderen fragen')),
+   'nothing to agree to, and nobody to ask');
+ok(!str_contains($pickerViewed, 'neue Anfrage'), 'no chip counting the child’s requests');
+foreach (['new'=>['new'=>'1'], 'contacts, as older notifications link'=>['contacts'=>'1'],
+          'with the family they have a chat with'=>['with'=>(string)$berger],
+          'with the family they have none with'=>['with'=>(string)$wagner],
+          'with a family they have not asked'=>['with'=>(string)$stern],
+          'with the trainer, whose chat with them she reads'=>['with'=>(string)$trainer],
+          'with nobody at all'=>['with'=>'999999']] as $what => $query)
+    ok($answer($query) === $pickerViewed, '?'.http_build_query($query).', '.$what.': the same page, byte for byte');
+/* The whole page as the browser gets it, frame and all. Every form carries a
+   random request_id and every field a random id, so those - and nothing else -
+   are set aside before comparing. The flash an earlier action in this suite
+   left is shown once, on whichever page comes first, so it goes first. */
+unset($_SESSION['flash']);
+$settled = fn(string $html): string => (string)preg_replace(['/name="request_id" value="[0-9a-f]{64}"/', '/\bf_(\w+?)_\d{4}\b/'],
+                                                            ['name="request_id" value=""', 'f_$1_'], $html);
+$withChat = $settled($answer(['with'=>(string)$berger], 'render_page'));
+ok(str_contains($withChat, 'impersonation-bar') && $withChat === $settled($answer(['with'=>(string)$wagner], 'render_page')),
+   'and so is the whole page around it, with a chat with that family or without one');
+$viewedList = $answer([]);
+ok(!str_contains($viewedList, $writeLink), 'no „Neue Nachricht" above the list or in the empty conversation');
+ok(str_contains($viewedList, e('Wähle eine Unterhaltung aus.')) && !str_contains($viewedList, e('schreibe eine neue Nachricht')),
+   'which asks only to choose a chat');
+// Read in the conversation alone: the list beside it names the trainer and
+// quotes the chat's last message too, and would answer for it.
+$viewedSheet = $answer(['id'=>(string)$group, 'members'=>'1']);
+ok(str_contains($conversationOf($viewedSheet), '<div class="member-row">') && !str_contains($viewedSheet, 'with='),
+   'the group’s member list names its people, and leads to a chat with none of them');
+$readOnly = $conversationOf($answer(['id'=>(string)$thread['id']]));
+ok(str_contains($readOnly, '<div class="prewrap">'.e('Welchen Schläger sollen wir kaufen?').'</div>') && !str_contains($readOnly, 'value="message_send"'),
+   'a chat in the list still opens by its id, to read');
+
+/* An administrator viewing a trainer gets the trainer's picker - search, groups,
+   every child - which is the other branch of the same page. */
+unset($_SESSION['impersonator_id']);
+sign_in_as($trainer);
+ok(str_contains($answer(['id'=>(string)$group]), 'value="message_remove"'), 'the trainer’s own group offers „Nachricht entfernen"');
+$_SESSION['impersonator_id'] = $admin;
+$staffViewed = $conversationOf($answer(['new'=>'1']));
+ok(str_contains($staffViewed, e('Schreiben kann nur die Person selbst.')) && !str_contains($staffViewed, 'filter-search')
+   && !str_contains($staffViewed, e('Familie Hofer')), 'viewed by an administrator, the trainer’s picker has the same sentence, no search and no children');
+ok(!str_contains($answer(['id'=>(string)$group]), 'message_remove'), 'and her group offers nothing to take down, which could only be refused');
+unset($_SESSION['impersonator_id']);
+
+case_('The help button is not pinned over a chat’s writing box, new or not');
+/* Above 760px the help button is fixed to the bottom right of the window, and so
+   is a chat's writing box, so over a chat the button stays at the end of the
+   page - or a click meant for Send opens it. A chat with somebody new opens by
+   who it is with, where the picker and the member list lead, and was missed
+   (code review C4). */
+sign_in_as($trainer2);
+$help = function (string $html): string {
+    preg_match('~<details class="(feedback[^"]*)" id="feedback">~', $html, $m);
+    return $m[1] ?? 'no help button';
+};
+is_same(0, pair_thread($trainer2, $berger), 'the second trainer has no chat with the Bergers yet');
+$fresh = render_page('messages', ['with'=>(string)$berger]);
+ok(str_contains($fresh, 'class="composer"'), 'so one opened by who it is with is new, with its writing box');
+is_same('feedback', $help($fresh), 'and the help button is not pinned over it');
+is_same('feedback', $help(render_page('messages', ['id'=>(string)$withOther])), 'nor over a chat opened by its id');
+is_same('feedback is-pinned', $help(render_page('messages')), 'with no chat open it is pinned, as on every other page');
+is_same('feedback is-pinned', $help(render_page('messages', ['new'=>'1'])), 'and while choosing whom to write to');
+
 case_('Looking through a child’s eyes, the bell quotes no chat, and nothing is marked read');
 /* A chat notice quotes the message, and a request to write is one too: the bell
    handed the trainer the words of the child's chat with another family that
@@ -291,8 +395,10 @@ $bell = fn(string $html): string => (string)strstr((string)strstr($html, 'notifi
 $quotes = fn(array $notes, string $said): bool => in_array($said, array_column($notes, 'body'), true);
 $unread = (int)scalar('SELECT COUNT(*) FROM notifications WHERE account_id=? AND read_at IS NULL', [$hofer]);
 $chatNotes = (int)scalar("SELECT COUNT(*) FROM notifications WHERE account_id=? AND read_at IS NULL AND kind='message'", [$hofer]);
-ok($quotes(notifications_for($hofer), 'Ja, ich fahre mit dem Zug.') && str_contains($bell(render_page('dashboard')), 'Ja, ich fahre mit dem Zug.'),
+$ownBell = $bell(render_page('dashboard'));
+ok($quotes(notifications_for($hofer), 'Ja, ich fahre mit dem Zug.') && str_contains($ownBell, 'Ja, ich fahre mit dem Zug.'),
    'the child’s own bell quotes the other family’s message, so the lines below prove something');
+ok(str_contains($ownBell, 'value="notifications_read"'), 'and offers „Alle gelesen"');
 ok($chatNotes >= 2 && $unread > $chatNotes, 'and holds chat notices and one of another kind, all unread ('.$chatNotes.' of '.$unread.')');
 $_SESSION['impersonator_id'] = $trainer;
 is_same([], array_values(array_filter(notifications_for($hofer), fn($n) => $n['kind'] === 'message')),
@@ -301,6 +407,7 @@ ok($quotes(notifications_for($hofer), 'Am Montag ist die Halle zu.'), 'but the o
 is_same($unread - $chatNotes, unread_notifications($hofer), 'and the bell counts that one only');
 $viewed = render_page('dashboard');
 ok(str_contains($bell($viewed), 'Training fällt aus'), 'the page draws the bell, with the notice she may see');
+ok(!str_contains($bell($viewed), 'notifications_read'), 'and, with a notice unread, no „Alle gelesen", which could only be refused');
 foreach (['Ja, ich fahre mit dem Zug.', 'Bitte das Trikot mitbringen.'] as $said)
     ok(!str_contains($viewed, $said), 'and nothing on the page quotes „'.$said.'“');
 throws(fn() => act('notifications_read', []), '„Alle gelesen" is refused', 'Ansicht');
@@ -385,6 +492,40 @@ $header = array_values(array_filter(thread_people((int)$thread['id']), fn($p) =>
 is_same(CHAT_PERSON_COLUMNS, array_keys($header), 'the header reads the one list of what the chat shows of a person');
 is_same($header, chat_person_in($row, 'other_'), 'and the list’s row carries the same person, value for value');
 throws(fn() => chat_person_columns('a; DROP TABLE accounts'), 'an alias is a name, never a piece of SQL', 'Refusing');
+
+case_('A chat not started yet looks as it will once the first message makes it');
+/* The empty chat drew its person from a column list of its own and decided its
+   kind with a rule of its own (code review C7). Both now come from where the
+   chat is made, so its header and what it says about who reads it are what the
+   chat keeps once it exists - and the chat list draws the person from the same
+   facts as the header. */
+sign_in_as($hofer);
+run("UPDATE accounts SET status_emoji='rocket', last_seen_at=? WHERE id=?", [now(), $admin]);
+run("UPDATE accounts SET status_emoji='cat', last_seen_at=? WHERE id=?", [now(), $wagner]);
+$headOf = fn(string $html): string => (string)strstr((string)strstr($html, '<header class="chat-head">'), '</header>', true);
+$notesOf = function (string $html): array { preg_match_all('~<p class="chat-note">(.*?)</p>~', $html, $m); return $m[1]; };
+foreach ([[$admin, '🚀', 'Die Administratoren des Vereins können diesen Chat lesen.'],
+          [$wagner, '🐱', 'Diese Unterhaltung ist privat. Auch die Trainerin und der Administrator lesen sie nicht mit.']] as [$person, $emoji, $note]) {
+    $name = (string)scalar('SELECT name FROM accounts WHERE id=?', [$person]);
+    is_same(0, pair_thread($hofer, $person), 'the child has no chat with '.$name.' yet');
+    $unstarted = render_view('messages', ['with'=>(string)$person]);
+    ok(str_contains($headOf($unstarted), $emoji) && str_contains($headOf($unstarted), 'is-online'),
+       'the empty chat’s header shows '.$name.' with their emoji and their dot, so the comparison below has something to compare');
+    ok(in_array(e($note), $notesOf($unstarted), true), 'and says: „'.$note.'“');
+    $opened = render_view('messages', ['id'=>(string)direct_thread(current_user(), $person)]);
+    is_same($headOf($unstarted), $headOf($opened), 'once the chat exists, its header is that one');
+    is_same($notesOf($unstarted), $notesOf($opened), 'and so is what it says about who reads it');
+}
+$rowOf = fn(string $html, int $chat): string
+    => (string)strstr((string)strstr($html, 'href="'.e(url('messages', ['id'=>$chat, '#'=>'chat-end'])).'"'), '</a>', true);
+$adminRow = one('SELECT * FROM accounts WHERE id=?', [$admin]);
+$listed = $rowOf(render_view('messages'), pair_thread($hofer, $admin));
+ok(str_contains($listed, presence_dot(current_user(), $adminRow)) && str_contains($listed, status_emoji_mark($adminRow)),
+   'the chat list draws the administrator with the dot and the emoji the header shows');
+// link_button() takes the place on the page as url() does, so there is one way to say it.
+ok(str_contains(render_view('messages', ['id'=>(string)$group, 'members'=>'1']),
+                '<a class="button secondary" href="'.e(url('messages', ['id'=>$group, '#'=>'chat-end'])).'">'.e('Zurück zur Gruppe').'</a>'),
+   '„Zurück zur Gruppe" lands on the end of the chat, through url()');
 
 case_('The chat list is one query, however many chats there are');
 sign_in_as($trainer);

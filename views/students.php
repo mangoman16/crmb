@@ -6,7 +6,7 @@ $overdueBy=balances(true);$coursePrices=course_prices_by_student();
 // The two ways to add a person (ADR 0021, §3); the blank paper form is on the
 // second one's page.
 page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in this selection'),
-    $staff?link_button(t('Per E-Mail einladen','Invite by email'),'students',['invite'=>1],'secondary','invite')
+    $staff?link_button(t('Per E-Mail einladen','Invite by email'),'students',['invite'=>1,'#'=>'invite'],'secondary')
            .link_button(t('+ Schüler anlegen','+ Add student'),'student'):'');
 if($staff): ?>
 <?php /* Option 1 (ADR 0021, §3): an address and a language, and the person sets

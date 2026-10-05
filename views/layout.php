@@ -78,7 +78,10 @@ $unreadNotes=unread_notifications((int)$user['id']);
             <div class="topbar-menu-panel notification-list">
                 <div class="notification-head">
                     <strong><?=e(t('Hinweise','Notifications'))?></strong>
-                    <?php if($unreadNotes){start_form('notifications_read',[],'inline-form');submit_button(t('Alle gelesen','Mark all read'),'subtle');echo '</form>';} ?>
+                    <?php /* Not while looking through somebody else's eyes: the
+                             notices stay unread until they read them, and the
+                             action refuses it there (ADR 0022 §9). */
+                    if($unreadNotes && !$realUser){start_form('notifications_read',[],'inline-form');submit_button(t('Alle gelesen','Mark all read'),'subtle');echo '</form>';} ?>
                 </div>
                 <?php $notes=notifications_for((int)$user['id'],20);
                 if(!$notes):?><p class="muted"><?=e(t('Nichts Neues.','Nothing new.'))?></p><?php endif ?>
@@ -129,8 +132,10 @@ if(!$public && is_staff($user) && setup_return_active() && setup_unfinished()): 
          A conversation keeps it at the end of the page on a desktop screen too:
          its writing box is pinned to the bottom of the window as well, and the
          help button sat on its Send button there until the thread was scrolled
-         to its very end - so a click meant for Send opened this form instead. */
-$pinnedHelp=!($page==='messages' && (int)($_GET['id']??0)>0); ?>
+         to its very end - so a click meant for Send opened this form instead.
+         That is a chat opened by its id, and a new one opened by who it is with,
+         which is where the picker and the member list lead. */
+$pinnedHelp=!($page==='messages' && ((int)($_GET['id']??0)>0 || (int)($_GET['with']??0)>0)); ?>
 <details class="feedback<?=$pinnedHelp?' is-pinned':''?>" id="feedback">
     <summary><?=icon('help')?><span><?=e(t('Etwas funktioniert hier nicht','Something is wrong on this page'))?></span></summary>
     <div class="feedback-panel">

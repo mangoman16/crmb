@@ -27,7 +27,7 @@ if($tab===''):
 <section class="card settings-hub"><div class="grid two hub-grid">
 <?php foreach($hub as $item): ?>
     <div class="hub-item">
-        <a class="editor-list-item" href="<?=e(url($item['page'],$item['params']).(isset($item['anchor'])?'#'.$item['anchor']:''))?>"><span><strong><?=e($item['what'])?></strong><small><?=e($item['why'])?></small></span><?=icon('arrow')?></a>
+        <a class="editor-list-item" href="<?=e(url($item['page'],$item['params']+['#'=>$item['anchor']??'']))?>"><span><strong><?=e($item['what'])?></strong><small><?=e($item['why'])?></small></span><?=icon('arrow')?></a>
         <?php if(!empty($item['setup']) && $setupHidden){start_form('setup_visibility',['hidden'=>'0'],'inline-form hub-action');submit_button(t('Wieder anzeigen','Show again'),'secondary');echo '</form>';} ?>
     </div>
 <?php endforeach ?>

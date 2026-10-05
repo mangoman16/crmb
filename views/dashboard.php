@@ -60,7 +60,7 @@ if(is_admin($user) && setup_unfinished()): $setup=setup_progress();$left=$setup[
     <h2><?=e(t('Dein Portal einrichten','Set up your portal'))?></h2>
     <p><?=e(t('Noch ','').plural($left,'Schritt','Schritte','step left','steps left').'. '.t('Als Nächstes: ','Next: ').$step['what'].'.')?></p>
     <div class="row-actions">
-        <a class="button" href="<?=e(url($step['page'],$step['params']).(!empty($step['anchor'])?'#'.$step['anchor']:''))?>"><?=e(t('Weiter','Continue'))?></a>
+        <a class="button" href="<?=e(url($step['page'],$step['params']+['#'=>(string)($step['anchor']??'')]))?>"><?=e(t('Weiter','Continue'))?></a>
         <?=link_button(t('Alle Schritte','All steps'),'start',[],'secondary')?>
     </div>
 </section>

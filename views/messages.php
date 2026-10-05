@@ -17,6 +17,15 @@ $id=(int)($_GET['id']??0);
 $with=(int)($_GET['with']??0);
 // contacts=1 is what links in older notifications say.
 $picking=!empty($_GET['new']) || !empty($_GET['contacts']);
+/* While staff look through somebody's eyes nothing can be written (ADR 0022
+   §9), so nothing here offers to, and whom to write to and the chat with one
+   person give one answer whoever is asked for. Opened by who it is with, a chat
+   said „nicht gefunden" where the child has one this view does not show, and
+   opened empty where they have none; whom to write to is the child's requests,
+   their agreed contacts and every other family. A chat in the list still opens
+   by its id, to read. */
+$viewing=impersonator()!==null;
+if($viewing && $with && !$id) { $picking=true; $with=0; }
 $allDirect=is_admin($user) && !empty($_GET['all']);
 $before=max(0,(int)($_GET['before']??0));
 // A chat with one person is the one the two already have, or an empty one that
@@ -25,7 +34,7 @@ if($with && !$id) $id=pair_thread($me,$with);
 $showMembers=$id && !empty($_GET['members']);
 $open=$id || $with || $picking;
 $chats=chat_list($user,$allDirect);
-$waiting=$staff?0:pending_contact_count($me);
+$waiting=($staff || $viewing)?0:pending_contact_count($me);
 
 /** What one row of the list says under the name. */
 $preview=function(array $c) use ($me): string {
@@ -54,12 +63,8 @@ $when=function(?string $utc): string {
     if(!$at) return '';
     return $at->format('Y-m-d')===today() ? $at->format('H:i') : day_label($at->format('Y-m-d'));
 };
-/** The other person in a list row, as the helpers that draw people expect one. */
-$otherOf=fn(array $c): array => ['id'=>$c['other_id'],'name'=>$c['other_name'],'avatar_name'=>$c['other_avatar_name'],
-    'role'=>$c['other_role'],'status_emoji'=>$c['other_status_emoji'],'last_seen_at'=>$c['other_last_seen_at'],
-    'presence'=>$c['other_presence'],'state'=>$c['other_state']];
-$row=function(array $c) use ($user,$id,$preview,$when,$otherOf): void {
-    $unread=(int)$c['unread']; $group=$c['kind']==='course'; $other=$otherOf($c); ?>
+$row=function(array $c) use ($user,$id,$preview,$when): void {
+    $unread=(int)$c['unread']; $group=$c['kind']==='course'; $other=chat_person_in($c,'other_'); ?>
     <a class="thread-item<?=$id===(int)$c['id']?' selected':''?><?=$unread?' unread':''?>" href="<?=e(url('messages',['id'=>$c['id'],'#'=>'chat-end']))?>">
         <?php if($group): ?><span class="hue hue-<?=e(chat_hue((int)$c['class_id']))?>"><?=avatar(['name'=>$c['class_name']])?></span>
         <?php else: ?><span class="avatar-presence"><?=avatar($other)?><?=$c['other_id']!==null && (int)$c['me_in']?presence_dot($user,$other):''?></span><?php endif ?>
@@ -71,7 +76,7 @@ $row=function(array $c) use ($user,$id,$preview,$when,$otherOf): void {
 <?php };
 ?>
 <div class="messages-page<?=$open?' is-open':''?>">
-<?php page_head(t('Nachrichten','Messages'),'',link_button(t('Neue Nachricht','New message'),'messages',['new'=>1]));
+<?php page_head(t('Nachrichten','Messages'),'',$viewing?'':link_button(t('Neue Nachricht','New message'),'messages',['new'=>1]));
 /* The pages that belong to Nachrichten without a menu entry of their own
    (nav_owner()): writing to many at once, the news, and what went out by email. */
 if($staff): ?>
@@ -114,7 +119,13 @@ if($staff): ?>
 <?php
 // ---------------------------------------------------------------------------
 // „Neue Nachricht": who to write to.
-if($picking):
+if($picking): ?>
+    <header class="chat-head"><a class="chat-back" href="<?=e(url('messages'))?>"><?=icon('arrow')?><span class="visually-hidden"><?=e(t('Zurück zu allen Nachrichten','Back to all messages'))?></span></a><div class="chat-head-who"><span class="chat-head-text"><h2><?=e(t('Neue Nachricht','New message'))?></h2><?php if(!$viewing): ?><small><?=e(t('An wen?','Who to?'))?></small><?php endif ?></span></div></header>
+    <?php /* The one answer while looking through somebody's eyes (above), in the
+             words the actions refuse with: nobody listed, nothing to ask or agree to. */
+    if($viewing): ?>
+    <p class="chat-empty"><?=e(t('Schreiben kann nur die Person selbst. Beende zuerst die Ansicht.','Only the person themselves can write. Stop viewing first.'))?></p>
+    <?php else:
     $q=trim((string)($_GET['q']??''));
     $match=fn(array $p): bool => $q==='' || mb_stripos((string)$p['name'],$q)!==false;
     $person=function(array $p, string $small='') use ($user): void { ?>
@@ -125,9 +136,8 @@ if($picking):
 <?php };
     $contacts=array_filter(contacts_for($user),$match);
     $team=array_filter($contacts,fn($p)=>is_staff($p));
-    $others=array_filter($contacts,fn($p)=>!is_staff($p)); ?>
-    <header class="chat-head"><a class="chat-back" href="<?=e(url('messages'))?>"><?=icon('arrow')?><span class="visually-hidden"><?=e(t('Zurück zu allen Nachrichten','Back to all messages'))?></span></a><div class="chat-head-who"><span class="chat-head-text"><h2><?=e(t('Neue Nachricht','New message'))?></h2><small><?=e(t('An wen?','Who to?'))?></small></span></div></header>
-    <?php if($staff): ?>
+    $others=array_filter($contacts,fn($p)=>!is_staff($p));
+    if($staff): ?>
     <form class="filter-search" method="get" action="<?=e(url('messages'))?>">
         <input type="hidden" name="page" value="messages"><input type="hidden" name="new" value="1">
         <?php input('q',t('Name suchen','Search by name'),$q,'search'); submit_button(t('Suchen','Search'),'secondary'); ?>
@@ -177,7 +187,7 @@ if($picking):
         submit_button(t('Anfragen','Ask'),'subtle');?></form>
     </div>
     <?php endforeach ?></details>
-    <?php endif; endif ?>
+    <?php endif; endif; endif ?>
 
 <?php
 // ---------------------------------------------------------------------------
@@ -190,10 +200,11 @@ elseif($showMembers): $thread=thread_record($id);
         <div class="chat-head-who"><span class="hue hue-<?=e(chat_hue((int)$thread['class_id']))?>"><?=avatar(['name'=>$thread['class_name']],'small')?></span>
             <span class="chat-head-text"><h2><?=e($thread['class_name'])?></h2><small><?=e(class_schedule($class))?></small></span></div>
     </header>
-    <?php $member=function(array $p, string $small) use ($user,$staff,$me): void {
+    <?php $member=function(array $p, string $small) use ($user,$staff,$me,$viewing): void {
         // A row is a link only where a chat is allowed: staff with anybody, a
-        // child with staff.
-        $canWrite=$p['id']!==null && (int)$p['id']!==$me && ($staff || is_staff($p));
+        // child with staff - and none while looking through somebody's eyes,
+        // where nothing is written.
+        $canWrite=!$viewing && $p['id']!==null && (int)$p['id']!==$me && ($staff || is_staff($p));
         $tag=$canWrite?'a':'div'; ?>
     <<?=e($tag)?> class="member-row"<?php if($canWrite):?> href="<?=e(url('messages',['with'=>$p['id'],'#'=>'chat-end']))?>"<?php endif ?>>
         <span class="avatar-presence"><?=avatar($p)?><?=$p['id']!==null?presence_dot($user,$p):''?></span>
@@ -211,7 +222,7 @@ elseif($showMembers): $thread=thread_record($id);
     <?php foreach($members as $p) $member(['name'=>$p['name']??$p['first_name'].' '.$p['last_name']]+$p,
         $p['id']===null?t('Noch kein Zugang','No login yet'):((int)$p['id']===$me?t('Du','You'):''));
     if($outside): ?><p class="chat-empty"><?=e(t('Dazu ','And ').plural($outside,'Person ohne Zugang zum Portal','Personen ohne Zugang zum Portal','person without a login','people without a login').'.')?></p><?php endif ?>
-    <p><?=link_button(t('Zurück zur Gruppe','Back to the group'),'messages',['id'=>$id],'secondary','chat-end')?></p>
+    <p><?=link_button(t('Zurück zur Gruppe','Back to the group'),'messages',['id'=>$id,'#'=>'chat-end'],'secondary')?></p>
 
 <?php
 // ---------------------------------------------------------------------------
@@ -219,20 +230,23 @@ elseif($showMembers): $thread=thread_record($id);
 elseif($id || $with):
     if($id) {
         // Read for them only by them: while staff look through their eyes, nothing is marked.
-        $thread=thread_record($id); if(!impersonator()) mark_thread_read($id,$me);
+        $thread=thread_record($id); if(!$viewing) mark_thread_read($id,$me);
         $history=thread_messages($id,$before);
         $people=$thread['kind']==='course'?[]:thread_people($id);
     } else {
-        $to=one("SELECT id,name,avatar_name,role,status_emoji,last_seen_at,presence,state FROM accounts WHERE id=? AND state='active'",[$with]);
+        // The person drawn from the facts the header of a chat already made is
+        // drawn from, and the kind the first message will make it - so the line
+        // at the top says who will read it before anything is written.
+        $to=one('SELECT '.chat_person_columns('a')." FROM accounts a WHERE a.id=? AND a.state='active'",[$with]);
         if(!$to || !may_message($user,$with)) throw new NotFound(t('Diese Person kannst du hier nicht anschreiben.','You cannot write to this person here.'));
-        $thread=['id'=>0,'kind'=>is_staff($to)!==$staff?'staff_direct':'direct'];
+        $thread=['id'=>0,'kind'=>pair_kind($user,$to)];
         $history=['messages'=>[],'more'=>false];
         $people=[$user,$to];
     }
     $group=$thread['kind']==='course';
     $others=array_values(array_filter($people,fn($p)=>(int)$p['id']!==$me));
     $other=count($others)===1?$others[0]:null;
-    $writable=$id?may_write_thread($user,$thread):!impersonator(); ?>
+    $writable=$id?may_write_thread($user,$thread):!$viewing; ?>
     <header class="chat-head">
         <a class="chat-back" href="<?=e(url('messages'))?>"><?=icon('arrow')?><span class="visually-hidden"><?=e(t('Zurück zu allen Nachrichten','Back to all messages'))?></span></a>
         <?php if($group): $count=count(course_group_people((int)$thread['class_id'])['members']); ?>
@@ -286,8 +300,9 @@ elseif($id || $with):
             <footer class="bubble-foot"><time datetime="<?=e($m['created_at'])?>Z"><?=e(local_time((string)$m['created_at'])?->format('H:i') ?? '')?></time>
             <?php /* Staff take a group message down, or put it back, from the same
                      place (ADR 0022) - no confirmation box, because restoring is
-                     the way back. A family's chat is theirs. */
-            if($staff && $group): ?>
+                     the way back. A family's chat is theirs. Not while looking
+                     through somebody's eyes, where it could only be refused. */
+            if($staff && $group && !$viewing): ?>
                 <details class="bubble-menu"><summary aria-label="<?=e(t('Mehr zu dieser Nachricht','More about this message'))?>"><?=icon('more')?></summary>
                 <?php start_form('message_remove',['id'=>$m['id']]+($m['removed']?['restore'=>1]:[]),'inline-form');
                 submit_button($m['removed']?t('Wiederherstellen','Restore'):t('Nachricht entfernen','Remove message'),$m['removed']?'secondary':'subtle danger-text'); ?></form>
@@ -327,9 +342,11 @@ elseif($id || $with):
     empty_state(t('Keine Unterhaltung geöffnet','No conversation open'),
         // Not "on the left": on a phone the list is above this, and a portal
         // that tells somebody to look somewhere they cannot look reads as
-        // broken. The words have to fit both layouts.
-        t('Wähle eine Unterhaltung aus, oder schreibe eine neue Nachricht.','Choose a conversation, or write a new message.'),
-        link_button(t('Neue Nachricht','New message'),'messages',['new'=>1]));
+        // broken. The words have to fit both layouts - and, while looking
+        // through somebody's eyes, a view that writes nothing.
+        $viewing?t('Wähle eine Unterhaltung aus.','Choose a conversation.')
+                :t('Wähle eine Unterhaltung aus, oder schreibe eine neue Nachricht.','Choose a conversation, or write a new message.'),
+        $viewing?'':link_button(t('Neue Nachricht','New message'),'messages',['new'=>1]));
 endif ?>
 </section>
 </div>

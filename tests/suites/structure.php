@@ -1673,3 +1673,47 @@ $joining = array_values(array_unique($joining));
 sort($joining);
 is_same(['app/messaging.php direct_thread calls join_thread()', 'app/messaging.php join_thread writes thread_participants'], $joining,
         'join_thread() writes who is in a chat, and direct_thread() is the only caller');
+
+// ---------------------------------------------------------------------------
+case_('A link reaches its place on a page through url(), never by a „#" joined on by hand');
+/* url() takes the place as '#' and encodes it once. link_button() joined its own
+   on, and five other places did too: two ways of building one address, which
+   encode it differently (code review C7). A literal that starts with „#" and is
+   joined to something with „." is the second way. Two places may: url(), which
+   puts the place on an address, and colour_normalise(), which puts the hash on
+   a colour. */
+$joinedHashes = function (string $source): array {
+    $tokens = array_values(array_filter(token_get_all($source),
+        fn($t) => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+    $lines = [];
+    foreach ($tokens as $i => $t)
+        if (is_array($t) && $t[0] === T_CONSTANT_ENCAPSED_STRING && preg_match('/^[\x27"]#/', $t[1])
+            && (($tokens[$i - 1] ?? null) === '.' || ($tokens[$i + 1] ?? null) === '.'))
+            $lines[] = $t[2];
+    return $lines;
+};
+foreach (["<?php echo url('a').'#'.\$x;"                                => 1,
+          "<?php echo url('a').'#top';"                                 => 1,
+          "<?php echo e(url('a').(\$f!==''?'#'.\$f:''));"               => 1,
+          "<?php echo url('a', ['id'=>1, '#'=>\$f]);"                   => 0,
+          "<?php \$c = colour_contrast(\$b, '#ffffff');"                 => 0,
+          "<?php echo '<a href=\"#main\">'.\$x;"                        => 0] as $sample => $expected)
+    is_same($expected, count($joinedHashes($sample)), 'the rule reads '.test_show($sample).' correctly');
+$hashJoiners = [];
+$hashFiles = array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'),
+                         glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/database/*.php'));
+foreach ($hashFiles as $path) {
+    $source = (string)file_get_contents($path);
+    $fileLines = explode("\n", $source);
+    foreach ($joinedHashes($source) as $line) {
+        // The function it is in, or the file for a view, which has none.
+        $in = basename($path).' (file)';
+        for ($n = $line - 1; $n >= 0; $n--)
+            if (preg_match('/^\s*function\s+([a-z_][a-z0-9_]*)\s*\(/i', $fileLines[$n], $m)) { $in = $m[1]; break; }
+        $hashJoiners[] = substr($path, strlen(APP_ROOT) + 1).' '.$in;
+    }
+}
+$hashJoiners = array_values(array_unique($hashJoiners));
+sort($hashJoiners);
+is_same(['app/colour.php colour_normalise', 'app/core.php url'], $hashJoiners,
+        'only url() joins a „#" onto an address, and colour_normalise() onto a colour ('.count($hashFiles).' files read)');

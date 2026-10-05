@@ -209,9 +209,13 @@ function submit_button(string $label='',string $class='primary',string $name='',
         .e($label?:t('Speichern','Save')).'</button>';
 }
 function page_head(string $title,string $description='',string $action=''): void { echo '<div class="page-heading"><div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>'; }
-/** A link drawn as a button. $fragment is the id on that page it lands on, without the „#". */
-function link_button(string $label,string $page,array $params=[],string $class='primary',string $fragment=''): string {
-    return '<a class="button '.e($class).'" href="'.e(url($page,$params).($fragment!==''?'#'.$fragment:'')).'">'.e($label).'</a>';
+/**
+ * A link drawn as a button, to url($page,$params): a '#' among $params is the id
+ * on that page it lands on, as url() takes it everywhere else - one way to say
+ * it, so no address is built two ways that encode it differently.
+ */
+function link_button(string $label,string $page,array $params=[],string $class='primary'): string {
+    return '<a class="button '.e($class).'" href="'.e(url($page,$params)).'">'.e($label).'</a>';
 }
 function empty_state(string $title,string $body='',string $action=''): void { echo '<div class="empty"><div class="empty-icon">'.icon('users').'</div><h2>'.e($title).'</h2>'.($body?'<p>'.e($body).'</p>':'').$action.'</div>'; }
 /**
@@ -587,7 +591,7 @@ function next_steps_card(array $steps, string $heading = '', int $start = 1, arr
     echo '<section class="card next-steps'.($checklist ? ' is-checklist' : '').'"><h2>'.e($heading !== '' ? $heading : t('Noch zu tun','Still to do')).'</h2>'
         .'<ol'.($start !== 1 ? ' start="'.$start.'"' : '').'>';
     foreach (array_values($steps) as $i => $step) {
-        $href = url($step['page'], $step['params']).(!empty($step['anchor']) ? '#'.$step['anchor'] : '');
+        $href = url($step['page'], $step['params'] + ['#' => (string)($step['anchor'] ?? '')]);
         if (!$checklist) {
             echo '<li><a href="'.e($href).'">'.e($step['what']).'</a><small>'.e($step['why']).'</small></li>';
             continue;
@@ -659,7 +663,7 @@ function students_notice(array $students,string $heading,string $body='',array $
     if ($body !== '') echo '<p>'.e($body).'</p>';
     echo '<p class="gap-names">';
     foreach (array_slice($students,0,6) as $m)
-        echo '<a class="chip" href="'.e(url('student',['id'=>$m['id']]+$params).($anchor!==''?'#'.$anchor:'')).'">'.e($m['first_name'].' '.$m['last_name']).'</a>';
+        echo '<a class="chip" href="'.e(url('student',['id'=>$m['id']]+$params+['#'=>$anchor])).'">'.e($m['first_name'].' '.$m['last_name']).'</a>';
     if (count($students) > 6) echo '<span class="muted">'.e(t('und weitere','and more')).'</span>';
     echo '</p></div>';
 }
