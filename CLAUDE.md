@@ -16,7 +16,7 @@ being a boundary.
 | --- | --- | --- |
 | `architect` | structure, boundaries, conventions, dependencies | `docs/decisions/` only |
 | `ui-ux-designer` | specifies a screen or flow before it is built; measures | nothing |
-| `database-engineer` | migrations, the runner, the SQLite translation, backups | `database/`, `app/schema.php` |
+| `database-engineer` | migrations, the runner, the test databases, backups | `database/`, `app/schema.php` |
 | `backend-dev` | PHP in `app/`, `bin/`, `public/` | code |
 | `frontend-dev` | `views/`, `app/ui.php`, `app.css`, `app.js` | code |
 | `qa-tester` | runs the suites, writes the missing ones, walks `TESTING.md` | `tests/`, `TESTING.md` |
@@ -132,9 +132,10 @@ Match them; do not introduce a second style alongside one that works.
 ## Before you say something works
 
 ```bash
-php tests/run.php                  # the whole suite, seconds, no database server needed
-php tests/run.php billing views    # one or more suites
-php -l <file>                      # after any edit that a test might not reach
+tests/mariadb-local.sh                 # the whole suite on a throwaway MariaDB, about two minutes
+tests/mariadb-local.sh billing views   # one or more suites
+tests/e2e.sh                           # the first evening, end to end, in a real browser
+php -l <file>                          # after any edit that a test might not reach
 ```
 
 [TESTING.md](TESTING.md) is the other half: the feature list with the steps to
@@ -157,18 +158,12 @@ test that has never failed has not been tested.
 
 ## Honesty about what has been verified
 
-The default suite runs against a SQLite translation of the schema
-(`tests/sqlite-driver.php`). **That proves the PHP logic, not the SQL dialect.**
-It also prints, at the end of a run, whatever it could not cover.
-
-The whole suite has been run against **MariaDB 10.11.14**, where all eighteen
-migrations apply and all assertions pass. Before claiming a change works on the
-real engine, run it there yourself:
-
-```bash
-tests/mariadb-local.sh            # throwaway server, whole suite, then shuts down
-tests/mariadb-local.sh billing    # one suite
-```
+The suite runs on **MariaDB only** — the engine her server runs (10.11, with PHP
+8.4). There is no SQLite translation any more: `php tests/run.php` refuses
+without a `*_test` database, and `tests/mariadb-local.sh` starts a throwaway one.
+A run prints, at the end, whatever it could not cover. The suite and the browser
+walk have been run on **MariaDB 10.11.14 with PHP 8.4.26**; her server runs
+10.11.19 and 8.4.24.
 
 **MySQL 8.0 itself is still unverified** — MariaDB is one of the two supported
 engines, not both. Say which engine you actually ran on rather than implying

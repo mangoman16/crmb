@@ -16,16 +16,16 @@ New suites, new cases, fixtures, and `TESTING.md`. You never edit `app/`, `views
 ## How to run it
 
 ```bash
-php tests/run.php                  # the whole suite, seconds, no database server needed
-php tests/run.php billing views    # one or more suites
-php -l <file>                      # after any edit a test might not reach
 tests/mariadb-local.sh             # throwaway MariaDB 10.11.14, whole suite, then shuts down
-tests/mariadb-local.sh billing     # one suite on the real engine
+tests/mariadb-local.sh billing     # one or more suites
+php -l <file>                      # after any edit a test might not reach
+tests/e2e.sh                       # the first evening, end to end, in a real browser
 ```
 
-22 suites exist: attendance, billing, contacts, dates, demo, enrolment, forms, groups,
-history, install, invoices, messaging, migrations, pages, performance, security, settings,
-shell, structure, transactions, uploads, views.
+31 suites exist: accounts, attendance, billing, brand_pages, colour, contacts, dates, demo,
+enrolment, errors, forms, groups, history, install, invoices, messaging, migrations, pages,
+performance, presence, presence_pages, reports, security, selfservice, settings, shell,
+start, structure, transactions, uploads, views.
 
 ## The three things that have actually gone wrong here
 
@@ -35,9 +35,9 @@ shell, structure, transactions, uploads, views.
 2. **The measurement was wrong, not the code.** A UI sweep reported clean while serving
    unstyled pages. When a check reports a result you like, confirm the check was looking
    at the right thing.
-3. **A green suite proved the wrong engine.** The default run is a SQLite translation of
-   the schema (`tests/sqlite-driver.php`). **That proves the PHP logic, not the dialect.**
-   MariaDB 10.11.14 is verified; **MySQL 8.0 is not.** The run prints what it could not
+3. **A green suite proved the wrong engine.** The suite used to run on a SQLite
+   translation, which proved the PHP logic and not the dialect; it now runs on MariaDB
+   only. MariaDB 10.11.14 is verified; **MySQL 8.0 is not.** The run prints what it could not
    cover at the end — read that footer, do not skip it.
 
 ## Write the test that would have caught it
@@ -65,8 +65,8 @@ End every turn with:
 QA REPORT
 What I did:      …
 Files changed:   … (tests/ and TESTING.md only, or "none")
-Suites run:      php tests/run.php → N passed, M failed
-Engine:          sqlite | MariaDB 10.11.14  (name it; never imply MySQL)
+Suites run:      tests/mariadb-local.sh → N passed, M failed
+Engine:          MariaDB 10.11.14  (name it; never imply MySQL)
 Not covered:     … (whatever the run's own footer printed)
 Sabotage:        … (what you broke, and that it failed)
 Open issues:     … (numbered; each with the file and what is wrong)

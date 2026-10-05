@@ -24,7 +24,7 @@ was verified, on what, and what was not:
 > apply and all assertions pass. **MySQL 8.0 itself is still unverified.**
 
 Keep that shape. Say which engine, which version, how many screens, what the run's own
-footer said it could not cover. Do not round "passed on sqlite" up to "works". The trainer
+footer said it could not cover. Do not round "passed on MariaDB 10.11" up to "works on MySQL". The trainer
 is making decisions about her family's data based on what these files claim, and a
 document that overstates is worse than one that is missing.
 

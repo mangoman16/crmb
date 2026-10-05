@@ -153,7 +153,7 @@ safe in it". Nothing below is optional.
    it again, or on shared hosting with `tests/existing-database.sh` against an
    empty `_test` database made in the panel — which also proves whatever engine
    that host runs. MySQL 8.0 itself has not been tried: point
-   `CRM_TEST_DRIVER=mysql CRM_CONFIG=…` at one to close that. `tests/e2e.sh`
+   `CRM_CONFIG=…` at an empty `_test` database on one to close that. `tests/e2e.sh`
    now delivers an invitation through a mail server of its own; still not run
    here are `tests/integration.py` and `tests/smtp_integration.py`, which need a
    live SMTP capture server.

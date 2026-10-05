@@ -1,31 +1,22 @@
 # Tests
 
 ```bash
-php tests/run.php            # every suite
-php tests/run.php billing    # one suite
-```
-
-No database server is needed. The suite builds a disposable SQLite database from
-the real files in `database/migrations/` and boots the real application against
-it, so a test exercises the code that ships rather than a copy of it.
-
-## What the default driver does and does not prove
-
-The application is written for MySQL. `tests/harness.php` translates the dialect
-on the way in — upserts, `FOR UPDATE`, `IF()` — by rewriting statements as they
-are prepared, so the application's own SQL strings are what run. That proves the
-PHP logic and the shape of the data. It does **not** prove the SQL runs on MySQL.
-
-Anything the translation cannot represent is printed at the end of a run rather
-than skipped quietly, so coverage cannot silently shrink.
-
-To prove the SQL, run against a real engine. On a machine with no database
-server, this starts a throwaway one, runs the suite and stops it again:
-
-```bash
-tests/mariadb-local.sh            # the whole suite
+tests/mariadb-local.sh            # the whole suite, on a throwaway MariaDB
 tests/mariadb-local.sh billing    # one suite
 ```
+
+The suite runs on MariaDB, the engine her server runs. It builds the schema from
+the real files in `database/migrations/` and boots the real application against
+it, so a test exercises the code and the SQL that ship rather than a copy of
+them. There is no SQLite translation any more: `php tests/run.php` on its own
+refuses to start without a `*_test` database to run on, and says which of the
+two scripts below to use. Anything a run could not cover is printed at its end
+rather than skipped quietly, so coverage cannot silently shrink.
+
+`tests/mariadb-local.sh`, on a machine that has `mariadbd` but no server for
+this, starts a throwaway one, runs the suite and stops it again. It also makes a
+second, empty `_test` database, on which the data migrations carry across is
+checked from one version to the next.
 
 It keeps its data in a temporary directory and never touches an existing
 installation.
@@ -67,12 +58,12 @@ databases: a user that can reach only the test database is safer.
 Against a database you manage yourself:
 
 ```bash
-CRM_TEST_DRIVER=mysql CRM_CONFIG=/path/to/test-config.php php tests/run.php
+CRM_CONFIG=/path/to/test-config.php php tests/run.php
 ```
 
 The harness drops and recreates every table in that database on each run. It
-refuses to start unless `CRM_TEST_DRIVER` is exactly `mysql` (or `sqlite`), the
-name is letters, digits and underscores ending in `_test`, and it is not the
+refuses to start unless the name is letters, digits and underscores ending in
+`_test`, and it is not the
 database `config/config.php` gives the portal. Whatever that configuration says
 about `maintenance_file`, a run writes its uploads, backups and flags into a
 folder of its own under the system temp directory, prints it on its second line,

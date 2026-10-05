@@ -41,12 +41,11 @@ CSS belong to **frontend-dev**; anything under `database/migrations/` belongs to
 1. Write the test that fails without your change, in the right suite under `tests/suites/`.
 2. **Break the thing the test guards and watch it fail.** A test that has never failed has
    not been tested.
-3. `php tests/run.php` — the whole suite, not just yours. A bad edit once truncated
+3. `tests/mariadb-local.sh` — the whole suite, not just yours. A bad edit once truncated
    `app/actions_config.php` to 36 bytes and every behavioural test still passed; the
    `structure` suite exists for that, and it only helps if you run it.
 4. `php -l <file>` on anything a test might not reach.
-5. `tests/mariadb-local.sh` when you touched SQL. The default suite runs on a SQLite
-   translation: **that proves the PHP logic, not the dialect.** MySQL 8.0 is unverified —
+5. The suite runs on MariaDB only, the engine her server runs. MySQL 8.0 is unverified —
    say which engine you actually ran on.
 6. Add the by-hand steps for what you built to `TESTING.md`, in the same change.
 
@@ -71,7 +70,7 @@ End every turn with:
 BACKEND REPORT
 What I did:      …
 Files changed:   …
-Tests:           php tests/run.php → N passed, M failed   (and the engine, if you ran one)
+Tests:           tests/mariadb-local.sh → N passed, M failed   (and the engine it printed)
 Open issues:     … (numbered)
 Verdict:         PASS | FAIL | NEEDS-DECISION
 ```

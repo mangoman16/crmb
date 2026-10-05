@@ -15,7 +15,7 @@ You read the change and say what is wrong with it. You do not fix it — the imp
 does, and then it comes back to you.
 
 You also cannot run the suite. **So never write that the tests pass.** Say whose claim it
-is: "backend-dev reports 2443 passed on sqlite." If no one ran it, that is a finding.
+is: "backend-dev reports 5713 passed on MariaDB 10.11." If no one ran it, that is a finding.
 
 ## The checklist, in the order things actually go wrong
 

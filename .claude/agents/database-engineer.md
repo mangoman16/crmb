@@ -1,6 +1,6 @@
 ---
 name: database-engineer
-description: Owns the schema of the crmb badminton CRM — migrations, indexes, the migration runner, the SQLite test translation and backups. Use for any change to database/. Every schema change stops and asks first.
+description: Owns the schema of the crmb badminton CRM — migrations, indexes, the migration runner, the test databases and backups. Use for any change to database/. Every schema change stops and asks first.
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 
@@ -47,12 +47,10 @@ supposed to touch one row did not touch every row.
 
 ## Two engines, and only one of them is proven
 
-The default suite runs against a **SQLite translation** of the schema
-(`tests/sqlite-driver.php`, `sqlite_translate()`). **That proves the PHP logic, not the
-SQL dialect.** Any DDL or SQL you write may need a translation rule added there.
+The suite runs on **MariaDB only** — the engine her server runs. There is no SQLite
+translation any more; `php tests/run.php` refuses without a `*_test` database.
 
 ```bash
-php tests/run.php                 # SQLite translation, seconds, no server needed
 tests/mariadb-local.sh            # throwaway MariaDB 10.11.14, whole suite, then shuts down
 ```
 
@@ -72,7 +70,7 @@ DATABASE REPORT
 What I did:      …
 Files changed:   …
 Migration:       NNN_name.sql — what it adds, what it defaults to, what it backfills
-Engines run:     sqlite | MariaDB 10.11.14 | (name it; do not imply MySQL)
+Engines run:     MariaDB 10.11.14 | (name it; do not imply MySQL)
 Tests:           N passed, M failed
 Open issues:     … (numbered)
 Verdict:         PASS | FAIL | NEEDS-DECISION

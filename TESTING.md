@@ -105,12 +105,11 @@ release and emptied again for the next.
 ## The test commands, in detail
 
 ```bash
-php tests/run.php                 # the whole suite, no database server needed
+tests/mariadb-local.sh            # the whole suite against a throwaway MariaDB it starts itself
 tests/existing-database.sh        # the same suite against an empty _test database you made
-tests/mariadb-local.sh            # the same suite against a throwaway MariaDB it starts itself
 ```
 
-`php tests/run.php` must end in **`0 failed`**. It takes under a minute.
+The run must end in **`0 failed`**. It takes about two minutes.
 Anything else and the manual sweep is a waste of time — stop and report that
 first.
 
@@ -136,15 +135,13 @@ database server; that is the engine the run has proven.
 needs `mariadbd` installed. Shared hosting does not have it; use
 `tests/existing-database.sh` there.
 
-The run ends by printing what it could **not** cover. On SQLite that is foreign
-keys on four tables, the MySQL-dialect backup and two spellings of one address
-sharing a sign-in count, which `tests/mariadb-local.sh` covers — it is the run
-to quote when you say a release works. On MariaDB it is the data carried across
-by migrations 015, 016 and 019: the `migrations` suite has to
-apply the migrations in two halves with rows in between, which the run's own
-database cannot do because it has all of them applied already, so it does that in
-a second process against its own SQLite file whichever engine the run is using.
-Those lines are not a warning, they are the honest edge of the measurement.
+The run ends by printing anything it could **not** cover; a run with nothing to
+add prints nothing there. The data carried across by the migrations is checked
+in a second process, which applies them in steps with rows in between, on a
+second, empty `_test` database: `tests/mariadb-local.sh` makes one, and
+`tests/existing-database.sh` cannot, so there that check is the line the run
+prints. Those lines are not a warning, they are the honest edge of the
+measurement.
 
 | Suite | What it holds the line on |
 |---|---|
@@ -404,8 +401,8 @@ Skip on an ordinary code change; do all of it before a release.
   signs in with. Afterwards, the tariff shows that price as its first interval,
   that child's enrolment shows the same discount with the same amount, and that
   family signs in with the same address and the same password. (The `migrations`
-  suite checks this on SQLite; this is the same check on the engine she is
-  actually running.)
+  suite checks this on a throwaway MariaDB; this is the same check on her real
+  data.)
 - [ ] **3.9** Put an older package over a newer database. The portal stays
   closed and says why, instead of guessing.
 - [ ] **3.10** Switch **Wartungsmodus** on from **Einstellungen → System**.
@@ -1682,10 +1679,8 @@ where it says so
 
 Say what you ran, not what you hope is true.
 
-- `php tests/run.php` runs against a **SQLite translation** of the schema. It
-  proves the PHP logic. It does not prove the SQL dialect, and it prints what it
-  could not cover at the end of every run.
-- `tests/mariadb-local.sh` proves **MariaDB 10.11**. **MySQL 8.0 is still
+- `tests/mariadb-local.sh` proves **MariaDB 10.11**, the engine her server runs,
+  and prints what it could not cover at the end of every run. **MySQL 8.0 is still
   unverified** — it is one of the two supported engines, not both.
   `tests/existing-database.sh` proves whichever engine the hosting runs: quote the
   „Database server:" line it prints, not what you expect it to be.

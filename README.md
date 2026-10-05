@@ -35,7 +35,7 @@ Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Email reminders for outstanding payments.
 - A change log that says what changed, field by field, in the words she uses.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite that needs no database server: `php tests/run.php` runs about 4800 assertions in under a minute, writing only into a temporary folder of its own. `tests/e2e.sh` walks the first evening in a real browser against a real MariaDB. [TESTING.md](TESTING.md) is the list to walk by hand after a change.
+- A test suite on the engine her server runs: `tests/mariadb-local.sh` starts a throwaway MariaDB and runs about 5700 assertions in under two minutes, writing only into a temporary folder of its own. `tests/e2e.sh` walks the first evening in a real browser. [TESTING.md](TESTING.md) is the list to walk by hand after a change.
 
 ## Install
 
@@ -161,26 +161,17 @@ php bin/console.php status     # do the files and the database agree?
 ## For developers
 
 ```bash
-php tests/run.php              # every suite, seconds, no database server needed
-php tests/run.php billing      # one suite
+tests/mariadb-local.sh          # starts a throwaway MariaDB, runs every suite, stops it
+tests/mariadb-local.sh billing  # one suite
 ```
 
-The suite builds a disposable SQLite database from the real migrations and boots
-the real application against it. That proves the PHP logic, **not** the SQL
-dialect — see [tests/README.md](tests/README.md). It ends by naming what it
-could not reach, rather than leaving that to be assumed: the four foreign keys,
-the MySQL-dialect database copy, and the half of the sign-in limit that depends
-on how the database compares two spellings of one address. To prove the SQL:
-
-```bash
-tests/mariadb-local.sh          # starts a throwaway MariaDB, runs the suite, stops it
-```
-
-It has been run against MariaDB 10.11.14 with everything passing. That run ends
-by naming what it could not reach either: the data that migrations 015, 016,
-019, 020 and 021 carry across is checked on SQLite, unless `CRM_MIGRATION_CONFIG`
-names the configuration of a second, empty `_test` database; with one, it has
-been checked on MariaDB 10.11.14 as well.
+The suite runs on MariaDB only, the engine her server runs: it builds the
+schema from the real migrations and boots the real application against it — see
+[tests/README.md](tests/README.md). It ends by naming anything it could not
+reach, rather than leaving that to be assumed. `tests/mariadb-local.sh` also
+makes a second, empty `_test` database, on which the data that migrations carry
+across is checked from one version to the next. It has been run on MariaDB
+10.11.14 with PHP 8.4.26, everything passing; MySQL 8.0 is not verified.
 
 On shared hosting, where there is no database server to start, make an empty
 database whose name ends in `_test` in the hosting panel and run the suite
@@ -194,7 +185,7 @@ tests/existing-database.sh      # asks for the details once, keeps them in tests
 Against a database you manage yourself, whose name must end in `_test`:
 
 ```bash
-CRM_TEST_DRIVER=mysql CRM_CONFIG=/path/to/test-config.php php tests/run.php
+CRM_CONFIG=/path/to/test-config.php php tests/run.php
 ```
 
 Every run keeps what it writes — uploads, backups, the maintenance flag — in a
