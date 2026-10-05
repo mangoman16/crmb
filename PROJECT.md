@@ -75,7 +75,7 @@ than trusting the row.
 | Levels and age groups | Built, tested | High |
 | Messages, news, email queue | Built; an invitation delivered over STARTTLS to a mail server on the same machine in the browser walk | Medium — **no real mail provider has ever been used** |
 | Transactions and change log | Built, tested. The undo was removed at her request on 2026-09-16 | High |
-| Accounts: one login per student | Built, tested; migration 019's data move checked on SQLite only | High |
+| Accounts: one login per student | Built, tested; migration 019's data move checked on MariaDB by `tests/mariadb-local.sh`, in a second, empty `_test` database | High |
 | Start checklist, seven-entry menu | Built, tested, walked end to end in Chromium at 390 and 320px | High for Chromium; **no real iPhone yet** |
 | Problem reports and error capture | Built, tested; the 30-day deletions tested by ageing the stored date, not by waiting | High |
 | Privacy notice | **Drafts**: what the portal itself stores is written out; the operator, hosting, retention and legal-basis notes are still placeholders. Only the German one must be released | Not finished |
@@ -87,14 +87,17 @@ This document previously led with the fact that no migration had ever run
 against a real database engine. **That has now been done, against MariaDB
 10.11.14.** What was verified:
 
-- All twenty-one migrations apply, including the two
+- All twenty-seven migrations apply, including the two
   `ALTER TABLE ... ADD CONSTRAINT` in migration 004 that the SQLite translation
   could not represent at all. Both foreign keys exist in the resulting schema.
 - Re-running `migrate` applies nothing; the checksum guard refuses a migration
   edited after it shipped; `update` and `check` both work end to end.
-- The whole test suite passes on the real engine. What that run cannot reach it
-  names at the end rather than leaving it to be assumed: the data moved by
-  migrations 015, 016 and 019 is still checked on SQLite only.
+- The whole test suite passes on the real engine, and a run names at its end
+  whatever it could not reach rather than leaving it to be assumed. The data
+  moved or kept by migrations 015, 016 and 019 to 025 is checked there too:
+  `tests/mariadb-local.sh` makes a second, empty `_test` database, stops the
+  migrations part-way, writes a portal's data in between, and the rest must
+  carry it across.
 - Every page loads with no PHP error, and writes work: creating and editing a
   student, the version history, and the real `SELECT … FOR UPDATE` row locks —
   which the SQLite driver had been dropping silently, so that path had never
@@ -123,7 +126,7 @@ Phase 2 starts first.
 
 | # | Work | Why it blocks | Done when |
 |---|---|---|---|
-| 1.1 | ~~Run migrations and the suite against a real engine~~ **Done on MariaDB 10.11.14** | The dialect was unproven | ✅ Twenty-one migrations apply and the suite passes there; the run names what it could not cover. Repeat with `tests/mariadb-local.sh`, or `tests/existing-database.sh` on her hosting. Remaining: the same on MySQL 8.0, if that is the target |
+| 1.1 | ~~Run migrations and the suite against a real engine~~ **Done on MariaDB 10.11.14** | The dialect was unproven | ✅ Twenty-seven migrations apply and the suite passes there; the run names what it could not cover. Repeat with `tests/mariadb-local.sh`, or `tests/existing-database.sh` on her hosting. Remaining: the same on MySQL 8.0, if that is the target |
 | 1.2 | Send one real email end to end | The queue has only ever talked to a mail server on the test machine, never to a real provider | The SMTP test passes on her host, an invitation arrives, is accepted, and a password is set |
 | 1.3 | Complete the German privacy draft | Invitations stay disabled until it is released, by design; English is optional | The German notice released in settings, with the operator, hosting and retention placeholders filled in |
 | 1.4 | Watch the background work run on her host | No cron job is needed: queued mail, clean-up and, when switched on, the monthly charges run just after a page is served. That has not yet been watched on a shared host | **Einstellungen → System** shows a recent „Letzter Hintergrundlauf“ and the invitation from 1.2 left the queue without anybody pressing anything |

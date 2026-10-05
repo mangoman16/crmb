@@ -99,8 +99,7 @@ release and emptied again for the next.
 - After an update the browser fetches the new stylesheet and script by itself: the account menu is styled and the bell stays still without clearing the cache: A.0
 - Everybody signs in with their own e-mail address; usernames are gone. A person is added either by inviting an address — they fill in their own details and choose a course — or by creating them; nobody sets another person's password (ADR 0021): A.1–A.13
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
-- The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji (ADR 0022): C.1–C.13
-- Looking through somebody's eyes shows no chat notice in the bell and writes nothing in their name; a copied course has its group; a stored photo keeps only the picture: C.14–C.17
+- The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a copied course has its group; a stored photo keeps only the picture (ADR 0022): C.1–C.18
 
 ---
 
@@ -174,7 +173,7 @@ measurement.
 | `uploads` | Limits, allowed kinds, and files swept once their record has gone |
 | `views` | The real pages render and say what they are supposed to say |
 
-Run one on its own while working: `php tests/run.php billing invoices`.
+Run one on its own while working: `tests/mariadb-local.sh billing invoices`.
 
 ### The layout check, in a real browser
 
@@ -1294,7 +1293,9 @@ yours.
   covered by the pinned „Etwas funktioniert hier nicht" button.
 - [ ] **U.11** A long conversation under **Nachrichten**, on a screen at least
   761 pixels wide: the help button sits at the end of the page rather than over
-  the message box, and **„Nachricht senden"** can be clicked.
+  the message box, and the send arrow beside the box can be clicked. The same in
+  a chat with nothing in it yet, opened as the trainer from „Neue Nachricht" →
+  a child, and from a group's people symbol → a child.
 - [ ] **U.12** On a child with two contacts, the **„Standardkontakt"** badge
   sits beside the name it belongs to and covers nothing on the line below, at
   1280 and at 320.
@@ -1722,35 +1723,54 @@ where it says so
   chat is in their list, and the group opens without a writing box. „Ansicht
   beenden", then sign in as the child: the group's new messages are still unread.
 - [ ] **C.12** In a group with a child whose family has no login yet, open
-  „Wer ist in der Gruppe?" as another child: that child is not named, only
-  „Dazu 1 Person ohne Zugang zum Portal". As the trainer the same sheet names
-  them, with „Noch kein Zugang".
+  the people symbol in its top bar („Wer ist in der Gruppe?") as another child:
+  that child is not named, only „Dazu 1 Person ohne Zugang zum Portal". As the
+  trainer the same sheet names them, with „Noch kein Zugang".
 - [ ] **C.13** **(release)** On a copy of a real portal, upload this version:
   every existing course has its group, every chat between a child and a trainer
   is still there, and the update refuses nothing.
-- [ ] **C.14** As the trainer, write to a child in your chat with them, and as
-  another family that may write to the child, write to them too. Then, as the
-  trainer, „Portal als {Kind} ansehen": the bell shows neither message — no
-  „Neue Nachricht von …" line, and its number counts only the other notices.
-  „Alle gelesen", if it is shown at all, is refused with „Beende zuerst die
-  Ansicht". „Ansicht beenden", then sign in as the child: both notices are
-  there, and unread.
-- [ ] **C.15** As the administrator, „Portal als {Trainerin} ansehen": sending
-  „An mehrere schreiben" from its review step, „⋯" → „Nachricht entfernen" on a
-  group message, and saving a news item are each refused with „Beende zuerst die
-  Ansicht". „Ansicht beenden": nothing new is in the children's chats, the
-  message is still there, and no news item was added.
-- [ ] **C.16** **Kurse** → a course with a group that has messages → **Kopieren**.
-  Open **Nachrichten** straight away, with no update in between: the copy has a
-  group of its own, empty, and the original's group still has its messages.
+- [ ] **C.14** First, two children who may write to each other: as the second
+  child, „Neue Nachricht" → „Jemand anderen fragen" → „Anfragen" beside the
+  first; as the first, „Neue Nachricht" → „Zustimmen" under „Möchte dir
+  schreiben". Then, as the trainer, write to the first child in your chat with
+  them, and as the second child, write to them too. As the trainer, **Schüler**
+  → the first child → „Portal als … ansehen" on the card „Zugang zum Portal":
+  the bell shows neither message — no „Neue Nachricht von …" line — its number
+  counts only the other notices, and there is no „Alle gelesen" in it.
+  „Ansicht beenden", then sign in as the first child: both notices are there,
+  and unread.
+- [ ] **C.15** As the administrator, **Einstellungen → Konten**, „Portal als
+  diese Person ansehen" beside a trainer. **Nachrichten → An mehrere
+  schreiben**: tick two children, fill in „Betreff" and „Nachricht", then
+  „Empfänger und Nachricht prüfen" — refused with „Schreiben kann nur die Person
+  selbst. Beende zuerst die Ansicht." **Nachrichten → Neuigkeiten → + Neuigkeit**,
+  a title and some text, „Speichern": refused with the same sentence. Open a
+  course's group: no writing box, and no „⋯" on any message. „Ansicht beenden":
+  nothing new is in the children's chats, every group message is still there,
+  and no news item was added.
+- [ ] **C.16** **Kurse** → a course whose group has messages → „Kurs
+  bearbeiten" → „Kurs kopieren". Open **Nachrichten** straight away: under
+  „Kursgruppen" the copy, „… (Kopie)", has a group of its own, empty, and the
+  original's group still has its messages.
 - [ ] **C.17** A photo that holds more than one picture: on a Samsung or a Pixel
   a motion photo („Bewegtes Foto"), on an iPhone a photo in HDR or a portrait
-  photo. Send it into a group and save it back from the chat: it opens as the
-  same photo, the right way up, is smaller than the original, plays no video, and
-  Preview → Werkzeuge → Informationen shows no GPS tab. On an HDR screen it may
-  look less bright than the original: the brightness map is a second picture in
-  the file, and it goes with the rest. Then send a screenshot (PNG) and a WebP
-  saved from a browser: both open and look as they did.
+  photo. Send it into a group, then on the Mac save it back from the chat: it
+  opens in Preview as the same photo, the right way up, plays no video,
+  Werkzeuge → Informationen shows no GPS tab, and in the Finder it is smaller
+  than the original. On an HDR screen it may look less bright than the
+  original: the brightness map is a second picture in the file, and it goes
+  with the rest. Then send a screenshot (PNG) and a WebP saved from a browser:
+  both open and look as they did.
+- [ ] **C.18** As the trainer, **Schüler** → a child who has a request from
+  another child still waiting (C.14's first step, without „Zustimmen") →
+  „Portal als … ansehen" on the card „Zugang zum Portal". The view opens on
+  **Übersicht**: tap „Nachricht schreiben". The page „Neue Nachricht" says
+  „Schreiben kann nur die Person selbst. Beende zuerst die Ansicht." and lists
+  nobody — no „Trainerteam", no „Kinder", no „Möchte dir schreiben" with the
+  request's text, no „Jemand anderen fragen". **Nachrichten** has no „Neue
+  Nachricht" button and no „1 neue Anfrage" at the top. In the child's group,
+  the people symbol in the top bar lists the members, and tapping a trainer
+  there opens nothing.
 
 ---
 

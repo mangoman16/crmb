@@ -35,7 +35,7 @@ Version **0.6.0**. A self-hosted PHP/MySQL application for a badminton coach and
 - Email reminders for outstanding payments.
 - A change log that says what changed, field by field, in the words she uses.
 - Every write runs in one transaction that either completes or leaves nothing behind, with nesting handled by savepoints.
-- A test suite on the engine her server runs: `tests/mariadb-local.sh` starts a throwaway MariaDB and runs about 5700 assertions in under two minutes, writing only into a temporary folder of its own. `tests/e2e.sh` walks the first evening in a real browser. [TESTING.md](TESTING.md) is the list to walk by hand after a change.
+- A test suite on the engine her server runs: `tests/mariadb-local.sh` starts a throwaway MariaDB and runs about 5900 assertions in under two minutes, writing only into a temporary folder of its own. `tests/e2e.sh` walks the first evening in a real browser. [TESTING.md](TESTING.md) is the list to walk by hand after a change.
 
 ## Install
 
@@ -245,6 +245,6 @@ copy of the database before touching anything real.
 | `bin/console.php` | Migrations, mail processing and maintenance, for a server with a shell |
 | `bin/release.sh` | Builds the distribution ZIP, dependencies included |
 | `docs/` | Editable privacy drafts and hosting examples |
-| `tests/` | `php tests/run.php` — runs against a disposable database |
+| `tests/` | `tests/mariadb-local.sh` — the whole suite on a throwaway MariaDB; `tests/e2e.sh` — the first evening in a real browser |
 
 See [GITHUB.md](GITHUB.md) for publishing the source and its version tag to a new private repository.

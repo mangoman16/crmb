@@ -81,7 +81,7 @@ FRONTEND REPORT
 What I did:      …
 Files changed:   …
 Measured:        widths, roles, what the numbers were  (or "not measured", honestly)
-Tests:           php tests/run.php → N passed, M failed
+Tests:           tests/mariadb-local.sh → N passed, M failed, on MariaDB x.y with PHP x.y
 Open issues:     … (numbered)
 Verdict:         PASS | FAIL | NEEDS-DECISION
 ```

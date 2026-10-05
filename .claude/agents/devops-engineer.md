@@ -55,9 +55,11 @@ that changes is an open decision recorded in
 workflow file is a thing she would have to understand and maintain. **Do not add one
 without that ADR being accepted.**
 
-If it is accepted, the shape that matches this project is: `php tests/run.php` on push,
-plus `tests/mariadb-local.sh` where a MariaDB service is available, and nothing that
-deploys anything anywhere.
+If it is accepted, the shape that matches this project is: `tests/mariadb-local.sh` on
+push, on a runner with MariaDB installed, and nothing that deploys anything anywhere.
+`php tests/run.php` on its own refuses to start without a `*_test` database, and without
+the second, empty one that `tests/mariadb-local.sh` makes it reports the migrations' data
+moves as not covered.
 
 ## Releasing
 

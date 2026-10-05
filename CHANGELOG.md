@@ -16,8 +16,9 @@ replacing the old newsletter paragraph, because club news by email now starts
 switched on and is no longer described as voluntary consent, and one about the
 course groups, the online dot everybody sees, and the administrators reading
 chats between a child and a trainer. UPDATING.md has
-both paragraphs to copy. The drafts shipped with this version only fill in the
-notice of a new portal; an existing one keeps the text it had. Each paragraph
+the first two to copy and says where in the drafts the third one is. The drafts
+shipped with this version only fill in the notice of a new portal; an existing
+one keeps the text it had. Each paragraph
 ends in a note in square brackets for the legal basis, which is hers to decide
 and have checked, and a released notice is not saved until the notes are
 replaced.
@@ -58,9 +59,10 @@ does not; nobody is asked to acknowledge it again.
 
 - **A group for every course.** Its children are whoever is enrolled now — a
   child who joins can read what came before, one who leaves loses it — and the
-  trainers and administrators are in every group. Group messages send no
-  e-mail. Staff can take a message down from „⋯" and put it back from the same
-  place.
+  trainers and administrators are in every group. A course has its group from
+  the moment it exists, a copy made with „Kurs kopieren" too. Group messages
+  send no e-mail. Staff can take a message down from „⋯" and put it back from
+  the same place.
 - **Chats with one person.** A child writes to a trainer or an administrator by
   name, and staff to any child. The administrators can read chats between a
   child and a trainer; a second trainer cannot. Children's chats with each
@@ -68,13 +70,23 @@ does not; nobody is asked to acknowledge it again.
 - **Everybody has an online dot**, a child's always automatic, and may pick one
   of sixteen emojis to show beside their name. When somebody was last here
   stays with the trainers and administrators.
-- **A photo is stored without where it was taken**, its camera or its time,
-  and still the right way up: a picture in a group reaches every child in the
-  course.
+- **A photo keeps only the picture**, because a picture in a group reaches
+  every child in the course. Where it was taken, its camera and its time are
+  removed before it is stored, and so is whatever a phone puts after the
+  picture: a second photo, or a motion photo's short video, which can carry a
+  location of its own. It stays the right way up. An HDR photo shows at normal
+  brightness, because what makes it brighter is one of those second pictures. A
+  GIF is stored as it came. So is a picture whose file the portal cannot make
+  sense of, and whether to refuse that instead is still hers to decide.
 - In a group's „Wer ist in der Gruppe?", a child sees the classmates who read
   it; one whose family has no login yet is only counted. Staff see everybody.
-- While a trainer views the portal as a child, she sees only the chats she may
-  read herself, writes nothing, and leaves the child's unread messages unread.
+- While a trainer or an administrator views the portal as somebody else, she
+  sees only the chats she may read herself, and the bell leaves out that
+  person's chat notices, because each one quotes the message. Nothing can be
+  written, asked for, taken down or marked read in that view, „Alle gelesen"
+  included, so their unread messages and notices stay unread; an administrator
+  viewing the portal as a trainer cannot write to the children in her name.
+  „Neue Nachricht" says that only the person can write, and lists nobody.
 - **„An mehrere schreiben"** (formerly „Gruppe anschreiben") puts the message in
   each child's chat with you.
 - On a phone the writing box sits above the menu bar instead of under it, and a
@@ -410,6 +422,15 @@ with all twenty-one migrations applying there. The data that 020 and 021 find
 already in place was checked on MariaDB as well. The browser walk was **not**
 repeated for these, and nothing was tried on a real iPhone. **MySQL 8.0 was not
 tried.**
+
+Signing in by address and the chat, with the fixes from its second round of
+review, were checked on the code of commit `6a5cfc6`. The suite no longer has a
+SQLite translation; it gave 5882 assertions, 0 failed, on MariaDB 10.11.14 with
+PHP 8.4.26, with all twenty-seven migrations applying and the data that 015,
+016 and 019 to 025 carry across checked on MariaDB too. The browser walk
+passed, 361 checks, on the same versions, but it does not open the chat. The
+chat's checks by hand, C.1 to C.18 in TESTING.md, are part of neither run, and
+nothing was tried on a real iPhone. **MySQL 8.0 was not tried.**
 
 ### Signing in correctly no longer counts against her
 

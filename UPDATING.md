@@ -18,8 +18,9 @@ drafts. A portal that already has families in it needs one thing done
 files are opened.
 
 **Before you upload: add three paragraphs to your privacy notice.** This version
-records when each account was in the portal, and it switches club news by
-email on for new accounts. Your privacy notice has to say both. The drafts in
+records when each account was in the portal, it switches club news by email
+on for new accounts, and it gives every course a group chat. Your privacy
+notice has to say all three. The drafts in
 the download only fill in the notice of a brand-new portal; yours keeps the
 text you saved, so the paragraphs have to be added by hand. Do it while the old
 version is still running, so that no family uses the new one under a notice
@@ -72,7 +73,7 @@ which is why it now starts switched on. Which legal basis that rests on is
 yours to decide and to have checked; the bracketed notes mark where it goes. A
 notice you have released („… zur Verwendung freigegeben") is not saved while a
 note in square brackets is still in it, and the message names the note. The
-same two paragraphs in English are in `docs/privacy-draft-en.txt` in the
+same three paragraphs in English are in `docs/privacy-draft-en.txt` in the
 download, for the English version if you keep one. Saving changes the
 **Fassung** number under the notice; nobody is asked to acknowledge it again.
 

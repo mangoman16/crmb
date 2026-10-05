@@ -97,7 +97,10 @@ covering dates, transactions, billing, security, attendance, settings, history,
 query counts, the rendered pages, and the shape of the source. It proves the PHP
 logic rather than the SQL dialect, so the same suite was then run against
 MariaDB 10.11.14, where it also passes — `tests/mariadb-local.sh` repeats that
-from nothing. MySQL 8.0 itself remains untried; see item 1 below.
+from nothing. MySQL 8.0 itself remains untried; see item 1 below. *In 0.6.0 the
+SQLite translation was removed and the suite runs on MariaDB only:
+`php tests/run.php` refuses without a `*_test` database, and
+`tests/mariadb-local.sh` starts a throwaway one.*
 
 **Query counts held down where they grow with the roll**: the student list went
 from 56 queries at sixty students to 6, and the suite fails if that comes back.
