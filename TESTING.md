@@ -99,7 +99,7 @@ release and emptied again for the next.
 - After an update the browser fetches the new stylesheet and script by itself: the account menu is styled and the bell stays still without clearing the cache: A.0
 - Everybody signs in with their own e-mail address; usernames are gone. A person is added either by inviting an address — they fill in their own details and choose a course — or by creating them; nobody sets another person's password (ADR 0021): A.1–A.13
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
-- The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a copied course has its group; a stored photo keeps only the picture (ADR 0022): C.1–C.18
+- The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a copied course has its group; a stored photo keeps only the picture (ADR 0022): C.1–C.20
 
 ---
 
@@ -1771,6 +1771,31 @@ where it says so
   Nachricht" button and no „1 neue Anfrage" at the top. In the child's group,
   the people symbol in the top bar lists the members, and tapping a trainer
   there opens nothing.
+- [ ] **C.19** A photo can carry a small preview of itself inside the file,
+  and after cropping, an editor can leave that preview showing the whole photo
+  from before. Crop a photo in an editor, save it as a JPEG with the option
+  that keeps a preview (thumbnail) switched on, and send it into a group. On the
+  Mac, save it back from the chat: Preview opens it as the cropped photo, the
+  right way up, and Werkzeuge → Informationen shows no GPS tab and no camera. On
+  the iPhone it looks in the chat as it did in the editor. Whether the preview
+  is gone only exiftool can show, if it is at hand: `exiftool -a -G1 datei.jpg`
+  on the copy saved back prints no line with `Thumbnail` in it. Run it on the
+  original first, because only an original that lists `[JFIF] Thumbnail TIFF`
+  tests what this round changed; `[IFD1] Thumbnail Image` is a preview inside
+  the camera data, which was removed before. Write down which of the two your
+  file had, or that there was no exiftool to ask.
+- [ ] **C.20** On the example data, not on a course with real families: the
+  tick below sends every family in the course an e-mail. Sign in as a child who
+  has a login and, if the bell shows a number, tap „Alle gelesen"; sign out.
+  As the trainer, write to that child in your chat with them. Then **Kurse** →
+  the child's course → „Termine" → a coming date → „Was ist damit": „Entfällt",
+  tick „Alle Kursteilnehmer per E-Mail informieren", „Speichern". Now
+  **Schüler** → the child → „Portal als … ansehen" on the card „Zugang zum
+  Portal": the number on the bell is 1, and the pane shows „{Kurs} – {Datum}"
+  with „Entfällt" under it and no „Neue Nachricht von …" line. „Ansicht
+  beenden", then sign in as the child: the number is 2, and both are there.
+  Afterwards, as the trainer, open the same date again and save it as „Findet
+  statt" without the tick: „Termin folgt wieder dem normalen Plan."
 
 ---
 

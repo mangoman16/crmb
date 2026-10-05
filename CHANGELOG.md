@@ -74,7 +74,9 @@ does not; nobody is asked to acknowledge it again.
   every child in the course. Where it was taken, its camera and its time are
   removed before it is stored, and so is whatever a phone puts after the
   picture: a second photo, or a motion photo's short video, which can carry a
-  location of its own. It stays the right way up. An HDR photo shows at normal
+  location of its own. A small preview that an editor can keep inside the file
+  goes too, because after cropping it can still show the whole photo from
+  before. It stays the right way up. An HDR photo shows at normal
   brightness, because what makes it brighter is one of those second pictures. A
   GIF is stored as it came. So is a picture whose file the portal cannot make
   sense of, and whether to refuse that instead is still hers to decide.
@@ -82,7 +84,10 @@ does not; nobody is asked to acknowledge it again.
   it; one whose family has no login yet is only counted. Staff see everybody.
 - While a trainer or an administrator views the portal as somebody else, she
   sees only the chats she may read herself, and the bell leaves out that
-  person's chat notices, because each one quotes the message. Nothing can be
+  person's chat notices, because each one quotes the message. It shows only the
+  kinds known to quote nothing private — payments, dates and requests, and
+  problem reports when an administrator is looking — so a kind of notice added
+  later stays out of it until somebody has decided otherwise. Nothing can be
   written, asked for, taken down or marked read in that view, „Alle gelesen"
   included, so their unread messages and notices stay unread; an administrator
   viewing the portal as a trainer cannot write to the children in her name.
@@ -431,6 +436,12 @@ PHP 8.4.26, with all twenty-seven migrations applying and the data that 015,
 passed, 361 checks, on the same versions, but it does not open the chat. The
 chat's checks by hand, C.1 to C.18 in TESTING.md, are part of neither run, and
 nothing was tried on a real iPhone. **MySQL 8.0 was not tried.**
+
+The fixes after that, up to commit `e0965a4`, were checked with the whole
+suite: 5906 assertions, 0 failed, on MariaDB 10.11.14 with PHP 8.4.26, in
+backend-dev's run. The browser walk's 361 checks above are from the code before
+them, C.19 and C.20 by hand are part of no run, and nothing was tried on a real
+iPhone. **MySQL 8.0 was not tried.**
 
 ### Signing in correctly no longer counts against her
 
