@@ -85,12 +85,15 @@ creates a group while a page is read (ADR 0003).
   `store_upload()` stores the copy `image_without_metadata()` returns, for every picture of every kind
   of upload. Each format has a list of what it keeps, not of what it loses, because the next phone
   will write a kind of metadata that no list of losses names yet:
-  - a **JPEG** keeps its frame, tables and scans, the JFIF header, its colour profile (APP2
-    `ICC_PROFILE`) and Adobe's colour transform (APP14), and of its EXIF only which way is up, in a
-    block of its own, so an iPhone photo does not lie on its side. GPS and the rest of EXIF, XMP,
-    IPTC, comments and every other APPn segment go. So does everything after the end of the picture,
-    where a phone puts a second picture (MPF) or a motion photo's video. An HDR photo's gain map is
-    such a second picture, so an HDR photo loses it and shows at normal brightness;
+  - a **JPEG** keeps its frame, tables and scans, its colour profile (APP2 `ICC_PROFILE`), and of
+    its EXIF only which way is up, in a block of its own, so an iPhone photo does not lie on its
+    side. Two headers keep only what a decoder reads: the JFIF header (APP0) its 14 bytes, with the
+    thumbnail's width and height set to 0, because the thumbnail an editor leaves behind them can
+    show the photo from before it was cropped; Adobe's colour transform (APP14) its 12 bytes. A
+    header too short to hold them goes. GPS and the rest of EXIF, XMP, IPTC, comments and every
+    other APPn segment go. So does everything after the end of the picture, where a phone puts a
+    second picture (MPF) or a motion photo's video. An HDR photo's gain map is such a second
+    picture, so an HDR photo loses it and shows at normal brightness;
   - a **PNG** keeps `PNG_KEPT_CHUNKS`: IHDR, PLTE, IDAT, IEND, tRNS, gAMA, cHRM, sRGB, iCCP, sBIT,
     bKGD, pHYs, its animation (acTL, fcTL, fdAT) and how its colours are meant (cICP, mDCV, cLLI). No
     text, no EXIF, no time, nothing private to some program, nothing after IEND;
@@ -176,9 +179,13 @@ quotes what it hides:
   is false too, and the page offers no composer, no „Neue Nachricht" and no „Nachricht entfernen".
 - **`notifications_read` is refused:** „Alle gelesen" would mark the family's notices read before they
   saw them. `status_emoji_save` (§7) and `presence_save` (ADR 0015) are refused as well.
-- **The bell leaves out chat notices** (`notifications_seen_sql()`, for the pane and its count alike):
-  a chat notice, and a contact request, quotes the message, and would hand staff the words that
-  `thread_seen_sql()` keeps from them in the chat.
+- **The bell shows only the kinds `notice_kinds_shown_while_viewing()` lists**, asked by
+  `notifications_seen_sql()` for the pane and its count alike: payments, dates (`schedule`),
+  requests, and problem reports only when the person looking, not the bell's owner, is an
+  administrator. A chat notice, and a contact request, quotes the message, and would hand staff the
+  words that `thread_seen_sql()` keeps from them in the chat. As with photos (§4) the list says what
+  is shown, not what is hidden, so a kind added later stays hidden until somebody has decided it
+  quotes nothing private.
 - **„Neue Nachricht" and `?with=` give one answer whoever is asked for:** no requests, no contacts and
   no other families listed, and no difference between a chat that exists and one that does not.
   Before, `?with=` said „nicht gefunden" where the child had a chat this view did not show and opened
@@ -219,6 +226,8 @@ two `ALTER`s that stopped between them could never start again.
   own, and cleaning it means a second cleaner inside the first. Normal brightness is the price.
 - **Refusing, in `dispatch_messages()`, a list of actions while viewing as somebody.** The next action
   added is the one that would not be on it.
+- **Leaving chat notices out of the bell by name while viewing as somebody.** As with photos, the
+  next kind that quotes something private would be shown before anybody noticed.
 - **A „Gelesen" button, or marking read by a POST from JavaScript.** A step nobody expects, or a
   badge that never clears without JavaScript. Naming the one exception keeps ADR 0003 checkable.
 - **Answering `?with=` truthfully while viewing as somebody.** „Nicht gefunden" for a hidden chat and
@@ -235,14 +244,16 @@ two `ALTER`s that stopped between them could never start again.
   administrators can read chats between students and staff. `docs-writer` drafts, the owner releases.
 - **Must stay true:**
   - nothing stores who is in a group, and only `course_group_thread()` makes a `course` thread;
+  - every way a course is made calls `course_group_thread()` — the `structure` suite finds each one
+    and fails a new one until it does;
   - only `direct_thread()` calls `join_thread()`, and only `join_thread()` writes
     `thread_participants` — the `structure` suite checks both;
   - which kind a pair makes is decided only in `pair_kind()`;
   - who may read is decided only in `thread_listed_sql()` and `thread_readable_sql()`, narrowed only
     by `thread_seen_sql()`, through which the list, „Alle Direktchats", the badge and
     `thread_record()` all read;
-  - nothing in `dispatch_messages()` runs while staff view as somebody, and the bell shows no chat
-    notice then;
+  - nothing in `dispatch_messages()` runs while staff view as somebody, and the bell then shows only
+    the kinds `notice_kinds_shown_while_viewing()` lists, which is the one copy of that list;
   - the one write on a GET in the chat is `mark_thread_read()`, and never while viewing as somebody;
   - a group message sends no mail;
   - every picture `store_upload()` stores is `image_without_metadata()`'s copy, and each format's list
