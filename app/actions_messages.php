@@ -10,8 +10,7 @@ function dispatch_messages(string $action): array {
     // her. So the whole dispatcher refuses rather than a list of its actions,
     // which the next action added here would not be on (security review,
     // ADR 0022 §9).
-    if(impersonator())
-        throw new UserError(t('Schreiben kann nur die Person selbst. Beende zuerst die Ansicht.','Only the person themselves can write. Stop viewing first.'));
+    if(impersonator()) throw new UserError(viewing_refusal());
     switch($action) {
     case 'message_send':
         $u=require_user();throttle('message',(string)$u['id'],40,300);$id=(int)post('thread_id');

@@ -176,37 +176,23 @@ function store_upload(string $field, string $kind): array {
 
 /**
  * An image as it may be stored: the picture, and nothing that says where, when
- * or with what it was taken (ADR 0022 §4). Each format keeps a list of what it
- * may keep rather than of what it loses, because the next phone will write a
- * kind of metadata that no list of losses names yet.
+ * or with what it was taken (ADR 0022 §4).
  *
- * A JPEG keeps its frame, its tables and its picture data - SOFn, DHT and DAC
- * (0xC0-0xCF), DQT, DNL, DRI, DHP and EXP (0xDB-0xDF), and every scan - the JFIF
- * header (APP0), a colour profile (APP2 ICC_PROFILE) and Adobe's colour
- * transform (APP14). Of its EXIF it keeps which way is up and nothing else, in a
- * block of its own (jpeg_orientation_segment()), so an iPhone photo is not shown
- * lying on its side. Everything else goes: the rest of EXIF, GPS with it, XMP,
- * IPTC, the other APPn segments, comments, and all that follows the end of the
- * picture, where a phone puts a second picture (MPF) or a motion photo's video.
- *
- * A PNG keeps IHDR, PLTE, IDAT, IEND, tRNS, gAMA, cHRM, sRGB, iCCP, sBIT, bKGD,
- * pHYs, its animation (acTL, fcTL, fdAT) and how its colours are meant (cICP,
- * mDCV, cLLI): no text, no EXIF, no time, no chunk private to some program, and
- * nothing after IEND.
- *
- * A WebP keeps VP8X, its picture (VP8, VP8L, ALPH), its animation (ANIM, ANMF)
- * and its colour profile (ICCP), with VP8X no longer saying that EXIF or XMP
- * follow: no other chunk, and nothing past the length its RIFF header gives.
+ * Each format names what it keeps - jpeg_segment_cleaned(), PNG_KEPT_CHUNKS,
+ * WEBP_KEPT_CHUNKS - and never what it loses, because the next phone will write
+ * a kind of metadata that no list of losses names yet. Of EXIF only which way is
+ * up is kept, so an iPhone photo is not shown lying on its side. Nothing after
+ * the end of the picture is kept: that is where a phone puts a second picture
+ * (MPF) or a motion photo's video, each with EXIF of its own.
  *
  * A GIF is kept as it came. It can carry a comment and XMP, but it is not what a
  * camera or a phone writes a photo as. So is anything that is not a picture.
  *
- * A file that does not read the way its format says comes back unchanged,
- * metadata and all: a JPEG that goes wrong before its first scan, a PNG or a
- * WebP with a chunk that runs past its end. Whether such a picture should be
+ * A file that cannot be read the way its format says, before its picture data,
+ * comes back as it came, metadata and all. Whether such a picture should be
  * refused instead is a decision the owner has not made yet; until she does, it
- * is kept as it came, as it always was. A JPEG cut off in the middle of its
- * picture data keeps what was cleaned before it and the picture data as it is.
+ * is kept as it always was. A JPEG cut off in the middle of its picture data
+ * keeps what was cleaned before it, and the picture data as it is.
  */
 function image_without_metadata(string $bytes, string $mime): string {
     return match ($mime) {
@@ -277,21 +263,36 @@ function jpeg_scan_end(string $b, int $from): ?int {
 }
 
 /**
- * One segment as the cleaned JPEG has it: whole if it is part of the picture,
- * as the orientation alone if it is EXIF, and not at all otherwise. Which these
- * are is image_without_metadata()'s list.
+ * One segment as the cleaned JPEG has it: the list of what a JPEG keeps. A scan
+ * is kept by jpeg_without_metadata() itself, with its picture data. A header is
+ * matched by its name as well as its marker, because the same APPn markers carry
+ * thumbnails (JFXX) and the index of a second picture (MPF).
  */
 function jpeg_segment_cleaned(int $marker, string $segment): string {
-    if (($marker >= 0xC0 && $marker <= 0xCF) || ($marker >= 0xDB && $marker <= 0xDF)) return $segment;
     $payload = substr($segment, 4);
-    if ($marker === 0xE1 && str_starts_with($payload, "Exif\0\0")) {
-        $orientation = exif_orientation(substr($payload, 6));
-        return $orientation > 1 ? jpeg_orientation_segment($orientation) : '';
-    }
-    // APP0, APP2 and APP14 are kept only as the header, profile and transform
-    // named here: the same markers carry JFXX thumbnails and MPF.
-    $kept = [0xE0 => "JFIF\0", 0xE2 => "ICC_PROFILE\0", 0xEE => 'Adobe'];
-    return isset($kept[$marker]) && str_starts_with($payload, $kept[$marker]) ? $segment : '';
+    return match (true) {
+        // SOFn, DHT and DAC: the frame and how its data is coded.
+        $marker >= 0xC0 && $marker <= 0xCF => $segment,
+        // DQT, DNL, DRI, DHP and EXP: the rest of the tables a decoder reads.
+        $marker >= 0xDB && $marker <= 0xDF => $segment,
+        // EXIF as which way is up and nothing else, in a block of its own.
+        $marker === 0xE1 && str_starts_with($payload, "Exif\0\0") => jpeg_orientation_segment(exif_orientation(substr($payload, 6))),
+        // JFIF as its 14 bytes, the thumbnail's size set to none: what follows
+        // them is a thumbnail, which can show the photo from before it was cropped.
+        $marker === 0xE0 && str_starts_with($payload, "JFIF\0") && strlen($payload) >= 14
+            => jpeg_segment_of(0xE0, substr($payload, 0, 12) . "\0\0"),
+        // The colour profile, which the colours are drawn by.
+        $marker === 0xE2 && str_starts_with($payload, "ICC_PROFILE\0") => $segment,
+        // Adobe's colour transform as its 12 bytes, which are all a decoder reads.
+        $marker === 0xEE && str_starts_with($payload, 'Adobe') && strlen($payload) >= 12
+            => jpeg_segment_of(0xEE, substr($payload, 0, 12)),
+        default => '',
+    };
+}
+
+/** A JPEG segment: its marker, its length (which counts itself) and what it holds. */
+function jpeg_segment_of(int $marker, string $payload): string {
+    return "\xFF" . chr($marker) . pack('n', strlen($payload) + 2) . $payload;
 }
 
 /** Which way is up (1-8) in an EXIF block, or 0 when it does not say. */
@@ -307,11 +308,15 @@ function exif_orientation(string $tiff): int {
     return 0;
 }
 
-/** An EXIF segment holding nothing but which way is up. */
+/**
+ * An EXIF segment holding nothing but which way is up - or nothing at all when
+ * the picture is upright already (1) or the EXIF did not say (0), because then
+ * there is nothing a viewer needs to be told.
+ */
 function jpeg_orientation_segment(int $orientation): string {
+    if ($orientation <= 1) return '';
     $tiff = "MM\x00\x2A" . pack('N', 8) . pack('n', 1) . pack('nnN', 0x0112, 3, 1) . pack('n', $orientation) . "\0\0" . pack('N', 0);
-    $payload = "Exif\0\0" . $tiff;
-    return "\xFF\xE1" . pack('n', strlen($payload) + 2) . $payload;
+    return jpeg_segment_of(0xE1, "Exif\0\0" . $tiff);
 }
 
 /**
@@ -323,9 +328,15 @@ function chunk_fits(int $at, int $length, int $end): bool {
     return $length >= 0 && $length <= $end - $at;
 }
 
-/** The chunks a cleaned PNG keeps; which these are is image_without_metadata()'s list. */
-const PNG_KEPT_CHUNKS = ['IHDR', 'PLTE', 'IDAT', 'IEND', 'tRNS', 'gAMA', 'cHRM', 'sRGB', 'iCCP', 'sBIT', 'bKGD', 'pHYs',
-                         'acTL', 'fcTL', 'fdAT', 'cICP', 'mDCV', 'cLLI'];
+/** The chunks a cleaned PNG keeps: the picture, and how it is meant to be shown. */
+const PNG_KEPT_CHUNKS = [
+    'IHDR', 'PLTE', 'IDAT', 'IEND',
+    'tRNS',                             // which colour, or how much of each, is see-through
+    'gAMA', 'cHRM', 'sRGB', 'iCCP',     // how its colours are meant; iCCP is a colour profile
+    'sBIT', 'bKGD', 'pHYs',             // how precise its colours were, a background to show it on, the shape of a pixel
+    'acTL', 'fcTL', 'fdAT',             // an animated PNG's frames
+    'cICP', 'mDCV', 'cLLI',             // the colour of an HDR picture, and the brightness it was made for
+];
 
 function png_without_metadata(string $b): string {
     if (substr($b, 0, 8) !== "\x89PNG\r\n\x1A\n") return $b;
@@ -343,8 +354,13 @@ function png_without_metadata(string $b): string {
     return $b;
 }
 
-/** The chunks a cleaned WebP keeps; which these are is image_without_metadata()'s list. */
-const WEBP_KEPT_CHUNKS = ['VP8X', 'VP8 ', 'VP8L', 'ALPH', 'ANIM', 'ANMF', 'ICCP'];
+/** The chunks a cleaned WebP keeps: the picture, and how it is meant to be shown. */
+const WEBP_KEPT_CHUNKS = [
+    'VP8X',                             // the extended header, no longer saying that EXIF or XMP follow
+    'VP8 ', 'VP8L', 'ALPH',             // the picture, lossy or lossless, and a lossy one's see-through parts
+    'ANIM', 'ANMF',                     // an animation and its frames
+    'ICCP',                             // the colour profile
+];
 
 function webp_without_metadata(string $b): string {
     if (strlen($b) < 12 || substr($b, 0, 4) !== 'RIFF' || substr($b, 8, 4) !== 'WEBP') return $b;

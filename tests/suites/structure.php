@@ -1019,6 +1019,9 @@ function action_calls_in(string $php): array {
         $calls[] = [
             'name'  => $token[1],
             'index' => $i,
+            // The first argument when it is written out as a string, joined as
+            // above; null when it is a variable or anything else worked out.
+            'literal' => $literal,
             // Upper case and a table name, both required: a case-insensitive
             // match on the keyword alone reads t('Update: die neuen Dateien …')
             // as a write and puts an imaginary one ahead of the real thing.
@@ -1673,6 +1676,58 @@ $joining = array_values(array_unique($joining));
 sort($joining);
 is_same(['app/messaging.php direct_thread calls join_thread()', 'app/messaging.php join_thread writes thread_participants'], $joining,
         'join_thread() writes who is in a chat, and direct_thread() is the only caller');
+
+// ---------------------------------------------------------------------------
+case_('Every way a course is made gives it its group chat');
+/* ADR 0022 §3: a course has its group from the moment it exists, however it came
+   to exist. Three places make one - the course form, the example data and a copy
+   - and each had to remember course_group_thread() on its own (code review). So
+   every block that writes a row into `classes` is found and named here, and has
+   to ask for the group: a statement that inserts into the table, insert_row()
+   with 'classes', or the copy of a record whose table is handed to it, as long as
+   duplicable_records() offers a course for copying. A fourth way fails until it
+   is added to this list, which is the moment to give it the call. */
+$copiesCourses = array_key_exists('classes', duplicable_records());
+ok($copiesCourses, 'a course can be copied, so the copy is one of the ways below');
+$courseMakers = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'),
+                     glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/database/*.php')) as $path)
+    foreach (named_blocks_of($path) as $block => $code) {
+        $calls = array_values(array_filter(action_calls_in($code), fn($c) => !$c['method']));
+        $called = array_column($calls, 'name');
+        $writes = (bool)array_filter(sql_statements_in($code),
+            fn($sql) => preg_match('/^(INSERT( IGNORE)?|REPLACE) INTO `?classes`?[\s(]/i', $sql) === 1);
+        foreach ($calls as $call)
+            if ($call['name'] === 'insert_row'
+                && ($call['literal'] === 'classes'
+                    || ($copiesCourses && $call['literal'] === null && in_array('duplicable_record', $called, true))))
+                $writes = true;
+        if (!$writes) continue;
+        $where = substr($path, strlen(APP_ROOT) + 1).' '.$block;
+        $courseMakers[] = $where;
+        ok(in_array('course_group_thread', $called, true), $where.' makes a course, and asks course_group_thread() for its group');
+    }
+sort($courseMakers);
+is_same(['app/actions_config.php class_save', 'app/demo.php demo_fill', 'app/duplicate.php duplicate_record'], $courseMakers,
+        'a course is made by the course form, the example data and a copy, and nowhere else');
+
+// ---------------------------------------------------------------------------
+case_('The chat says why nobody writes while looking through another’s eyes in one sentence, kept in one place');
+/* The refusal of every message action and the line the chat shows instead of its
+   writing box were the same sentence typed twice (code review); viewing_refusal()
+   is the one copy. Read in German and in English, either of which a second copy
+   would repeat. */
+$refusalCopies = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'),
+                     glob(APP_ROOT.'/bin/*.php')) as $path)
+    foreach (named_blocks_of($path) as $block => $code)
+        if (str_contains($code, 'Schreiben kann nur die Person selbst') || str_contains($code, 'Only the person themselves can write'))
+            $refusalCopies[] = substr($path, strlen(APP_ROOT) + 1).' '.$block;
+sort($refusalCopies);
+// views/messages.php until its line where the writing box would be calls
+// viewing_refusal() too; that change takes it off this list.
+is_same(['app/shell.php viewing_refusal', 'views/messages.php messages.php (file)'], $refusalCopies,
+        'viewing_refusal() is where the sentence is written');
 
 // ---------------------------------------------------------------------------
 case_('A link reaches its place on a page through url(), never by a „#" joined on by hand');

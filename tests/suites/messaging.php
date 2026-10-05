@@ -268,7 +268,7 @@ ok(in_array($group, $unread, true) && !array_intersect([$withOther, $direct], $u
 ok(!may_write_thread(current_user(), thread_record($group)), 'nowhere is offered to write');
 foreach ([['message_send', ['thread_id'=>(string)$group, 'body'=>'Hallo']], ['message_send', ['to'=>(string)$admin, 'body'=>'Hallo']],
           ['contact_request', ['to'=>(string)$gruber]], ['contact_decide', ['id'=>'1', 'accept'=>'1']]] as [$action, $fields])
-    throws(fn() => act($action, $fields), $action.' is refused', 'Ansicht');
+    throws(fn() => act($action, $fields), $action.' is refused, in the sentence the chat shows for it', viewing_refusal());
 render_view('messages', ['id'=>(string)$group]);
 ok(in_array($group, unread_thread_ids(current_user()), true), 'opening the group does not mark it read for the child');
 $_SESSION['impersonator_id'] = $admin;
@@ -315,7 +315,7 @@ ok(str_contains($answer(['id'=>(string)$group, 'members'=>'1']), 'with='), 'and 
 $_SESSION['impersonator_id'] = $trainer;
 $pickerViewed = $answer(['new'=>'1']);
 ok(str_contains($conversationOf($pickerViewed), '<h2>'.e('Neue Nachricht').'</h2>')
-   && str_contains($conversationOf($pickerViewed), e('Schreiben kann nur die Person selbst. Beende zuerst die Ansicht.')),
+   && str_contains($conversationOf($pickerViewed), e(viewing_refusal())),
    'viewed by the trainer, „Neue Nachricht" says that only the child can write');
 foreach ($theirs as $said) ok(!str_contains($pickerViewed, e($said)), 'and nothing on the page shows „'.$said.'“');
 ok(!str_contains($pickerViewed, 'contact_decide') && !str_contains($pickerViewed, 'contact_request') && !str_contains($pickerViewed, e('Jemand anderen fragen')),
@@ -358,7 +358,7 @@ sign_in_as($trainer);
 ok(str_contains($answer(['id'=>(string)$group]), 'value="message_remove"'), 'the trainer’s own group offers „Nachricht entfernen"');
 $_SESSION['impersonator_id'] = $admin;
 $staffViewed = $conversationOf($answer(['new'=>'1']));
-ok(str_contains($staffViewed, e('Schreiben kann nur die Person selbst.')) && !str_contains($staffViewed, 'filter-search')
+ok(str_contains($staffViewed, e(viewing_refusal())) && !str_contains($staffViewed, 'filter-search')
    && !str_contains($staffViewed, e('Familie Hofer')), 'viewed by an administrator, the trainer’s picker has the same sentence, no search and no children');
 ok(!str_contains($answer(['id'=>(string)$group]), 'message_remove'), 'and her group offers nothing to take down, which could only be refused');
 unset($_SESSION['impersonator_id']);
@@ -386,10 +386,15 @@ case_('Looking through a child’s eyes, the bell quotes no chat, and nothing is
 /* A chat notice quotes the message, and a request to write is one too: the bell
    handed the trainer the words of the child's chat with another family that
    thread_record() refuses her (security review S1, ADR 0022 §9) - and „Alle
-   gelesen" marked every notice read before the child had seen it (S5). */
+   gelesen" marked every notice read before the child had seen it (S5). The bell
+   shows the kinds on a list of its own then, so a kind nobody has asked about
+   yet stays hidden too; and a problem report only to an administrator looking,
+   whoever's bell it is in - a login that was an administrator once keeps them. */
 sign_in_as($berger);
 act('message_send', ['thread_id'=>(string)$direct, 'body'=>'Ja, ich fahre mit dem Zug.']);
 notify($hofer, 'schedule', 'Training fällt aus', 'Am Montag ist die Halle zu.', 'dashboard');
+notify($hofer, 'erinnerung', 'Bald Geburtstag', 'Lena aus dem Montagskurs wird morgen zehn.', 'dashboard');
+notify($hofer, 'problem', 'Jemand meldet ein Problem', 'Beim Hochladen des Fotos kommt ein Fehler.', 'settings', ['tab'=>'feedback']);
 sign_in_as($hofer);
 $bell = fn(string $html): string => (string)strstr((string)strstr($html, 'notification-pane'), '</details>', true);
 $quotes = fn(array $notes, string $said): bool => in_array($said, array_column($notes, 'body'), true);
@@ -399,20 +404,27 @@ $ownBell = $bell(render_page('dashboard'));
 ok($quotes(notifications_for($hofer), 'Ja, ich fahre mit dem Zug.') && str_contains($ownBell, 'Ja, ich fahre mit dem Zug.'),
    'the child’s own bell quotes the other family’s message, so the lines below prove something');
 ok(str_contains($ownBell, 'value="notifications_read"'), 'and offers „Alle gelesen"');
-ok($chatNotes >= 2 && $unread > $chatNotes, 'and holds chat notices and one of another kind, all unread ('.$chatNotes.' of '.$unread.')');
+ok($chatNotes >= 2 && $unread === $chatNotes + 3, 'and holds chat notices and the three of other kinds, all unread ('.$chatNotes.' of '.$unread.')');
 $_SESSION['impersonator_id'] = $trainer;
 is_same([], array_values(array_filter(notifications_for($hofer), fn($n) => $n['kind'] === 'message')),
         'viewed by the trainer, the pane holds no chat notice');
 ok($quotes(notifications_for($hofer), 'Am Montag ist die Halle zu.'), 'but the other notice still');
-is_same($unread - $chatNotes, unread_notifications($hofer), 'and the bell counts that one only');
+ok(!$quotes(notifications_for($hofer), 'Lena aus dem Montagskurs wird morgen zehn.'), 'and none of a kind that is on no list of what may be shown');
+ok(!$quotes(notifications_for($hofer), 'Beim Hochladen des Fotos kommt ein Fehler.'), 'nor a problem report, to a trainer');
+is_same($unread - $chatNotes - 2, unread_notifications($hofer), 'and the bell counts that one only');
 $viewed = render_page('dashboard');
 ok(str_contains($bell($viewed), 'Training fällt aus'), 'the page draws the bell, with the notice she may see');
 ok(!str_contains($bell($viewed), 'notifications_read'), 'and, with a notice unread, no „Alle gelesen", which could only be refused');
-foreach (['Ja, ich fahre mit dem Zug.', 'Bitte das Trikot mitbringen.'] as $said)
+foreach (['Ja, ich fahre mit dem Zug.', 'Bitte das Trikot mitbringen.', 'Lena aus dem Montagskurs', 'Hochladen des Fotos'] as $said)
     ok(!str_contains($viewed, $said), 'and nothing on the page quotes „'.$said.'“');
 throws(fn() => act('notifications_read', []), '„Alle gelesen" is refused', 'Ansicht');
 $oneNote = (int)scalar('SELECT id FROM notifications WHERE account_id=? AND read_at IS NULL ORDER BY id LIMIT 1', [$hofer]);
 throws(fn() => act('notifications_read', ['id'=>(string)$oneNote]), 'and so is marking one notice read', 'Ansicht');
+$_SESSION['impersonator_id'] = $admin;
+ok($quotes(notifications_for($hofer), 'Beim Hochladen des Fotos kommt ein Fehler.'),
+   'an administrator looking sees the problem report, which she reads under Rückmeldungen anyway');
+ok(!$quotes(notifications_for($hofer), 'Lena aus dem Montagskurs wird morgen zehn.'), 'but not the kind on no list');
+is_same($unread - $chatNotes - 1, unread_notifications($hofer), 'and her bell counts the two she sees');
 unset($_SESSION['impersonator_id']);
 is_same($unread, unread_notifications($hofer), 'signed in as the child, every notice is there and still unread');
 
@@ -430,7 +442,7 @@ $written = fn(): array => [(int)scalar('SELECT COUNT(*) FROM messages'), (int)sc
 $writtenBefore = $written();
 foreach ([['bulk_send', []], ['message_remove', ['id'=>(string)$groupMessage]],
           ['news_save', ['title'=>'Hallenzeiten', 'body'=>'Ab Montag neu.', 'published'=>'1']]] as [$action, $fields])
-    throws(fn() => act($action, $fields), $action.' is refused', 'Ansicht');
+    throws(fn() => act($action, $fields), $action.' is refused, in the sentence the chat shows for it', viewing_refusal());
 is_same($writtenBefore, $written(), 'and nothing was written: no message, no news, nothing taken down');
 unset($_SESSION['impersonator_id'], $_SESSION['bulk_preview']);
 
@@ -491,6 +503,11 @@ $row = array_values(array_filter(chat_list(current_user()), fn($c) => (int)$c['i
 $header = array_values(array_filter(thread_people((int)$thread['id']), fn($p) => (int)$p['id'] === $trainer))[0] ?? [];
 is_same(CHAT_PERSON_COLUMNS, array_keys($header), 'the header reads the one list of what the chat shows of a person');
 is_same($header, chat_person_in($row, 'other_'), 'and the list’s row carries the same person, value for value');
+/* A bubble drew its author from a column list of its own (code review). */
+$writer = array_values(array_filter(thread_people((int)$thread['id']), fn($p) => (int)$p['id'] === $hofer))[0] ?? [];
+$bubble = array_values(array_filter(thread_messages((int)$thread['id'])['messages'], fn($m) => (int)$m['sender_id'] === $hofer))[0] ?? [];
+ok($writer !== [] && $bubble !== [], 'the child wrote in that chat, so the next line proves something');
+is_same($writer, chat_person_in($bubble, 'author_'), 'and a message carries who wrote it the same way, value for value');
 throws(fn() => chat_person_columns('a; DROP TABLE accounts'), 'an alias is a name, never a piece of SQL', 'Refusing');
 
 case_('A chat not started yet looks as it will once the first message makes it');

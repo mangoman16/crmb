@@ -258,13 +258,15 @@ function unread_count(array $user): int { return count(unread_thread_ids($user))
 /**
  * One conversation's messages, oldest first: the newest $limit, or the $limit
  * before message $before. A removed message comes back without its words and
- * files, so no page can print them by mistake.
+ * files, so no page can print them by mistake. Each carries who wrote it under
+ * 'author_', drawn as every other person in the chat is; chat_person_in($m,
+ * 'author_') takes them out. A deleted login leaves an author of nulls, as its
+ * sender_id is.
  *
  * @return array{messages: list<array>, more: bool}
  */
 function thread_messages(int $threadId, int $before = 0, int $limit = 50): array {
-    $rows = rows('SELECT m.*, a.name AS sender_name, a.avatar_name AS sender_avatar_name, a.role AS sender_role,'
-        .' a.status_emoji AS sender_status_emoji FROM messages m LEFT JOIN accounts a ON a.id=m.sender_id'
+    $rows = rows('SELECT m.*, '.chat_person_columns('a', 'author_').' FROM messages m LEFT JOIN accounts a ON a.id=m.sender_id'
         .' WHERE m.thread_id=?'.($before > 0 ? ' AND m.id<?' : '').' ORDER BY m.id DESC LIMIT '.($limit + 1),
         $before > 0 ? [$threadId, $before] : [$threadId]);
     $more = count($rows) > $limit;
@@ -274,6 +276,10 @@ function thread_messages(int $threadId, int $before = 0, int $limit = 50): array
         $m['removed'] = $m['removed_at'] !== null;
         if ($m['removed']) $m['body'] = '';
         $m['files'] = $m['removed'] ? [] : ($files[(int)$m['id']] ?? []);
+        // Only until views/messages.php draws the bubble's author with
+        // chat_person_in($m, 'author_'): the names it reads today, copied from
+        // that one list rather than selected a second time. Goes with that change.
+        foreach (['name', 'avatar_name', 'role', 'status_emoji'] as $column) $m['sender_'.$column] = $m['author_'.$column];
     }
     unset($m);
     return ['messages' => $rows, 'more' => $more];

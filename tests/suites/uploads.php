@@ -539,6 +539,28 @@ $size = getimagesizefromstring($tidied);
 is_same([600, 150, IMAGETYPE_JPEG], $size ? [$size[0], $size[1], $size[2]] : null, 'and it still reads as the same JPEG');
 is_same(6, exif_orientation(substr($tidied, (int)strpos($tidied, "Exif\0\0") + 6)), 'the right way up');
 
+case_('A JPEG keeps its JFIF and Adobe headers, and nothing that follows them');
+/* A JFIF header can be followed by a thumbnail - pixels, possibly of the photo
+   before it was cropped - and Adobe's by bytes no decoder reads. Each is kept as
+   the bytes a decoder reads: 14 of JFIF with the thumbnail's size set to none,
+   12 of Adobe, each with its length saying so (security review). */
+$thumbnail = str_repeat("\xC8\x64\x32", 4);
+$jfifRead = "JFIF\0\x01\x02\x01" . pack('nn', 72, 72);
+$adobeRead = "Adobe\x00\x64\x80\x00\x00\x00\x01";
+$jpegPicture = substr($phone, (int)strpos($phone, "\xFF\xC0"));
+$headed = "\xFF\xD8" . jpeg_segment(0xE0, $jfifRead . "\x02\x02" . $thumbnail)
+        . jpeg_segment(0xEE, $adobeRead . 'nachher ' . $where) . $jpegPicture;
+$headers = image_without_metadata($headed, 'image/jpeg');
+ok(!str_contains($headers, $thumbnail), 'the thumbnail is gone');
+ok(!str_contains($headers, 'Gartenweg'), 'and so are the bytes after Adobe’s twelve');
+is_same("\xFF\xD8" . "\xFF\xE0" . pack('n', 16) . $jfifRead . "\x00\x00" . "\xFF\xEE" . pack('n', 14) . $adobeRead . $jpegPicture, $headers,
+        'JFIF is its 14 bytes with no thumbnail, Adobe its 12, each length counting just those, and the picture as it was');
+$size = getimagesizefromstring($headers);
+is_same([600, 150, IMAGETYPE_JPEG], $size ? [$size[0], $size[1], $size[2]] : null, 'and it still reads as the same JPEG');
+is_same("\xFF\xD8" . $jpegPicture,
+        image_without_metadata("\xFF\xD8" . jpeg_segment(0xE0, "JFIF\0\x01\x02") . jpeg_segment(0xEE, 'Adobe') . $jpegPicture, 'image/jpeg'),
+        'a JFIF or Adobe header too short to be one is no header a decoder reads, and goes');
+
 case_('A progressive JPEG keeps every scan and the tables between them, and nothing else there');
 $dht = fn(int $table): string => jpeg_segment(0xC4, chr($table) . "\x01" . str_repeat("\x00", 15) . "\x05");
 $frame = "\xFF\xD8" . jpeg_segment(0xE0, "JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00")

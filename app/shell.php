@@ -52,18 +52,36 @@ function notify_admins(string $kind, string $title, string $body = '', string $p
 }
 
 /**
+ * The kinds of notice the bell shows while $viewer looks through somebody else's
+ * eyes: those that quote nothing $viewer could not read anyway. A chat notice is
+ * not one - its text quotes the message, and a request to write is one too - so
+ * the bell would hand a trainer the words of a child's private chat that
+ * thread_seen_sql() keeps from her in the chat itself (security review, ADR 0022
+ * §9). Listed by what may be shown rather than by what may not, so a kind added
+ * later stays hidden until somebody has asked what it quotes.
+ */
+function notice_kinds_shown_while_viewing(array $viewer): array {
+    return [
+        'payment',      // an invoice's number, amount and date, which staff wrote
+        'schedule',     // a course's date and whether it takes place, which staff wrote
+        'request',      // somebody new, or a course asked for or decided: on pages staff read
+        // What somebody reported as broken, which administrators read under
+        // Einstellungen › Rückmeldungen. Asked of who is looking rather than of
+        // whose bell it is: a login that was an administrator once keeps these.
+        ...(is_admin($viewer) ? ['problem'] : []),
+    ];
+}
+
+/**
  * Which of an account's notifications the bell may show now, as one condition
  * over `notifications` and its parameters. The pane and its count both ask it,
  * so the bell never counts a notice its pane would not show.
- *
- * While staff look through somebody else's eyes, a chat notice is left out: its
- * text quotes the message - and a contact request is one too - so the bell would
- * hand a trainer the words of a child's private chat that thread_seen_sql()
- * keeps from her in the chat itself (security review, ADR 0022 §9).
  */
 function notifications_seen_sql(int $accountId): array {
-    if (impersonator()) return ["account_id=? AND kind<>'message'", [$accountId]];
-    return ['account_id=?', [$accountId]];
+    $viewer = impersonator();
+    if (!$viewer) return ['account_id=?', [$accountId]];
+    $kinds = notice_kinds_shown_while_viewing($viewer);
+    return ['account_id=? AND kind IN (' . implode(',', array_fill(0, count($kinds), '?')) . ')', [$accountId, ...$kinds]];
 }
 
 /** The pane's contents: newest first, read and unread together. */
@@ -198,6 +216,15 @@ function impersonator(): ?array {
     // session that ended is no view, and is dropped (security review F1).
     if (!current_user()) { unset($_SESSION['impersonator_id']); return null; }
     return one('SELECT * FROM accounts WHERE id=?', [(int)$_SESSION['impersonator_id']]);
+}
+
+/**
+ * What the chat says while somebody looks through another's eyes: the refusal
+ * of every message action, and the line the chat shows where its writing box
+ * would be. One sentence, so the two cannot come to say different things.
+ */
+function viewing_refusal(): string {
+    return t('Schreiben kann nur die Person selbst. Beende zuerst die Ansicht.', 'Only the person themselves can write. Stop viewing first.');
 }
 
 /**

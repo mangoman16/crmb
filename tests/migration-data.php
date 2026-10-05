@@ -470,10 +470,13 @@ function build_portal_before_024(): array {
 /**
  * Chats as the version before 025 wrote them, for 025 to sort (ADR 0022 §5).
  *
- * A two-person chat a trainer started with a student, and so owned; one between
- * two students; and a thread of the old shared desk that the trainer answered,
+ * A two-person chat a trainer started with a student, and so owned; then one
+ * for each of the four things 025 asks before it changes a chat, each failing
+ * that one alone: a thread of the old shared desk that the trainer answered,
  * which made her a participant - two people, a student and staff, exactly like
- * the first, and still not its kind. Each with a message from everybody in it,
+ * the first, and still not its kind; a chat between two students, with nobody
+ * from staff; one between two trainers, with no student; and one of three
+ * people, two students and a trainer. Each with a message from everybody in it,
  * so a message lost would show.
  */
 function add_chats_before_025(PDO $pdo, array $logins): array {
@@ -488,7 +491,9 @@ function add_chats_before_025(PDO $pdo, array $logins): array {
     };
     return ['trainer_and_student' => $chat('direct', $logins['staff'], [$logins['staff'], $logins['mueller']]),
             'two_students' => $chat('direct', $logins['mueller2'], [$logins['mueller2'], $logins['gross']]),
-            'desk' => $chat('staff', $logins['gross'], [$logins['gross'], $logins['staff']])];
+            'desk' => $chat('staff', $logins['gross'], [$logins['gross'], $logins['staff']]),
+            'two_staff' => $chat('direct', $logins['suspended'], [$logins['suspended'], $logins['staff']]),
+            'three_people' => $chat('direct', $logins['mueller'], [$logins['mueller'], $logins['gross'], $logins['staff']])];
 }
 
 /** What 025 is held to, read back: every chat's kind and owner, and how many chats, messages and people in them. */

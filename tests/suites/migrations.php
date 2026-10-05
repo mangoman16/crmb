@@ -576,9 +576,19 @@ is_same(['staff', $login('gross')], $kindAndOwner($chatIn($g['after'], 'desk')),
         'the desk thread the trainer answered - a student and staff, two people, like the first - is still a desk thread, the student’s');
 is_same($chatIn($g['before'], 'desk'), $chatIn($g['after'], 'desk'), 'not a value of it changed either');
 
+case_('025 leaves a chat between two members of staff, and one of three people, as they were');
+/* The two of 025's four conditions the chats above never decide on their own:
+   that a student is in it, and that it has exactly two people. */
+is_same(['direct', $login('suspended')], $kindAndOwner($chatIn($g['after'], 'two_staff')),
+        'two trainers and no student: still direct, still owned by the one who started it');
+is_same($chatIn($g['before'], 'two_staff'), $chatIn($g['after'], 'two_staff'), 'not a value of it changed');
+is_same(['direct', $login('mueller')], $kindAndOwner($chatIn($g['after'], 'three_people')),
+        'two students and a trainer, three people: still direct, still the student’s who started it');
+is_same($chatIn($g['before'], 'three_people'), $chatIn($g['after'], 'three_people'), 'not a value of it changed either');
+
 case_('025 removes no chat, no message and nobody from a chat');
-is_same(['threads' => 3, 'messages' => 6, 'thread_participants' => 6], $g['before']['counts'],
-        'there were three chats with two people and two messages each, to lose');
+is_same(['threads' => 5, 'messages' => 11, 'thread_participants' => 11], $g['before']['counts'],
+        'there were five chats, four with two people and one with three, and a message from each of them, to lose');
 is_same($g['before']['counts'], $g['after']['counts'], 'and every one of them is there afterwards');
 
 case_('025 stopped after its UPDATE and started again, or its UPDATE run again after it finished, ends as one run does');
