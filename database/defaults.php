@@ -38,6 +38,10 @@ run('UPDATE students SET level_id=(SELECT id FROM levels WHERE is_default=1 ORDE
 // took which addresses have a login.
 refresh_sign_in_dummy_hash();
 
+// Courses made before migration 025 get their group chat here; a new course
+// gets one as it is saved (ADR 0022).
+course_groups_fill();
+
 if(setting('defaults_initialized',false))return;
 db()->beginTransaction();
 try{

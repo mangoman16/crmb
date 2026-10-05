@@ -536,10 +536,14 @@ is_same(array_diff_key($f['after'], ['two_new' => 1]), $f['again']['state'],
 case_('After 024 the runner’s step runs without a username, changes no login, and mails nobody');
 // Up to 023 database/defaults.php gave out usernames. Still calling that after
 // 024 would fail on every request and keep the portal closed (ADR 0021 §1).
+// Since 025 it also gives every course its group chat (ADR 0022).
 $r = $f['runner'];
-is_same('', $r['first_error'], 'database/defaults.php runs on the portal 024 was applied to');
+is_same('', $r['first_error'], 'database/defaults.php runs on the portal 024 and the files after it were applied to');
 is_same($r['before']['accounts'], $r['first']['accounts'], 'every login has every value it had');
-is_same($r['before']['counts'], $r['first']['counts'], 'every guarded table has as many rows as before');
+is_same(array_diff_key($r['before']['counts'], ['threads' => 0]), array_diff_key($r['first']['counts'], ['threads' => 0]),
+        'every guarded table but the chats has as many rows as before');
+is_same($r['before']['counts']['threads'] + $r['before']['courses'], $r['first']['counts']['threads'],
+        'and the chats grew by one group per course, and lost none');
 is_same($r['before']['mail'], $r['first']['mail'], 'no mail was queued');
 is_same('', $r['before']['dummy_hash'], 'the portal had no sign-in comparison hash before the update');
 ok(password_get_info($r['first']['dummy_hash'])['algo'] === PASSWORD_DEFAULT && !password_needs_rehash($r['first']['dummy_hash'], PASSWORD_DEFAULT),

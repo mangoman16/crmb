@@ -67,6 +67,7 @@ $removed = demo_clear();
 ok($removed['students'] > 0, 'it reports what it removed');
 is_same(false, demo_present(), 'no example data is left');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM classes WHERE is_demo=1'), 'courses gone');
+is_same(0, (int)scalar("SELECT COUNT(*) FROM threads WHERE kind IN ('course','staff_direct')"), 'their groups and the example chat with them');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM charges'), 'their charges gone with them');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM payments'), 'and the payments against those charges');
 is_same($before, (int)scalar('SELECT COUNT(*) FROM students WHERE is_demo=0'), 'the real student is untouched');
@@ -104,10 +105,13 @@ demo_fill(true);
 $familyId = (int)scalar('SELECT id FROM accounts WHERE email=?', ['lena.hofer@beispiel.test']);
 ok($familyId > 0, 'the example family has an account');
 sign_in_as($familyId);
-$theirs = threads_for(current_user());
-is_same(1, count($theirs), 'and one conversation of their own');
-ok(str_contains((string)$theirs[0]['subject'], 'Schläger'), 'the one the example data wrote');
-ok(str_contains((string)$theirs[0]['last_message'], 'Schläger'), 'with the trainer’s answer in it');
+$theirs = chat_list(current_user());
+$chats = array_values(array_filter($theirs, fn($c) => $c['kind'] === 'staff_direct'));
+is_same(1, count($chats), 'and one chat of their own, with the trainer');
+ok(str_contains((string)$chats[0]['last_body'], 'Schläger'), 'with the trainer’s answer in it');
+$groups = array_values(array_filter($theirs, fn($c) => $c['kind'] === 'course'));
+ok(count($groups) >= 1 && str_starts_with((string)$groups[0]['last_body'], 'Willkommen in der Gruppe'),
+   'and the group of their course, with the trainer’s welcome in it');
 sign_in_as($admin);
 demo_clear();
 

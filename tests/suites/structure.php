@@ -368,6 +368,7 @@ $escaping = ['e',                                                   // escapes
              'icon','link_button','qr_svg','progress_chart','avatar', // build their own markup and escape inside
              'sidebar_nav','time_cells','select_options',           // build their own markup and escape inside
              'presence_dot','presence_dot_for','presence_line',     // build their own markup and escape inside
+             'chat_name','status_emoji_mark',                       // build their own markup and escape inside
              'money','number_format','count','ceil','floor','round','array_sum','plural',  // numbers
              'fmt_date','fmt_datetime',                             // formatted dates
              'role_label','entity_label'];                          // fixed sets in code
@@ -1630,3 +1631,24 @@ ok(str_contains($activate, "create_own_student((int)\$r['account_id'],(string)\$
    'with the locked link’s own login and its stored address, never posted input');
 ok(str_contains($activate, '$details=setup_creates_student($r) ? own_student_details() : null;'),
    'and only when the link, not the post, says the person makes their student');
+
+// ---------------------------------------------------------------------------
+case_('A file on a removed group message is served to nobody');
+/* serve_download() ends the request, so no suite can call it; the messaging
+   suite asks the database the same question. This holds the download to it. */
+$uploadsSource = (string)file_get_contents(APP_ROOT.'/app/uploads.php');
+ok(preg_match('~if \(\$what === \'attachment\'\) \{\s*\$file = one\(\'[^\']*\bWHERE f\.id=\? AND m\.removed_at IS NULL\'~', $uploadsSource) === 1,
+   'the attachment is looked up only among messages that were not removed (ADR 0022)');
+
+// ---------------------------------------------------------------------------
+case_('No view overwrites what the layout reads after it');
+/* public/index.php requires the page's view and then views/layout.php in one
+   scope, so a view that names a variable $page hands the layout an array for the
+   page's name - a chat opened as a fatal error, while render_view(), which runs a
+   view inside a function, stayed green. Held here for every view. */
+foreach (glob(APP_ROOT.'/views/*.php') as $view) {
+    if (basename($view) === 'layout.php') continue;
+    preg_match_all('~\$(page|user|public|content)\s*(?:=(?!=)|\.=|\+=)~', (string)file_get_contents($view), $assigned);
+    ok(!$assigned[0], basename($view).' leaves $page, $user, $public and $content as the front controller set them'
+       .($assigned[0] ? ': '.implode(', ', array_unique($assigned[0])) : ''));
+}

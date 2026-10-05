@@ -1,11 +1,11 @@
 <?php
 /**
  * What the pages show about presence, and the account menu in the top bar
- * (ADR 0015, 0016). tests/suites/presence.php checks the rules in
+ * (ADR 0015, 0016, 0022). tests/suites/presence.php checks the rules in
  * app/presence.php; this checks that the pages ask them, and draw what the owner
- * decided: a family sees no status and no dot, staff choose theirs from a menu
- * whose current choice is not a button, and only staff see when somebody was
- * online - with the hidden periods for administrators alone.
+ * decided: everybody has their dot and a status emoji to pick, only staff choose
+ * a status, from a menu whose current choice is not a button, and only staff see
+ * when somebody was online - with the hidden periods for administrators alone.
  */
 
 $admin    = make_account(['role' => 'admin',   'name' => 'Admin Person']);
@@ -52,6 +52,8 @@ function account_menu_of(string $html): array {
         'status'   => $x->query('.//*['.presence_class('account-menu-status').']', $menu)->length,
         'current'  => array_map(fn($n) => trim($n->textContent), iterator_to_array($x->query('.//*['.presence_class('is-current').']', $menu))),
         'currentIsButton' => $x->query('.//button['.presence_class('is-current').'] | .//*['.presence_class('is-current').']//button', $menu)->length,
+        'emoji'    => array_map(fn($n) => trim($n->textContent), iterator_to_array($x->query('.//*['.presence_class('is-chosen').']', $menu))),
+        'emojiIsButton' => $x->query('.//button['.presence_class('is-chosen').']', $menu)->length,
         'posted'   => $posted,
         'profile'  => $x->query('.//a[@href="'.url('profile').'"]', $menu)->length,
         'label'    => (string)$menu->getElementsByTagName('summary')->item(0)?->getAttribute('aria-label'),
@@ -59,17 +61,28 @@ function account_menu_of(string $html): array {
 }
 
 // ---------------------------------------------------------------------------
-case_('A family\'s account menu is „Mein Konto" and „Abmelden", with no dot and no status');
+case_('A family\'s account menu: „Mein Konto", the status emoji and „Abmelden", with their dot and no status');
 sign_in_as($family);
-$menu = account_menu_of(presence_page_html('dashboard'));
+$html = presence_page_html('dashboard');
+$menu = account_menu_of($html);
 ok($menu['found'], 'the top bar has an account menu');
 ok($menu['topbar'], 'and it is a top-bar menu, held to the same rules as the bell');
 is_same(1, $menu['profile'], 'it links to „Mein Konto"');
-is_same([['action' => 'logout', 'presence' => null, 'submits' => 1]], $menu['posted'], 'and its one form signs out');
-is_same(0, $menu['status'], 'no status block');
-is_same(0, $menu['dots'], 'no dot on the avatar');
-is_same('Konto-Menü: Familie Hofer', $menu['label'], 'its label is the name, with no status');
-ok(!str_contains(presence_page_html('dashboard'), 'presence-dot'), 'and no dot anywhere on the page');
+is_same([['action' => 'status_emoji_save', 'presence' => null, 'submits' => count(status_emojis())],
+         ['action' => 'logout', 'presence' => null, 'submits' => 1]], $menu['posted'],
+        'one form picks the emoji - every one a button but the chosen „Keins" - and one signs out');
+is_same(0, $menu['status'], 'no status block: a child\'s status is always automatic');
+is_same(1, $menu['dots'], 'their avatar carries their dot (ADR 0022)');
+is_same('Konto-Menü: Familie Hofer, Online', $menu['label'], 'and the label says they are online');
+is_same(['Keins (gewählt)'], $menu['emoji'], 'with no emoji chosen, „Keins" is marked');
+is_same(0, $menu['emojiIsButton'], 'and the marked one is not a button');
+ok(!str_contains($html, 'account-menu-note'), 'nobody\'s menu explains the status any more');
+run("UPDATE accounts SET status_emoji='fox' WHERE id=?", [$family]);
+sign_in_as($family);
+$menu = account_menu_of(presence_page_html('dashboard'));
+is_same(['🦊 Fuchs (gewählt)'], $menu['emoji'], 'a chosen emoji is the marked one');
+ok(str_contains(presence_page_html('dashboard'), '<span class="status-emoji" aria-hidden="true">🦊</span>'), 'and stands beside their name');
+run("UPDATE accounts SET status_emoji='' WHERE id=?", [$family]);
 
 // ---------------------------------------------------------------------------
 case_('Staff see their status: the current choice is a marked row, the other two are buttons');
@@ -119,21 +132,21 @@ ok(str_contains($page, 'An 1 von 30 Tagen online.'), 'the history counts the day
 ok(!str_contains($page, 'last_seen_at'), 'nothing leaks the column name');
 sign_in_as($family);
 $page = presence_page_html('student', ['id' => $child]);
-ok(!str_contains($page, 'presence-line') && !str_contains($page, 'presence-history') && !str_contains($page, 'presence-dot'),
+ok(!str_contains($page, 'presence-line') && !str_contains($page, 'presence-history') && !str_contains($page, 'zuletzt'),
    'the family sees none of it on their own page');
 sign_in_as($admin);
 $x = presence_xpath(presence_page_html('accounts'));
 ok($x->query('//*['.presence_class('presence-line').']')->length >= 3, 'an administrator sees a presence line for each member of staff');
 ok($x->query('//details['.presence_class('presence-history').']')->length >= 3, 'and a history under each');
 
-case_('The drawing helpers give a family nothing, whoever they ask about');
-/* The pages above never ask for a family viewer, so these are what stands
-   behind them if one ever does. */
+case_('The drawing helpers give a family dots, never times or history');
+/* The pages above never ask for a family's line or history, so these are what
+   stands behind them if one ever does. */
 $F = one('SELECT * FROM accounts WHERE id=?', [$family]);
 $T = one('SELECT * FROM accounts WHERE id=?', [$trainer]);
 is_same('', presence_line($F, $T), 'no presence line about the trainer');
 is_same('', presence_line($F, $F), 'nor about themselves');
-is_same('', presence_dot($F, $F), 'no dot, their own included');
+ok(str_contains(presence_dot($F, $T), 'presence-dot') && str_contains(presence_dot($F, $F), 'presence-dot'), 'the dots, the trainer\'s and their own');
 ob_start(); presence_history_details($F, [['started_at' => $ago(600), 'last_seen_at' => $ago(60), 'hidden' => false]], null);
 is_same('', (string)ob_get_clean(), 'and no history, even when handed periods');
 ok(str_contains(presence_line($T, $F), 'presence-dot'), 'while a trainer asking about the family gets the line');

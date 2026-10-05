@@ -99,6 +99,7 @@ release and emptied again for the next.
 - After an update the browser fetches the new stylesheet and script by itself: the account menu is styled and the bell stays still without clearing the cache: A.0
 - Everybody signs in with their own e-mail address; usernames are gone. A person is added either by inviting an address — they fill in their own details and choose a course — or by creating them; nobody sets another person's password (ADR 0021): A.1–A.13
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
+- The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji (ADR 0022): C.1–C.13
 
 ---
 
@@ -1060,11 +1061,13 @@ your picture at the top right.
   conversation between two families. The trainer cannot see it in her list, in
   her unread count, or by opening its address. Neither can the administrator.
   Nor can either of them open its attachments.
-- [ ] **14.8** A conversation with the trainer is readable by *every* member of
-  staff — that is what it is for.
+- [ ] **14.8** A chat with the trainer is read by the trainer and the child, and
+  by the administrators — not by a second trainer (ADR 0022). The old shared
+  conversations from before stay readable under „Frühere Unterhaltungen" and take
+  no new messages.
 - [ ] **14.9** Unread markers clear when a conversation is opened, and the count
   in the menu agrees with the list.
-- [ ] **14.10** **„An eine Gruppe schreiben"**: the bulk tool with filters,
+- [ ] **14.10** **„An mehrere schreiben"**: the bulk tool with filters,
   templates and a review step still works, and is on its own page — writing one
   message never goes through it.
 - [ ] **14.11** An empty message is refused.
@@ -1475,7 +1478,7 @@ Rückmeldungen**, „Technische Einzelheiten"
   **Konten**, **Änderungen**, **Einrichtung ansehen** and **Erweitert**. Each card
   opens its page, and **Einstellungen** stays marked in the menu. Postausgang is
   not among them — it is under Nachrichten (U.50).
-- [ ] **U.50** At the top of **Nachrichten**: **„Gruppe anschreiben"**,
+- [ ] **U.50** At the top of **Nachrichten**: **„An mehrere schreiben"**,
   **„Neuigkeiten"** and **„Postausgang"**. Each opens its page, with
   **Nachrichten** still marked.
 - [ ] **U.51** At the top of **Beiträge** and of **Rechnungen**, a switch
@@ -1672,6 +1675,58 @@ where it says so
 
 - [ ] **A.24** **(release)** `tests/mariadb-local.sh` is green, and
   `tests/e2e.sh` ends in `RESULT: PASS`, on the MariaDB and PHP her host runs.
+
+**The chat, like a messenger** (ADR 0022) — on the iPhone where it says so
+
+- [ ] **C.1** As the trainer, **Nachrichten**: „Kursgruppen" lists a group for
+  every running course, then „Einzelchats". A course made today has its group
+  straight away; an archived course's group is gone from the list.
+- [ ] **C.2** As a child enrolled in one course, on the iPhone at 320 px: the
+  list shows that one group and the chat with the trainer, nothing else. Tap the
+  group: one thing on the screen at a time, the arrow at the top goes back, and
+  the writing box sits above the menu bar, not under it, and opens at the newest
+  message.
+- [ ] **C.3** In a group, as the child, send a text, a photo and a voice note.
+  The trainer and another child of the course see all three; a child of another
+  course cannot open the group at all (the address typed by hand says
+  „Unterhaltung nicht gefunden"). No e-mail and no bell entry is made for a group
+  message.
+- [ ] **C.4** Take the child out of the course (end the enrolment). On the next
+  page the group is gone from their list. Put another child in: they read the
+  group's earlier messages.
+- [ ] **C.5** As the trainer, „⋯" on a child's group message → „Nachricht
+  entfernen": everybody sees „Nachricht entfernt", its photo no longer opens. The
+  same „⋯" → „Wiederherstellen" brings it back.
+- [ ] **C.6** As a child, „Neue Nachricht" → the trainer: the chat opens, the
+  first message makes it, and it says the administrators can read it. As the
+  administrator, it is not in your list and not in your badge, but under „Alle
+  Direktchats"; you can read it and cannot write in it. A second trainer cannot
+  open it.
+- [ ] **C.7** „An mehrere schreiben" to two children: each gets the message in
+  their chat with you, the subject as its first line; no new kind of
+  conversation appears.
+- [ ] **C.8** The account menu, as a child: their dot on their picture, no
+  status choice, and „Status-Emoji". Pick 🦊 with JavaScript off: it saves with
+  one tap and stands beside their name in the menu and in a group. „Keins"
+  removes it. As the trainer, the three status choices are there without the
+  sentence that used to explain them.
+- [ ] **C.9** A child sees other children's dots and emojis in the group, never
+  when anybody was last online, and never anybody's online history.
+- [ ] **C.10** On a Mac, pick a photo whose Preview → Werkzeuge → Informationen
+  has a GPS tab, and send it into a group. Save it back from the chat and open
+  it in Preview: no GPS tab, no camera, and it stands the same way up. On the
+  iPhone, a photo taken held upright stands upright in the chat for everybody.
+- [ ] **C.11** As the trainer, on the page of a child who has a chat with a
+  second trainer and one with another family, „Portal als … ansehen": neither
+  chat is in their list, and the group opens without a writing box. „Ansicht
+  beenden", then sign in as the child: the group's new messages are still unread.
+- [ ] **C.12** In a group with a child whose family has no login yet, open
+  „Wer ist in der Gruppe?" as another child: that child is not named, only
+  „Dazu 1 Person ohne Zugang zum Portal". As the trainer the same sheet names
+  them, with „Noch kein Zugang".
+- [ ] **C.13** **(release)** On a copy of a real portal, upload this version:
+  every existing course has its group, every chat between a child and a trainer
+  is still there, and the update refuses nothing.
 
 ---
 

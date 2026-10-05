@@ -401,3 +401,114 @@ act('portal_logo_save', ['remove'=>'1']);
 is_same('Logo entfernt. Oben links steht wieder das Symbol des Portals.', $_SESSION['flash']['message'] ?? null,
         'with an icon, the message says the icon is back');
 set_setting('portal_icon', '');
+
+// ---------------------------------------------------------------------------
+// Where a photo was taken (ADR 0022: a picture in a group reaches every child)
+// ---------------------------------------------------------------------------
+
+/** One JPEG segment: its marker and its payload, with the length between. */
+function jpeg_segment(int $marker, string $payload): string {
+    return "\xFF" . chr($marker) . pack('n', strlen($payload) + 2) . $payload;
+}
+
+/**
+ * A JPEG as a phone sends it: the address in EXIF (with GPS), in XMP and in
+ * IPTC, a colour profile, and a picture. EXIF in Intel order, where the
+ * portal's own orientation block is Motorola, so both are read.
+ */
+function jpeg_from_a_phone(int $orientation, string $where): string {
+    $gps = pack('v', 2) . pack('vvVa4', 0x0001, 2, 2, "N\0") . pack('vvVV', 0x0002, 5, 3, 0) . pack('V', 0);
+    $ifd0Length = 2 + 3 * 12 + 4;
+    $text = $where . "\0";
+    $tiff = "II*\0" . pack('V', 8) . pack('v', 3)
+          . pack('vvVvv', 0x0112, 3, 1, $orientation, 0)
+          . pack('vvVV', 0x010E, 2, strlen($text), 8 + $ifd0Length)
+          . pack('vvVV', 0x8825, 4, 1, 8 + $ifd0Length + strlen($text))
+          . pack('V', 0) . $text . $gps;
+    return "\xFF\xD8" . jpeg_segment(0xE0, "JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00")
+         . jpeg_segment(0xE1, "Exif\0\0" . $tiff)
+         . jpeg_segment(0xE1, "http://ns.adobe.com/xap/1.0/\0<x:xmpmeta><photoshop:City>" . $where . '</photoshop:City></x:xmpmeta>')
+         . jpeg_segment(0xED, "Photoshop 3.0\08BIM\x04\x04\0\0" . pack('N', strlen($where) + 5) . "\x1C\x02\x5A" . pack('n', strlen($where)) . $where)
+         . jpeg_segment(0xE2, "ICC_PROFILE\0\x01\x01" . str_repeat("\x2A", 16))
+         . jpeg_segment(0xC0, "\x08" . pack('nn', 150, 600) . "\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01")
+         . jpeg_segment(0xDA, "\x03\x01\x00\x02\x11\x03\x11\x00\x3F\x00") . "\x12\x34\x56\xFF\x00\x78\xFF\xD9";
+}
+
+/** Which way is up, as PHP's own EXIF reader finds it - not as the portal's does. */
+function exif_as_php_reads_it(string $jpeg): array {
+    $stream = fopen('php://memory', 'r+');
+    fwrite($stream, $jpeg); rewind($stream);
+    $read = @exif_read_data($stream);
+    fclose($stream);
+    return $read ?: [];
+}
+
+/** A PNG chunk: length, type, data, checksum. */
+function png_chunk(string $type, string $data): string {
+    return pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data));
+}
+
+$where = 'Gartenweg 12, 4020 Linz';
+
+case_('A photo is stored without where it was taken, and still the right way up');
+$phone = jpeg_from_a_phone(6, $where);
+$clean = image_without_metadata($phone, 'image/jpeg');
+ok(substr_count($phone, $where) === 3, 'the fixture carries the address three times, as EXIF, XMP and IPTC');
+ok(!str_contains($clean, 'Gartenweg'), 'none of them is left');
+ok(!str_contains($clean, pack('v', 0x8825)), 'nor the pointer to its GPS block');
+ok(str_contains($clean, 'ICC_PROFILE'), 'the colour profile stays, so the colours do not change');
+ok(str_ends_with($clean, substr($phone, (int)strpos($phone, "\xFF\xDA"))), 'the picture itself is copied byte for byte');
+$size = getimagesizefromstring($clean);
+is_same([600, 150, IMAGETYPE_JPEG], $size ? [$size[0], $size[1], $size[2]] : null, 'and still reads as the same JPEG');
+if (function_exists('exif_read_data')) {
+    is_same(6, exif_as_php_reads_it($phone)['Orientation'] ?? null, 'PHP reads the phone’s orientation from the fixture');
+    ok(isset(exif_as_php_reads_it($phone)['GPSLatitudeRef']), 'and its GPS block, so the next lines prove something');
+    $after = exif_as_php_reads_it($clean);
+    is_same(6, $after['Orientation'] ?? null, 'a photo taken upright on an iPhone is still shown upright');
+    ok(!isset($after['GPSLatitudeRef']) && !isset($after['ImageDescription']), 'and PHP finds no place and no description in it');
+} else {
+    test_unsupported(array_merge(test_unsupported(), ['uploads: PHP has no exif extension here, so the orientation was read only by the portal’s own reader']));
+}
+is_same(6, exif_orientation(substr($clean, (int)strpos($clean, "Exif\0\0") + 6)), 'the portal’s own reader agrees');
+$upright = image_without_metadata(jpeg_from_a_phone(1, $where), 'image/jpeg');
+ok(!str_contains($upright, "Exif\0\0"), 'a photo that is the right way up already keeps no EXIF at all');
+
+case_('A PNG and a WebP lose their text and EXIF too');
+$pngIn = substr(png_header(600, 150), 0, -12)
+       . png_chunk('tEXt', "Location\0" . $where) . png_chunk('iTXt', "Location\0\0\0\0\0" . $where)
+       . png_chunk('zTXt', "Location\0\0" . gzcompress($where)) . png_chunk('eXIf', "MM\0*" . $where)
+       . png_chunk('IDAT', "\x78\x9C\x63\x00\x00\x00\x01\x00\x01") . png_chunk('IEND', '');
+$pngOut = image_without_metadata($pngIn, 'image/png');
+ok(!str_contains($pngOut, 'Gartenweg') && !preg_match('/tEXt|iTXt|zTXt|eXIf/', $pngOut), 'the PNG keeps no text and no EXIF');
+is_same(png_header(600, 150), substr($pngOut, 0, 33) . png_chunk('IEND', ''), 'its header is untouched');
+ok(str_contains($pngOut, png_chunk('IDAT', "\x78\x9C\x63\x00\x00\x00\x01\x00\x01")) && str_ends_with($pngOut, png_chunk('IEND', '')), 'and so is the picture');
+$riffChunk = fn(string $type, string $data): string => $type . pack('V', strlen($data)) . $data . (strlen($data) % 2 ? "\0" : '');
+$webpIn = substr(webp_header(600, 150), 0, 20) . "\x0C" . substr(webp_header(600, 150), 21)
+        . $riffChunk('ICCP', str_repeat("\x2A", 16)) . $riffChunk('VP8 ', "\x10\x02\x00\x9D\x01\x2A\x58\x02\x96\x00\x01")
+        . $riffChunk('EXIF', "MM\0*" . $where) . $riffChunk('XMP ', '<photoshop:City>' . $where . '</photoshop:City>');
+$webpIn = 'RIFF' . pack('V', strlen($webpIn) - 8) . substr($webpIn, 8);
+$webpOut = image_without_metadata($webpIn, 'image/webp');
+ok(!str_contains($webpOut, 'Gartenweg') && !str_contains($webpOut, 'EXIF') && !str_contains($webpOut, 'XMP '), 'the WebP keeps neither');
+is_same(0, ord($webpOut[20]) & 0x0C, 'and its header no longer says they follow');
+is_same(strlen($webpOut) - 8, unpack('V', substr($webpOut, 4, 4))[1], 'its length is its new length');
+ok(str_contains($webpOut, 'ICCP') && str_contains($webpOut, $riffChunk('VP8 ', "\x10\x02\x00\x9D\x01\x2A\x58\x02\x96\x00\x01")), 'the colour profile and the picture stay');
+$size = getimagesizefromstring($webpOut);
+is_same([600, 150, IMAGETYPE_WEBP], $size ? [$size[0], $size[1], $size[2]] : null, 'and it still reads as the same WebP');
+
+case_('A file that does not read the way its format says is kept as it came');
+/* Better a photo with its EXIF than a photo nobody can open. */
+foreach ([['image/jpeg', substr($phone, 0, 60), 'a JPEG cut off inside a segment'],
+          ['image/jpeg', "\xFF\xD8" . jpeg_segment(0xE1, "Exif\0\0") . "\xFF\xD9", 'a JPEG with no picture in it'],
+          ['image/png', substr($pngIn, 0, -2), 'a PNG cut off inside its last chunk'],
+          ['image/webp', substr($webpIn, 0, -7), 'a WebP cut off inside a chunk'],
+          ['image/gif', "GIF89a" . $where, 'a GIF, which has no place for a location'],
+          ['application/pdf', "%PDF-1.4\n" . $where, 'and anything that is not a picture']] as [$mime, $bytes, $what])
+    is_same($bytes, image_without_metadata($bytes, $mime), $what);
+
+case_('What is stored is the cleaned picture, not the one that arrived');
+/* store_upload() takes only what came through a form, which a test cannot send,
+   so this pins the lines that do it; TESTING.md has the check with a real phone. */
+$store = (string)strstr((string)strstr((string)file_get_contents(APP_ROOT.'/app/uploads.php'), 'function store_upload('), 'function image_without_metadata(', true);
+ok(str_contains($store, 'image_without_metadata((string)file_get_contents((string)$file[\'tmp_name\']), $mime)'), 'every picture goes through image_without_metadata()');
+ok(str_contains($store, '@file_put_contents($path, $clean, LOCK_EX) === strlen($clean)'), 'and the cleaned copy is what is written, all of it or nothing');
+ok(str_contains($store, "'bytes' => \$clean === null ? (int)\$file['size'] : strlen(\$clean)"), 'and its own size is recorded');

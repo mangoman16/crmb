@@ -28,7 +28,11 @@ function dispatch_config(string $action): array {
                $capacity,(int)post('sort_order','0'),post('archived')?1:0];
         $id=transactional(function() use ($id,$args,$days): int {
             if($id) run('UPDATE classes SET name=?,description=?,location=?,trainer_id=?,payment_profile_id=?,capacity=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
-            else { run('INSERT INTO classes (name,description,location,trainer_id,payment_profile_id,capacity,sort_order,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
+            else {
+                run('INSERT INTO classes (name,description,location,trainer_id,payment_profile_id,capacity,sort_order,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId();
+                // Every course has its group chat from the start (ADR 0022).
+                course_group_thread($id);
+            }
             // Replaced rather than reconciled: the form shows the whole pattern,
             // so what it posts is the whole pattern. Nothing points at a
             // class_days row, so there is no identity worth preserving.
@@ -77,10 +81,16 @@ function dispatch_config(string $action): array {
     case 'class_delete':
         require_staff(); $c=training_class((int)post('id'));
         if(post('confirmation')!==$c['name']) throw new UserError(t('Bitte den Kursnamen zur Bestätigung eingeben.','Please enter the class name to confirm.'));
+        // The group chat goes with its course, so one that holds messages is
+        // kept by archiving the course instead (ADR 0022). An empty one goes.
+        if(scalar('SELECT 1 FROM messages m JOIN threads t ON t.id=m.thread_id WHERE t.class_id=? LIMIT 1',[$c['id']]))
+            throw new UserError(t('Im Gruppenchat dieses Kurses gibt es Nachrichten. Archiviere den Kurs stattdessen – dann bleibt der Chat lesbar.',
+                                  'This course’s group chat has messages. Archive the course instead – the chat then stays readable.'));
         // Charges reference the class with ON DELETE SET NULL, so payment history
         // survives; only the grouping goes away.
         tracked('classes',(int)$c['id'],(string)$c['name'],fn()=>run('DELETE FROM classes WHERE id=?',[$c['id']]),'delete');
-        audit('class.deleted','class',(int)$c['id']); flash(t('Kurs gelöscht. Beiträge und Zahlungen bleiben erhalten. Rückgängig unter „Änderungen“.','Class deleted. Charges and payments are kept. Undo under “Changes”.'));
+        // The change log keeps the deleted row to read, not to restore (app/history.php).
+        audit('class.deleted','class',(int)$c['id']); flash(t('Kurs gelöscht. Beiträge und Zahlungen bleiben erhalten. Unter „Änderungen“ steht, was gelöscht wurde.','Course deleted. Charges and payments are kept. “Changes” shows what was deleted.'));
         return ['classes',[]];
 
     case 'class_member_add':

@@ -61,6 +61,8 @@ require_once APP_ROOT . '/app/schema.php';
 require_once APP_ROOT . '/app/tx.php';
 require_once APP_ROOT . '/app/defaults.php';
 require_once APP_ROOT . '/app/auth.php';
+// ... and course_groups_fill(), which gives courses from before 025 their group.
+require_once APP_ROOT . '/app/messaging.php';
 
 $target = (string)($argv[1] ?? '');
 if ($target === '' || !is_file($target)) {
@@ -605,10 +607,16 @@ $result['twentyfour']['again'] = ['refused' => $refused, 'state' => login_state(
 // usernames; after 024 it must not reach for the column at all, or every request
 // would meet a failed update and the portal would stay closed.
 $pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
+// The step runs after the newest file, so the files after 024 go in first, as
+// an update applies them.
+foreach (glob(APP_ROOT . '/database/migrations/*.sql') as $file)
+    if (strcmp(basename($file), '025') >= 0)
+        foreach (split_sql((string)file_get_contents($file)) as $statement) $pdo->exec($statement);
 $runnerState = function () use ($pdo): array {
     setting_cache_clear();
     return ['accounts' => every_login($pdo), 'counts' => portal_state($pdo)['counts'],
             'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn(),
+            'courses' => (int)$pdo->query('SELECT COUNT(*) FROM classes')->fetchColumn(),
             'dummy_hash' => (string)setting('sign_in_dummy_hash')];
 };
 // What it threw, if anything, so a failure reads as an assertion in the suite

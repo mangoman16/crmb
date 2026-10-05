@@ -7,11 +7,11 @@ declare(strict_types=1);
  *
  * The reasoning, and who sees what, is ADR 0015. The short version:
  *
- *   - only staff see presence at all, their own included, and only staff have a
- *     status to choose (the owner's decision: a family has no dot and no status
- *     menu, and a status stored on a family's row is read as 'auto'). A
- *     family's time online is still recorded, always as visible, because staff
- *     see it;
+ *   - everybody signed in sees everybody's dot, the way a messenger shows who
+ *     is here (ADR 0022); only staff see when somebody was last here and their
+ *     history (presence_details_visible_to()), and only staff have a status to
+ *     choose - a status stored on a family's row is read as 'auto'. A family's
+ *     time online is recorded, always as visible, because staff see it;
  *   - "Als offline anzeigen" means trainers see the person as offline and their
  *     last-online time frozen at the moment they hid, while administrators still
  *     see the true time and the hidden periods, marked as such;
@@ -21,7 +21,8 @@ declare(strict_types=1);
  *
  * Views never work a state out themselves: they ask presence_state(),
  * presence_last_seen_for() and presence_history(), and each of those applies
- * presence_visible_to() or its own narrower rule before it answers.
+ * presence_visible_to(), presence_details_visible_to() or its own narrower
+ * rule before it answers.
  */
 
 /** The statuses a person can choose, in the order the menu offers them. */
@@ -162,14 +163,20 @@ function presence_state_label(string $state): string {
 }
 
 /**
- * Whether $viewer is shown anything about $subject's presence.
- *
- * Staff only, and that includes a family's own dot: the owner decided that a
- * family has no dot and no status menu (ADR 0015). Staff see everybody's,
- * their own among them. Every other presence function that answers about a
- * subject asks this first, so the rule lives here once.
+ * Whether $viewer sees $subject's dot: everybody signed in, everybody's, their
+ * own included (ADR 0022). When somebody was last here, and their history, are
+ * presence_details_visible_to()'s question.
  */
 function presence_visible_to(array $viewer, array $subject): bool {
+    return isset($viewer['id']);
+}
+
+/**
+ * Whether $viewer is told when people were last online, and over which days:
+ * staff only (ADR 0015). A child sees who is here now, never when somebody else
+ * was.
+ */
+function presence_details_visible_to(array $viewer): bool {
     return is_staff($viewer);
 }
 
@@ -181,12 +188,12 @@ function presence_visible_to(array $viewer, array $subject): bool {
  *   anzeigen“: then the time stops where the subject hid, which is the newest
  *   period recorded without the hidden flag inside the history window - or
  *   null once that is older than the window.
- * - Anybody presence_visible_to() refuses gets null.
+ * - Anybody presence_details_visible_to() refuses gets null.
  *
  * One query only in the trainer-and-hidden case, which on a list is the rare row.
  */
 function presence_last_seen_for(array $viewer, array $subject): ?string {
-    if (!presence_visible_to($viewer, $subject)) return null;
+    if (!presence_details_visible_to($viewer)) return null;
     $trueTime = ($subject['last_seen_at'] ?? '') !== '' ? (string)$subject['last_seen_at'] : null;
     if (is_admin($viewer) || (int)$viewer['id'] === (int)($subject['id'] ?? 0)) return $trueTime;
     if (presence_choice($subject) !== 'hidden') return $trueTime;
@@ -212,10 +219,8 @@ function presence_last_seen_for(array $viewer, array $subject): ?string {
  *         account with none has an empty list.
  */
 function presence_history(array $viewer, array $accountIds, ?int $now = null): array {
+    if (!presence_details_visible_to($viewer)) throw new UserError(t('Kein Zugriff.', 'Access denied.'));
     $ids = array_values(array_unique(array_map('intval', $accountIds)));
-    foreach ($ids as $id)
-        if (!presence_visible_to($viewer, ['id' => $id]))
-            throw new UserError(t('Kein Zugriff.', 'Access denied.'));
     $out = array_fill_keys($ids, []);
     if (!$ids) return $out;
     $since = presence_window_start($now);
@@ -293,4 +298,40 @@ function presence_recorded_since(?int $now = null): ?string {
 function presence_prune(int $days): int {
     $days = max(1, min(PRESENCE_HISTORY_MAX_DAYS, $days));
     return run('DELETE FROM online_periods WHERE last_seen_at<?', [gmdate('Y-m-d H:i:s', time() - $days * 86400)])->rowCount();
+}
+
+/**
+ * The emoji anybody may show beside their name (ADR 0022), key => [emoji, what
+ * it is called].
+ *
+ * A fixed list rather than whatever is typed, so nothing anybody writes ends up
+ * beside their name. Each is one code point from Unicode 9 or older, so every
+ * phone in a family draws it in colour. Left out on purpose: hearts (romantic
+ * between an adult and a child), the thumbs-up (rude in some places), slang and
+ * anything a family might read as a statement.
+ */
+function status_emojis(): array {
+    return [
+        'badminton' => ['🏸', t('Badminton', 'Badminton')],
+        'strong'    => ['💪', t('Stark', 'Strong')],
+        'trophy'    => ['🏆', t('Pokal', 'Trophy')],
+        'star'      => ['⭐', t('Stern', 'Star')],
+        'happy'     => ['😀', t('Fröhlich', 'Happy')],
+        'cool'      => ['😎', t('Cool', 'Cool')],
+        'thinking'  => ['🤔', t('Nachdenklich', 'Thinking')],
+        'sleepy'    => ['😴', t('Müde', 'Sleepy')],
+        'party'     => ['🎉', t('Feiern', 'Party')],
+        'lucky'     => ['🍀', t('Glück', 'Lucky')],
+        'rocket'    => ['🚀', t('Rakete', 'Rocket')],
+        'books'     => ['📚', t('Lernen', 'Studying')],
+        'cat'       => ['🐱', t('Katze', 'Cat')],
+        'dog'       => ['🐶', t('Hund', 'Dog')],
+        'fox'       => ['🦊', t('Fuchs', 'Fox')],
+        'unicorn'   => ['🦄', t('Einhorn', 'Unicorn')],
+    ];
+}
+
+/** The emoji $account shows, as [emoji, name], or null - for none, and for any stored key not on the list. */
+function status_emoji(array $account): ?array {
+    return status_emojis()[(string)($account['status_emoji'] ?? '')] ?? null;
 }

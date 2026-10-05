@@ -265,19 +265,20 @@ is_same(2 * 1024 ** 3, ini_bytes('2G'), 'in gigabytes');
 is_same(4096, ini_bytes('4096'), 'and plain bytes');
 
 case_('A message to the trainer reaches the trainer');
-// The staff list said role IN ('admin','manager'). 'manager' is what trainers
-// were called before 0.2, so a family writing in reached the administrator and
-// nobody else — on a portal whose whole point is that she reads the messages.
+// The staff list once said role IN ('admin','manager'). 'manager' is what
+// trainers were called before 0.2, so a family writing in reached the
+// administrator and nobody else. Now a family writes to a person (ADR 0022):
+// the one written to is told, and nobody else's bell rings for it.
 sign_in_as($family);
 $beforeTrainer = unread_notifications($trainer);
 $beforeAdmin = unread_notifications($admin);
-act('message_send', ['subject'=>'Frage zum Schläger', 'body'=>'Welchen sollen wir kaufen?']);
+act('message_send', ['to'=>(string)$trainer, 'body'=>'Welchen Schläger sollen wir kaufen?']);
 is_same($beforeTrainer + 1, unread_notifications($trainer), 'the trainer is told');
-is_same($beforeAdmin + 1, unread_notifications($admin), 'and so is the administrator');
+is_same($beforeAdmin, unread_notifications($admin), 'and the administrator is not: it was written to the trainer');
 
 case_('And her reply reaches the family');
 sign_in_as($trainer);
-$thread = (int)scalar('SELECT MAX(id) FROM threads');
+$thread = pair_thread($family, $trainer);
 $beforeFamily = unread_notifications($family);
 act('message_send', ['thread_id'=>(string)$thread, 'body'=>'Ich bringe zwei mit.']);
 is_same($beforeFamily + 1, unread_notifications($family), 'the family is told');
@@ -527,7 +528,8 @@ $drawnMenus = function (string $html): array {
     $class = fn(string $name) => "contains(concat(' ', normalize-space(@class), ' '), ' $name ')";
     $xpath = new DOMXPath($dom);
     $menus = [];
-    foreach ($xpath->query('//header['.$class('topbar').']//details') as $details) {
+    // The bar's own menus; a <details> inside a menu's panel (the emoji choice) is part of that menu.
+    foreach ($xpath->query('//header['.$class('topbar').']//details[not(ancestor::details)]') as $details) {
         $first = $xpath->query('*[1]', $details)->item(0);
         $menus[] = [
             'menu'    => preg_match('~(^|\s)topbar-menu(\s|$)~', $details->getAttribute('class')) === 1,

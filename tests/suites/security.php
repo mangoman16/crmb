@@ -48,23 +48,23 @@ register_shutdown_function(function () use ($routeCall) {
     fwrite(STDERR, "\nFAIL security: the download route served ".$routeCall->asking." instead of refusing, and ended the run.\n");
     exit(1);
 });
-$download = function (string $kind, int $id) use ($routeCall): void {
-    $_GET = ['page'=>'download', 'what'=>'avatar', 'kind'=>$kind, 'id'=>(string)$id];
-    $routeCall->asking = $kind.' '.$id;
+$download = function (string $what, int $id, string $kind = '') use ($routeCall): void {
+    $_GET = ['page'=>'download', 'what'=>$what, 'kind'=>$kind, 'id'=>(string)$id];
+    $routeCall->asking = trim($what.' '.$kind).' '.$id;
     try { serve_download(); } finally { $_GET = []; $routeCall->asking = ''; }
 };
 $refused = function (callable $fn, string $what) {
     try { $fn(); ok(false, $what); } catch (Throwable $e) { ok($e instanceof NotFound, $what.' (a 404, not '.get_class($e).')'); }
 };
 sign_in_as($parentA);
-$refused(fn() => $download('student', $kidB), 'family A asking for family B’s child’s photo gets nothing');
-$refused(fn() => $download('student', $orphan), 'nor a child linked to no account');
-$refused(fn() => $download('account', $parentB), 'nor another family’s own photo');
-$refused(fn() => $download('account', 999999), 'and an id that does not exist is the same answer');
+$refused(fn() => $download('avatar', $kidB, 'student'), 'family A asking for family B’s child’s photo gets nothing');
+$refused(fn() => $download('avatar', $orphan, 'student'), 'nor a child linked to no account');
+$refused(fn() => $download('avatar', $parentB, 'account'), 'nor another family’s own photo');
+$refused(fn() => $download('avatar', 999999, 'account'), 'and an id that does not exist is the same answer');
 is_same($picture('a'), avatar_for_download('student', $kidA), 'their own child’s photo is served');
 is_same($picture('c'), avatar_for_download('account', $parentA), 'and their own');
 is_same($picture('e'), avatar_for_download('account', $trainerId), 'and the trainer’s, whom they write to');
-does_not_throw(fn() => $download('account', $adminId), 'the route lets them ask for an administrator’s, who has no picture');
+does_not_throw(fn() => $download('avatar', $adminId, 'account'), 'the route lets them ask for an administrator’s, who has no picture');
 sign_in_as($trainerId);
 is_same($picture('b'), avatar_for_download('student', $kidB), 'the trainer sees every child’s');
 is_same($picture('d'), avatar_for_download('account', $parentB), 'and every family’s');
@@ -72,6 +72,28 @@ sign_in_as($adminId);
 is_same($picture('b'), avatar_for_download('student', $kidB), 'and so does an administrator');
 ok(!may_see_account_picture(['id'=>$parentA, 'role'=>'student'], ['id'=>$trainerId, 'avatar_name'=>$picture('e')]),
    'an account row that does not say it is staff is not taken for staff');
+
+case_('A file in a chat reaches only who may read the chat, and a removed one nobody');
+/* The same route and the same catch as above: a refusal is a 404 before a byte
+   is read, and a file served would end the run and be reported. */
+sign_in_as($parentA);
+$fileIn = function (int $threadId, string $fill): int {
+    $message = fixture('messages', ['thread_id'=>$threadId, 'sender_id'=>(int)current_user()['id'], 'body'=>'Foto', 'created_at'=>now()]);
+    @mkdir(upload_dir('message'), 0775, true);
+    file_put_contents(upload_dir('message').'/'.str_repeat($fill, 32).'.jpg', 'a photo');
+    return fixture('message_files', ['message_id'=>$message, 'kind'=>'image', 'stored_name'=>str_repeat($fill, 32).'.jpg',
+        'original_name'=>'foto.jpg', 'mime'=>'image/jpeg', 'bytes'=>7, 'seconds'=>0, 'created_at'=>now()]);
+};
+$toTrainer = $fileIn(direct_thread(current_user(), $trainerId), 'f');
+$course = make_class(['name'=>'Dienstagsgruppe']);
+make_enrolment($course, $kidA);
+$inGroup = $fileIn(course_group_thread($course), '9');
+sign_in_as($parentB);
+$refused(fn() => $download('attachment', $toTrainer), 'family B asking for a photo family A sent the trainer gets nothing');
+$refused(fn() => $download('attachment', $inGroup), 'nor for one in a course group their child is not in');
+sign_in_as($trainerId);
+moderate_message((int)scalar('SELECT message_id FROM message_files WHERE id=?', [$inGroup]), true);
+does_not_throw(fn() => $download('attachment', $inGroup), 'a photo taken down from the group is served to nobody, the trainer included');
 
 case_('Signing out asks the browser to forget the pictures it kept');
 /* Headers cannot be read back on the command line, so this pins the line in the

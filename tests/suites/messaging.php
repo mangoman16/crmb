@@ -1,14 +1,17 @@
 <?php
 /**
- * Messages: who may read what, and who may write to whom.
+ * Messages: who may read what, and who may write to whom (ADR 0022).
  *
- * The rule that matters most is the one about direct conversations. A family
- * writing to another family is not the trainer's business, and "the trainer can
- * see everything" is the kind of default that gets added by accident and noticed
- * by nobody, so it is checked from both sides.
+ * The rules that matter most are about who reads a chat they are not in. A
+ * family writing to another family is not the trainer's business; a child's
+ * chat with a trainer is readable by the administrators and by no other
+ * trainer; a group is its course's, read from the enrolments. "Somebody can see
+ * everything" is the kind of default that gets added by accident and noticed by
+ * nobody, so each is checked from both sides.
  */
-$admin   = make_account(['role'=>'admin',   'name'=>'Admin']);
-$trainer = make_account(['role'=>'trainer', 'name'=>'Trainerin']);
+$admin    = make_account(['role'=>'admin',   'name'=>'Admin']);
+$trainer  = make_account(['role'=>'trainer', 'name'=>'Trainerin']);
+$trainer2 = make_account(['role'=>'trainer', 'name'=>'Zweite Trainerin']);
 $hofer   = make_account(['role'=>'student', 'name'=>'Familie Hofer']);
 $berger  = make_account(['role'=>'student', 'name'=>'Familie Berger']);
 $gruber  = make_account(['role'=>'student', 'name'=>'Familie Gruber']);
@@ -20,20 +23,32 @@ is_same(true, may_message(current_user(), $admin), 'and the administrator');
 is_same(false, may_message(current_user(), $berger), 'another family does not, not yet');
 is_same(false, may_message(current_user(), (int)$hofer), 'and nobody writes to themselves');
 
-case_('A family writing in reaches the staff conversation');
-act('message_send', ['subject'=>'Frage zum Schläger', 'body'=>'Welchen sollen wir kaufen?']);
+case_('A family writing to the trainer gets a chat with her, which administrators can read too');
+throws(fn() => act('message_send', ['body'=>'An wen?']), 'a message to nobody is refused: there is no shared desk any more', 'An wen geht die Nachricht');
+act('message_send', ['to'=>(string)$trainer, 'body'=>'Welchen Schläger sollen wir kaufen?']);
 $thread = one('SELECT * FROM threads ORDER BY id DESC LIMIT 1');
-is_same('staff', $thread['kind'], 'it is a staff conversation');
-is_same($hofer, (int)$thread['account_id'], 'belonging to the family who started it');
-is_same(1, count(threads_for(current_user())), 'they can see it');
-
-case_('Every member of staff reads a staff conversation');
+is_same('staff_direct', $thread['kind'], 'it is a chat between a student and staff');
+is_same($hofer, (int)$thread['account_id'], 'owned by the student, so it outlives a trainer’s login');
+is_same((int)$thread['id'], pair_thread($hofer, $trainer), 'the one chat of that pair');
+$row = array_values(array_filter(chat_list(current_user()), fn($c) => (int)$c['id'] === (int)$thread['id']))[0] ?? [];
+is_same([$trainer, 'Trainerin', 0], [(int)($row['other_id'] ?? 0), thread_title($row, current_user()), (int)($row['unread'] ?? -1)],
+        'in their list with the trainer as the other person, and nothing unread of their own');
+ok((int)scalar("SELECT COUNT(*) FROM notifications WHERE account_id=? AND kind='message'", [$trainer]) === 1, 'the trainer is told in her bell');
 sign_in_as($trainer);
-does_not_throw(fn() => thread_record((int)$thread['id']), 'the trainer');
+$seen = thread_record((int)$thread['id']);
+ok(may_write_thread(current_user(), $seen), 'the trainer reads and writes in it');
+ok(in_array((int)$thread['id'], unread_thread_ids(current_user()), true), 'and it is unread for her');
 sign_in_as($admin);
-does_not_throw(fn() => thread_record((int)$thread['id']), 'and the administrator');
+$seen = thread_record((int)$thread['id']);
+ok(!may_write_thread(current_user(), $seen), 'an administrator reads it too, and only reads');
+ok(!in_array((int)$thread['id'], array_map('intval', array_column(chat_list(current_user()), 'id')), true)
+   && !in_array((int)$thread['id'], unread_thread_ids(current_user()), true), 'it is not in her own list or her unread count');
+ok(in_array((int)$thread['id'], array_map('intval', array_column(chat_list(current_user(), true), 'id')), true), 'but under „Alle Direktchats“');
+sign_in_as($trainer2);
+throws(fn() => thread_record((int)$thread['id']), 'another trainer cannot read it', 'nicht gefunden');
+throws(fn() => chat_list(current_user(), true), 'nor list everybody’s', 'Nur für Administratoren');
 sign_in_as($berger);
-throws(fn() => thread_record((int)$thread['id']), 'another family does not', 'nicht gefunden');
+throws(fn() => thread_record((int)$thread['id']), 'nor can another family', 'nicht gefunden');
 
 case_('Writing to another family has to be agreed to first');
 sign_in_as($hofer);
@@ -83,7 +98,7 @@ throws(fn() => thread_record($direct), 'nor anybody else', 'nicht gefunden');
 
 case_('And it does not turn up in anybody else’s list or unread count');
 sign_in_as($trainer);
-is_same(0, count(array_filter(threads_for(current_user()), fn($t) => (int)$t['id'] === $direct)), 'not in the list');
+is_same(0, count(array_filter(chat_list(current_user()), fn($t) => (int)$t['id'] === $direct)), 'not in the list');
 is_same(false, in_array($direct, unread_thread_ids(current_user()), true), 'and not in the unread count');
 sign_in_as($berger);
 is_same(true, in_array($direct, unread_thread_ids(current_user()), true), 'while the person it was sent to does see it');
@@ -147,3 +162,147 @@ is_same(0, (int)scalar('SELECT COUNT(*) FROM threads WHERE id=?', [$goodbye]), '
 is_same(0, (int)scalar('SELECT COUNT(*) FROM messages WHERE thread_id=?', [$goodbye]), 'messages with it');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM thread_participants WHERE thread_id=?', [$goodbye]),
         'and nobody is left listed as a participant in something that no longer exists');
+
+case_('Every course has a group, and its members are whoever is enrolled now');
+sign_in_as($trainer);
+$course = make_class(['name'=>'Montagsgruppe']);
+$group = course_group_thread($course);
+is_same($group, course_group_thread($course), 'asking again gives the same group');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM threads WHERE class_id=?', [$course]), 'one group per course');
+$lena = make_student(['first_name'=>'Lena', 'last_name'=>'Hofer', 'account_id'=>$hofer, 'email'=>'lena@beispiel.test']);
+$tom  = make_student(['first_name'=>'Tom', 'last_name'=>'Berger', 'account_id'=>$berger, 'email'=>'tom@beispiel.test']);
+make_enrolment($course, $lena);
+sign_in_as($hofer);
+does_not_throw(fn() => thread_record($group), 'an enrolled child reads it');
+ok(may_write_thread(current_user(), thread_record($group)), 'and writes in it');
+$mails = (int)scalar('SELECT COUNT(*) FROM mail_jobs');
+act('message_send', ['thread_id'=>(string)$group, 'body'=>'Hallo Gruppe!']);
+is_same(0, (int)scalar('SELECT COUNT(*) FROM thread_participants WHERE thread_id=?', [$group]), 'nobody is stored as a member: the enrolments are the list');
+is_same($mails, (int)scalar('SELECT COUNT(*) FROM mail_jobs'), 'a group message mails nobody');
+is_same(0, (int)scalar("SELECT COUNT(*) FROM notifications WHERE kind='message' AND body='Hallo Gruppe!'"), 'and rings no bell');
+sign_in_as($berger);
+throws(fn() => thread_record($group), 'a child in another course cannot read it', 'nicht gefunden');
+make_enrolment($course, $tom);
+does_not_throw(fn() => thread_record($group), 'until they join the course - and then read what came before');
+ok(in_array($group, unread_thread_ids(current_user()), true), 'with it unread');
+run('UPDATE class_students SET left_on=? WHERE class_id=? AND student_id=?', ['2026-01-01', $course, $tom]);
+throws(fn() => thread_record($group), 'a child who left the course loses the group', 'nicht gefunden');
+ok(!in_array($group, array_map('intval', array_column(chat_list(current_user()), 'id')), true), 'from their list too');
+sign_in_as($trainer2);
+ok(may_write_thread(current_user(), thread_record($group)), 'every member of staff reads and writes in every group');
+run('UPDATE classes SET archived=1 WHERE id=?', [$course]);
+does_not_throw(fn() => thread_record($group), 'an archived course’s group stays readable for staff');
+throws(fn() => act('message_send', ['thread_id'=>(string)$group, 'body'=>'Noch da?']), 'but takes no more messages', 'archiviert');
+sign_in_as($hofer);
+throws(fn() => thread_record($group), 'and is gone for its children', 'nicht gefunden');
+run('UPDATE classes SET archived=0 WHERE id=?', [$course]);
+
+case_('A course gets its group as it is made, and keeps it while it has messages');
+sign_in_as($trainer);
+act('class_save', ['name'=>'Neuer Kurs', 'capacity'=>'0', 'sort_order'=>'0']);
+$made = (int)scalar("SELECT id FROM classes WHERE name='Neuer Kurs'");
+is_same(1, (int)scalar("SELECT COUNT(*) FROM threads WHERE class_id=? AND kind='course'", [$made]), 'saving a new course makes its group');
+$old = make_class(['name'=>'Von früher']);
+ok(course_groups_fill() >= 1 && (int)scalar('SELECT COUNT(*) FROM threads WHERE class_id=?', [$old]) === 1, 'a course from before gets its group with the next update');
+is_same(0, course_groups_fill(), 'and the next update makes none');
+throws(fn() => act('class_delete', ['id'=>(string)$course, 'confirmation'=>'Montagsgruppe']), 'a course whose group has messages is not deleted', 'Archiviere');
+act('class_delete', ['id'=>(string)$made, 'confirmation'=>'Neuer Kurs']);
+is_same(0, (int)scalar('SELECT COUNT(*) FROM threads WHERE class_id=?', [$made]), 'an empty group goes with its course');
+
+case_('Staff take a group message down and put it back; a family’s chat is theirs');
+$said = (int)scalar('SELECT id FROM messages WHERE thread_id=? ORDER BY id LIMIT 1', [$group]);
+fixture('message_files', ['message_id'=>$said, 'kind'=>'image', 'stored_name'=>str_repeat('b',32).'.jpg',
+    'original_name'=>'foto.jpg', 'mime'=>'image/jpeg', 'bytes'=>1234, 'seconds'=>0, 'created_at'=>now()]);
+sign_in_as($hofer);
+throws(fn() => act('message_remove', ['id'=>(string)$said]), 'a child cannot remove a message', 'Kein Zugriff');
+sign_in_as($trainer);
+is_same(['messages', ['id'=>$group, '#'=>'m'.$said]], act('message_remove', ['id'=>(string)$said]), 'a trainer can, and lands on the message');
+$shown = array_values(array_filter(thread_messages($group)['messages'], fn($m) => (int)$m['id'] === $said))[0];
+is_same([true, '', []], [$shown['removed'], $shown['body'], $shown['files']], 'it comes back without its words or its photo');
+is_same('Hallo Gruppe!', scalar('SELECT body FROM messages WHERE id=?', [$said]), 'which are kept, so it can be put back');
+is_same(null, one('SELECT f.id FROM message_files f JOIN messages m ON m.id=f.message_id WHERE m.id=? AND m.removed_at IS NULL', [$said]),
+        'and its photo is served to nobody (the download asks exactly this)');
+is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='message.removed' AND entity_id=?", [$said]), 'who did it is in the audit log');
+$listed = array_values(array_filter(chat_list(current_user()), fn($c) => (int)$c['id'] === $group))[0];
+is_same($said, (int)$listed['last_id'], 'it is the last message in the group, so the next line proves something');
+is_same([null, null], [$listed['last_body'], $listed['last_file']], 'and the chat list quotes neither its words nor its photo');
+act('message_remove', ['id'=>(string)$said, 'restore'=>'1']);
+is_same(false, array_values(array_filter(thread_messages($group)['messages'], fn($m) => (int)$m['id'] === $said))[0]['removed'], 'restoring brings it back');
+$private = (int)scalar('SELECT id FROM messages WHERE thread_id=? LIMIT 1', [$direct]);
+throws(fn() => act('message_remove', ['id'=>(string)$private]), 'a message in a family’s private chat is not staff’s to remove', 'Kursgruppen');
+
+case_('The old shared desk is kept to read and closed to new messages');
+$desk = make_thread([$gruber], ['subject'=>'Frage von früher']);
+sign_in_as($trainer);
+$seen = thread_record($desk);
+ok(!may_write_thread(current_user(), $seen), 'staff read it and cannot write in it');
+throws(fn() => act('message_send', ['thread_id'=>(string)$desk, 'body'=>'Antwort']), 'a message into it is refused', 'nicht mehr geschrieben');
+sign_in_as($gruber);
+does_not_throw(fn() => thread_record($desk), 'the family reads it too');
+is_same('Trainerteam', thread_title(thread_record($desk), current_user()), 'titled with who they talked to');
+
+case_('Looking through a child’s eyes shows only what both may read, and sends nothing');
+/* A trainer viewing the portal as a child sees it does not get to read, that
+   way, the child's chat with another trainer or with another family - nor to
+   write to a whole course as the child (security review, ADR 0022). */
+sign_in_as($trainer2);
+$withOther = direct_thread(current_user(), $hofer);
+act('message_send', ['thread_id'=>(string)$withOther, 'body'=>'Bitte das Trikot mitbringen.']);
+sign_in_as($trainer);
+act('message_send', ['thread_id'=>(string)$group, 'body'=>'Morgen in der großen Halle.']);
+sign_in_as($hofer);
+$_SESSION['impersonator_id'] = $trainer;
+does_not_throw(fn() => thread_record($group), 'the course group is shown');
+does_not_throw(fn() => thread_record((int)$thread['id']), 'and the child’s chat with her');
+throws(fn() => thread_record($withOther), 'the child’s chat with another trainer is not', 'nicht gefunden');
+throws(fn() => thread_record($direct), 'nor the chat with another family', 'nicht gefunden');
+$listed = array_map('intval', array_column(chat_list(current_user()), 'id'));
+ok(in_array($group, $listed, true) && !array_intersect([$withOther, $direct], $listed), 'the list leaves out what she may not read');
+$unread = unread_thread_ids(current_user());
+ok(in_array($group, $unread, true) && !array_intersect([$withOther, $direct], $unread), 'and so does the unread count');
+ok(!may_write_thread(current_user(), thread_record($group)), 'nowhere is offered to write');
+foreach ([['message_send', ['thread_id'=>(string)$group, 'body'=>'Hallo']], ['message_send', ['to'=>(string)$admin, 'body'=>'Hallo']],
+          ['contact_request', ['to'=>(string)$gruber]], ['contact_decide', ['id'=>'1', 'accept'=>'1']]] as [$action, $fields])
+    throws(fn() => act($action, $fields), $action.' is refused', 'Ansicht');
+render_view('messages', ['id'=>(string)$group]);
+ok(in_array($group, unread_thread_ids(current_user()), true), 'opening the group does not mark it read for the child');
+$_SESSION['impersonator_id'] = $admin;
+does_not_throw(fn() => thread_record($withOther), 'an administrator, who reads every chat between a child and staff, sees that one');
+throws(fn() => thread_record($direct), 'but not the one between two families', 'nicht gefunden');
+unset($_SESSION['impersonator_id']);
+render_view('messages', ['id'=>(string)$group]);
+ok(!in_array($group, unread_thread_ids(current_user()), true), 'the child opening it does');
+
+case_('A child sees who reads the group, and only a number for the rest');
+$mia = make_student(['first_name'=>'Mia', 'last_name'=>'Ohnezugang', 'account_id'=>null]);
+make_enrolment($course, $mia);
+$sheet = render_view('messages', ['id'=>(string)$group, 'members'=>'1']);
+ok(str_contains($sheet, 'Familie Hofer') && !str_contains($sheet, 'Ohnezugang'), 'a classmate whose family is not in the portal is not named to a child');
+ok(str_contains($sheet, 'Dazu 1 Person ohne Zugang zum Portal.') && str_contains($sheet, 'Im Kurs (2)'), 'only counted');
+sign_in_as($trainer);
+$sheet = render_view('messages', ['id'=>(string)$group, 'members'=>'1']);
+ok(str_contains($sheet, 'Mia Ohnezugang') && str_contains($sheet, 'Noch kein Zugang'), 'staff see every child enrolled, and who has no login yet');
+ok(!str_contains($sheet, 'ohne Zugang zum Portal'), 'with nobody left over to count');
+
+case_('Everybody may show an emoji from the list, and only from the list');
+sign_in_as($hofer);
+act('status_emoji_save', ['status_emoji'=>'fox', 'return_page'=>'dashboard']);
+is_same('fox', scalar('SELECT status_emoji FROM accounts WHERE id=?', [$hofer]), 'a key from the list is saved');
+is_same(['🦊', 'Fuchs'], status_emoji(one('SELECT * FROM accounts WHERE id=?', [$hofer])), 'and read back as the emoji');
+throws(fn() => act('status_emoji_save', ['status_emoji'=>'🍆']), 'anything not on the list is refused', 'Ungültige Auswahl');
+act('status_emoji_save', ['status_emoji'=>'']);
+is_same('', scalar('SELECT status_emoji FROM accounts WHERE id=?', [$hofer]), '„Keins" clears it');
+is_same(null, status_emoji(['status_emoji'=>'gibts-nicht']), 'a stored key that is not on the list shows nothing');
+$_SESSION['impersonator_id'] = $admin;
+throws(fn() => act('status_emoji_save', ['status_emoji'=>'cat']), 'nobody changes it while looking through somebody else’s eyes', 'Ansicht');
+unset($_SESSION['impersonator_id']);
+
+case_('The chat list is one query, however many chats there are');
+sign_in_as($trainer);
+for ($i = 0; $i < 5; $i++) make_class();
+course_groups_fill();
+is_same(1, query_count(fn() => chat_list(current_user())), 'with a handful');
+for ($i = 0; $i < 45; $i++) make_class();
+course_groups_fill();
+is_same(1, query_count(fn() => chat_list(current_user())), 'and with fifty');
+is_same(1, query_count(fn() => unread_count(current_user())), 'the badge on every page is one query too');

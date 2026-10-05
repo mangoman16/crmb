@@ -1,51 +1,25 @@
 <?php
 declare(strict_types=1);
 
-// Read state is per account: staff see every thread, so a shared marker on the thread
-// itself would make one manager's reading hide a reply from another.
-function mark_thread_read(int $threadId, int $accountId): void {
-    run('INSERT INTO thread_reads (thread_id,account_id,last_read_message_id,updated_at) VALUES (?,?,COALESCE((SELECT MAX(id) FROM messages WHERE thread_id=?),0),?) ON DUPLICATE KEY UPDATE last_read_message_id=GREATEST(last_read_message_id,VALUES(last_read_message_id)),updated_at=VALUES(updated_at)',[$threadId,$accountId,$threadId,now()]);
-}
-// A thread counts as unread when its newest message was written by someone else and is
-// newer than this account's marker. Own replies never mark a thread unread.
-function unread_thread_ids(array $user): array {
-    // The same rule as may_read_thread(), in SQL: staff see every staff thread
-    // plus the direct ones they are in, and everybody else sees the threads they
-    // are a participant of. Two rules for one question is how a private
-    // conversation ends up in somebody's unread count.
-    $staff=is_staff($user);
-    $visible=$staff
-        ? "(t.kind='staff' OR EXISTS (SELECT 1 FROM thread_participants p WHERE p.thread_id=t.id AND p.account_id=?))"
-        : 'EXISTS (SELECT 1 FROM thread_participants p WHERE p.thread_id=t.id AND p.account_id=?)';
-    return array_column(rows(
-        'SELECT t.id FROM threads t JOIN messages m ON m.id=(SELECT MAX(id) FROM messages WHERE thread_id=t.id)'
-        .' LEFT JOIN thread_reads r ON r.thread_id=t.id AND r.account_id=?'
-        .' WHERE m.sender_id<>? AND m.id>COALESCE(r.last_read_message_id,0) AND '.$visible,
-        [$user['id'],$user['id'],$user['id']]
-    ),'id');
-}
-function unread_count(array $user): int { return count(unread_thread_ids($user)); }
 function dispatch_messages(string $action): array {
+    // Nobody writes, or agrees to be written to, under somebody else's name while
+    // looking through their eyes: a message would reach a whole course as the
+    // child's (security review, ADR 0022).
+    if(impersonator() && in_array($action,['message_send','contact_request','contact_decide'],true))
+        throw new UserError(t('Schreiben kann nur die Person selbst. Beende zuerst die Ansicht.','Only the person themselves can write. Stop viewing first.'));
     switch($action) {
     case 'message_send':
         $u=require_user();throttle('message',(string)$u['id'],40,300);$id=(int)post('thread_id');
+        // Into a conversation they may write in, or the first message to
+        // somebody, which makes the chat with them. There is no third way: the
+        // shared desk thread is closed (ADR 0022).
         if($id) $thread=thread_record($id);
-        elseif(post('to')!=='') {
-            // A conversation with one other person, made once and reused, so a
-            // messenger does not fill up with one-message threads.
-            $id=direct_thread($u,(int)post('to'));
-            $thread=thread_record($id);
-        } else {
-            // The staff conversation: a family writing in, or staff starting one
-            // with a family. The family owns it and every member of staff reads it.
-            $accountId=is_staff($u)?(int)post('account_id'):(int)$u['id'];
-            $a=one("SELECT * FROM accounts WHERE id=? AND role='student' AND state='active'",[$accountId]);
-            if(!$a)throw new UserError(t('Kein aktives Schülerkonto.','No active student account.'));
-            run("INSERT INTO threads (account_id,kind,subject,updated_at) VALUES (?,'staff',?,?)",[$accountId,required_text('subject',180),now()]);
-            $id=(int)db()->lastInsertId();
-            join_thread($id,$accountId);
-            $thread=thread_record($id);
-        }
+        elseif(post('to')!=='') $thread=thread_record($id=direct_thread($u,(int)post('to')));
+        else throw new UserError(t('An wen geht die Nachricht?','Who is the message for?'));
+        if(!may_write_thread($u,$thread))
+            throw new UserError($thread['kind']==='course'
+                ?t('Dieser Kurs ist archiviert. In seiner Gruppe wird nicht mehr geschrieben.','This course is archived. Its group takes no more messages.')
+                :t('In dieser Unterhaltung wird nicht mehr geschrieben.','This conversation takes no more messages.'));
         // A voice note or a photo is a message on its own; only a bubble with
         // neither text nor a file is nothing to send.
         $body=text_limit('body',20000);
@@ -55,32 +29,29 @@ function dispatch_messages(string $action): array {
         $messageId=(int)db()->lastInsertId();
         attach_to_message($messageId);
         run('UPDATE threads SET updated_at=? WHERE id=?',[now(),$id]);
-        join_thread($id,(int)$u['id']);
-
-        // Whoever did not write it gets told, by email if they want one and in
-        // the portal either way. The staff list said role IN ('admin','manager'):
-        // 'manager' is the name trainers had before 0.2, so a message to the
-        // trainer reached the administrator and nobody else.
-        $summary=$body!==''?mb_substr($body,0,120):t('Anhang','An attachment');
-        if($thread['kind']==='direct') {
+        // A chat tells the other person, by email if they want one and in the
+        // bell either way. A group tells nobody: fifteen children would each
+        // get a mail for every message (ADR 0022); the unread count says it.
+        if($thread['kind']!=='course') {
+            $summary=$body!==''?mb_substr($body,0,120):t('Anhang','An attachment');
             foreach(thread_people($id) as $person) {
                 if((int)$person['id']===(int)$u['id']) continue;
                 $account=one('SELECT * FROM accounts WHERE id=?',[(int)$person['id']]);
                 notify_thread($account,$id,thread_title($thread,$account));
                 notify((int)$person['id'],'message',t('Neue Nachricht von ','New message from ').$u['name'],$summary,'messages',['id'=>$id]);
             }
-        } elseif(is_staff($u)) {
-            $recipient=one('SELECT * FROM accounts WHERE id=?',[$thread['account_id']]);
-            notify_thread($recipient,$id,$thread['subject']);
-            notify((int)$recipient['id'],'message',t('Neue Nachricht','New message'),$summary,'messages',['id'=>$id]);
-        } else {
-            foreach(rows("SELECT * FROM accounts WHERE role IN ('admin','trainer','manager') AND state='active'") as $a) {
-                notify_thread($a,$id,$thread['subject']);
-                notify((int)$a['id'],'message',t('Neue Nachricht von ','New message from ').$u['name'],$summary,'messages',['id'=>$id]);
-            }
         }
         mark_thread_read($id,(int)$u['id']);
-        audit('message.sent','thread',$id);return ['messages',['id'=>$id]];
+        audit('message.sent','thread',$id);return ['messages',['id'=>$id,'#'=>'chat-end']];
+
+    case 'message_remove':
+        // Staff take a group message down, or put it back from the same place.
+        $restore=post('restore')!=='';
+        $messageId=(int)post('id');
+        $threadId=moderate_message($messageId,!$restore);
+        flash($restore?t('Nachricht wiederhergestellt.','Message restored.')
+                      :t('Nachricht entfernt. Du kannst sie an derselben Stelle wiederherstellen.','Message removed. You can restore it in the same place.'));
+        return ['messages',['id'=>$threadId,'#'=>'m'.$messageId]];
 
     case 'contact_request':
         $u=require_user();throttle('contact',(string)$u['id'],20,3600);
@@ -120,24 +91,24 @@ function dispatch_messages(string $action): array {
     case 'bulk_send':
         $u=require_staff();$p=$_SESSION['bulk_preview']??null;
         if(!$p || time()-$p['created']>1800)throw new UserError(t('Die Vorschau ist abgelaufen. Bitte erneut erstellen.','The preview expired. Please create it again.'));
-        // One conversation per student, with their own name and figures filled
-        // in: a login belongs to one student (ADR 0010), so there is nobody
-        // else's details to append to it.
+        // Into each student's own chat with whoever sends it (ADR 0022), with
+        // their own name and figures filled in, and the subject as its first
+        // line so a circular still says what it is about.
         $count=0;
         foreach($p['student_ids'] as $id) {
             $s=student($id);
             if(!$s['account_id'] || !isset($p['accounts'][(int)$s['account_id']])) continue;
             $a=one("SELECT * FROM accounts WHERE id=? AND state='active' AND verified_at IS NOT NULL FOR UPDATE",[(int)$s['account_id']]);if(!$a)continue;
-            $accountId=(int)$a['id'];
+            $threadId=direct_thread($u,(int)$a['id']);
             $subject=mb_substr(template_text($p['subject'],$s),0,180);
-            $body=template_text($p['body'],$s);
-            run("INSERT INTO threads (account_id,kind,subject,updated_at) VALUES (?,'staff',?,?)",[$accountId,$subject,now()]);$threadId=(int)db()->lastInsertId();
-            join_thread($threadId,$accountId);
-            run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',[$threadId,$u['id'],$body,now()]);
+            run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',[$threadId,$u['id'],$subject."\n\n".template_text($p['body'],$s),now()]);
+            run('UPDATE threads SET updated_at=? WHERE id=?',[now(),$threadId]);
             if($p['email'])notify_thread($a,$threadId,$subject);
             $count++;
         }
-        unset($_SESSION['bulk_preview']);audit('message.bulk_sent','thread');flash($count.' '.t('Unterhaltungen erstellt. E-Mails berücksichtigen die Benachrichtigungseinstellungen.','conversations created. Emails respect notification preferences.'));return ['messages',[]];
+        unset($_SESSION['bulk_preview']);audit('message.bulk_sent','thread');
+        flash($count.' '.t('Nachrichten verschickt, jede in den Chat mit der Person. E-Mails berücksichtigen die Benachrichtigungseinstellungen.','messages sent, each into the chat with that person. Emails respect notification preferences.'));
+        return ['messages',[]];
     case 'news_save':
         require_staff();$id=(int)post('id');$title=required_text('title',180);$body=required_text('body',20000);$published=post('published')?1:0;
         if($id){if(!one('SELECT id FROM news WHERE id=?',[$id]))throw new UserError('Not found');run('UPDATE news SET title=?,body=?,published=?,updated_at=? WHERE id=?',[$title,$body,$published,now(),$id]);}

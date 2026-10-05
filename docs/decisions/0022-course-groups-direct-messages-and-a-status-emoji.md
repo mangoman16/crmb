@@ -68,6 +68,10 @@ creates a group while a page is read: a GET never writes (ADR 0003).
 ### 4. Group messages
 
 - No e-mail and no notification entry, only the unread badge: a group must not fill inboxes.
+- A photo reaches every child in the course, so no stored picture says where it was taken.
+  `store_upload()` stores the copy `image_without_metadata()` returns, for every kind of upload: a
+  JPEG keeps only its orientation, a PNG loses its text and EXIF chunks, a WebP its EXIF and XMP. It
+  is plain PHP, no GD; a file that does not parse as its format is kept as it came.
 - Staff can remove any group message (`message_remove`): everybody sees „Nachricht entfernt", its
   attachments are no longer served, and staff can put it back, so a mistake has a way back. The audit
   log records who did it.
@@ -90,11 +94,17 @@ times. Dots appear in the chat list, a group's member list, the conversation hea
 avatar. A student's status is always automatic; staff keep the three choices, without the line that
 explained them.
 
+A group's member sheet shows staff every child enrolled, marking who has no login yet. A child sees
+the people who read the group and only a number for the others: a classmate whose family is not in
+the portal is not named to them.
+
 ### 7. A status emoji
 
 - `accounts.status_emoji` holds a key from `status_emojis()` in `app/presence.php`, or `''`. Sixteen,
-  each one character with a German and an English name: 🏸 😀 😎 🤩 🥳 😴 🤒 💪 🏆 ⭐ 🌈 🎉 📚 🎮 🐱 🐶.
-  `status_emoji()` ignores a stored value outside the set.
+  each one character with a German and an English name, as `ui-ux-designer` chose them:
+  🏸 💪 🏆 ⭐ 😀 😎 🤔 😴 🎉 🍀 🚀 📚 🐱 🐶 🦊 🦄. Nothing about health — 🤒 was proposed and left
+  out: whether a child is ill is not the whole course's business. `status_emoji()` ignores a stored
+  value outside the set.
 - Chosen in the account menu: one form, a button per emoji and „Keins", posting `status_emoji_save`
   (beside `presence_save`). Refused while viewing as somebody else; not tracked, like the status.
 - `chat_name()` in `app/ui.php` prints name and emoji wherever the chat names a person.
@@ -107,7 +117,15 @@ groups. The composer is pinned at the bottom, with attachments and voice notes a
 follow ADR 0017: another child shows as coloured initials. New messages show when the page is opened
 or reloaded. It works without JavaScript, at 320 px, with 44 px targets; `ui-ux-designer` specifies it.
 
-### 9. Migrations 025, 026, 027: one `ALTER` each
+### 9. Looking through a child's eyes
+
+Staff may view the portal as a family sees it. That view shows only what both may read:
+`thread_seen_sql()` narrows the reader's rule by the impersonator's, so a trainer does not read a
+child's chat with another trainer, or with another family, that way. Nothing is written in that view:
+`may_write_thread()` is false, `message_send`, `contact_request` and `contact_decide` are refused,
+and opening a chat does not mark it read for the child.
+
+### 10. Migrations 025, 026, 027: one `ALTER` each
 
 MySQL 8.0 has no `ADD COLUMN IF NOT EXISTS` and ADR 0021 §6 rules out MariaDB-only SQL, so a file with
 two `ALTER`s that stopped between them could never start again.
@@ -143,8 +161,9 @@ two `ALTER`s that stopped between them could never start again.
   administrators can read chats between students and staff. `docs-writer` drafts, the owner releases.
 - **Must stay true:** nothing stores who is in a group; only `course_group_thread()` makes a `course`
   thread and only `direct_thread()` writes participants (`demo_fill()` excepted); who may read is
-  decided only in `thread_listed_sql()` and `thread_readable_sql()`; a group message sends no mail;
-  only `status_emoji_save` writes `status_emoji`; 025–027 are never edited.
+  decided only in `thread_listed_sql()` and `thread_readable_sql()`, narrowed only by
+  `thread_seen_sql()`; a group message sends no mail; every upload is stored through
+  `image_without_metadata()`; only `status_emoji_save` writes `status_emoji`; 025–027 are never edited.
 - **For the owner.** This record is `proposed` until she approves the schema change. Two questions
   are hers, built as above meanwhile; either answer needs no migration. Should administrators read
   chats between a student and a trainer? Should chats between students stay closed to staff?

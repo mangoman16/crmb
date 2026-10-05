@@ -131,6 +131,11 @@ function demo_fill(bool $force = false): array {
             $classId = (int)db()->lastInsertId();
             $courses[] = $classId;
             $counts['courses']++;
+            // Its group chat, with a first message, so the chat can be tried
+            // before real families arrive; it goes with the course (ADR 0022).
+            run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',
+                [course_group_thread($classId), $trainerId,
+                 'Willkommen in der Gruppe „'.$name.'“! Hier schreibe ich, wenn sich am Training etwas ändert. Ihr könnt hier auch einander schreiben.', now()]);
             foreach ($days as $order => [$weekday,$from,$to,$place])
                 run('INSERT INTO class_days (class_id,weekday,starts_at,ends_at,location,sort_order) VALUES (?,?,?,?,?,?)',
                     [$classId, $weekday, $from, $to, $place, $order * 10]);
@@ -286,15 +291,15 @@ function demo_fill(bool $force = false): array {
         run('INSERT INTO news (title,body,published,created_at,updated_at,is_demo) VALUES (?,?,0,?,?,1)',
             ['Entwurf: Vereinsmeisterschaft', 'Termin steht noch nicht fest.', now(), now()]);
 
-        run('INSERT INTO threads (account_id,subject,updated_at) VALUES (?,?,?)',
-            [$accounts[demo_address($first[0], $first[1])], 'Frage zum Schläger', now()]);
+        // A family's chat with the trainer, as direct_thread() would make it:
+        // owned by the student, both of them in it. Without the rows of who is
+        // in it, the example family opened Nachrichten and was told they had
+        // none. Example data that lies about the app is worse than none.
+        $family = $accounts[demo_address($first[0], $first[1])];
+        run("INSERT INTO threads (account_id,kind,subject,updated_at) VALUES (?,'staff_direct','',?)", [$family, now()]);
         $thread = (int)db()->lastInsertId();
-        // Who is in a thread is a row of its own, and without it the example
-        // family opened Nachrichten and was told they had none - while the
-        // trainer could see the conversation, because staff see every staff
-        // thread. Example data that lies about the app is worse than none.
-        run('INSERT INTO thread_participants (thread_id,account_id,joined_at) VALUES (?,?,?)',
-            [$thread, $accounts[demo_address($first[0], $first[1])], now()]);
+        join_thread($thread, $family);
+        join_thread($thread, $trainerId);
 
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',
             [$thread, $accounts[demo_address($first[0], $first[1])], 'Hallo! Welchen Schläger sollen wir für Lena kaufen?', now()]);

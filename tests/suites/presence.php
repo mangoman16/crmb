@@ -60,14 +60,16 @@ is_same('offline', presence_state($at(4 * 3600), $now), 'and after blue it is gr
 set_setting('presence_recent_minutes', 60);
 set_setting('presence_away_hours', 24);
 
-case_('Only staff are shown presence, their own included');
+case_('Everybody sees the dots; only staff are told when somebody was here');
+/* ADR 0022: the chat shows who is here, like any messenger; when somebody was
+   last online, and their history, stay with staff (ADR 0015). */
 $A = $account($admin); $T = $account($trainer); $F = $account($family); $O = $account($other);
-ok(presence_visible_to($A, $F) && presence_visible_to($A, $T), 'an administrator sees everybody');
-ok(presence_visible_to($T, $F) && presence_visible_to($T, $A), 'a trainer sees everybody');
-ok(presence_visible_to($T, $T), 'including herself');
-ok(!presence_visible_to($F, $O), 'a family does not see another family');
-ok(!presence_visible_to($F, $T), 'nor the trainer');
-ok(!presence_visible_to($F, $F), 'nor itself: the owner decided families have no dot');
+ok(presence_visible_to($A, $F) && presence_visible_to($A, $T), 'an administrator sees everybody’s dot');
+ok(presence_visible_to($T, $F) && presence_visible_to($T, $A) && presence_visible_to($T, $T), 'a trainer too, her own included');
+ok(presence_visible_to($F, $O) && presence_visible_to($F, $T) && presence_visible_to($F, $F), 'and so does a family: another family, the trainer, itself');
+ok(!presence_visible_to([], $F), 'nobody signed in sees none');
+ok(presence_details_visible_to($A) && presence_details_visible_to($T), 'staff are told when somebody was here');
+ok(!presence_details_visible_to($F), 'a family is not');
 
 case_('Last online: a hidden account is frozen for trainers and true for administrators');
 $S = $account($second);

@@ -17,7 +17,7 @@ drafts. A portal that already has families in it needs one thing done
 **before** the upload, and then changes in the ways below the moment the new
 files are opened.
 
-**Before you upload: add two paragraphs to your privacy notice.** This version
+**Before you upload: add three paragraphs to your privacy notice.** This version
 records when each account was in the portal, and it switches club news by
 email on for new accounts. Your privacy notice has to say both. The drafts in
 the download only fill in the notice of a brand-new portal; yours keeps the
@@ -56,7 +56,15 @@ German text:
    > Sicherheitsmails wie Einladungen und Passwortlinks dienen der
    > Bereitstellung des Zugangs.
 
-3. Replace each line in square brackets with your own words, then save.
+3. After the paragraph from step 1, add the one about the chat and the
+   online dot — it is in `docs/privacy-draft-de.txt` in the download, beginning
+   „Ob jemand gerade online ist" and „Nachrichten: Jeder Kurs hat einen
+   Gruppenchat". It says that everybody signed in now sees who is online,
+   that a course's children and the coaching team read its group, and that
+   the administrators can read chats between a child and a trainer, and
+   that an uploaded photo is stored without where it was taken.
+
+4. Replace each line in square brackets with your own words, then save.
 
 The old paragraph called club news voluntary and based on consent. That is no
 longer true: you decided that club news is information every member needs,
@@ -78,6 +86,19 @@ after, because the nightly cleanup deletes from it on purpose. 021 switches
 „Neuigkeiten per E-Mail" on for accounts created **from now on**. Every
 existing account keeps what it has: a family who had it off still has it off,
 and nobody is signed up behind their back.
+
+**Migrations 022 to 027 run by themselves** as well. 022 and 023 gave every
+login a username, and 024 takes the usernames away again, as you asked: every
+login keeps its address, password and settings, and signs in with its address
+exactly as before. 025 gives every course a group chat — an archived course
+too, which stays readable for staff — and turns each existing chat between a
+child and a trainer or administrator into one the administrators can read. The
+shared conversations from before, where a family wrote to every member of
+staff at once, are kept to read under „Frühere Unterhaltungen" and take no new
+messages. 026 lets staff take a message in a group down and put it back; 027
+gives every account a status emoji, which starts as „Keins". No row is
+removed, so the check that counts the guarded tables before and after passes;
+only the chats grow, by one group per course.
 
 **Brothers and sisters on one login are separated.** From this version one
 login belongs to one student, and migration 019 makes the database hold to
@@ -120,11 +141,20 @@ here so that nothing surprises you.
 - **The bell stays where it is** when you open it, its panel fits on the
   phone's screen, and the number of unread notices is a small badge in the
   portal's colour. Tapping anywhere else, or Escape, closes it.
-- **Your picture at the top right opens a menu**: „Mein Konto" and
-  „Abmelden". For you and the other trainers it also holds a status —
-  „Automatisch", „Abwesend", „Als offline anzeigen" — and a coloured dot on the
-  picture: green online, blue recently, yellow away, grey offline. Families
-  have the menu, but no status and no dot.
+- **Your picture at the top right opens a menu**: „Mein Konto",
+  „Status-Emoji" and „Abmelden", and a coloured dot on the picture: green
+  online, blue recently, yellow away, grey offline. For you and the other
+  trainers it also holds a status — „Automatisch", „Abwesend", „Als offline
+  anzeigen". A family's dot is always automatic, and they choose no status.
+- **Nachrichten works like a messenger**: a group for every course, whose
+  children are whoever is enrolled now, then the chats with one person. A child
+  writes to a trainer or an administrator by name; you write to any child, or
+  to a course's group. Group messages send no e-mail. Everybody signed in sees
+  who is online right now; when somebody was last here stays with trainers and
+  administrators.
+- **Signing in is by address only**, and „Per E-Mail einladen" on the
+  **Schüler** page invites somebody by their address alone: they fill in their
+  own details and then choose a course.
 - **When somebody was online**: under **Konten** and on each child's page, a
   line says when the account was last in the portal, and „Wann online? Letzte
   30 Tage" opens the days and times. Only trainers and administrators see it.

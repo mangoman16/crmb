@@ -217,6 +217,16 @@ function dispatch_settings_or_messages(string $action): array {
             default  => t('Dein Status richtet sich wieder nach deiner Aktivität.','Your status follows your activity again.'),
         });
         return form_return();
+    case 'status_emoji_save':
+        // Anybody's own, from the account menu (ADR 0022) - and so, like the
+        // status, never while looking through somebody else's eyes.
+        if(impersonator())throw new UserError(t('Das Status-Emoji kann nur die Person selbst ändern. Beende zuerst die Ansicht.','Only the person themselves can change their status emoji. Stop viewing first.'));
+        $u=require_user();
+        // A key from the fixed list, or '' for none: never what was typed.
+        run('UPDATE accounts SET status_emoji=? WHERE id=?',[choose(post('status_emoji'),['',...array_keys(status_emojis())]),$u['id']]);
+        // Neither tracked() nor audited, for the same reason as the status.
+        flash(t('Status-Emoji gespeichert.','Status emoji saved.'));
+        return form_return();
     case 'email_change':
         /* The holder moves their own address, confirmed by a link to the new
            one. Whether the address is already another login's is asked only

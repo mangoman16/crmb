@@ -694,11 +694,46 @@ function login_facts(array $account,string $addressNote=''): void {
         .'</dl>';
 }
 
+/**
+ * A calendar date the way a person says it: „Heute", „Gestern", „Mo 29.09.",
+ * and with the year once it is another year's. One rule for the online history
+ * and the chat's day separators.
+ */
+function day_label(string $date, ?string $today = null): string {
+    $today ??= today();
+    if ($date === $today) return t('Heute', 'Today');
+    if ($date === date('Y-m-d', (int)strtotime($today.' -1 day'))) return t('Gestern', 'Yesterday');
+    $d = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    if (!$d) return $date;
+    if ($d->format('Y') !== substr($today, 0, 4)) return $d->format(locale() === 'de' ? 'd.m.Y' : 'j M Y');
+    return locale() === 'de' ? mb_substr(weekdays()[(int)$d->format('N')], 0, 2).' '.$d->format('d.m.') : $d->format('D j M');
+}
+
+/** The emoji $account shows beside their name, or ''. Decoration: a screen reader would otherwise say „Lena Fuchs". */
+function status_emoji_mark(array $account): string {
+    $emoji = status_emoji($account);
+    return $emoji ? '<span class="status-emoji" aria-hidden="true">'.e($emoji[0]).'</span>' : '';
+}
+
+/** A name as the chat prints it, escaped, with the person's emoji after it. */
+function chat_name(?array $account): string {
+    $name = (string)($account['name'] ?? '');
+    return e($name !== '' ? $name : t('Gelöschtes Konto', 'Deleted account')).status_emoji_mark($account ?? []);
+}
+
+/**
+ * The colour a group's picture or a sender's name is drawn in, the same for
+ * the same id every time: six of the accent colours, not grey, which reads as
+ * faded text.
+ */
+function chat_hue(int $id): string {
+    return ['blue', 'violet', 'pink', 'red', 'orange', 'green'][$id % 6];
+}
+
 /*
- * Presence, as the pages show it (ADR 0015). Who may see what is decided in
- * app/presence.php and asked here before anything is drawn, so a view that
- * calls these cannot show a family - or anybody presence_visible_to() refuses -
- * more than '' or an empty history.
+ * Presence, as the pages show it (ADR 0015, 0022). Who may see what is decided
+ * in app/presence.php and asked here before anything is drawn: everybody gets
+ * the dot, and only staff the lines and history that say when somebody was here.
  */
 
 /** The dot itself, for a state; its label for a screen reader unless the text beside it already says it. */
@@ -709,27 +744,27 @@ function presence_dot_for(string $state, bool $labelled=true): string {
 }
 
 /**
- * Whether a page shows $account's presence to $viewer at all. An invitation
- * nobody has taken up has never been used, so it has nothing to show rather
- * than a grey „Offline"; beyond that it is presence_visible_to()'s answer.
+ * Whether a page shows $viewer when $account was here - the line and the
+ * history on staff's pages. An invitation nobody has taken up has never been
+ * used, so it has nothing to show rather than a grey „Offline".
  */
 function presence_shown_for(array $viewer, ?array $account): bool {
-    return $account !== null && ($account['state'] ?? '') !== 'invited' && presence_visible_to($viewer, $account);
+    return $account !== null && ($account['state'] ?? '') !== 'invited' && presence_details_visible_to($viewer);
 }
 
-/** $subject's dot as $viewer may see it, or '' - which is what a family always gets. */
+/** $subject's dot as $viewer may see it, or '' for nobody signed in. */
 function presence_dot(array $viewer, array $subject): string {
     return presence_visible_to($viewer, $subject) ? presence_dot_for(presence_state($subject)) : '';
 }
 
 /**
  * $subject's dot and, in words, what it means: „Online“, or the state and when
- * they were last here, as $viewer may know it. '' for a viewer who may not see
- * presence. An administrator looking at somebody who appears offline is told
- * so, because the time shown is then one a trainer does not see.
+ * they were last here, as $viewer may know it. '' for anybody but staff. An
+ * administrator looking at somebody who appears offline is told so, because the
+ * time shown is then one a trainer does not see.
  */
 function presence_line(array $viewer, array $subject): string {
-    if (!presence_visible_to($viewer, $subject)) return '';
+    if (!presence_details_visible_to($viewer)) return '';
     $state = presence_state($subject);
     $text = presence_state_label($state);
     if ($state !== 'online' && ($seen = presence_last_seen_for($viewer, $subject)) !== null)
@@ -752,14 +787,8 @@ function presence_history_details(array $viewer, array $periods, ?string $record
     $n = presence_history_days();
     $days = presence_days($periods);
     $today = $days[count($days) - 1]['date'];
-    $yesterday = $days[count($days) - 2]['date'] ?? '';
     $active = array_values(array_filter(array_reverse($days), fn($d) => $d['state'] !== 'none'));
-    $label = function (string $date) use ($today, $yesterday): string {
-        if ($date === $today) return t('Heute', 'Today');
-        if ($date === $yesterday) return t('Gestern', 'Yesterday');
-        $d = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
-        return locale() === 'de' ? mb_substr(weekdays()[(int)$d->format('N')], 0, 2).' '.$d->format('d.m.') : $d->format('D j M');
-    };
+    $label = fn(string $date): string => day_label($date, $today);
     echo '<details class="presence-history"><summary>'
         .e(t('Wann online? Letzte ', 'When online? Last ').plural($n, 'Tag', 'Tage', 'day', 'days')).'</summary>';
     echo '<p>'.e($active

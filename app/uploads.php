@@ -154,11 +154,118 @@ function store_upload(string $field, string $kind): array {
         throw new UserError(t('Der Ordner für Uploads lässt sich nicht anlegen. Bitte Schreibrechte für storage/ prüfen.',
                               'The upload folder cannot be created. Check that storage/ is writable.'));
     $stored = bin2hex(random_bytes(16)) . '.' . $allowed[$mime];
-    if (!@move_uploaded_file((string)$file['tmp_name'], $dir . '/' . $stored))
+    $path = $dir . '/' . $stored;
+    // A photo can carry where it was taken - a family's home - and a picture
+    // posted to a course's group reaches every child in it (ADR 0022). So a
+    // picture is stored as its cleaned copy, written once; anything else is
+    // moved as it came.
+    $clean = str_starts_with($mime, 'image/')
+        ? image_without_metadata((string)file_get_contents((string)$file['tmp_name']), $mime) : null;
+    $saved = $clean === null ? @move_uploaded_file((string)$file['tmp_name'], $path)
+                             : @file_put_contents($path, $clean, LOCK_EX) === strlen($clean);
+    if (!$saved) {
+        @unlink($path);     // half a file is no file
         throw new UserError(t('Die Datei konnte nicht gespeichert werden.', 'The file could not be stored.'));
+    }
 
-    return ['stored_name' => $stored, 'mime' => $mime, 'bytes' => (int)$file['size'],
+    return ['stored_name' => $stored, 'mime' => $mime, 'bytes' => $clean === null ? (int)$file['size'] : strlen($clean),
             'original_name' => mb_substr((string)($file['name'] ?? ''), 0, 255)];
+}
+
+/**
+ * An image without what it says about where and how it was taken: GPS, camera,
+ * date, comments. JPEG keeps one value, which way is up, so an iPhone photo is
+ * not shown lying on its side; PNG loses its text and EXIF chunks, WebP its EXIF
+ * and XMP. Anything else - or a file that does not read the way its format says
+ * - comes back unchanged: better a file kept than one broken.
+ */
+function image_without_metadata(string $bytes, string $mime): string {
+    return match ($mime) {
+        'image/jpeg' => jpeg_without_metadata($bytes),
+        'image/png'  => png_without_metadata($bytes),
+        'image/webp' => webp_without_metadata($bytes),
+        default      => $bytes,
+    };
+}
+
+function jpeg_without_metadata(string $b): string {
+    $n = strlen($b);
+    if ($n < 4 || substr($b, 0, 2) !== "\xFF\xD8") return $b;
+    $out = "\xFF\xD8";
+    for ($i = 2; $i + 4 <= $n;) {
+        if ($b[$i] !== "\xFF") return $b;
+        $marker = ord($b[$i + 1]);
+        if ($marker === 0xFF) { $out .= "\xFF"; $i++; continue; }
+        // The image data starts here and runs to the end: copied as it is.
+        if ($marker === 0xDA) return $out . substr($b, $i);
+        // A length that is wrong needs no check of its own: the next step lands
+        // on a byte that is not a marker, or past the end before any picture
+        // data, and either way the file comes back as it was.
+        $length = unpack('n', substr($b, $i + 2, 2))[1];
+        $payload = substr($b, $i + 4, $length - 2);
+        if ($marker === 0xE1 && str_starts_with($payload, "Exif\0\0")) {
+            $orientation = exif_orientation(substr($payload, 6));
+            if ($orientation > 1) $out .= jpeg_orientation_segment($orientation);
+        } elseif ($marker !== 0xE1 && $marker !== 0xED) {
+            $out .= substr($b, $i, 2 + $length);    // everything else, APP1 (XMP) and APP13 apart
+        }
+        $i += 2 + $length;
+    }
+    return $b;
+}
+
+/** Which way is up (1-8) in an EXIF block, or 0 when it does not say. */
+function exif_orientation(string $tiff): int {
+    $order = substr($tiff, 0, 2);
+    if (strlen($tiff) < 8 || ($order !== 'II' && $order !== 'MM')) return 0;
+    $u16 = fn(int $at): int => $at >= 0 && $at + 2 <= strlen($tiff) ? unpack($order === 'II' ? 'v' : 'n', substr($tiff, $at, 2))[1] : 0;
+    $ifd = unpack($order === 'II' ? 'V' : 'N', substr($tiff, 4, 4))[1];
+    for ($k = 0, $count = min($u16($ifd), 512); $k < $count; $k++) {
+        $entry = $ifd + 2 + 12 * $k;
+        if ($u16($entry) === 0x0112) { $value = $u16($entry + 8); return $value >= 1 && $value <= 8 ? $value : 0; }
+    }
+    return 0;
+}
+
+/** An EXIF segment holding nothing but which way is up. */
+function jpeg_orientation_segment(int $orientation): string {
+    $tiff = "MM\x00\x2A" . pack('N', 8) . pack('n', 1) . pack('nnN', 0x0112, 3, 1) . pack('n', $orientation) . "\0\0" . pack('N', 0);
+    $payload = "Exif\0\0" . $tiff;
+    return "\xFF\xE1" . pack('n', strlen($payload) + 2) . $payload;
+}
+
+function png_without_metadata(string $b): string {
+    if (substr($b, 0, 8) !== "\x89PNG\r\n\x1A\n") return $b;
+    $out = substr($b, 0, 8);
+    for ($i = 8, $n = strlen($b); $i < $n;) {
+        // Not even a chunk's frame left. A length running past the end needs no
+        // check of its own, as in a JPEG: the loop ends before IEND.
+        if ($i + 12 > $n) return $b;
+        $length = unpack('N', substr($b, $i, 4))[1];
+        $type = substr($b, $i + 4, 4);
+        if (!in_array($type, ['eXIf', 'tEXt', 'iTXt', 'zTXt'], true)) $out .= substr($b, $i, 12 + $length);
+        $i += 12 + $length;
+        if ($type === 'IEND') return $out;
+    }
+    return $b;
+}
+
+function webp_without_metadata(string $b): string {
+    if (strlen($b) < 12 || substr($b, 0, 4) !== 'RIFF' || substr($b, 8, 4) !== 'WEBP') return $b;
+    $chunks = '';
+    for ($i = 12, $n = strlen($b); $i < $n;) {
+        if ($i + 8 > $n) return $b;
+        $type = substr($b, $i, 4);
+        $size = unpack('V', substr($b, $i + 4, 4))[1];
+        $whole = 8 + $size + ($size % 2);
+        if ($i + 8 + $size > $n) return $b;
+        $chunk = substr($b, $i, $whole);
+        // The extended header says whether EXIF (8) and XMP (4) follow; they no longer do.
+        if ($type === 'VP8X' && $size >= 1) $chunk[8] = chr(ord($chunk[8]) & ~0x0C);
+        if ($type !== 'EXIF' && $type !== 'XMP ') $chunks .= $chunk;
+        $i += $whole;
+    }
+    return 'RIFF' . pack('V', 4 + strlen($chunks)) . 'WEBP' . $chunks;
 }
 
 /** Remove a stored file. Missing is not an error; the row is going either way. */
@@ -410,9 +517,10 @@ function serve_download(): void {
         }
     }
     if ($what === 'attachment') {
-        $file = one('SELECT f.*, m.thread_id FROM message_files f JOIN messages m ON m.id=f.message_id WHERE f.id=?', [$id]);
+        $file = one('SELECT f.*, m.thread_id FROM message_files f JOIN messages m ON m.id=f.message_id WHERE f.id=? AND m.removed_at IS NULL', [$id]);
         // thread_record() refuses a conversation this account may not read, so
-        // an attachment cannot be the way round the rule about who reads what.
+        // an attachment cannot be the way round the rule about who reads what;
+        // and a removed message's file is served to nobody, staff included.
         if ($file) {
             thread_record((int)$file['thread_id']);
             send_upload('message', (string)$file['stored_name'], (string)$file['mime'],

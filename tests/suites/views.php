@@ -256,7 +256,8 @@ sign_out();
    made to equal somebody else's account id, so a page that built the picture
    address from the row's id instead of the sender's would ask for the wrong
    person's picture - and the download route would serve it. */
-$requestsBlock = fn(string $html) => (string)strstr((string)strstr($html, 'Möchte dir schreiben'), 'An wen?', true);
+// From the requests' heading to the next one: „An wen?" now stands above both, in the picker's header.
+$requestsBlock = fn(string $html) => (string)strstr((string)strstr($html, 'Möchte dir schreiben'), 'Trainerteam', true);
 $askedFor = function (string $block): array {
     preg_match_all('/what=avatar&amp;kind=account&amp;id=(\d+)/', $block, $m);
     return array_values(array_unique($m[1]));

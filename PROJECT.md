@@ -53,9 +53,9 @@ to change, and there is no migration debt.
 | | |
 |---|---|
 | Application code | ~12,080 lines PHP in `app/`, 3,090 lines of views, 1,183 lines CSS, 282 lines JS |
-| Schema | 43 tables, 21 migrations |
+| Schema | 44 tables with the migration ledger, 27 migrations |
 | Configuration | 67 settings, each declared once with a type and a default |
-| Tests | 30 suites, no database server needed, under a minute; plus `tests/e2e.sh`, a browser walk against a real MariaDB |
+| Tests | 31 suites on MariaDB (`tests/mariadb-local.sh` starts a throwaway server), about two minutes; plus `tests/e2e.sh`, a browser walk |
 | Dependencies | 2: phpmailer 7.1.1, bacon/bacon-qr-code 3.1.1 (both pinned in `composer.lock`) |
 | Change log | 13 tables recorded field by field under „Änderungen“; it informs, and puts nothing back |
 

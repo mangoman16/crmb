@@ -9,21 +9,26 @@ one thing done before the upload, and changes in several ways the first time it
 is opened; [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) has
 them in full.
 
-**First, while the old version is still running, add two paragraphs to the
+**First, while the old version is still running, add three paragraphs to the
 privacy notice** under **Einstellungen → Datenschutz**: one saying that the
-portal now records when each account was online, and who can see it, and one
+portal now records when each account was online, and who can see it, one
 replacing the old newsletter paragraph, because club news by email now starts
-switched on and is no longer described as voluntary consent. UPDATING.md has
+switched on and is no longer described as voluntary consent, and one about the
+course groups, the online dot everybody sees, and the administrators reading
+chats between a child and a trainer. UPDATING.md has
 both paragraphs to copy. The drafts shipped with this version only fill in the
 notice of a new portal; an existing one keeps the text it had. Each paragraph
 ends in a note in square brackets for the legal basis, which is hers to decide
 and have checked, and a released notice is not saved until the notes are
 replaced.
 
-Migrations 020 and 021 then run by themselves. 020 gives every account a status
+Migrations 020 to 027 then run by themselves. 020 gives every account a status
 that starts on „Automatisch" and an empty list of times online; nothing is
 filled in from before. 021 switches news by email on for accounts created from
-now on; every existing account keeps its choice.
+now on; every existing account keeps its choice. 022 to 024 give usernames and
+take them away again: every login signs in with its address, as before. 025 to
+027 give every course its group chat, let staff take a group message down, and
+add the status emoji; the old shared conversations stay readable and closed.
 
 Migration 019 takes every child but the first off a login they shared; nothing
 is deleted, each change is written under **Änderungen**, and those children
@@ -32,6 +37,65 @@ their own. Invitations and „Passwort vergessen?“ links wait until **„Nur
 Verbindung prüfen“** under **Einstellungen → SMTP** has passed once. And the
 version number printed under the privacy notice changes once although the text
 does not; nobody is asked to acknowledge it again.
+
+### Signing in, and two ways to add a person
+
+- **Everybody signs in with their own e-mail address.** Usernames are gone;
+  „Passwort vergessen" asks for the address too.
+- **„Per E-Mail einladen"** on the **Schüler** page: type an address and a
+  language. The person fills in their name and birth date, sets a password and
+  lands on their own page with „Kurs wählen" first; choosing a course is a
+  request the trainer answers. Staff are told in the bell when somebody new has
+  set themselves up. Open invitations are listed there, to send again or
+  withdraw without typing anything.
+- **„Schüler anlegen"** works as before: the trainer enters the details, can put
+  the child into a course straight away, and the invitation only has the person
+  set their own password. Nobody sets another person's password.
+- A birth date in the future or more than a hundred years ago is refused,
+  wherever it is typed.
+
+### The chat works like a messenger
+
+- **A group for every course.** Its children are whoever is enrolled now — a
+  child who joins can read what came before, one who leaves loses it — and the
+  trainers and administrators are in every group. Group messages send no
+  e-mail. Staff can take a message down from „⋯" and put it back from the same
+  place.
+- **Chats with one person.** A child writes to a trainer or an administrator by
+  name, and staff to any child. The administrators can read chats between a
+  child and a trainer; a second trainer cannot. Children's chats with each
+  other, once one has agreed, stay private to the two of them.
+- **Everybody has an online dot**, a child's always automatic, and may pick one
+  of sixteen emojis to show beside their name. When somebody was last here
+  stays with the trainers and administrators.
+- **A photo is stored without where it was taken**, its camera or its time,
+  and still the right way up: a picture in a group reaches every child in the
+  course.
+- In a group's „Wer ist in der Gruppe?", a child sees the classmates who read
+  it; one whose family has no login yet is only counted. Staff see everybody.
+- While a trainer views the portal as a child, she sees only the chats she may
+  read herself, writes nothing, and leaves the child's unread messages unread.
+- **„An mehrere schreiben"** (formerly „Gruppe anschreiben") puts the message in
+  each child's chat with you.
+- On a phone the writing box sits above the menu bar instead of under it, and a
+  chat opens at its newest message.
+
+### After an update, the browser fetches what changed
+
+- The stylesheet and script were linked with the version number, which did not
+  change between uploads, so a browser kept the old ones: the account menu
+  opened as plain text and buttons over the page, and the bell still jumped.
+  Every file is now linked with a fingerprint of its own contents, the club's
+  colours too.
+
+### Tests run on MariaDB, the engine her server runs
+
+- The SQLite translation the tests used to run on is gone. `tests/mariadb-local.sh`
+  starts a throwaway MariaDB; `tests/e2e.sh` walks the first evening in a
+  browser and now also an invitation by address. Run on MariaDB 10.11.14 with
+  PHP 8.4.26; MySQL 8.0 is not verified.
+- Two tests that broke when the calendar moved on — one on 2 October, one due
+  on 1 January — now take their dates from the clock.
 
 ### The top bar: a steady bell, and a menu behind your picture
 

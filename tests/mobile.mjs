@@ -57,13 +57,21 @@ if (!ACCOUNTS.admin || !PASSWORD) {
 /** Pages worth opening, and the query strings the interface really produces. */
 const pages = async (page, role) => {
     const first = async (sql) => await page.evaluate(() => 0);   // ids come from the links below
-    const common = ['dashboard', 'students', 'messages', 'news', 'profile'];
+    // messages&new=1 is the chat's „Neue Nachricht“ (ADR 0022).
+    const common = ['dashboard', 'messages', 'messages&new=1', 'news', 'profile'];
+    if (role !== 'admin') {
+        // A family's „Profil“ is their own child's page; the students list sends
+        // them there on purpose, so the address is taken from the menu bar.
+        await page.goto(BASE + '?page=dashboard', { waitUntil: 'networkidle' });
+        const own = await page.locator('.mobile-nav a[href*="page=student&"]').first().getAttribute('href').catch(() => null);
+        return own ? [...common, own.split('?page=')[1]] : common;
+    }
     // students&invite=1 opens „Per E-Mail einladen“ and the open invitations (ADR 0021).
-    const staff = ['students&invite=1', 'classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox', 'compose',
+    const staff = ['students', 'students&invite=1', 'classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox', 'compose',
                    'manage', 'manage&tab=ages', 'manage&tab=tariffs', 'manage&tab=payments'];
     const admin = ['settings', 'settings&tab=organisation', 'settings&tab=fields', 'settings&tab=smtp',
                    'settings&tab=privacy', 'settings&tab=system', 'history'];
-    return role === 'admin' ? [...common, ...staff, ...admin] : common;
+    return [...common, ...staff, ...admin];
 };
 
 /**

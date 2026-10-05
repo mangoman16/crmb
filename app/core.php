@@ -47,7 +47,12 @@ function today(): string { return date('Y-m-d'); }
 function locale(): string { return $_SESSION['locale'] ?? 'de'; }
 function t(string $de, string $en): string { return locale()==='en' ? $en : $de; }
 function e(mixed $value): string { return htmlspecialchars((string)($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
-function url(string $page='', array $params=[]): string { return rtrim(config('app_url'),'/') . '/index.php' . ($page ? '?' . http_build_query(['page'=>$page]+$params) : ''); }
+/** A page's address; a '#' entry in $params is the place on the page, so a redirect can land on it without JavaScript. */
+function url(string $page='', array $params=[]): string {
+    $fragment=(string)($params['#']??''); unset($params['#']);
+    return rtrim(config('app_url'),'/') . '/index.php' . ($page ? '?' . http_build_query(['page'=>$page]+$params) : '')
+        . ($fragment!=='' ? '#'.rawurlencode($fragment) : '');
+}
 /** The address of a file that ships in public/assets/, which changes when its bytes do (asset_path()). */
 function asset_url(string $file): string { return rtrim((string)config('app_url'),'/') . '/' . asset_path($file); }
 function go(string $page, array $params=[]): never {
