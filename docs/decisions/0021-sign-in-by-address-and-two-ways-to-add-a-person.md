@@ -67,8 +67,9 @@ address, which proves it, and choosing their own password.
   current enrolment or a pending join request. Choosing is the existing join request
   (`enrolment_request`), which the trainer approves: joining creates charges (ADR 0011), so
   billing stays her decision.
-- Open invitations are listed for staff, with resend (`account_state` `reinvite`) and withdraw
-  (`account_state` `delete`). The designer decides where.
+- Open invitations are listed for staff on the students page, with resend (`account_state`
+  `reinvite`) and withdraw (`account_state` `withdraw`, nothing typed to confirm; only for a
+  login never set up).
 - There is no public sign-up: every link is made by staff for one address, opens once, and lapses
   after 48 hours.
 
@@ -76,8 +77,9 @@ address, which proves it, and choosing their own password.
 address, may enrol them directly, and invite. The activation page asks for no details.
 
 **The explicit actor.** `activate`, with nobody signed in, stays the only code that names one,
-now for the record it creates instead of a username. `tracked_insert()` gains the optional
-`?int $actor` that `tracked()` has; `activate` passes the locked token's `account_id`.
+now for the record it creates instead of a username. `tracked_insert()` takes an optional
+`?int $actor`, which it hands to `history_record()`; `activate` passes the locked token's
+`account_id`.
 
 ### 4. An open invitation is not an orphan
 
