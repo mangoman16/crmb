@@ -1,13 +1,14 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-06
 ---
 
 # 0024. A child removed from a course can be put back
 
-> **Proposed** until the owner approves migration 031, which adds one column to `class_students`
-> (`CLAUDE.md`, "Stop and ask"). The behaviour is her answer of 2026-10-06; the column is how it is
-> built.
+> **Accepted** on 2026-10-06. The owner approved the schema change in advance ("make the database
+> change if you deem it necessary"), and migration 031, one column on `class_students`, is the one this
+> record needs (`CLAUDE.md`, "Stop and ask"). The behaviour is her answer of 2026-10-06; the column is
+> how it is built.
 
 ## Context
 

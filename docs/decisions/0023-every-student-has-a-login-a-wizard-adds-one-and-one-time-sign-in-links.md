@@ -1,12 +1,13 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-06
 ---
 
 # 0023. Every student has a login, a wizard adds one, and one-time sign-in links
 
-> **Proposed** until the owner approves migrations 028–030. They change the database, and she has no
-> way to undo a migration that has run (`CLAUDE.md`, "Stop and ask"). That usernames come back is her
+> **Accepted** on 2026-10-06. The owner approved the schema changes in advance, to the project manager:
+> "make the database change if you deem it necessary"; 028–030 are the ones this record needs. They
+> change the database, and she has no way to undo a migration that has run (`CLAUDE.md`, "Stop and ask"). That usernames come back is her
 > own decision of 2026-10-05, not this record's. This record partly reverses ADR 0021, and 0021's note
 > says which parts.
 
@@ -234,8 +235,9 @@ spell today.
 `students.account_id` from `ON DELETE SET NULL` to `ON DELETE RESTRICT`:
 
 ```sql
--- 029
-ALTER TABLE students DROP FOREIGN KEY students_ibfk_1;
+-- 029, as built: finds the key by what it is, not by its name (see "The name")
+SET @drop = (SELECT … FROM information_schema.REFERENTIAL_CONSTRAINTS … DELETE_RULE='SET NULL' …);
+PREPARE drop_key FROM @drop; EXECUTE drop_key; DEALLOCATE PREPARE drop_key;
 -- 030
 ALTER TABLE students ADD CONSTRAINT student_login FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE RESTRICT;
 ```
@@ -245,8 +247,11 @@ ALTER TABLE students ADD CONSTRAINT student_login FOREIGN KEY (account_id) REFER
   MariaDB runs. Each file is one statement, the drop first. An update that stops between them
   continues with 030 on the next request. The portal is closed for the update in between anyway.
 - **The name.** 001 declared the key without a name, and InnoDB named it `students_ibfk_1`.
-  - `database-engineer` reads the name from `information_schema` on MariaDB 10.11.14 before writing
-    029.
+  - On MariaDB 10.11.14 the key is indeed `students_ibfk_1`. 029 does not depend on it: it looks up
+    every key from `students.account_id` to `accounts` that is `ON DELETE SET NULL` and drops it, and
+    runs `DO 0` when there is none, so a name that differed on another engine cannot close the portal,
+    and running it again - even after 030 - is harmless. That makes 029 four statements (SET, PREPARE,
+    EXECUTE, DEALLOCATE) rather than one; each can be restarted.
   - The migrations suite asserts afterwards that `student_login` exists with `DELETE_RULE` RESTRICT.
   - MySQL 8.0 names unnamed keys the same way by its documentation; that half is unverified.
 - **The index.** `student_one_account` (019) is the index the key uses, and it stays.
@@ -681,7 +686,7 @@ Every call that crosses the load order is made at request time, never while file
 - **Pages.** `student_new` joins `$allowed` and the router's staff list. No existing page changes its
   classification.
 - **Dependencies.** None. `bacon/bacon-qr-code` is already there.
-- **Schema.** 028, 029 and 030, each one statement, never edited once shipped.
+- **Schema.** 028 and 030 one statement each, 029 four restartable ones; never edited once shipped.
   - Nothing is deleted. `accounts` grows by one row per student without a login, from the runner's
     step.
   - `schema_guarded_tables()` is not widened. It refuses fewer rows, and there are more.
