@@ -137,6 +137,10 @@ for ($n = 3; $n < 36; $n++) $addCharge($n);          // three years of membershi
 payment_cache_clear();
 $many = query_count(fn() => render_view('student', ['id'=>$billed,'tab'=>'payments']));
 is_same($few, $many, 'three charges and thirty-six cost the same ('.$few.')');
-ok($many < 12, 'and that is a flat handful, not one per charge (took '.$many.')');
+/* Six when this was written; eleven by October 2026, and twelve once a charge on
+   a live invoice said which invoice holds it - live_invoices_of_charges(), one
+   query for every charge on the tab. Raised by that one, not by a margin, so
+   the next query added here is noticed too. */
+ok($many < 13, 'and that is a flat handful, not one per charge (took '.$many.')');
 ok(str_contains(render_view('student', ['id'=>$billed,'tab'=>'payments']), 'Beitrag 35'), 'the last charge really is on the page');
 

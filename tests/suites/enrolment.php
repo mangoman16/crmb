@@ -389,3 +389,23 @@ run('UPDATE class_students SET tariff_id=? WHERE class_id=? AND student_id=?', [
 $offered = enrolment_tariff_choices(enrolment($oldCourse, $stays));
 is_same('Alter Beitrag (archiviert)', $offered[$oldTariff] ?? null, 'on an archived one, that one too, saying so');
 is_same(2, count($offered), 'beside the open ones');
+
+case_('The child’s page shows that archived tariff in the form, marked and chosen');
+/* The page itself, because that is where it went wrong: the form drew its list
+   from class_tariffs(), which leaves archived tariffs out, so the box said
+   „Auswählen" for a child on one. */
+sign_in_as($trainer);
+$coursesTab = render_view('student', ['id'=>$stays, 'tab'=>'classes']);
+$enrolmentForm = (string)strstr((string)strstr($coursesTab, 'name="action" value="enrolment_save"'), '</form>', true);
+ok(str_contains($enrolmentForm, 'name="class_id" value="'.$oldCourse.'"'), 'the course’s enrolment form is on the page');
+$tariffBox = (string)strstr((string)strstr($enrolmentForm, 'name="tariff_id"'), '</select>', true);
+ok(str_contains($tariffBox, '<option value="'.$oldTariff.'" selected>'.e('Alter Beitrag (archiviert)').'</option>'),
+   'its tariff box shows the archived tariff the child is on, marked „(archiviert)", and chosen');
+ok(str_contains($tariffBox, '<option value="'.$newTariff.'" >'.e('Neuer Beitrag').'</option>'),
+   'with the open one beside it to move them to');
+is_same(1, substr_count($tariffBox, ' selected>'), 'and that one is the only one chosen, so „Auswählen" is not what a save would send');
+$archivedHint = e(t('Archiviert – neue Kinder bekommen ihn nicht mehr.', 'Archived – no new child is put on it.'));
+ok(str_contains($enrolmentForm, '</select><small>'.$archivedHint),
+   'and says under the box that it is archived, which a closed box at 320px cuts off');
+run('UPDATE class_students SET tariff_id=? WHERE class_id=? AND student_id=?', [$newTariff, $oldCourse, $stays]);
+ok(!str_contains(render_view('student', ['id'=>$stays, 'tab'=>'classes']), $archivedHint), 'a child on an open tariff is told nothing of the kind');

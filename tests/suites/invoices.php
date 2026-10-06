@@ -466,7 +466,8 @@ case_('The overview counts every invoice, and a part-paid one owes only what is 
 /* Only the newest 200 invoices were loaded, so one unpaid since 2020 fell out of
    „Überfällig“, its count and the total, and the total added the whole gross of
    an invoice half paid. invoice_totals() and invoice_list() ask the database
-   about all of them; views/invoices.php is to read those (frontend-dev). */
+   about all of them, and views/invoices.php reads those: the next case reads
+   the page. */
 test_reset();
 sign_in_as(make_account(['role'=>'trainer']));
 $kid = make_student(['first_name'=>'Alt', 'last_name'=>'Offen']);
@@ -498,3 +499,106 @@ $disagree = [];
 foreach (array_merge(invoice_list('all', 1, 200), invoice_list('all', 2, 200)) as $row)
     if ($row['status'] !== invoice_status(invoice((int)$row['id']))) $disagree[] = $row['number'];
 is_same([], $disagree, 'and the state the list gives each one is the state its own page gives it');
+
+case_('The invoices page shows the oldest overdue invoice, counts it, and pages through the rest');
+/* The page counted and filtered all_invoices(), the newest 200, in PHP: ALT-0001,
+   unpaid since 2020, was not under „Überfällig", not in its count and not in the
+   total, and the total added all of TEIL-1 when half of it was paid. */
+$overdueList = render_view('invoices', ['state'=>'overdue']);
+ok(str_contains($overdueList, '>ALT-0001</a>'), '„Überfällig" lists the invoice unpaid since 2020, older than the newest 200');
+ok(str_contains($overdueList, e(t('Überfällig', 'Overdue')).' (1)</a>'), 'the count beside „Überfällig" includes it');
+ok(str_contains($overdueList, '<strong>'.e(money(2500 + 3000)).'</strong>'),
+   '„Offen und überfällig" adds what is still owed: 30 € on the old one, 25 € of the part-paid one');
+ok(!str_contains($overdueList, 'class="pagination"'), 'one page of them has no pager');
+$cancelledList = render_view('invoices', ['state'=>'cancelled']);
+is_same(50, substr_count($cancelledList, '<div class="record-row">'), 'a page lists fifty');
+ok(str_contains($cancelledList, 'href="'.e(url('invoices', ['state'=>'cancelled', 'p'=>2])).'"'), '„Weitere" leads on, keeping the filter');
+ok(str_contains($cancelledList, e(t('Seite 1 von 4', 'Page 1 of 4'))), 'and the page says where in the list it is');
+ok(!str_contains($cancelledList, e(t('Zurück', 'Previous'))), 'with no way back from the first page');
+$lastCancelled = render_view('invoices', ['state'=>'cancelled', 'p'=>'4']);
+ok(str_contains($lastCancelled, 'href="'.e(url('invoices', ['state'=>'cancelled', 'p'=>3])).'"'), 'the last page leads back');
+ok(!str_contains($lastCancelled, e(url('invoices', ['state'=>'cancelled', 'p'=>5]))), 'and not on, because there is nothing more');
+ok(str_contains(render_view('invoices', ['state'=>'cancelled', 'p'=>'99']), e(t('Seite 4 von 4', 'Page 4 of 4'))),
+   'a page past the end shows the last one');
+ok(!str_contains(render_view('invoices', ['state'=>'all']), '>ALT-0001</a>'), '„Alle" starts with the newest');
+ok(str_contains(render_view('invoices', ['state'=>'all', 'p'=>'5']), '>ALT-0001</a>'), 'and its last page reaches the oldest');
+
+case_('On the child’s page a charge is red only once it is late, and one an invoice holds says so instead of offering to cancel');
+/* The badge compared the due date with today, so a charge inside its grace days
+   was red while the overdue total, the reminders and „Überfällig" said it was
+   not late yet. „Beitrag stornieren" was offered on a charge a live invoice
+   holds, which charge_cancel then refused. And „Per E-Mail schicken" was offered
+   for an invoice nobody could e-mail, refused only after the tap. */
+$quietLogin = make_account(['role'=>'student', 'payment_notices'=>0]);
+$family = make_student(['first_name'=>'Rot', 'last_name'=>'Odernicht', 'account_id'=>$quietLogin]);
+$day = fn(int $days) => date('Y-m-d', strtotime(today().' '.sprintf('%+d', $days).' days'));
+$chargeOn = fn(string $label, string $due, string $overdue) => fixture('charges', ['student_id'=>$family, 'label'=>$label,
+    'amount_cents'=>3000, 'gross_cents'=>3000, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>null, 'period_to'=>null,
+    'due_on'=>$due, 'overdue_on'=>$overdue, 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+$chargeOn('In der Frist', $day(-2), $day(5));
+$chargeOn('Zu spät', $day(-20), $day(-13));
+$settled = $chargeOn('Beglichen', $day(-40), $day(-33));
+fixture('payments', ['charge_id'=>$settled, 'amount_cents'=>3000, 'paid_on'=>$day(-35), 'method'=>'Bar', 'note'=>'',
+                     'confirmed_at'=>now(), 'voided'=>0]);
+$held = $chargeOn('Auf Rechnung', today(), $day(7));
+$chargeOn('Ohne Rechnung', today(), $day(7));
+$freed = $chargeOn('Rechnung storniert', today(), $day(7));
+$thisYear = (int)substr(today(), 0, 4);
+$holding = $listed(['student_id'=>$family, 'account_id'=>$quietLogin, 'number'=>'HALT-1', 'sequence'=>600, 'year'=>$thisYear,
+                    'issued_on'=>today(), 'due_on'=>$day(14), 'overdue_on'=>$day(14)]);
+fixture('invoice_charges', ['invoice_id'=>$holding, 'charge_id'=>$held]);
+$withdrawn = $listed(['student_id'=>$family, 'number'=>'WEG-1', 'sequence'=>601, 'year'=>$thisYear, 'issued_on'=>today(),
+                      'due_on'=>$day(14), 'overdue_on'=>$day(14), 'cancelled_at'=>now(), 'cancel_reason'=>'Versehen']);
+fixture('invoice_charges', ['invoice_id'=>$withdrawn, 'charge_id'=>$freed]);
+
+$paymentsTab = render_view('student', ['id'=>$family, 'tab'=>'payments']);
+$card = function (string $label) use ($paymentsTab): string {
+    foreach (array_slice(explode('<section class="card charge-card">', $paymentsTab), 1) as $piece)
+        if (str_contains($piece, '<h2>'.e($label).'</h2>')) return (string)strstr($piece, '</section>', true);
+    return '';
+};
+ok($card('In der Frist') !== '' && str_contains($card('In der Frist'), 'class="badge'), 'the charge inside its grace days is on the page, with its badge');
+ok(!str_contains($card('In der Frist'), 'badge red'), 'past its due date but inside its grace days, it is not red');
+ok(str_contains($card('Zu spät'), 'class="badge red"'), 'past its grace days and unpaid, it is');
+ok(str_contains($card('Beglichen'), 'class="badge green"') && !str_contains($card('Beglichen'), 'badge red'),
+   'paid, however long ago it was due, it is green and not red');
+$heldCard = $card('Auf Rechnung');
+ok(!str_contains($heldCard, 'value="charge_cancel"'), 'a charge a live invoice holds is not offered „Beitrag stornieren"');
+ok(str_contains($heldCard, e(t('Steht auf Rechnung ', 'On invoice '))) && str_contains($heldCard, e(t(' – zuerst die Rechnung stornieren.', ' – cancel the invoice first.'))),
+   'it says which invoice holds it and what to do first');
+ok(str_contains($heldCard, '<a href="'.e(url('student', ['id'=>$family, 'tab'=>'invoices', '#'=>'invoice-'.$holding])).'">HALT-1</a>'),
+   'with the invoice’s number linked to that invoice');
+ok(str_contains($card('Ohne Rechnung'), 'value="charge_cancel"'), 'a charge on no invoice can be cancelled');
+ok(str_contains($card('Rechnung storniert'), 'value="charge_cancel"') && !str_contains($card('Rechnung storniert'), 'WEG-1'),
+   'and so can one whose invoice was cancelled, which names no invoice');
+
+$invoicesTab = render_view('student', ['id'=>$family, 'tab'=>'invoices']);
+ok(str_contains($invoicesTab, 'id="invoice-'.$holding.'"'), 'the link lands on the invoice, on the child’s invoices tab');
+/** One invoice's row on the invoices tab: from its anchor to the next row, or the end of the list. */
+$invoiceRow = function (string $html, int $invoiceId): string {
+    $from = (string)strstr($html, 'id="invoice-'.$invoiceId.'"');
+    $ends = array_filter([strpos($from, 'id="invoice-', 1), strpos($from, '</section>')], fn($at) => $at !== false);
+    return $ends ? substr($from, 0, min($ends)) : $from;
+};
+$heldRow = $invoiceRow($invoicesTab, $holding);
+ok(str_contains($heldRow, e(invoice_mail_refusal(invoice($holding)) ?? 'keine Ablehnung')),
+   'an invoice for a family who turned payment e-mails off says so where „Per E-Mail schicken" would be');
+ok(!str_contains($heldRow, 'name="mode" value="send"'), 'and offers no button that can only be refused');
+ok(str_contains($heldRow, 'name="mode" value="paid"'), 'while „Als bezahlt eintragen" is still offered on that row');
+run('UPDATE accounts SET payment_notices=1 WHERE id=?', [$quietLogin]);
+// Issued before the child had a login, an invoice is addressed to nobody: the
+// page asks once per login, and must not give one invoice another's answer.
+$beforeLogin = $listed(['student_id'=>$family, 'account_id'=>null, 'number'=>'VORHER-1', 'sequence'=>602, 'year'=>$thisYear,
+                        'issued_on'=>$day(-1), 'due_on'=>$day(13), 'overdue_on'=>$day(13)]);
+$invoicesTab = render_view('student', ['id'=>$family, 'tab'=>'invoices']);
+$heldRow = $invoiceRow($invoicesTab, $holding);
+ok(str_contains($heldRow, 'name="mode" value="send"'), 'with them switched back on, the button is there');
+ok(!str_contains($heldRow, e(t('abbestellt', 'switched off'))), 'and the sentence is gone');
+$unaddressedRow = $invoiceRow($invoicesTab, $beforeLogin);
+ok(!str_contains($unaddressedRow, 'name="mode" value="send"')
+   && str_contains($unaddressedRow, e(invoice_mail_refusal(invoice($beforeLogin)) ?? 'keine Ablehnung')),
+   'while the child’s invoice addressed to no login says why it cannot go, on the same page');
+
+sign_in_as($quietLogin);
+ok(!str_contains(render_view('student', ['id'=>$family, 'tab'=>'payments']), e(t('Steht auf Rechnung ', 'On invoice '))),
+   'the family is not told to cancel an invoice, which is not theirs to do');

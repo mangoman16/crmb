@@ -95,6 +95,21 @@ html[data-text=largest]{font-size:21px}
 .pay-details h3{margin-bottom:6px}
 .pay-details .facts{margin-top:14px}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9375rem;overflow-wrap:anywhere}
+/* A charge an invoice still holds says so where „Beitrag stornieren" would be.
+   The number is the way to that invoice's „Stornieren", so it is a target a
+   thumb can hit rather than a word in a sentence. */
+.held-by-invoice{margin-top:12px;font-size:.9375rem;overflow-wrap:anywhere}
+.held-by-invoice a{display:inline-flex;align-items:center;min-height:44px;font-weight:600}
+/* Why an invoice cannot be e-mailed, where „Per E-Mail schicken" would be: a
+   line of its own under the buttons. Contained, because its length otherwise
+   set the width of the buttons' column, and beside it the invoice's number
+   was squeezed from 161px to 73px at 761px. */
+.row-actions>.mail-refusal{flex:1 1 100%;contain:inline-size;margin:0;font-size:.875rem}
+/* The invoices list's pager: „Seite 2 von 3" stays one line, and at 320px the
+   three fit when the gaps are smaller; past that they wrap rather than run off. */
+.pagination{flex-wrap:wrap}
+.page-count{white-space:nowrap}
+@media(max-width:379px){.pagination{gap:8px}}
 .field .full,.grid .full{grid-column:1/-1}
 @media(max-width:760px){
   .skill-row{grid-template-columns:1fr;gap:10px;padding:16px 0}
@@ -976,7 +991,7 @@ a.account-menu-row:hover,button.account-menu-row:hover{background:var(--surface-
 .next-steps a{display:inline-flex;align-items:center;min-height:44px}
 /* Where a next step or a name in a notice lands. Clear of the top bar, which
    stays pinned over the page and would otherwise cover the heading it jumped to. */
-#email,#access,#add-contact,#add-course,#courses,#requests,#demo,#icon,#advanced,#auto-charges,#personal,#more-details,#birth-date,#address,#sign-in,#invite,#invitations,[id^=field-]{scroll-margin-top:96px}
+#email,#access,#add-contact,#add-course,#courses,#requests,#demo,#icon,#advanced,#auto-charges,#personal,#more-details,#birth-date,#address,#sign-in,#invite,#invitations,[id^=field-],[id^=invoice-]{scroll-margin-top:96px}
 /* An address is one long word to a browser. */
 .readonly{overflow-wrap:anywhere}
 .access-title{margin-bottom:10px}

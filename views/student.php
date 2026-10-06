@@ -405,11 +405,17 @@ $loginState=$login['state']??'none'; ?>
     <?php if($staff && !$past): ?>
     <details><summary><?=e(t('Tarif, Zahlungsweise und Rabatt','Tariff, how it is paid, and any discount'))?></summary>
         <?php start_form('enrolment_save',['class_id'=>$row['class_id'],'student_id'=>$id]);
-        $offered=class_tariffs((int)$row['class_id']);
         $chosenRates=$row['tariff_id']?tariff_rates((int)$row['tariff_id']):[];
         ?>
         <div class="grid two"><?php
-        select_field('tariff_id',t('Tarif','Tariff'),array_column($offered,'name','id'),$row['tariff_id']);
+        // The child's own tariff stays in the list after it is archived, marked
+        // as such: left out, the box showed „Auswählen" and saving dropped it.
+        // Said under the box as well, because at 320px a closed box cuts the
+        // name off before „(archiviert)".
+        $tariffArchived=$row['tariff_id']!==null && (int)scalar('SELECT archived FROM tariffs WHERE id=?',[(int)$row['tariff_id']])===1;
+        select_field('tariff_id',t('Tarif','Tariff'),enrolment_tariff_choices($row),$row['tariff_id'],false,false,
+            $tariffArchived?t('Archiviert – neue Kinder bekommen ihn nicht mehr. Dieses Kind bleibt darauf, bis du einen anderen wählst.',
+                              'Archived – no new child is put on it. This child stays on it until you choose another.'):'');
         // Every way the chosen tariff may be paid, with what each one costs, so
         // "alle 3 Monate" does not have to be looked up somewhere else.
         $intervalOptions=[0=>t('wie im Tarif üblich','as the tariff usually is')
@@ -513,13 +519,14 @@ $loginState=$login['state']??'none'; ?>
     <?php endforeach ?>
 </section>
 <?php endif ?>
-<?php elseif($tab==='invoices'): $invoices=invoices_for($id); $open=uninvoiced_charges($id); ?>
+<?php elseif($tab==='invoices'): $invoices=invoices_for($id); $open=uninvoiced_charges($id); $mailRefusals=[]; ?>
 <section class="card">
     <h2><?=e(t('Rechnungen','Invoices'))?></h2>
     <p class="muted"><?=e(t('Jede Rechnung wird beim Ausstellen festgeschrieben: das PDF zeigt immer den Stand von damals, auch wenn sich später etwas ändert. Es wird erst beim Herunterladen erzeugt und belegt keinen Speicherplatz.','Each invoice is frozen when it is issued: the PDF always shows how things stood then, even if something changes later. It is built when you download it and takes up no space.'))?></p>
     <?php if(!$invoices)echo '<p class="muted">'.e(t('Noch keine Rechnung.','No invoices yet.')).'</p>';
     foreach($invoices as $inv): ?>
-    <div class="record-row">
+    <?php /* The id is where a charge on „Beiträge" leads when this invoice holds it. */ ?>
+    <div class="record-row" id="invoice-<?=(int)$inv['id']?>">
         <div>
             <div class="badge-line"><strong><?=e($inv['number'])?></strong><?php badge(invoice_status_label($inv['status']),invoice_status_tone($inv['status'])); ?></div>
             <p><?=e(money((int)$inv['gross_cents']))?><?php if((int)$inv['tax_cents']>0)echo ' '.e(t('inkl. ','incl. ').money((int)$inv['tax_cents']).' '.t('USt','VAT'));?>
@@ -542,7 +549,15 @@ $loginState=$login['state']??'none'; ?>
                     <?php input('note',t('Notiz','Note'));submit_button(t('Als bezahlt eintragen','Mark as paid'));?></form>
                 </details>
                 <?php endif ?>
-                <?php start_form('invoice_state',['id'=>$inv['id'],'mode'=>'send'],'inline-form');submit_button(t('Per E-Mail schicken','Email it'),'subtle');?></form>
+                <?php /* Said here rather than refused after the tap. Every reason is
+                         about the login the invoice goes to, so it is asked once per
+                         login, not once per invoice of a history that keeps growing. */
+                $to=(int)$inv['account_id'];
+                if(!array_key_exists($to,$mailRefusals)) $mailRefusals[$to]=invoice_mail_refusal($inv);
+                if($mailRefusals[$to]!==null): ?>
+                <p class="muted mail-refusal"><?=e($mailRefusals[$to])?></p>
+                <?php else: start_form('invoice_state',['id'=>$inv['id'],'mode'=>'send'],'inline-form');submit_button(t('Per E-Mail schicken','Email it'),'subtle');?></form>
+                <?php endif ?>
                 <?php if((int)$inv['paid_cents']===0): ?>
                 <details class="account-delete"><summary><?=e(t('Stornieren','Cancel'))?></summary>
                     <p><?=e(t('Die Nummer bleibt vergeben – eine Lücke in der Nummernfolge wäre bei einer Prüfung nicht erklärbar.','The number stays used – a hole in the sequence would be impossible to explain at an audit.'))?></p>
@@ -605,8 +620,15 @@ $loginState=$login['state']??'none'; ?>
 </section>
 <?php endif ?>
 <div class="stats-grid compact"><div class="stat"><span><?=e(t('Offen','Outstanding'))?></span><strong><?=e(money(balance($id)))?></strong></div><div class="stat"><span><?=e(t('Überfällig','Overdue'))?></span><strong class="due"><?=e(money(balance($id,true)))?></strong></div></div>
-<?php $charges=student_charges($id);$paymentsOf=payments_by_charge(array_column($charges,'id'));if(!$charges)echo '<div class="card"><p class="muted">'.e(t('Noch keine Beiträge erfasst.','No charges recorded yet.')).'</p></div>';foreach($charges as $c):$remaining=max(0,(int)$c['amount_cents']-(int)$c['paid']); ?>
-<section class="card charge-card"><div class="section-heading"><div><h2><?=e($c['label'])?></h2><p class="muted"><?=e(t('Fällig am ','Due ').fmt_date($c['due_on']))?></p></div><?php badge($c['cancelled']?t('Storniert','Cancelled'):($remaining===0?t('Bezahlt','Paid'):money($remaining).' '.t('offen','outstanding')),$c['cancelled']?'':($remaining===0?'green':($c['due_on']<today()?'red':'')));?></div>
+<?php $charges=student_charges($id);$paymentsOf=payments_by_charge(array_column($charges,'id'));
+/* Which charges a live invoice holds, asked once for all of them: such a charge
+   is not offered „Beitrag stornieren", because the invoice would go on asking
+   for it. The refusal in charge_cancel stays; this says it before the tap. */
+$onInvoice=$staff?live_invoices_of_charges(array_column($charges,'id')):[];
+if(!$charges)echo '<div class="card"><p class="muted">'.e(t('Noch keine Beiträge erfasst.','No charges recorded yet.')).'</p></div>';foreach($charges as $c):$remaining=max(0,(int)$c['amount_cents']-(int)$c['paid']); ?>
+<?php /* Red is charge_is_overdue(), the rule the overdue total and the reminders
+         use: past its due date but inside its grace days is not late yet. */ ?>
+<section class="card charge-card"><div class="section-heading"><div><h2><?=e($c['label'])?></h2><p class="muted"><?=e(t('Fällig am ','Due ').fmt_date($c['due_on']))?></p></div><?php badge($c['cancelled']?t('Storniert','Cancelled'):($remaining===0?t('Bezahlt','Paid'):money($remaining).' '.t('offen','outstanding')),$c['cancelled']?'':($remaining===0?'green':(charge_is_overdue($c)?'red':'')));?></div>
 <dl class="facts"><div><dt><?=e(t('Beitrag','Charge'))?></dt><dd><?=e(money((int)$c['amount_cents']))?></dd></div><div><dt><?=e(t('Zeitraum','Coverage period'))?></dt><dd><?php /* The period the invoice names, not the stored one: a child who joined mid-month is billed from the day they joined (charge_period_text()). */ $period=charge_period_text($c); ?><?=e($period!==''?$period:t('Einmalig / ohne Zeitraum','One-time / no period'))?></dd></div></dl>
 <?php
 // Transfer details for whatever is still open on this charge.
@@ -636,7 +658,18 @@ if($remaining>0 && !$c['cancelled'] && setting('show_payment_qr')):
 <?php if($staff&&!$p['voided']):?><div class="row-actions"><?php if(!$p['confirmed_at']){start_form('payment_state',['id'=>$p['id'],'mode'=>'confirm'],'inline-form');submit_button(t('Bestätigen','Confirm'),'secondary');echo '</form>';}start_form('payment_state',['id'=>$p['id'],'mode'=>'void'],'inline-form');submit_button(t('Stornieren','Void'),'subtle danger-text');?></form></div><?php endif ?></div><?php endforeach ?>
 <?php if($staff&&!$c['cancelled']):?>
 <?php if((int)$c['amount_cents']>$allocated):?><details><summary><?=e(t('+ Zahlung erfassen','+ Record payment'))?></summary><?php start_form('payment_add',['charge_id'=>$c['id']]);?><div class="grid three"><?php input('amount',t('Betrag (€)','Amount (€)'),amount_input((int)$c['amount_cents']-$allocated),'text',true);input('paid_on',t('Zahlungsdatum','Payment date'),today(),'date',true);$methods=setting('payment_methods',['Überweisung','Bar']);select_field('method',t('Zahlungsart','Payment method'),array_combine($methods,$methods),$methods[0],true);?></div><?php input('note',t('Notiz / Buchungsreferenz','Note / payment reference'));check_field('confirmed',t('Zahlungseingang bestätigen','Confirm receipt of payment'));submit_button(t('Zahlung erfassen','Record payment'));?></form></details><?php endif ?>
-<?php if(!$allocated){start_form('charge_cancel',['id'=>$c['id']],'inline-form');submit_button(t('Beitrag stornieren','Cancel charge'),'subtle danger-text');echo '</form>';}endif ?></section>
+<?php if(!$allocated):
+    if($heldBy=$onInvoice[(int)$c['id']]??null):
+        // The number is the way to the invoice and its „Stornieren", so it is a
+        // link, and a 44pt one (.held-by-invoice a) inside the sentence.
+        [$before,$after]=explode('{number}',t('Steht auf Rechnung {number} – zuerst die Rechnung stornieren.','On invoice {number} – cancel the invoice first.'),2)+['',''];
+        echo '<p class="muted held-by-invoice">'.e($before)
+            .'<a href="'.e(url('student',['id'=>$id,'tab'=>'invoices','#'=>'invoice-'.$heldBy['id']])).'">'.e($heldBy['number']).'</a>'
+            .e($after).'</p>';
+    else:
+        start_form('charge_cancel',['id'=>$c['id']],'inline-form');submit_button(t('Beitrag stornieren','Cancel charge'),'subtle danger-text');echo '</form>';
+    endif;
+endif;endif ?></section>
 <?php endforeach ?>
 <?php $proofs=rows('SELECT * FROM payment_proofs WHERE student_id=? ORDER BY created_at DESC, id DESC',[$id]); ?>
 <section class="card">

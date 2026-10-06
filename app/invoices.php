@@ -499,9 +499,6 @@ function invoice_totals(): array {
     return ['counts' => $counts, 'outstanding_cents' => $outstanding];
 }
 
-/** The newest invoices of every state. invoice_list('all') under the name the overview page still calls. */
-function all_invoices(int $limit = 200): array { return invoice_list('all', 1, $limit); }
-
 /**
  * Record that an invoice has been paid.
  *
