@@ -11,6 +11,16 @@ Project manager's decisions on the designer's open issues (binding unless the ow
 - Old students without a login get placeholder logins in a migration (ADR 0023 decides the mechanics).
 - There is NO undo in the portal any more (app/history.php: tracked() records history only). Every way back is explicit.
 
+## Overruled or narrowed by ADR 0023 §12 and ADR 0022 §11 (these win over the text below)
+- Usernames: a–z, 0–9, `.` and `-` only (no `_`), 3–30, start with a letter, end with a letter or digit, no two separators in a row; column VARCHAR(30).
+- No „Ansehen" (view as) on a placeholder login or a login not yet signed in (A6 overruled).
+- The link page ALWAYS asks for a new password in the POST that signs in — also when a password exists (A8 overruled). The „(b) password already set → Jetzt anmelden → profile, change without the old one" flow in §4 is dropped.
+- No sign-in link for a login invited by e-mail (invoices would go to an unconfirmed address). The e-mail done page's line „…oder einen Anmeldelink zum Teilen erstellen" changes to: check the address, send again, or switch to a username.
+- Sign-in links for a username login that is already in use: administrators only. Trainers may make one only for a login not yet signed in (the owner may widen this).
+- Students send JPEG only (camera); staff JPEG, PNG, WebP. No GIF.
+- The access card and „Mein Konto" say who made the last sign-in link, and when.
+- Drafts of the wizard are dropped after two hours, at most ten per session.
+
 ## 0. Server rules assumed (ADR 0023 confirms or overrules)
 A1 A student login may have a username instead of an e-mail address: unique case-insensitive, 3–30 chars of a–z 0–9 . - _ , never '@'. Staff keep a required e-mail address.
 A2 Placeholder login: role student, no address, no username, no password, cannot sign in. Badge „Ohne Anmeldung".
