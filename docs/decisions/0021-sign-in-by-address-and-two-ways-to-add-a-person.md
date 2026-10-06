@@ -1,9 +1,44 @@
 ---
-status: accepted
+status: accepted, amended by 0023
 date: 2026-10-01
 ---
 
 # 0021. Sign in by address, and two ways to add a person
+
+> **Amended by ADR 0023 (2026-10-06).** The owner, on 2026-10-05: "now that usernames are allowed, no
+> email login should also be possible, but ideally discouraged". The decision to bring usernames back
+> is hers. 0023 designs it, and stays `proposed` until she approves its migrations 028–030. These
+> parts no longer hold:
+>
+> - in §1, "The address is the only name a login has" and "Usernames leave the database, the code,
+>   the mails and the pages". A student's login may now sign in with a username instead of an address
+>   (0023 §1). Staff logins keep an address;
+> - in §1, "A login has one bucket again". A login with a username has a bucket for it too
+>   (0023 §7);
+> - in §3, Option 2 („Schüler anlegen" with „Gleich einladen"), replaced by the wizard (0023 §5).
+>   Option 1 stays as it is, linked from the wizard's first step;
+> - in §4, deleting or withdrawing the login of a student who still exists. It now gives the student
+>   a fresh placeholder login in the same transaction (0023 §4). An invitation by address alone, with
+>   no student yet, is still deleted;
+> - in Must stay true:
+>   - "`students.account_id` is written only by `invite_student()`, `create_own_student()` and
+>     `demo_fill()`'s example rows". It is written by `create_student()`, `create_own_student()`,
+>     `demo_fill()`, the update's `give_every_student_a_login()` and
+>     `replace_login_with_placeholder()`. `invite_student()` turns a placeholder into an invited login
+>     and no longer writes it;
+>   - "every `INSERT INTO accounts` is in `invite_login()`, `create_admin_account()` or
+>     `demo_fill()`". `placeholder_login()` joins them;
+> - in "In plain words", "There are no usernames".
+>
+> Also through 0023 §6, and not only for this record: ADR 0020 rejected "letting staff copy a reset or
+> invitation link to send another way". That no longer holds for one kind of link, the one-time
+> sign-in link the owner asked for, which staff show as a QR code or share. Invitations and reset
+> links are still only mailed, and their bodies stay hidden in the outbox. 0020 itself is not
+> rewritten for this note, so this is the place it is recorded.
+>
+> 024 stays as shipped. 0023's migration 028 adds a new, nullable `username` column under the old
+> name. Everything else stands: the address checks, the exact match, the dummy hash, the one refusal,
+> „vergessen", and the line between open invitations and orphans.
 
 ## Context
 

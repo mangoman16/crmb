@@ -1,0 +1,73 @@
+---
+status: accepted
+date: 2026-10-06
+---
+
+# 0025. Trainers edit payment details, and every change to them is kept
+
+## Context
+
+The owner, on 2026-10-06: "trainer should be able to change iban".
+
+What the code does today:
+
+- **Who may edit.** `profile_save` (`app/actions_config.php`) is `require_staff()`, so trainers can
+  already change a payment profile. That covers the recipient, IBAN, BIC, currency, the QR-code
+  template, the note and whether it is archived.
+- **No history of a change.** `profile_save` writes with a plain `UPDATE` or `INSERT` and
+  `audit('profile.saved')`. `payment_profiles` is listed in `tracked_entities()`, but `profile_save`
+  never calls `tracked()`. So the change log never saw an IBAN change: who changed it is in the audit
+  log, but what it was before is nowhere.
+- **Where an IBAN is read.**
+  - An issued invoice copies the bank details into its `snapshot_json` (`app/invoices.php`), so it
+    keeps the IBAN it was issued with.
+  - A payment QR code is built from the profile as it is now (`qr_payload()`).
+- **Copying is stricter.** Copying a profile („Kopieren", `record_duplicate`) is administrators only.
+
+The portal has no undo. `tracked()` records history only (`app/history.php`).
+
+## Decision
+
+- **Trainers keep editing payment profiles.** `profile_save` stays `require_staff()`. Nothing about
+  who may do it changes.
+- **Every change goes through the change log.**
+  - `profile_save`'s `UPDATE` runs inside `tracked('payment_profiles', $id, $name, …)`.
+  - Its `INSERT` runs inside `tracked_insert('payment_profiles', …)`.
+
+  The change log then keeps each change with the values before and after, and who made it:
+  recipient, IBAN, BIC, currency, QR template, note and archived. The audit entry stays.
+- **No other change**, as the owner and the project manager asked. Copying a profile stays
+  administrators only. Issued invoices keep their frozen IBAN. Open charges' QR codes show the
+  current one, which is the point of changing it.
+
+## Rejected
+
+- **Administrators only.** The owner wants her trainer to be able to change it.
+- **Leaving it untracked.** An IBAN decides where families' money goes. A change to it that leaves
+  no "before" is the change one would most need to read back. Setting a value back by hand from the
+  change log is the way back here (0020 §7), and that needs the old value recorded.
+- **A notice to administrators, or a second person's approval, when an IBAN changes.** Not asked
+  for. The change log, which only administrators read, already shows every change. Either can come
+  later if she wants it.
+- **An IBAN history table of its own.** The change log is that history, with the same retention as
+  everything else („Änderungen aufbewahren").
+
+## Consequences
+
+- **No schema change, no new action, no new file.**
+- **`backend-dev`:** the two wrappers in `profile_save`.
+- **`qa-tester`:**
+  - a trainer's IBAN change leaves one version row, with the old and new IBAN and the trainer as
+    actor;
+  - a new profile leaves an insert row;
+  - an issued invoice still shows the old IBAN;
+  - `structure`: every `UPDATE` or `INSERT` of `payment_profiles` in `app/` is inside `tracked()` or
+    `tracked_insert()`, with `duplicate_record()` as it is.
+- **`docs-writer`:** `CHANGELOG`.
+- **Must stay true:** no write to `payment_profiles` outside the change log.
+
+## In plain words, for the owner
+
+- Your trainer can change the bank account, as before.
+- Every change is now kept in „Änderungen", with the old and the new IBAN and who changed it.
+- Invoices already sent keep the account they were sent with.
