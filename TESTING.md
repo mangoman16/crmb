@@ -100,6 +100,7 @@ release and emptied again for the next.
 - Everybody signs in with their own e-mail address; usernames are gone. A person is added either by inviting an address — they fill in their own details and choose a course — or by creating them; nobody sets another person's password (ADR 0021): A.1–A.13
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
 - The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a copied course has its group; a stored photo keeps only the picture (ADR 0022): C.1–C.20
+- Billing and invoices after the review of October 2026: an archived tariff stays on a child, a cancelled charge can be charged again, „Als bezahlt eintragen" confirms rather than doubles, a charge on an invoice cannot be cancelled, an invoice is not e-mailed to a family who said no, the invoices page counts every invoice, a membership ending mid-month is charged to that day, a child coming back starts afresh, the age filter finds the right children, background charges are German and nobody's, and the „Zahlungsziel" setting that did nothing is gone: [B.1–B.14](#billing-and-invoices-after-the-review-of-october-2026)
 
 ---
 
@@ -1796,6 +1797,79 @@ where it says so
   beenden", then sign in as the child: the number is 2, and both are there.
   Afterwards, as the trainer, open the same date again and save it as „Findet
   statt" without the tick: „Termin folgt wieder dem normalen Plan."
+
+### Billing and invoices after the review of October 2026
+
+On the example data or a copy, never on a real family: several of these
+cancel, mark paid or e-mail.
+
+- [ ] **B.1** **Kurse** → a course → **Tarife**: archive the tariff one child
+  is on. On that child, **Kurse** → „Tarif, Zahlungsweise und Rabatt": change
+  only the payment day and save. The child's line still names the archived
+  tariff, and **Beiträge → Beiträge anlegen** previews a charge for them rather
+  than „Kein Tarif gewählt". Once the page is updated (frontend-dev), the
+  tariff list shows that tariff with „(archiviert)" after it; choosing another
+  one works, and no other child can be put on the archived one.
+- [ ] **B.2** On the same form, set „Ausgetreten am" before „Dabei seit" and
+  save: „Das Enddatum liegt vor dem Startdatum.", and nothing changed.
+- [ ] **B.3** Run **Beiträge anlegen** for next month. On one child, „Beitrag
+  stornieren" on the new charge, change their agreed price, and run the same
+  month again: one charge is created, at the new price — not „Nichts zu tun".
+  Run it a third time: nothing more. **Änderungen** shows the cancellation as
+  „Storniert", with no `billing_key` line.
+- [ ] **B.4** On a charge with no invoice, „+ Zahlung erfassen" for the whole
+  amount *without* „Zahlungseingang bestätigen". Issue an invoice for it
+  (**Rechnungen → Rechnung erstellen**), then „Als bezahlt eintragen". The
+  charge shows **one** payment, now „Bestätigt" — not a second one beside it —
+  and the invoice says „Bezahlt". Repeat with a part of the amount recorded:
+  the rest is added as a second payment, and both are confirmed.
+- [ ] **B.5** On a charge that is on an invoice that is not cancelled, try
+  „Beitrag stornieren": refused, naming the invoice's number. Cancel the
+  invoice; now the charge can be cancelled. (Once the page is updated, the
+  button is not offered while the invoice stands, and the charge says which
+  invoice holds it.)
+- [ ] **B.6** As a family, **Mein Konto**: untick „Erinnerung, wenn ein Beitrag
+  offen ist" and save. As the trainer, on that child's invoice „Per E-Mail
+  schicken": refused in a sentence that says the family switched these e-mails
+  off. The invoice does **not** say „per E-Mail geschickt am", and
+  **Postausgang** holds nothing new. Tick the box again as the family: the
+  invoice goes, and only then says so.
+- [ ] **B.7** A family whose language is English (**Mein Konto → Sprache**):
+  issue them an invoice and download the PDF as the trainer, in German. It is
+  in English — „Invoice number", „Billed to" — and so is the copy the e-mail
+  carries. A German family's invoice stays German when you switch your own
+  language to English and download it.
+- [ ] **B.8** **(release)** On a copy with more than 200 invoices, one of the
+  oldest unpaid and past its date: once **Rechnungen** is updated
+  (frontend-dev), it is under „Überfällig", the count beside „Überfällig"
+  includes it, the list pages through all of them, and „Offen und überfällig"
+  adds only what is still owed on an invoice that is part paid.
+- [ ] **B.9** On a child in a course with no „Ausgetreten am", set
+  „Mitgliedschaft bis" on the child to the 15th of next month. **Beiträge
+  anlegen** for that month: the charge is for the days up to the 15th (half a
+  30-day month is half the price), and its period ends on the 15th.
+- [ ] **B.10** Give a child „Erster Monat gratis" on a course, record their
+  leaving („Austritt eintragen"), then add them to the course again under
+  **Kurse** → the course. The message says they are back and that an earlier
+  price or discount no longer applies; „Tarif, Zahlungsweise und Rabatt" shows
+  no discount and no own price, and their first month back is charged in full.
+  Adding a child who is already in the course is refused.
+- [ ] **B.11** **Verwaltung → Altersgruppen**: make a band 11 to 12. **Schüler**,
+  filter by it: a child whose eleventh birthday is today is in the list, so is
+  one who turns thirteen tomorrow; one who turns eleven tomorrow and one whose
+  thirteenth birthday is today are not. (Children with a pinned age group are
+  listed by the pin, as before.)
+- [ ] **B.12** With „Monatsbeiträge automatisch anlegen" on **Beiträge**, and
+  the month not yet billed: sign in as a family whose language is English and
+  open two pages a minute apart. As the trainer, the new charges read „Beitrag
+  Oktober" (or the German month), not „Beitrag October", and the audit log has
+  „billing.generated" with nobody as the actor.
+- [ ] **B.13** **Beiträge** → „Alle überfälligen per E-Mail erinnern" for a
+  child with one overdue charge and one past its date but fully paid: the
+  message counts one reminder and says nothing is „übersprungen".
+- [ ] **B.14** **Verwaltung → Geld & Zahlungen**, the defaults under the
+  payment recipients: there is no „Zahlungsziel für Monatsbeiträge" any more. When a charge is due comes from the tariff's
+  „Zahltag" and „Tage bis überfällig", which B.9's charge shows.
 
 ---
 

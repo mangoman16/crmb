@@ -61,6 +61,21 @@ function student_age(?string $birthDate, ?string $on=null): ?int {
 }
 
 /**
+ * The last day somebody can have been born and be $age years old on $on: the
+ * same day $age years earlier, or the 28th when that is a 29 February the
+ * year does not have. The bound a query uses for „at least this old“, written
+ * so it agrees with student_age() on every day - modify('-11 years') turns
+ * 29 February into 1 March and is a day out once in four years.
+ */
+function latest_birth_date_for_age(int $age, ?string $on = null): string {
+    $day = new DateTimeImmutable($on ?? today());
+    $year = (int)$day->format('Y') - $age;
+    $month = (int)$day->format('n');
+    $last = (int)(new DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month)))->format('t');
+    return $day->setDate($year, $month, min((int)$day->format('j'), $last))->format('Y-m-d');
+}
+
+/**
  * The band an age falls into, or null when none covers it.
  *
  * First match in the operator's own order wins, so overlapping bands are decided

@@ -418,3 +418,140 @@ ok(str_contains(enrolment_summary($e), 'Geschwisterrabatt'), 'the discount by th
 ok(str_contains(enrolment_summary($e), 'dauerhaft'), 'and for how long');
 is_same(2960, $line('2026-09', $monthly2)['amount'], 'and it comes off what they are actually charged');
 give_discount($course, $monthly2, 0, 'percent', 0);
+
+// ---------------------------------------------------------------------------
+// Found by the whole-app review of October 2026. Each case failed before its fix.
+// ---------------------------------------------------------------------------
+
+case_('A cancelled charge makes way for the corrected one');
+/* The cancelled charge kept its billing key, and the unique index covers
+   cancelled rows too, so the month could never be charged again: the run said
+   „Nichts zu tun“ and the corrected charge was never written. */
+$fixCourse = make_class(['name'=>'Korrektur']);
+$fixTariff = make_tariff(['class_id'=>$fixCourse, 'price_cents'=>4500, 'interval_months'=>1]);
+$fixed = make_student(['first_name'=>'Korrigiert', 'joined_on'=>'2025-01-01']);
+make_enrolment($fixCourse, $fixed, ['tariff_id'=>$fixTariff, 'joined_on'=>'2025-01-01']);
+billing_run('2027-04');
+$wrong = one('SELECT * FROM charges WHERE student_id=? AND period_from=?', [$fixed, '2027-04-01']);
+act('charge_cancel', ['id'=>(string)$wrong['id']]);
+is_same(null, scalar('SELECT billing_key FROM charges WHERE id=?', [(int)$wrong['id']]), 'cancelling it gives up the period’s key');
+run('UPDATE class_students SET price_cents=4000 WHERE class_id=? AND student_id=?', [$fixCourse, $fixed]);
+is_same(1, billing_run('2027-04')['created'], 'the next run writes the corrected charge');
+$live = rows('SELECT * FROM charges WHERE student_id=? AND period_from=? AND cancelled=0', [$fixed, '2027-04-01']);
+is_same([4000], array_map(fn($c) => (int)$c['amount_cents'], $live), 'once, at the corrected price');
+is_same(0, billing_run('2027-04')['created'], 'and a third run writes nothing more');
+// A charge cancelled by the version before this one still holds its key.
+billing_run('2027-05');
+$old = (int)scalar('SELECT id FROM charges WHERE student_id=? AND period_from=?', [$fixed, '2027-05-01']);
+run('UPDATE charges SET cancelled=1 WHERE id=?', [$old]);
+is_same(1, billing_run('2027-05')['created'], 'a charge cancelled before this update makes way too');
+$cancelled = history_for('charges', (int)$wrong['id'])[0] ?? [];
+ok($cancelled !== [] && !array_key_exists('billing_key', version_changes($cancelled)),
+   'and the change log says „Storniert“, not the name of a database column');
+
+case_('A membership that ends part-way through a period is charged to the day it ends');
+/* The plan read „Mitgliedschaft bis“ on the child, the amount did not: a child
+   whose membership ended on the 15th was charged the whole month. */
+$endCourse = make_class(['name'=>'Endet']);
+$endTariff = make_tariff(['class_id'=>$endCourse, 'price_cents'=>3000, 'interval_months'=>1, 'first_period'=>'prorate']);
+$ending = make_student(['first_name'=>'Bis', 'joined_on'=>'2025-01-01', 'ended_on'=>'2026-06-15']);
+make_enrolment($endCourse, $ending, ['tariff_id'=>$endTariff, 'joined_on'=>'2025-01-01']);
+$june = $line('2026-06', $ending);
+is_same(1500, $june['amount'], 'fifteen of thirty days of 30,00 €');
+is_same('2026-06-15', $june['covered_to'], 'and the charge covers up to that day');
+is_same('Nicht mehr dabei', $line('2026-07', $ending)['skip'], 'the month after is not charged at all');
+run('UPDATE class_students SET left_on=? WHERE class_id=? AND student_id=?', ['2026-06-20', $endCourse, $ending]);
+is_same(1500, $line('2026-06', $ending)['amount'], 'with both dates set, the earlier one ends the charge');
+run('UPDATE students SET ended_on=? WHERE id=?', ['2026-06-25', $ending]);
+is_same(2000, $line('2026-06', $ending)['amount'], 'whichever of the two it is');
+
+case_('A span that ends before it starts is no days at all');
+is_same(0, billing_days('2026-09-30', '2026-09-01'), 'thirty days backwards are not thirty days');
+is_same(30, billing_days('2026-09-01', '2026-09-30'), 'the right way round is the whole month');
+$backwards = make_student(['first_name'=>'Rückwärts', 'joined_on'=>'2025-01-01']);
+make_enrolment($endCourse, $backwards, ['tariff_id'=>$endTariff, 'joined_on'=>'2026-09-20', 'left_on'=>'2026-09-10']);
+$inverted = $line('2026-09', $backwards);
+is_same(null, $inverted['amount'], 'an enrolment that left before it joined is not charged');
+ok(is_string($inverted['skip']) && $inverted['skip'] !== '', 'and the plan says why, rather than leaving it out');
+
+case_('A charge is written in the portal’s language, whoever’s page wrote it');
+/* billing_month_name() and the discount note followed the session, so a run
+   started from an English page - or by the background work after an English
+   family's page view - stored „Beitrag March“ for every family. */
+$langCourse = make_class(['name'=>'Sprache']);
+$langTariff = make_tariff(['class_id'=>$langCourse, 'price_cents'=>4000, 'interval_months'=>1]);
+$spoken = make_student(['first_name'=>'Sprache', 'joined_on'=>'2027-03-01']);
+make_enrolment($langCourse, $spoken, ['tariff_id'=>$langTariff, 'joined_on'=>'2027-03-01']);
+give_discount($langCourse, $spoken, 1, 'percent', 50);
+$_SESSION['locale'] = 'en';
+try { billing_run('2027-03'); } finally { $_SESSION['locale'] = 'de'; }
+$march = one('SELECT label, discount_note FROM charges WHERE student_id=? AND period_from=?', [$spoken, '2027-03-01']);
+is_same('Beitrag März', $march['label'] ?? null, 'the label is the German one the template is written in');
+ok(str_starts_with((string)($march['discount_note'] ?? ''), 'Rabatt: 50 %'), 'and so is the note on the discount');
+
+case_('A failed background run leaves no month half written');
+/* tick_billing() ran outside any transaction: charges written before a later
+   step failed stayed, and the month was not marked as done. */
+set_setting('auto_billing', true);
+set_setting('billing_last_period', '');
+set_setting('prune_last_run', now());
+$this_month = billing_period_start(billing_current_period());
+run('DELETE FROM charges WHERE period_from>=?', [$this_month]);
+$before = (int)scalar('SELECT COUNT(*) FROM charges');
+run('ALTER TABLE audit_log RENAME TO audit_log_away');
+try { tick_work(); } finally { run('ALTER TABLE audit_log_away RENAME TO audit_log'); }
+is_same($before, (int)scalar('SELECT COUNT(*) FROM charges'), 'not one of the month’s charges is left behind');
+is_same('', (string)setting('billing_last_period'), 'and the month is not marked as billed, so the next run tries again');
+
+case_('Charges made in the background are the portal’s, in its language, by nobody');
+/* After somebody's page view the work runs in their session: the audit named
+   a family as the person who billed the month. */
+$family = make_account(['role'=>'student', 'locale'=>'en']);
+sign_in_as($family);
+$_SESSION['locale'] = 'en';
+run('DELETE FROM audit_log');
+try { tick_work(); } finally { $_SESSION['locale'] = 'de'; sign_in_as($admin); set_setting('auto_billing', false); }
+ok((int)scalar('SELECT COUNT(*) FROM charges WHERE period_from>=?', [$this_month]) > 0, 'the month was billed');
+is_same(billing_current_period(), (string)setting('billing_last_period'), 'and marked as done');
+$generated = one("SELECT * FROM audit_log WHERE action='billing.generated'");
+ok($generated !== null, 'the audit says the month was billed');
+is_same(null, $generated ? $generated['actor_id'] : 'no audit line', 'and names nobody as having done it');
+$written = (string)scalar('SELECT label FROM charges WHERE student_id=? AND period_from=?', [$fixed, $this_month]);
+$german = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+is_same('Beitrag '.$german[(int)date('n') - 1], $written,
+        'with the month named in German, whoever’s page view it followed');
+
+case_('A reminder run does not count a paid charge as one it skipped');
+/* Every overdue charge was read, paid or not, and the paid ones were counted as
+   „übersprungen (kein Konto oder abgemeldet)“ - which sends her looking for a
+   family with no login. */
+mail_ready(true);
+$reminded = make_account(['role'=>'student']);
+$remindKid = make_student(['first_name'=>'Erinnert', 'account_id'=>$reminded]);
+$overdueCharge = ['student_id'=>$remindKid, 'label'=>'Offen', 'amount_cents'=>3000, 'due_on'=>'2026-01-01',
+                  'overdue_on'=>'2026-01-08', 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()];
+fixture('charges', $overdueCharge);
+$settled = fixture('charges', ['label'=>'Bezahlt'] + $overdueCharge);
+fixture('payments', ['charge_id'=>$settled, 'amount_cents'=>3000, 'paid_on'=>'2026-01-05', 'method'=>'Bar',
+                     'note'=>'', 'confirmed_by'=>$admin, 'confirmed_at'=>now(), 'voided'=>0]);
+act('payment_remind', ['student_id'=>(string)$remindKid]);
+$said = (string)($_SESSION['flash']['message'] ?? '');
+ok(str_starts_with($said, '1 '), 'one reminder for the one charge still open: '.$said);
+ok(!str_contains($said, 'übersprungen'), 'and the paid one is not „übersprungen“');
+mail_ready(false);
+
+case_('A charge that is not there is said to be not there, in German');
+throws(fn() => act('charge_cancel', ['id'=>'999999']), 'cancelling one', 'gibt es nicht');
+throws(fn() => act('payment_add', ['charge_id'=>'999999', 'amount'=>'1,00', 'paid_on'=>today(), 'method'=>'Bar']), 'paying one', 'gibt es nicht');
+throws(fn() => act('payment_state', ['id'=>'999999', 'mode'=>'confirm']), 'and confirming a payment that is not there', 'gibt es nicht');
+
+case_('„Überfällig“ on a charge is one rule, for a row and for a query');
+$rows = student_charges($remindKid);
+$late = array_values(array_filter($rows, fn($c) => $c['label'] === 'Offen'))[0];
+$paidUp = array_values(array_filter($rows, fn($c) => $c['label'] === 'Bezahlt'))[0];
+ok(charge_is_overdue($late), 'past its day and unpaid is overdue');
+ok(!charge_is_overdue($paidUp), 'past its day and paid is not, which is what the badge on the child’s page has to say');
+ok(!charge_is_overdue(['cancelled'=>1] + $late), 'and neither is a cancelled one');
+ok(!charge_is_overdue(['overdue_on'=>date('Y-m-d', strtotime(today().' +3 days'))] + $late), 'nor one still inside its grace, though its due day has passed');
+$fromSql = array_map('intval', array_column(rows('SELECT c.id FROM charges c WHERE c.student_id=? AND '.charge_is_overdue_sql(), [$remindKid, today()]), 'id'));
+is_same(array_map(fn($c) => (int)$c['id'], array_values(array_filter($rows, 'charge_is_overdue'))), $fromSql, 'and the query finds the same charges');

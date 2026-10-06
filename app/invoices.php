@@ -114,6 +114,9 @@ function invoice_recipient(array $student): array {
         'email'   => student_email($student),
         'student' => $name,
         'account_id' => $account ? (int)$account['id'] : null,
+        // The language the family reads the portal in, frozen with the rest:
+        // the document is printed in it, whoever downloads it (invoice_locale()).
+        'locale'  => ($account['locale'] ?? '') === 'en' ? 'en' : PORTAL_LOCALE,
     ];
 }
 
@@ -164,6 +167,53 @@ function charge_supplied(array $charge): array {
 function charge_period_text(array $charge, string $between = ' – '): string {
     [$from, $to] = charge_supplied($charge);
     return $from && $to ? fmt_date($from) . $between . fmt_date($to) : '';
+}
+
+/**
+ * The live invoice each of these charges is on, as charge id => ['id', 'number'];
+ * a charge on none is not in the answer. One query for any number of charges,
+ * because a child's payments tab asks it of every charge it lists.
+ */
+function live_invoices_of_charges(array $chargeIds): array {
+    $ids = array_values(array_unique(array_map('intval', $chargeIds)));
+    if (!$ids) return [];
+    $out = [];
+    foreach (rows('SELECT ic.charge_id, i.id, i.number FROM invoice_charges ic JOIN invoices i ON i.id=ic.invoice_id'
+        .' WHERE i.cancelled_at IS NULL AND ic.charge_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')', $ids) as $r)
+        $out[(int)$r['charge_id']] = ['id' => (int)$r['id'], 'number' => (string)$r['number']];
+    return $out;
+}
+
+/**
+ * Cancel one charge, or say in a sentence why it cannot be. Returns the charge
+ * as it was.
+ *
+ * Refused while payments are recorded against it, and while a live invoice
+ * asks for it: cancelled from under its invoice, the charge was still on a
+ * document a family pays from, and „Als bezahlt eintragen“ then paid it. The
+ * invoice is cancelled first - its number stays used - and the charge after.
+ *
+ * The charge gives up its billing key as it goes. The key says „this period is
+ * charged“, and kept by a cancelled charge it refused the corrected one for
+ * ever. Nothing un-cancels a charge (the change log informs, it does not undo),
+ * so a cancelled charge can never need its key back.
+ */
+function cancel_charge(int $chargeId): array {
+    return transactional(function () use ($chargeId): array {
+        $charge = lock_row('charges', $chargeId);
+        if (!$charge) throw new NotFound(t('Diesen Beitrag gibt es nicht.', 'No such charge.'));
+        if ((int)$charge['cancelled']) throw new UserError(t('Dieser Beitrag ist schon storniert.', 'That charge has already been cancelled.'));
+        if ((int)scalar('SELECT ' . charge_recorded_sql() . ' FROM charges c WHERE c.id=?', [$chargeId]) > 0)
+            throw new UserError(t('Zugehörige Zahlungen zuerst stornieren.', 'Void associated payments first.'));
+        if ($invoice = live_invoices_of_charges([$chargeId])[$chargeId] ?? null)
+            throw new UserError(strtr(t('Dieser Beitrag steht auf der Rechnung {number}. Storniere zuerst die Rechnung, dann den Beitrag.',
+                                        'This charge is on invoice {number}. Cancel the invoice first, then the charge.'),
+                                      ['{number}' => $invoice['number']]));
+        tracked('charges', $chargeId, (string)$charge['label'],
+            fn() => run('UPDATE charges SET cancelled=1, billing_key=NULL WHERE id=?', [$chargeId]));
+        audit('charge.cancelled', 'charge', $chargeId);
+        return $charge;
+    });
 }
 
 /** Charges of one student that no live invoice covers yet. */
@@ -400,13 +450,57 @@ function invoices_for(int $studentId): array {
     return $out;
 }
 
-/** Every invoice, for the trainer's overview. */
-function all_invoices(int $limit = 200): array {
-    $out = rows('SELECT i.*, s.first_name, s.last_name FROM invoices i JOIN students s ON s.id=i.student_id'
-        .' ORDER BY i.issued_on DESC, i.id DESC LIMIT ' . max(1, min(500, $limit)));
-    foreach ($out as &$invoice) $invoice['status'] = invoice_status($invoice);
-    return $out;
+/**
+ * Every invoice with what has been paid on it and its state, as a table to
+ * select from, aliased 'listed'. Takes today() as its one parameter.
+ *
+ * invoice_status() in SQL, beside it so the two are read together: the
+ * overview has to count and add up every invoice, and loading them into PHP to
+ * ask invoice_status() of each was a query per invoice - capped at the newest
+ * 200, so an unpaid invoice from two years ago fell out of „Überfällig“.
+ */
+function invoices_listed_sql(): string {
+    return '(SELECT invoice.*, CASE WHEN invoice.cancelled_at IS NOT NULL THEN \'cancelled\''
+        .' WHEN invoice.paid_cents>=invoice.gross_cents THEN \'paid\''
+        .' WHEN invoice.overdue_on<? THEN \'overdue\' ELSE \'open\' END AS status'
+        .' FROM (SELECT i.*, s.first_name, s.last_name, COALESCE((SELECT SUM(p.amount_cents) FROM invoice_charges ic'
+        .'   JOIN payments p ON p.charge_id=ic.charge_id AND ' . payment_counts_sql() . ' WHERE ic.invoice_id=i.id),0) AS paid_cents'
+        .'   FROM invoices i JOIN students s ON s.id=i.student_id) invoice) listed';
 }
+
+/** The states the overview filters by; 'all' is every one of them. */
+function invoice_states(): array { return ['open', 'overdue', 'paid', 'cancelled']; }
+
+/**
+ * One page of the trainer's overview: the invoices in one state, or 'all',
+ * newest first, each with 'paid_cents' and 'status'. $perPage at most 200.
+ */
+function invoice_list(string $state, int $page = 1, int $perPage = 50): array {
+    $state = $state === 'all' ? 'all' : choose($state, invoice_states());
+    $perPage = max(1, min(200, $perPage));
+    return rows('SELECT * FROM ' . invoices_listed_sql() . ($state === 'all' ? '' : ' WHERE listed.status=?')
+        . ' ORDER BY listed.issued_on DESC, listed.id DESC LIMIT ' . $perPage . ' OFFSET ' . (max(1, $page) - 1) * $perPage,
+        $state === 'all' ? [today()] : [today(), $state]);
+}
+
+/**
+ * How many invoices are in each state, and what the open and overdue ones still
+ * owe: their gross less what has been paid on them, so a part-paid invoice adds
+ * what is left rather than the whole of it. Over every invoice, however many.
+ */
+function invoice_totals(): array {
+    $counts = array_fill_keys(invoice_states(), 0);
+    $outstanding = 0;
+    foreach (rows('SELECT listed.status, COUNT(*) AS invoices, SUM(listed.gross_cents-listed.paid_cents) AS owed'
+        . ' FROM ' . invoices_listed_sql() . ' GROUP BY listed.status', [today()]) as $r) {
+        $counts[(string)$r['status']] = (int)$r['invoices'];
+        if (in_array($r['status'], ['open', 'overdue'], true)) $outstanding += (int)$r['owed'];
+    }
+    return ['counts' => $counts, 'outstanding_cents' => $outstanding];
+}
+
+/** The newest invoices of every state. invoice_list('all') under the name the overview page still calls. */
+function all_invoices(int $limit = 200): array { return invoice_list('all', 1, $limit); }
 
 /**
  * Record that an invoice has been paid.
@@ -421,15 +515,23 @@ function invoice_mark_paid(int $invoiceId, string $paidOn, string $method, strin
         if (!$invoice) throw new NotFound(t('Rechnung nicht gefunden.', 'Invoice not found.'));
         if ($invoice['cancelled_at'] !== null) throw new UserError(t('Diese Rechnung ist storniert.', 'That invoice has been cancelled.'));
         $written = 0;
-        foreach (rows('SELECT c.*, ' . charge_paid_sql() . ' AS paid FROM charges c'
-            .' JOIN invoice_charges ic ON ic.charge_id=c.id WHERE ic.invoice_id=?', [$invoiceId]) as $c) {
-            $outstanding = (int)$c['amount_cents'] - (int)$c['paid'];
-            if ($outstanding <= 0) continue;
-            run('INSERT INTO payments (charge_id,amount_cents,paid_on,method,note,confirmed_by,confirmed_at,voided)'
-                .' VALUES (?,?,?,?,?,?,?,0)',
-                [(int)$c['id'], $outstanding, $paidOn, $method, mb_substr($note, 0, 255),
-                 current_user()['id'] ?? null, now()]);
-            $written++;
+        // Held, as „Zahlung erfassen“ holds the charge it writes to, and only the
+        // charges still owed: one cancelled while it sat on this invoice was paid
+        // here too.
+        foreach (rows('SELECT c.*, ' . charge_recorded_sql() . ' AS recorded FROM charges c'
+            .' JOIN invoice_charges ic ON ic.charge_id=c.id WHERE ic.invoice_id=? AND c.cancelled=0 ORDER BY c.id FOR UPDATE', [$invoiceId]) as $c) {
+            // A transfer already recorded is the payment: it is confirmed, not
+            // paid again beside it. Only what nobody has recorded yet is written.
+            $pending = rows('SELECT * FROM payments p WHERE p.charge_id=? AND ' . payment_recorded_sql()
+                .' AND p.confirmed_at IS NULL ORDER BY p.id', [(int)$c['id']]);
+            foreach ($pending as $payment) confirm_payment($payment);
+            $missing = (int)$c['amount_cents'] - (int)$c['recorded'];
+            if ($missing > 0)
+                run('INSERT INTO payments (charge_id,amount_cents,paid_on,method,note,confirmed_by,confirmed_at,voided)'
+                    .' VALUES (?,?,?,?,?,?,?,0)',
+                    [(int)$c['id'], $missing, $paidOn, $method, mb_substr($note, 0, 255),
+                     current_user()['id'] ?? null, now()]);
+            if ($pending || $missing > 0) $written++;
         }
         audit('invoice.paid', 'invoice', $invoiceId);
         return $written;
@@ -457,13 +559,32 @@ function invoice_cancel(int $invoiceId, string $reason): void {
 }
 
 /**
- * The document, built from the frozen copy.
+ * The language an invoice is written in: its family's, as it was frozen when
+ * the invoice was issued, or for one issued before that was kept, the family's
+ * now. Never the language of whoever opens it - the mail queue builds the
+ * attachment after whoever's page view came last.
+ */
+function invoice_locale(array $invoice): string {
+    $snapshot = json_decode((string)($invoice['snapshot_json'] ?? ''), true);
+    $kept = is_array($snapshot) ? ($snapshot['recipient']['locale'] ?? null) : null;
+    if (in_array($kept, ['de', 'en'], true)) return $kept;
+    $account = $invoice['account_id'] ? scalar('SELECT locale FROM accounts WHERE id=?', [(int)$invoice['account_id']]) : null;
+    return $account === 'en' ? 'en' : PORTAL_LOCALE;
+}
+
+/**
+ * The document, built from the frozen copy, in the family's language.
  *
  * Built on download rather than stored, because a PDF is a few kilobytes of
  * layout around numbers that are already in the database, and hosting space is
  * one of the things the operator pays for.
  */
 function invoice_pdf(array $invoice): string {
+    return in_locale(invoice_locale($invoice), fn(): string => invoice_document($invoice));
+}
+
+/** invoice_pdf(), in the language it has chosen. */
+function invoice_document(array $invoice): string {
     $snapshot = json_decode((string)$invoice['snapshot_json'], true);
     if (!is_array($snapshot)) throw new RuntimeException('Invoice ' . $invoice['id'] . ' has no usable snapshot.');
     $issuer = $snapshot['issuer']; $recipient = $snapshot['recipient'];

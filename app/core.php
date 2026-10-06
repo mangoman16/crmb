@@ -44,7 +44,43 @@ function sql_name(string $name, string $kind='identifier'): string {
 }
 function now(): string { return gmdate('Y-m-d H:i:s'); }
 function today(): string { return date('Y-m-d'); }
-function locale(): string { return $_SESSION['locale'] ?? 'de'; }
+/** The portal's own language: every page before somebody chooses, and everything the portal writes for everybody. */
+const PORTAL_LOCALE = 'de';
+
+/**
+ * Who is speaking, when it is not the person whose session this is.
+ *
+ * Most text follows the signed-in person. Some does not: a charge is written for
+ * every family in the portal's language, an invoice is printed in its family's
+ * whoever downloads it, and the background work after a page view is the
+ * portal's own and nobody's - not the visitor's whose request it happened to
+ * follow. Held here rather than in $_SESSION, because the session is written
+ * back when the request ends and must come out of this unchanged.
+ */
+function &speaking_as(): array { static $as = ['locale' => null, 'nobody' => false]; return $as; }
+
+function locale(): string { return speaking_as()['locale'] ?? $_SESSION['locale'] ?? PORTAL_LOCALE; }
+
+/** Run $fn with every t(), money() and date in one language, and put the session's back afterwards. */
+function in_locale(string $locale, callable $fn): mixed {
+    $as = &speaking_as();
+    $was = $as['locale'];
+    $as['locale'] = $locale === 'en' ? 'en' : PORTAL_LOCALE;
+    try { return $fn(); } finally { $as['locale'] = $was; }
+}
+
+/**
+ * Run $fn as the portal's own work: in its language, and with nobody as the one
+ * who did it. The background work after a page view goes through this
+ * (tick_work()), so the audit and the change log do not name whoever's page view
+ * it followed - a family, as often as not.
+ */
+function as_the_portal(callable $fn): mixed {
+    $as = &speaking_as();
+    $was = $as;
+    $as = ['locale' => PORTAL_LOCALE, 'nobody' => true];
+    try { return $fn(); } finally { $as = $was; }
+}
 function t(string $de, string $en): string { return locale()==='en' ? $en : $de; }
 function e(mixed $value): string { return htmlspecialchars((string)($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 /** A page's address; a '#' entry in $params is the place on the page, so a redirect can land on it without JavaScript. */
@@ -353,13 +389,15 @@ function set_setting(string $key, mixed $value): void {
 }
 /**
  * Who is acting: the person impersonating, while somebody is being looked at,
- * otherwise the signed-in login, otherwise nobody. The one answer audit() and
+ * otherwise the signed-in login, otherwise nobody - and nobody, too, while the
+ * portal does its own work (as_the_portal()). The one answer audit() and
  * history_record() give. Asked through current_user() first, so a view whose
  * session has ended is never named: with nobody signed in, nobody acted
  * (security review F1). current_user() is in app/auth.php, loaded later, and
  * called only while a request runs.
  */
 function acting_account_id(): ?int {
+    if(speaking_as()['nobody']) return null;
     $user=current_user();
     if(!$user) return null;
     return (int)($_SESSION['impersonator_id'] ?? $user['id']);

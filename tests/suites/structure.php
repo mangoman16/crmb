@@ -1770,3 +1770,17 @@ $hashJoiners = array_values(array_unique($hashJoiners));
 sort($hashJoiners);
 is_same(['app/colour.php colour_normalise', 'app/core.php url'], $hashJoiners,
         'only url() joins a „#" onto an address, and colour_normalise() onto a colour ('.count($hashFiles).' files read)');
+
+case_('Every refusal she can read is in German and English');
+/* Found by the whole-app review of October 2026: „Not found“, „Invalid SMTP
+   port“ and „Invalid fields“ reached her in English only, and the mail queue
+   told somebody with no shell to run „composer install“. A message written
+   straight into the exception, rather than through t(), is that mistake. */
+$untranslated = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $path)
+    foreach (file($path) as $n => $text)
+        if (preg_match('/new\s+(UserError|NotFound)\(\s*[\'"]/', $text))
+            $untranslated[] = substr($path, strlen(APP_ROOT) + 1).':'.($n + 1);
+is_same([], $untranslated, 'no UserError or NotFound is thrown with a bare string');
+ok(!str_contains((string)file_get_contents(APP_ROOT.'/app/mail.php'), 'composer install'),
+   'and nothing tells her to run a command she has nowhere to type');

@@ -115,7 +115,7 @@ function dispatch_messages(string $action): array {
         return ['messages',[]];
     case 'news_save':
         require_staff();$id=(int)post('id');$title=required_text('title',180);$body=required_text('body',20000);$published=post('published')?1:0;
-        if($id){if(!one('SELECT id FROM news WHERE id=?',[$id]))throw new UserError('Not found');run('UPDATE news SET title=?,body=?,published=?,updated_at=? WHERE id=?',[$title,$body,$published,now(),$id]);}
+        if($id){if(!one('SELECT id FROM news WHERE id=?',[$id]))throw new NotFound(t('Diese Neuigkeit gibt es nicht mehr.','That news item no longer exists.'));run('UPDATE news SET title=?,body=?,published=?,updated_at=? WHERE id=?',[$title,$body,$published,now(),$id]);}
         else {run('INSERT INTO news (title,body,published,created_at,updated_at) VALUES (?,?,?,?,?)',[$title,$body,$published,now(),now()]);$id=(int)db()->lastInsertId();}
         if(post('send_email')) {
             if(!$published)throw new UserError(t('Bitte die Nachricht zuerst veröffentlichen.','Publish the news before emailing it.'));

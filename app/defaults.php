@@ -99,10 +99,10 @@ function setting_schema(): array {
             'kind' => 'bool', 'default' => true, 'group' => 'payments',
             'label' => ['QR-Code für offene Beiträge anzeigen', 'Show a QR code for outstanding charges'],
         ],
-        'billing_due_days' => [
-            'kind' => 'int', 'default' => 14, 'min' => 0, 'max' => 90, 'group' => 'payments',
-            'label' => ['Zahlungsziel für Monatsbeiträge (Tage ab dem 1.)', 'Payment term for monthly charges (days from the 1st)'],
-        ],
+        // When a charge is due is not a setting: it is the tariff's payment day
+        // and its days before overdue, which a child or one enrolment may
+        // override (billing_due_day()). A „Zahlungsziel für Monatsbeiträge“
+        // stood here that nothing read; a stored row of it is ignored.
         'billing_label' => [
             'kind' => 'text', 'default' => 'Beitrag {month}', 'max' => 120, 'group' => 'payments',
             'label' => ['Bezeichnung der Monatsbeiträge', 'Label for monthly charges'],

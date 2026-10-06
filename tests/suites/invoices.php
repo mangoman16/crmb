@@ -366,3 +366,135 @@ is_same(charge_period_text($fresh), fmt_date($line[0]).' – '.fmt_date($line[1]
 ok(str_contains(charge_reference($fresh, ['first_name'=>'Neu', 'last_name'=>'Dabei']), fmt_date(today())) || !str_contains((string)setting('payment_reference_template'), '{period}'),
    'and so does the bank reference, where it names one');
 
+
+// ---------------------------------------------------------------------------
+// Found by the whole-app review of October 2026. Each case failed before its fix.
+// ---------------------------------------------------------------------------
+sign_in_as($trainer);
+set_setting('default_payment_profile', $seeded);
+payment_cache_clear();
+$owedCharge = fn(int $studentId, int $cents, string $label = 'Beitrag') => fixture('charges', ['student_id'=>$studentId,
+    'label'=>$label, 'amount_cents'=>$cents, 'gross_cents'=>$cents, 'discount_cents'=>0, 'discount_note'=>'',
+    'period_from'=>null, 'period_to'=>null, 'due_on'=>today(), 'overdue_on'=>today(), 'cancelled'=>0,
+    'origin'=>'manual', 'created_at'=>now()]);
+$recorded = fn(int $chargeId) => rows('SELECT * FROM payments WHERE charge_id=? AND voided=0 ORDER BY id', [$chargeId]);
+$markPaid = fn(int $invoiceId) => act('invoice_state', ['id'=>(string)$invoiceId, 'mode'=>'paid', 'paid_on'=>today(),
+                                                        'method'=>'Überweisung', 'note'=>'']);
+
+case_('Marking an invoice paid confirms a payment already recorded, rather than adding a second');
+/* „Als bezahlt eintragen“ counted only confirmed payments and paid the rest,
+   while „Zahlung erfassen“ counts unconfirmed ones too. A transfer recorded but
+   not yet confirmed was paid a second time, and confirming it made 90 € of 45. */
+$payer = make_student(['first_name'=>'Zahlt', 'last_name'=>'Einmal']);
+$whole = $owedCharge($payer, 4500);
+$wholeInvoice = create_invoice($payer, [$whole]);
+act('payment_add', ['charge_id'=>(string)$whole, 'amount'=>'45,00', 'paid_on'=>today(), 'method'=>'Überweisung', 'note'=>'']);
+throws(fn() => act('payment_add', ['charge_id'=>(string)$whole, 'amount'=>'1,00', 'paid_on'=>today(), 'method'=>'Bar', 'note'=>'']),
+       'with 45 € recorded and not yet confirmed, not one euro more can be recorded', 'unbestätigte');
+$markPaid($wholeInvoice);
+$payments = $recorded($whole);
+is_same([4500], array_map(fn($p) => (int)$p['amount_cents'], $payments), 'the charge holds the one payment of 45 €, not two');
+ok($payments !== [] && $payments[0]['confirmed_at'] !== null, 'and marking the invoice paid confirmed it');
+is_same('paid', invoice_status(invoice($wholeInvoice)), 'so the invoice is paid');
+$part = $owedCharge($payer, 4500);
+$partInvoice = create_invoice($payer, [$part]);
+act('payment_add', ['charge_id'=>(string)$part, 'amount'=>'20,00', 'paid_on'=>today(), 'method'=>'Bar', 'note'=>'']);
+$markPaid($partInvoice);
+$payments = $recorded($part);
+is_same(4500, array_sum(array_map(fn($p) => (int)$p['amount_cents'], $payments)), 'with part of it recorded, only the rest is added');
+is_same(0, count(array_filter($payments, fn($p) => $p['confirmed_at'] === null)), 'and every payment on it is confirmed');
+
+case_('A charge on a live invoice cannot be cancelled from under it');
+/* Cancelling it left the invoice asking for money for something that was no
+   longer owed, and „Als bezahlt eintragen“ then paid the cancelled charge. */
+$onInvoice = $owedCharge($payer, 2500);
+$holding = invoice(create_invoice($payer, [$onInvoice]));
+throws(fn() => act('charge_cancel', ['id'=>(string)$onInvoice]), 'refused, naming the invoice', $holding['number']);
+is_same(0, (int)scalar('SELECT cancelled FROM charges WHERE id=?', [$onInvoice]), 'and the charge is not cancelled');
+invoice_cancel((int)$holding['id'], 'Korrektur');
+does_not_throw(fn() => act('charge_cancel', ['id'=>(string)$onInvoice]), 'once the invoice is cancelled, the charge can be');
+$free = $owedCharge($payer, 500);
+$heldBy = invoice(create_invoice($payer, [$owedCharge($payer, 700)]));
+$heldCharge = (int)scalar('SELECT charge_id FROM invoice_charges WHERE invoice_id=?', [(int)$heldBy['id']]);
+is_same([$heldCharge => ['id'=>(int)$heldBy['id'], 'number'=>$heldBy['number']]],
+        live_invoices_of_charges([$free, $heldCharge, $onInvoice]),
+        'the payments tab can ask which charges a live invoice holds - not the free one, not one whose invoice is cancelled');
+// A charge cancelled before this rule existed may still sit on a live invoice.
+$kept = $owedCharge($payer, 1000);
+$dropped = $owedCharge($payer, 2000);
+$mixed = create_invoice($payer, [$kept, $dropped]);
+run('UPDATE charges SET cancelled=1 WHERE id=?', [$dropped]);
+$markPaid($mixed);
+is_same([], $recorded($dropped), 'marking that invoice paid pays nothing on the cancelled charge');
+is_same(1000, (int)($recorded($kept)[0]['amount_cents'] ?? 0), 'and the live one in full');
+
+case_('An invoice is not e-mailed to a family who turned payment e-mails off, and nothing says it was');
+/* notify_invoice() asked whether the login was set up, never whether it takes
+   payment e-mails. The queue then dropped the mail, while the invoice said
+   „per E-Mail geschickt am …“. */
+mail_ready(true);
+$quiet = make_account(['role'=>'student', 'payment_notices'=>0]);
+$quietKid = make_student(['first_name'=>'Still', 'last_name'=>'Familie', 'account_id'=>$quiet]);
+$quietInvoice = create_invoice($quietKid, [$owedCharge($quietKid, 3000)]);
+throws(fn() => act('invoice_state', ['id'=>(string)$quietInvoice, 'mode'=>'send']), 'refused up front, in words', 'abbestellt');
+is_same(null, invoice($quietInvoice)['sent_at'], 'the invoice does not claim it was e-mailed');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE account_id=?', [$quiet]), 'and nothing was queued');
+run('UPDATE accounts SET payment_notices=1 WHERE id=?', [$quiet]);
+act('invoice_state', ['id'=>(string)$quietInvoice, 'mode'=>'send']);
+ok(invoice($quietInvoice)['sent_at'] !== null, 'with them switched back on it goes, and says so');
+is_same(1, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE account_id=? AND status='queued'", [$quiet]), 'one mail in the outbox');
+mail_ready(false);
+
+case_('An invoice is printed in its family’s language, whoever opens it');
+/* invoice_pdf() followed the session. The queue builds the attachment after
+   whoever's page view came last, so an English family's invoice went out in
+   German, or a German family's in English. */
+$english = make_account(['role'=>'student', 'locale'=>'en']);
+$englishKid = make_student(['first_name'=>'Emma', 'last_name'=>'Smith', 'account_id'=>$english]);
+$englishInvoice = invoice(create_invoice($englishKid, [$owedCharge($englishKid, 3000)]));
+$_SESSION['locale'] = 'de';
+$englishPdf = $pdfText(invoice_pdf($englishInvoice));
+ok(str_contains($englishPdf, 'Invoice number'), 'an English family’s invoice is in English for a German-speaking trainer');
+ok(!str_contains($englishPdf, 'Rechnungsnummer'), 'with no German in it');
+$attached = mail_attachment(['kind'=>'invoice', 'id'=>(int)$englishInvoice['id']]);
+ok(str_contains($pdfText((string)($attached['body'] ?? '')), 'Invoice number'), 'and the one attached to the mail is the same');
+$_SESSION['locale'] = 'en';
+try { $germanPdf = $pdfText(invoice_pdf(invoice($wholeInvoice))); } finally { $_SESSION['locale'] = 'de'; }
+ok(str_contains($germanPdf, 'Rechnungsnummer'), 'and a German family’s invoice stays German for an English-speaking one');
+
+case_('The overview counts every invoice, and a part-paid one owes only what is left');
+/* Only the newest 200 invoices were loaded, so one unpaid since 2020 fell out of
+   „Überfällig“, its count and the total, and the total added the whole gross of
+   an invoice half paid. invoice_totals() and invoice_list() ask the database
+   about all of them; views/invoices.php is to read those (frontend-dev). */
+test_reset();
+sign_in_as(make_account(['role'=>'trainer']));
+$kid = make_student(['first_name'=>'Alt', 'last_name'=>'Offen']);
+$listed = fn(array $over) => fixture('invoices', $over + ['student_id'=>$kid, 'account_id'=>null, 'year'=>2020,
+    'supplied_from'=>null, 'supplied_to'=>null, 'net_cents'=>3000, 'tax_cents'=>0, 'gross_cents'=>3000, 'tax_rate'=>0,
+    'tax_note'=>'', 'snapshot_json'=>'{}', 'created_by'=>null, 'created_at'=>now()]);
+$forgotten = $listed(['number'=>'ALT-0001', 'sequence'=>1, 'issued_on'=>'2020-01-01', 'due_on'=>'2020-01-15', 'overdue_on'=>'2020-01-15']);
+for ($i = 2; $i <= 201; $i++)
+    $listed(['number'=>'ST-'.$i, 'sequence'=>$i, 'issued_on'=>'2021-01-01', 'due_on'=>'2021-01-15', 'overdue_on'=>'2021-01-15',
+             'cancelled_at'=>now(), 'cancel_reason'=>'Versehen']);
+$halfCharge = fixture('charges', ['student_id'=>$kid, 'label'=>'Teil', 'amount_cents'=>4500, 'due_on'=>today(), 'cancelled'=>0,
+                                  'origin'=>'manual', 'created_at'=>now()]);
+$soon = date('Y-m-d', strtotime(today().' +14 days'));
+$half = $listed(['number'=>'TEIL-1', 'sequence'=>500, 'year'=>(int)substr(today(), 0, 4), 'issued_on'=>today(), 'due_on'=>$soon,
+                 'overdue_on'=>$soon, 'gross_cents'=>4500, 'net_cents'=>4500]);
+fixture('invoice_charges', ['invoice_id'=>$half, 'charge_id'=>$halfCharge]);
+fixture('payments', ['charge_id'=>$halfCharge, 'amount_cents'=>2000, 'paid_on'=>today(), 'method'=>'Bar', 'note'=>'',
+                     'confirmed_at'=>now(), 'voided'=>0]);
+$totals = invoice_totals();
+is_same(['open'=>1, 'overdue'=>1, 'paid'=>0, 'cancelled'=>200], $totals['counts'], 'every invoice is counted, the oldest included');
+is_same(2500 + 3000, $totals['outstanding_cents'], 'and they owe 25 € on the part-paid one and 30 € on the old one');
+is_same(['ALT-0001'], array_column(invoice_list('overdue'), 'number'), '„Überfällig“ lists the one unpaid since 2020');
+is_same(['TEIL-1'], array_column(invoice_list('open'), 'number'), '„Offen“ the part-paid one');
+is_same(50, count(invoice_list('cancelled')), 'a page holds fifty');
+is_same(['ST-151'], array_column(array_slice(invoice_list('cancelled', 2), 0, 1), 'number'), 'and the next page carries on from there');
+is_same(202, count(invoice_list('all', 1, 200)) + count(invoice_list('all', 2, 200)), 'all of them, two hundred to a page');
+throws(fn() => invoice_list('vielleicht'), 'a state that is not one is refused');
+$disagree = [];
+foreach (array_merge(invoice_list('all', 1, 200), invoice_list('all', 2, 200)) as $row)
+    if ($row['status'] !== invoice_status(invoice((int)$row['id']))) $disagree[] = $row['number'];
+is_same([], $disagree, 'and the state the list gives each one is the state its own page gives it');

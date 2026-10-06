@@ -91,3 +91,43 @@ does_not_throw(fn() => act('level_save', ['name'=>'Neu', 'sort_order'=>'99']), '
 does_not_throw(fn() => act('age_group_save', ['name'=>'Neu', 'min_age'=>'0', 'max_age'=>'3']), 'and an age group');
 sign_in_as(make_account(['role'=>'student']));
 throws(fn() => act('level_save', ['name'=>'Nein', 'sort_order'=>'1']), 'a student may not', 'Kein Zugriff');
+
+case_('Filtering by an age group finds every child the band covers, on their birthday too');
+/* Found by the whole-app review of October 2026. The lower bound was a year too
+   high and the upper one a day too low: an 11–12 band found only twelve-year-
+   olds, and not the one whose thirteenth birthday is tomorrow. */
+sign_in_as($trainer = make_account(['role'=>'trainer']));
+$band = fixture('age_groups', ['name'=>'Elf bis Zwölf', 'min_age'=>11, 'max_age'=>12, 'sort_order'=>99,
+                               'archived'=>0, 'created_at'=>now()]);
+// Written out here rather than with modify('-11 years'), which turns 29 February
+// into 1 March and would make the test disagree with itself one day in four years.
+$born = function (int $years, int $days = 0): string {
+    $today = new DateTimeImmutable(today());
+    $year = (int)$today->format('Y') - $years; $month = (int)$today->format('n');
+    $day = min((int)$today->format('j'), (int)(new DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month)))->format('t'));
+    return $today->setDate($year, $month, $day)->modify(($days < 0 ? '' : '+').$days.' days')->format('Y-m-d');
+};
+$kids = [
+    'eleven today'               => [$born(11), true],
+    'eleven tomorrow'            => [$born(11, 1), false],
+    'twelve today'               => [$born(12), true],
+    'thirteen tomorrow'          => [$born(13, 1), true],
+    'thirteen today'             => [$born(13), false],
+    'eleven and a half'          => [$born(11, -180), true],
+];
+foreach ($kids as $who => [$birth, $inBand]) {
+    $id = make_student(['first_name'=>$who, 'birth_date'=>$birth]);
+    $found = array_map('intval', array_column(filtered_students(['age_group'=>(string)$band]), 'id'));
+    is_same($inBand, in_array($id, $found, true), $who.' ('.$birth.')'.($inBand ? ' is in the band' : ' is not'));
+    $age = student_age($birth);
+    is_same($age >= 11 && $age <= 12, in_array($id, $found, true), $who.': the filter agrees with the age the child’s page shows');
+}
+
+case_('The last birthday for an age agrees with the age on every day, leap days too');
+is_same('2015-10-06', latest_birth_date_for_age(11, '2026-10-06'), 'eleven on 6 October 2026 is born by 6 October 2015');
+is_same('2017-02-28', latest_birth_date_for_age(11, '2028-02-29'), 'on a leap day, the 28th of a year without one');
+foreach (['2028-02-29', '2027-02-28', '2027-03-01', '2026-12-31'] as $on)
+    foreach (['2016-02-29', '2016-02-28', '2016-03-01', '2017-02-28', '2017-03-01'] as $birth)
+        foreach ([10, 11, 12] as $age)
+            is_same(student_age($birth, $on) >= $age, $birth <= latest_birth_date_for_age($age, $on),
+                    'born '.$birth.', on '.$on.': at least '.$age.' by both rules');

@@ -100,18 +100,21 @@ function dispatch_config(string $action): array {
             if($current>=(int)$c['capacity']) throw new UserError(t('Dieser Kurs ist voll. Plätze in den Kurseinstellungen erhöhen.','This class is full. Raise the number of places in the class settings.'));
         }
         $tariffId=reference_or_null('tariffs','tariff_id','class_id='.(int)$c['id']);
-        run('INSERT INTO class_students (class_id,student_id,joined_on,tariff_id) VALUES (?,?,?,?)'
-            .' ON DUPLICATE KEY UPDATE joined_on=VALUES(joined_on),left_on=NULL,tariff_id=VALUES(tariff_id)',
-            [$c['id'],$s['id'],date_value(post('joined_on'))??today(),$tariffId]);
+        if(enrol_student((int)$c['id'],(int)$s['id'],$tariffId,date_value(post('joined_on'))??today()))
+            flash(strtr(t('{name} ist wieder im Kurs. Ein früher vereinbarter Preis oder Rabatt gilt nicht mehr – beim Kind unter „Tarif, Zahlungsweise und Rabatt“ neu eintragen, wenn er weiter gelten soll.',
+                          '{name} is back in the course. A price or discount agreed before no longer applies – enter it again on the child under “Tariff, how it is paid, and any discount” if it should go on.'),
+                        ['{name}'=>$s['first_name'].' '.$s['last_name']]));
         audit('class.member_added','class',(int)$c['id']);
         return ['classes',['id'=>$c['id']]];
 
     case 'enrolment_save':
         require_staff(); $c=training_class((int)post('class_id')); $s=student((int)post('student_id'));
-        if(!enrolment((int)$c['id'],(int)$s['id'])) throw new UserError(t('Dieses Kind ist nicht in diesem Kurs.','This child is not in this course.'));
+        $current=enrolment((int)$c['id'],(int)$s['id']);
+        if(!$current) throw new UserError(t('Dieses Kind ist nicht in diesem Kurs.','This child is not in this course.'));
         $dueDay=(int)post('due_day','0');
         if($dueDay<0 || $dueDay>28) throw new UserError(t('Zahltag: 1 bis 28, oder 0 für „wie im Tarif“.','Payment day: 1 to 28, or 0 for “as the tariff says”.'));
-        $tariffId=reference_or_null('tariffs','tariff_id','class_id='.(int)$c['id']);
+        $joined=date_value(post('joined_on')); $left=date_value(post('left_on')); date_range($joined,$left);
+        $tariffId=posted_enrolment_tariff($current);
         // 0 is "whatever this tariff's usual interval is", which is what most
         // enrolments say. Anything else has to be a price that is written down,
         // or the child would be billed at an amount nobody could point at.
@@ -126,7 +129,7 @@ function dispatch_config(string $action): array {
             .'discount_months=?,discount_kind=?,discount_value=?,discount_note=? WHERE class_id=? AND student_id=?',
             [$tariffId, $interval,
              post('price')!==''?cents(post('price')):null, text_limit('price_note'), $dueDay,
-             date_value(post('joined_on')), date_value(post('left_on')),
+             $joined, $left,
              $discount['months'], $discount['kind'], $discount['value'],
              $discount['value']>0?text_limit('discount_note',120):'',
              $c['id'], $s['id']]);
@@ -255,10 +258,10 @@ function dispatch_config(string $action): array {
         foreach(rows('SELECT c.*, s.first_name, s.last_name, s.account_id,'
             .' '.charge_paid_sql().' AS paid'
             .' FROM charges c JOIN students s ON s.id=c.student_id'
-            .' WHERE c.cancelled=0 AND '.charge_overdue_sql().'<?'.($only?' AND s.id=?':'')
+            .' WHERE '.charge_is_overdue_sql().($only?' AND s.id=?':'')
             .' ORDER BY s.account_id, c.due_on', $only?[today(),$only]:[today()]) as $c) {
             $due=(int)$c['amount_cents']-(int)$c['paid'];
-            if($due<=0 || !$c['account_id']) { $skipped++; continue; }
+            if(!$c['account_id']) { $skipped++; continue; }
             $account=one('SELECT * FROM accounts WHERE id=?',[(int)$c['account_id']]);
             if(!$account) { $skipped++; continue; }
             if(notify_payment($account,['id'=>$c['student_id'],'first_name'=>$c['first_name'],'last_name'=>$c['last_name']],$due,(string)$c['due_on'])) $sent++;
@@ -388,8 +391,9 @@ function dispatch_config(string $action): array {
             flash(t('Rechnung storniert. Die Nummer bleibt vergeben, damit die Nummernfolge lückenlos bleibt.','Invoice cancelled. The number stays used, so the sequence has no hole in it.'));
         } else {
             if(!setting('smtp',[])) throw new UserError(t('Bitte zuerst SMTP einrichten.','Set up SMTP first.'));
-            flash(notify_invoice($inv)?t('Rechnung liegt im Postausgang.','The invoice is in the outbox.')
-                                      :t('Für dieses Kind ist kein Konto hinterlegt, an das die Rechnung gehen könnte.','This child has no account for the invoice to go to.'));
+            if($refusal=invoice_mail_refusal($inv)) throw new UserError($refusal);
+            notify_invoice($inv);
+            flash(t('Rechnung liegt im Postausgang.','The invoice is in the outbox.'));
         }
         return ['student',['id'=>$inv['student_id'],'tab'=>'invoices']];
 

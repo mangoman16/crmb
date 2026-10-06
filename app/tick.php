@@ -94,10 +94,17 @@ function run_background_tasks(): void {
     }
 }
 
-/** The jobs themselves, each independent of whether the others worked. */
+/**
+ * The jobs themselves, each independent of whether the others worked.
+ *
+ * As the portal rather than as the visitor whose page view they follow
+ * (as_the_portal()): in the portal's language, and with nobody as the actor. A
+ * month billed after a family's page view was recorded as billed by that family,
+ * in their language.
+ */
 function tick_work(): void {
     foreach (['mail' => tick_mail(...), 'prune' => tick_prune(...), 'billing' => tick_billing(...)] as $name => $job) {
-        try { $job(); }
+        try { as_the_portal($job); }
         catch (Throwable $e) {
             // Logged here with the job's name, which capture_error() does not
             // know, and for the refusals and second errors it does not write down.
@@ -127,6 +134,9 @@ function tick_billing(): void {
     if (!setting('auto_billing')) return;
     $period = billing_current_period();
     if ((string)setting('billing_last_period', '') === $period) return;
+    // billing_run() is one transaction: a run that fails writes no charge at
+    // all. Marked done only after it, so a failed month is tried again; one
+    // whose mark failed is run again and creates nothing it already has.
     billing_run($period);
     set_setting('billing_last_period', $period);
 }

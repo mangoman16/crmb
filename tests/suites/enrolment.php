@@ -308,3 +308,84 @@ ok(!in_array(t('Trainingstag eintragen','Add a training day'), $what($empty), tr
 make_tariff(['class_id'=>$empty, 'name'=>'Beitrag']);
 is_same([], $what($empty), 'and a tariff clears the list');
 ok(!str_contains(render_view('classes', ['id'=>$empty]), 'Noch zu tun'), 'so the card goes away');
+
+// ---------------------------------------------------------------------------
+// Found by the whole-app review of October 2026. Each case failed before its fix.
+// ---------------------------------------------------------------------------
+
+case_('Saving a child whose tariff has been archived keeps that tariff');
+/* The form offers the course's tariffs that are not archived, so a child still
+   on an archived one saw „Auswählen“, and saving anything at all - a payment
+   day, a discount - stored no tariff. Billing then skipped them: „Kein Tarif
+   gewählt“. */
+sign_in_as($trainer);
+$oldCourse = make_class(['name'=>'Altkurs']);
+$oldTariff = make_tariff(['class_id'=>$oldCourse, 'name'=>'Alter Beitrag', 'price_cents'=>3000]);
+$newTariff = make_tariff(['class_id'=>$oldCourse, 'name'=>'Neuer Beitrag', 'price_cents'=>3500]);
+$stays = make_student(['first_name'=>'Bleibt', 'joined_on'=>'2026-01-01']);
+make_enrolment($oldCourse, $stays, ['tariff_id'=>$oldTariff, 'joined_on'=>'2026-01-01']);
+run('UPDATE tariffs SET archived=1 WHERE id=?', [$oldTariff]);
+$saveOld = fn(array $fields) => act('enrolment_save', $fields + ['class_id'=>(string)$oldCourse, 'student_id'=>(string)$stays,
+    'tariff_id'=>'', 'interval_months'=>'0', 'price'=>'', 'price_note'=>'', 'due_day'=>'0',
+    'joined_on'=>'2026-01-01', 'left_on'=>'', 'discount_months'=>'0', 'discount_kind'=>'percent', 'discount_value'=>'']);
+$saveOld(['due_day'=>'15']);
+is_same($oldTariff, (int)enrolment($oldCourse, $stays)['tariff_id'], 'the form could not offer it, so an empty choice keeps it');
+is_same(15, (int)enrolment($oldCourse, $stays)['due_day'], 'and the change she did make is saved');
+$planned = array_values(array_filter(billing_plan('2026-09'), fn($r) => $r['student_id'] === $stays))[0] ?? [];
+is_same(3000, $planned['amount'] ?? null, 'so billing still charges them, on the tariff they are on');
+$saveOld(['tariff_id'=>(string)$oldTariff]);
+is_same($oldTariff, (int)enrolment($oldCourse, $stays)['tariff_id'], 'choosing it, once the form offers it, keeps it too');
+$saveOld(['tariff_id'=>(string)$newTariff]);
+is_same($newTariff, (int)enrolment($oldCourse, $stays)['tariff_id'], 'and she can still move them to one that is offered');
+throws(fn() => $saveOld(['tariff_id'=>(string)$oldTariff]),
+       'but nobody is put on an archived tariff they are not already on', 'archiviert');
+is_same($newTariff, (int)enrolment($oldCourse, $stays)['tariff_id'], 'and the refusal changed nothing');
+
+case_('Leaving a course before joining it is refused');
+throws(fn() => act('enrolment_save', ['class_id'=>(string)$oldCourse, 'student_id'=>(string)$stays,
+    'tariff_id'=>(string)$newTariff, 'interval_months'=>'0', 'price'=>'', 'price_note'=>'', 'due_day'=>'0',
+    'joined_on'=>'2026-05-01', 'left_on'=>'2026-04-01', 'discount_months'=>'0', 'discount_kind'=>'percent', 'discount_value'=>'']),
+    'an end before the start', 'Enddatum');
+is_same('2026-01-01', enrolment($oldCourse, $stays)['joined_on'], 'and the dates are as they were');
+
+case_('Coming back to a course starts a new agreement, not the old one again');
+/* Two copies of one upsert - in class_member_add and in an approved request to
+   join - kept the old agreed price and the old discount. The discount's months
+   count from joined_on, so „erster Monat gratis“ was given a second time. */
+$returnCourse = make_class(['name'=>'Rückkehr']);
+$returnTariff = make_tariff(['class_id'=>$returnCourse, 'price_cents'=>4000]);
+$back = make_student(['first_name'=>'Zurück', 'joined_on'=>'2026-01-01']);
+make_enrolment($returnCourse, $back, ['tariff_id'=>$returnTariff, 'joined_on'=>'2026-01-01', 'left_on'=>'2026-03-31',
+                                      'price_cents'=>3000, 'price_note'=>'Alter Preis', 'due_day'=>20]);
+give_discount($returnCourse, $back, 1, 'percent', 100, 'Erster Monat gratis');
+act('class_member_add', ['class_id'=>(string)$returnCourse, 'student_id'=>(string)$back,
+                         'tariff_id'=>(string)$returnTariff, 'joined_on'=>'2026-09-01']);
+$row = enrolment($returnCourse, $back);
+is_same([null, '2026-09-01'], [$row['left_on'], $row['joined_on']], 'they are in the course again, from the day they came back');
+is_same([null, '', 0], [$row['price_cents'], $row['price_note'], (int)$row['due_day']], 'at the tariff’s price and day, not the ones agreed last time');
+is_same([0, 0, ''], [(int)$row['discount_months'], (int)$row['discount_value'], $row['discount_note']], 'and without the welcome month they already had');
+$returned = array_values(array_filter(billing_plan('2026-09'), fn($r) => $r['student_id'] === $back))[0] ?? [];
+is_same(4000, $returned['amount'] ?? null, 'so their first month back is charged in full');
+
+case_('A child already in a course is not added to it a second time');
+throws(fn() => act('class_member_add', ['class_id'=>(string)$returnCourse, 'student_id'=>(string)$back,
+                                        'tariff_id'=>(string)$returnTariff, 'joined_on'=>'2026-10-01']),
+       'refused, in words', 'schon in diesem Kurs');
+is_same('2026-09-01', enrolment($returnCourse, $back)['joined_on'], 'and the day they joined is not moved');
+
+case_('An approved request to come back starts a new agreement as well');
+run('UPDATE class_students SET left_on=?, price_cents=3000 WHERE class_id=? AND student_id=?', ['2026-09-30', $returnCourse, $back]);
+give_discount($returnCourse, $back, 1, 'percent', 100, 'Erster Monat gratis');
+$asked = request_enrolment($back, $returnCourse, 'join', $returnTariff, '');
+decide_request($asked, true, '');
+$row = enrolment($returnCourse, $back);
+is_same([null, today()], [$row['left_on'], $row['joined_on']], 'they are back, from the day it was approved');
+is_same([null, 0], [$row['price_cents'], (int)$row['discount_value']], 'with no old price and no second free month');
+
+case_('The form offers a child’s own archived tariff, marked, and no other');
+$offered = enrolment_tariff_choices(enrolment($oldCourse, $stays));
+is_same([$newTariff=>'Neuer Beitrag'], $offered, 'on an open tariff, the open ones');
+run('UPDATE class_students SET tariff_id=? WHERE class_id=? AND student_id=?', [$oldTariff, $oldCourse, $stays]);
+$offered = enrolment_tariff_choices(enrolment($oldCourse, $stays));
+is_same('Alter Beitrag (archiviert)', $offered[$oldTariff] ?? null, 'on an archived one, that one too, saying so');
+is_same(2, count($offered), 'beside the open ones');

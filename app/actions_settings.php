@@ -54,7 +54,7 @@ function dispatch_settings_or_messages(string $action): array {
         return duplicate_destination($table,$copy);
     case 'field_save':
         require_admin();$id=(int)post('id');$old=$id?one('SELECT * FROM field_definitions WHERE id=?',[$id]):null;
-        if($id && !$old)throw new UserError('Not found');
+        if($id && !$old)throw new NotFound(t('Dieses Feld gibt es nicht mehr.','That field no longer exists.'));
         $type=choose(post('field_type'),['text','textarea','number','date','select','multiselect','checkbox']);
         if($old && $old['field_type']!==$type && scalar('SELECT COUNT(*) FROM field_values WHERE field_id=?',[$id])) throw new UserError(t('Dieses Feld enthält Daten. Für einen anderen Typ bitte ein neues Feld anlegen und das alte archivieren.','This field contains data. Create a new field for a different type and archive the old field.'));
         $options=array_values(array_unique(array_filter(array_map('trim',explode("\n",post('options'))),fn($x)=>$x!=='')));
@@ -72,7 +72,7 @@ function dispatch_settings_or_messages(string $action): array {
     case 'smtp_save':
         require_admin();$old=setting('smtp',[]);$host=required_text('host',253);
         if(!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9.-]*$/D',$host))throw new UserError(t('SMTP-Hostname ohne Protokoll oder Pfad eingeben.','Enter an SMTP hostname without a protocol or path.'));
-        $port=(int)post('port');if($port<1 || $port>65535)throw new UserError('Invalid SMTP port');
+        $port=(int)post('port');if($port<1 || $port>65535)throw new UserError(t('Bitte einen Port zwischen 1 und 65535 eingeben – meist 587 oder 465.','Please enter a port between 1 and 65535 – usually 587 or 465.'));
         $s=['host'=>$host,'port'=>$port,'username'=>text_limit('username',254),'password'=>post('smtp_password')!==''?seal(post('smtp_password')):($old['password']??''),'encryption'=>choose(post('encryption'),['tls','ssl']),'from_email'=>email_value(post('from_email')),'from_name'=>required_text('from_name',120)];
         if(post('clear_password'))$s['password']='';
         // The last test was of the old settings, and smtp_tested_ok() would go
@@ -92,7 +92,7 @@ function dispatch_settings_or_messages(string $action): array {
         return ['settings',['tab'=>'smtp']];
     case 'mail_retry':
         require_staff();$j=one('SELECT * FROM mail_jobs WHERE id=? AND status=?',[(int)post('id'),'failed']);
-        if(!$j)throw new UserError('Not found');
+        if(!$j)throw new NotFound(t('Diese E-Mail gibt es nicht mehr, oder sie wartet nicht auf einen neuen Versuch.','That email no longer exists, or it is not waiting for another try.'));
         if($j['category']==='security')throw new UserError(t('Bitte einen neuen Einladungs- oder Passwortlink anfordern.','Please request a fresh invitation or password link.'));
         run("UPDATE mail_jobs SET status='queued',error=NULL,retry_after=NULL,attempts=0 WHERE id=?",[$j['id']]);return ['outbox',[]];
     case 'mail_run':

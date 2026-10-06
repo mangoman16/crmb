@@ -12,7 +12,7 @@ case_('A key with no stored row reads as its declared default');
 run('DELETE FROM settings');
 setting_cache_clear();
 is_same('Badminton', setting('club_name'), 'falls back to the declared value');
-is_same(14, setting('billing_due_days'), 'an integer default keeps its type');
+is_same(14, setting('invoice_terms_days'), 'an integer default keeps its type');
 is_same(false, setting('privacy_ready'), 'a boolean default keeps its type');
 ok(is_array(setting('statuses')), 'a map default is an array');
 throws(fn() => setting_default('no_such_setting'), 'an undeclared key is an error, not a silent empty string');
@@ -20,17 +20,17 @@ throws(fn() => setting_default('no_such_setting'), 'an undeclared key is an erro
 case_('A stored value wins, including a falsy one');
 set_setting('club_name', 'Verein X');
 is_same('Verein X', setting('club_name'), 'the stored value is returned');
-set_setting('billing_due_days', 0);
-is_same(0, setting('billing_due_days'), 'zero is a real value, not treated as absent');
+set_setting('invoice_terms_days', 0);
+is_same(0, setting('invoice_terms_days'), 'zero is a real value, not treated as absent');
 set_setting('portal_tagline', '');
 is_same('', setting('portal_tagline'), 'an empty string is a real value too');
 
 case_('Validation matches what each kind promises');
-$int = setting_schema()['billing_due_days'];
-is_same(30, setting_validate('billing_due_days', $int, '30'), 'an integer parses');
-throws(fn() => setting_validate('billing_due_days', $int, 'x'), 'rejects non-numeric');
-throws(fn() => setting_validate('billing_due_days', $int, '-1'), 'rejects below the minimum');
-throws(fn() => setting_validate('billing_due_days', $int, '999'), 'rejects above the maximum');
+$int = setting_schema()['invoice_terms_days'];
+is_same(30, setting_validate('invoice_terms_days', $int, '30'), 'an integer parses');
+throws(fn() => setting_validate('invoice_terms_days', $int, 'x'), 'rejects non-numeric');
+throws(fn() => setting_validate('invoice_terms_days', $int, '-1'), 'rejects below the minimum');
+throws(fn() => setting_validate('invoice_terms_days', $int, '999'), 'rejects above the maximum');
 $text = setting_schema()['club_name'];
 is_same('Verein', setting_validate('club_name', $text, '  Verein  '), 'text is trimmed');
 throws(fn() => setting_validate('club_name', $text, ''), 'a required field rejects empty');
@@ -274,3 +274,15 @@ ok(str_contains(smtp_explain('SMTP Error: Could not connect to SMTP host.'), 'Po
    'a silent server sends her to the port');
 ok(str_contains(smtp_explain('550 5.7.1 Relay access denied'), 'Absender'), 'a refused relay is the sender address');
 is_same('Etwas ganz anderes', smtp_explain('Etwas ganz anderes'), 'and anything unrecognised is passed through unchanged');
+
+case_('Every setting on a card is one the portal reads');
+/* Found by the whole-app review of October 2026: „Zahlungsziel für
+   Monatsbeiträge“ sat on the Vorgaben card and nothing read it - a charge's due
+   day comes from its tariff. A box that changes nothing is worse than none: she
+   believes she has set something. Internal settings are read by name in the
+   declarations themselves ('options'), so only the ones on a card are asked. */
+$code = '';
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $file)
+    if (basename($file) !== 'defaults.php') $code .= (string)file_get_contents($file);
+foreach (setting_schema() as $key => $spec)
+    if (empty($spec['internal'])) ok(str_contains($code, "'".$key."'"), $key.' is read somewhere besides its declaration');

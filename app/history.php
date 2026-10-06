@@ -123,7 +123,9 @@ function history_field_label(string $column): string {
 function tracked_entities(): array {
     return [
         'students'         => ['label' => ['Schüler', 'Student'],            'title' => ['first_name', 'last_name']],
-        'charges'          => ['label' => ['Beitrag', 'Charge'],             'title' => ['label']],
+        // billing_key is bookkeeping - which period a charge stands for - and
+        // reads as a column name; cancelling gives it up (cancel_charge()).
+        'charges'          => ['label' => ['Beitrag', 'Charge'],             'title' => ['label'], 'hidden' => ['billing_key']],
         'payments'         => ['label' => ['Zahlung', 'Payment'],            'title' => ['method']],
         'classes'          => ['label' => ['Kurs', 'Class'],                 'title' => ['name']],
         'tariffs'          => ['label' => ['Tarif', 'Tariff'],               'title' => ['name']],

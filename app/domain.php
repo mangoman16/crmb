@@ -377,6 +377,49 @@ function charge_overdue_sql(string $charge='c'): string {
     return 'COALESCE('.$a.'.overdue_on, '.$a.'.due_on)';
 }
 
+/**
+ * Whether a charge is overdue: not cancelled, past the day it turns late, and
+ * not paid in full. The one rule for „überfällig“ on a charge, in the two forms
+ * it is asked in - a row already read (it needs 'paid', which student_charges()
+ * gives it) and a condition in a query, which takes today() as its one
+ * parameter - written side by side so they cannot drift apart. A reminder run
+ * that read „past its day“ alone counted every paid charge as one it skipped.
+ */
+function charge_is_overdue(array $charge): bool {
+    return !(int)$charge['cancelled'] && ($charge['overdue_on'] ?: $charge['due_on']) < today()
+        && (int)($charge['paid'] ?? 0) < (int)$charge['amount_cents'];
+}
+function charge_is_overdue_sql(string $charge='c'): string {
+    $a=sql_name($charge,'alias');
+    return $a.'.cancelled=0 AND '.charge_overdue_sql($charge).'<? AND '.$a.'.amount_cents>'.charge_paid_sql($charge);
+}
+
+/**
+ * What has been recorded against a charge: every payment not voided, whether
+ * it has been confirmed yet or not.
+ *
+ * Not what has been received - that is payment_counts_sql(). This is the other
+ * question, „how much of this charge is already accounted for?“, which decides
+ * how much more may be recorded against it. „Zahlung erfassen“ asked it one way
+ * and „Als bezahlt eintragen“ the other, and a transfer recorded but not yet
+ * confirmed was paid a second time.
+ */
+function payment_recorded_sql(string $payment='p'): string { return sql_name($payment,'alias').'.voided=0'; }
+function charge_recorded_sql(string $charge='c'): string {
+    return 'COALESCE((SELECT SUM(r.amount_cents) FROM payments r WHERE r.charge_id='.sql_name($charge,'alias').'.id AND '
+        .payment_recorded_sql('r').'),0)';
+}
+
+/**
+ * Confirm a payment: the money has arrived. Tracked, so the change log says who
+ * confirmed it; a payment already confirmed, or voided, is left as it is.
+ */
+function confirm_payment(array $payment): void {
+    $by=current_user()['id'] ?? null;
+    tracked('payments',(int)$payment['id'],money((int)$payment['amount_cents']),
+        fn()=>run('UPDATE payments SET confirmed_at=?,confirmed_by=? WHERE id=? AND confirmed_at IS NULL AND voided=0',[now(),$by,(int)$payment['id']]));
+}
+
 function balance(int $studentId, bool $overdue=false): int {
     $charges=rows('SELECT c.amount_cents,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? AND c.cancelled=0'.($overdue?' AND '.charge_overdue_sql().'<?':''),$overdue?[$studentId,today()]:[$studentId]);
     return array_sum(array_map(fn($c)=>max(0,(int)$c['amount_cents']-(int)$c['paid']),$charges));
@@ -480,7 +523,7 @@ function validate_custom(array $f,mixed $v,mixed $old,bool $emptyRefused): mixed
  * because the create form carries no custom fields at all.
  */
 function save_custom_fields(int $id,bool $new): void {
-    $input=$_POST['custom']??[]; if(!is_array($input)) throw new UserError('Invalid fields');
+    $input=$_POST['custom']??[]; if(!is_array($input)) throw new UserError(t('Ungültige Eingabe.','Invalid input.'));
     $staff=is_staff();
     foreach(field_definitions() as $f) {
         $families=$f['visibility']==='edit';
@@ -510,20 +553,23 @@ function filtered_students(array $f,?int $accountId=null): array {
     if(!empty($f['course'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.class_id=? AND '.current_enrolment_sql().')';$p[]=(int)$f['course'];}
     // An age group is usually not stored on the student, so filtering by one has
     // to cover both the pinned case and the dates that fall into the band. The
-    // bounds become dates once here rather than a function call per row.
+    // bounds become dates once here rather than a function call per row: at
+    // least min_age is born on or before the last day for that age, and at most
+    // max_age is born after the last day for max_age+1. Both were a year or a
+    // day out, and an 11–12 band found only twelve-year-olds.
     if(!empty($f['age_group'])){
         $band=one('SELECT * FROM age_groups WHERE id=?',[(int)$f['age_group']]);
         if($band){
-            $youngest=(new DateTimeImmutable(today()))->modify('-'.((int)$band['min_age']+1).' years')->modify('+1 day')->format('Y-m-d');
-            $oldest=$band['max_age']===null?null:(new DateTimeImmutable(today()))->modify('-'.((int)$band['max_age']+1).' years')->modify('+1 day')->format('Y-m-d');
+            $youngest=latest_birth_date_for_age((int)$band['min_age']);
+            $tooOld=$band['max_age']===null?null:latest_birth_date_for_age((int)$band['max_age']+1);
             $clause='s.age_group_id=? OR (s.age_group_id IS NULL AND s.birth_date IS NOT NULL AND s.birth_date<=?';
             array_push($p,(int)$band['id'],$youngest);
-            if($oldest!==null){$clause.=' AND s.birth_date>?';$p[]=$oldest;}
+            if($tooOld!==null){$clause.=' AND s.birth_date>?';$p[]=$tooOld;}
             $where[]='('.$clause.'))';
         }
     }
     if(!empty($f['absence'])){$where[]='EXISTS (SELECT 1 FROM absences a WHERE a.student_id=s.id AND a.reason=? AND a.starts_on<=? AND a.ends_on>=?)';array_push($p,$f['absence'],today(),today());}
-    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND c.cancelled=0 AND '.charge_overdue_sql().'<? AND c.amount_cents>'.charge_paid_sql().')';$p[]=today();}
+    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND '.charge_is_overdue_sql().')';$p[]=today();}
     if(!empty($f['field']) && isset($f['value'])){
         $def=one('SELECT * FROM field_definitions WHERE id=? AND archived=0',[(int)$f['field']]);
         if($def && (is_staff() || $def['visibility']!=='internal')) {

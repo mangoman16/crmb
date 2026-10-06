@@ -84,6 +84,22 @@ function security_mail_links_live(string $body, string $recipient): bool {
     }
     return true;
 }
+/** Whether a login is in use: its holder has set it up, and it is not suspended. */
+function account_in_use(array $account): bool { return ($account['state']??'')==='active' && !empty($account['verified_at']); }
+/**
+ * Whether an account takes mail of one category: set up, not suspended, and not
+ * switched off by its holder (unsubscribe_categories() names each switch; mail
+ * that has none, a security mail, cannot be switched off).
+ *
+ * One rule for the queue, which drops what this refuses, and for everything
+ * that writes to a family: notify_invoice() asked the first two and never the
+ * third, so an invoice was queued, dropped, and marked as e-mailed.
+ */
+function account_takes_mail(array $account, string $category): bool {
+    if(!account_in_use($account)) return false;
+    $switch=unsubscribe_categories()[$category]??null;
+    return $switch===null || (bool)($account[$switch]??1);
+}
 function cancel_account_mail(int $id): void { run("UPDATE mail_jobs SET status='cancelled',payload='',error=NULL WHERE account_id=? AND status IN ('queued','failed')",[$id]); }
 function notify_thread(array $account,int $threadId,string $subject): void {
     if($account['state']!=='active' || !$account['verified_at'] || !$account['notifications']) return;
@@ -126,7 +142,7 @@ function mail_greeting(array $account): string {
  * student produced an email.
  */
 function notify_payment(array $account, array $student, int $amountCents, string $dueOn): bool {
-    if($account['state']!=='active' || !$account['verified_at'] || empty($account['payment_notices'])) return false;
+    if(!account_takes_mail($account,'payments')) return false;
     $en=$account['locale']==='en';
     $name=$student['first_name'].' '.$student['last_name'];
     $body=mail_greeting($account)
@@ -155,7 +171,7 @@ function notify_class_change(array $class, string $date, ?array $entry, string $
     foreach(rows('SELECT DISTINCT a.* FROM class_students cs'
         .' JOIN students s ON s.id=cs.student_id JOIN accounts a ON a.id=s.account_id'
         .' WHERE cs.class_id=? AND cs.left_on IS NULL', [(int)$class['id']]) as $account) {
-        if($account['state']!=='active' || !$account['verified_at'] || empty($account['notifications'])) continue;
+        if(!account_takes_mail($account,'notifications')) continue;
         $en=$account['locale']==='en';
         $what=match($entry['status']??'planned') {
             'cancelled' => $en?'is cancelled':'entfällt',
@@ -178,7 +194,7 @@ function notify_class_change(array $class, string $date, ?array $entry, string $
 /** Tell one family what the trainer decided about their request. */
 function notify_enrolment_decision(array $request, bool $approved, string $note): bool {
     $account=one('SELECT a.* FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.id=?', [(int)$request['student_id']]);
-    if(!$account || $account['state']!=='active' || !$account['verified_at'] || empty($account['notifications'])) return false;
+    if(!$account || !account_takes_mail($account,'notifications')) return false;
     $student=one('SELECT first_name,last_name FROM students WHERE id=?',[(int)$request['student_id']]);
     $class=one('SELECT name FROM classes WHERE id=?',[(int)$request['class_id']]);
     $en=$account['locale']==='en';
@@ -194,15 +210,35 @@ function notify_enrolment_decision(array $request, bool $approved, string $note)
 }
 
 /**
- * Send one invoice to the family, with the PDF attached.
+ * Why an invoice cannot be e-mailed to its family, in a sentence, or null when
+ * it can. Asked before anything is queued, so she hears it on the page rather
+ * than finding the mail cancelled in Postausgang - and so the invoice never says
+ * „per E-Mail geschickt“ about a mail the queue was always going to drop.
+ */
+function invoice_mail_refusal(array $invoice): ?string {
+    $account=$invoice['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$invoice['account_id']]):null;
+    if(!$account)
+        return t('Für dieses Kind ist kein Konto hinterlegt, an das die Rechnung gehen könnte.','This child has no account for the invoice to go to.');
+    if(!account_in_use($account))
+        return t('Der Zugang dieses Kindes ist noch nicht eingerichtet oder gesperrt. Lade die Rechnung herunter und gib sie anders weiter.',
+                 'This child’s login is not set up yet, or is suspended. Download the invoice and pass it on another way.');
+    if(!account_takes_mail($account,'payments'))
+        return t('Diese Familie hat E-Mails zu Beiträgen abbestellt („Erinnerung, wenn ein Beitrag offen ist“ unter „Mein Konto“). Lade die Rechnung herunter und gib sie anders weiter.',
+                 'This family has switched off emails about payments (“Remind me when a payment is outstanding” under “My account”). Download the invoice and pass it on another way.');
+    return null;
+}
+
+/**
+ * Send one invoice to the family, with the PDF attached. False, and nothing
+ * queued, when invoice_mail_refusal() has a reason.
  *
  * The amount, the number and the due date are in the body as well, because an
  * attachment on a phone is a tap away and a parent reading this on the bus
  * should already know what it says.
  */
 function notify_invoice(array $invoice): bool {
-    $account=$invoice['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$invoice['account_id']]):null;
-    if(!$account || $account['state']!=='active' || !$account['verified_at']) return false;
+    if(invoice_mail_refusal($invoice)!==null) return false;
+    $account=one('SELECT * FROM accounts WHERE id=?',[(int)$invoice['account_id']]);
     $en=$account['locale']==='en';
     $body=mail_greeting($account)
         .($en?'Invoice ':'Rechnung ').$invoice['number'].' '.($en?'over':'über').' '.money((int)$invoice['gross_cents'])
@@ -342,8 +378,7 @@ function smtp_check(?string $recipient=null): array {
         ?t('als ','as ').$s['username'].(empty($s['password'])?' '.t('(ohne gespeichertes Passwort)','(no password saved)'):'')
         :t('ohne Benutzernamen','without a user name'));
     try {
-        if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class))
-            throw new UserError(t('PHPMailer fehlt. Der Ordner vendor/ wurde nicht mit hochgeladen.','PHPMailer is missing. The vendor/ folder was not uploaded.'));
+        if($missing=mail_library_missing()) throw new UserError($missing);
         if($host===''||$port<1||empty($s['from_email']))
             throw new UserError(t('Server, Port und Absenderadresse müssen zuerst gespeichert werden.','Save the server, the port and the sender address first.'));
         if(!extension_loaded('openssl'))
@@ -417,9 +452,20 @@ function smtp_settings_changed(array $old, array $new): bool {
     return $plain($old) != $plain($new);
 }
 
+/**
+ * Why mail cannot be sent from this copy of the portal at all, or null. The
+ * library comes in the release ZIP's vendor/ folder; she has no shell, so the
+ * answer is to upload it, never a command to run.
+ */
+function mail_library_missing(): ?string {
+    if(class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) return null;
+    return t('Das Programm zum Versenden (PHPMailer) fehlt: Der Ordner vendor/ ist nicht auf dem Server. Er ist im Release-ZIP enthalten – lade den ganzen Inhalt des ZIP noch einmal hoch.',
+             'The program that sends email (PHPMailer) is missing: the vendor/ folder is not on the server. It is in the release ZIP – upload the whole content of the ZIP again.');
+}
+
 function process_mail(int $limit=25, float $budget=0.0): array {
-    if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
-    if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');
+    if(is_file(maintenance_file()))throw new UserError(t('Im Wartungsmodus werden keine E-Mails verschickt. Sobald er aus ist, geht der Versand weiter.','No email is sent while maintenance mode is on. Sending carries on once it is off.'));
+    if($missing=mail_library_missing()) throw new UserError($missing);
     // An advisory database lock works across cron processes and hosts.
     if((int)scalar("SELECT GET_LOCK('badminton_crm_mail',0)")!==1) return ['sent'=>0,'failed'=>0,'skipped'=>0,'deferred'=>0];
     $count=['sent'=>0,'failed'=>0,'skipped'=>0,'deferred'=>0];
@@ -445,9 +491,7 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                 $stored=$job['payload']!==''?mail_payload(unseal($job['payload'])):['body'=>'','attach'=>[]];
                 $plainBody=$stored['body'];
                 if($eligible && $job['category']==='security') $eligible=security_mail_links_live($plainBody,(string)$job['recipient']);
-                if($eligible && $job['category']!=='security') $eligible=$a['state']==='active' && $a['verified_at'] && same_address((string)$a['email'],(string)$job['recipient']);
-                $switch=['newsletter'=>'newsletter','notifications'=>'notifications','payments'=>'payment_notices'][$job['category']]??null;
-                if($eligible && $switch!==null) $eligible=(bool)($a[$switch]??1);
+                if($eligible && $job['category']!=='security') $eligible=account_takes_mail($a,(string)$job['category']) && same_address((string)$a['email'],(string)$job['recipient']);
                 if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='',retry_after=NULL WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}
                 $m=smtp_mailer($s);
                 $m->setFrom($s['from_email'],$s['from_name']); $m->addAddress($job['recipient']);

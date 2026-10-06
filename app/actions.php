@@ -709,25 +709,24 @@ function dispatch_action(string $action): array {
         run('INSERT INTO charges (student_id,label,amount_cents,period_from,period_to,due_on,created_at) VALUES (?,?,?,?,?,?,?)',[$s['id'],required_text('label'),cents(post('amount')),$from,$to,date_value(post('due_on'),true),now()]);
         audit('charge.created','charge',(int)db()->lastInsertId());flash(t('Beitrag angelegt.','Charge created.'));return ['student',['id'=>$s['id'],'tab'=>'payments']];
     case 'charge_cancel':
-        require_staff();$c=one('SELECT * FROM charges WHERE id=? FOR UPDATE',[(int)post('id')]);if(!$c)throw new UserError('Not found');
-        if(scalar('SELECT COUNT(*) FROM payments WHERE charge_id=? AND voided=0',[$c['id']])) throw new UserError(t('Zugehörige Zahlungen zuerst stornieren.','Void associated payments first.'));
-        tracked('charges',(int)$c['id'],(string)$c['label'],fn()=>run('UPDATE charges SET cancelled=1 WHERE id=?',[$c['id']]));
-        audit('charge.cancelled','charge',(int)$c['id']);return ['student',['id'=>$c['student_id'],'tab'=>'payments']];
+        require_staff();$c=cancel_charge((int)post('id'));
+        return ['student',['id'=>$c['student_id'],'tab'=>'payments']];
     case 'payment_add':
-        $u=require_staff();$c=one('SELECT * FROM charges WHERE id=? AND cancelled=0 FOR UPDATE',[(int)post('charge_id')]);if(!$c)throw new UserError('Not found');
+        $u=require_staff();$c=one('SELECT c.*,'.charge_recorded_sql().' AS recorded FROM charges c WHERE c.id=? FOR UPDATE',[(int)post('charge_id')]);
+        if(!$c)throw new NotFound(t('Diesen Beitrag gibt es nicht.','No such charge.'));
+        if($c['cancelled'])throw new UserError(t('Dieser Beitrag ist storniert. Darauf lässt sich keine Zahlung erfassen.','That charge has been cancelled. No payment can be recorded against it.'));
         $amount=cents(post('amount'),false);
-        $allocated=(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE charge_id=? AND voided=0',[$c['id']]);
-        if($amount+$allocated>(int)$c['amount_cents']) throw new UserError(t('Der Betrag übersteigt den noch nicht erfassten Beitrag. Auch unbestätigte Zahlungen zählen hier.','The amount exceeds the charge not yet recorded, including unconfirmed payments.'));
+        if($amount+(int)$c['recorded']>(int)$c['amount_cents']) throw new UserError(t('Der Betrag übersteigt den noch nicht erfassten Beitrag. Auch unbestätigte Zahlungen zählen hier.','The amount exceeds the charge not yet recorded, including unconfirmed payments.'));
         $confirmed=(bool)post('confirmed');
         run('INSERT INTO payments (charge_id,amount_cents,paid_on,method,note,confirmed_by,confirmed_at) VALUES (?,?,?,?,?,?,?)',[$c['id'],$amount,date_value(post('paid_on'),true),choose(post('method'),setting('payment_methods',['Überweisung','Bar'])),text_limit('note'),$confirmed?$u['id']:null,$confirmed?now():null]);
         audit('payment.recorded','payment',(int)db()->lastInsertId());flash(t('Zahlung erfasst.','Payment recorded.'));return ['student',['id'=>$c['student_id'],'tab'=>'payments']];
     case 'payment_state':
-        $u=require_staff();$p=one('SELECT p.*,c.student_id FROM payments p JOIN charges c ON c.id=p.charge_id WHERE p.id=? FOR UPDATE',[(int)post('id')]);if(!$p || $p['voided'])throw new UserError('Not found');
+        require_staff();$p=one('SELECT p.*,c.student_id FROM payments p JOIN charges c ON c.id=p.charge_id WHERE p.id=? FOR UPDATE',[(int)post('id')]);
+        if(!$p)throw new NotFound(t('Diese Zahlung gibt es nicht.','No such payment.'));
+        if($p['voided'])throw new UserError(t('Diese Zahlung ist bereits storniert.','That payment has already been voided.'));
         $mode=choose(post('mode'),['confirm','void']);
-        tracked('payments',(int)$p['id'],money((int)$p['amount_cents']),function() use ($mode,$u,$p) {
-            if($mode==='confirm')run('UPDATE payments SET confirmed_at=?,confirmed_by=? WHERE id=?',[now(),$u['id'],$p['id']]);
-            else run('UPDATE payments SET voided=1 WHERE id=?',[$p['id']]);
-        });
+        if($mode==='confirm') confirm_payment($p);
+        else tracked('payments',(int)$p['id'],money((int)$p['amount_cents']),fn()=>run('UPDATE payments SET voided=1 WHERE id=?',[$p['id']]));
         audit('payment.'.$mode,'payment',(int)$p['id']);return ['student',['id'=>$p['student_id'],'tab'=>'payments']];
     }
     return dispatch_config($action);
