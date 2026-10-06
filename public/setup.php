@@ -10,9 +10,17 @@ declare(strict_types=1);
  * schema, and create the first administrator. One page, one button.
  *
  * It refuses to run again once an administrator exists, which is what closes it
- * afterwards. There is no CSRF token, deliberately: before the first
- * administrator exists there is no privilege to borrow, and anyone who could
- * make the operator submit this form could just as easily open it themselves.
+ * afterwards, and it refuses while the database it was given does not answer.
+ * Once a configuration exists, whoever finishes the installation must show she
+ * can open the portal's files: the setup code in storage/setup-code.txt, or the
+ * cookie this page handed the browser that wrote the configuration. Without
+ * that, an installation left unfinished - a password refused after the
+ * configuration was written - made the first stranger to open this page its
+ * administrator.
+ *
+ * There is no CSRF token, deliberately: before the configuration exists there is
+ * no privilege to borrow, and afterwards the code is the proof, which another
+ * site cannot know and the cookie that carries it is not sent along with.
  */
 
 ini_set('display_errors', '0');
@@ -21,14 +29,15 @@ require_once __DIR__ . '/../app/install.php';
 install_locale((string)($_GET['lang'] ?? ($_POST['lang'] ?? 'de')));
 
 $post = $_SERVER['REQUEST_METHOD'] === 'POST';
-$state = install_state();
 $configPath = config_path();
+$state = install_state($configPath);
 $stored = install_read_config($configPath);
 $blockers = install_blockers();
 $errors = [];
 $warnings = [];
 $manual = '';      // the configuration to create by hand when config/ is read-only
 $done = false;
+$handed = false;   // this response hands the browser the setup code as a cookie
 
 $form = [
     'db_host' => 'localhost', 'db_port' => '3306', 'db_name' => '', 'db_user' => '',
@@ -37,16 +46,38 @@ $form = [
 ];
 $withDemo = false;
 $demo = null;     // what demo_fill() created, to be shown on the finish page
+// Not the database's name, server or user: whoever opens this page has not
+// shown yet that she is the one installing it.
 if ($state === 'configured' && $stored) {
-    $form['db_host'] = (string)($stored['db']['host'] ?? '');
-    $form['db_port'] = (string)($stored['db']['port'] ?? '3306');
-    $form['db_name'] = (string)($stored['db']['database'] ?? '');
-    $form['db_user'] = (string)($stored['db']['username'] ?? '');
     $form['app_url'] = (string)($stored['app_url'] ?? $form['app_url']);
     $form['timezone'] = (string)($stored['timezone'] ?? $form['timezone']);
 }
 
-if ($post && $state !== 'installed' && !$blockers) {
+$open = in_array($state, ['fresh', 'configured'], true) && !$blockers;
+$needsCode = $open && is_file($configPath);
+if ($needsCode) install_code($stored);
+$typedCode = form_text($_POST['setup_code'] ?? '') ?? '';
+$byCookie = fn(?array $config): bool => install_code_matches($config, $_COOKIE[INSTALL_CODE_COOKIE] ?? null);
+$proven = !$needsCode || install_code_matches($stored, $typedCode) || $byCookie($stored);
+
+// The folder this page is in, as the browser sees it: /setup.php and
+// /verein/setup.php each keep the cookie to their own portal.
+$cookie = ['path' => rtrim(dirname((string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/')), '/') . '/',
+           'secure' => install_is_https($_SERVER), 'httponly' => true, 'samesite' => 'Strict'];
+/** Give the browser that is installing the code, so the same person never needs the file manager for it. */
+$handCode = function (?array $config) use (&$handed, $cookie): void {
+    if (($code = install_code($config)) === null) return;
+    setcookie(INSTALL_CODE_COOKIE, $code, ['expires' => 0] + $cookie);
+    $handed = true;
+};
+
+if ($post && $open && !$proven) {
+    // Before anything else is read or tried: without the code this request
+    // touches neither the database nor the configuration.
+    $errors[] = install_t(
+        'Der Einrichtungscode fehlt oder stimmt nicht. Er steht in der Datei ' . install_code_location($stored) . ' (im Dateimanager öffnen).',
+        'The setup code is missing or wrong. It is in the file ' . install_code_location($stored) . ' (open it in the file manager).');
+} elseif ($post && $open) {
     ['form' => $form, 'password' => $password, 'repeat' => $repeat, 'db_password' => $dbPassword]
         = install_submission($_POST, $form);
     $withDemo = isset($_POST['demo_fill']);
@@ -55,6 +86,11 @@ if ($post && $state !== 'installed' && !$blockers) {
     if (!filter_var($url, FILTER_VALIDATE_URL) || !in_array((string)parse_url($url, PHP_URL_SCHEME), ['http', 'https'], true))
         $errors[] = install_t('Die Adresse des Portals muss mit http:// oder https:// beginnen.',
                               'The portal address must start with http:// or https://.');
+    // The address every link and every email will carry, and whether the
+    // sign-in cookie is a secure one: decided here, once.
+    elseif (parse_url($url, PHP_URL_SCHEME) !== 'https' && !install_host_is_local((string)parse_url($url, PHP_URL_HOST)))
+        $errors[] = install_t('Die Adresse des Portals muss mit https:// beginnen. Ohne geht es nur für einen Test auf dem eigenen Rechner (localhost).',
+                              'The portal address must start with https://. Only a test on your own computer (localhost) can do without.');
     if (!in_array($form['timezone'], timezone_identifiers_list(), true))
         $errors[] = install_t('Unbekannte Zeitzone.', 'Unknown time zone.');
     if ($form['admin_name'] === '' || mb_strlen($form['admin_name']) > 160)
@@ -89,7 +125,7 @@ if ($post && $state !== 'installed' && !$blockers) {
                 // The same keys as config/config.example.php and the suite's own
                 // tests/run-config.php; install_config_keys() names them, and the
                 // install suite holds all three to it.
-                $source = install_config_source([
+                $values = [
                     'app_url' => $url, 'app_key' => install_app_key($configPath), 'db' => $db,
                     'timezone' => $form['timezone'],
                     // A portal reached over plain HTTP cannot set a secure cookie;
@@ -97,23 +133,36 @@ if ($post && $state !== 'installed' && !$blockers) {
                     'secure_cookies' => str_starts_with($url, 'https://'),
                     'session_idle_minutes' => 120,
                     'maintenance_file' => ROOT . '/storage/maintenance.flag',
-                ]);
+                ];
+                $source = install_config_source($values);
                 if (!install_writable($configPath)) {
                     $manual = $source;
+                    // She is about to create the file by hand; the code lets this
+                    // browser finish afterwards without anybody else being able to.
+                    $handCode($values);
                     throw new RuntimeException(install_t(
                         'Der Ordner config/ ist nicht beschreibbar. Die Datei unten bitte im Dateimanager als config/config.php anlegen und dann erneut auf „Installieren“ tippen.',
                         'The config/ folder is not writable. Create the file below as config/config.php in the file manager, then press “Install” again.'));
                 }
                 install_write_config($configPath, $source);
+                $stored = install_read_config($configPath);
+                // From here on the configuration exists, so if anything below
+                // fails the next attempt needs the code. This browser has it.
+                $handCode($stored);
             }
             // The application can only be loaded once there is a configuration,
             // which is why this is here rather than at the top of the file.
             $_SESSION = ['locale' => install_locale()];   // read by t(); no session is started here
             require __DIR__ . '/../app/bootstrap.php';
             // No safeguards on a first install: there is no earlier release to be
-            // older than, and an empty database has nothing worth copying.
+            // older than, and an empty database has nothing worth copying. The
+            // runner honours that only for a database that has never been
+            // migrated (schema_first_install()), whatever this page believes.
             schema_apply(null, safeguards: false);
             create_admin_account($form['admin_name'], $form['admin_email'], $password);
+            // The code has nothing left to open.
+            install_code_forget($stored);
+            setcookie(INSTALL_CODE_COOKIE, '', ['expires' => 1] + $cookie);
             // Example data here rather than only afterwards, because the portal
             // is unrecognisable empty: no courses, no children, no charges, and
             // every page an empty state. Trying it out meant inventing a term's
@@ -132,10 +181,25 @@ if ($post && $state !== 'installed' && !$blockers) {
     }
 }
 
+// What the page offers next follows from what this request did: a configuration
+// written a moment ago makes the next attempt the last step, and that one needs
+// the code - which this browser has just been handed, if anybody has.
+if ($post && !$done) {
+    $state = install_state($configPath);
+    $stored = install_read_config($configPath);
+    $open = in_array($state, ['fresh', 'configured'], true) && !$blockers;
+    $needsCode = $open && is_file($configPath);
+}
+// Typed rather than carried by the cookie: asked again, with what she typed
+// filled in when it was right, so a refused password does not cost her the code.
+$askCode = $needsCode && !$handed && !$byCookie($stored);
+$keptCode = install_code_matches($stored, $typedCode) ? $typedCode : '';
+
 $portal = $done ? rtrim((string)config('app_url'), '/') . '/index.php' : '';
 $other = install_locale() === 'en' ? 'de' : 'en';
 // Set before a single byte of the page goes out; after that it is too late.
 if ($state === 'installed' && !$done) http_response_code(403);
+if ($state === 'unreachable' && !$done) { http_response_code(503); header('Retry-After: 300'); }
 header('Cache-Control: no-store');
 header('X-Robots-Tag: noindex');
 ?>
@@ -162,6 +226,19 @@ header('X-Robots-Tag: noindex');
         'Dieses Portal ist fertig installiert. Die Einrichtung lässt sich nicht noch einmal starten.',
         'This portal is installed. Setup cannot be run a second time.'))?></p>
     <p><a class="button" href="index.php"><?=install_e(install_t('Zur Anmeldung', 'Go to sign-in'))?></a></p>
+</div>
+
+<?php elseif ($state === 'unreachable' && !$done): ?>
+<?php /* Whoever reads this may be a parent, so it names no database, server or
+         user - only what the operator can do about it. */ ?>
+<div class="card setup-step">
+    <h1><?=install_e(install_t('Die Datenbank antwortet gerade nicht', 'The database is not answering right now'))?></h1>
+    <p class="muted"><?=install_e(install_t(
+        'Für dieses Portal gibt es schon eine Einstellungsdatei, aber die Datenbank darin ist im Moment nicht erreichbar. Solange das so ist, lässt sich hier nichts einrichten. Bitte in ein paar Minuten noch einmal versuchen.',
+        'This portal already has a settings file, but the database it names cannot be reached at the moment. Nothing can be set up here until it can. Please try again in a few minutes.'))?></p>
+    <p class="muted"><?=install_e(install_t(
+        'Bleibt es so: im Hosting-Panel unter „MySQL-Verwaltung“ nachsehen, ob die Datenbank läuft und ihr Passwort noch dasselbe ist wie in config/config.php.',
+        'If it stays like this: check under “MySQL Management” in the hosting panel that the database is running and that its password is still the one in config/config.php.'))?></p>
 </div>
 
 <?php elseif ($done): ?>
@@ -254,6 +331,9 @@ header('X-Robots-Tag: noindex');
     <p class="muted"><?=install_e(install_t(
         'Die rot markierten Punkte oben müssen im Hosting-Panel erledigt werden. Diese Seite danach neu laden.',
         'The points marked in red above have to be handled in the hosting panel. Reload this page afterwards.'))?></p>
+    <?php if (!install_request_secure($_SERVER)): ?>
+    <p><a class="button" href="<?=install_e(install_secure_setup_url($_SERVER))?>"><?=install_e(install_t('Über https:// öffnen', 'Open over https://'))?></a></p>
+    <?php endif ?>
 </div>
 <?php else: ?>
 <form method="post" class="form">
@@ -285,10 +365,21 @@ header('X-Robots-Tag: noindex');
     <p class="muted"><?=install_e(install_t(
         'Die Zugangsdaten sind bereits gespeichert und werden nicht noch einmal abgefragt. Es fehlt nur das erste Konto.',
         'The credentials are already stored and are not asked for again. Only the first account is missing.'))?></p>
-    <dl class="facts">
-        <div><dt><?=install_e(install_t('Datenbank', 'Database'))?></dt><dd><?=install_e($form['db_name'])?></dd></div>
-        <div><dt><?=install_e(install_t('Server', 'Server'))?></dt><dd><?=install_e($form['db_host'])?></dd></div>
-    </dl>
+</div>
+<?php endif ?>
+
+<?php if ($askCode): ?>
+<div class="card setup-step">
+    <h2><?=install_e(install_t('Einrichtungscode', 'Setup code'))?></h2>
+    <p class="muted"><?=install_e(install_t(
+        'Für dieses Portal gibt es schon eine Einstellungsdatei. Damit nur du die Einrichtung abschließen kannst, liegt ein Code in einer Datei, die nur mit Zugang zu den Dateien zu öffnen ist:',
+        'This portal already has a settings file. So that only you can finish setting it up, there is a code in a file that only somebody with access to the files can open:'))?></p>
+    <p class="mono"><?=install_e(install_code_location($stored))?></p>
+    <p class="muted"><?=install_e(install_t(
+        'Im Dateimanager des Hosting-Panels öffnen und die erste Zeile hier eingeben, zum Beispiel ABCD-EFGH-JKLM. Groß- und Kleinschreibung und Bindestriche sind egal.',
+        'Open it in the hosting panel’s file manager and enter its first line here, for example ABCD-EFGH-JKLM. Upper or lower case and the dashes do not matter.'))?></p>
+    <div class="field"><label for="setup_code"><?=install_e(install_t('Einrichtungscode', 'Setup code'))?></label>
+        <input id="setup_code" name="setup_code" value="<?=install_e($keptCode)?>" required autocomplete="off" autocapitalize="characters" spellcheck="false"></div>
 </div>
 <?php endif ?>
 

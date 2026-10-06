@@ -186,12 +186,31 @@ class SchemaError extends UpdateBlocked {
 }
 
 /**
+ * Whether this database is one a first install may migrate without the
+ * safeguards: no migration recorded in its ledger, and nothing in any of the
+ * tables an update must not lose.
+ *
+ * Asked by schema_apply() itself rather than left to whoever calls it, because
+ * the caller cannot know. The setup page skipped them whenever it believed it
+ * was installing, and it believed that whenever the database had failed to
+ * answer it a moment earlier - on a portal with families in it.
+ */
+function schema_first_install(): bool {
+    try { if ((int)scalar('SELECT COUNT(*) FROM schema_migrations') > 0) return false; }
+    catch (PDOException) { /* no ledger yet, which is as empty as it gets */ }
+    return array_sum(schema_counts()) === 0;
+}
+
+/**
  * Bring the database up to the schema these files describe.
  *
  * Safe to call repeatedly and safe to call from two requests at once: the
  * advisory lock serialises them and the second one finds nothing left to do.
  * Returns the names of the migrations it applied, which is empty on the common
  * path where everything was already there.
+ *
+ * $safeguards false is honoured only on a first install (schema_first_install());
+ * on any other database the checks run whatever the caller asked.
  */
 function schema_apply(?callable $log = null, bool $safeguards = true): array {
     $log ??= static fn(string $line) => null;
@@ -207,7 +226,7 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
     try {
         // Checked inside the lock and before anything is written, so two requests
         // cannot both decide the release is fine and then disagree.
-        if ($safeguards) schema_refuse_unsafe($log);
+        if ($safeguards || !schema_first_install()) schema_refuse_unsafe($log);
         $before = schema_counts();
         foreach (migration_files() as $file) {
             $version = basename($file);

@@ -88,6 +88,16 @@ die Einrichtungsseite.
 
 `https://deine-domain.at` aufrufen. Es erscheint die Einrichtungsseite.
 
+Die Einrichtung läuft nur verschlüsselt. Über `http://` geöffnet, steht bei
+**Verschlüsselte Verbindung (HTTPS)** ein rotes „fehlt“, und sie richtet nichts
+ein; der Knopf **Über https:// öffnen** führt zur selben Seite mit `https://`.
+Zeigt der Browser dort eine Fehlermeldung („Verbindung ist nicht sicher“ oder
+„Server nicht gefunden“), fehlt noch das Zertifikat: im Hosting-Panel das
+SSL-Zertifikat für die Domain einschalten (meist „Let's Encrypt“, kostenlos),
+ein paar Minuten warten, neu laden. Nur ein Test auf dem eigenen Rechner
+(`localhost`) geht ohne. Ist das Portal eingerichtet, schickt es jeden, der eine
+Seite über `http://` aufruft, selbst zur selben Seite mit `https://`.
+
 Dort werden abgefragt:
 
 - die vier Datenbank-Angaben aus Schritt 1,
@@ -101,6 +111,16 @@ frei lassen.
 **Installieren** drücken. Das war die Installation. Danach führt ein Link direkt
 zur Anmeldung.
 
+Geht dabei etwas schief, nachdem die Einstellungsdatei schon geschrieben ist –
+zum Beispiel ein zu leicht zu erratendes Passwort –, sagt die Seite, was nicht
+stimmt, und der nächste Versuch **im selben Browser** braucht nichts weiter. In
+einem anderen Browser oder auf einem anderen Gerät erscheint stattdessen die
+Karte **Einrichtungscode**: im Dateimanager den Ordner `storage` öffnen, darin
+die Datei `setup-code.txt`, und ihre erste Zeile (etwa `ABCD-EFGH-JKLM`) in das
+Feld eintragen. Groß- und Kleinschreibung und Bindestriche sind egal. So kann
+niemand sonst die Einrichtung abschließen, der die Seite zufällig findet. Nach
+der Einrichtung wird die Datei von selbst gelöscht.
+
 Die Einrichtungsseite lässt sich anschließend nicht noch einmal starten: sobald
 ein Administrator existiert, antwortet sie nur noch mit einem Hinweis. Die Datei
 muss also nicht gelöscht werden – schaden kann es aber auch nicht.
@@ -108,7 +128,9 @@ muss also nicht gelöscht werden – schaden kann es aber auch nicht.
 > Zwischen dem Hochladen und dem Drücken von **Installieren** ist die
 > Einrichtungsseite öffentlich erreichbar. Wer sie in diesem Zeitfenster findet,
 > könnte das Portal auf eine eigene Datenbank installieren. Deshalb: hochladen
-> und gleich einrichten, nicht über Nacht liegen lassen.
+> und gleich einrichten, nicht über Nacht liegen lassen. Sobald die
+> Einstellungsdatei geschrieben ist, braucht der letzte Schritt den
+> Einrichtungscode, und die Angaben zur Datenbank zeigt die Seite niemandem mehr.
 
 ## Zum Ausprobieren: Beispieldaten
 
@@ -276,6 +298,10 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 |---|---|
 | „Diese Datenbank gibt es nicht, oder dieser Benutzer ist ihr nicht zugeordnet“ | Im Panel prüfen, ob der Benutzer der Datenbank zugeordnet ist. Viele Panels stellen dem Namen ein Präfix voran. |
 | „Benutzername oder Passwort der Datenbank stimmt nicht“ | Im Panel ein neues Datenbankpasswort setzen und hier eintragen. |
+| Der Browser meldet „Verbindung ist nicht sicher“ oder findet den Server nicht | Das SSL-Zertifikat fehlt. Im Hosting-Panel für die Domain einschalten (meist „Let's Encrypt“), ein paar Minuten warten, neu laden. |
+| „Dieses Portal nimmt Eingaben nur verschlüsselt an“ | Die Seite wurde über `http://` geöffnet, etwa aus einem alten Lesezeichen. Mit `https://` vorne neu öffnen und noch einmal senden. |
+| Die Einrichtungsseite fragt nach dem „Einrichtungscode“ | Im Dateimanager `storage/setup-code.txt` öffnen und die erste Zeile eintragen. |
+| Die Einrichtungsseite sagt „Die Datenbank antwortet gerade nicht“ | Ein paar Minuten warten. Bleibt es so: im Panel unter **MySQL-Verwaltung** prüfen, ob die Datenbank läuft und ihr Passwort noch das in `config/config.php` ist. |
 | „Der Ordner config/ ist nicht beschreibbar“ | Rechte auf `755` setzen, oder die angezeigte Datei im Dateimanager als `config/config.php` anlegen und erneut auf **Installieren** tippen. |
 | Beim Aufruf erscheint eine Dateiliste statt des Portals | Die `.htaccess`-Dateien wurden nicht mit entpackt. Der Dateimanager zeigt versteckte Dateien oft erst auf Wunsch an. |
 | Alles wirkt unformatiert | `mod_rewrite` fehlt. `https://deine-domain.at/public/` aufrufen – das funktioniert auch. |

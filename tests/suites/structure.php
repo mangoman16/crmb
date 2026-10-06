@@ -532,7 +532,7 @@ $runDir = test_run_dir();
 ok(!test_path_inside($runDir, APP_ROOT), 'the run\'s own folder is outside the portal: '.$runDir);
 $stored = ['the maintenance flag' => maintenance_file(), 'the backups' => backup_dir(),
            'the invoice proofs' => invoice_dir(), 'the schema marker' => schema_stamp_file(),
-           'the backup override' => backup_override_file()];
+           'the backup override' => backup_override_file(), 'the sign-in sessions' => session_dir()];
 $kinds = array_keys(upload_references());
 foreach (['avatar', 'proof', 'message'] as $kind)
     ok(in_array($kind, $kinds, true), 'uploads of kind '.$kind.' are among the folders checked');
@@ -549,7 +549,7 @@ case_('Every file the application stores is placed beside the maintenance flag')
    folder, for reasons that do not write through it at run time. */
 $storageNamed = [
     'app/core.php'     => 'function maintenance_file()',  // the default every other path derives from
-    'app/install.php'  => 'is_writable(ROOT',             // the installer asking whether it could write
+    'app/install.php'  => "dirname(\$flag) : ROOT . '/storage'", // the installer, before there is a maintenance flag to derive it from
     'public/setup.php' => "'maintenance_file' =>",        // the installer writing that setting itself
 ];
 $seen = [];

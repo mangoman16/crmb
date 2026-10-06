@@ -135,6 +135,21 @@ keeps both.
 **What you will notice afterwards.** None of this needs anything done; it is
 here so that nothing surprises you.
 
+- **A portal with an `https://` address is only served over HTTPS.** If
+  `'app_url'` in `config/config.php` starts with `https://`, as it does for a
+  portal set up over `https://`, a page opened over plain `http://` — an old
+  bookmark, a typed address — opens the same page over `https://` instead, and
+  a form sent over `http://` is refused with a sentence asking to open the page
+  again with `https://`. A portal whose address starts with `http://` works
+  exactly as before. To give it the same protection, switch on the SSL
+  certificate for the domain in the hosting panel, check that the sign-in page
+  opens with `https://` in front, then in `config/config.php` change `'app_url'`
+  to start with `https://` and set `'secure_cookies'` to `true`.
+- **Everybody is signed out once.** Sign-ins are now kept in the portal's own
+  folder, `storage/sessions`, instead of the folder the host shares between its
+  customers, so the first page view after the upload asks you and every family
+  to sign in again. Nothing is lost. If `storage/` cannot be written, sign-ins
+  stay where they were and the hosting error log says so.
 - **Profile pictures load once**, not again on every page, and a family sees
   only their own child's picture and those of the trainers and administrators.
   Anybody else appears as initials, in **Nachrichten** too. A new picture shows at once; an

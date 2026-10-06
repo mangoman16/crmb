@@ -135,6 +135,40 @@ function install_is_https(array $server): bool {
 
 function install_setup_url(array $server): string { return install_base_url($server) . '/setup.php'; }
 
+/**
+ * Whether a host, as a Host header or an address gives it, is the computer the
+ * portal runs on: the one place it may be tried out over plain HTTP.
+ *
+ * The root and public .htaccess files leave the same hosts on http:// when they
+ * send everything else to https://; the install suite holds both to one list.
+ */
+function install_host_is_local(string $host): bool {
+    $host = strtolower(trim($host));
+    if (preg_match('/^\[([0-9a-f:.]+)\](?::\d+)?$/D', $host, $m)) $host = $m[1];        // [::1]:8080
+    elseif (substr_count($host, ':') === 1) $host = explode(':', $host)[0];              // localhost:8080
+    if ($host === 'localhost' || $host === '::1' || preg_match('/^[a-z0-9.-]+\.localhost$/D', $host)) return true;
+    return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false && str_starts_with($host, '127.');
+}
+
+/**
+ * Whether this request may carry an installation: over HTTPS, or on this
+ * computer. Over plain HTTP anywhere else, the database password and hers
+ * would cross the network readable, and the portal would be written down as an
+ * http:// one with a cookie anybody on the same Wi-Fi could copy.
+ *
+ * Refused rather than warned about with a box to tick: a box is ticked to make
+ * the warning go away, and what it costs is permanent, because app_url and
+ * secure_cookies are written into the configuration once and not looked at again.
+ */
+function install_request_secure(array $server): bool {
+    return install_is_https($server) || install_host_is_local((string)($server['HTTP_HOST'] ?? ''));
+}
+
+/** The same setup page, over https://. */
+function install_secure_setup_url(array $server): string {
+    return 'https://' . (string)preg_replace('#^https?://#', '', install_setup_url($server));
+}
+
 // ---------------------------------------------------------------------------
 // Does this server have what the application needs
 // ---------------------------------------------------------------------------
@@ -180,13 +214,24 @@ function install_writable(string $path): bool {
  * A row marked fatal stops the installation; the rest are reported and the
  * operator decides. Missing dependencies are deliberately not fatal — the portal
  * runs without them, it just cannot send email or draw a payment QR code yet.
+ *
+ * $server is the request asking, which decides the HTTPS row; without a web
+ * request - a command-line run - there is no connection to judge.
  */
-function install_requirements(): array {
+function install_requirements(?array $server = null): array {
+    $server ??= $_SERVER;
     $checks = [];
     $add = function (string $de, string $en, bool $ok, string $fixDe = '', string $fixEn = '', bool $fatal = true) use (&$checks): void {
         $checks[] = ['label' => install_t($de, $en), 'ok' => $ok, 'fatal' => $fatal,
                      'fix' => $ok ? '' : install_t($fixDe, $fixEn)];
     };
+    // First, because it is the one she fixes in a different place: not on this
+    // server's PHP, but by switching on the certificate and opening https://.
+    if (isset($server['REQUEST_METHOD']))
+        $add('Verschlüsselte Verbindung (HTTPS)', 'Encrypted connection (HTTPS)',
+             install_request_secure($server),
+             'Diese Seite ist über http:// geöffnet, also unverschlüsselt: das Passwort der Datenbank und dein eigenes wären unterwegs lesbar, und das Portal liefe danach genauso. Im Hosting-Panel das SSL-Zertifikat für diese Domain einschalten (meist „Let’s Encrypt“, kostenlos) und die Einrichtung dann über https:// öffnen.',
+             'This page was opened over http://, unencrypted: the database password and your own would be readable on the way, and the portal would run the same way afterwards. Switch on the SSL certificate for this domain in the hosting panel (usually “Let’s Encrypt”, free), then open setup over https://.');
     $add('PHP 8.2 oder neuer (installiert: ' . PHP_VERSION . ')',
          'PHP 8.2 or newer (installed: ' . PHP_VERSION . ')',
          PHP_VERSION_ID >= 80200,
@@ -204,8 +249,11 @@ function install_requirements(): array {
          'Im Dateimanager für den Ordner config die Rechte auf 755 setzen. Die Einstellungen lassen sich sonst unten von Hand anlegen.',
          'Set the config folder to 755 in the file manager. Otherwise the settings can be created by hand below.',
          false);
+    // Where the portal will really keep its files: beside the maintenance flag
+    // the configuration names, once there is one.
+    $storage = install_storage_dir(install_read_config(config_path()));
     $add('Der Ordner storage/ ist beschreibbar', 'The storage/ folder is writable',
-         is_dir(ROOT . '/storage') && is_writable(ROOT . '/storage'),
+         is_dir($storage) && is_writable($storage),
          'Im Dateimanager für den Ordner storage die Rechte auf 755 setzen.',
          'Set the storage folder to 755 in the file manager.');
     $add('E-Mail- und QR-Bibliotheken sind vorhanden', 'The email and QR libraries are present',
@@ -217,8 +265,8 @@ function install_requirements(): array {
 }
 
 /** Requirements that must hold before anything is written. */
-function install_blockers(): array {
-    return array_values(array_filter(install_requirements(), fn($c) => !$c['ok'] && $c['fatal']));
+function install_blockers(?array $server = null): array {
+    return array_values(array_filter(install_requirements($server), fn($c) => !$c['ok'] && $c['fatal']));
 }
 
 // ---------------------------------------------------------------------------
@@ -373,24 +421,123 @@ function install_config_usable(?array $config): bool {
 /**
  * How far this installation has got.
  *
- *   fresh       no usable configuration; ask for everything
- *   configured  configuration written but no administrator; finish the last step
- *   installed   done, and setup must refuse to run again
+ *   fresh        no usable configuration; ask for everything
+ *   configured   configuration written and the database answers, with no
+ *                administrator in it yet; finish the last step
+ *   installed    done, and setup must refuse to run again
+ *   unreachable  a configuration whose database does not answer; refuse
+ *                everything until it does
  *
- * A database that is merely unreachable reads as "configured", which is safe:
- * the only thing setup will then offer is creating the first administrator, and
- * create_admin_account() refuses that as soon as one exists.
+ * A database that does not answer is not "configured". It once was, and on an
+ * installed portal a moment's outage then turned the setup page back into an
+ * offer to create an administrator, with the migrations run first and their
+ * safeguards skipped. The one failure that does mean "not finished" is the
+ * accounts table not being there yet: the configuration was written and the
+ * schema was not.
  */
-function install_state(): string {
-    $config = install_read_config(config_path());
+function install_state(?string $path = null): string {
+    $config = install_read_config($path ?? config_path());
     if (!install_config_usable($config)) return 'fresh';
     try {
         $pdo = install_connect($config['db']);
         return (int)$pdo->query("SELECT COUNT(*) FROM accounts WHERE role='admin'")->fetchColumn() > 0
             ? 'installed' : 'configured';
+    } catch (PDOException $e) {
+        return $e->getCode() === '42S02' ? 'configured' : 'unreachable';
     } catch (Throwable) {
-        return 'configured';
+        return 'unreachable';
     }
+}
+
+// ---------------------------------------------------------------------------
+// Proof that whoever finishes an installation can reach its files
+// ---------------------------------------------------------------------------
+
+/**
+ * The folder the portal keeps its own files in, before the application is
+ * loaded: beside the maintenance flag a configuration names, where
+ * maintenance_file() puts everything else, and storage/ while there is none.
+ */
+function install_storage_dir(?array $config = null): string {
+    $flag = is_array($config) ? (string)($config['maintenance_file'] ?? '') : '';
+    return $flag !== '' ? dirname($flag) : ROOT . '/storage';
+}
+
+/** The cookie that hands the setup code to the browser that wrote the configuration. */
+const INSTALL_CODE_COOKIE = 'badminton_setup';
+
+/**
+ * Where the setup code is written.
+ *
+ * In the storage folder rather than beside the configuration: config/ may be
+ * read-only, in which case the operator creates config.php by hand, while a
+ * storage/ that cannot be written stops the installation before this is asked.
+ */
+function install_code_file(?array $config): string { return install_storage_dir($config) . '/setup-code.txt'; }
+
+/** The code in the file, or null when there is none. */
+function install_code_read(string $file): ?string {
+    return preg_match('/\b[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}\b/', (string)@file_get_contents($file), $m) ? $m[0] : null;
+}
+
+/**
+ * The setup code, written into its file the first time it is asked for.
+ *
+ * Once a configuration exists, somebody wrote it, and finishing the
+ * installation creates the administrator of whatever database it names. Only
+ * the person who can open the portal's files should be able to do that; the
+ * code is how she shows it. Twelve characters with no 0/O or 1/I to confuse,
+ * so it can be read off a phone and typed, and far too many to guess.
+ *
+ * Null when the file cannot be written, which only happens when storage/ is not
+ * writable - and that already stops the installation with its own instruction.
+ */
+function install_code(?array $config): ?string {
+    $file = install_code_file($config);
+    if (($code = install_code_read($file)) !== null) return $code;
+    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    $code = '';
+    for ($i = 0; $i < 12; $i++) $code .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+    $code = implode('-', str_split($code, 4));
+    // Created exclusively, so two people opening the page at once cannot each
+    // be told about a different code; whoever is second reads the first one's.
+    $handle = @fopen($file, 'x');
+    if ($handle === false) return install_code_read($file);
+    fwrite($handle, $code . "\n\n"
+        . "Einrichtungscode für das Badminton-Portal. Auf der Einrichtungsseite eingeben.\n"
+        . "Setup code for the badminton portal. Enter it on the setup page.\n"
+        . "Die Datei wird nach der Einrichtung gelöscht. / This file is removed once setup has finished.\n");
+    fclose($handle);
+    // Readable by the owner, because the operator opens it in her file manager,
+    // which on per-user PHP hosting is the same account; not by anybody else.
+    @chmod($file, 0640);
+    return $code;
+}
+
+/** Whether what was typed, or what the cookie carries, is the code in the file. */
+function install_code_matches(?array $config, mixed $typed): bool {
+    $code = install_code_read(install_code_file($config));
+    if ($code === null || !is_string($typed)) return false;
+    // However it was typed: lower case, with spaces, with or without the dashes.
+    $typed = strtoupper((string)preg_replace('/[^A-Za-z0-9]/', '', $typed));
+    return hash_equals(str_replace('-', '', $code), $typed);
+}
+
+/** Once there is an administrator the code opens nothing, so it goes. */
+function install_code_forget(?array $config): void { @unlink(install_code_file($config)); }
+
+/**
+ * The file named the way the operator finds it in her file manager: from the
+ * portal's own folder, or by name alone when it lies elsewhere, so the page
+ * does not print a server path to whoever happens to open it.
+ */
+function install_code_location(?array $config): string {
+    $file = install_code_file($config);
+    $root = realpath(ROOT);
+    $dir = realpath(dirname($file));
+    return $root !== false && $dir !== false && str_starts_with($dir . '/', $root . '/')
+        ? ltrim(substr($dir, strlen($root)) . '/' . basename($file), '/')
+        : basename($file);
 }
 
 /**

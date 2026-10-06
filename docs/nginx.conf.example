@@ -1,8 +1,21 @@
 # Adapt paths, certificates, PHP-FPM socket and domain before use.
+
+# Plain HTTP goes to HTTPS. The portal does this itself as well, for any portal
+# whose app_url starts with https://; here the server can do it outright,
+# because whoever writes this block sets up the certificate too. The
+# certificate's own renewal stays reachable over HTTP; the root is where
+# certbot --webroot -w /var/www/letsencrypt writes its challenge.
+#
+# Behind a proxy or load balancer that ends TLS itself and talks plain HTTP to
+# this server, this block would send every request back to the proxy, for ever.
+# There, leave it out, let the proxy redirect, or redirect only what the proxy
+# says did not arrive over HTTPS, in the server block that serves the portal:
+#     if ($http_x_forwarded_proto != "https") { return 301 https://$host$request_uri; }
 server {
     listen 80;
     server_name badminton.example.at;
-    return 301 https://$host$request_uri;
+    location ^~ /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location / { return 301 https://$host$request_uri; }
 }
 
 server {
@@ -23,6 +36,8 @@ server {
         fastcgi_param DOCUMENT_ROOT $realpath_root;
         fastcgi_pass unix:/run/php/php8.4-fpm.sock;
     }
+    # The browser installer. It refuses to run again once an administrator exists.
+    location = /setup.php { include fastcgi_params; fastcgi_param SCRIPT_FILENAME $realpath_root/setup.php; fastcgi_param DOCUMENT_ROOT $realpath_root; fastcgi_pass unix:/run/php/php8.4-fpm.sock; }
     location ~ \.php$ { return 404; }
     location ~ /\. { deny all; }
 }

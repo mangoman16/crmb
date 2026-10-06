@@ -544,3 +544,339 @@ ok(version_status_text($status) !== '', 'and it can say so in words');
 ok($status['applied'] >= count(migration_files()), 'every shipped migration is recorded as applied');
 
 db()->exec('DROP TABLE schema_migrations');
+
+// ---------------------------------------------------------------------------
+// Who may finish an installation
+// ---------------------------------------------------------------------------
+
+/* Each configuration below lives in a folder of its own inside the run's
+   folder, with its maintenance flag beside it, so whatever the setup page
+   writes - the setup code, the schema marker - lands there and nowhere else. */
+$setupConfig = function (array $db): string {
+    $work = test_run_dir().'/setup-'.bin2hex(random_bytes(4));
+    mkdir($work, 0700);
+    write_run_config($work.'/config.php', $db, $work);
+    return $work.'/config.php';
+};
+$ownDb = config('db');
+$downDb = ['host' => '127.0.0.1', 'port' => 1, 'database' => 'crm_setup_probe_test', 'username' => 'crm_setup_probe', 'password' => ''];
+$down = $setupConfig($downDb);
+$denied = $setupConfig(['username' => 'niemand_'.bin2hex(random_bytes(3)), 'password' => 'falsch'] + $ownDb);
+$ours = $setupConfig($ownDb);
+
+case_('A database that does not answer is unreachable, never an installation waiting to be finished');
+/* "configured" - a configuration and no administrator - is the one state in
+   which the setup page creates an administrator. A database that failed to
+   answer read as that state too, so on an installed portal a moment's outage
+   turned the page back into an offer to whoever opened it next. */
+is_same('unreachable', install_state($down), 'a server where nothing listens is unreachable');
+is_same('unreachable', install_state($denied), 'and so is one that refuses the login');
+run('DELETE FROM accounts');
+is_same('configured', install_state($ours), 'a database that answers and has no administrator is waiting for one');
+make_account(['role' => 'admin']);
+is_same('installed', install_state($ours), 'and one with an administrator is installed');
+run('DELETE FROM accounts');
+is_same('fresh', install_state(test_run_dir().'/no-such-config.php'), 'no configuration at all is a fresh upload');
+$noTables = (string)getenv('CRM_MIGRATION_CONFIG');
+if ($noTables === '')
+    test_unsupported(array_merge(test_unsupported(),
+        ['setup reading a database with no tables yet as one still to be installed (set CRM_MIGRATION_CONFIG to the config of a'
+         .' second, empty *_test database; tests/mariadb-local.sh does)']));
+else
+    is_same('configured', install_state($noTables),
+            'a database that answers with no tables in it yet is one still to be installed: the configuration was written, the schema was not');
+
+case_('The installer skips the update\'s safeguards only on a database that has never been migrated');
+/* The setup page applies the migrations without the backup, the older-files
+   check and the manifest check, because a first install has nothing to protect.
+   Asked on a database that has a ledger, that same call would let an outdated
+   upload run against a portal with families in it, with no copy taken first. */
+db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
+db()->exec('DELETE FROM schema_migrations');
+foreach (migration_files() as $file)
+    run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)', [basename($file), hash_file('sha256', $file), now()]);
+run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)', ['099_from_a_newer_release.sql', str_repeat('0', 64), now()]);
+$waived = null;
+try { schema_apply(null, safeguards: false); } catch (Throwable $e) { $waived = $e; }
+ok($waived instanceof UpdateBlocked, 'asked to skip them on a database with a ledger, it checks anyway and refuses the older files');
+ok(str_contains($waived?->en ?? '', 'older'), 'for the reason the update itself would have given');
+run("DELETE FROM schema_migrations WHERE version='099_from_a_newer_release.sql'");
+
+case_('Nobody finishes an installation without showing they can reach its files');
+/* If creating the first administrator was refused after the configuration had
+   been written - a password on the list of common ones, a database user that
+   may not create tables - the page stayed open in the "configured" state, and
+   the first stranger to open it became the administrator. The page is asked
+   here the way a browser asks it, in a process of its own (tests/setup-request.php). */
+$setupPage = function (string $config, array $request = []): array {
+    $file = test_run_dir().'/request-'.bin2hex(random_bytes(4)).'.json';
+    file_put_contents($file, json_encode($request + ['method' => 'GET', 'host' => '127.0.0.1', 'https' => false,
+                                                     'headers' => [], 'post' => [], 'cookie' => []]));
+    $out = [];
+    exec('CRM_CONFIG='.escapeshellarg($config).' '.escapeshellarg(PHP_BINARY).' '.escapeshellarg(TEST_ROOT.'/setup-request.php')
+         .' '.escapeshellarg($file).' 2>&1', $out, $code);
+    @unlink($file);
+    $answer = json_decode((string)end($out), true);
+    return is_array($answer) ? $answer + ['log' => implode("\n", array_slice($out, 0, -1))]
+                             : ['status' => 0, 'body' => '', 'log' => implode("\n", $out)];
+};
+$firstAccount = ['admin_name' => 'Fremde Person', 'admin_email' => 'fremd@example.test',
+                 'admin_password' => 'korrektesPferdBatterie', 'admin_password2' => 'korrektesPferdBatterie',
+                 'app_url' => 'http://127.0.0.1:4192', 'timezone' => 'Europe/Vienna', 'lang' => 'de'];
+$admins = fn(): int => (int)scalar("SELECT COUNT(*) FROM accounts WHERE role='admin'");
+$codeFile = dirname($ours).'/setup-code.txt';
+$codeIn = function () use ($codeFile): string {
+    preg_match('/\b[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}\b/', (string)@file_get_contents($codeFile), $m);
+    return $m[0] ?? '';
+};
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['the setup page itself, asked as a browser asks it (this PHP disables exec)']));
+} else {
+    run('DELETE FROM accounts');
+    $page = $setupPage($ours);
+    is_same(200, $page['status'], 'a configured portal with no administrator shows the setup page'.($page['log'] !== '' ? ': '.$page['log'] : ''));
+    ok(str_contains($page['body'], 'name="admin_password"'), 'with the form for the first account');
+    ok(!str_contains($page['body'], (string)$ownDb['database']), 'but not the name of the database, which a visitor has no business knowing');
+    ok(!preg_match('~<dt>[^<]*Server[^<]*</dt>~', $page['body']), 'nor the server it is on');
+    ok(str_contains($page['body'], 'name="setup_code"'), 'and it asks for the setup code');
+    ok(str_contains($page['body'], 'storage/setup-code.txt') || str_contains($page['body'], 'setup-code.txt'),
+       'saying which file the code is in');
+    ok($codeIn() !== '', 'which it has written beside the maintenance flag, where only somebody with the files can read it');
+
+    $setupPage($ours, ['method' => 'POST', 'post' => $firstAccount]);
+    is_same(0, $admins(), 'a stranger who sends the form without the code creates no administrator');
+    $wrong = $setupPage($ours, ['method' => 'POST', 'post' => $firstAccount + ['setup_code' => 'AAAA-BBBB-CCCC']]);
+    is_same(0, $admins(), 'nor with a code that is not the one in the file');
+    ok(str_contains($wrong['body'], 'Einrichtungscode'), 'and is told that the code is what is missing');
+    ok(is_file($codeFile), 'while the code stays where it was, for the person who can read it');
+
+    $typed = strtolower(str_replace('-', ' ', $codeIn()));
+    $done = $setupPage($ours, ['method' => 'POST', 'post' => ['admin_name' => 'Trainerin', 'admin_email' => 'trainerin@example.test',
+                                                             'setup_code' => ' '.$typed.' '] + $firstAccount]);
+    is_same(1, $admins(), 'the person who read the code from the file finishes it, typed in lower case and with spaces');
+    is_same(['trainerin@example.test'], array_column(rows("SELECT email FROM accounts WHERE role='admin'"), 'email'),
+            'as the administrator she named');
+    ok(str_contains($done['body'], 'Das Portal ist eingerichtet'), 'and is told so');
+    ok(!is_file($codeFile), 'the code is removed afterwards, because it has nothing left to open');
+
+    run('DELETE FROM accounts');
+    $setupPage($ours);
+    $cookie = $codeIn();
+    ok($cookie !== '', 'an installation left unfinished again gets a code of its own');
+    $setupPage($ours, ['method' => 'POST', 'post' => $firstAccount, 'cookie' => ['badminton_setup' => $cookie]]);
+    is_same(1, $admins(), 'and the browser that wrote the configuration, which was handed the code as a cookie, needs no file manager');
+    run('DELETE FROM accounts');
+    @unlink($codeFile);
+
+    $gone = $setupPage($down);
+    is_same(503, $gone['status'], 'a portal whose database does not answer is refused, not offered');
+    ok(!str_contains($gone['body'], 'name="admin_password"'), 'with no form to create an administrator with');
+    ok(!str_contains($gone['body'], 'crm_setup_probe'), 'and without naming its database or the user it signs in as');
+    $tried = $setupPage($down, ['method' => 'POST', 'post' => $firstAccount]);
+    is_same(503, $tried['status'], 'a form sent to it anyway is refused the same way');
+    ok(!str_contains($tried['body'], 'SQLSTATE') && !str_contains($tried['body'], 'crm_setup_probe'),
+       'without a connection error that names the database or its user');
+}
+
+case_('A portal is not installed over plain HTTP, except on the computer it runs on');
+/* Installed over http://, the portal wrote app_url=http and secure_cookies=false
+   without a word: the database password and hers crossed the network readable,
+   and every sign-in afterwards did too, for as long as the portal ran. Refused
+   rather than warned about, because a box to tick is ticked to make the warning
+   go away, while what it costs is permanent. */
+$hosts = ['localhost' => true, 'localhost:8080' => true, '127.0.0.1' => true, '127.0.0.1:4192' => true,
+          '127.1.2.3' => true, '[::1]' => true, '[::1]:8080' => true, 'crm.localhost' => true, 'LOCALHOST' => true,
+          'badminton.example.at' => false, 'badminton.example.at:8080' => false, 'localhost.example.at' => false,
+          'example.localhost.at' => false, '127.0.0.1.example.at' => false, 'mylocalhost' => false,
+          '10.0.0.5' => false, '192.168.1.10' => false, '' => false];
+foreach ($hosts as $host => $local)
+    is_same($local, install_host_is_local((string)$host), test_show((string)$host).($local ? ' is this computer' : ' is not this computer'));
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['the setup page refusing plain HTTP, asked as a browser asks it (this PHP disables exec)']));
+} else {
+    $freshDir = test_run_dir().'/fresh-'.bin2hex(random_bytes(4));
+    mkdir($freshDir, 0700);
+    $fresh = $freshDir.'/config.php';
+    $install = $firstAccount + ['db_host' => '127.0.0.1', 'db_port' => '1', 'db_name' => 'crm_setup_probe_test',
+                                'db_user' => 'crm_setup_probe', 'db_password' => ''];
+    $plain = $setupPage($fresh, ['host' => 'badminton.example.at']);
+    ok(!str_contains($plain['body'], 'name="admin_password"'), 'opened over http:// on a real address, setup offers no form');
+    ok(str_contains($plain['body'], 'HTTPS'), 'it says that HTTPS is what is missing');
+    ok(str_contains($plain['body'], 'href="https://badminton.example.at/setup.php"'), 'and links to the same page over https://');
+    $sent = $setupPage($fresh, ['host' => 'badminton.example.at', 'method' => 'POST', 'post' => ['app_url' => 'https://badminton.example.at'] + $install]);
+    ok(str_contains($sent['body'], 'href="https://badminton.example.at/setup.php"') && !str_contains($sent['body'], 'nicht erreichbar'),
+       'a form sent over http:// anyway is refused before the database it names is even tried');
+    ok(!is_file($fresh), 'and no configuration is written');
+    ok(str_contains($setupPage($fresh, ['host' => 'badminton.example.at', 'https' => true])['body'], 'name="admin_password"'),
+       'over https:// the form is there');
+    ok(str_contains($setupPage($fresh, ['host' => 'badminton.example.at', 'headers' => ['X-Forwarded-Proto' => 'https']])['body'], 'name="admin_password"'),
+       'and when TLS ends at the host\'s proxy, which says so, too');
+    ok(str_contains($setupPage($fresh, ['host' => 'localhost:8080'])['body'], 'name="admin_password"'),
+       'a test on the computer itself may use http://');
+    $typed = $setupPage($fresh, ['host' => 'badminton.example.at', 'https' => true, 'method' => 'POST',
+                                 'post' => ['app_url' => 'http://badminton.example.at'] + $install]);
+    ok(str_contains($typed['body'], 'muss mit https:// beginnen'), 'an http:// address typed into the form for a real host is refused');
+    ok(!is_file($fresh), 'and nothing is written for it either');
+    ok(!str_contains($setupPage($fresh, ['host' => 'localhost:8080', 'method' => 'POST',
+                                         'post' => ['app_url' => 'http://localhost:8080'] + $install])['body'], 'muss mit https:// beginnen'),
+       'while one for this computer is accepted');
+}
+
+case_('Sign-in sessions are kept in the portal\'s own folder, and something empties it');
+/* PHP's default session folder is the host's: on shared hosting often one folder
+   for every customer on the machine, where a neighbour's script can list the
+   session files and read or plant one. The portal's own folder sits beside the
+   maintenance flag like everything else it stores. Debian and Ubuntu also switch
+   PHP's own clean-up off and leave it to a cron job that only knows the default
+   folder, so here PHP has to do it - without signing anybody out sooner than the
+   portal's own idle limit. A request is started for real, in a process of its
+   own, with the host's default set to a folder of the run's and its clean-up
+   off, as Debian ships it; the maintenance flag stops it once the session has
+   begun, before anything is migrated. */
+$sessionProbe = function (string $work) use ($ownDb): string {
+    mkdir($work, 0700);
+    write_run_config($work.'/config.php', $ownDb, $work);
+    file_put_contents($work.'/maintenance.flag', now());
+    return $work.'/config.php';
+};
+$hostDefault = test_run_dir().'/host-sessions-'.bin2hex(random_bytes(4));
+mkdir($hostDefault, 0700);
+$startRequest = function (string $config, string $then = 'null', string $before = '') use ($hostDefault): array {
+    $out = [];
+    exec('CRM_CONFIG='.escapeshellarg($config).' '.escapeshellarg(PHP_BINARY).' -d session.save_path='.escapeshellarg($hostDefault)
+         .' -d session.gc_probability=0 -d session.gc_maxlifetime=1440 -d error_log= -r '
+         .escapeshellarg('$_SERVER["REQUEST_METHOD"] = "GET"; '.$before.' register_shutdown_function(function () { $then = '.$then.'; echo "\n", json_encode('
+                         .'["status" => http_response_code(), "path" => session_save_path(), "id" => session_id(), "probability" => (int)ini_get("session.gc_probability"),'
+                         .' "divisor" => (int)ini_get("session.gc_divisor"), "lifetime" => (int)ini_get("session.gc_maxlifetime"), "then" => $then]); });'
+                         .' require $argv[1]; boot_http();')
+         .' '.escapeshellarg(APP_ROOT.'/app/bootstrap.php').' 2>&1', $out, $code);
+    $answer = json_decode((string)end($out), true);
+    return (is_array($answer) ? $answer : ['status' => 0, 'path' => '', 'id' => '', 'probability' => 0, 'divisor' => 1, 'lifetime' => 0, 'then' => null])
+        + ['log' => implode("\n", array_slice($out, 0, -1))];
+};
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['where a request keeps its session, asked of a request started for real (this PHP disables exec)']));
+} else {
+    $work = test_run_dir().'/sessions-'.bin2hex(random_bytes(4));
+    $started = $startRequest($sessionProbe($work));
+    $folder = $work.'/sessions';
+    is_same($folder, $started['path'], 'a request keeps its session beside the maintenance flag, not in the host\'s folder'
+            .($started['log'] !== '' ? ': '.$started['log'] : ''));
+    ok($started['id'] !== '' && is_file($folder.'/sess_'.$started['id']), 'the session file is there');
+    ok(!glob($hostDefault.'/sess_*'), 'and nothing was left in the host\'s folder');
+    is_same('0700', is_dir($folder) ? sprintf('%04o', fileperms($folder) & 0777) : 'missing', 'the folder is this account\'s alone');
+    ok(str_contains((string)@file_get_contents($folder.'/.htaccess'), 'Require all denied'),
+       'and refuses the web by a deny file of its own, as the backups do, wherever the maintenance flag has been moved');
+    ok($started['probability'] > 0 && $started['divisor'] > 0, 'PHP empties it itself, with the host\'s clean-up switched off');
+    ok($started['lifetime'] >= (int)config('session_idle_minutes') * 60,
+       'but never a session younger than the portal\'s own idle limit, or it would sign people out early ('.$started['lifetime'].'s)');
+
+    // Two sessions left behind: one long gone, one an hour old - inside the
+    // portal's idle limit, and past the host's 24 minutes.
+    @touch($folder.'/sess_stale0000000000000000000000000', time() - 2 * 86400);
+    @touch($folder.'/sess_recent000000000000000000000000', time() - 3600);
+    ok(is_file($folder.'/sess_stale0000000000000000000000000') && is_file($folder.'/sess_recent000000000000000000000000'),
+       'both are there before the clean-up, so what follows is measured');
+    $swept = $startRequest($work.'/config.php', 'session_gc()');
+    ok(!is_file($folder.'/sess_stale0000000000000000000000000'), 'a clean-up removes a session nobody has used for two days');
+    ok(is_file($folder.'/sess_recent000000000000000000000000'), 'and keeps one that is an hour old, which the host\'s setting would have removed');
+    ok(is_file($folder.'/.htaccess'), 'and the deny file, which is not a session');
+
+    $blockedWork = test_run_dir().'/sessions-'.bin2hex(random_bytes(4));
+    $blocked = $sessionProbe($blockedWork);
+    file_put_contents($blockedWork.'/sessions', 'a file where the folder would go');
+    $fallback = $startRequest($blocked);
+    is_same($hostDefault, $fallback['path'], 'where the folder cannot be made, the host\'s folder is used rather than no session at all');
+    ok($fallback['id'] !== '' && is_file($hostDefault.'/sess_'.$fallback['id']), 'and sign-in still works');
+    ok(str_contains($fallback['log'], $blockedWork.'/sessions'), 'with a warning in the error log naming the folder it could not make');
+}
+
+case_('A portal with an https:// address is only ever served over HTTPS');
+/* app_url decides, not the web server: a portal set up without a certificate
+   keeps working exactly as before an update, which a rule in .htaccess could
+   not promise. A page asked for over plain HTTP is sent to the same page on
+   app_url's host; a form sent over it is refused rather than followed, because
+   it has already crossed the network readable. The request is started for
+   real, in a process of its own, as above: a redirect ends it before any session
+   begins, and a request that is let through reaches the maintenance page. */
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['the redirect to HTTPS, asked of a request started for real (this PHP disables exec)']));
+} else {
+    $secureWork = test_run_dir().'/https-'.bin2hex(random_bytes(4));
+    $secure = $sessionProbe($secureWork);
+    file_put_contents($secure, str_replace("'http://127.0.0.1:4192'", "'https://badminton.example.at'", (string)file_get_contents($secure)));
+    $plainWork = test_run_dir().'/http-'.bin2hex(random_bytes(4));
+    $plainConfig = $sessionProbe($plainWork);
+    file_put_contents($plainConfig, str_replace("'http://127.0.0.1:4192'", "'http://badminton.example.at'", (string)file_get_contents($plainConfig)));
+    $asking = fn(array $server, array $cookies = []): string
+        => '$_SERVER = '.var_export($server + ['HTTP_HOST' => 'badminton.example.at', 'REQUEST_URI' => '/index.php?page=login',
+                                                'SERVER_PORT' => 80, 'REQUEST_METHOD' => 'GET'], true).' + $_SERVER;'
+           .' $_COOKIE = '.var_export($cookies, true).';';
+    $sent = $startRequest($secure, 'null', $asking([]));
+    is_same(301, $sent['status'], 'a page asked for over http:// is sent on, permanently'.($sent['log'] !== '' && $sent['status'] !== 301 ? ': '.$sent['log'] : ''));
+    is_same('', $sent['id'], 'before a session, and its cookie, is started over plain HTTP');
+    is_same(301, $startRequest($secure, 'null', $asking(['REQUEST_METHOD' => 'HEAD']))['status'], 'a HEAD request too');
+    $form = $startRequest($secure, 'null', $asking(['REQUEST_METHOD' => 'POST']));
+    is_same(403, $form['status'], 'a form sent over http:// is refused, not followed');
+    is_same('', $form['id'], 'and nothing of it is acted on');
+    foreach (['over HTTPS' => [['HTTPS' => 'on', 'SERVER_PORT' => 443], []],
+              'from a proxy that says X-Forwarded-Proto: https' => [['HTTP_X_FORWARDED_PROTO' => 'https'], []],
+              'from a proxy that says X-Forwarded-SSL: on' => [['HTTP_X_FORWARDED_SSL' => 'on'], []],
+              'by a browser that holds the cookie a redirect leaves' => [[], ['badminton_https' => '1']],
+              'on this computer' => [['HTTP_HOST' => 'localhost:8080'], []]] as $what => [$server, $cookies]) {
+        $through = $startRequest($secure, 'null', $asking($server, $cookies));
+        ok($through['status'] === 503 && $through['id'] !== '', 'a request '.$what.' is served: it reached the maintenance page with a session ('.$through['status'].')');
+    }
+    $plain = $startRequest($plainConfig, 'null', $asking([]));
+    ok($plain['status'] === 503 && $plain['id'] !== '', 'a portal whose address is http:// is served over http:// exactly as before');
+    ok($startRequest($plainConfig, 'null', $asking(['REQUEST_METHOD' => 'POST']))['status'] === 503, 'forms included');
+}
+
+$app = 'https://badminton.example.at';
+$plainGet = ['HTTP_HOST' => 'badminton.example.at', 'REQUEST_URI' => '/index.php?page=login', 'SERVER_PORT' => 80, 'REQUEST_METHOD' => 'GET'];
+is_same('https://badminton.example.at/index.php?page=login', https_address($plainGet, [], $app), 'the same page and query, on https://');
+is_same('https://badminton.example.at/verein/index.php?page=students&id=4',
+        https_address(['REQUEST_URI' => '/verein/index.php?page=students&id=4'] + $plainGet, [], $app.'/verein'), 'in a subdirectory too');
+is_same('https://badminton.example.at:8443/index.php', https_address(['REQUEST_URI' => '/index.php'] + $plainGet, [], $app.':8443'),
+        'on the port app_url names');
+is_same('https://badminton.example.at/index.php', https_address(['HTTP_HOST' => 'www.somewhere-else.example', 'REQUEST_URI' => '/index.php'] + $plainGet, [], $app),
+        'always on app_url\'s host, never the one the request named');
+foreach (['http://evil.example/x?y=1' => '/x?y=1', '//evil.example/x' => '//evil.example/x', "/index.php\r\nSet-Cookie: x=1" => '/index.phpSet-Cookie:%20x=1', '' => '/']
+         as $uri => $path) {
+    $to = (string)https_address(['REQUEST_URI' => $uri] + $plainGet, [], $app);
+    is_same('badminton.example.at', parse_url($to, PHP_URL_HOST), 'a request line of '.test_show($uri).' cannot move the redirect to another host');
+    is_same('https://badminton.example.at'.$path, $to, 'and keeps what it can of the page asked for');
+}
+foreach (['over HTTPS' => ['HTTPS' => 'on'], 'on port 443' => ['SERVER_PORT' => 443],
+          'with X-Forwarded-Proto: https' => ['HTTP_X_FORWARDED_PROTO' => 'https'],
+          'with X-Forwarded-SSL: on' => ['HTTP_X_FORWARDED_SSL' => 'on'],
+          'with X-Forwarded-Scheme: https' => ['HTTP_X_FORWARDED_SCHEME' => 'https']] as $what => $server)
+    is_same(null, https_address($server + $plainGet, [], $app), 'no redirect for a request '.$what);
+is_same(null, https_address($plainGet, ['badminton_https' => '1'], $app),
+        'nor for one carrying the redirect\'s cookie, which is Secure and so only ever sent over HTTPS: a proxy that hides it gets one redirect per browser, not a loop');
+is_same(null, https_address($plainGet, [], 'http://badminton.example.at'), 'nor for a portal whose address is http://');
+foreach ($hosts as $host => $local) {
+    if ($host === '') continue;
+    is_same(!$local, https_address(['HTTP_HOST' => (string)$host] + $plainGet, [], $app) !== null,
+            'the redirect agrees with setup about '.test_show((string)$host));
+}
+is_same('Strict-Transport-Security: max-age=31536000', strict_transport_security(['app_url' => $app, 'secure_cookies' => false]),
+        'a portal with an https:// address tells the browser to use nothing else for a year');
+is_same('Strict-Transport-Security: max-age=31536000', strict_transport_security(['app_url' => 'http://badminton.example.at', 'secure_cookies' => true]),
+        'as one with secure cookies always did');
+is_same(null, strict_transport_security(['app_url' => 'http://127.0.0.1:4192', 'secure_cookies' => false]), 'and a local test over http:// is not told so');
+
+case_('The web server does not redirect: the portal does, because only it knows its address');
+/* A rule in .htaccess cannot know whether the portal has a certificate, and
+   public/.htaccess with rewrite rules would take down a host that forbids them.
+   Both stay as they are; nginx keeps its port-80 redirect, because there whoever
+   writes the server block also sets up the certificate. */
+foreach (['.htaccess', 'public/.htaccess'] as $name)
+    ok(!preg_match('~RewriteRule\s+\S+\s+https://~', (string)file_get_contents(APP_ROOT.'/'.$name)), $name.' sends nothing to https:// itself');
+ok(!str_contains((string)file_get_contents(APP_ROOT.'/public/.htaccess'), 'RewriteEngine'), 'and public/.htaccess uses no rewrite rules at all');
+$nginx = (string)file_get_contents(APP_ROOT.'/docs/nginx.conf.example');
+ok(preg_match('~listen 80;.*?return 301 https://\$host\$request_uri;~s', $nginx) === 1, 'the nginx example sends port 80 to HTTPS');
+ok(str_contains($nginx, '/.well-known/acme-challenge/'), 'and keeps the certificate\'s renewal reachable over HTTP');
+ok(preg_match('~location = /setup\.php \{[^}]*fastcgi_pass~', $nginx) === 1, 'and passes setup.php to PHP, so a portal on nginx can be installed from the browser too');
+db()->exec('DROP TABLE IF EXISTS schema_migrations');
+run('DELETE FROM accounts');
