@@ -14,8 +14,8 @@ and how to run the same thing deliberately on a server that has a shell.
 A portal installed fresh from this version can skip this section: its start
 checklist covers all of it, and its privacy notice already starts from the new
 drafts. A portal that already has families in it needs one thing done
-**before** the upload, and then changes in the ways below the moment the new
-files are opened.
+**before** the upload — two, if anything in its custom fields is worth keeping —
+and then changes in the ways below the moment the new files are opened.
 
 **Before you upload: add four paragraphs to your privacy notice.** This version
 records when each account was in the portal, it switches club news by email
@@ -87,6 +87,12 @@ same paragraphs in English are in `docs/privacy-draft-en.txt` in the
 download, for the English version if you keep one. Saving changes the
 **Fassung** number under the notice; nobody is asked to acknowledge it again.
 
+**Before you upload, if anything in the custom fields matters, write it down.**
+This version deletes the custom fields — „Weitere Angaben" on a child's page —
+with everything typed into them (migration 032, ADR 0026). Nothing in the portal
+shows them afterwards. The copy of the database the update writes first, in
+`storage/backups`, still holds them until five newer copies have pushed it out.
+
 **Migrations 020 and 021 run by themselves** on the first page view, like every
 migration before them. 020 gives every account a status, which starts on
 „Automatisch" and so shows exactly what it showed before, and adds an empty list
@@ -121,13 +127,22 @@ one, a placeholder that nobody can sign in with until staff give it an address
 or a username. No row is removed; the logins grow by one for each such
 student.
 
+**Migrations 032 and 033 delete what this version no longer has.** 032 deletes
+the custom fields, with every value typed into them. 033 deletes the saved views
+of the **Schüler** list and the e-mail templates, including the two examples a
+new portal started with. No other table loses a row. The table of custom-field
+values used to be among those counted before and after an update; it leaves
+that list with 032, so its loss does not refuse this update (step 5 below).
+Lines under **Änderungen** written before about a custom field stay, the field
+named „Früheres eigenes Feld".
+
 **Brothers and sisters on one login are separated.** From this version one
 login belongs to one student, and migration 019 makes the database hold to
 that. On a login that holds several children, the child whose record was
 created first keeps it. Each of the others is taken off it and keeps everything
 else: their record, their courses, charges, invoices and payments, and the
 address on their record. Nothing is deleted, so the check that compares the
-nineteen guarded tables before and after passes unchanged. Each child taken
+guarded tables before and after passes unchanged. Each child taken
 off a login gets a line under **Änderungen** saying which login it was on. The
 update sends the families no message. Each of those children is then given a
 placeholder login (see 028 to 031 above) and cannot sign in until staff give
@@ -144,6 +159,13 @@ enough. If the last test there failed, or was never run, then until it passes:
 „Passwort vergessen?“ receives nothing. Open **Einstellungen → SMTP**, press
 **„Nur Verbindung prüfen“**, and wait for the green **Erfolgreich**. Changing
 the SMTP settings later clears the result, and the test has to pass again.
+
+**After the update, take the custom fields out of your privacy notice.** If it
+names them — the draft's „sowie die im Formular ausdrücklich erhobenen weiteren
+Angaben" in „3.", and whatever you wrote in place of its note about them — take
+that out under **Einstellungen → Datenschutz**, in English too if you keep it:
+the portal no longer holds them. The drafts in the download no longer mention
+them.
 
 **The number under the privacy notice changes once.** It is now worked out
 from the German and the English text as a pair, so every portal shows a new
@@ -202,9 +224,8 @@ here so that nothing surprises you.
   When you view the portal as a family, it is your visit that is recorded, not
   theirs.
 - **Club news by email starts switched on** for a new family: the box on the
-  invitation page is already ticked, and they can untick it there. The printed
-  sign-up form now asks „Bitte keine Neuigkeiten des Vereins per E-Mail
-  schicken." instead of asking for a yes.
+  invitation page is already ticked, and they can untick it there, or later
+  under **Mein Konto**.
 - **Your club's colours and logo**, under **Einstellungen → Portal**, on the
   cards „Aussehen" and „Logo". Until you set something, the portal looks exactly
   as before. A colour too pale or too dark to read text on is used darker or
@@ -212,6 +233,11 @@ here so that nothing surprises you.
   of at most 1 MB. A photo taken on a phone can be measured the wrong way round
   and refused; saving it again from an image editor, or as a screenshot, fixes
   that.
+- **No longer in the portal**: custom fields, copying, saved views of the
+  **Schüler** list, „An mehrere schreiben" with its e-mail templates,
+  „Warteschlange senden", the printed form and data sheet, and Verwaltung's
+  „Tarife" tab. Mail goes out by itself just after a page has been served, as
+  before; [CHANGELOG.md](CHANGELOG.md) says what takes the place of the rest.
 
 Everything else in this version is either new or moved to another place in the
 menu; [CHANGELOG.md](CHANGELOG.md) lists it.
@@ -241,22 +267,36 @@ left to do. Then, inside that lock and **before the database is touched at all**
 4. Each unrecorded migration is then applied in name order and recorded with the
    checksum of the file it came from. A migration that was edited after being
    applied is refused **by name**, because the checksum no longer matches.
-5. **Is everything still there?** Rows in nineteen tables are counted before
-   and after: `accounts`, `students`, `contacts`, `field_values`, `absences`,
-   `charges`, `payments`, `threads`, `messages`, `message_files`, `news`,
+5. **Is everything still there?** Rows in eighteen tables are counted before
+   and after: `accounts`, `students`, `contacts`, `absences`, `charges`,
+   `payments`, `threads`, `messages`, `message_files`, `news`,
    `class_students`, `attendance`, `invoices`, `invoice_charges`,
    `payment_proofs`, `consent_log`, `tariff_rates` and `tariff_discounts` — the
-   list in `schema_guarded_tables()`. A count that fell stops the update. Counts
-   do not prove an update was correct, but a count that fell proves it was not —
-   and this catches it while the backup is still the newest thing that happened.
+   list in `schema_guarded_tables()`. A table that was counted before and is
+   gone afterwards counts as emptied. A count that fell refuses the update.
+   Counts do not prove an update was correct, but a count that fell proves it
+   was not — and this catches it while the backup is still the newest thing
+   that happened.
+
+   **What this refusal does not do yet** (ROADMAP.md, item 7; ADR 0027): it
+   does not keep the portal closed. The page view that ran the update answers
+   503 and says „Das Portal bleibt geschlossen", but the migrations it applied
+   are already recorded by then. The next page view finds nothing to apply,
+   counts what is left, and opens the portal with the rows missing. If you see that page, open
+   the portal yourself straight away, press **„Wartungsmodus starten"** under
+   **Einstellungen → System** so that nobody else works on it, and restore the
+   copy written before the update, as [INSTALL.md](INSTALL.md#wiederherstellen)
+   describes, together with the files of the version you came from.
 6. What the portal cannot work without is filled in where it is missing — the
    lists it needs, a group chat for every course, a login for every student —
    and the page is served.
 
-If any step fails the portal answers 503 and stays closed, saying in German and
-English what went wrong and what to do. It never prints SQL: that address is
-public and a parent may be the one looking at it. The full database error goes to
-the hosting error log.
+If step 1, 2 or 3 fails, or a migration fails in step 4, the page view answers
+503, saying in German and English what went wrong and what to do, and so does
+every page view after it until the cause is fixed: nothing was recorded, so
+each one tries again and is refused again. Step 5 is the exception described
+above. The page never prints SQL: that address is public and a parent may be
+the one looking at it. The full database error goes to the hosting error log.
 
 While maintenance mode is on all of this is skipped, so an operator applying a
 migration by hand from a shell cannot race the web request.
@@ -297,7 +337,7 @@ for a server where you keep each release in its own directory.
 |---|---|---|
 | Source and dependencies | `/srv/badminton/releases/0.6.0/` | Put each new version in a new directory |
 | Configuration and encryption key | `/srv/badminton/shared/config.php` | Preserve the file and its `app_key` |
-| Students, fields, tariffs, payments, messages | The existing MySQL/MariaDB database | Apply only the new migrations |
+| Students, tariffs, payments, messages | The existing MySQL/MariaDB database | Apply only the new migrations |
 | Active web root | `/srv/badminton/current/public/` | `current` points to the selected release |
 
 Each release can contain a symlink `config/config.php` to the shared configuration. Set one shared `maintenance_file` path in that configuration. Do not keep a different maintenance flag inside each release, because a directory switch would then bypass the pause.
@@ -313,7 +353,6 @@ Each release can contain a symlink `config/config.php` to the shared configurati
 - `composer.lock` fixes dependency versions. Deployment uses **install**, never **update**.
 - Database migrations are ordered SQL files. The migration ledger stores each file’s checksum. Do not edit a migration that has already been applied; add a new file.
 - Future schema changes should first add compatible structures, then migrate values and verify them. Remove obsolete structures only in a separate later release after checking that no current code needs them.
-- Renaming a custom field keeps its numeric ID. Archiving retains its values. A field type with stored data cannot be changed silently.
 
 ## The same thing from a shell
 
@@ -346,7 +385,8 @@ is safe to run repeatedly. Verified behaviour:
 | Uploading an older package over a newer one | Refused by name; the database is not touched |
 | An extract that stopped halfway | Refused, naming the files that do not match |
 | `storage/` not writable when a migration is pending | Refused; no backup, no migration |
-| A migration that removes rows from a guarded table | Refused after the fact; the portal stays closed |
+| A migration that removes rows from a guarded table | Refused after the fact, for that page view only; the next one opens the portal (ROADMAP.md, item 7) |
+| A migration that drops a guarded table | Counted as emptied, and refused the same way |
 | A new migration added in a later version | Applies only that one |
 | A column added later to an existing table | Existing rows get the column's default, never NULL |
 | A migration file edited after being applied | Refused by name, with the reason |
@@ -372,12 +412,15 @@ Schema changes do need a migration. Add a new numbered file in
 leave a NULL the new code has to guess about.
 
 A migration must not reduce the row count of any table in
-`schema_guarded_tables()`. The update refuses one that does, on purpose: no
-migration in this project so far has removed a row from a guarded table — 019
-takes children off a shared login but deletes none of them — so a count going
-down means something went wrong rather than something being cleaned up. A future release that
-genuinely has to remove rows — merging duplicates, say — needs that guard
-widened deliberately, in the same commit, with the reason written down.
+`schema_guarded_tables()`, nor drop one. The update refuses one that does, on
+purpose: a count going down means something went wrong rather than something
+being cleaned up. 019 takes children off a shared login but deletes none of
+them. Only one migration so far has removed rows from a table that was guarded:
+032, which deletes the custom fields with everything typed into them, as the
+owner asked (ADR 0026). `field_values` left the list in the same commit, with
+the reason written beside it. Any other release that genuinely has to remove
+rows — merging duplicates, say — needs the guard changed the same way,
+deliberately, in the same commit.
 
 ## With release directories: before the maintenance window
 
@@ -388,7 +431,7 @@ into one folder, the two sections above are the whole procedure.
 1. Read the new release’s change notes, including the schema versions it supports.
 2. Put the new release in its own directory. Do not unzip it over the running application.
 3. Run `composer install --no-dev --prefer-dist --optimize-autoloader` if dependencies are not included.
-4. Test the release using a separate database and separate configuration. Do not point the test mail worker at real recipients. The integration suite deliberately creates and deletes test records and must never use the live database.
+4. Test the release using a separate database and separate configuration. Do not point the test mail worker at real recipients. The test suites create and delete records of their own and must never be pointed at the live database; `tests/run.php` refuses a database whose name does not end in `_test`, and the one `config/config.php` gives the portal.
 5. Check the existing hosting recovery arrangement and who can restore it. The portal writes a copy of the database before it migrates, but it never restores one: that is done by hand, as described in [INSTALL.md](INSTALL.md#wiederherstellen).
 
 ## With release directories: apply an update
@@ -421,7 +464,7 @@ Example paths below are a layout template; `0.7.0` stands for whichever release 
 
    Stop if a command fails. The migration command does not erase the database or rerun successful migrations. MySQL schema changes may commit individually: a failed multi-statement migration can leave partial changes, so do not assume it rolled back automatically.
 
-4. Compare the before/after student counts, custom-value counts, charges, payments and total cents. Expected changes must be stated in the release notes. Counts alone do not prove completeness: also inspect representative linked students, custom fields, prices, payment periods and conversation ownership in the test deployment.
+4. Compare the before/after student counts, charges, payments and total cents. Expected changes must be stated in the release notes: moving to 0.6.0, the custom fields and their values are gone (migration 032), and the new release's `check` no longer counts them. Counts alone do not prove completeness: also inspect representative linked students, prices, payment periods and conversation ownership in the test deployment.
 
 5. Switch the code using an atomic symlink replacement on the same filesystem:
 
@@ -432,7 +475,7 @@ Example paths below are a layout template; `0.7.0` stands for whichever release 
 
    This example uses GNU/Linux `mv`. Keep `current-next` unused before running it. Do not use `rsync --delete` over shared data. Reload PHP-FPM or clear its opcode cache through the hosting controls so workers load the new code.
 
-6. Disable maintenance, sign in, open a student, verify their custom fields and payments, and check a student account’s access. Then resume the mail cronjob and send a test mail to your own address.
+6. Disable maintenance, sign in, open a student, verify their details and payments, and check a student account’s access. Then resume the mail cronjob and send a test mail to your own address.
 
    ```bash
    php /srv/badminton/current/bin/console.php maintenance:off
@@ -451,5 +494,6 @@ Example paths below are a layout template; `0.7.0` stands for whichever release 
 
 The schema updater only ever moves forward: it applies migration files that the
 ledger has not recorded, and refuses one whose contents changed after it ran. It
-never drops a table, never reverses a migration, and never runs while maintenance
-mode is on.
+drops nothing of its own accord — a table goes only when a migration file says
+so, as 032 and 033 do in 0.6.0 — never reverses a migration, and never runs
+while maintenance mode is on.

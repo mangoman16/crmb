@@ -71,39 +71,6 @@ function dispatch_messages(string $action): array {
         flash($accept?t('Ihr könnt euch jetzt schreiben.','You can write to each other now.'):t('Abgelehnt.','Declined.'));
         return ['messages',['contacts'=>1]];
 
-    case 'bulk_preview':
-        require_staff();$ids=$_POST['student_ids']??[];
-        if(!is_array($ids) || !$ids || count($ids)>1000)throw new UserError(t('Bitte 1 bis 1.000 Schüler auswählen.','Select 1 to 1,000 students.'));
-        $selected=[];$accounts=[];$subject=required_text('subject',180);$body=required_text('body',20000);
-        foreach(array_unique(array_map('intval',$ids)) as $id) {
-            $s=student($id);$a=$s['account_id']?one("SELECT * FROM accounts WHERE id=? AND state='active' AND verified_at IS NOT NULL",[$s['account_id']]):null;
-            if(!$a)continue;
-            $selected[]=$id;$accounts[(int)$a['id']]=$a['name'];
-        }
-        if(!$selected)throw new UserError(t('Die Auswahl hat keine aktiven, bestätigten Konten.','The selection has no active, verified accounts.'));
-        $_SESSION['bulk_preview']=['student_ids'=>$selected,'subject'=>$subject,'body'=>$body,'email'=>(bool)post('send_email'),'accounts'=>$accounts,'created'=>time()];
-        return ['compose',['review'=>1]];
-    case 'bulk_send':
-        $u=require_staff();$p=$_SESSION['bulk_preview']??null;
-        if(!$p || time()-$p['created']>1800)throw new UserError(t('Die Vorschau ist abgelaufen. Bitte erneut erstellen.','The preview expired. Please create it again.'));
-        // Into each student's own chat with whoever sends it (ADR 0022), with
-        // their own name and figures filled in, and the subject as its first
-        // line so a circular still says what it is about.
-        $count=0;
-        foreach($p['student_ids'] as $id) {
-            $s=student($id);
-            if(!$s['account_id'] || !isset($p['accounts'][(int)$s['account_id']])) continue;
-            $a=one("SELECT * FROM accounts WHERE id=? AND state='active' AND verified_at IS NOT NULL FOR UPDATE",[(int)$s['account_id']]);if(!$a)continue;
-            $threadId=direct_thread($u,(int)$a['id']);
-            $subject=mb_substr(template_text($p['subject'],$s),0,180);
-            run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',[$threadId,$u['id'],$subject."\n\n".template_text($p['body'],$s),now()]);
-            run('UPDATE threads SET updated_at=? WHERE id=?',[now(),$threadId]);
-            if($p['email'])notify_thread($a,$threadId,$subject);
-            $count++;
-        }
-        unset($_SESSION['bulk_preview']);audit('message.bulk_sent','thread');
-        flash($count.' '.t('Nachrichten verschickt, jede in den Chat mit der Person. E-Mails berücksichtigen die Benachrichtigungseinstellungen.','messages sent, each into the chat with that person. Emails respect notification preferences.'));
-        return ['messages',[]];
     case 'news_save':
         require_staff();$id=(int)post('id');$title=required_text('title',180);$body=required_text('body',20000);$published=post('published')?1:0;
         if($id){if(!one('SELECT id FROM news WHERE id=?',[$id]))throw new NotFound(t('Diese Neuigkeit gibt es nicht mehr.','That news item no longer exists.'));run('UPDATE news SET title=?,body=?,published=?,updated_at=? WHERE id=?',[$title,$body,$published,now(),$id]);}

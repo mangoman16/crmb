@@ -53,7 +53,6 @@ fixture('news', ['title'=>'Hallenzeiten', 'body'=>'Ab Oktober trainieren wir lä
 $thread = make_thread([$family], ['subject'=>'Frage zum Schläger']);
 fixture('messages', ['thread_id'=>$thread, 'sender_id'=>$family, 'body'=>'Welchen sollen wir kaufen?',
                      'created_at'=>now()]);
-fixture('saved_filters', ['name'=>'Montagsgruppe', 'criteria_json'=>json_encode(['course'=>$course])]);
 fixture('mail_jobs', ['account_id'=>$family, 'recipient'=>'familie@beispiel.test', 'subject'=>'Test',
                       'payload'=>seal('Hallo'), 'category'=>'notifications', 'status'=>'queued',
                       'attempts'=>0, 'created_at'=>now()]);
@@ -79,7 +78,7 @@ $invoice = create_invoice($lena, [$charge]);
 /** Every page each role may open, with the query strings the interface produces. */
 $pages = [
     'dashboard'  => [[]],
-    'students'   => [[], ['q'=>'Hofer'], ['overdue'=>1], ['absence'=>'sick'], ['course'=>$course], ['saved'=>1]],
+    'students'   => [[], ['q'=>'Hofer'], ['overdue'=>1], ['absence'=>'sick'], ['course'=>$course]],
     'student'    => [['id'=>$lena], ['id'=>$lena,'tab'=>'contacts'], ['id'=>$lena,'tab'=>'absence'],
                      ['id'=>$lena,'tab'=>'attendance'], ['id'=>$lena,'tab'=>'classes'],
                      ['id'=>$lena,'tab'=>'invoices'], ['id'=>$lena,'tab'=>'payments']],
@@ -94,14 +93,11 @@ $staffPages = [
     'payments'   => [[], ['period'=>'2026-09']],
     'invoices'   => [[], ['state'=>'open'], ['state'=>'overdue'], ['state'=>'paid'], ['state'=>'all']],
     'accounts'   => [[]],
-    'print'      => [[], ['id'=>$lena]],
     'outbox'     => [[], ['p'=>1]],
-    'compose'    => [[], ['course'=>$course]],
-    'manage'     => [[], ['tab'=>'levels'], ['tab'=>'ages'], ['tab'=>'members'], ['tab'=>'tariffs'],
-                     ['tab'=>'templates'], ['tab'=>'payments']],
+    'manage'     => [[], ['tab'=>'levels'], ['tab'=>'ages'], ['tab'=>'members'], ['tab'=>'payments']],
 ];
 $adminPages = [
-    'settings'   => [[], ['tab'=>'portal'], ['tab'=>'organisation'], ['tab'=>'fields'], ['tab'=>'smtp'],
+    'settings'   => [[], ['tab'=>'portal'], ['tab'=>'organisation'], ['tab'=>'smtp'],
                      ['tab'=>'privacy'], ['tab'=>'feedback'], ['tab'=>'system']],
     'history'    => [[], ['entity'=>'students','id'=>$lena]],
     'start'      => [[]],
@@ -122,11 +118,8 @@ foreach ($pages + $staffPages as $page => $variants)
 case_('Every page a family can open, opens');
 sign_in_as($family);
 foreach ($pages as $page => $variants)
-    foreach ($variants as $query) {
-        // A family opens their own children, not the staff variants of a page.
-        if ($page === 'students' && isset($query['saved'])) continue;
+    foreach ($variants as $query)
         does_not_throw(fn() => render_view($page, $query), $page.' '.json_encode($query));
-    }
 
 case_('And the signed-out pages open with nobody signed in');
 $_SESSION = [];
@@ -225,105 +218,9 @@ foreach ($pages + $staffPages + $adminPages as $page => $variants)
 sign_in_as($family);
 foreach ($pages as $page => $variants)
     foreach ($variants as $query) {
-        if ($page === 'students' && isset($query['saved'])) continue;
         $depth = deepest_form_nesting(render_view($page, $query));
         ok($depth <= 1, 'as a family, '.$page.' '.json_encode($query).' has no form inside a form (depth '.$depth.')');
     }
-
-// ---------------------------------------------------------------------------
-case_('What goes on paper is exactly what the portal can hold');
-/* A blank form that asks for something with nowhere to go produces a family who
-   wrote it down and a trainer with nowhere to type it - and a filled sheet that
-   leaves something out is a sheet nobody can check. So both are the same
-   layout, and this is the rule that keeps them so. */
-sign_in_as($trainer);
-fixture('field_definitions', ['label'=>'Verein bisher', 'label_en'=>'Previous club', 'field_type'=>'text',
-                              'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
-                              'visibility'=>'view', 'sort_order'=>5, 'archived'=>0]);
-fixture('field_definitions', ['label'=>'Nur intern', 'label_en'=>'', 'field_type'=>'text',
-                              'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
-                              'visibility'=>'internal', 'sort_order'=>6, 'archived'=>0]);
-$blank = render_view('print');
-// Every one of these is on a real club's own anmeldeformular. The address and
-// the telephone were the two it asked for that the portal had nowhere to put.
-foreach (['Vorname', 'Nachname', 'Geburtsdatum', 'E-Mail-Adresse', 'Anschrift', 'Telefonnummer',
-          'Notfallkontakte', 'Verein bisher'] as $asked)
-    ok(str_contains($blank, $asked), 'the blank form asks for '.$asked);
-// A blank form does not know who is filling it in, and half a club's members are
-// adults: it must not tell them it is meant for a child.
-ok(!str_contains($blank, '>Kind<'), 'and it is not headed "Kind", because an adult joins too');
-ok(str_contains($blank, 'bei Minderjährigen'), 'the guardian signs where that applies, not always');
-ok(!str_contains($blank, 'Nur intern'), 'and not for a field marked internal, which is hers and not theirs');
-ok(substr_count($blank, 'sheet-contact') >= 2, 'with room for two people to ring, not one');
-ok(str_contains($blank, 'print-boxes'), 'in boxes, one letter each');
-ok(!str_contains($blank, 'print-value'), 'and nothing filled in');
-ok(str_contains($blank, 'nicht verkauft'), 'saying what happens to what they write down');
-// Club news by email is on unless somebody declines it (ADR 0018), so the paper
-// offers a box for "no" - a form still asking "yes, please" would make a parent
-// who ticked nothing look like somebody who declined.
-/* The paper's two email boxes, read the way print_tick() draws them: true for
-   a tick, false for an empty box, null when the line is not there at all. */
-$noNews     = 'Bitte keine Neuigkeiten des Vereins per E-Mail schicken.';
-$noReminder = 'Bitte keine E-Mail bei neuen Nachrichten schicken.';
-$tick = fn(string $html, string $label) =>
-    preg_match('/<span class="print-box">(&#10003;)?<\/span><span>'.preg_quote(e($label), '/').'<\/span>/', $html, $m)
-        ? ($m[1] ?? '') !== '' : null;
-is_same(false, $tick($blank, $noNews), 'the news box on paper is an empty one for saying no');
-is_same(false, $tick($blank, $noReminder), 'and so is the one for message reminders, both being on unless declined');
-ok(!str_contains($blank, 'ich möchte die Neuigkeiten') && !str_contains($blank, 'Ja, bitte per E-Mail'),
-   'and neither asks them to opt in any more');
-// The fee block a club's own form has. Without it a parent has filled in a page
-// that never says what they are agreeing to pay.
-ok(str_contains($blank, 'Beitrag'), 'and what it costs is on it');
-ok(str_contains($blank, 'Monatsbeitrag'), 'with the tariff named');
-ok(str_contains($blank, '45,00'), 'and its price, taken from the price list so the paper cannot drift');
-ok(!str_contains($blank, 'fällig am'), 'but not the day of the month, which is not what a tick decides');
-// The course name goes above the list, not on every line: four tariffs meant
-// four repetitions of the same words, and the sheet ran onto a second page.
-// One course here, so its name is not repeated above the list at all; with two
-// it appears once each. Either way, never once per tariff.
-ok(substr_count($blank, 'Monatsbeitrag') <= 1, 'and the tariff itself appears once');
-is_same(0, substr_count($blank, 'Kindertraining · Monatsbeitrag'), 'the course is not glued to every tariff line');
-
-run('UPDATE students SET address=?, phone=? WHERE id=?',
-    ['Hauptstraße 5, 7000 Eisenstadt', '+43 660 1234567', $lena]);
-$sheet = render_view('print', ['id'=>$lena]);
-ok(str_contains($sheet, 'print-value'), 'the data sheet has values on it');
-ok(str_contains($sheet, 'Hauptstraße 5, 7000 Eisenstadt'), 'with the address on it to be checked');
-ok(str_contains($sheet, '+43 660 1234567'), 'and the number to ring them on');
-ok(str_contains($sheet, 'Lena'), 'the child’s name among them');
-ok(str_contains($sheet, 'Maria Hofer'), 'and the person to ring');
-ok(str_contains($sheet, 'Unterschrift'), 'with somewhere to sign that it was checked');
-is_same(0, deepest_form_nesting($blank), 'and no form at all on it: it is printed, not submitted');
-// A data sheet is what the portal holds, to be checked and signed - so a "no"
-// the family already gave is on it, ticked, and a "yes" leaves the box empty.
-$familyChoices = one('SELECT newsletter, notifications FROM accounts WHERE id=?', [$family]);
-run('UPDATE accounts SET newsletter=0, notifications=1 WHERE id=?', [$family]);
-$sheet = render_view('print', ['id'=>$lena]);
-is_same(true, $tick($sheet, $noNews), 'a family who switched news off has the "no" ticked on the data sheet');
-is_same(false, $tick($sheet, $noReminder), 'while the reminders they kept stay unticked');
-run('UPDATE accounts SET newsletter=1, notifications=0 WHERE id=?', [$family]);
-$sheet = render_view('print', ['id'=>$lena]);
-is_same(false, $tick($sheet, $noNews), 'the other way round, news they receive is left unticked');
-is_same(true, $tick($sheet, $noReminder), 'and the reminders they declined are ticked');
-run('UPDATE accounts SET newsletter=?, notifications=? WHERE id=?',
-    [(int)$familyChoices['newsletter'], (int)$familyChoices['notifications'], $family]);
-// A child without sign-in has a placeholder (ADR 0023 §3), whose switches are
-// nobody's answer - set to "no" here so a sheet that read them would show it.
-run('UPDATE accounts SET newsletter=0, notifications=0 WHERE id=(SELECT account_id FROM students WHERE id=?)', [$bare]);
-$bareSheet = render_view('print', ['id'=>$bare]);
-is_same([false, false], [$tick($bareSheet, $noNews), $tick($bareSheet, $noReminder)],
-        'a child without sign-in yet has nothing to show, so both boxes are empty');
-// Nor does a child who signs in with a username and no address: nobody asked
-// them about mail they cannot receive, so their switches are off, not a no.
-$byName = make_student(['first_name'=>'Nur', 'last_name'=>'Benutzername', 'account_id'=>make_account(['email'=>null, 'username'=>'nur.benutzername', 'newsletter'=>0, 'notifications'=>0])]);
-$byNameSheet = render_view('print', ['id'=>$byName]);
-is_same([false, false], [$tick($byNameSheet, $noNews), $tick($byNameSheet, $noReminder)],
-        'a child signing in without an address has both boxes empty, not a no they never gave');
-
-case_('And it is staff-only, because it carries a family’s details');
-sign_in_as($family);
-throws(fn() => render_view('print', ['id'=>$lena]), 'a family does not open the print view', 'Zugriff');
 
 case_('Sending news by email is offered to the people who get it, not to "subscribers"');
 /* With news on by default nobody subscribed to anything (ADR 0018), and the
@@ -571,8 +468,6 @@ mail_ready(true);
 sign_in_as($trainer);
 $list = render_view('students');
 ok(str_contains($list, e(url('students', ['invite'=>1]).'#invite')) && str_contains($list, e('Per E-Mail einladen')), 'the heading offers „Per E-Mail einladen"');
-ok(!str_contains($list, e(url('print'))), 'and the blank form moved to the wizard „Schüler anlegen"');
-ok(str_contains(render_view('student_new'), e(url('print')).'"'), 'where it is, on step 1 (ADR 0023 §5)');
 ok(!str_contains($list, 'id="invite"') && !str_contains($list, 'value="email_invite"'), 'the card is not there until asked for');
 $card = render_view('students', ['invite'=>1]);
 $inviteForm = $formOf($card, 'email_invite');
@@ -656,14 +551,11 @@ sign_out();
 case_('A family completes its own details on the Profil tab, in the one student form');
 mail_ready(true);
 run("UPDATE students SET address='', phone='' WHERE id=?", [$lena]);
-$shirt = fixture('field_definitions', ['label'=>'T-Shirt-Größe', 'label_en'=>'', 'field_type'=>'select', 'section_name'=>'',
-    'options_json'=>json_encode(['S','M','L']), 'default_json'=>'null', 'required'=>1, 'visibility'=>'edit', 'sort_order'=>0, 'archived'=>0]);
 sign_in_as($family);
 $profil = render_view('student', ['id'=>$lena]);
 ok(str_contains($profil, '<h2>'.e('Noch zu ergänzen').'</h2>'), 'the family is shown what is still to fill in');
 ok(str_contains($profil, e(url('student', ['id'=>$lena])).'#address"'), 'with a step leading to the address box');
-ok(str_contains($profil, 'id="address"') && str_contains($profil, 'id="field-'.$shirt.'"') && str_contains($profil, 'id="personal"'),
-   'and the boxes it leads to carry those anchors');
+ok(str_contains($profil, 'id="address"') && str_contains($profil, 'id="personal"'), 'and the boxes it leads to carry those anchors');
 $studentForm = $formOf($profil, 'student_save');
 ok(str_contains($studentForm, 'name="address"') && str_contains($studentForm, 'name="phone"'), 'the address and phone are in the student form, so one save carries them');
 ok(str_contains($studentForm, e('eine Rechnung über 400 € braucht sie')), 'with the family’s own hint about invoices');
@@ -672,23 +564,11 @@ ok(str_contains($studentForm, e('Angaben speichern')), 'the button says what it 
 ok(strpos($profil, 'value="avatar_save"') > strpos($profil, $studentForm) + strlen($studentForm),
    'the picture comes after the details, outside their form');
 is_same(1, deepest_form_nesting($profil), 'and no form is inside another');
-ok(preg_match('~<select[^>]*name="custom\['.$shirt.'\]"[^>]*required~', $profil) === 1 && str_contains($profil, e('Bitte ausfüllen.')),
-   'a required field the family fills in is required of them, and asked for');
-ok(str_contains($profil, e('T-Shirt-Größe').' <span aria-hidden="true">*</span>'), 'with the same mark every required box has');
 ok(str_contains(render_view('dashboard'), '<h2>'.e('Noch zu ergänzen').'</h2>'), 'the overview shows the same card');
-$photos = fixture('field_definitions', ['label'=>'Fotos erlaubt', 'label_en'=>'', 'field_type'=>'checkbox', 'section_name'=>'',
-    'options_json'=>'[]', 'default_json'=>'false', 'required'=>1, 'visibility'=>'edit', 'sort_order'=>0, 'archived'=>0]);
-ok(str_contains(render_view('student', ['id'=>$lena]), '<span>'.e('Fotos erlaubt').' <span aria-hidden="true">*</span>'),
-   'a required tick box carries the same mark as every other required box');
-run('DELETE FROM field_definitions WHERE id=?', [$photos]);
 
-case_('Staff are never held up by a field the family fills in');
+case_('Staff see their own list on the child’s page, not the family’s');
 sign_in_as($trainer);
-$staffPage = render_view('student', ['id'=>$lena]);
-ok(preg_match('~<select[^>]*name="custom\['.$shirt.'\]"[^>]*required~', $staffPage) === 0, 'the family’s required field is not required of her');
-ok(str_contains($staffPage, e('Fehlt noch. Das füllt die Familie aus.')), 'and says who fills it in');
-ok(!str_contains($staffPage, '<h2>'.e('Noch zu ergänzen').'</h2>'), 'her page keeps her own list, not the family’s');
-run('DELETE FROM field_definitions WHERE id=?', [$shirt]);
+ok(!str_contains(render_view('student', ['id'=>$lena]), '<h2>'.e('Noch zu ergänzen').'</h2>'), 'her page keeps her own list');
 
 case_('A refused edit of one contact opens that contact’s form, and no other');
 $granny = fixture('contacts', ['student_id'=>$lena, 'owner_name'=>'Gertrude Hofer', 'relation_label'=>'Großmutter',

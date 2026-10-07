@@ -7,9 +7,7 @@
  * needs explaining to somebody who has used a messenger, which is the whole
  * point: the trainer and the children arrive already knowing how it works.
  *
- * Who sees which chat is decided in app/messaging.php, never here. Writing to
- * many at once - filters, placeholders, a review step - is a different job and
- * has its own page, „An mehrere schreiben".
+ * Who sees which chat is decided in app/messaging.php, never here.
  */
 $staff=is_staff($user);
 $me=(int)$user['id'];
@@ -84,10 +82,9 @@ $row=function(array $c) use ($user,$id,$preview,$when): void {
 <div class="messages-page<?=$open?' is-open':''?>">
 <?php page_head(t('Nachrichten','Messages'),'',$viewing?'':link_button(t('Neue Nachricht','New message'),'messages',['new'=>1]));
 /* The pages that belong to Nachrichten without a menu entry of their own
-   (nav_owner()): writing to many at once, the news, and what went out by email. */
+   (nav_owner()): the news, and what went out by email. */
 if($staff): ?>
 <nav class="page-links" aria-label="<?=e(t('Mehr zu Nachrichten','More about messages'))?>">
-    <a class="chip" href="<?=e(url('compose'))?>"><?=e(t('An mehrere schreiben','Write to several'))?></a>
     <a class="chip" href="<?=e(url('news'))?>"><?=e(t('Neuigkeiten','News'))?></a>
     <a class="chip" href="<?=e(url('outbox'))?>"><?=e(t('Postausgang','Outbox'))?></a>
     <?php if(is_admin($user)): ?><a class="chip" href="<?=e(url('messages',$allDirect?[]:['all'=>1]))?>"><?=e($allDirect?t('Meine Chats','My chats'):t('Alle Direktchats','All direct chats'))?></a><?php endif ?>

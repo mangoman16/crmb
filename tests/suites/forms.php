@@ -55,17 +55,7 @@ foreach (['first_name', 'last_name', 'birth_date', 'course', 'status'] as $asked
     ok(str_contains($blank, 'name="'.$asked.'"'), 'step 1 asks for '.$asked);
 foreach (['email', 'price_note', 'internal_notes', 'level_id', 'age_group_id', 'joined_on'] as $later)
     ok(!str_contains($blank, 'name="'.$later.'"'), $later.' waits: the sign-in on step 2, the rest until the record exists');
-// Her own fields wait too. They are the ones most likely to be many, and a
-// create form that grows every time she adds one is a create form that is back
-// where it started.
-$own = fixture('field_definitions', ['label'=>'Bisheriger Verein', 'label_en'=>'', 'field_type'=>'text',
-    'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
-    'visibility'=>'view', 'sort_order'=>9, 'archived'=>0]);
-$blank = render_view('student_new');
-ok(!str_contains($blank, 'custom['.$own.']'), 'and so does a custom field she added herself');
 ok(str_contains($blank, e('Weiter')), 'and the button says there is more to come');
-$existingHtml = render_view('student', ['id'=>$existing]);
-ok(str_contains($existingHtml, 'custom['.$own.']'), 'while the record’s own page has it');
 
 case_('It is offered back once, and then forgotten');
 // The next request takes it out of the session again and finds nothing, which is

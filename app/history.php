@@ -29,16 +29,10 @@ declare(strict_types=1);
  * log is worth keeping at all.
  */
 function history_field_label(string $column): string {
-    // A custom field's value, recorded with the student it belongs to
-    // (entity_snapshot()), is named as the settings page names the field. That
-    // reads field_definitions through app/domain.php, which is loaded after
-    // this file - safe, because this runs only while a page is drawn, never
-    // while files load. The same arrangement as avatar() calling
-    // upload_version().
-    if (preg_match('/^field:([0-9]+)$/D', $column, $m)) {
-        $field = one('SELECT label,label_en FROM field_definitions WHERE id=?', [(int)$m[1]]);
-        return $field ? field_label($field) : t('Gelöschtes eigenes Feld', 'Deleted custom field');
-    }
+    // A custom field's value, kept with the student it belonged to on lines
+    // written before custom fields went (ADR 0026 §7). Their definitions went
+    // with them, so every such key reads the same, and nothing is looked up.
+    if (preg_match('/^field:[0-9]+$/D', $column)) return t('Früheres eigenes Feld', 'Former custom field');
     return match ($column) {
         'first_name' => t('Vorname', 'First name'),
         'last_name' => t('Nachname', 'Last name'),
@@ -122,21 +116,19 @@ function history_field_label(string $column): string {
  */
 function tracked_entities(): array {
     return [
-        'students'         => ['label' => ['Schüler', 'Student'],            'title' => ['first_name', 'last_name']],
+        'students'         => ['label' => ['Schüler', 'Student']],
         // billing_key is bookkeeping - which period a charge stands for - and
         // reads as a column name; cancelling gives it up (cancel_charge()).
-        'charges'          => ['label' => ['Beitrag', 'Charge'],             'title' => ['label'], 'hidden' => ['billing_key']],
-        'payments'         => ['label' => ['Zahlung', 'Payment'],            'title' => ['method']],
-        'classes'          => ['label' => ['Kurs', 'Class'],                 'title' => ['name']],
-        'tariffs'          => ['label' => ['Tarif', 'Tariff'],               'title' => ['name']],
-        'payment_profiles' => ['label' => ['Zahlungsempfänger', 'Payment profile'], 'title' => ['name']],
-        'levels'           => ['label' => ['Leistungsgruppe', 'Level'],      'title' => ['name']],
-        'age_groups'       => ['label' => ['Altersgruppe', 'Age group'],     'title' => ['name']],
-        'contacts'         => ['label' => ['Kontakt', 'Contact'],            'title' => ['owner_name'], 'hidden' => ['student_id']],
-        'accounts'         => ['label' => ['Konto', 'Account'],              'title' => ['name']],
-        'news'             => ['label' => ['Neuigkeit', 'News'],             'title' => ['title']],
-        'message_templates'=> ['label' => ['Vorlage', 'Template'],           'title' => ['name']],
-        'field_definitions'=> ['label' => ['Eigenes Feld', 'Custom field'],  'title' => ['label']],
+        'charges'          => ['label' => ['Beitrag', 'Charge'], 'hidden' => ['billing_key']],
+        'payments'         => ['label' => ['Zahlung', 'Payment']],
+        'classes'          => ['label' => ['Kurs', 'Class']],
+        'tariffs'          => ['label' => ['Tarif', 'Tariff']],
+        'payment_profiles' => ['label' => ['Zahlungsempfänger', 'Payment profile']],
+        'levels'           => ['label' => ['Leistungsgruppe', 'Level']],
+        'age_groups'       => ['label' => ['Altersgruppe', 'Age group']],
+        'contacts'         => ['label' => ['Kontakt', 'Contact'], 'hidden' => ['student_id']],
+        'accounts'         => ['label' => ['Konto', 'Account']],
+        'news'             => ['label' => ['Neuigkeit', 'News']],
     ];
 }
 
@@ -146,43 +138,21 @@ function tracked_entity(string $entity): array {
     return $all[$entity];
 }
 
-function entity_label(string $entity): string {
-    $e = tracked_entity($entity);
-    return t($e['label'][0], $e['label'][1]);
-}
-
-/** A short human name for a stored row, from whichever columns identify it. */
-function entity_title(string $entity, ?array $row): string {
-    if (!$row) return '';
-    $parts = [];
-    foreach (tracked_entity($entity)['title'] as $column)
-        if (($row[$column] ?? '') !== '') $parts[] = (string)$row[$column];
-    return implode(' ', $parts);
-}
-
 /**
- * The current state of a row, or null when it does not exist.
- *
- * A student's custom fields are part of the student (ADR 0020, §7):
- * field_values has no id of its own to be tracked by, so each of its rows for
- * this student is added as a pseudo-column field:<field_id> holding its
- * value_json. A save of the student and its fields is then one line, and a
- * deleted student's line keeps their custom values. A value that is not filled
- * in, by custom_value_empty() - the rule a required field is refused by, in
- * app/domain.php, called only while a request runs, as history_field_label()
- * calls field_label() - is
- * left out, so a save that merely wrote empty rows for fields nobody filled in
- * is no change. An unticked box is one of those: unticking reads „ja → —“, not
- * „ja → nein“. These keys never reach SQL: there is no undo to write them back.
+ * What an entity is called in the change log. One no longer in
+ * tracked_entities() - a feature that has gone, whose lines are kept - is named
+ * by the name it was stored under rather than refusing to draw the page, so the
+ * log outlives any feature (ADR 0026 §7).
  */
+function entity_label(string $entity): string {
+    $e = tracked_entities()[$entity] ?? null;
+    return $e ? t($e['label'][0], $e['label'][1]) : $entity;
+}
+
+/** The current state of a row, or null when it does not exist. */
 function entity_snapshot(string $entity, int $id): ?array {
     tracked_entity($entity);
-    $row = one('SELECT * FROM '.$entity.' WHERE id=?', [$id]);
-    if ($row === null || $entity !== 'students') return $row;
-    foreach (rows('SELECT field_id,value_json FROM field_values WHERE student_id=? ORDER BY field_id', [$id]) as $value)
-        if (!custom_value_empty(json_decode((string)$value['value_json'], true)))
-            $row['field:'.(int)$value['field_id']] = (string)$value['value_json'];
-    return $row;
+    return one('SELECT * FROM '.$entity.' WHERE id=?', [$id]);
 }
 
 /**
@@ -226,8 +196,6 @@ function history_record(string $entity, int $id, string $operation, string $labe
     if ($after !== null) $after = array_diff_key($after, $never);
     if ($operation === 'update' && $before !== null && $after !== null) {
         $differing = [];
-        // Both sides' columns: a custom field filled in for the first time is
-        // on the after side only (entity_snapshot()).
         foreach (array_keys($before + $after) as $column)
             if ((string)($before[$column] ?? null) !== (string)($after[$column] ?? null)) $differing[$column] = true;
         $before = array_intersect_key($before, $differing);
@@ -332,12 +300,13 @@ function version_changes(array $version): array {
  * A stored column value as a short readable string.
  *
  * $column is the field it came from, for the values whose raw form means
- * nothing to her: a login is stored as a number and read as its holder, and
- * a custom field (field:<id>) as JSON, read as its text, its options joined with
- * commas, or ja / nein for a box. A calendar date - a value shaped exactly
- * YYYY-MM-DD, a custom date field's included - reads as she writes one;
- * fmt_date() does not shift a DATE, so it stays the day it was. A DATETIME has
- * a time part and is left alone (ADR 0020, §10b).
+ * nothing to her: a login is stored as a number and read as its holder, and a
+ * custom field's (field:<id>), on a line from before they went, as JSON - read
+ * as its text, its options joined with commas, or ja / nein for a box. A
+ * calendar date - a value shaped exactly YYYY-MM-DD, a former custom date
+ * field's included - reads as she writes one; fmt_date() does not shift a DATE,
+ * so it stays the day it was. A DATETIME has a time part and is left alone
+ * (ADR 0020, §10b).
  */
 function history_value(mixed $v, string $column = ''): string {
     if (str_starts_with($column, 'field:') && is_string($v)) {

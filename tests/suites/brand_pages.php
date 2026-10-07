@@ -152,9 +152,8 @@ is_same('branding', $x->query('.//input[@name="group"]', $branding)->item(0)?->g
 foreach (array_keys(settings_in_group('branding')) as $key) is_same(1, $field('set_'.$key), 'with '.$key.' on it, so a save cannot blank it');
 is_same(0, $x->query('//section[@id="logo"]//*[@name="set_header_hide_name"]')->length, 'the switches are not on the logo card');
 $fieldsLink = '//a[contains(@href, "tab=fields")]';
-is_same(0, $x->query('//section[@id="branding"]'.$fieldsLink)->length, 'the Aussehen card does not lead to custom fields for students');
-is_same(0, $x->query($fieldsLink)->length, 'nor does anything else on the Portal tab');
-is_same(1, brand_xpath(render_view('settings', ['tab' => 'system']))->query($fieldsLink)->length, 'the System tab\'s „Erweitert" still does');
+is_same([0, 0], [$x->query($fieldsLink)->length, brand_xpath(render_view('settings', ['tab' => 'system']))->query($fieldsLink)->length],
+        'nothing leads to custom fields any more, on the Portal tab or in the System tab\'s „Erweitert" (ADR 0026 §7)');
 $pickerLabels = array_map(fn($n) => $n->getAttribute('data-picker-label'), iterator_to_array($x->query('//section[@id="branding"]//*[@data-picker-label]')));
 is_same(count(array_filter(settings_in_group('branding'), fn($s) => $s['kind'] === 'colour')), count($pickerLabels), 'every colour field names its picker');
 ok(in_array('Farbe auswählen: Hauptfarbe', $pickerLabels, true), 'in the page\'s language, with the field\'s name');

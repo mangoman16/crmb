@@ -12,9 +12,9 @@ declare(strict_types=1);
  * it reads - the live one. Allowing only these characters means the name cannot
  * change the meaning of the string it is put into.
  *
- * Used by tests/harness.php, tests/db.php and tests/existing-database.php. The
- * one other copy is NAME_RULE in tests/existing-database.sh, in bash, so that a
- * wrong name is refused before the password is typed; change them together.
+ * Used by tests/harness.php and tests/existing-database.php. The one other copy
+ * is NAME_RULE in tests/existing-database.sh, in bash, so that a wrong name is
+ * refused before the password is typed; change them together.
  */
 function test_database_name_allowed(string $name): bool {
     return preg_match('/^[A-Za-z0-9_]+_test$/D', $name) === 1;

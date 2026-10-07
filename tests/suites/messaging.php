@@ -202,11 +202,6 @@ sign_in_as($trainer);
 act('class_save', ['name'=>'Neuer Kurs', 'capacity'=>'0', 'sort_order'=>'0']);
 $made = (int)scalar("SELECT id FROM classes WHERE name='Neuer Kurs'");
 is_same(1, (int)scalar("SELECT COUNT(*) FROM threads WHERE class_id=? AND kind='course'", [$made]), 'saving a new course makes its group');
-// „Kopieren" makes a course too, and the copy is a course of its own (ADR 0022 §3).
-$copied = (int)(act('record_duplicate', ['table'=>'classes', 'id'=>(string)$course])[1]['id'] ?? 0);
-ok($copied > 0 && $copied !== $course, 'copying a course makes a new one');
-is_same(1, (int)scalar("SELECT COUNT(*) FROM threads WHERE class_id=? AND kind='course'", [$copied]),
-        'and the copy has exactly one group of its own, straight away');
 $old = make_class(['name'=>'Von früher']);
 ok(course_groups_fill() >= 1 && (int)scalar('SELECT COUNT(*) FROM threads WHERE class_id=?', [$old]) === 1, 'a course from before gets its group with the next update');
 is_same(0, course_groups_fill(), 'and the next update makes none');
@@ -443,20 +438,18 @@ is_same($unread, unread_notifications($hofer), 'signed in as the child, every no
 
 case_('An administrator looking through a trainer’s eyes writes nothing in her name');
 /* may_impersonate() lets an administrator view the portal as a trainer. Every
-   action of the chat would then speak as the trainer - the circular into each
-   chosen child's chat with her above all (security review S4, ADR 0022 §9). */
+   action of the chat would then speak as the trainer (security review S4,
+   ADR 0022 §9). */
 view_as($admin, $trainer);
-$_SESSION['bulk_preview'] = ['student_ids'=>[$lena], 'subject'=>'Training', 'body'=>'Bitte pünktlich sein.', 'email'=>false,
-                             'accounts'=>[$hofer=>'Familie Hofer'], 'created'=>time()];
 $groupMessage = (int)scalar('SELECT id FROM messages WHERE thread_id=? ORDER BY id DESC LIMIT 1', [$group]);
 $written = fn(): array => [(int)scalar('SELECT COUNT(*) FROM messages'), (int)scalar('SELECT COUNT(*) FROM news'),
                            (int)scalar('SELECT COUNT(*) FROM messages WHERE removed_at IS NOT NULL')];
 $writtenBefore = $written();
-foreach ([['bulk_send', []], ['message_remove', ['id'=>(string)$groupMessage]],
+foreach ([['message_send', ['thread_id'=>(string)$thread['id'], 'body'=>'Bitte pünktlich sein.']], ['message_remove', ['id'=>(string)$groupMessage]],
           ['news_save', ['title'=>'Hallenzeiten', 'body'=>'Ab Montag neu.', 'published'=>'1']]] as [$action, $fields])
     throws(fn() => act($action, $fields), $action.' is refused, in the sentence the chat shows for it', viewing_refusal());
 is_same($writtenBefore, $written(), 'and nothing was written: no message, no news, nothing taken down');
-unset($_SESSION['impersonator_id'], $_SESSION['bulk_preview']);
+unset($_SESSION['impersonator_id']);
 
 case_('„Alle Direktchats" holds what the person looking may read, and nothing once she may no longer look');
 /* An administrator may view the portal as another administrator, and sees her

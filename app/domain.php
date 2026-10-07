@@ -413,12 +413,11 @@ function student_next_steps(int $studentId): array {
  * §7). Shown to the family on their dashboard and their student page; the
  * staff page keeps student_next_steps().
  *
- * A course first, then somebody to ring, a birth date, a postal address -
- * every family has one, and an invoice above 400 € needs it (create_invoice())
- * - and every custom field the family fills in ('edit') that is required and
- * still empty. Not the phone: it is the member's own number, a child may have
- * none, and an item some families can never tick off teaches every family to
- * ignore the card.
+ * A course first, then somebody to ring, a birth date, and a postal address -
+ * every family has one, and an invoice above 400 € needs it (create_invoice()).
+ * Not the phone: it is the member's own number, a child may have none, and an
+ * item some families can never tick off teaches every family to ignore the
+ * card.
  *
  * Each step names the element on the page it is about ('anchor').
  */
@@ -432,9 +431,9 @@ function family_next_steps(int $studentId): array {
                     'why'  => t('Such dir einen Kurs aus. Deine Trainerin bestätigt die Anmeldung.', 'Pick a course. Your coach confirms your place.'),
                     'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => free_courses_for($studentId) ? 'add-course' : 'courses'];
     }
-    // Safety first, then what the age group and the invoices need, then her
-    // own questions; the words are the designer's (spec §6.1). The anchors are
-    // the ids the student page gives those boxes.
+    // Safety first, then what the age group and the invoices need; the words
+    // are the designer's (spec §6.1). The anchors are the ids the student page
+    // gives those boxes.
     if (!primary_contact($studentId))
         $steps[] = ['what' => t('Notfallkontakt eintragen', 'Add an emergency contact'),
                     'why'  => t('Wen die Trainerin anruft, wenn im Training etwas passiert.', 'Who your coach rings if something happens at training.'),
@@ -450,12 +449,6 @@ function family_next_steps(int $studentId): array {
         $steps[] = ['what' => t('Anschrift eintragen', 'Add the postal address'),
                     'why'  => t('Sie steht auf deinen Rechnungen.', 'It goes on your invoices.'),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'address'];
-    // The label alone is the link text, so a yes/no field reads as well as a size.
-    foreach (field_definitions() as $f)
-        if (custom_field_required_of($f, false) && custom_value_empty(field_value($studentId, (int)$f['id'])))
-            $steps[] = ['what' => field_label($f),
-                        'why'  => t('Bitte ausfüllen – deine Trainerin bittet darum.', 'Please fill this in – your coach has asked for it.'),
-                        'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'field-'.$f['id']];
     return $steps;
 }
 
@@ -607,82 +600,8 @@ function payments_by_charge(array $chargeIds): array {
 }
 
 function student_charges(int $id): array { return rows('SELECT c.*,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? ORDER BY c.due_on DESC,c.id DESC',[$id]); }
-function field_definitions(bool $archived=false): array { return rows('SELECT * FROM field_definitions'.($archived?'':' WHERE archived=0').' ORDER BY sort_order,id'); }
-function field_label(array $f): string { return locale()==='en' && $f['label_en']?$f['label_en']:$f['label']; }
-function field_value(int $studentId,int $fieldId): mixed { $v=scalar('SELECT value_json FROM field_values WHERE student_id=? AND field_id=?',[$studentId,$fieldId]); return $v===false?null:json_decode($v,true); }
-/**
- * Whether a custom field's value counts as not filled in: nothing, an empty
- * text, no option chosen, or a box not ticked. One rule for the refusal of a
- * required field and for the family's list of what is still missing, so the two
- * cannot disagree about whether something was done.
- */
-function custom_value_empty(mixed $v): bool { return $v===null || $v==='' || $v===false || $v===[]; }
-
-/**
- * Whether a required custom field is required of this person: a field the
- * family fills in ('edit') is required of the family, and a 'view' or
- * 'internal' field of staff (ADR 0020, §7). The one answer the save that
- * refuses, the family's list of what is missing and the page that marks the
- * box all ask, so they cannot disagree.
- */
-function custom_field_required_of(array $field, bool $staff): bool {
-    return (bool)$field['required'] && ($field['visibility']==='edit')!==$staff;
-}
-/**
- * A custom field's value, checked and in the shape it is stored, or a refusal.
- *
- * The type checks - a date, a number, an offered option - apply to every value
- * that is not empty, for everybody. Whether an empty one is refused is the
- * caller's to say ($emptyRefused): a required field is required of whoever
- * fills it in, which save_custom_fields() works out (ADR 0020, §7).
- */
-function validate_custom(array $f,mixed $v,mixed $old,bool $emptyRefused): mixed {
-    $opts=json_decode($f['options_json'],true);
-    if($f['field_type']==='multiselect') {
-        if(!is_array($v)) $v=[];
-        if(count($v)>100) throw new UserError(t('Zu viele Optionen.','Too many options.'));
-        foreach($v as $x) if(!is_string($x) || (!in_array($x,$opts,true) && !in_array($x,is_array($old)?$old:[],true))) throw new UserError(t('Ungültige Option.','Invalid option.'));
-        $v=array_values(array_unique($v));
-    } elseif($f['field_type']==='checkbox') { $v=(bool)$v;
-    } else {
-        if(!is_scalar($v) && $v!==null) throw new UserError(t('Ungültiger Feldwert.','Invalid field value.'));
-        $v=trim((string)$v);
-        if(mb_strlen($v)>4000) throw new UserError(t('Feldwert zu lang.','Field value is too long.'));
-        if($v!=='') {
-            if($f['field_type']==='date') date_value($v,true);
-            if($f['field_type']==='number' && !preg_match('/^-?\d+(?:[.,]\d+)?$/D',$v)) throw new UserError(t('Zahl erwartet: ','Number expected: ').$f['label']);
-            if($f['field_type']==='select' && !in_array($v,$opts,true) && $v!==$old) throw new UserError(t('Ungültige Option: ','Invalid option: ').$f['label']);
-        }
-    }
-    if($emptyRefused && custom_value_empty($v)) throw new UserError(t('Pflichtfeld: ','Required field: ').$f['label']);
-    return $v;
-}
-/**
- * Write the custom fields posted with a student's form. Called inside the
- * student's own tracked() or tracked_insert(), so the values are part of that
- * one change-log line (entity_snapshot()).
- *
- * A family writes only the fields at 'edit'; the rest are skipped, whatever is
- * posted. A required field is required of whoever fills it in (ADR 0020, §7):
- * an 'edit' field refuses the family's save while empty and never staff's - she
- * may fill it in and need not - and a 'view' or 'internal' field refuses
- * staff's save of an existing student. Creating a student ($new) refuses none,
- * because the create form carries no custom fields at all.
- */
-function save_custom_fields(int $id,bool $new): void {
-    $input=$_POST['custom']??[]; if(!is_array($input)) throw new UserError(t('Ungültige Eingabe.','Invalid input.'));
-    $staff=is_staff();
-    foreach(field_definitions() as $f) {
-        $families=$f['visibility']==='edit';
-        if(!$staff && !$families) continue;
-        $old=field_value($id,(int)$f['id']);
-        $value=$input[$f['id']]??($f['field_type']==='checkbox'?false:($f['field_type']==='multiselect'?[]:''));
-        $value=validate_custom($f,$value,$old,!$new && custom_field_required_of($f,$staff));
-        run('INSERT INTO field_values (student_id,field_id,value_json) VALUES (?,?,?) ON DUPLICATE KEY UPDATE value_json=VALUES(value_json)',[$id,$f['id'],json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)]);
-    }
-}
 function filters_from(array $data): array {
-    $keys=['q','status','absence','overdue','tariff','level','age_group','course','field','value']; $out=[];
+    $keys=['q','status','absence','overdue','level','age_group','course']; $out=[];
     foreach($keys as $key) if(isset($data[$key]) && is_scalar($data[$key])) $out[$key]=mb_substr(trim((string)$data[$key]),0,200);
     return $out;
 }
@@ -691,9 +610,6 @@ function filtered_students(array $f,?int $accountId=null): array {
     if($accountId!==null){$where[]='s.account_id=?';$p[]=$accountId;}
     if(!empty($f['q'])){$where[]="CONCAT(s.first_name,' ',s.last_name) LIKE ?";$p[]='%'.$f['q'].'%';}
     if(!empty($f['status'])){$where[]='s.status=?';$p[]=$f['status'];}
-    // What a child pays is decided per course (ADR 0011), so "on this tariff"
-    // means a course they are still in names it; students.tariff_id bills nobody.
-    if(!empty($f['tariff'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.tariff_id=? AND '.current_enrolment_sql().')';$p[]=(int)$f['tariff'];}
     if(!empty($f['level'])){$where[]='s.level_id=?';$p[]=(int)$f['level'];}
     // "Who is in Monday's group" is the view she builds most often, so a course
     // is a filter in its own right rather than something to be read off a card.
@@ -717,67 +633,7 @@ function filtered_students(array $f,?int $accountId=null): array {
     }
     if(!empty($f['absence'])){$where[]='EXISTS (SELECT 1 FROM absences a WHERE a.student_id=s.id AND a.reason=? AND a.starts_on<=? AND a.ends_on>=?)';array_push($p,$f['absence'],today(),today());}
     if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND '.charge_is_overdue_sql().')';$p[]=today();}
-    if(!empty($f['field']) && isset($f['value'])){
-        $def=one('SELECT * FROM field_definitions WHERE id=? AND archived=0',[(int)$f['field']]);
-        if($def && (is_staff() || $def['visibility']!=='internal')) {
-            $where[]='EXISTS (SELECT 1 FROM field_values v WHERE v.student_id=s.id AND v.field_id=? AND JSON_CONTAINS(v.value_json,?))';
-            array_push($p,$def['id'],json_encode($def['field_type']==='checkbox'?in_array($f['value'],['1','true','yes'],true):$f['value'],JSON_UNESCAPED_UNICODE));
-        }
-    }
     return rows('SELECT s.*,a.name AS account_name,l.name AS level_name FROM students s'
         .' LEFT JOIN accounts a ON a.id=s.account_id LEFT JOIN levels l ON l.id=s.level_id'
         .' WHERE '.implode(' AND ',$where).' ORDER BY s.last_name,s.first_name,s.id',$p);
-}
-/**
- * Every placeholder a message template may use, what it means, and an example.
- *
- * One list. template_values() fills them in, template_save() validates against
- * them, and the editor shows them beside the box they go into. The same set used
- * to be written out in three places, so adding one meant remembering all three
- * and a template could be accepted that the sender then could not fill in.
- */
-function template_placeholders(): array {
-    return [
-        'student_name' => [t('Vollständiger Name','Full name'),                          'Lena Hofer'],
-        'first_name'   => [t('Vorname','First name'),                                    'Lena'],
-        'level'        => [t('Leistungsgruppe','Level'),                                 t('Anfänger','Beginner')],
-        'age_group'    => [t('Altersgruppe','Age group'),                                t('Unter 12','Under 12')],
-        'tariff'       => [t('Tarif','Tariff'),                                          t('Monatsbeitrag','Monthly fee')],
-        'outstanding'  => [t('Offener Gesamtbetrag','Total outstanding'),                money(4500)],
-        'paid_through' => [t('Ende des letzten bezahlten Zeitraums','End of the latest paid period'), fmt_date(today())],
-        'portal_url'   => [t('Link zum Portal','Link to the portal'),                    url('messages')],
-    ];
-}
-
-/** What each placeholder becomes for one student. Keys match template_placeholders(). */
-function template_values(array $s): array {
-    $paidThrough=null;
-    foreach(student_charges((int)$s['id']) as $c) if(!$c['cancelled'] && $c['paid']>=$c['amount_cents'] && $c['period_to'] && (!$paidThrough || $c['period_to']>$paidThrough)) $paidThrough=$c['period_to'];
-    return [
-        'student_name' => $s['first_name'].' '.$s['last_name'],
-        'first_name'   => $s['first_name'],
-        'level'        => level_name(isset($s['level_id'])?(int)$s['level_id']:null),
-        'age_group'    => age_group_name($s),
-        'tariff'       => current_tariff_names((int)$s['id']),
-        'outstanding'  => money(balance((int)$s['id'])),
-        'paid_through' => fmt_date($paidThrough),
-        'portal_url'   => url('messages'),
-    ];
-}
-
-/**
- * The tariffs of the courses a child is in now, joined with „ + “, in the
- * order the courses are listed; '' for a child on none. The student's own
- * tariff column bills nobody any more, so it is not what a message may say.
- */
-function current_tariff_names(int $studentId): string {
-    return implode(' + ', array_column(rows('SELECT t.name FROM class_students cs JOIN tariffs t ON t.id=cs.tariff_id'
-        .' JOIN classes c ON c.id=cs.class_id WHERE cs.student_id=? AND '.current_enrolment_sql()
-        .' ORDER BY c.sort_order, c.name, c.id', [$studentId]), 'name'));
-}
-
-function template_text(string $text,array $s): string {
-    $map=[];
-    foreach(template_values($s) as $key=>$value) $map['{{'.$key.'}}']=$value;
-    return strtr($text,$map);
 }

@@ -16,7 +16,7 @@ with MariaDB; MySQL is meant to work but has never been run.
   in — an invitation by e-mail, a username with a sign-in link that works once within 48
   hours, or no sign-in for now. Somebody known only by their address can be invited from
   **Schüler** and fills in their own details. A student's login is replaced, never deleted.
-  The screens for this are still the minimum the server side needed (ROADMAP.md, item 4).
+  The screens for this are still the minimum the server side needed (ROADMAP.md, item 5).
 - **„Dein Portal einrichten"**, nine steps from an empty portal to the first invitation, each
   ticked from the data. An administrator lands there at every sign-in until it is done or
   hidden.
@@ -39,14 +39,11 @@ with MariaDB; MySQL is meant to work but has never been run.
   birth.
 - **Contacts** are the people to ring about a child. The portal writes to the child's own
   login.
-- **Custom fields** for students: types, options, sections, ordering, what a student may see,
-  and archiving. To be removed (ROADMAP.md, item 3).
 - **A chat**: a group for every course, whose children are whoever is enrolled now; a chat
   between a child and one member of staff, which the administrators can read too; and a chat
   between two families once one has agreed, which only the two read. Text, pictures, PDFs and
-  voice notes; a photo is stored without where, when and with what it was taken. „An mehrere
-  schreiben" sends one message into several children's chats. Everybody has an online dot and
-  may choose a status emoji.
+  voice notes; a photo is stored without where, when and with what it was taken. Everybody has
+  an online dot and may choose a status emoji.
 - **News**, and club news by e-mail, which starts switched on and can be switched off in
   **Mein Konto** or from every such mail.
 - **Mail** through SMTP, with the password stored encrypted, a queue that retries, and an
@@ -63,14 +60,17 @@ with MariaDB; MySQL is meant to work but has never been run.
   with a text to copy for whoever helps. Both are deleted 30 days after they are done or last
   happened.
 - **Viewing the portal as somebody else**: an administrator as anybody, a trainer as a
-  student, with a bar saying so and a way back; nothing can be written in that view's chat.
+  student, with a bar saying so and a way back. It is for looking only: nothing can be written
+  or changed in that view. If the viewer's own login is deleted, suspended, demoted or given a
+  new password meanwhile, the view ends and that browser is signed out.
 - **„Änderungen"**, a change log that says what changed, field by field, and who changed it.
   It informs; there is no undo.
 - **Example data** at the press of a button, and out again.
 - **Installing from a browser** on hosting without a shell, migrations that apply themselves
   after an upload, and an update that refuses rather than guesses: older files than the
-  database, an incomplete upload, a database it could not back up first, or fewer rows
-  afterwards each keep the portal closed.
+  database, an incomplete upload or a database it could not back up first each keep the
+  portal closed. Fewer rows afterwards refuse the update too, but for now only the page view
+  that ran it: the next one opens the portal (ROADMAP.md, item 7; ADR 0027).
 - **Background work** — queued mail, the nightly cleanup and, when switched on, the monthly
   charges on the first page view of a month — runs just after a page has been served, with
   no cron job needed.

@@ -16,14 +16,6 @@
 
 install_locale('de');
 
-case_('A new portal asks families nothing the trainer has not added herself');
-// The runner has just emptied the database and applied the seed, which is what a
-// fresh install is. A seeded example field („Trainingsgruppe") showed every family
-// an empty „Weitere Angaben" card until she found and deleted it (ADR 0011).
-is_same(0, (int)scalar('SELECT COUNT(*) FROM field_definitions'), 'the seed creates no custom field');
-ok((int)scalar('SELECT COUNT(*) FROM message_templates') > 0,
-   'while the examples she does start with are still there, so the check above ran against a seeded portal');
-
 case_('The portal address is derived from the request that asks for it');
 $request = fn(array $over = []) => $over + ['HTTP_HOST' => 'badminton.example.at', 'REQUEST_URI' => '/setup.php',
                                             'SERVER_NAME' => 'fallback.invalid', 'SERVER_PORT' => 80];
@@ -257,8 +249,10 @@ try { schema_verify_counts($before, fn(string $l) => null); } catch (Throwable $
 ok($dropped instanceof UpdateBlocked, 'a table that shrank stops the update');
 ok(str_contains($dropped?->de ?? '', 'students'), 'and names the table');
 ok(str_contains($dropped?->de ?? '', 'storage/backups'), 'and says where the copy from beforehand is');
-does_not_throw(fn() => schema_verify_counts(['no_such_table' => 5], fn(string $l) => null),
-               'a table the release has not created yet is skipped rather than reported as lost');
+$gone = null;
+try { schema_verify_counts(['no_such_table' => 5], fn(string $l) => null); } catch (Throwable $e) { $gone = $e; }
+ok($gone instanceof UpdateBlocked && str_contains($gone->de, 'no_such_table 5 -> 0'),
+   'a table counted before the update and gone after it counts as emptied, rather than being skipped [ADR 0026 §7]');
 
 case_('A migration statement that returns rows does not poison the rest of the run');
 // PDO::exec() leaves an open result set behind for anything that returns rows -

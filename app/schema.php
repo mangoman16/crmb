@@ -106,12 +106,17 @@ function schema_extra(): array {
 /**
  * The tables whose row count must not drop across an update.
  *
- * Everything a family would notice the loss of. Migrations in this project only
- * ever add, so a count going down means something went wrong rather than
- * something being cleaned up, and the portal stays closed until a person looks.
+ * Everything a family would notice the loss of. A migration that removes rows
+ * from one of them on purpose takes the table off this list in the same commit,
+ * with the reason written beside it, so a count going down means something went
+ * wrong rather than something being cleaned up, and the update is refused.
  */
 function schema_guarded_tables(): array {
-    return ['accounts', 'students', 'contacts', 'field_values', 'absences',
+    return ['accounts', 'students', 'contacts', 'absences',
+            // field_values left with 032, which drops it and every custom-field
+            // value in it on purpose: the owner asked for the data to go (ADR
+            // 0026 §7). Left on, it would refuse that update on every portal
+            // that held a value.
             'charges', 'payments', 'threads', 'messages', 'message_files', 'news',
             // Added as the portal grew. A table left off this list is a table an
             // update may quietly empty, so anything a family, the tax office or a
@@ -125,16 +130,19 @@ function schema_guarded_tables(): array {
 }
 
 /**
- * Row counts for those tables, skipping any that do not exist yet.
+ * Row counts for those tables, skipping any that do not exist.
  *
- * A first install has none of them, and comparing against a table that was
- * created by the very migration under test would report a fall from nothing.
+ * Before an update, that is a table not created yet: a first install has none
+ * of them, and comparing against a table that was created by the very migration
+ * under test would report a fall from nothing. After it, a table counted before
+ * and skipped now is one the update dropped, which schema_verify_counts() reads
+ * as emptied.
  */
 function schema_counts(): array {
     $counts = [];
     foreach (schema_guarded_tables() as $table) {
         try { $counts[$table] = (int)scalar('SELECT COUNT(*) FROM ' . sql_name($table, 'table')); }
-        catch (PDOException) { /* not created yet */ }
+        catch (PDOException) { /* not created yet, or dropped by the update */ }
     }
     return $counts;
 }
@@ -337,13 +345,20 @@ function schema_refuse_unsafe(callable $log): void {
  * Counts alone do not prove an update was correct, but a count that fell proves
  * it was not, and that is worth catching while the backup is still the most
  * recent thing that happened.
+ *
+ * Every table counted before is compared, and one that can no longer be counted
+ * counts as 0: a guarded table a migration dropped has lost every row it had.
+ * Comparing only what could still be counted let such a migration through
+ * (ADR 0026 §7). A table that was not there before, which the update creates,
+ * had nothing to lose and is not compared.
  */
 function schema_verify_counts(array $before, callable $log): void {
+    $after = schema_counts();
     $lost = [];
-    foreach (schema_counts() as $table => $now) {
-        if (!array_key_exists($table, $before)) continue;
-        $log(sprintf('    %-12s %d -> %d', $table, $before[$table], $now));
-        if ($now < $before[$table]) $lost[] = $table . ' ' . $before[$table] . ' -> ' . $now;
+    foreach ($before as $table => $was) {
+        $now = $after[$table] ?? 0;
+        $log(sprintf('    %-12s %d -> %d', $table, $was, $now));
+        if ($now < $was) $lost[] = $table . ' ' . $was . ' -> ' . $now;
     }
     if (!$lost) return;
     throw new UpdateBlocked(

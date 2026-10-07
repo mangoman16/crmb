@@ -45,7 +45,7 @@ try{
         try{$schema=scalar('SELECT MAX(version) FROM schema_migrations');}catch(PDOException){$schema='not migrated';}
         try{$pending=schema_pending();}catch(PDOException){$pending=array_map('basename',migration_files());}
         $result=['version'=>app_version(),'php'=>PHP_VERSION,'maintenance'=>is_file(maintenance_file()),'schema'=>$schema,'pending'=>$pending];
-        foreach(['accounts','students','contacts','field_definitions','field_values','absences','charges','payments','threads','messages','news','mail_jobs'] as $table)$result['rows'][$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
+        foreach(['accounts','students','contacts','absences','charges','payments','threads','messages','news','mail_jobs'] as $table)$result['rows'][$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
         $result['totals_cents']=['charges'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM charges WHERE cancelled=0'),'confirmed_payments'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE voided=0 AND confirmed_at IS NOT NULL')];
         echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE).PHP_EOL;exit;
     }

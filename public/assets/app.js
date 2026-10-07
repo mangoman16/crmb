@@ -59,37 +59,6 @@ document.addEventListener('pointerup', event => {
   if (pressedOutside && outsideMenus(event.target)) closeTopbarMenus(null);
   pressedOutside = false;
 });
-document.querySelectorAll('[data-select-all]').forEach(control => {
-  control.addEventListener('change', () => {
-    document.querySelectorAll('input[name="student_ids[]"]:not(:disabled)').forEach(box => { box.checked = control.checked; });
-  });
-});
-document.querySelectorAll('[data-insert]').forEach(button => {
-  button.addEventListener('click', () => {
-    const field = document.querySelector('textarea[name="body"]');
-    if (!field) return;
-    field.setRangeText(button.dataset.insert, field.selectionStart, field.selectionEnd, 'end');
-    field.focus();
-  });
-});
-const type = document.querySelector('select[name="field_type"]');
-function updateFieldEditor() {
-  if (!type) return;
-  const options = document.querySelector('[data-field-options]');
-  const defaults = document.querySelector('[data-field-default]');
-  const checkbox = document.querySelector('[data-field-checkbox]');
-  if (options) options.hidden = !['select', 'multiselect'].includes(type.value);
-  if (defaults) defaults.hidden = type.value === 'checkbox';
-  if (checkbox) checkbox.hidden = type.value !== 'checkbox';
-  const field = defaults?.querySelector('[name="default_value"]');
-  if (field && type.value === 'multiselect' && field.tagName !== 'TEXTAREA') {
-    const area = document.createElement('textarea');
-    area.name = field.name; area.id = field.id; area.value = field.value; area.rows = 3;
-    field.replaceWith(area);
-  }
-}
-type?.addEventListener('change', updateFieldEditor);
-updateFieldEditor();
 document.querySelectorAll('[data-add-option]').forEach(button => {
   button.addEventListener('click', () => {
     const key = button.dataset.addOption;

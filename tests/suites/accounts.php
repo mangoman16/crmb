@@ -404,27 +404,6 @@ is_same([], array_values(array_filter(glob(APP_ROOT.'/app/*.php'),
     'no mail greets with an account’s name directly any more');
 
 // ---------------------------------------------------------------------------
-case_('A message to several students lands in each one’s chat with the sender, with their own details');
-sign_in_as($admin);
-$first = make_student(['first_name'=>'Erste', 'last_name'=>'Schülerin', 'account_id'=>$firstLogin = make_account(['role'=>'student', 'name'=>'Erste'])]);
-$second = make_student(['first_name'=>'Zweiter', 'last_name'=>'Schüler', 'account_id'=>make_account(['role'=>'student', 'name'=>'Zweiter'])]);
-$threadsBefore = (int)scalar('SELECT COUNT(*) FROM threads');
-$bulk = function () use ($first, $second): void {
-    act('bulk_preview', ['student_ids'=>[(string)$first, (string)$second], 'subject'=>'Hallo {{first_name}}', 'body'=>'Liebe/r {{student_name}}']);
-    act('bulk_send', []);
-};
-$bulk();
-is_same($threadsBefore + 2, (int)scalar('SELECT COUNT(*) FROM threads'), 'two students, two chats');
-is_same(2, (int)scalar("SELECT COUNT(*) FROM threads WHERE kind='staff_direct' AND id>?", [(int)scalar('SELECT MAX(id) FROM threads') - 2]), 'each a chat with the sender (ADR 0022)');
-$bodies = array_column(rows('SELECT m.body FROM messages m JOIN threads t ON t.id=m.thread_id ORDER BY m.id DESC LIMIT 2'), 'body');
-ok(in_array("Hallo Erste\n\nLiebe/r Erste Schülerin", $bodies, true) && in_array("Hallo Zweiter\n\nLiebe/r Zweiter Schüler", $bodies, true),
-   'each with their own name, the subject as its first line, and nobody else’s details appended');
-$bulk();
-is_same($threadsBefore + 2, (int)scalar('SELECT COUNT(*) FROM threads'), 'a second circular goes into the same chats');
-is_same(2, (int)scalar('SELECT COUNT(*) FROM messages WHERE thread_id=?', [pair_thread($admin, $firstLogin)]), 'where it is the next message');
-sign_in_as($trainer);
-
-// ---------------------------------------------------------------------------
 case_('The change log names a login by whose it is, or says it is gone');
 is_same('Konto (Zugang)', history_field_label('account_id'), 'the field is called what it is');
 is_same('Benutzername', history_field_label('username'), 'and a username in a line written before ADR 0021 still reads as one');

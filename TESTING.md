@@ -28,10 +28,10 @@ Walk the matching section as well, and no other:
 
 - signing in, passwords, accounts → [Sign in, roles and access](#sign-in-roles-and-access)
 - the top bar, the bell, the report button, colours → [The shell](#the-shell-the-bar-notifications-feedback-impersonation), [Appearance](#appearance-and-personal-preferences)
-- children, contacts, printed forms → [Students and contacts](#students-contacts-levels-and-age-groups)
+- children and contacts → [Students and contacts](#students-contacts-levels-and-age-groups)
 - courses, prices, joining, attendance → [Courses](#courses-dates-and-tariffs), [Enrolment](#enrolment-asked-for-and-decided), [Attendance](#attendance)
 - money → [Charges](#charges-and-billing), [Payments](#payments-and-proof), [Invoices](#invoices)
-- messages, news, email → [Messages](#messages), [News and email](#news-email-and-the-queue), [Email templates](#email-templates)
+- messages, news, email → [Messages](#messages), [News and email](#news-email-and-the-queue)
 - installing, updating, backups → [Installation and update](#installation-and-update), [Data safety](#data-safety)
 
 **The whole list** — [twenty minutes to an invoice](#twenty-minutes-from-nothing-to-an-invoice),
@@ -91,21 +91,22 @@ release and emptied again for the next.
 - The portal's own icon: U.2–U.8 · the sign-in line: U.1 · rows that line up: U.9–U.12
 - The privacy notice in English is optional: U.35, U.56
 - A profile picture is kept by the browser instead of fetched on every page, and another family's is never shown: U.58–U.62
-- News by email starts switched on for a new login, can be unticked when accepting the invitation, and the printed form asks for the no: [15.2, 15.7, 15.8](#news-email-and-the-queue), in News and email
+- News by email starts switched on for a new login, and can be unticked when accepting the invitation: [15.2, 15.7](#news-email-and-the-queue), in News and email
 - The bell no longer jumps when opened, its panel stays on a phone's screen, its number is a badge in the portal's colour like the one on **Post**, and a tap elsewhere or Escape closes it: [5.3a–5.3g](#the-shell-the-bar-notifications-feedback-impersonation), in The shell
 - A status to choose — „Automatisch", „Abwesend", „Als offline anzeigen" — for trainers and administrators, a coloured dot, and when each account was online over the last 30 days: [P.1–P.10](#online-status-and-when-somebody-was-online)
 - Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
 - After an update the browser fetches the new stylesheet and script by itself: the account menu is styled and the bell stays still without clearing the cache: A.0
 - Everybody signs in with their own e-mail address — a student may have a username instead (L.11–L.16). A person is added either by inviting an address — they fill in their own details and choose a course — or through the wizard „Schüler anlegen"; nobody sets another person's password (ADR 0021, amended by ADR 0023): A.1–A.13
-- Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
-- The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a copied course has its group; a stored photo keeps only the picture (ADR 0022): C.1–C.20
+- Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.18, A.20–A.22, A.25, A.27
+- The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a stored photo keeps only the picture (ADR 0022): C.1–C.6, C.8–C.15, C.17–C.20
 - Billing and invoices after the review of October 2026: an archived tariff stays on a child, a cancelled charge can be charged again, „Als bezahlt eintragen" confirms rather than doubles, a charge on an invoice cannot be cancelled, an invoice is not e-mailed to a family who said no, the invoices page counts every invoice, a membership ending mid-month is charged to that day, a child coming back starts afresh, the age filter finds the right children, background charges are German and nobody's, and the „Zahlungsziel" setting that did nothing is gone: [B.1–B.14](#billing-and-invoices-after-the-review-of-october-2026)
 - Every student has a login — „Ohne Anmeldung" until somebody gives it an address or a username; a wizard „Schüler anlegen" is the one way to add a child; a username signs in in the same box as an address; a one-time „Anmeldelink" with a QR code for a child without an e-mail address; deleting a child's login gives them a fresh, empty one (ADR 0023): [L.1–L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
-- A form sent twice — a double tap, or the same form sent again after Back — lands where the first one went, with the first one's message, and makes nothing twice: [L.10b, L.10c](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023) in the wizard, [15.4a](#news-email-and-the-queue) for „Warteschlange senden"
+- A form sent twice — a double tap, or the same form sent again after Back — lands where the first one went, with the first one's message, and makes nothing twice: [L.10b, L.10c](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023) in the wizard
 - Viewing the portal as somebody else is looking only: everything except „Ansicht beenden" and „Abmelden" is refused, with one sentence: [5.11–5.11b](#the-shell-the-bar-notifications-feedback-impersonation), C.15, C.18
-- What the reviews of ADR 0023 found: two people cannot both take a course's last place, a child without sign-in collects no bell notices, a sign-in link dies with its child and waits for the privacy notice, a browser shared between people forgets a half-opened link, a child with a username is never recorded as saying no to e-mail, a team member's login left on a child's record lets go of the child and stays hers, and a page opened with a list in its address draws without a warning: [L.10a, L.13a, L.18a, L.20a–L.20c, L.21a, L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023), [7.23](#students-contacts-levels-and-age-groups)
+- What the reviews of ADR 0023 found: two people cannot both take a course's last place, a child without sign-in collects no bell notices, a sign-in link dies with its child and waits for the privacy notice, a browser shared between people forgets a half-opened link, a team member's login left on a child's record lets go of the child and stays hers, and a page opened with a list in its address draws without a warning: [L.10a, L.18a, L.20a–L.20c, L.21a, L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023), [7.23](#students-contacts-levels-and-age-groups)
 - A view through somebody's eyes ends with the viewer's own login — deleted, suspended or given a new password, the browser looking is signed out on its next tap; a sign-in link's page asks what the link may still do before it shows anything of the login; a trainer is told an administrator releases the privacy notice; a stale „Einladung senden" says the child has a login: [5.11c](#the-shell-the-bar-notifications-feedback-impersonation), [L.20a, L.20d, L.21b](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
+- What ADR 0026 takes out, round one: custom fields with what was typed into them, copying, saved views, writing to many with its templates, „Warteschlange senden", the printed form and data sheet, and Verwaltung's „Tarife" tab: [R.1–R.8](#what-adr-0026-removes-round-one)
 
 ---
 
@@ -308,23 +309,18 @@ Vereinskonto**. Fill both in, come back, and issue the invoice. Download the
 PDF: one page, the right Leistungszeitraum (12.11. – 31.12., not the whole
 year), the IBAN in groups of four, and the exemption note.
 
-**7 · Print the two sheets.** **Schüler → Leeres Formular drucken** and, on the
-child, **Datenblatt drucken**. Each is one sheet of A4 with headers and footers
-turned off in the print dialog. The blank one carries the price list as lines to
-tick.
-
-**8 · Be somebody else.** Open the child that `jonas.berger@beispiel.test`
+**7 · Be somebody else.** Open the child that `jonas.berger@beispiel.test`
 signs in for, and on its card **„Zugang zum Portal"** choose **„Portal als …
 ansehen"**. A red strip names whose eyes you are using; the portal shows that one
 child only. **Ansicht beenden** gives you yourself back.
 
-**9 · Sign in as a family for real.** Sign out, sign in as
+**8 · Sign in as a family for real.** Sign out, sign in as
 `lena.hofer@beispiel.test`. Four menu entries — Übersicht, **Profil**,
 Nachrichten, Neuigkeiten — and **Profil** opens their one child; one login is
 one child, so there is no list of children. Their own charges only. Try
 `?page=student&id=` with a number that is not theirs: it answers 404.
 
-**10 · Put it back.** **Einstellungen → System → „Beispieldaten entfernen"**.
+**9 · Put it back.** **Einstellungen → System → „Beispieldaten entfernen"**.
 Every invented child, course and charge goes; anything you made yourself stays.
 
 ---
@@ -823,35 +819,9 @@ your picture at the top right.
   administrator is refused the same way, and the child stays „Ohne Anmeldung".
 - [ ] **7.8h** The **Schüler** list names two gaps separately: children with
   nobody to ring, and children with no address.
-- [ ] **7.12** **Schüler → Leeres Formular drucken**: a registration form on
-  **one** sheet of A4, boxes one letter wide, two people to ring side by side.
-  Print it for real and check it is one page with headers and footers off.
-- [ ] **7.13** The blank form asks for exactly what the portal stores — every
-  custom field that is not marked *internal*, and nothing else. Add a custom
-  field and it appears; mark one internal and it does not.
-- [ ] **7.13a** It asks for the **address** and the **telephone number**, which
-  every club form asks for on paper.
-- [ ] **7.13b** It carries the **price list** as lines to tick, taken from the
-  courses so paper and portal cannot drift, with the course named once above the
-  list and no „fällig am" on it. With a club's four tariffs on it, it is still
-  **one page** — check the real print dialog with headers and footers off, not a
-  screenshot: this block pushed it onto a second sheet the first time.
-- [ ] **7.13c** It is not headed „Kind" and the signature line reads
-  „bei Minderjährigen …": half a club's members are adults.
-- [ ] **7.13d** A photo or video consent is added the way any other question is:
-  a checkbox under **Einstellungen → Eigene Felder**, with **Berechtigung für
-  Schüler** set to anything other than „Nur intern" — a field marked internal is
-  hers and deliberately never printed. It then appears on both printables as a
-  line to tick. Nothing is hard-coded for it, because not every club asks.
-- [ ] **7.14** **Ein Kind → Datenblatt drucken**: the same layout with the
-  values filled in, a date, and a line to sign that they were checked. Also one
-  page.
-- [ ] **7.15** Both say what happens to the data, and neither is reachable by a
-  family.
 - [ ] **7.16** **+ Schüler anlegen** asks, on its first step, for the first and
   last name, the date of birth, a course and whether they are a member — and
-  nothing else. Not the level, not the internal notes, not your own custom
-  fields.
+  nothing else. Not the level, not the internal notes.
 - [ ] **7.17** The page that says the child is added, and then the child's own
   page, show **Noch zu tun**: an emergency contact, an email address or an
   invitation, a course, a tariff — in that order, each a link to where it is
@@ -901,16 +871,6 @@ your picture at the top right.
   ignored rather than refused.
 - [ ] **8.4c** „+ Weitere Zahlungsweise" adds an empty row; the same interval
   twice keeps the first one rather than refusing the form.
-- [ ] **8.4d** **Kopieren** makes a copy with every price and every discount
-  template, named „… (Kopie)", and opens it. Copy it again: the second is not
-  called the same as the first.
-- [ ] **8.4e** **Kurs kopieren** on the course form brings the training days and
-  the whole price list, and brings *nobody*: the children in the original are
-  still only in the original.
-- [ ] **8.4f** The same **Kopieren** button is on a level, an age group, a
-  payment recipient, an email template, a custom field and a news item. A copied
-  news item is a draft, whatever the original was; a copy of an archived record
-  is not archived.
 - [ ] **8.5** A tariff has a due day. A child can override it; the child's page
   says which of the two applies.
 - [ ] **8.6** A tariff carries **Rabattvorlagen** — the shapes of discount she
@@ -1123,9 +1083,6 @@ your picture at the top right.
   no new messages.
 - [ ] **14.9** Unread markers clear when a conversation is opened, and the count
   in the menu agrees with the list.
-- [ ] **14.10** **„An mehrere schreiben"**: the bulk tool with filters,
-  templates and a review step still works, and is on its own page — writing one
-  message never goes through it.
 - [ ] **14.11** An empty message is refused.
 
 ---
@@ -1151,13 +1108,6 @@ your picture at the top right.
   usually blocked or wrong, in one sentence, rather than a mail-library error.
 - [ ] **15.4** **Postausgang** shows queued, sent and failed. A failure retries
   with a growing delay rather than hammering.
-- [ ] **15.4a** As the administrator, on the example data: switch off
-  „Wartende Aufgaben beim Seitenaufruf erledigen" under **Einstellungen →
-  System → Erweitert**, so that nothing goes out by itself, and send an
-  invitation. On **Postausgang**, double-tap „Warteschlange senden": the page
-  shows the first run's count — „1 gesendet, 0 fehlgeschlagen.", or more if
-  more was waiting — not „0 gesendet, 0 fehlgeschlagen." over it, and the
-  invitation arrives once. Switch the setting back on.
 - [ ] **15.5** An unsubscribe link at the bottom of a newsletter works without
   signing in, and only unsubscribes that one person.
 - [ ] **15.6** Changing the SMTP password and saving does not print it back to
@@ -1173,37 +1123,20 @@ your picture at the top right.
   another child, but leave the box ticked. Now save a news item as in 15.2:
   **Postausgang** has one for the second address and **none for the first**, and
   only the second inbox receives it. Without the second address, a news mail
-  that reached nobody would pass this check. Keep both logins for 15.8.
-- [ ] **15.8** **Schüler → Leeres Formular drucken**: under **Einverständnis**
-  there are two **empty** boxes, **„Bitte keine Neuigkeiten des Vereins per
-  E-Mail schicken."** and **„Bitte keine E-Mail bei neuen Nachrichten
-  schicken."** — the paper asks for the no, because both emails are on unless
-  somebody refuses. No „Ja, ich möchte …" line is left. On the **Datenblatt** of
-  the first child from 15.7 the news box is **ticked** and the message box is
-  not. Afterwards, on each of the two children's pages, **„Anmeldung löschen"**:
-  each child is „Ohne Anmeldung" again.
+  that reached nobody would pass this check. Afterwards, on each of the two
+  children's pages, **„Anmeldung löschen"**: each child is „Ohne Anmeldung"
+  again.
 
 ---
 
-## Email templates
-
-- [ ] **16.1** **Verwaltung → E-Mail-Vorlagen**: create one. The list of values
-  you may use, and what each one means, is on the same screen as the box you
-  type into — not in a manual.
-- [ ] **16.2** Use a placeholder, send to yourself, and check it was replaced.
-- [ ] **16.3** A placeholder that does not exist is left visible rather than
-  silently emptied, so the mistake is findable.
-
----
-
-## Saved views and filters
+## Filters
 
 - [ ] **17.1** **Schüler**: filter by level, age group, course and status. The
-  page says in a sentence what you are currently looking at.
-- [ ] **17.2** Save it as a view with a name. It appears as a chip above the
-  list.
-- [ ] **17.3** Open the view tomorrow: the same filter, the current children.
-- [ ] **17.4** Delete a view. The children are untouched.
+  list shows the children that match, and the line under the heading counts
+  them.
+- [ ] **17.2** The chips above the list, „Überfällige Beiträge" and „Aktuell
+  krank", each open that selection with one tap; „Alle Schüler" goes back to
+  everybody. There is nothing to save a selection under a name with.
 
 ---
 
@@ -1252,12 +1185,10 @@ your picture at the top right.
 
 ## What may be customised, and what may not
 
-- [ ] **21.5** **Einstellungen → Eigene Felder** says in words that custom
-  fields are for students only, and why the rest — courses, tariffs, invoices,
-  charges — has fixed fields.
 - [ ] **21.6** The things that *are* hers to change — levels, age groups,
-  membership statuses, payment methods, tariffs, email templates — are all under
-  **Verwaltung** and need no administrator.
+  membership statuses, payment methods and the payment recipients — are under
+  **Verwaltung** and need no administrator. A course's tariffs are on the course
+  itself, under **Kurse**.
 
 ## Data safety
 
@@ -1535,9 +1466,9 @@ Rückmeldungen**, „Technische Einzelheiten"
   **Konten**, **Änderungen**, **Einrichtung ansehen** and **Erweitert**. Each card
   opens its page, and **Einstellungen** stays marked in the menu. Postausgang is
   not among them — it is under Nachrichten (U.50).
-- [ ] **U.50** At the top of **Nachrichten**: **„An mehrere schreiben"**,
-  **„Neuigkeiten"** and **„Postausgang"**. Each opens its page, with
-  **Nachrichten** still marked.
+- [ ] **U.50** At the top of **Nachrichten**: **„Neuigkeiten"** and
+  **„Postausgang"**, each opening its page with **Nachrichten** still marked. An
+  administrator also has „Alle Direktchats" there.
 - [ ] **U.51** At the top of **Beiträge** and of **Rechnungen**, a switch
   **Beiträge · Rechnungen** takes you from one to the other; **Geld** stays marked
   on both.
@@ -1663,15 +1594,14 @@ where it says so
 
 **Families fill in their own details**
 
-- [ ] **A.14** Sign in as a family whose child has no birth date, address,
-  emergency contact or a required „Ansehen und bearbeiten" field filled in.
+- [ ] **A.14** Sign in as a family whose child has no birth date, address or
+  emergency contact filled in.
   Their overview and their child's „Profil" tab say „Noch zu ergänzen" with each
   of those — and never the phone number.
 - [ ] **A.15** As the family, on „Profil", fill in the birth date, the postal
-  address, the phone and the custom fields, and save. As the administrator,
-  **Änderungen** shows **one** line for that save, under the family's name, with
-  each field before and after — the custom fields by their names, a date as
-  „27.01.2019", a ticked box as „ja".
+  address and the phone, and save. As the administrator, **Änderungen** shows
+  **one** line for that save, under the family's name, with each field before
+  and after, a date as „27.01.2019".
 - [ ] **A.16** **Änderungen → „Von Familien"** lists that line and none of the
   trainer's own. (Viewing the portal as that family changes nothing at all —
   5.11a — so nothing done that way can be listed there.)
@@ -1680,14 +1610,8 @@ where it says so
   keeps the whole contact so it can be typed in again. A contact's line does
   not show a student number.
 - [ ] **A.18** As the trainer, on the same child, set every one of those fields
-  back by hand — names, birth date, address, phone, every custom field, every
-  contact. Nothing a family can write is read-only for her: typing the old value
-  back is the undo.
-- [ ] **A.19** A required field at „Ansehen und bearbeiten" left empty: the
-  family's save is refused with „Pflichtfeld: …", the trainer's is not. A
-  required field at „Nur intern" left empty refuses the trainer's save of that
-  child. Creating a new child with either kind of required field defined is
-  never refused.
+  back by hand — names, birth date, address, phone, every contact. Nothing a
+  family can write is read-only for her: typing the old value back is the undo.
 - [ ] **A.20** On the Kontakte tab with two contacts, change the first one's
   phone to something invalid in its „Kontakt bearbeiten" and save: the refusal
   opens **that** contact with what you typed; the other contact's form still
@@ -1759,9 +1683,6 @@ where it says so
   administrator, it is not in your list and not in your badge, but under „Alle
   Direktchats"; you can read it and cannot write in it. A second trainer cannot
   open it.
-- [ ] **C.7** „An mehrere schreiben" to two children: each gets the message in
-  their chat with you, the subject as its first line; no new kind of
-  conversation appears.
 - [ ] **C.8** The account menu, as a child: their dot on their picture, no
   status choice, and „Status-Emoji". Pick 🦊 with JavaScript off: it saves with
   one tap and stands beside their name in the menu and in a group. „Keins"
@@ -1795,19 +1716,12 @@ where it says so
   „Ansicht beenden", then sign in as the first child: both notices are there,
   and unread.
 - [ ] **C.15** As the administrator, **Einstellungen → Konten**, „Portal als
-  diese Person ansehen" beside a trainer. **Nachrichten → An mehrere
-  schreiben**: tick two children, fill in „Betreff" and „Nachricht", then
-  „Empfänger und Nachricht prüfen" — refused with „Beim Ansehen als jemand
-  anderes lässt sich nichts schreiben oder ändern. Beende zuerst die Ansicht."
-  **Nachrichten → Neuigkeiten → + Neuigkeit**, a title and some text,
-  „Speichern": refused with the same sentence. Open a course's group: no
-  writing box, and no „⋯" on any message. „Ansicht beenden": nothing new is in
-  the children's chats, every group message is still there, and no news item
-  was added.
-- [ ] **C.16** **Kurse** → a course whose group has messages → „Kurs
-  bearbeiten" → „Kurs kopieren". Open **Nachrichten** straight away: under
-  „Kursgruppen" the copy, „… (Kopie)", has a group of its own, empty, and the
-  original's group still has its messages.
+  diese Person ansehen" beside a trainer. **Nachrichten → Neuigkeiten →
+  + Neuigkeit**, a title and some text, „Speichern": refused with „Beim Ansehen
+  als jemand anderer lässt sich nichts schreiben oder ändern. Beende zuerst die
+  Ansicht." Open a course's group: no writing box, and no „⋯" on any message.
+  „Ansicht beenden": every group message is still there, and no news item was
+  added.
 - [ ] **C.17** A photo that holds more than one picture: on a Samsung or a Pixel
   a motion photo („Bewegtes Foto"), on an iPhone a photo in HDR or a portrait
   photo. Send it into a group, then on the Mac save it back from the chat: it
@@ -2014,11 +1928,6 @@ the checks are about what happens, and hold for both.
   on the child's own page, told „Du meldest dich ab jetzt mit lena.hofer an.
   Willkommen, Lena! …". **(iPhone)** iCloud Keychain offers to save the password
   under `lena.hofer`.
-- [ ] **L.13a** Afterwards, as the trainer, **Datenblatt drucken** on that
-  child: under „Einverständnis", „Bitte keine Neuigkeiten des Vereins per
-  E-Mail schicken." and „Bitte keine E-Mail bei neuen Nachrichten schicken."
-  are both empty boxes. Nobody asked a child without an address about e-mail,
-  so the sheet does not show a no they never gave.
 - [ ] **L.14** Open the same link again: „Link nicht mehr gültig", with the
   sentence that a link from the trainer works only once.
 - [ ] **L.15** Sign out and sign in with `Lena.Hofer` in the box „E-Mail oder
@@ -2133,6 +2042,47 @@ the checks are about what happens, and hold for both.
   L.25: their bell has no „Neue Rechnung: …". A login nobody signs in with
   collects no bell notices, so there is nothing old waiting when somebody
   first does.
+
+### What ADR 0026 removes, round one
+
+What went is gone from every place it was, and what stays in its place works.
+On the example data or a copy.
+
+- [ ] **R.1** **(release)** On a copy of a portal from before this release whose
+  children have custom fields filled in — note one child's values first —
+  upload this version and open any page. The update runs and the portal opens:
+  the custom fields are gone, with their values, and nothing else is missing.
+  **Änderungen** still lists the earlier saves of those values, the field named
+  „Früheres eigenes Feld". **Einstellungen → System** lists the copy of the
+  database written just before the update; that copy still holds them.
+- [ ] **R.2** **Einstellungen** has no „Eigene Felder für Schüler", not under
+  „Erweitert" either. A child's page has no „Weitere Angaben", for staff or for
+  the family, and the **Schüler** filter has no „Tarif und eigene Felder". An
+  old bookmark to `?page=settings&tab=fields` opens **Einstellungen → Portal**.
+- [ ] **R.3** Nothing can be copied any more: no „Kopieren" on a tariff, a
+  level, an age group, a payment recipient or a news item, and no „Kurs
+  kopieren". („Kopieren" beside a sign-in link and „Für den Support kopieren"
+  put text on the clipboard; they stay.)
+- [ ] **R.4** **Schüler** has no „Diese Auswahl als Ansicht speichern", and its
+  chips are „Alle Schüler", „Überfällige Beiträge" and „Aktuell krank", nothing
+  else. A saved view's old address, `?page=students&saved=1`, shows all
+  children.
+- [ ] **R.5** No „An mehrere schreiben", at the top of **Nachrichten** or on
+  **Übersicht**; no „Auswahl anschreiben" under the **Schüler** filter; no
+  „Zahlungserinnerung schreiben" on **Geld**, where „Alle überfälligen per
+  E-Mail erinnern" stays. `?page=compose` answers „Seite nicht gefunden.".
+  **Verwaltung** has no „E-Mail-Vorlagen".
+- [ ] **R.6** **Postausgang** has no „Warteschlange senden". With mail set up
+  and „Wartende Aufgaben beim Seitenaufruf erledigen" on, as it starts, send an
+  invitation and open another page a minute later: the invitation has left the
+  queue by itself, and „Letzter Versandlauf" at the top of **Postausgang** says
+  when.
+- [ ] **R.7** No „Datenblatt drucken" on a child's page and no „Leeres Formular
+  drucken" in „Schüler anlegen"; `?page=print` answers „Seite nicht gefunden.".
+- [ ] **R.8** **Verwaltung** has four tabs: Leistungsgruppen, Altersgruppen,
+  Mitgliedschaft, Geld & Zahlungen — no „Tarife". A tariff that belongs to no
+  course is named on every course's „Tarife" tab, as not billed until it has
+  one.
 
 ---
 

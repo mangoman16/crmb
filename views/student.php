@@ -7,10 +7,9 @@ $tab=$_GET['tab']??'details';
 $tabsAllowed=$staff?['details','contacts','payments','invoices','absence','classes','attendance']:['details','contacts','payments','invoices','absence','classes'];
 if(!in_array($tab,$tabsAllowed,true))$tab='details';
 page_head($s['first_name'].' '.$s['last_name'],status_label($s['status']),
-    ($staff?link_button(t('Datenblatt drucken','Print the data sheet'),'print',['id'=>$id],'secondary'):'')
     // A family has one student and this is their page (ADR 0010): a list of one
     // is not somewhere to go back to.
-    .($staff?link_button(t('Alle Schüler','All students'),'students',[],'secondary'):''));
+    $staff?link_button(t('Alle Schüler','All students'),'students',[],'secondary'):'');
 $tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),
             'invoices'=>t('Rechnungen','Invoices'),'classes'=>t('Kurse','Courses'),'absence'=>t('Abwesenheit','Absences')];
 if($staff){$tabLabels['attendance']=t('Anwesenheit','Attendance');}
@@ -20,8 +19,8 @@ tabs($tabLabels,$tab,'student',['id'=>$id]);
    optional, though: a child with no course is a child nobody bills. So the page
    says what is left, in the order she would do it, rather than leaving her to
    remember four days later. A family gets the list of what is theirs to fill
-   in (ADR 0020, §7): the details, somebody to ring, and the fields she asked
-   for. On every tab, like hers. */
+   in (ADR 0020, §7): the details and somebody to ring. On every tab, like
+   hers. */
 next_steps_card($staff?student_next_steps($id):family_next_steps($id),$staff?'':t('Noch zu ergänzen','Still to fill in'));
 if($tab==='details'):
     $login=$staff && $s['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$s['account_id']]):null;
@@ -63,7 +62,6 @@ if($staff):
               t('Einladung noch nicht angenommen. Änderst du die Adresse, geht die Einladung beim Speichern an die neue; der alte Link gilt dann nicht mehr.',
                 'The invitation has not been accepted yet. If you change the address, saving sends the invitation to the new one; the old link then stops working.'));
     } else {
-        // One wording with the printed data sheet, so the two cannot drift.
         input('email',t('E-Mail-Adresse','Email address'),$s['email'],'email',false,
               t('Die eigene Adresse der Schülerin oder des Schülers – die der Eltern gehört zu den Kontakten.',
                 'The student’s own address – a parent’s belongs with the contacts.'));
@@ -81,7 +79,7 @@ echo '</div>';
 ?></div>
 <h3><?=e(t('Anschrift und Telefon','Address and telephone'))?></h3>
 <?php /* One line for the address, the way an anmeldeformular asks it, because it
-         is typed once and printed once and never sorted on. The telephone is the
+         is typed once and never sorted on. The telephone is the
          member's own: for an adult those are the same person as the emergency
          contact, and listing yourself as who to ring is not a record anybody
          should have to keep. A family writes both too (ADR 0020, §7): the
@@ -126,27 +124,6 @@ select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),arra
     $s['age_group_id']?t('Fest eingestellt. Leer lassen, damit sie sich wieder aus dem Geburtsdatum ergibt.','Pinned. Clear it to let the date of birth decide again.'):t('Leer = ergibt sich aus dem Geburtsdatum: ','Empty = worked out from the date of birth: ').age_group_name($s));
 ?></div></section>
 <?php else:?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Dabei seit','Member since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div></dl></section><?php endif ?>
-<?php
-/* The custom fields: 'view' ones are read to a family, 'edit' ones are theirs
-   to fill in, 'internal' ones they never see. A required field is required of
-   whoever fills it in (ADR 0020, §7), which custom_field_required_of() says -
-   so the mark and the browser's own check follow it, and an empty one that
-   is the family's says so to her instead of holding up her save. Each field
-   carries the anchor the family's „Noch zu ergänzen" leads to. */
-$fields=array_filter(field_definitions(),fn($f)=>$staff || $f['visibility']!=='internal');if($fields): ?><section class="card" id="more-details"><h2><?=e(t('Weitere Angaben','Additional details'))?></h2><div class="grid two">
-<?php $lastSection='';foreach($fields as $f):$v=field_value($id,(int)$f['id']);$label=field_label($f);$n='custom['.$f['id'].']';
-$required=custom_field_required_of($f,$staff);
-$hint=$f['required'] && $f['visibility']==='edit' && custom_value_empty($v)
-    ? ($staff?t('Fehlt noch. Das füllt die Familie aus.','Still missing. The family fills this in.'):t('Bitte ausfüllen.','Please fill this in.'))
-    : '';
-if($f['section_name'] && $f['section_name']!==$lastSection){echo '<h3 class="full">'.e($f['section_name']).'</h3>';$lastSection=$f['section_name'];}
-echo '<div id="field-'.(int)$f['id'].'">';
-if(!$staff && $f['visibility']==='view') echo '<div class="field"><label>'.e($label).'</label><div class="readonly">'.e(is_array($v)?implode(', ',$v):(is_bool($v)?($v?t('Ja','Yes'):t('Nein','No')):($v??'–'))).'</div></div>';
-elseif(in_array($f['field_type'],['select','multiselect'],true)){$opts=json_decode($f['options_json'],true);foreach(is_array($v)?$v:[$v] as $x)if($x!==null&&$x!==''&&!in_array($x,$opts,true))$opts[]=$x;select_field($n,$label,array_combine($opts,$opts),$v,$required,$f['field_type']==='multiselect',$hint);}
-elseif($f['field_type']==='checkbox')check_field($n,$label,(bool)$v,$hint,$required);
-else input($n,$label,$v??'',$f['field_type']==='number'?'text':$f['field_type'],$required,$hint);
-echo '</div>';
-endforeach ?></div></section><?php endif ?>
 <?php if($staff):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>
 <div class="form-footer"><?php submit_button($staff?t('Schüler speichern','Save student'):t('Angaben speichern','Save the details'));?></div></form>
 <?php /* The picture, after the details rather than before them: at 320px it was

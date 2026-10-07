@@ -11,8 +11,9 @@
  * a trainer is trusting with her families' money.
  *
  * tests/migration-data.php builds a portal as it stood before 015, 019, 020, 022,
- * 024, 025 and 028, applies the rest, and prints what it finds. This reads that
- * and holds it to the promise.
+ * 024, 025, 028 and 032, applies the rest, and prints what it finds; then it runs
+ * this release's update through the application's own runner, and one more file
+ * that drops a guarded table. This reads that and holds it to the promise.
  *
  * What it does not yet hold to it: 017 backfills covered_from and covered_to on
  * every charge that carries a period, and no case below looks at a charge. The
@@ -248,6 +249,15 @@ $runnerStep();
 is_same($again, [rows('SELECT * FROM accounts ORDER BY id'), rows('SELECT * FROM students ORDER BY id')],
         'run again, as the next update runs it, it changes nothing');
 
+case_('On this run’s own engine, custom fields, saved views and message templates are gone, and a new portal’s seed writes none [ADR 0026 §7, §8]');
+foreach (['field_definitions', 'field_values', 'saved_filters', 'message_templates'] as $table)
+    ok(!test_has_table($table), $table . ' is not in the database the migrations make');
+ok(!in_array('field_values', schema_guarded_tables(), true), 'field_values is off the update’s guard, since 032 empties it on purpose');
+// The part of the seed that runs once, on a new portal: it wrote two templates.
+run("DELETE FROM settings WHERE setting_key = 'defaults_initialized'");
+setting_cache_clear();
+does_not_throw($runnerStep, 'the seed a first install runs goes through on that schema, with no template left to write');
+
 case_('The functions 019 calls behave on this engine as 019 needs them to');
 // 019 builds its change-log lines and compares addresses with these. A CONCAT
 // that gave '' for a NULL part, or a JSON_OBJECT that lost the null, would write
@@ -288,13 +298,15 @@ if (!function_exists('exec')) {
     // Shared hosting often lists exec in disable_functions. The run says what it
     // could not do rather than stopping on an undefined function.
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved or kept by migrations 015, 016 and 019 to 031 (this PHP disables exec, which the run with data in between needs)']));
+        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 033, and the update refusing a migration that drops a guarded table'
+         . ' (this PHP disables exec, which the run with data in between needs)']));
     return;
 }
 $target = (string)getenv('CRM_MIGRATION_CONFIG');
 if ($target === '') {
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved or kept by migrations 015, 016 and 019 to 031 (set CRM_MIGRATION_CONFIG to the config of a'
+        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 033, and the update refusing a migration that drops a'
+         . ' guarded table (set CRM_MIGRATION_CONFIG to the config of a'
          . ' second, empty *_test database; tests/mariadb-local.sh does)']));
     return;
 }
@@ -910,3 +922,114 @@ ok(($s['before']['counts']['accounts'] ?? 0) > 0 && ($s['before']['counts']['stu
    'and there were logins, students and enrolments to lose');
 foreach (['accounts', 'students', 'class_students'] as $table)
     ok(in_array($table, schema_guarded_tables(), true), $table . ' is guarded, so a lost row would have kept the portal closed');
+
+// ---------------------------------------------------------------------------
+// 032 and 033: custom fields go with their values, and saved views and message
+// templates go (ADR 0026 §7, §8, §11). Both only drop, so they are held to
+// taking their own tables away and nothing else: every other table, its rows to
+// the engine's checksum of every row, and every key, as it was.
+$d = $after['dropping'];
+$custom = ['field_definitions', 'field_values'];
+$views = ['message_templates', 'saved_filters'];
+$except = fn(array $map, array $keys): array => array_diff_key($map, array_flip($keys));
+$touching = fn(array $keys, array $tables): array => array_values(array_filter($keys,
+    fn($k) => in_array($k['on_table'], $tables, true) || in_array($k['refers_to'], $tables, true)));
+
+case_('Before 032 the portal has custom fields, saved views and templates to lose, beside rows that must stay');
+is_same(['field_definitions' => 2, 'field_values' => 4, 'message_templates' => 3, 'saved_filters' => 2],
+        array_intersect_key($d['before']['rows'], array_flip(array_merge($custom, $views))),
+        'two custom fields with four values, three templates and two saved views');
+ok(($d['before']['rows']['students'] ?? 0) >= 10, 'beside the students the values are on: ' . ($d['before']['rows']['students'] ?? 0));
+is_same(['students', 'field_definitions', 'message_templates'], array_column($d['before']['lines'], 'entity'),
+        'and the change log has a line about a student’s custom-field value, one about a field and one about a template');
+ok(str_contains((string)($d['before']['lines'][0]['before_json'] ?? ''), '"field:' . ($d['written']['fields'][0] ?? '?') . '"'),
+   'the value’s line under the field:<id> key the change log gives one');
+// The engine names the keys 001 left unnamed, so they are compared without names.
+is_same([['field_values', 'students', 'CASCADE'], ['field_values', 'field_definitions', 'RESTRICT']],
+        array_map(fn($k) => [$k['on_table'], $k['refers_to'], $k['on_delete']], $touching($d['before']['keys'], array_merge($custom, $views))),
+        'the only keys that touch the four tables are field_values’ two: no table points at a saved view or a template');
+
+case_('032 drops the custom fields with every value, and nothing else');
+is_same(array_values(array_diff($d['before']['tables'], $custom)), $d['032']['tables'], 'field_definitions and field_values are gone, and every other table is there');
+is_same($except($d['before']['sums'], $custom), $d['032']['sums'],
+        'every other table has every row it had, to the engine’s checksum: the students the values were on, the change log and its field:<id> line, the saved views and the templates');
+is_same($except($d['before']['rows'], $custom), $d['032']['rows'], 'and as many rows');
+is_same(array_values(array_filter($d['before']['keys'], fn($k) => $k['on_table'] !== 'field_values')), $d['032']['keys'],
+        'the keys gone are field_values’ own two, and every other key is as it was');
+
+case_('033 drops the saved views and the templates, and nothing else');
+is_same(array_values(array_diff($d['032']['tables'], $views)), $d['033']['tables'], 'saved_filters and message_templates are gone, and every other table is there');
+is_same($except($d['032']['sums'], $views), $d['033']['sums'], 'every other table has every row it had, to the engine’s checksum, the change log’s line about a template included');
+is_same($except($d['032']['rows'], $views), $d['033']['rows'], 'and as many rows');
+is_same($d['032']['keys'], $d['033']['keys'], 'and every key is as it was');
+
+case_('The change log keeps its lines about custom fields and templates as they were written [ADR 0026 §7]');
+is_same($d['before']['lines'], $d['032']['lines'], '032 leaves every one, the field:<id> key included');
+is_same($d['before']['lines'], $d['033']['lines'], 'and so does 033, so the history page has them to name without the tables');
+
+case_('032 and 033 leave every guarded table, and drop none, so the guard has nothing to refuse');
+is_same([], array_values(array_diff(schema_guarded_tables(), $d['033']['tables'])), 'every table the update guards is still there after both');
+is_same([], array_values(array_intersect(array_merge($custom, $views), schema_guarded_tables())),
+        'and none of the four they drop is guarded: field_values, which 032 empties on purpose, left the list with it');
+
+case_('032 and 033 run a second time do nothing');
+is_same(['032' => null, '033' => null], $d['refused'] ?? [],
+        'each runs again, on a connection of its own as the next page view would, and the engine refuses neither');
+is_same($d['032'], $d['032_again'], '032 run again changes nothing');
+is_same($d['033'], $d['033_again'], 'and neither does 033');
+
+case_('032 and 033 stopped after a statement and started again from the first end as one run does');
+// Each round builds its portal afresh, dated as it was built, so one round is
+// compared with the run above by tables, rows and keys, and with itself by
+// checksum.
+foreach (['032' => $custom, '033' => $views] as $number => $gone) {
+    is_same(($d['statements'][$number] ?? 0) - 1, count($d['retried'][$number] ?? []), $number . ' was stopped after each statement but the last');
+    foreach ($d['retried'][$number] ?? [] as $stopped => $round) {
+        $when = $number . ' stopped after statement ' . $stopped . ' of ' . $d['statements'][$number] . ': ';
+        $half = array_values(array_diff($round['before']['tables'], $round['stopped']['tables']));
+        ok(count($half) === (int)$stopped && array_intersect($half, $gone) === $half, $when . 'it had dropped ' . implode(', ', $half) . ' and no more');
+        is_same($except($round['before']['sums'], $half), $round['stopped']['sums'], $when . 'the rest, the second table included, kept every row');
+        is_same([$d[$number]['tables'], $d[$number]['rows'], $d[$number]['keys']], [$round['after']['tables'], $round['after']['rows'], $round['after']['keys']],
+                $when . 'run from the first, the same tables, rows and keys as one run');
+        is_same($except($round['before']['sums'], $gone), $round['after']['sums'], $when . 'and every other table every row it had');
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The update this release brings, then one with a mistake in it, through the
+// application's own runner, schema_apply(), on a portal the previous version
+// left: 001 to 031 in its ledger, rows in every table 032 and 033 drop.
+$u = $after['runner'];
+$ledgerOf = fn(array $state): array => array_column($state['ledger'], 'checksum', 'version');
+
+case_('This release’s update passes the guard on a portal with custom-field values, and drops exactly what 032 and 033 drop');
+is_same('', $u['previous_step_error'], 'the portal was where the previous version’s update leaves it, its step after the files run');
+ok(($u['before']['rows']['field_values'] ?? 0) > 0, 'with custom-field values for the guard to see: ' . ($u['before']['rows']['field_values'] ?? 0));
+is_same(null, $u['release']['refused'], 'schema_apply() goes through: field_values is off the guard, so 032 emptying it does not refuse the update');
+is_same(true, $u['release']['current'], 'and files and database agree afterwards, so the portal opens');
+is_same(1, $u['release']['backups'], 'with the copy taken before the files ran');
+is_same($u['shipped'], array_diff_key($ledgerOf($u['release']['state']), $ledgerOf($u['before'])),
+        'the ledger gained 032 and 033, each with the checksum of the file shipped, and nothing else');
+is_same(array_values(array_diff($u['before']['tables'], array_merge($custom, $views))), $u['release']['state']['tables'],
+        'the four tables are gone, and every other table is there');
+is_same($except($u['before']['sums'], array_merge($custom, $views, ['settings', 'schema_migrations'])),
+        $except($u['release']['state']['sums'], ['settings', 'schema_migrations']),
+        'every table but the settings and the ledger, which record the update, has every row it had: the backup, the files and the step after them changed nothing else');
+is_same($u['before']['counts'], $u['release']['state']['counts'], 'every guarded table has as many rows as before');
+
+case_('An update whose migration drops a guarded table is refused, and does not open the portal [ADR 0026 §7]');
+// The file runs and contacts is gone; the guard counted it before, cannot count
+// it now, and reads that as emptied. Before 0026 it skipped what it could not
+// count, and this update opened the portal with every contact lost.
+$m = $u['mistake'];
+$lost = 'contacts ' . ($m['before']['contacts'] ?? '?') . ' -> 0';
+ok(($m['before']['contacts'] ?? 0) > 0, 'contacts, which the update guards, had rows to lose: ' . ($m['before']['contacts'] ?? 0));
+ok(!in_array('contacts', $m['tables'], true), 'the file ran: contacts is gone');
+is_same('UpdateBlocked', $m['refused']['class'] ?? null, 'schema_apply() refuses the update, which a page view answers with the closed page');
+ok(str_contains($m['refused']['de'] ?? '', 'Nach der Aktualisierung fehlen Datensätze (' . $lost . '). Das Portal bleibt geschlossen.'),
+   'saying in German that records are missing, the table counted as emptied, and that the portal stays closed: ' . $lost);
+ok(str_contains($m['refused']['en'] ?? '', 'Records are missing after the update (' . $lost . ').'), 'and in English');
+is_same(false, $m['current'], 'files and database are not recorded as agreeing: the portal is not opened by this update');
+is_same($u['release']['backups'] + 1, count($m['backups']), 'a copy was taken before the file ran');
+is_same(array_fill(0, count($m['backups']), $m['before']['contacts'] ?? -1), $m['backups'],
+        'and every copy, that one included, holds every contact the file dropped');

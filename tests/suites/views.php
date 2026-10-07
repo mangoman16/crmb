@@ -83,37 +83,38 @@ sign_in_as($parent);
 foreach ($pages as $page)
     does_not_throw(fn() => render_view($page), 'parent: '.$page);
 sign_in_as($trainer);
-foreach (array_merge($pages, ['classes','payments','accounts','compose','outbox']) as $page)
+foreach (array_merge($pages, ['classes','payments','accounts','outbox']) as $page)
     does_not_throw(fn() => render_view($page), 'trainer: '.$page);
 
 case_('No page leaks a PHP error or an unrendered escape into its HTML');
 sign_in_as($trainer);
-foreach (array_merge($pages, ['classes','payments','accounts','compose','outbox']) as $page) {
+foreach (array_merge($pages, ['classes','payments','accounts','outbox']) as $page) {
     $out = render_view($page);
     foreach (['Fatal error','Warning:','Deprecated:','Notice:','Undefined ','Uncaught','\u20','Array to string'] as $token)
         is_same(false, str_contains($out, $token), $page.' is free of "'.$token.'"');
 }
 
+case_('An address that names a tariff lists everybody, rather than a selection nobody can see');
+/* The tariff filter went with its fold and the saved views (ADR 0026 §8), so
+   nothing on the page could show that one was on or take it off. An old
+   bookmark that names one is ignored. */
+sign_in_as($trainer);
+$cards = fn(string $html): int => substr_count($html, 'class="student-card"');
+$list = render_view('students', ['tariff'=>(string)$tariff]);
+ok($cards($list) > 0 && $cards($list) === $cards(render_view('students')), 'the whole list is shown: '.$cards($list).' children');
+
 case_('Verwaltung renders every tab for a trainer, without an administrator');
 $trainerView = make_account(['role'=>'trainer']); sign_in_as($trainerView);
-foreach (['levels','ages','members','tariffs','templates','payments'] as $tab) {
+foreach (['levels','ages','members','payments'] as $tab) {
     $html = render_view('manage', ['tab'=>$tab]);
     ok(str_contains($html, 'Verwaltung'), 'manage/'.$tab.' renders');
     ok(str_contains($html, 'Wer gehört wohin?'), 'manage/'.$tab.' explains which grouping is which');
 }
 
-case_('The placeholder list and the placeholders that actually work are the same list');
-$html = render_view('manage', ['tab'=>'templates']);
-foreach (array_keys(template_placeholders()) as $key)
-    ok(str_contains($html, '{{'.$key.'}}'), 'the editor offers {{'.$key.'}}');
-$student = one('SELECT s.*, NULL AS tariff_name FROM students s LIMIT 1') ?: ['id'=>make_student(), 'first_name'=>'Lena', 'last_name'=>'Hofer', 'tariff_name'=>'', 'level_id'=>null, 'birth_date'=>null, 'age_group_id'=>null];
-$filled = template_text(implode(' ', array_map(fn($k) => '{{'.$k.'}}', array_keys(template_placeholders()))), $student);
-ok(!str_contains($filled, '{{'), 'and every one of them is filled in when a message is sent');
-
 case_('Einstellungen keeps only what an administrator has to decide');
 sign_in_as(make_account(['role'=>'admin']));
 $html = render_view('settings', ['tab'=>'portal']);
-foreach (['tab=levels','tab=ages','tab=tariffs','tab=templates'] as $moved)
+foreach (['tab=levels','tab=ages'] as $moved)
     ok(!str_contains($html, $moved), 'Einstellungen no longer offers '.$moved);
 
 case_('The start page says when the next training is');
@@ -136,14 +137,6 @@ case_('Attendance is its own page and opens on a real course');
 $html = render_view('attendance');
 ok(str_contains($html, 'Timeline-Kurs'), 'the course picker is there');
 ok(str_contains($html, 'Anwesenheit'), 'and so is the list');
-
-case_('A saved view says what it selects, not only what it is called');
-$level = (int)levels()[0]['id'];
-fixture('saved_filters', ['name'=>'Montagsgruppe', 'criteria_json'=>json_encode(['course'=>$tlCourse, 'level'=>$level])]);
-$html = render_view('students');
-ok(str_contains($html, 'Montagsgruppe'), 'the view is offered');
-ok(str_contains($html, 'Timeline-Kurs'), 'and says which course it selects');
-ok(str_contains($html, (string)levels()[0]['name']), 'and which level');
 
 case_('The proof upload is offered where a family will see it, and only when something is open');
 $family = make_account(['role'=>'student', 'name'=>'Familie Berger']);

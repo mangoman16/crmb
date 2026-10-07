@@ -203,13 +203,3 @@ public/assets/app.css` must report the checklist as wider than the screen.
 What it does not prove: Safari (it is Chromium with an iPhone's size and user
 agent), a real mail provider, the PDF in a reader other than a parser, Apache or
 a host's PHP settings (it is `php -S`), and MySQL.
-
-## Two older scripts
-
-`integration.py` and `smtp_integration.py` (with `db.php`) drive a running server
-over HTTP and need a live database and a local SMTP capture server; the
-instructions are at the top of each. No run of either has been recorded since
-0.1.0, and as written they cannot pass: `integration.py` makes its students by posting
-`student_save` without an id, which the portal now refuses — students are made
-by the wizard — and `smtp_integration.py` builds on what `integration.py` made.
-Whether they are mended or deleted is ADR 0026's to decide.

@@ -492,7 +492,7 @@ $reaches = function (array $who, string $owner, array $ownerParams, string $targ
             if ($linked === $target) return true;
             // Only pages that belong to the same entry: the way there has to
             // stay under the entry that is highlighted.
-            if ($depth < 2 && !in_array($linked, ['download', 'print'], true) && nav_owner($linked, $who) === $owner)
+            if ($depth < 2 && $linked !== 'download' && nav_owner($linked, $who) === $owner)
                 $queue[] = [$linked, $linkedQuery, $depth + 1];
         }
     }

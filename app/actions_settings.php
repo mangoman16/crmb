@@ -42,33 +42,6 @@ function dispatch_settings_or_messages(string $action): array {
         audit('tariff.saved','tariff',$id);
         flash(t('Tarif gespeichert. Schon erstellte Beiträge ändern sich nicht.','Tariff saved. Charges already created are unchanged.'));
         return ['classes',['id'=>$classId,'tab'=>'tariffs']];
-    case 'record_duplicate':
-        // One handler for every list she builds by hand. Which tables may be
-        // copied, and where the copy is then opened, are declared in
-        // duplicate.php rather than spelled out again per list.
-        require_staff();$table=post('table');
-        if(!isset(duplicable_records()[$table]))throw new UserError(t('Das lässt sich nicht kopieren.','That cannot be copied.'));
-        if(in_array($table,['field_definitions','payment_profiles','message_templates'],true))require_admin();
-        $copy=duplicate_record($table,(int)post('id'));
-        flash(t('Kopie angelegt. Sie ist noch nicht veröffentlicht – ändern und speichern.','Copy created. It is not published yet – change it and save.'));
-        return duplicate_destination($table,$copy);
-    case 'field_save':
-        require_admin();$id=(int)post('id');$old=$id?one('SELECT * FROM field_definitions WHERE id=?',[$id]):null;
-        if($id && !$old)throw new NotFound(t('Dieses Feld gibt es nicht mehr.','That field no longer exists.'));
-        $type=choose(post('field_type'),['text','textarea','number','date','select','multiselect','checkbox']);
-        if($old && $old['field_type']!==$type && scalar('SELECT COUNT(*) FROM field_values WHERE field_id=?',[$id])) throw new UserError(t('Dieses Feld enthält Daten. Für einen anderen Typ bitte ein neues Feld anlegen und das alte archivieren.','This field contains data. Create a new field for a different type and archive the old field.'));
-        $options=array_values(array_unique(array_filter(array_map('trim',explode("\n",post('options'))),fn($x)=>$x!=='')));
-        if(count($options)>100 || mb_strlen(post('options'))>8000)throw new UserError(t('Zu viele Optionen.','Too many options.'));
-        if(in_array($type,['select','multiselect'],true) && !$options)throw new UserError(t('Bitte mindestens eine Option eingeben.','Please enter at least one option.'));
-        $def=post('default_value');
-        if($type==='checkbox')$def=post('default_checked')==='1';
-        if($type==='multiselect')$def=array_values(array_filter(array_map('trim',explode("\n",$def)),fn($x)=>$x!==''));
-        $label=required_text('label',120);$optionsJson=json_encode($options,JSON_UNESCAPED_UNICODE);
-        $def=validate_custom(['options_json'=>$optionsJson,'field_type'=>$type,'label'=>$label],$def,null,false);
-        $args=[$label,text_limit('label_en',120),$type,text_limit('section_name',120),$optionsJson,json_encode($def,JSON_UNESCAPED_UNICODE),post('required')?1:0,choose(post('visibility'),['internal','view','edit']),(int)post('sort_order'),post('archived')?1:0];
-        if($id)run('UPDATE field_definitions SET label=?,label_en=?,field_type=?,section_name=?,options_json=?,default_json=?,required=?,visibility=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
-        else {run('INSERT INTO field_definitions (label,label_en,field_type,section_name,options_json,default_json,required,visibility,sort_order,archived) VALUES (?,?,?,?,?,?,?,?,?,?)',$args);$id=(int)db()->lastInsertId();}
-        audit('field.saved','field',$id);flash(t('Feld gespeichert.','Field saved.'));return ['settings',['tab'=>'fields']];
     case 'smtp_save':
         require_admin();$old=setting('smtp',[]);$host=required_text('host',253);
         if(!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9.-]*$/D',$host))throw new UserError(t('SMTP-Hostname ohne Protokoll oder Pfad eingeben.','Enter an SMTP hostname without a protocol or path.'));
@@ -95,8 +68,6 @@ function dispatch_settings_or_messages(string $action): array {
         if(!$j)throw new NotFound(t('Diese E-Mail gibt es nicht mehr, oder sie wartet nicht auf einen neuen Versuch.','That email no longer exists, or it is not waiting for another try.'));
         if($j['category']==='security')throw new UserError(t('Bitte einen neuen Einladungs- oder Passwortlink anfordern.','Please request a fresh invitation or password link.'));
         run("UPDATE mail_jobs SET status='queued',error=NULL,retry_after=NULL,attempts=0 WHERE id=?",[$j['id']]);return ['outbox',[]];
-    case 'mail_run':
-        require_admin();return ['outbox',['process'=>1]];
     case 'portal_icon_save':
         // The file is checked before the setting points at it, and the old one
         // is deleted only after, so a refused picture leaves the icon she had.
@@ -171,21 +142,6 @@ function dispatch_settings_or_messages(string $action): array {
         flash($on?t('Monatsbeiträge werden ab jetzt automatisch angelegt: einmal im Monat, beim ersten Seitenaufruf.','Monthly charges are now created automatically: once a month, on the first page view.')
                  :t('Monatsbeiträge werden nicht mehr automatisch angelegt. Du legst sie unten unter „Beiträge anlegen“ an, mit Vorschau.','Monthly charges are no longer created automatically. Create them below under “Create charges”, with a preview.'));
         return ['payments',[]];
-    case 'template_save':
-        require_staff();$id=(int)post('id');$subject=required_text('subject',180);$body=required_text('body',20000);
-        preg_match_all('/\{\{[^}]+\}\}/',$subject.$body,$matches);
-        $known=array_map(fn($k)=>'{{'.$k.'}}',array_keys(template_placeholders()));
-        foreach($matches[0] as $match)if(!in_array($match,$known,true))
-            throw new UserError(t('Unbekannter Platzhalter: ','Unknown placeholder: ').$match.'. '
-                .t('Möglich sind: ','Available: ').implode(' ',$known));
-        $args=[required_text('name',120),$subject,$body];
-        if($id)run('UPDATE message_templates SET name=?,subject=?,body=? WHERE id=?',[...$args,$id]);else run('INSERT INTO message_templates (name,subject,body) VALUES (?,?,?)',$args);
-        audit('template.saved','template',$id?:null);flash(t('Vorlage gespeichert.','Template saved.'));return ['manage',['tab'=>'templates']];
-    case 'filter_save':
-        require_staff();$criteria=filters_from($_POST);
-        run('INSERT INTO saved_filters (name,criteria_json) VALUES (?,?)',[required_text('name',120),json_encode($criteria,JSON_UNESCAPED_UNICODE)]);flash(t('Filter gespeichert.','Filter saved.'));return ['students',$criteria];
-    case 'filter_delete':
-        require_staff();run('DELETE FROM saved_filters WHERE id=?',[(int)post('id')]);return ['students',[]];
     case 'preferences_save':
         $u=require_user();$newsletter=(bool)post('newsletter');$notifications=(bool)post('notifications');$payments=(bool)post('payment_notices');
         // An empty accent means "whatever the administrator chose", which is a

@@ -455,19 +455,6 @@ function handle_post(): array {
         return dispatch_action($action);
     });
     forget_attempts_after_success($action);
-    // „Warteschlange senden" works the queue once the action has committed,
-    // here rather than in the router so that the landing remembered below is
-    // the page with its count: a form sent twice must not work it twice and
-    // say „0 gesendet" over what the first one sent.
-    if($result[0]==='outbox' && isset($result[1]['process'])) {
-        // Leave a margin below max_execution_time so the response still renders.
-        $limit=(int)ini_get('max_execution_time');
-        $count=process_mail(25,$limit>0?max(5.0,$limit-8.0):45.0);
-        $note=$count['sent'].' '.t('gesendet, ','sent, ').$count['failed'].' '.t('fehlgeschlagen.','failed.');
-        if($count['deferred'])$note.=' '.$count['deferred'].' '.t('warten noch und werden automatisch weiter versendet.','still waiting; they will be sent automatically.');
-        flash($note);
-        $result=['outbox',[]];
-    }
     remember_answered_form($request,$result);
     return $result;
 }
@@ -833,12 +820,12 @@ function dispatch_action(string $action): array {
         $u=require_user();
         $existing=student((int)post('id'));$id=(int)$existing['id'];
         [$first,$last]=posted_names();$birth=birth_date_value(post('birth_date'));
-        // One line, the way the paper form asks it, because it is typed once and
-        // printed once and never sorted on. Her own number rather than an
-        // emergency contact's: for an adult member those are the same person,
-        // and listing yourself as the person to ring is not a record anybody
-        // should have to keep. The family writes both as well (ADR 0020, §7):
-        // the address is the one their next invoice is made out to.
+        // One line, the way a registration form asks it, because it is typed
+        // once and never sorted on. Her own number rather than an emergency
+        // contact's: for an adult member those are the same person, and listing
+        // yourself as the person to ring is not a record anybody should have to
+        // keep. The family writes both as well (ADR 0020, §7): the address is
+        // the one their next invoice is made out to.
         $address=text_limit('address',200);$phone=text_limit('phone',60);
         // One text for both roles: a family cannot "compare the changes", and
         // the held form does bring back what they typed (spec §6.2).
@@ -903,14 +890,13 @@ function dispatch_action(string $action): array {
                 }
             }
             $args=[$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,$ageGroupId,text_limit('internal_notes',12000),now()];
-            // One tracked change for the whole save, custom fields included, so
-            // it is one line in the change log and a stale form is refused as a
-            // whole. The login moves inside it too, so the log shows the new
-            // address on the student it belongs to.
+            // One tracked change for the whole save, so it is one line in the
+            // change log and a stale form is refused as a whole. The login moves
+            // inside it too, so the log shows the new address on the student it
+            // belongs to.
             tracked('students',$id,$first.' '.$last,function() use ($args,$id,$account,$readdress,$email,$stale) {
                 $updated=run('UPDATE students SET first_name=?,last_name=?,email=?,address=?,phone=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
                 if(!$updated->rowCount()) throw $stale();
-                save_custom_fields($id,false);
                 if($readdress) change_account_email((int)$account['id'],$email);
             });
             // The first invitation went to the old address and has just been
@@ -921,11 +907,10 @@ function dispatch_action(string $action): array {
             }
         } else {
             /* A family completing its own details (ADR 0020, §7): names, birth
-               date, postal address and phone, and the custom fields at 'edit'
-               (save_custom_fields() skips the rest). Nothing else, whatever is
-               posted. Authorised by student()'s scoping above and nothing else,
-               and tracked like every other change to a student, so she sees it
-               in the change log with the family as the actor. */
+               date, postal address and phone. Nothing else, whatever is posted.
+               Authorised by student()'s scoping above and nothing else, and
+               tracked like every other change to a student, so she sees it in
+               the change log with the family as the actor. */
             // A page that does not carry the two boxes - one opened before
             // families were shown them - leaves both as they are: nothing
             // posted is nothing to change, and an empty box that was posted
@@ -935,7 +920,6 @@ function dispatch_action(string $action): array {
             tracked('students',$id,$first.' '.$last,function() use ($first,$last,$birth,$address,$phone,$id,$stale) {
                 $updated=run('UPDATE students SET first_name=?,last_name=?,birth_date=?,address=?,phone=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[$first,$last,$birth,$address,$phone,now(),$id,(int)post('revision')]);
                 if(!$updated->rowCount()) throw $stale();
-                save_custom_fields($id,false);
             });
         }
         audit('student.saved','student',$id);

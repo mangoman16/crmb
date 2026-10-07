@@ -1,6 +1,6 @@
 # UI spec: student wizard, sign-in links, accounts page, basic chat (ui-ux-designer, 2026-10-05)
 
-Status 2026-10-07: what §0 assumes of the server is built as ADR 0023 settled it (commits e9aff6e and d095ca4), with a first, minimal form of the wizard (§2), the link card (§3), the page the link opens (§4) and the sign-in box (§5). The start page (§1), the accounts page (§6) and the chat (§7, ADR 0022 §11) are not built. Building this specification is ROADMAP.md item 4. Where this text and ADR 0023 disagree, ADR 0023 wins.
+Status 2026-10-07: what §0 assumes of the server is built as ADR 0023 settled it (commits e9aff6e and d095ca4), with a first, minimal form of the wizard (§2), the link card (§3), the page the link opens (§4) and the sign-in box (§5). The start page (§1), the accounts page (§6) and the chat (§7, ADR 0022 §11) are not built. Building this specification is ROADMAP.md item 5. Where this text and ADR 0023 disagree, ADR 0023 wins.
 
 Project manager's decisions on the designer's open issues (binding unless the owner overrules):
 - Chats between two students: CLOSED (no new ones, no contact requests); what exists stays readable. Admins read every chat.
@@ -38,7 +38,7 @@ A11 New route student_new: staff only, nav_owner() → students. ?page=student w
 
 ## 1. Start page — one quick action (views/dashboard.php)
 - Keep the heading button, now to the wizard: link_button(t('+ Schüler anlegen','+ Add student'),'student_new',['from'=>'dashboard']); hidden until a real course exists, as now.
-- Remove the .quick-actions row in the news panel („Neuigkeit schreiben", „An mehrere schreiben").
+- Remove the .quick-actions row in the news panel („Neuigkeit schreiben"; „An mehrere schreiben" already went with ADR 0026).
 - Remove „Termin ändern" from the Termine heading (Kurse has it).
 - Keep „Anwesenheit" on today's training row, „Alle ansehen", the admin's setup card.
 - Empty state: link_button(t('Ersten Schüler anlegen','Add first student'),'student_new'); body t('Leg deinen ersten Schüler an – Schritt für Schritt, mit der Anmeldung gleich dabei.','Add your first student – step by step, with the sign-in included.').
@@ -55,7 +55,7 @@ Step 1 — page_head(t('Neuer Schüler','New student'), t('Schritt 1 von 2: Wer 
 4. select_field course t('Kurs','Course') required, default '' („Auswählen"). Options: 'none' => t('Noch keinen Kurs','No course yet'); per course+tariff "{class}:{tariff}" => "Kinder Anfänger · Monatlich 35,00 €"; course without tariff "{class}:0" => "Kinder Anfänger · " + t('noch ohne Tarif','no tariff yet'); full courses left out. Hint t('Volle Kurse stehen nicht in der Liste. Ohne Kurs entstehen keine Beiträge.','Full courses are not listed. Without a course there are no charges.')
 5. select_field status t('Mitgliedschaft','Membership') statuses, default_status, required
 .form-footer (sticky at 320) submit_button(t('Weiter','Next')).
-Under the card, stacked .text-link (44pt): t('Abbrechen','Cancel') → back to from (only dashboard|students); t('Leeres Formular drucken','Print a blank form') → print; t('Nur die E-Mail-Adresse bekannt? Ohne Namen einladen','Only know the email address? Invite without a name') → students&invite=1#invite.
+Under the card, stacked .text-link (44pt): t('Abbrechen','Cancel') → back to from (only dashboard|students); t('Nur die E-Mail-Adresse bekannt? Ohne Namen einladen','Only know the email address? Invite without a name') → students&invite=1#invite. (The „Leeres Formular drucken" link that stood between them went with the printed form, ADR 0026 §8.)
 Errors: existing .flash.error, fields refill. Draft gone at step 2 → step 1 with t('Die Angaben waren nicht mehr da. Bitte noch einmal eintragen.','The details were no longer there. Please enter them again.').
 
 Step 2 — page_head(t('Neuer Schüler','New student'), strtr(t('Schritt 2 von 2: Wie meldet sich {name} an?','Step 2 of 2: How does {name} sign in?'),…)) ({name} = first name).

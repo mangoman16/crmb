@@ -5,9 +5,9 @@
 ### Before you upload this over a portal that has families in it
 
 A portal installed fresh from this version can skip this. An existing one needs
-one thing done before the upload, and changes in several ways the first time it
-is opened; [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) has
-them in full.
+one thing done before the upload — two, if anything in its custom fields is
+worth keeping — and changes in several ways the first time it is opened;
+[UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) has them in full.
 
 **First, while the old version is still running, add four paragraphs to the
 privacy notice** under **Einstellungen → Datenschutz**: one saying that the
@@ -23,7 +23,11 @@ basis goes there is a note in square brackets, which is the operator's to
 decide and have checked, and a released notice is not saved until the notes are
 replaced.
 
-Migrations 019 to 031 then run by themselves. 019 takes every child but the
+**Second, if anything typed into the custom fields is worth keeping, write it
+down.** This version deletes the custom fields, with every value in them. After
+the update, take them out of the privacy notice too.
+
+Migrations 019 to 033 then run by themselves. 019 takes every child but the
 first off a login they shared; nothing is deleted, and each change is written
 under **Änderungen**. 020 gives every account a status that starts on
 „Automatisch" and an empty list of times online; nothing is filled in from
@@ -34,9 +38,13 @@ address. 025 to 027 give every course its group chat, let staff take a group
 message down, and add the status emoji; the old shared conversations stay
 readable and closed. 029 and 030 make a student's login impossible to delete:
 it is replaced instead. 031 prepares keeping a child taken out of a course;
-nothing uses it yet. After the files, every student without a login — the
-children 019 took off a shared one among them — is given a placeholder that
-nobody signs in with until staff give it an address or a username.
+nothing uses it yet. 032 deletes the custom fields with their values, and 033
+the saved views of the **Schüler** list and the e-mail templates; the custom
+fields' values are no longer among the tables counted before and after an
+update, so their going does not refuse it. After the files, every student
+without a login — the children 019 took off a shared one among them — is given
+a placeholder that nobody signs in with until staff give it an address or a
+username.
 
 Invitations and „Passwort vergessen?“ links wait until **„Nur Verbindung
 prüfen“** under **Einstellungen → SMTP** has passed once. Everybody is signed
@@ -44,6 +52,35 @@ out once, because sign-ins are now kept in the portal's own folder. A portal
 whose address starts with `https://` is only served over https from now on. And
 the version number printed under the privacy notice changes once although the
 text does not; nobody is asked to acknowledge it again.
+
+### What this version no longer has
+
+What the portal carries has been cut to what the trainer and the families need
+(ADR 0026). These are gone, and the ones that held data take it with them.
+
+- **Custom fields**, with everything typed into them. **Einstellungen** has no
+  „Eigene Felder für Schüler", and a child's page no „Weitere Angaben". Lines
+  under **Änderungen** written before stay readable, the field named „Früheres
+  eigenes Feld".
+- **Copying**: „Kopieren" on a tariff, a level, an age group, a payment
+  recipient or a news item, and „Kurs kopieren".
+- **Saved views** of the **Schüler** list, which the update deletes. The chips
+  „Überfällige Beiträge" and „Aktuell krank" stay, and so do the filters,
+  except „Tarif und eigene Felder".
+- **Writing to many at once** — „An mehrere schreiben", „Auswahl anschreiben"
+  under the **Schüler** filter and „Zahlungserinnerung schreiben" on **Geld** —
+  with its **e-mail templates** under **Verwaltung**, which the update deletes.
+  A course's group, the news, „Alle überfälligen per E-Mail erinnern" on
+  **Geld** and the chat with one person are there for what it was used for.
+- **„Warteschlange senden"** on **Postausgang**. Mail goes out by itself just
+  after a page has been served, at most once a minute, or by the cron job where
+  one is set up.
+- **The printed form and data sheet**: „Leeres Formular drucken" in the wizard
+  and „Datenblatt drucken" on a child's page. The wizard and a family's own
+  set-up from their invitation take the place of paper.
+- **Verwaltung's „Tarife" tab**, which only pointed to the courses. A course's
+  tariffs are on its own „Tarife" tab, which also names any tariff that belongs
+  to no course.
 
 ### Signing in, adding a student, and sign-in links
 
@@ -64,13 +101,31 @@ text does not; nobody is asked to acknowledge it again.
   never mailed. Staff make one for a login not yet in use, and only an
   administrator for one already in use. A new link ends the old one, a link can
   be withdrawn, and the child's card says who made the last one and when it was
-  used.
+  used. The first link for a login waits, as an invitation does, until the
+  privacy notice is released; a trainer is told that an administrator has to
+  release it. A link is checked again when it is used: one whose login has
+  since become a team member's, lost its child or been given an address nobody
+  confirmed signs nobody in, and its page shows nothing of that login. Deleting
+  a child ends its links.
 - **„Anmeldung löschen" gives the child a fresh, empty login** instead of
   leaving them without one. The child's private chats go with the old login;
-  the record, the courses, charges and invoices stay.
-- A child „Ohne Anmeldung" is sent no notice in the portal about a moved or
-  cancelled training date, so the invitation that later gives them a login does
-  not hand the family a list of old news.
+  the record, the courses, charges and invoices stay. On a child whose record
+  still points to a team member's login, from before one login was one
+  student, it gives the child a fresh login and leaves the team member's login,
+  her chats and her role as they are.
+- **A login nobody signs in to collects no notices.** A child „Ohne Anmeldung"
+  is sent nothing in the portal — no new invoice, no moved or cancelled training
+  date, no decided request — so the invitation that later gives them a login
+  does not hand the family a list of old news.
+- **A browser several people use forgets what somebody left half done.**
+  Signing in, or a session running out, drops a sign-in link somebody opened
+  and did not finish, the wizard's half-typed children, the sign-in links shown
+  to a member of staff, and any view of somebody else. A link opened in a
+  browser whose signed-in session then runs out is refused once, „Dieser Link
+  ist ungültig oder abgelaufen", and works when it is opened again.
+- A child who signs in with a username and has no address is not recorded as
+  saying yes or no to e-mail they cannot receive. An address added later under
+  **Mein Konto** starts with club news and message e-mails both off.
 - **„Per E-Mail einladen"** on the **Schüler** page: type an address and a
   language. The person fills in their name and birth date, sets a password and
   lands on their own page with „Kurs wählen" first; choosing a course is a
@@ -80,12 +135,45 @@ text does not; nobody is asked to acknowledge it again.
 - A birth date in the future or more than a hundred years ago is refused,
   wherever it is typed.
 
+### A double tap does nothing twice, and viewing changes nothing
+
+- **A form sent twice lands where the first one went.** A double tap on a slow
+  phone, or the same form sent again after Back, shows the page and the message
+  the first one led to, and nothing is done a second time. It used to replace
+  the first one's „gespeichert" with a red „Diese Eingabe wurde bereits
+  verarbeitet.", so it looked as if it had failed, and she did it again. In the
+  wizard, Back from the page that says the child is added shows „{Name} ist
+  schon angelegt." and the way back to that page, not the form. A form sent
+  again after ten newer ones, or from another browser, is still refused with
+  „bereits verarbeitet".
+- **Viewing the portal as somebody else is for looking only.** Everything but
+  „Ansicht beenden" and „Abmelden" is refused, with one sentence: „Beim Ansehen
+  als jemand anderer lässt sich nichts schreiben oder ändern. Beende zuerst die
+  Ansicht." Before, some things went through in the name of the person being
+  viewed — a consent changed under **Mein Konto**, a problem report — and an
+  administrator viewing a trainer could start a view of her own from there and
+  be left signed in as the trainer.
+- **A view ends with its viewer's login.** If the viewer's own login is
+  deleted, suspended, demoted or given a new password while she is viewing,
+  the view ends and that browser is signed out. Before, a trainer whose login
+  was deleted during a view kept the child's session, with no bar and nothing
+  held back.
+- **The last place in a course goes to one child.** Two people taking it at the
+  same moment — in the wizard, with „Schüler hinzufügen" on the course, or by
+  accepting a request — could both get it. Now the second is told the course
+  is full.
+- A value in the address that is a list instead of a word, such as
+  `?tab[]=x`, is dropped before any page reads it, so a mangled link no longer
+  writes PHP warnings into the server's log.
+- A refusal comes before anything is written: giving a child a username while
+  the privacy notice is not released no longer saves the username first.
+
 ### The chat works like a messenger
 
 - **A group for every course.** Its children are whoever is enrolled now — a
   child who joins can read what came before, one who leaves loses it — and the
   trainers and administrators are in every group. A course has its group from
-  the moment it exists, a copy made with „Kurs kopieren" too. Group messages
+  the moment it exists. Group messages
   send no e-mail. Staff can take a message down from „⋯" and put it back from
   the same place.
 - **Chats with one person.** A child writes to a trainer or an administrator by
@@ -114,11 +202,8 @@ text does not; nobody is asked to acknowledge it again.
   problem reports when an administrator is looking — so a kind of notice added
   later stays out of it until somebody has decided otherwise. Nothing can be
   written, asked for, taken down or marked read in that view, „Alle gelesen"
-  included, so their unread messages and notices stay unread; an administrator
-  viewing the portal as a trainer cannot write to the children in her name.
-  „Neue Nachricht" says that only the person can write, and lists nobody.
-- **„An mehrere schreiben"** (formerly „Gruppe anschreiben") puts the message in
-  each child's chat with you.
+  included, so their unread messages and notices stay unread: the view changes
+  nothing at all (below). „Neue Nachricht" says so, and lists nobody.
 - On a phone the writing box sits above the menu bar instead of under it, and a
   chat opens at its newest message. The help button moves off a chat exactly
   where the chat has a writing box, and stays put on one that can only be read.
@@ -136,9 +221,9 @@ text does not; nobody is asked to acknowledge it again.
   and billing goes on charging them. Nobody is newly put on an archived tariff.
 - **A membership ending part-way through a period** („Mitgliedschaft bis") is
   charged to the day it ends.
-- **The age-group filter** missed a whole year at its lower bound, so a message
-  to an age group missed those children. It now agrees with a child's age on
-  every day, birthdays and 29 February included.
+- **The age-group filter** missed a whole year at its lower bound, so filtering
+  the students by an age group missed those children. It now agrees with a
+  child's age on every day, birthdays and 29 February included.
 - **Background work no longer borrows the visitor's language and name.** Charges
   were written „Beitrag October" after an English-speaking family's page view,
   and the log named that family. They are now written in the portal's language,
@@ -259,10 +344,6 @@ text does not; nobody is asked to acknowledge it again.
   Jederzeit abbestellbar." already ticked. A family can untick it there, later
   under **Mein Konto**, or through the link in every such email; a no is kept,
   with a record of when it was given.
-- **The printed sign-up form asks for the no**: „Bitte keine Neuigkeiten des
-  Vereins per E-Mail schicken." and the same for message reminders, so a parent
-  who ticked nothing is not mistaken for one who declined. A data sheet printed
-  for an existing child ticks each no from what the login actually holds.
 - The news form no longer says „Newsletter-Abonnenten"; it sends to everyone
   who receives news by email.
 - The privacy drafts say so; see the first section above for an existing
@@ -349,7 +430,7 @@ text does not; nobody is asked to acknowledge it again.
   Einstellungen — with „Einrichtung“ above them while the checklist is
   unfinished. Nothing folds open or shut. The rest is reached from where it
   belongs: **Rechnungen** by a „Beiträge · Rechnungen“ switch under Geld;
-  „An mehrere schreiben“, „Neuigkeiten“ and „Postausgang“ from the top of
+  „Neuigkeiten“ and „Postausgang“ from the top of
   Nachrichten; Verwaltung, Konten, Änderungen, Einrichtung ansehen and Erweitert
   as cards at the top of Einstellungen. The entry a page belongs to stays
   marked while it is open.
@@ -359,10 +440,8 @@ text does not; nobody is asked to acknowledge it again.
   version is at the end of **Mein Konto**, under „Datenschutz und Hilfe“.
 - **The price box on a child's page is gone.** Its tariff and agreed price
   billed nobody: what bills is the price of the course the child is in. The
-  stored values are kept and a save no longer changes them. The **Schüler**
-  list's „Tarif“ filter and the `{{tariff}}` placeholder in email templates now
-  read the child's current courses, so neither can name a price that bills
-  nobody. „Dabei seit“ and „Mitgliedschaft bis“ moved to „Einteilung“.
+  stored values are kept and a save no longer changes them. „Dabei seit“ and
+  „Mitgliedschaft bis“ moved to „Einteilung“.
   Automatic monthly charges are switched on and off on the **Beiträge** page,
   by an administrator.
 - **Forms ask for less before they are saved.** A course's price form shows the
@@ -370,11 +449,7 @@ text does not; nobody is asked to acknowledge it again.
   do the rarer course fields on a child's page. The default payment recipient
   is chosen from a list rather than typed as a number. The VAT rate and UID
   number only appear once „Mit Umsatzsteuer“ is picked — with JavaScript off,
-  all of them show. Rarely needed settings, custom fields among them, sit under
-  „Erweitert“.
-- **A new portal no longer starts with an empty „Trainingsgruppe“ field**, which
-  every family saw as „Weitere Angaben: Trainingsgruppe –“. A portal that
-  already has it keeps it.
+  all of them show. Rarely needed settings sit under „Erweitert“.
 
 ### Only the German privacy notice has to be released
 
@@ -628,43 +703,21 @@ from the paper form to a printed invoice. Five things came out of that.
   Their own worked example is 42 € for November and December of a 252 € year;
   pro rata by days — the only rule the portal had — would have been 34,52 €, and
   42 € is the number the family signed.
-- **The printables carry the price list and no longer address everybody as a
-  child.** A blank form now has the fee as lines to tick, taken from the courses
-  so paper and portal cannot drift; the heading and the signature line say
-  „bei Minderjährigen" rather than assuming one. Still one sheet of A4 with four
-  tariffs on it — measured with a real 14mm-margin PDF after the first version
-  ran to two pages.
 - „ZVR-, Firmenbuch- oder GISA-Nummer": a registered club in Austria has a
   ZVR-Zahl and neither of the other two, and it goes on everything it sends out.
-- The skip link („Zum Inhalt") is parked off the top of the screen rather than
-  hidden, so it printed across the signature line of both sheets.
 
 ### Creating something asks for the basics, and then says what is left
 
 - **Creating a child asks for the basics first**: the names, a date of birth, a
-  course and whether they are a member, then how they sign in. Not the level,
-  not the internal notes, and not the custom fields she has added herself — a
-  form of twenty boxes is a form somebody abandons in the middle of a training
-  session.
+  course and whether they are a member, then how they sign in. Not the level
+  and not the internal notes — a form of twenty boxes is a form somebody
+  abandons in the middle of a training session.
 - **And then the child's page says what is still to do**, numbered, at the top:
   an emergency contact, an address or an invitation, a course, a tariff. Each
   one is a link to where it is done, and each disappears when it is. A child
   with no course is a child nobody bills, and four days later nobody remembers
   which of fifteen children that was.
 - A newly created course says the same: a training day, and a tariff.
-
-### Two things to print
-
-- **A blank registration form**, for a parent standing in the hall with a biro.
-  One letter per box, in block capitals, because a ruled line produces
-  handwriting nobody can read back and a date that might be 03/04 or 04/03.
-- **A data sheet** for a child whose details the trainer typed in herself, to
-  hand back for checking and signing.
-- Both are the same layout on purpose: what is asked for on paper is exactly
-  what the portal stores — including her own custom fields, and never the ones
-  she marked internal. Nothing is collected that has nowhere to go.
-- Both fit on one sheet of A4, which was measured by generating the PDF and
-  counting its pages. A screenshot said the form fitted; the printer said two.
 
 ### Signing in belongs to the child, and a contact is somebody to ring
 
@@ -703,21 +756,12 @@ from the paper form to a printed invoice. Five things came out of that.
   dauerhaft −20 %" — and the child carries the one that family actually got,
   under a name that goes on their invoice. Changing a template changes nothing
   for a family who already has one.
-- **A tariff can be copied**, with its prices and its templates, because four
-  intervals and three templates is twenty minutes of typing to get a second
-  tariff that differs in one number — and twenty minutes of typing is where a
-  wrong price comes from.
 - Nobody's next invoice changes because of the update: every tariff's price
   becomes its first rate, every discount becomes a template *and* is copied onto
   every enrolment that was getting it. That sentence, and "every account keeps
   its own address and password" above it, are checked rather than asserted: the suite builds a portal as it
   stood before the update, applies the rest, and reads back the prices, the
   discounts and the addresses.
-- **Everything she builds by hand can be copied** — a course with its training
-  days and its whole price list, a tariff, a level, an age group, a payment
-  recipient, an email template, a custom field, a news item. What comes with a
-  copy is written down rather than followed from the foreign keys, because a
-  course's training days belong to it and the children enrolled in it do not.
 
 ### A mail test that answers
 
@@ -815,7 +859,7 @@ update path was exercised against a real MariaDB rather than reasoned about.
 - **The row-count guard covered ten tables** and the portal has grown: it now
   also holds enrolments, attendance, invoices, invoice lines, payment proofs,
   message files and consent records. Proven with a migration that deletes
-  attendance: before, it passed; now the portal stays closed and the copy taken
+  attendance: before, it passed; now the update is refused, and the copy taken
   moments earlier brings the rows back.
 - **A charge could be created already overdue.** A child joining in the second
   month of a quarter got one dated to the start of the quarter, with the
@@ -911,8 +955,6 @@ open it.
   only from inside a course. A child reported absent for that day carries the
   reason beside their name, as a note rather than a mark. The start page grew a
   timeline of what was, what is on today and what is next.
-- **Named views.** A filtered list of children can be saved under a name and
-  opened again as a chip, each one saying underneath what it selects.
 - **A shell that stays where you put it.** The top bar is pinned, and carries
   the language switch, a notification pane, and who you are — once, instead of
   once at the top and once at the bottom. Profile pictures for accounts and
@@ -921,16 +963,15 @@ open it.
   with a screenshot, and the report arrives with the page, the device, the
   address and the version attached. An administrator or trainer can view the
   portal as somebody else to see what they see, with a bar saying so and a way
-  back that works from inside the borrowed session; what they change is recorded
-  against them, not against the person they were viewing as.
+  back that works from inside the borrowed session; nothing can be changed in
+  that view.
 - **Messages in the shape people already know one.** Conversations down one
   side, bubbles down the other, one box with a paper clip and a microphone.
   Pictures, PDFs and voice notes, within a size limit that is never higher than
   what PHP itself accepts. Writing to the trainer needs nobody's permission;
   writing to another family needs theirs, asked for and agreed to. **A
   conversation between two families is private: neither the trainer nor the
-  administrator can read it**, which the screen says in words. The bulk tool —
-  filters, templates, a review step — is still there, on its own page.
+  administrator can read it**, which the screen says in words.
 - **The change log informs.** It says what changed, field by field, in the words
   she uses, storing only what actually differed. The undo is gone: a page that
   can put a record back is a page that can put a record back by accident, and
@@ -938,9 +979,6 @@ open it.
 - **The proof of payment is offered where it is easy.** A family with something
   outstanding is asked on the page they land on — „Schon überwiesen?" — with the
   upload one tap away, and told plainly that it is voluntary.
-- **What may be customised now says so.** Custom fields are for students only,
-  and the screen says why the rest — courses, tariffs, charges, invoices — has
-  fixed fields, and where the lists that *are* hers to change live instead.
 - **Every child has somebody to ring.** One contact is the standard one — the
   number you reach for first —, the last contact cannot be removed, and a child
   without one is named on the student list.

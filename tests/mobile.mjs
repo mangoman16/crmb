@@ -66,10 +66,11 @@ const pages = async (page, role) => {
         const own = await page.locator('.mobile-nav a[href*="page=student&"]').first().getAttribute('href').catch(() => null);
         return own ? [...common, own.split('?page=')[1]] : common;
     }
-    // students&invite=1 opens „Per E-Mail einladen“ and the open invitations (ADR 0021).
-    const staff = ['students', 'students&invite=1', 'classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox', 'compose',
-                   'manage', 'manage&tab=ages', 'manage&tab=tariffs', 'manage&tab=payments'];
-    const admin = ['settings', 'settings&tab=organisation', 'settings&tab=fields', 'settings&tab=smtp',
+    // students&invite=1 opens „Per E-Mail einladen“ and the open invitations (ADR 0021);
+    // student_new is the wizard „Schüler anlegen“, at its first step (ADR 0023).
+    const staff = ['students', 'students&invite=1', 'student_new', 'classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox',
+                   'manage', 'manage&tab=ages', 'manage&tab=payments'];
+    const admin = ['settings', 'settings&tab=organisation', 'settings&tab=smtp',
                    'settings&tab=privacy', 'settings&tab=system', 'history'];
     return [...common, ...staff, ...admin];
 };

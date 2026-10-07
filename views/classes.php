@@ -116,8 +116,7 @@ elseif($id && !$edit && $tab==='tariffs'):
         <?php endif ?>
     </section>
     <section class="card">
-        <div class="section-heading"><h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2>
-        <?php if($tariff)duplicate_button('tariffs',$editTariff);?></div>
+        <div class="section-heading"><h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2></div>
         <?php start_form('tariff_save',['id'=>$editTariff,'class_id'=>$id]); ?>
         <?php /* A name and what it costs is all most prices need. Everything else
                  has a sensible default and waits under „Mehr Möglichkeiten" -
@@ -285,11 +284,7 @@ if($available): ?>
 // ---------------------------------------------------------------------------
 elseif($edit): ?>
 <section class="card">
-    <div class="section-heading"><h2><?=e($id?t('Kurs bearbeiten','Edit course'):t('Kurs anlegen','Create course'))?></h2>
-    <?php /* The copy brings the training days and the whole price list with it,
-             which is what makes "the same course on Wednesday" a one-minute job
-             rather than a twenty-minute one. */
-    if($id)duplicate_button('classes',(int)$id,t('Kurs kopieren','Duplicate course'));?></div>
+    <div class="section-heading"><h2><?=e($id?t('Kurs bearbeiten','Edit course'):t('Kurs anlegen','Create course'))?></h2></div>
     <?php start_form('class_save',['id'=>$id]); ?>
     <div class="grid two">
     <?php

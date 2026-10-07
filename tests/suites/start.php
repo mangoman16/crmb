@@ -255,23 +255,3 @@ run('UPDATE classes SET archived=0 WHERE id=?', [$course]);
 is_same([true, [$course]], [real_course_exists(), real_course_ids()], 'a running course of her own does');
 ok(str_contains((string)file_get_contents(APP_ROOT.'/app/start.php'), '$courses = real_course_ids();'),
    'and the checklist asks it rather than keeping its own copy');
-
-case_('„Tarif“ in the students filter and {{tariff}} in a message read the courses a child is in now');
-/* What a child pays is decided per course (ADR 0011). The student's own tariff
-   column no longer bills anybody, so neither the filter nor a message may go by it. */
-$second = make_class(['name'=>'Zweiter Kurs']);
-$other = make_tariff(['class_id'=>$second, 'name'=>'Zweitbeitrag', 'price_cents'=>2000]);
-$old = make_tariff(['class_id'=>$course, 'name'=>'Alter Tarif', 'price_cents'=>1000]);
-$filterKid = make_student(['first_name'=>'Filter', 'last_name'=>'Kind', 'tariff_id'=>$old]);
-make_enrolment($course, $filterKid, ['tariff_id'=>$tariff]);
-make_enrolment($second, $filterKid, ['tariff_id'=>$other]);
-$left = make_student(['first_name'=>'Ausgetreten', 'last_name'=>'Kind']);
-make_enrolment($course, $left, ['tariff_id'=>$tariff, 'left_on'=>'2026-01-31']);
-$names = fn(int $t) => array_column(filtered_students(['tariff'=>$t]), 'first_name');
-ok(in_array('Filter', $names($tariff), true) && in_array('Filter', $names($other), true), 'a child is found under the tariff of each course they are in');
-is_same(false, in_array('Filter', $names($old), true), 'not under the tariff on their own record');
-is_same(false, in_array('Ausgetreten', $names($tariff), true), 'and not under a course they have left');
-$courseTariff = (string)scalar('SELECT name FROM tariffs WHERE id=?', [$tariff]);
-is_same($courseTariff.' + Zweitbeitrag', template_text('{{tariff}}', one('SELECT * FROM students WHERE id=?', [$filterKid])),
-        '{{tariff}} is the tariffs of their current courses, joined with „ + “');
-is_same('', template_text('{{tariff}}', one('SELECT * FROM students WHERE id=?', [$left])), 'and nothing for a child in no course now');

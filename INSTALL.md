@@ -217,15 +217,15 @@ Die Version steht an zwei Stellen: in der Datei `VERSION` und in der Datenbank.
 `php bin/console.php status` – oder **Einstellungen → System** – vergleicht
 beide. Stimmen sie nicht überein, ist der Upload nicht vollständig angekommen.
 
-Vorher prüft das Portal selbst vier Dinge, und bei jedem einzelnen bricht es ab,
-**bevor** es die Datenbank anfasst:
+Dabei prüft das Portal selbst vier Dinge: drei, **bevor** es die Datenbank
+anfasst, und eines danach.
 
 | Prüfung | Wenn sie nicht stimmt |
 |---|---|
 | Sind die Dateien neuer als die Datenbank? | Bei älteren Dateien (falsches Paket) bleibt das Portal geschlossen. Sonst würde alter Code die vorhandenen Daten falsch lesen. |
 | Ist der Upload vollständig? | Bei abgebrochenem Entpacken oder FTP im Textmodus bleibt das Portal geschlossen und nennt die betroffenen Dateien. |
 | Lässt sich eine Sicherung anlegen? | Ohne Sicherung wird nichts geändert. |
-| Sind danach noch alle Datensätze da? | Fehlen Schüler, Beiträge, Zahlungen oder Nachrichten, bleibt das Portal geschlossen. |
+| Sind danach noch alle Datensätze da? | Fehlen Schüler, Beiträge, Zahlungen oder Nachrichten, zeigt der Aufruf, der die Aktualisierung ausgeführt hat, eine Fehlerseite. **Geschlossen bleibt das Portal danach noch nicht:** schon der nächste Aufruf öffnet es wieder, mit den fehlenden Datensätzen ([ROADMAP.md](ROADMAP.md), Punkt 7). Wer diese Seite sieht, öffnet das Portal sofort selbst, tippt unter **Einstellungen → System** auf **„Wartungsmodus starten"** und spielt die Sicherung von vorher zurück, wie unter [Wiederherstellen](#wiederherstellen) beschrieben. |
 
 Die Sicherung ist eine vollständige SQL-Kopie der Datenbank und landet in
 `storage/backups`. Die letzten fünf werden behalten, ältere selbst gelöscht. Der
@@ -327,7 +327,7 @@ Seitenaufruf und jede der vier Prüfungen vor einem Update sind gegen
 **MariaDB 10.11.14** mit echten HTTP-Anfragen durchgespielt worden – samt einer
 Sicherung, die anschließend in eine zweite Datenbank zurückgespielt wurde und
 dort vollständig ankam. Die gesamte Testsuite läuft dort ebenfalls durch, mit
-allen 31 Datenbankänderungen, zuletzt am 7. Oktober 2026.
+allen 33 Datenbankänderungen, zuletzt am 7. Oktober 2026.
 
 Für Version 0.6.0 wurde außerdem der erste Abend von Anfang bis Ende in einem
 echten Browser in Telefonbreite durchgespielt, gegen MariaDB 10.11.14: die

@@ -26,16 +26,16 @@ In this order.
 2. **ADR 0026.** Accepted (`4314eef`): who the portal is for, the beta rules, the goals as the
    scope test with eight gaps (G1–G8), the robustness rule, and what goes. The architect is
    recorded the owner's answers of 2026-10-07 in it (`b5d92e1`).
-3. **Removals (ADR 0026 §7–§12).** Not started; waits for item 1's review fixes, so nothing
-   collides. In separate commits, each with its migration:
-   - round 1, in one commit with migrations 032 and 033: custom fields, with their data;
-     copying records; saved views; writing to many, with its templates; the queue button
-     „Warteschlange senden"; the printed sheets; and Verwaltung's „Tarife" tab;
-   - online dots, the chosen status, the status emoji and the online history, and profile
-     pictures;
-   - levels and configured age groups. Children are still sorted and filtered by age,
-     worked out from the birth date;
-   - the example data, cut to one course, four children and two family logins (§9).
+3. **Removals (ADR 0026 §7–§12).** In separate commits, each with its migrations:
+   - **round 1, done:** custom fields with their data (032); copying records; saved views and
+     message templates (033); writing to many; the queue button „Warteschlange senden"; the
+     printed sheets; and Verwaltung's „Tarife" tab;
+   - round 2, the chat's extras: the online dots, the chosen status, the status emoji and the
+     online history, profile pictures, contact requests and voice notes;
+   - round 3: levels and configured age groups — children are sorted and filtered by age
+     from the birth date (docs/design/2026-10-07-ios-design-language-and-goal-screens.md,
+     Part 1) — and the example data, cut to one course, four children and two family logins
+     (§9).
 
    The robustness suite (item 8) is built, on a copy of the code; it lands after round 1
    with the fixes it forces.
@@ -144,7 +144,7 @@ In their words.
     deploy. What protects any install still holds: append-only migrations with the checksum
     ledger, the update refusing rather than guessing, a backup before an update, security,
     parameterised SQL, `e()`, cents, UTC, bilingual text.
-  - Custom fields are removed, with their data. Not yet done in the code.
+  - Custom fields are removed, with their data (migration 032).
   - The demo data, and whatever is no longer needed but costs upkeep, is stripped down.
   - Settings stay comprehensive, and the portal should work for other clubs too.
   - Paying stays bank transfer, the QR code and an uploaded receipt.

@@ -18,7 +18,7 @@ $expected = [
     'app/groups.php' => 60, 'app/tx.php' => 40, 'app/ui.php' => 30,
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
     'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
-    'app/duplicate.php' => 80, 'app/portal_icon.php' => 60, 'app/start.php' => 100,
+    'app/portal_icon.php' => 60, 'app/start.php' => 100,
     'app/backup.php' => 100, 'public/setup.php' => 180, 'app/presence.php' => 120,
 ];
 foreach ($expected as $file => $minLines) {
@@ -34,10 +34,9 @@ foreach (['actions','actions_settings','actions_messages','actions_config'] as $
     if (preg_match_all("/case '([a-z_]+)':/", (string)file_get_contents(APP_ROOT.'/app/'.$file.'.php'), $m))
         $dispatched = array_merge($dispatched, $m[1]);
 $offered = [];
-// app/ as well as views/, because a form can be written out by a shared helper:
-// duplicate_button() offers the same action from eight different lists, and the
-// point of this rule is "every handler is reachable", not "every handler is
-// spelled out in a view".
+// app/ as well as views/, because a form can be written out by a shared helper
+// (login_delete_details(), signin_link_details()), and the point of this rule is
+// "every handler is reachable", not "every handler is spelled out in a view".
 foreach (array_merge(glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/app/*.php')) as $file)
     if (preg_match_all("/start_form\('([a-z_]+)'/", (string)file_get_contents($file), $m))
         $offered = array_merge($offered, $m[1]);
@@ -149,9 +148,8 @@ $expected = [
     'dashboard' => 'everyone', 'students' => 'everyone', 'student' => 'everyone',
     'messages' => 'everyone', 'news' => 'everyone', 'profile' => 'everyone',
     'download' => 'everyone',   // decides per file, inside serve_download()
-    'accounts' => 'staff', 'payments' => 'staff', 'compose' => 'staff', 'outbox' => 'staff',
+    'accounts' => 'staff', 'payments' => 'staff', 'outbox' => 'staff',
     'classes' => 'staff', 'manage' => 'staff', 'invoices' => 'staff', 'attendance' => 'staff',
-    'print' => 'staff',
     'student_new' => 'staff',   // the wizard „Schüler anlegen" (ADR 0023 §5)
     'settings' => 'admin', 'history' => 'admin',
     'start' => 'admin',   // the setup checklist: administrator decisions only (ADR 0011)
@@ -1581,9 +1579,8 @@ case_('A family’s save of its own student writes five columns, and nothing a f
    makes to a student, and its column list is the whole of what they may change:
    names, birth date, postal address, phone - plus the bookkeeping every save
    writes. Status, membership dates, level, age group, prices, internal notes
-   and the email stay staff's. The custom fields go through save_custom_fields(),
-   which skips every field not at 'edit'. Read from the SQL, so a column added to
-   the family's statement fails here by name. */
+   and the email stay staff's. Read from the SQL, so a column added to the
+   family's statement fails here by name. */
 $save = named_blocks_of(APP_ROOT.'/app/actions.php')['student_save'] ?? '';
 $updates = [];
 foreach (sql_statements_in($save) as $sql)
@@ -1595,20 +1592,6 @@ is_same([['first_name', 'last_name', 'birth_date', 'address', 'phone', 'updated_
         'the family’s writes first_name, last_name, birth_date, address and phone, and the bookkeeping, and nothing else');
 ok(preg_match('/\} else \{.*?tracked \( \'students\'/s', implode(' ', array_map(fn($t) => is_array($t) ? $t[1] : $t, action_tokens(substr($save, (int)strrpos($save, '} else {')))))) === 1,
    'and it runs inside tracked(), like staff’s');
-$fieldsSave = defined_functions_in(APP_ROOT.'/app/domain.php')['save_custom_fields'] ?? '';
-ok(str_contains($fieldsSave, "if ( ! \$staff && ! \$families ) continue ;"),
-   'save_custom_fields() skips, for a family, every field that is not theirs to fill in');
-
-case_('Whom a required field is required of is asked of one function');
-/* Code review 2: custom_field_required_of() is the rule; the save that refuses,
-   the family's list of what is missing and the page that marks a box required
-   all ask it, so the three cannot disagree. */
-$domainFns = defined_functions_in(APP_ROOT.'/app/domain.php');
-foreach (['save_custom_fields', 'family_next_steps'] as $caller)
-    ok(str_contains($domainFns[$caller] ?? '', 'custom_field_required_of ('), $caller.'() asks custom_field_required_of()');
-ok(str_contains((string)file_get_contents(APP_ROOT.'/views/student.php'), 'custom_field_required_of('), 'and so does the student page that marks the box');
-foreach (['save_custom_fields', 'family_next_steps'] as $caller)
-    ok(!str_contains($domainFns[$caller] ?? '', "[ 'required' ]"), $caller.'() does not read required itself');
 
 case_('One answer each to „may a reset link go?“ and „is the postal address missing?“');
 /* Code review 5 and 6: the action and the card ask reset_link_possible(); the
@@ -1804,36 +1787,26 @@ is_same(['app/messaging.php direct_thread calls join_thread()', 'app/messaging.p
 // ---------------------------------------------------------------------------
 case_('Every way a course is made gives it its group chat');
 /* ADR 0022 §3: a course has its group from the moment it exists, however it came
-   to exist. Three places make one - the course form, the example data and a copy
-   - and each had to remember course_group_thread() on its own (code review). So
-   every block that writes a row into `classes` is found and named here, and has
-   to ask for the group: a statement that inserts into the table, insert_row()
-   with 'classes', or the copy of a record whose table is handed to it, as long as
-   duplicable_records() offers a course for copying. A fourth way fails until it
-   is added to this list, which is the moment to give it the call. */
-$copiesCourses = array_key_exists('classes', duplicable_records());
-ok($copiesCourses, 'a course can be copied, so the copy is one of the ways below');
+   to exist. The places that make one each had to remember course_group_thread()
+   on their own (code review). So every block that writes a row into `classes`
+   is found and named here, and has to ask for the group. A third way fails until
+   it is added to this list, which is the moment to give it the call. Copying a
+   course was the third, and went with copying (ADR 0026 §8). */
 $courseMakers = [];
 foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'),
                      glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/database/*.php')) as $path)
     foreach (named_blocks_of($path) as $block => $code) {
-        $calls = array_values(array_filter(action_calls_in($code), fn($c) => !$c['method']));
-        $called = array_column($calls, 'name');
         $writes = (bool)array_filter(sql_statements_in($code),
             fn($sql) => preg_match('/^(INSERT( IGNORE)?|REPLACE) INTO `?classes`?[\s(]/i', $sql) === 1);
-        foreach ($calls as $call)
-            if ($call['name'] === 'insert_row'
-                && ($call['literal'] === 'classes'
-                    || ($copiesCourses && $call['literal'] === null && in_array('duplicable_record', $called, true))))
-                $writes = true;
         if (!$writes) continue;
         $where = substr($path, strlen(APP_ROOT) + 1).' '.$block;
         $courseMakers[] = $where;
+        $called = array_column(array_filter(action_calls_in($code), fn($c) => !$c['method']), 'name');
         ok(in_array('course_group_thread', $called, true), $where.' makes a course, and asks course_group_thread() for its group');
     }
 sort($courseMakers);
-is_same(['app/actions_config.php class_save', 'app/demo.php demo_fill', 'app/duplicate.php duplicate_record'], $courseMakers,
-        'a course is made by the course form, the example data and a copy, and nowhere else');
+is_same(['app/actions_config.php class_save', 'app/demo.php demo_fill'], $courseMakers,
+        'a course is made by the course form and the example data, and nowhere else');
 
 // ---------------------------------------------------------------------------
 case_('While viewing as somebody, every action is refused in one place, in one sentence');

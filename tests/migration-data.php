@@ -13,7 +13,7 @@ declare(strict_types=1);
  * keeping only one of them. "Nobody's next invoice changes" was a claim with
  * nothing behind it.
  *
- * Seven pauses. Before 015, a portal as it stood with prices on the tariff and
+ * Eight pauses. Before 015, a portal as it stood with prices on the tariff and
  * addresses on the contacts. Before 019, a portal where one login holds several
  * brothers and sisters and a child's address has drifted from its login's. 019
  * is then applied three ways: straight through; stopped after each of its
@@ -43,7 +43,13 @@ declare(strict_types=1);
  * a second time straight after; 029 is also stopped after each statement and
  * started again on a new connection, and run on a key with another name. Then
  * the runner's step, stopped part way after each placeholder but the last, then
- * through, then again; and what the database refuses afterwards.
+ * through, then again; and what the database refuses afterwards. Before 032, on
+ * a portal 028 to 031 were applied to, custom fields with values, saved views,
+ * templates and the change-log lines that name them, which 032 and 033 must drop
+ * and touch nothing else; each file is run twice, and stopped after its first
+ * statement and started again. Then the update this release brings, through the
+ * application's own runner on a release of this run's own, and one more file
+ * that drops a guarded table, which the runner must refuse.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -651,6 +657,83 @@ function attempt(PDO $pdo, array $writes): ?array {
     return $said;
 }
 
+/**
+ * What the version before 032 and 033 keeps in the four tables they drop, and
+ * the change-log lines that name them (ADR 0026 §7, §8).
+ *
+ * Two custom fields, one of them archived the way field_save leaves a field
+ * that held data, with values on three students, one of whom has a value in
+ * each; a change-log line about a student's value, under the field:<id> key the
+ * change log gives one, and one about a field. Two saved views. The two
+ * templates a first install seeded, one the trainer wrote, and a change-log
+ * line about one of them.
+ */
+function add_custom_fields_views_and_templates(PDO $pdo): array {
+    $at = '2026-09-30 08:00:00';
+    $field = fn(string $label, string $type, string $options, string $default, int $required, string $visibility, int $archived): int =>
+        insert_row($pdo, 'field_definitions', ['label' => $label, 'label_en' => '', 'field_type' => $type, 'section_name' => '',
+            'options_json' => $options, 'default_json' => $default, 'required' => $required, 'visibility' => $visibility,
+            'sort_order' => 10, 'archived' => $archived]);
+    $shirt = $field('T-Shirt-Größe', 'select', '["S","M","L"]', '""', 1, 'edit', 0);
+    $school = $field('Schule', 'text', '[]', '""', 0, 'internal', 1);
+    // Paul, Lisa and Ida, from the portal before 019.
+    foreach ([[20, $shirt, '"M"'], [20, $school, '"VS Nord"'], [51, $shirt, '"S"'], [80, $shirt, '"L"']] as [$student, $fieldId, $value])
+        insert_row($pdo, 'field_values', ['student_id' => $student, 'field_id' => $fieldId, 'value_json' => $value]);
+    $line = fn(string $entity, int $id, string $label, array $before, array $after) => insert_row($pdo, 'record_versions', [
+        'entity' => $entity, 'entity_id' => $id, 'operation' => 'update', 'label' => $label,
+        'before_json' => json_encode($before, JSON_UNESCAPED_UNICODE), 'after_json' => json_encode($after, JSON_UNESCAPED_UNICODE),
+        'actor_id' => null, 'created_at' => $at]);
+    $line('students', 20, 'Paul Gruber', ['field:' . $shirt => '"S"'], ['field:' . $shirt => '"M"']);
+    $line('field_definitions', $school, 'Schule', ['archived' => 0], ['archived' => 1]);
+    $views = [insert_row($pdo, 'saved_filters', ['name' => 'Überfällig', 'criteria_json' => '{"overdue":"1"}']),
+              insert_row($pdo, 'saved_filters', ['name' => 'Jugend, krank', 'criteria_json' => '{"sick":"1","q":"Jugend"}'])];
+    $template = fn(string $name, string $subject, string $body): int =>
+        insert_row($pdo, 'message_templates', ['name' => $name, 'subject' => $subject, 'body' => $body]);
+    $reminder = $template('Zahlungserinnerung', 'Dein Badminton-Beitrag', "Hallo {{first_name}},\n\nbei deinen Badminton-Beiträgen sind derzeit {{outstanding}} offen.\n\n{{portal_url}}");
+    $templates = [$reminder, $template('Training – Information', 'Information zum Training', "Hallo {{first_name}},\n\n{{portal_url}}"),
+                  $template('Hallenwechsel', 'Training in der Halle Süd', "Hallo {{first_name}}, ab Montag in der Halle Süd.")];
+    $line('message_templates', $reminder, 'Zahlungserinnerung', ['subject' => 'Beitrag'], ['subject' => 'Dein Badminton-Beitrag']);
+    return ['fields' => [$shirt, $school], 'views' => $views, 'templates' => $templates];
+}
+
+/** 001 to 031 with every portal above written in, and rows in the four tables 032 and 033 drop. */
+function build_portal_before_032(): array {
+    [$pdo] = build_portal_before_028();
+    apply_migrations($pdo, '028', '031');
+    return [$pdo, add_custom_fields_views_and_templates($pdo)];
+}
+
+/**
+ * Every table, its rows counted and checksummed, and every foreign key, as the
+ * engine describes them: what 032 and 033 are held to, which must take their
+ * own tables away and leave every other table, row and key as it was. CHECKSUM
+ * TABLE reads every row, so a row changed or lost anywhere shows, in a table
+ * schema_guarded_tables() names or not.
+ */
+function every_table(PDO $pdo): array {
+    $tables = array_column($pdo->query('SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchAll(), 'name');
+    sort($tables);
+    $quoted = array_map(fn(string $table): string => '`' . sql_name($table, 'table') . '`', $tables);
+    $rows = $sums = [];
+    foreach ($tables as $i => $table) $rows[$table] = (int)$pdo->query('SELECT COUNT(*) FROM ' . $quoted[$i])->fetchColumn();
+    foreach ($pdo->query('CHECKSUM TABLE ' . implode(', ', $quoted))->fetchAll() as $row)
+        $sums[substr((string)$row['Table'], strpos((string)$row['Table'], '.') + 1)] = (string)$row['Checksum'];
+    ksort($sums);
+    return ['tables' => $tables, 'rows' => $rows, 'sums' => $sums,
+            'keys' => $pdo->query('SELECT table_name AS on_table, constraint_name AS name, referenced_table_name AS refers_to, delete_rule AS on_delete'
+                . ' FROM information_schema.referential_constraints WHERE constraint_schema = DATABASE() ORDER BY table_name, constraint_name')->fetchAll()];
+}
+
+/**
+ * The change-log lines about a custom field, a value in one or a template:
+ * what the history page goes on reading once 032 and 033 have dropped the
+ * tables they name.
+ */
+function lines_about_what_goes(PDO $pdo): array {
+    return $pdo->query("SELECT * FROM record_versions WHERE entity IN ('field_definitions', 'message_templates')"
+        . " OR before_json LIKE '%\"field:%' OR after_json LIKE '%\"field:%' ORDER BY id")->fetchAll();
+}
+
 $nineteen = migration_path('019');
 $statements = migration_statements($nineteen);
 
@@ -952,5 +1035,100 @@ $renamed['after'] = student_keys($pdo);
 
 $result['twentyeight'] = ['people' => $people, 'statements' => array_map(fn($path) => count(migration_statements($path)), $files),
                           'state' => $state, 'refused' => $refused, 'step' => $step, 'retried' => $retried, 'renamed' => $renamed];
+
+// --- 032 and 033 on custom fields, saved views and templates ------------------------
+// Both only drop: 032 the custom fields with every value, 033 the saved views and
+// the templates (ADR 0026 §7, §8). On the portal 028 to 031 were applied to, with
+// rows in all four tables and change-log lines that name them, each file is held
+// to taking its own tables away and nothing else, then run a second time on a
+// connection of its own, as the next page view does after an update that applied
+// it but stopped before the ledger recorded it.
+$dropping = ['032' => migration_path('032'), '033' => migration_path('033')];
+[$pdo, $written] = build_portal_before_032();
+$dropState = fn(): array => every_table($pdo) + ['lines' => lines_about_what_goes($pdo)];
+$drops = ['written' => $written, 'before' => $dropState(),
+          'statements' => array_map(fn(string $path): int => count(migration_statements($path)), $dropping)];
+foreach ($dropping as $number => $path) {
+    run_statements($pdo, $path, migration_statements($path));
+    $drops[$number] = $dropState();
+    $drops['refused'][$number] = run_again($path);
+    $drops[$number . '_again'] = $dropState();
+}
+
+// --- 032 and 033 stopped after each statement and started again from the first -----
+// Each round on a portal of its own, built and filled the same way, 033's with 032
+// applied first.
+foreach ($dropping as $number => $path) {
+    $statements = migration_statements($path);
+    for ($stopped = 1; $stopped < count($statements); $stopped++) {
+        [$pdo] = build_portal_before_032();
+        if ($number === '033') run_statements($pdo, $dropping['032'], migration_statements($dropping['032']));
+        $round = ['before' => every_table($pdo)];
+        run_statements($pdo, $path, array_slice($statements, 0, $stopped));
+        $round['stopped'] = every_table($pdo);
+        run_statements($pdo, $path, $statements);
+        $drops['retried'][$number][$stopped] = $round + ['after' => every_table($pdo)];
+    }
+}
+$result['dropping'] = $drops;
+
+// --- this release's update, then one with a mistake in it, through the runner -------
+// schema_apply() itself, the one copy the installer, the console and the first
+// request after an upload all use, on a portal as the previous version leaves it:
+// 001 to 031 in its ledger, its runner step run, and rows in the four tables 032
+// and 033 drop. The runner reads ROOT/database/migrations, so ROOT is a release of
+// this run's own, a copy of the shipped files that one more file can be put into
+// without the portal's own folder ever seeing it; the stamp and the backups go to
+// this run's folder, beside the maintenance flag. First the update this release
+// brings, which must pass the guard and drop what 032 and 033 drop. Then a file
+// that drops contacts, a guarded table with rows in it, which the guard must
+// refuse: before ADR 0026 §7 it compared only the tables it could still count, and
+// let such a file through.
+$release = test_run_dir() . '/release';
+mkdir($release . '/database/migrations', 0700, true);
+foreach (glob(APP_ROOT . '/database/migrations/*.sql') ?: [] as $file) copy($file, $release . '/database/migrations/' . basename($file));
+copy(APP_ROOT . '/database/defaults.php', $release . '/database/defaults.php');
+copy(APP_ROOT . '/VERSION', $release . '/VERSION');
+// Defined once, here: had anything defined it already, the runner would read the
+// shipped files rather than this release, and nothing below would be what it says.
+if (defined('ROOT')) { fwrite(STDERR, "ROOT is already defined, so the runner would not read this run's own release.\n"); exit(2); }
+define('ROOT', $release);
+// What schema_apply() needs beyond the files above: the manifest check, the backup
+// and the version it records.
+require_once APP_ROOT . '/app/install.php';
+require_once APP_ROOT . '/app/backup.php';
+require_once APP_ROOT . '/app/version.php';
+$GLOBALS['config']['maintenance_file'] = test_run_dir() . '/maintenance.flag';
+
+[$pdo, $written] = build_portal_before_032();
+$runner = ['written' => $written,
+           'shipped' => array_combine(array_map('basename', $dropping), array_map(fn(string $path): string => hash_file('sha256', $path), $dropping))];
+// The ledger as schema_apply() makes it, filled as the previous version's update
+// left it, and that update's step after the files run.
+$pdo->exec('CREATE TABLE schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+$record = $pdo->prepare('INSERT INTO schema_migrations (version, checksum, applied_at) VALUES (?, ?, ?)');
+foreach (migration_files() as $file)
+    if (strcmp(basename($file), '032') < 0) $record->execute([basename($file), hash_file('sha256', $file), '2026-10-01 08:00:00']);
+$pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
+setting_cache_clear();
+$runner['previous_step_error'] = $runnerStep();
+// What the update said, rather than this process stopping on it.
+$update = static function (): ?array {
+    try { schema_apply(); return null; }
+    catch (Throwable $e) {
+        return ['class' => get_class($e), 'log' => $e->getMessage()] + ($e instanceof UpdateBlocked ? ['de' => $e->de, 'en' => $e->en] : []);
+    }
+};
+$ledger = fn(): array => $pdo->query('SELECT version, checksum FROM schema_migrations ORDER BY version')->fetchAll();
+$runner['before'] = every_table($pdo) + ['counts' => portal_state($pdo)['counts'], 'ledger' => $ledger()];
+$runner['release'] = ['refused' => $update(), 'current' => schema_is_current(), 'backups' => count(backups())];
+$runner['release']['state'] = every_table($pdo) + ['counts' => portal_state($pdo)['counts'], 'ledger' => $ledger()];
+
+file_put_contents($release . '/database/migrations/999_a_mistake_drops_the_contacts.sql', "DROP TABLE contacts;\n");
+$mistake = ['before' => portal_state($pdo)['counts'], 'refused' => $update(), 'current' => schema_is_current(),
+            'tables' => every_table($pdo)['tables']];
+// Every copy the updates took, newest first: how many contacts each holds.
+$mistake['backups'] = array_map(fn(array $copy): int => substr_count((string)file_get_contents($copy['path']), 'INSERT INTO `contacts` VALUES'), backups());
+$result['runner'] = $runner + ['mistake' => $mistake];
 
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

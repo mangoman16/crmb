@@ -88,11 +88,6 @@ if(!$specs):?><p class="muted"><?=e(t('Für diesen Bereich gibt es keine Vorgabe
     <details class="advanced-settings" id="<?=e($registryCard?'advanced-'.$registryCard['id']:'advanced')?>" <?=($_GET['open']??'')==='advanced'?'open':''?>><summary><?=e(t('Erweitert','Advanced'))?></summary>
         <p class="muted"><?=e(t('Selten gebraucht. Die Vorgaben passen für die meisten Portale.','Rarely needed. The defaults suit most portals.'))?></p>
         <div class="grid two"><?php foreach($advanced as $key=>$spec)$registryField($key,$spec); ?></div>
-        <?php /* Custom fields are a system matter, so only the System tab's
-                 block leads there - not every group's that has an „Erweitert". */
-        if(current_page()==='settings' && $registryGroup==='system'): ?>
-        <p class="advanced-link"><a href="<?=e(url('settings',['tab'=>'fields']))?>"><?=e(t('Eigene Felder für Schüler','Custom fields for students'))?></a></p>
-        <?php endif ?>
     </details>
     <?php endif ?>
     <?php submit_button(); ?></form>

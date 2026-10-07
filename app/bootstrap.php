@@ -40,7 +40,6 @@ require __DIR__ . '/enrolment.php';
 require __DIR__ . '/groups.php';
 require __DIR__ . '/attendance.php';
 require __DIR__ . '/billing.php';
-require __DIR__ . '/duplicate.php';
 require __DIR__ . '/shell.php';
 // Needs run_counter() and rows() from core.php, setting() from defaults.php,
 // is_staff() and is_admin() from auth.php and impersonator() from shell.php
@@ -68,9 +67,9 @@ require __DIR__ . '/portal_icon.php';
 require __DIR__ . '/pdf.php';
 require __DIR__ . '/invoices.php';
 require __DIR__ . '/demo.php';
-// duplicate_record() and demo_fill() above make a course's group and a chat
-// with course_group_thread() and direct_thread() from here, at request time
-// only - never while loading - so this order is safe as it stands.
+// demo_fill() above makes a course's group and a chat with
+// course_group_thread() and direct_thread() from here, at request time only -
+// never while loading - so this order is safe as it stands.
 require __DIR__ . '/messaging.php';
 require __DIR__ . '/mail.php';
 // The start checklist asks the course, billing, invoice, mail and account rules

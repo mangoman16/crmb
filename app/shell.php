@@ -437,7 +437,7 @@ function report_text(string $text, int $max = 200): string {
  * Submitted values as a report may keep them.
  *
  * A secret is replaced by *** whatever was typed, even nothing, and at every
- * depth, so custom[api_token] is as safe as password. Otherwise: 40 fields,
+ * depth, so a nested one, x[api_token], is as safe as password. Otherwise: 40 fields,
  * 20 items per array, two levels of arrays, 200 characters per value. On top of
  * that the fields of one step stop at 16 kB: the limits multiply out to
  * megabytes for a form built to do so, and this sits in the session for the

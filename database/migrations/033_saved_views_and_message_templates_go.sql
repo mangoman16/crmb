@@ -1,0 +1,21 @@
+-- Saved views of the students list, and the message templates, are gone
+-- (docs/decisions/0026-who-the-portal-is-for-the-beta-and-what-it-no-longer-carries.md, §8 and §11).
+--
+-- A saved view was a name for a set of filters on the students list. The chips
+-- „Überfällige Beiträge" and „Aktuell krank" stay; they were never saved views.
+-- A template was a subject and a text for writing to many families at once,
+-- which goes as well: the course group, news, the payment reminder and the
+-- direct chat cover what it was for. Both tables go, with every saved view and
+-- every template in them, the two a first install seeded included;
+-- database/defaults.php no longer seeds them. The copy the update takes
+-- beforehand, in storage/backups, holds them as they were.
+--
+-- Neither table was ever in schema_guarded_tables(), and no foreign key points
+-- at either or leaves either (read from information_schema on MariaDB
+-- 10.11.14), so no other table loses a row or a key, and the order of the two
+-- statements does not matter. No line of the change log is touched: those about
+-- a template keep the name they were written with. Each statement can run
+-- twice, so an update that stops between them starts the file again from the
+-- first, which then does nothing.
+DROP TABLE IF EXISTS saved_filters;
+DROP TABLE IF EXISTS message_templates;

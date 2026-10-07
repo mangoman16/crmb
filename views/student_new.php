@@ -136,6 +136,5 @@ select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(
 ?></div></section>
 <div class="form-footer"><?php submit_button(t('Weiter','Next')); ?></div></form>
 <a class="text-link" href="<?=e(url($back))?>"><?=e(t('Abbrechen','Cancel'))?></a>
-<a class="text-link" href="<?=e(url('print'))?>"><?=e(t('Leeres Formular drucken','Print a blank form'))?></a>
 <a class="text-link" href="<?=e(url('students',['invite'=>1,'#'=>'invite']))?>"><?=e(t('Nur die E-Mail-Adresse bekannt? Ohne Namen einladen','Only know the email address? Invite without a name'))?></a>
 <?php endif ?>

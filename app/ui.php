@@ -45,26 +45,6 @@ function file_field(string $name,string $label,string $kind='proof',string $hint
     echo '<small>'.e(($hint?$hint.' ':'').t('Höchstens ','At most ').upload_limit_label($maxBytes).'.').'</small></div>';
 }
 /**
- * A saved filter, in the words that made it.
- *
- * A chip called "Montag" tells her nothing a month later. This says what the
- * view actually selects, which is also how she notices that two of them are the
- * same view under different names.
- */
-function filter_summary(array $f): string {
-    $parts=[];
-    if(!empty($f['q']))        $parts[]=t('Suche: ','Search: ').$f['q'];
-    if(!empty($f['course']))   $parts[]=(string)(scalar('SELECT name FROM classes WHERE id=?',[(int)$f['course']])?:t('Kurs','Course'));
-    if(!empty($f['level']))    $parts[]=level_name((int)$f['level']);
-    if(!empty($f['age_group']))$parts[]=(string)(scalar('SELECT name FROM age_groups WHERE id=?',[(int)$f['age_group']])?:'');
-    if(!empty($f['status']))   $parts[]=status_label((string)$f['status']);
-    if(!empty($f['absence']))  $parts[]=t('abwesend: ','away: ').reason_label((string)$f['absence']);
-    if(!empty($f['tariff']))   $parts[]=(string)(scalar('SELECT name FROM tariffs WHERE id=?',[(int)$f['tariff']])?:'');
-    if(!empty($f['overdue']))  $parts[]=t('überfällig','overdue');
-    return $parts?implode(' · ',array_filter($parts)):t('alle Schüler','all students');
-}
-
-/**
  * A labelled form field.
  *
  * $placeholder is for compact rows where a visible label would crowd the
@@ -291,10 +271,6 @@ function render_filters(array $f,string $target='students'): void {
     select_field('course',t('Kurs','Course'),array_column(training_classes(),'name','id'),$f['course']??'');
     select_field('level',t('Leistungsgruppe','Level'),array_column(levels(),'name','id'),$f['level']??'');
     select_field('age_group',t('Altersgruppe','Age group'),array_column(age_groups(),'name','id'),$f['age_group']??'');
-    echo '<details class="filter-more" '.(!empty($f['tariff'])?'open':'').'><summary>'.e(t('Tarif und eigene Felder','Tariff and custom fields')).'</summary><div class="grid two">';
-    select_field('tariff',t('Tarif','Tariff'),array_column(rows('SELECT id,name FROM tariffs ORDER BY name'),'name','id'),$f['tariff']??'');
-    select_field('field',t('Eigenes Feld','Custom field'),array_column(field_definitions(),'label','id'),$f['field']??'');
-    input('value',t('Wert entspricht','Value equals'),$f['value']??'');echo '</div></details>';
     check_field('overdue',t('Nur überfällige Beiträge','Overdue charges only'),!empty($f['overdue']));
     submit_button(t('Filtern','Filter'),'secondary');echo '</form>';
 }
@@ -346,7 +322,7 @@ function nav_entries(array $user): array {
  * and that entry is highlighted while it is open:
  *
  *   invoices                  → payments (Geld): the „Beiträge · Rechnungen" switch
- *   compose, outbox           → messages: the links at the top of Nachrichten
+ *   outbox                    → messages: the link at the top of Nachrichten
  *   news                      → messages for staff (same links); a family's own entry
  *   manage, accounts, history → settings for an administrator (the hub at the top
  *                               of Einstellungen); manage for a trainer, whose
@@ -357,7 +333,6 @@ function nav_entries(array $user): array {
  *   students                  → itself for staff; a family's Profil, because a
  *                               family's list holds their one child and no menu
  *                               entry of theirs leads to it (ADR 0010)
- *   print                     → students (the child's page links to it)
  *   download                  → payments for staff (invoices), Profil for a family
  *
  *   profile                   → '' for staff (the account in the top bar); a
@@ -372,13 +347,12 @@ function nav_owner(string $page,?array $user=null): string {
     $staff=is_staff($user); $admin=is_admin($user);
     return match($page) {
         'invoices'                    => 'payments',
-        'compose','outbox'            => 'messages',
+        'outbox'                      => 'messages',
         'news'                        => $staff?'messages':'news',
         'manage','accounts','history' => $admin?'settings':'manage',
         'start'                       => $admin && setup_unfinished()?'start':'settings',
         'student'                     => $staff?'students':'student',
         'student_new'                 => 'students',
-        'print'                       => 'students',
         'download'                    => $staff?'payments':'student',
         'students'                    => $staff?'students':'student',
         'dashboard','classes','attendance','payments','messages','settings' => $page,
@@ -533,42 +507,6 @@ function select_options(array $options,mixed $value): string {
     foreach($options as $key=>$label)
         $out.='<option value="'.e((string)$key).'" '.((string)$key===(string)$value?'selected':'').'>'.e((string)$label).'</option>';
     return $out;
-}
-
-/**
- * One line of a paper form: a label, and either boxes to write in or a value.
- *
- * Boxes, one per character, because that is what a form somebody fills in with a
- * biro looks like: block capitals, one letter per box, legible to whoever types
- * it back in afterwards. The alternative - a ruled line - produces handwriting
- * nobody can read and a date that might be 03/04 or 04/03.
- *
- * $value fills it in instead, for the sheet she prints out and hands back after
- * entering somebody's details herself. Marked aria-hidden because a screen
- * reader reading out twenty-four empty boxes is nobody's idea of a form; the
- * label and the value carry the meaning.
- */
-function print_field(string $label, int $boxes = 18, string $value = '', string $hint = '', bool $wide = false): void {
-    echo '<div class="print-field'.($wide?' print-wide':'').'"><span class="print-label">'.e($label)
-        .($hint!==''?' <small>('.e($hint).')</small>':'').'</span>';
-    if ($value !== '') echo '<span class="print-value">'.e($value).'</span>';
-    else {
-        echo '<span class="print-boxes" aria-hidden="true">';
-        for ($i = 0; $i < max(1, $boxes); $i++) echo '<span></span>';
-        echo '</span>';
-    }
-    echo '</div>';
-}
-
-/** A tick box on a paper form, ticked when the portal already knows the answer. */
-function print_tick(string $label, ?bool $ticked = null): void {
-    echo '<div class="print-tick"><span class="print-box">'.($ticked ? '&#10003;' : '').'</span>'
-        .'<span>'.e($label).'</span></div>';
-}
-
-/** A line to sign on, with what it is for underneath it. */
-function print_signature(string $label): void {
-    echo '<div class="print-sign"><span class="print-rule"></span><small>'.e($label).'</small></div>';
 }
 
 /**
@@ -1047,7 +985,7 @@ function report_step_line(array $step): string {
 }
 
 /**
- * Posted values as name=value, flattened: custom[3]=… for a nested field.
+ * Posted values as name=value, flattened: rate_price[0]=… for a nested field.
  *
  * null is a value deleted when the report was marked done, and says so; a key
  * '…' is where the recorder stopped keeping fields.
