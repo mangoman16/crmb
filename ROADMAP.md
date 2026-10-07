@@ -150,6 +150,9 @@ In their words.
     them by age groups, if it is possible to do that with only birth dates and without
     explicit groups then well do it" — so no configured bands; the list sorts and filters by
     age from the birth date.
+  - The project manager, on 0026's last open point: the old contact requests are deleted
+    with ADR 0022 §11, which removes asking to write to another student. In the beta they
+    are test data.
 - **2026-10-05 and 2026-10-06** — the owner's answers, and the project manager's decisions on
   the designer's questions (ADRs 0022 to 0025, and the design specification):
   - Administrators can read every chat, and their reading is not recorded.
@@ -175,6 +178,9 @@ In their words.
 
 For the project manager to decide:
 
+- Age on the students list: whole years from the birth date, or the birth year (Jahrgang),
+  which is how badminton's age classes count? ui-ux-designer raises it in the spec for the
+  age sort and filter; the owner is asked if the trainer's habit is unclear.
 - Should billing warn about a „Beendet" student with no end date?
 - Rejoining a course starts new terms, while restoring a removed child keeps the old ones: is
   that right?

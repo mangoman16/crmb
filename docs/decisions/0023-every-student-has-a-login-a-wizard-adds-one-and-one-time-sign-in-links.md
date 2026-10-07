@@ -5,6 +5,15 @@ date: 2026-10-06
 
 # 0023. Every student has a login, a wizard adds one, and one-time sign-in links
 
+> **Corrected on 2026-10-07: „Link zurückziehen" in §4.** §4 lists it among the buttons that go
+> through `replace_login_with_placeholder()`. It does not, and the code is right: as §6 says,
+> withdrawing a sign-in link (`signin_link`, mode `withdraw`) deletes the link and leaves the login as
+> it is. The button that withdraws a username still waiting for its first sign-in, giving the student
+> a fresh placeholder, is „Benutzernamen zurückziehen" (`account_state`, mode `withdraw`). So §4's
+> list reads: „Einladung zurückziehen" or „Benutzernamen zurückziehen" for a login not yet used, and
+> „Anmeldung löschen" for one in use, all through `replace_login_with_placeholder()`. Everything else
+> in §4 stands.
+
 > **Superseded in part by ADR 0026 (2026-10-07).** Custom fields, the printed data sheet and
 > „An mehrere schreiben" are gone. These parts no longer hold:
 >
@@ -14,8 +23,8 @@ date: 2026-10-06
 > - in Consequences, that 0020 is not rewritten: since 2026-10-07 its status line names 0023, and a
 >   note of its own says which parts this record changed.
 >
-> With the owner's word on 0026's †, "presence as the viewer may see it" in §8's „Schüler" card goes
-> too. Everything else stands.
+> The owner gave their word on 0026's † the same day ("Remove all"), so "presence as the viewer may
+> see it" in §8's „Schüler" card goes too. Everything else stands.
 
 > **Accepted** on 2026-10-06. The owner approved the schema changes in advance, to the project manager:
 > "make the database change if you deem it necessary"; 028–030 are the ones this record needs. They

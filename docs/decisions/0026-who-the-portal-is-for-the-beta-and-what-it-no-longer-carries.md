@@ -5,6 +5,40 @@ date: 2026-10-07
 
 # 0026. Who the portal is for, the beta, and what it no longer carries
 
+> **The owner's answers, 2026-10-07.** Asked about the three removals marked † ("For the owner", 1),
+> the owner answered:
+>
+> 1. Online dots, chosen status, status emoji and the 30 days of online history: "Remove all".
+> 2. Levels and age groups: "trainer needs to sort them by age groups, if it is possible to do that
+>    with only birth dates and without explicit groups then well do it".
+>
+> What they decide, the second as the project manager read it:
+>
+> - **The dots, the chosen status, the status emoji and the online history go**, as §8 proposed, with
+>   the four settings of §10 and migrations 034 and 035. This record supersedes 0015.
+> - **Levels go**, as §8 proposed. The owner did not ask to keep them.
+> - **Configured age bands go:** the `age_groups` table, Verwaltung's „Altersgruppen" tab, and pinning
+>   a child to a band with `students.age_group_id`. Migrations 037 and 038 stand as planned.
+> - **Sorting by age stays, worked out from the birth date alone.** The students list can be sorted
+>   by age, and filtered by an age range („Alter von – bis", in whole years). Both are new: today the
+>   list sorts by last name only, and its age filter is a configured band. `student_age()` and
+>   `latest_birth_date_for_age()` stay and move to `app/domain.php` (§12); the rest of
+>   `app/groups.php` goes. No column is added: `students.birth_date` is all an age needs.
+> - **How the age shows on the list** is `ui-ux-designer`'s to specify. It may group the list under
+>   each age, if that reads better on a phone. Then `backend-dev` builds the sort and the range,
+>   `frontend-dev` the filter and the list, `qa-tester` keeps the `groups` suite's cases for the two
+>   functions and adds the sort and the range, and `mobile-tester` measures the list.
+>
+> Rejected with the second answer: keeping the bands as lists the trainer edits, because the owner
+> said "without explicit groups"; and a fixed set of bands in code, such as U11 and U13, which are
+> explicit groups too, and club-specific code besides (§6).
+>
+> §8, §10, §11, §12, "For the owner" and "In plain words" carry lines dated 2026-10-07 that say so.
+> Wherever else this record says "with the owner's word" or "once the owner agrees", the word has been
+> given. ADR 0021 gains a note too, for its line about `level_default()`. Nothing here waits for the
+> owner any more but the privacy notice ("For the owner", 2), and, from 0022, the old contact
+> requests (4).
+
 > **Accepted** on 2026-10-07. The owner set the direction in their own words (Context) and handed the
 > planning to the project manager. This record amends ADRs 0011, 0016, 0018, 0020, 0022, 0023 and
 > 0025, and supersedes 0017. Three of the removals take away things somebody asked for by name (†).
@@ -349,6 +383,9 @@ The owner: "remove the "custom field" in the settings". Their data is deleted, a
 Line counts are rough: what the files hold today. Rows marked † wait for the owner's word (§2, and
 "For the owner").
 
+*Decided 2026-10-07:* the owner has given it (the note under the title). The rows for the dots and
+the emoji stand as written; the row for levels and age groups keeps the age, as its cells now say.
+
 | Feature | Verdict | Why | What goes | Lines | Tests |
 | --- | --- | --- | --- | --- | --- |
 | Custom fields | **remove** | The owner's decision. | §7 | ~190 | `selfservice`, `history`, `pages`, `forms`, `structure`, `install`, `brand_pages`; `mobile.mjs`, `integration.py` |
@@ -360,14 +397,14 @@ Line counts are rough: what the files hold today. Rows marked † wait for the o
 | Change log (`app/history.php`, `views/history.php`) | **keep** | It reads, it is for administrators, and it has no undo. It is the record of what an IBAN was (0025) and of what a family changed (0020 §7). | only §7's changes | none | `history` |
 | Outbox and `mail_retry` | **keep** | Where an invitation is seen to have gone, and the way back from a failed send. | nothing | none | none |
 | `mail_run`, „Warteschlange senden" | **remove** | The background work sends mail after page views, or a cron job does. It is the one action whose result the router finishes outside the dispatcher (`process`). | the case, the button, the router's branch | ~15 | none found |
-| Online dots, chosen status and online history (`app/presence.php`, `presence_save`, migration 020) † | **remove** | No goal needs it. It keeps 30 days of when each child was online, with four settings, a nightly prune and a sentence in the privacy notice. On 2026-10-05 the owner asked for a chat that is "the absolute basics". | the file, the case, the `presence_*()` functions in `app/ui.php`, the account menu's status, the lines on Konten and on the access card, the dots in the chat, `presence_touch()` in the router, the prune, four settings (§10), the CSS; `online_periods`, `accounts.presence` and `accounts.last_seen_at` (034, 035) | ~650 | `presence`, `presence_pages`, `messaging`, `shell`, `structure`, `migrations`, `history`, `errors` |
-| Status emoji (`status_emoji_save`, migration 027) † | **remove** | Decoration, in a chat cut to the basics. | the case, `status_emojis()`, `status_emoji()`, `status_emoji_mark()`, the menu's grid; `accounts.status_emoji` (035) | in the row above | `messaging`, `shell` |
+| Online dots, chosen status and online history (`app/presence.php`, `presence_save`, migration 020) † | **remove**; decided 2026-10-07: "Remove all" | No goal needs it. It keeps 30 days of when each child was online, with four settings, a nightly prune and a sentence in the privacy notice. On 2026-10-05 the owner asked for a chat that is "the absolute basics". | the file, the case, the `presence_*()` functions in `app/ui.php`, the account menu's status, the lines on Konten and on the access card, the dots in the chat, `presence_touch()` in the router, the prune, four settings (§10), the CSS; `online_periods`, `accounts.presence` and `accounts.last_seen_at` (034, 035) | ~650 | `presence`, `presence_pages`, `messaging`, `shell`, `structure`, `migrations`, `history`, `errors` |
+| Status emoji (`status_emoji_save`, migration 027) † | **remove**; decided 2026-10-07: "Remove all" | Decoration, in a chat cut to the basics. | the case, `status_emojis()`, `status_emoji()`, `status_emoji_mark()`, the menu's grid; `accounts.status_emoji` (035) | in the row above | `messaging`, `shell` |
 | Profile pictures (`avatar_save`, ADR 0017) | **remove** | Photos of children that the club does not need. Initials already stand in everywhere. The upload kind the problem report's screenshot uses stays. | the case, the picture cards on Mein Konto and on the child's page, the photo branch of `avatar()`, `may_see_account_picture()`, `avatar_for_download()`, `avatar_cache_control()`, the download route's branch, the CSS; `avatar_name` on both tables (035, 036) | ~160 | `security`, `shell`, `uploads`, `views` |
 | Maintenance switch | **keep** | Without a shell, it is how the owner holds an update's migrations back until the upload is complete: they wait while it is on. | nothing | none | none |
 | Automatic charges | **keep** | The trainer's largest relief, and the checklist's step 6; the end-to-end walk switches it on. | nothing | none | none |
 | Problem reporter, its trail and automatic errors (0009, 0012) | **keep** for the beta | How the testers report. Decided again when the beta ends, because the trail holds what was typed (§2). | nothing | none | none |
 | Printed data sheet and blank form (`views/print.php`) | **remove** | Paper is what the wizard and the family's own set-up replace. | the view, `print_field()`, `print_tick()`, `print_signature()`, the print CSS, the router's entries, the button on the child's page, the link in the wizard | ~280 | `pages`, `structure`, `shell` |
-| Levels and age groups (`app/groups.php`, `level_save`, `age_group_save`) † | **remove** | Billing reads neither, and one course needs neither. A child's age still shows, from the birth date. | the file except `student_age()`, the two cases, the two Verwaltung tabs and their part of „Wer gehört wohin?", the selects in „Einteilung", the line on the student card, the filters, the seeds and the level backfill in `database/defaults.php`; the columns and tables (037, 038) | ~300 | `groups`, `pages`, `views`, `demo`, `structure` |
+| Levels and age groups (`app/groups.php`, `level_save`, `age_group_save`) † | **remove**, except the age; decided 2026-10-07 | Billing reads neither, and one course needs neither. A child's age still shows, from the birth date. *2026-10-07:* the trainer sorts children by age, so the students list sorts by age and filters by an age range, from the birth date alone. | the file except `student_age()`, the two cases, the two Verwaltung tabs and their part of „Wer gehört wohin?", the selects in „Einteilung", the line on the student card, the filters, the seeds and the level backfill in `database/defaults.php`; the columns and tables (037, 038). *2026-10-07:* not `latest_birth_date_for_age()`, which stays with `student_age()`; the level and age-group filters give way to „Alter von – bis" and a sort by age (§12) | ~300 | `groups`, `pages`, `views`, `demo`, `structure`; the `groups` cases for the two functions that stay are kept |
 | "Reports" | **keep** | In this code they are the problem reports above. There is no statistics feature. | nothing | none | none |
 | Verwaltung's „Tarife" tab | **remove** | It only points to the courses. Each course's own tab already lists the tariffs left without a course. | the tab | ~15 | none found |
 | Contact requests, voice notes, chats between students | going under 0022 §11 | Nothing more to remove. Text, photos, groups, `message_remove` and „Alle Einzelchats" stay. | nothing more | none | none |
@@ -426,12 +463,14 @@ each one:
 The constant `PRESENCE_HISTORY_MAX_DAYS` goes with them. `upload_max_kb` stays; its hint stops naming
 profile pictures.
 
+*Decided 2026-10-07:* the dots go ("Remove all"), so all four settings go, and the constant with them.
+
 Not settings, but gone from the screens where things are configured:
 
 - Einstellungen → „Eigene Felder für Schüler" (§7);
 - Verwaltung → „E-Mail-Vorlagen", and the „Tarife" tab, which only pointed to the courses;
-- Verwaltung → „Leistungsgruppen" and „Altersgruppen" (†);
-- Mein Konto → „Bild", and the account menu's „Status" and „Status-Emoji" (the last two †).
+- Verwaltung → „Leistungsgruppen" and „Altersgruppen" (†, decided 2026-10-07; the students list sorts and filters by age instead);
+- Mein Konto → „Bild", and the account menu's „Status" and „Status-Emoji" (the last two †, decided 2026-10-07).
 
 ### 11. Migrations, in order
 
@@ -442,17 +481,19 @@ when each lands; the order is what matters.
 | --- | --- | --- |
 | `032_custom_fields_go.sql` | `DROP TABLE IF EXISTS field_values;` `DROP TABLE IF EXISTS field_definitions;` | custom fields (§7) |
 | `033_saved_views_and_message_templates_go.sql` | `DROP TABLE IF EXISTS saved_filters;` `DROP TABLE IF EXISTS message_templates;` | writing to many |
-| `034_online_history_goes.sql` | `DROP TABLE IF EXISTS online_periods;` | the dots, status and emoji † |
-| `035_accounts_without_presence_or_picture.sql` | `ALTER TABLE accounts DROP INDEX account_seen, DROP COLUMN last_seen_at, DROP COLUMN presence, DROP COLUMN status_emoji, DROP COLUMN avatar_name;` | the dots, status and emoji †, with the pictures |
+| `034_online_history_goes.sql` | `DROP TABLE IF EXISTS online_periods;` | the dots, status and emoji †, decided 2026-10-07 |
+| `035_accounts_without_presence_or_picture.sql` | `ALTER TABLE accounts DROP INDEX account_seen, DROP COLUMN last_seen_at, DROP COLUMN presence, DROP COLUMN status_emoji, DROP COLUMN avatar_name;` | the dots, status and emoji †, decided 2026-10-07, with the pictures |
 | `036_students_without_picture.sql` | `ALTER TABLE students DROP COLUMN avatar_name;` | the pictures |
-| `037_students_without_level_or_age_group.sql` | `ALTER TABLE students DROP FOREIGN KEY student_level, DROP FOREIGN KEY student_age_group, DROP COLUMN level_id, DROP COLUMN age_group_id;` | levels and age groups † |
-| `038_levels_and_age_groups_go.sql` | `DROP TABLE IF EXISTS levels;` `DROP TABLE IF EXISTS age_groups;` | levels and age groups † |
+| `037_students_without_level_or_age_group.sql` | `ALTER TABLE students DROP FOREIGN KEY student_level, DROP FOREIGN KEY student_age_group, DROP COLUMN level_id, DROP COLUMN age_group_id;` | levels and age groups †, decided 2026-10-07 |
+| `038_levels_and_age_groups_go.sql` | `DROP TABLE IF EXISTS levels;` `DROP TABLE IF EXISTS age_groups;` | levels and age groups †, decided 2026-10-07 |
 
 - **Restartable.** A `DROP TABLE IF EXISTS` can run twice. An `ALTER` that drops cannot, on MySQL 8.0,
   so each is one statement, alone in its file, as 024 is. 008 named both keys in 037, so no lookup is
   needed.
 - **If the owner keeps the dots**, 034 is not written, and 035 drops only `avatar_name`. If they keep
   levels and age groups, 037 and 038 are not written.
+  *Decided 2026-10-07:* they keep neither, so all seven files are written. 037 drops `age_group_id`
+  with `level_id`: an age is worked out from `students.birth_date`, which stays.
 - **The guard.** None of these tables is guarded except `field_values` (§7). Dropping a column changes
   no row count.
 - **`database/defaults.php`** stops seeding levels, age groups and message templates, and stops the
@@ -468,13 +509,20 @@ when each lands; the order is what matters.
 ### 12. Files and load order
 
 - **Deleted:** `app/duplicate.php`, `views/print.php` and `views/compose.php`; and, with the owner's
-  word, `app/presence.php` and `app/groups.php`.
+  word (given 2026-10-07), `app/presence.php` and `app/groups.php`.
 - **`app/bootstrap.php`** loses their `require`s, and the comments that name `presence.php` and
   `duplicate_record()`. Nothing is added to the load order.
 - **`student_age()`** moves from `app/groups.php` to `app/domain.php`, the first file of the domain
   block, so a child's age still shows. `latest_birth_date_for_age()` and the rest of `groups.php` go.
+  *Changed 2026-10-07:* `latest_birth_date_for_age()` moves with it and stays. The age range turns
+  „Alter von – bis" into two birth-date bounds with it, as `filtered_students()` does for a band
+  today. Both need only `today()` from `app/core.php`, and nothing loaded before `app/domain.php`
+  calls either: `filtered_students()`, beside them, and the views call them at request time. The sort
+  by age is a literal `ORDER BY` clause chosen from a fixed list by a checked value, so no column name
+  from the request reaches the SQL. The two ages are read and bounded as §5 says for every value from
+  the address.
 - **The router** drops `compose` and `print` from `$allowed` and from its staff list, and, with the
-  dots, its call to `presence_touch()`.
+  dots (which go, 2026-10-07), its call to `presence_touch()`.
 - **The `structure` suite's** list of expected files loses each deleted file.
 
 ## Rejected
@@ -608,9 +656,14 @@ when each lands; the order is what matters.
      It keeps 30 days of when each child was online;
    - the status emoji (your request of 2026-10-02, ADR 0022 §7);
    - levels and age groups („the bands she named", `database/defaults.php`). Billing reads neither.
+   - *Answered 2026-10-07:* "Remove all" for the first two. For levels and age groups: "trainer needs
+     to sort them by age groups, if it is possible to do that with only birth dates and without
+     explicit groups then well do it". All three go, and the students list sorts and filters by age,
+     worked out from the birth date (the note under the title).
 2. **The privacy notice, afterwards.** Under Einstellungen → Datenschutz it should no longer say that
    profile pictures are stored, nor, if the dots go, that when somebody was online is kept for 30 days.
    `docs-writer` drafts the sentences, and you release them.
+   *2026-10-07:* the dots go, so both sentences come out.
 3. **What to test.** After each change lands, the project manager tells you what to open and what to
    look for. The first: Einstellungen has no „Eigene Felder für Schüler", and a child's page has no
    „Weitere Angaben".
@@ -629,6 +682,8 @@ when each lands; the order is what matters.
   and the printed form. Your settings stay.
 - Three more wait for your word, because they were asked for: the online dots and status, the emoji,
   and levels and age groups. If they go, four settings about the dots go with them.
+- *2026-10-07:* you answered. All three go, with the four settings. Instead, the students list can be
+  sorted by age and filtered by age, worked out from the birth date alone.
 - The example data is smaller: one course, four children, and every kind of charge.
 - Anything with several steps becomes a guide with one question per step.
 - Whatever anybody types, the portal answers with one plain sentence, never an error page. A new test

@@ -1,9 +1,15 @@
 ---
-status: accepted, amended by 0023
+status: accepted, amended by 0023, 0026
 date: 2026-10-01
 ---
 
 # 0021. Sign in by address, and two ways to add a person
+
+> **Superseded in part by ADR 0026 (2026-10-07).** Levels and configured age groups go, with
+> `app/groups.php`, on the owner's word of 2026-10-07 (0026 §8 and §12). In Consequences, "Load
+> order" no longer holds where it says `new_student_defaults()` calls `level_default()`: there is no
+> level to start a student at, and `new_student_defaults()` calls nothing loaded after
+> `app/domain.php`. Everything else stands.
 
 > **Amended by ADR 0023 (2026-10-06).** The owner, on 2026-10-05: "now that usernames are allowed, no
 > email login should also be possible, but ideally discouraged". The decision to bring usernames back

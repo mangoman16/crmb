@@ -16,11 +16,11 @@ date: 2026-10-02
 > - in §11.4, "Profile pictures keep GIF";
 > - in Consequences, `duplicate_record()` beside `demo_fill()`.
 >
-> With the owner's word on 0026's †, the dot, the chosen status and the emoji go too: §6's first
-> paragraph (the member sheet stays), §7 whole, the emoji in §8, the refusals of `status_emoji_save`
-> and `presence_save` in §9, and the emoji and the dot in Consequences and "In plain words". §10's
-> line for 027 then describes a column that 035 drops; 027 itself stays as shipped. Everything else
-> stands, the rest of §11 included.
+> The owner gave their word on 0026's † the same day ("Remove all"), so the dot, the chosen status
+> and the emoji go too: §6's first paragraph (the member sheet stays), §7 whole, in §8 the emoji and
+> the comparison with `presence_touch()`, the refusals of `status_emoji_save` and `presence_save` in
+> §9, and the emoji and the dot in Consequences and "In plain words". §10's line for 027 describes a
+> column that 035 drops; 027 itself stays as shipped. Everything else stands, the rest of §11 included.
 
 > **Accepted by the owner on 2026-10-05, and amended the same day (§11).** She answered the three
 > questions under Consequences and asked for a chat that is "the absolute basics". These parts no
