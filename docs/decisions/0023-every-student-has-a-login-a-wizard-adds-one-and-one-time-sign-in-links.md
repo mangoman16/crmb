@@ -1,9 +1,21 @@
 ---
-status: accepted
+status: accepted, amended by 0026
 date: 2026-10-06
 ---
 
 # 0023. Every student has a login, a wizard adds one, and one-time sign-in links
+
+> **Superseded in part by ADR 0026 (2026-10-07).** Custom fields, the printed data sheet and
+> „An mehrere schreiben" are gone. These parts no longer hold:
+>
+> - in §3, `views/print.php` among the readings of "has a login";
+> - in §5, "custom fields at `'edit'`" among what a family writes;
+> - in §9, that „An mehrere schreiben" is still on its own page;
+> - in Consequences, that 0020 is not rewritten: since 2026-10-07 its status line names 0023, and a
+>   note of its own says which parts this record changed.
+>
+> With the owner's word on 0026's †, "presence as the viewer may see it" in §8's „Schüler" card goes
+> too. Everything else stands.
 
 > **Accepted** on 2026-10-06. The owner approved the schema changes in advance, to the project manager:
 > "make the database change if you deem it necessary"; 028–030 are the ones this record needs. They

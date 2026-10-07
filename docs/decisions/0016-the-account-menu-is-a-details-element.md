@@ -1,9 +1,15 @@
 ---
-status: accepted, amended by 0022
+status: accepted, amended by 0022, 0026
 date: 2026-09-29
 ---
 
 # 0016. The account menu is a `<details>`, and a status is a POST
+
+> **Superseded in part by ADR 0026 (2026-10-07).** Profile pictures are gone, so the `<summary>` shows
+> the person's initials, name and role. With the owner's word on 0026's †, the status block,
+> `presence_save`, the dot and 0022's emoji picker go too, with the `structure`, `mobile-tester` and
+> `TESTING.md` items about the status; the panel is then „Mein Konto" and „Abmelden" for everybody.
+> The `<details>` itself, „Mein Konto", „Abmelden" and their rules stand.
 
 > **Amended by ADR 0022 (2026-10-02).** Everybody's menu shows their own dot and an emoji picker:
 > one form posting `status_emoji_save`, a button per emoji and „Keins", the current one marked and

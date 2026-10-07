@@ -1,9 +1,18 @@
 ---
-status: accepted, amended by 0022
+status: accepted, amended by 0022, 0026
 date: 2026-09-27
 ---
 
 # 0011. The start checklist, and a menu of seven
+
+> **Superseded in part by ADR 0026 (2026-10-07).** Custom fields and writing to many are gone. These
+> parts no longer hold:
+>
+> - in "The other simplifications", (9)'s last line: „Eigene Felder" moves inside „Erweitert" too;
+> - in the Menu's table, `compose` among the pages Nachrichten owns, and its chip. `outbox` and
+>   `news` stay there.
+>
+> Everything else stands.
 
 > **Amended by ADR 0022 (2026-10-02).** The first chip at the top of Nachrichten is now
 > „An mehrere schreiben", not „Gruppe anschreiben": „Gruppe" now means a course's group chat.

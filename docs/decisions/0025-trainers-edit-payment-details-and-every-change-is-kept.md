@@ -1,9 +1,15 @@
 ---
-status: accepted
+status: accepted, amended by 0026
 date: 2026-10-06
 ---
 
 # 0025. Trainers edit payment details, and every change to them is kept
+
+> **Superseded in part by ADR 0026 (2026-10-07).** Copying records („Kopieren", `record_duplicate`,
+> `duplicate_record()`) is gone. These parts no longer hold: "Copying a profile stays administrators
+> only", and in the `structure` item, "with `duplicate_record()` as it is": every write of
+> `payment_profiles` is inside `tracked()` or `tracked_insert()`, without exception. Everything else
+> stands.
 
 ## Context
 

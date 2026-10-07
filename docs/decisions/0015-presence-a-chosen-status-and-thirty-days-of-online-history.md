@@ -5,6 +5,14 @@ date: 2026-09-29
 
 # 0015. Presence: a chosen status, and thirty days of when somebody was online
 
+> **ADR 0026 (2026-10-07) would supersede this record, once the owner agrees (marked † there).** It
+> removes the dots, the chosen status, the thirty days of online history and their four settings: no
+> goal of the beta needs them, and on 2026-10-05 the owner asked for a chat that is "the absolute
+> basics". The owner asked for this record on 2026-09-29, so the removal is theirs to confirm. Until
+> they do, everything below holds as 0022 left it. If they agree, this status becomes "superseded by
+> 0026", migration 020 stays as shipped while later ones drop what it added, and one part stays:
+> `form_return()` in `app/core.php` ("What shipped beyond the first draft").
+
 > **Amended by ADR 0022 (2026-10-02).** Presence is no longer for staff only: `presence_visible_to()`
 > is true for every signed-in viewer, so everybody sees dots in the chat and their own in the account
 > menu. Last-online times, history and `presence_line()` stay staff only, through the new

@@ -1,9 +1,26 @@
 ---
-status: accepted
+status: accepted, amended by 0026
 date: 2026-10-02
 ---
 
 # 0022. Course groups, direct messages, and a status emoji
+
+> **Superseded in part by ADR 0026 (2026-10-07).** Copying a course, „An mehrere schreiben" and
+> profile pictures are gone. These parts no longer hold:
+>
+> - in §3, `duplicate_record()` giving a course copied with „Kopieren" its group;
+> - in §5, everything about `bulk_send` and „An mehrere schreiben";
+> - in §8, the pictures in the chat list and beside others' bubbles, and "Pictures follow ADR 0017":
+>   everybody is shown by their initials;
+> - in §9, `bulk_send` as the example; the rule it illustrates stands;
+> - in §11.4, "Profile pictures keep GIF";
+> - in Consequences, `duplicate_record()` beside `demo_fill()`.
+>
+> With the owner's word on 0026's †, the dot, the chosen status and the emoji go too: §6's first
+> paragraph (the member sheet stays), §7 whole, the emoji in §8, the refusals of `status_emoji_save`
+> and `presence_save` in §9, and the emoji and the dot in Consequences and "In plain words". §10's
+> line for 027 then describes a column that 035 drops; 027 itself stays as shipped. Everything else
+> stands, the rest of §11 included.
 
 > **Accepted by the owner on 2026-10-05, and amended the same day (§11).** She answered the three
 > questions under Consequences and asked for a chat that is "the absolute basics". These parts no

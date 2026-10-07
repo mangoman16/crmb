@@ -1,9 +1,15 @@
 ---
-status: accepted
+status: superseded by 0026
 date: 2026-09-29
 ---
 
 # 0017. Profile pictures are cached privately for a week, at a versioned address, and only for people who may see them
+
+> **Superseded by ADR 0026 (2026-10-07).** Profile pictures go, for accounts and students alike;
+> everybody is shown by their initials. With them go `may_see_account_picture()`,
+> `avatar_for_download()`, `avatar_cache_control()` and the download route's picture branch, so
+> nothing is left for this record to rule. `upload_version_current()` stays for the icon and the logo
+> (ADRs 0008 and 0014), and the problem report's screenshot keeps `no-store`.
 
 ## Context
 
