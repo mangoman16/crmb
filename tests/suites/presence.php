@@ -212,8 +212,7 @@ is_same(1, count($periods($family)), 'written on the counter connection, so it s
 case_('While staff look through a family\'s eyes, the trainer is the one online');
 run('DELETE FROM online_periods');
 run('UPDATE accounts SET last_seen_at=NULL WHERE id IN (?,?)', [$family, $trainer]);
-sign_in_as($family);
-$_SESSION['impersonator_id'] = $trainer;
+view_as($trainer, $family);
 $_SESSION['seen_written'] = 0;
 presence_touch($account($family));
 is_same(0, count($periods($family)), 'no period for the family');
@@ -262,8 +261,7 @@ $presence = fn(int $id): string => (string)$account($id)['presence'];
 sign_in_as($family);
 throws(fn() => act('presence_save', ['presence' => 'away']), 'a family is refused, in a sentence', 'Einen Status wählen nur Trainerinnen');
 is_same('auto', $presence($family), 'and nothing changed');
-sign_in_as($family);
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $family);
 throws(fn() => act('presence_save', ['presence' => 'hidden']), 'staff viewing as a family are told how to get back',
     'Beende zuerst die Ansicht');
 is_same('auto', $presence($family), 'and the family\'s status is untouched');

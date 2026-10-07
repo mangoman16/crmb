@@ -104,9 +104,12 @@ function claim_request(string $token): void {
  * to cost the session nothing.
  *
  * ponytail: the landing lives in the session, so a copy sent after ten newer
- * forms, or into another session, gets claim_request()'s „bereits verarbeitet"
- * instead. The way up is keeping the landing with the claim in form_requests,
- * which is a migration.
+ * forms gets claim_request()'s „bereits verarbeitet" instead, and a copy sent
+ * into another session is refused before either, by its CSRF token. The second
+ * is always so for the two forms that sign somebody in, login and „Konto
+ * aktivieren": sign_in() regenerates the session and its token, so their copy
+ * of a double tap lands in another session. The way up for the first is keeping
+ * the landing with the claim in form_requests, which is a migration.
  */
 const ANSWERED_FORMS_KEPT = 10;
 

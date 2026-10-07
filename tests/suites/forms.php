@@ -112,19 +112,21 @@ sort($added); $declared = FORM_BOOKKEEPING_FIELDS; sort($declared);
 is_same($declared, $added, 'the bookkeeping list is exactly what every form adds besides its token');
 $_GET = [];
 
-case_('An address with ?tab[]= draws its forms without a warning');
+case_('An address with ?tab[]= draws its page without a warning');
 /* A list where a word is expected is something anybody can type into an
-   address. Turned into text it warned „Array to string conversion" on every
-   form of the page; it is read as no tab instead, as ?draft[]= already was. */
-$GLOBALS['page'] = 'student'; $_GET = ['id'=>7, 'tab'=>['contacts'], 'draft'=>['x']];
-set_error_handler(static function (int $no, string $message): bool { throw new RuntimeException($message); });
-try {
-    $listed = null;
-    does_not_throw(function () use (&$listed) { ob_start(); try { start_form('student_save', ['id'=>7]); } finally { $listed = (string)ob_get_clean(); } },
-                   'start_form() reads a tab that is a list without a warning');
-    ok(str_contains((string)$listed, 'name="return_tab" value=""'), 'and carries no tab back');
-} finally { restore_error_handler(); }
-unset($GLOBALS['page']); $_GET = []; form_context('');
+   address. Turned into text it warned „Array to string conversion" - on a
+   child's page from views/student.php, and on every form of it from
+   start_form() - and was guarded against one place at a time. public/index.php
+   drops every list from the address before anything reads it now, and the
+   suite draws pages from what it leaves (render_as_front_controller()); the
+   structure suite holds the router to it. */
+$listed = make_student(['first_name'=>'Liste', 'last_name'=>'Imadresse']);
+$drawn = null;
+does_not_throw(function () use ($listed, &$drawn) {
+    $drawn = render_page('student', ['id'=>(string)$listed, 'tab'=>['contacts'], 'draft'=>['x'], 'lang'=>['en']]);
+}, 'a child’s page with ?tab[]=, ?draft[]= and ?lang[]= in its address is drawn without a warning');
+ok(str_contains((string)$drawn, e('Persönliche Daten')) && str_contains((string)$drawn, 'name="return_tab" value=""'),
+   'as the page with no tab: the details, whose forms carry no tab back');
 
 case_('An unticked box stays unticked when the form comes back');
 $_POST = ['return_page'=>'student','return_id'=>'0','return_tab'=>'','first_name'=>'Lena'];

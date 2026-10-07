@@ -20,7 +20,7 @@ page_head(
        :($mayEdit?link_button(t('+ Kurs anlegen','+ Add a course'),'classes',['new'=>1]):'')
 );
 
-$tab=(string)($_GET['tab']??($id?'members':'list'));
+$tab=$_GET['tab']??($id?'members':'list');
 if($id){
     if(!in_array($tab,['members','tariffs','dates','attendance'],true))$tab='members';
     if(!$edit) tabs(['members'=>t('Teilnehmer','Members'),'tariffs'=>t('Tarife','Tariffs'),
@@ -187,7 +187,7 @@ elseif($id && !$edit && $tab==='dates'):
     $from=(new DateTimeImmutable(today()))->modify('-14 days')->format('Y-m-d');
     $to=(new DateTimeImmutable(today()))->modify('+70 days')->format('Y-m-d');
     $calendar=class_calendar($from,$to,$id);
-    $chosen=is_scalar($_GET['on']??'')?(string)($_GET['on']??''):'';
+    $chosen=$_GET['on']??'';
     $current=$chosen!==''?class_session($id,$chosen):null;
 ?>
 <div class="settings-grid">

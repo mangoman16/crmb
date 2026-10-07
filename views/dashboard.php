@@ -81,7 +81,7 @@ if(is_admin($user) && setup_unfinished()): $setup=setup_progress();$left=$setup[
    all of them. */
 $myClasses=$staff?null:array_map('intval',array_column(rows(
     'SELECT DISTINCT cs.class_id FROM class_students cs JOIN students s ON s.id=cs.student_id'
-    .' WHERE s.account_id=? AND cs.left_on IS NULL',[(int)$user['id']]),'class_id'));
+    .' WHERE s.account_id=? AND '.current_enrolment_sql(),[(int)$user['id']]),'class_id'));
 $timeline=[];
 if($staff || $myClasses) {
     $from=(new DateTimeImmutable(today()))->modify('-21 days')->format('Y-m-d');

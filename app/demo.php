@@ -277,7 +277,7 @@ function demo_fill(bool $force = false): array {
             $date = new DateTimeImmutable(attendance_suggested_date($class));
             for ($week = 0; $week < 4; $week++) {
                 $session = $date->modify('-' . ($week * 7) . ' days')->format('Y-m-d');
-                foreach (rows('SELECT student_id FROM class_students WHERE class_id=? AND left_on IS NULL', [$courseId]) as $m) {
+                foreach (rows('SELECT cs.student_id FROM class_students cs WHERE cs.class_id=? AND '.current_enrolment_sql(), [$courseId]) as $m) {
                     $status = random_int(1, 10) > 8 ? (random_int(0, 1) ? 'absent' : 'excused') : 'present';
                     run('INSERT INTO attendance (class_id,student_id,session_on,status,note,recorded_by,created_at)'
                         .' VALUES (?,?,?,?,?,?,?)', [$courseId, (int)$m['student_id'], $session, $status, '', $trainerId, now()]);

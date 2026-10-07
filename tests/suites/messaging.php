@@ -255,8 +255,7 @@ $withOther = direct_thread(current_user(), $hofer);
 act('message_send', ['thread_id'=>(string)$withOther, 'body'=>'Bitte das Trikot mitbringen.']);
 sign_in_as($trainer);
 act('message_send', ['thread_id'=>(string)$group, 'body'=>'Morgen in der großen Halle.']);
-sign_in_as($hofer);
-$_SESSION['impersonator_id'] = $trainer;
+view_as($trainer, $hofer);
 does_not_throw(fn() => thread_record($group), 'the course group is shown');
 does_not_throw(fn() => thread_record((int)$thread['id']), 'and the child’s chat with her');
 throws(fn() => thread_record($withOther), 'the child’s chat with another trainer is not', 'nicht gefunden');
@@ -271,7 +270,7 @@ foreach ([['message_send', ['thread_id'=>(string)$group, 'body'=>'Hallo']], ['me
     throws(fn() => act($action, $fields), $action.' is refused, in the sentence the chat shows for it', viewing_refusal());
 render_view('messages', ['id'=>(string)$group]);
 ok(in_array($group, unread_thread_ids(current_user()), true), 'opening the group does not mark it read for the child');
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $hofer);
 does_not_throw(fn() => thread_record($withOther), 'an administrator, who reads every chat between a child and staff, sees that one');
 throws(fn() => thread_record($direct), 'but not the one between two families', 'nicht gefunden');
 unset($_SESSION['impersonator_id']);
@@ -312,7 +311,7 @@ ok(str_contains($childList, e('1 neue Anfrage')) && substr_count($childList, $wr
 ok(str_contains($answer(['with'=>(string)$wagner]), 'value="message_send"'), 'a chat with the agreed family not started yet opens empty, to write in');
 ok(str_contains($answer(['id'=>(string)$group, 'members'=>'1']), 'with='), 'and in the group’s member list the trainers lead to a chat');
 
-$_SESSION['impersonator_id'] = $trainer;
+view_as($trainer, $hofer);
 $pickerViewed = $answer(['new'=>'1']);
 ok(str_contains($conversationOf($pickerViewed), '<h2>'.e('Neue Nachricht').'</h2>')
    && str_contains($conversationOf($pickerViewed), e(viewing_refusal())),
@@ -356,7 +355,7 @@ ok(str_contains($readOnly, '<div class="prewrap">'.e('Welchen Schläger sollen w
 unset($_SESSION['impersonator_id']);
 sign_in_as($trainer);
 ok(str_contains($answer(['id'=>(string)$group]), 'value="message_remove"'), 'the trainer’s own group offers „Nachricht entfernen"');
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $trainer);
 $staffViewed = $conversationOf($answer(['new'=>'1']));
 ok(str_contains($staffViewed, e(viewing_refusal())) && !str_contains($staffViewed, 'filter-search')
    && !str_contains($staffViewed, e('Familie Hofer')), 'viewed by an administrator, the trainer’s picker has the same sentence, no search and no children');
@@ -390,8 +389,7 @@ $helpUnlessWriting = function (array $query) use ($help): string {
 };
 sign_in_as($trainer);
 is_same('feedback is-pinned', $helpUnlessWriting(['id'=>(string)$desk]), 'an earlier conversation, closed to new messages, keeps it pinned');
-sign_in_as($hofer);
-$_SESSION['impersonator_id'] = $trainer;
+view_as($trainer, $hofer);
 is_same('feedback is-pinned', $helpUnlessWriting(['id'=>(string)$group]), 'so does a chat read through a child’s eyes');
 is_same('feedback is-pinned', $helpUnlessWriting(['with'=>(string)$trainer]),
         'and a chat asked for by who it is with there, which shows the page that says only the child writes');
@@ -420,7 +418,7 @@ ok($quotes(notifications_for($hofer), 'Ja, ich fahre mit dem Zug.') && str_conta
    'the child’s own bell quotes the other family’s message, so the lines below prove something');
 ok(str_contains($ownBell, 'value="notifications_read"'), 'and offers „Alle gelesen"');
 ok($chatNotes >= 2 && $unread === $chatNotes + 3, 'and holds chat notices and the three of other kinds, all unread ('.$chatNotes.' of '.$unread.')');
-$_SESSION['impersonator_id'] = $trainer;
+view_as($trainer, $hofer);
 is_same([], array_values(array_filter(notifications_for($hofer), fn($n) => $n['kind'] === 'message')),
         'viewed by the trainer, the pane holds no chat notice');
 ok($quotes(notifications_for($hofer), 'Am Montag ist die Halle zu.'), 'but the other notice still');
@@ -435,7 +433,7 @@ foreach (['Ja, ich fahre mit dem Zug.', 'Bitte das Trikot mitbringen.', 'Lena au
 throws(fn() => act('notifications_read', []), '„Alle gelesen" is refused', 'Ansicht');
 $oneNote = (int)scalar('SELECT id FROM notifications WHERE account_id=? AND read_at IS NULL ORDER BY id LIMIT 1', [$hofer]);
 throws(fn() => act('notifications_read', ['id'=>(string)$oneNote]), 'and so is marking one notice read', 'Ansicht');
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $hofer);
 ok($quotes(notifications_for($hofer), 'Beim Hochladen des Fotos kommt ein Fehler.'),
    'an administrator looking sees the problem report, which she reads under Rückmeldungen anyway');
 ok(!$quotes(notifications_for($hofer), 'Lena aus dem Montagskurs wird morgen zehn.'), 'but not the kind on no list');
@@ -447,8 +445,7 @@ case_('An administrator looking through a trainer’s eyes writes nothing in her
 /* may_impersonate() lets an administrator view the portal as a trainer. Every
    action of the chat would then speak as the trainer - the circular into each
    chosen child's chat with her above all (security review S4, ADR 0022 §9). */
-sign_in_as($trainer);
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $trainer);
 $_SESSION['bulk_preview'] = ['student_ids'=>[$lena], 'subject'=>'Training', 'body'=>'Bitte pünktlich sein.', 'email'=>false,
                              'accounts'=>[$hofer=>'Familie Hofer'], 'created'=>time()];
 $groupMessage = (int)scalar('SELECT id FROM messages WHERE thread_id=? ORDER BY id DESC LIMIT 1', [$group]);
@@ -461,22 +458,21 @@ foreach ([['bulk_send', []], ['message_remove', ['id'=>(string)$groupMessage]],
 is_same($writtenBefore, $written(), 'and nothing was written: no message, no news, nothing taken down');
 unset($_SESSION['impersonator_id'], $_SESSION['bulk_preview']);
 
-case_('„Alle Direktchats" holds what the person looking may read, like every other list');
+case_('„Alle Direktchats" holds what the person looking may read, and nothing once she may no longer look');
 /* An administrator may view the portal as another administrator, and sees her
-   „Alle Direktchats" as far as she may read them herself. Made a trainer while
-   that view is open, she may no longer read a child's chat with a trainer, and
-   the list must not hand it to her (ADR 0022 §2, §9). */
+   „Alle Direktchats" as far as she may read them herself (ADR 0022 §2, §9).
+   Made a trainer while that view is open, she may not look at an administrator
+   at all: the view is asked of her row on every request, and ends with the
+   session it borrowed - the list is handed to nobody (security re-review N1). */
 $admin2 = make_account(['role'=>'admin', 'name'=>'Zweite Admin']);
-sign_in_as($admin2);
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $admin2);
 $allDirect = fn(): array => array_map('intval', array_column(chat_list(current_user(), true), 'id'));
 ok(in_array($withOther, $allDirect(), true) && in_array((int)$thread['id'], $allDirect(), true),
    'viewed by an administrator, it holds the child’s chats with each trainer');
 run("UPDATE accounts SET role='trainer' WHERE id=?", [$admin]);
-is_same([], array_values(array_intersect([$withOther, (int)$thread['id']], $allDirect())),
-        'viewed by her once she is a trainer, neither of them');
+is_same(null, current_user(true), 'made a trainer, her next request finds nobody signed in');
+ok(!isset($_SESSION['user_id']) && !isset($_SESSION['impersonator_id']), 'with neither the administrator looked at nor the view left in the session');
 run("UPDATE accounts SET role='admin' WHERE id=?", [$admin]);
-unset($_SESSION['impersonator_id']);
 
 case_('A child sees who reads the group, and only a number for the rest');
 sign_in_as($hofer);
@@ -499,7 +495,7 @@ throws(fn() => act('status_emoji_save', ['status_emoji'=>'🍆']), 'anything not
 act('status_emoji_save', ['status_emoji'=>'']);
 is_same('', scalar('SELECT status_emoji FROM accounts WHERE id=?', [$hofer]), '„Keins" clears it');
 is_same(null, status_emoji(['status_emoji'=>'gibts-nicht']), 'a stored key that is not on the list shows nothing');
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $hofer);
 throws(fn() => act('status_emoji_save', ['status_emoji'=>'cat']), 'nobody changes it while looking through somebody else’s eyes', 'Ansicht');
 unset($_SESSION['impersonator_id']);
 

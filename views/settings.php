@@ -6,7 +6,7 @@
  * email templates and bank details. Those are the trainer's daily business and
  * live under Verwaltung, where she can reach them without an administrator.
  */
-$tab=(string)($_GET['tab']??'');
+$tab=$_GET['tab']??'';
 // „Eigene Felder" is still a tab one can be on, reached from „Erweitert" on the
 // System tab; it is not in the row, because hardly anybody needs it.
 $items=['portal'=>t('Portal','Portal'),'organisation'=>t('Betrieb','Business'),

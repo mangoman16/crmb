@@ -240,7 +240,7 @@ function held_for(string $action, ?int $record = null): array {
     if ($held===null || $action==='' || $held['action']!==$action
         || (string)$held['page']!==current_page()
         || (string)$held['id']!==(string)(int)($_GET['id'] ?? 0)
-        || (string)$held['tab']!==(string)($_GET['tab'] ?? '')) return [];
+        || (string)$held['tab']!==($_GET['tab'] ?? '')) return [];
     // A submission held before records were stored has none, and matches.
     $heldRecord=$held['record'] ?? null;
     if ($record!==null && $heldRecord!==null && (int)$heldRecord!==$record) return [];

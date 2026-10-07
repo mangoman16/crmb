@@ -177,7 +177,7 @@ function notify_class_change(array $class, string $date, ?array $entry, string $
     $sent=0;
     foreach(rows('SELECT DISTINCT a.* FROM class_students cs'
         .' JOIN students s ON s.id=cs.student_id JOIN accounts a ON a.id=s.account_id'
-        .' WHERE cs.class_id=? AND cs.left_on IS NULL', [(int)$class['id']]) as $account) {
+        .' WHERE cs.class_id=? AND '.current_enrolment_sql(), [(int)$class['id']]) as $account) {
         if(!account_takes_mail($account,'notifications')) continue;
         $en=$account['locale']==='en';
         $what=match($entry['status']??'planned') {

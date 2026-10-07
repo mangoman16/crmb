@@ -436,10 +436,15 @@ function mail_ready(bool $on): void {
     set_setting('privacy_ready', $on);
 }
 
-/** Pretend a given account is signed in, for code that calls current_user(). */
+/**
+ * Pretend a given account is signed in, for code that calls current_user(). A
+ * view through somebody's eyes is the session that started it, so a sign-in
+ * carries none, as sign_in() does not.
+ */
 function sign_in_as(int $accountId): array {
     $a = one('SELECT * FROM accounts WHERE id=?', [$accountId]);
     if (!$a) throw new RuntimeException('No such account: '.$accountId);
+    unset($_SESSION['impersonator_id'], $_SESSION['impersonator_auth_version']);
     $_SESSION['user_id'] = $accountId;
     $_SESSION['auth_version'] = (int)$a['auth_version'];
     $_SESSION['last_seen'] = time();
@@ -450,6 +455,18 @@ function sign_in_as(int $accountId): array {
 function sign_out(): void {
     unset($_SESSION['user_id'], $_SESSION['auth_version'], $_SESSION['last_seen']);
     current_user(true);
+}
+
+/**
+ * Look through $lookedId's eyes as $viewerId: „Portal als … ansehen", the real
+ * action from the viewer's own session. So the session holds what
+ * start_impersonation() writes - the viewer's auth_version with it, which
+ * impersonator() asks her row for on every request after - rather than an id
+ * set by hand, which is a view nobody could have started.
+ */
+function view_as(int $viewerId, int $lookedId): void {
+    sign_in_as($viewerId);
+    act('impersonate', ['id' => (string)$lookedId, 'mode' => 'start']);
 }
 
 /**
@@ -509,10 +526,12 @@ function render_as_front_controller(string $page, array $query, bool $framed): s
     // The query string and the current page belong to this render only; anything
     // checked afterwards should see what it set up, not the leftovers of a page.
     // public/index.php holds $page in a global, and start_form() reads it from
-    // there, so the harness has to publish it the same way.
+    // there, so the harness has to publish it the same way. The query string is
+    // what public/index.php leaves of an address: its text, and no list - a
+    // number a suite passes for convenience is the text an address would carry.
     $restore = $_GET;
     $restorePage = $GLOBALS['page'] ?? null;
-    $_GET = $query;
+    $_GET = array_map('strval', array_filter($query, 'is_scalar'));
     $GLOBALS['page'] = $page;
     $level = ob_get_level();
     ob_start();

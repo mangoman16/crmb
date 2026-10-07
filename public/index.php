@@ -3,6 +3,10 @@ declare(strict_types=1);
 
 ini_set('display_errors','0');
 try {
+    // An address holds text, and ?tab[]=x makes a list of it. Nothing reads a
+    // list from the address, so every list goes here, before anything reads
+    // it - boot_http() included - rather than being guarded against page by page.
+    $_GET=array_filter($_GET,'is_string');
     require __DIR__.'/../app/bootstrap.php';
     boot_http();
     // A timeout or running out of memory ends the script where no catch can
@@ -18,7 +22,7 @@ try {
     require ROOT.'/app/actions_messages.php';
     require ROOT.'/app/actions_config.php';
     require ROOT.'/app/ui.php';
-    $page=is_scalar($_GET['page']??'')?(string)($_GET['page']??'dashboard'):'dashboard';
+    $page=$_GET['page']??'dashboard';
     $allowed=['dashboard','start','students','student','student_new','payments','classes','accounts','messages','compose','news','outbox','manage','invoices','attendance','download','settings','history','profile','print','login','forgot','activate','unsubscribe','privacy','icon','manifest','brand','logo'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
     // The trail a problem report carries. Here, before the POST branch, because
@@ -45,7 +49,7 @@ try {
     }
     if($page==='activate' && isset($_GET['token'])) {
         throttle('token-view',$_SERVER['REMOTE_ADDR']??'local',60);
-        $token=is_scalar($_GET['token'])?(string)$_GET['token']:'';
+        $token=$_GET['token'];
         $_SESSION['activation_hash']=preg_match('/^[a-f0-9]{64}$/D',$token)?hash('sha256',$token):'';
         adopt_link_language(token_record($_SESSION['activation_hash']));
         go('activate');
@@ -63,7 +67,7 @@ try {
     // A student page with no student was the old create form. Students are made
     // by the wizard now (ADR 0023 §5), so an old link or bookmark goes there -
     // for staff; anybody else is refused there as before.
-    if($page==='student' && (int)($_GET['id']??0)<=0)go('student_new',array_intersect_key(array_filter($_GET,'is_string'),['from'=>1]));
+    if($page==='student' && (int)($_GET['id']??0)<=0)go('student_new',array_intersect_key($_GET,['from'=>1]));
     // A download is not a page: it answers with a file and leaves. Handled here
     // rather than in a view because a view is wrapped in the layout, and the one
     // thing a PDF must not have around it is HTML.

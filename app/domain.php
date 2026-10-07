@@ -271,9 +271,10 @@ function student_without_login_at(string $email): ?array {
 }
 
 /**
- * What a new student starts with that nobody typed: the create form shows these,
- * and a student made through an invitation by address gets them
- * (create_own_student()), so the two ways in cannot start differently.
+ * What a new student starts with that nobody typed. Read by create_student(),
+ * the one insert of a student made in the portal - by the wizard and by an
+ * invitation by address (create_own_student()) alike - so no way in starts
+ * differently.
  *
  * level_default() is in app/groups.php, loaded after this file: safe, because
  * this runs only while a request runs, never while files load.

@@ -255,13 +255,17 @@ function invite_student(array $student, string $email, string $locale = 'de'): i
 
 /**
  * The username a placeholder may be given, from what was typed - or a refusal:
- * the rule (username_value()), and nobody has it, read with a lock and refused
- * with a free one named (refuse_username_in_use()). Asked before anything is
- * written, once; give_student_username() writes what this returns.
+ * the rule (username_value()), nobody has it, read with a lock and refused with
+ * a free one named (refuse_username_in_use()), and a released privacy notice,
+ * because a username comes with its first sign-in link, whose holder
+ * acknowledges the notice. Asked before anything is written, once - by the
+ * wizard and by the access card alike; give_student_username() writes what this
+ * returns.
  */
 function username_to_give(string $typed): string {
     $username=username_value($typed);
     refuse_username_in_use($username);
+    refuse_signin_link_until_privacy_released();
     return $username;
 }
 
@@ -289,7 +293,9 @@ function give_student_username(array $student, string $username): string {
  *
  * Every link is made here, so here is where a first one waits for the privacy
  * notice its holder will be asked to acknowledge (security review, finding 6):
- * for a placeholder given its username and a username login waiting alike.
+ * for a username login waiting. A placeholder has been refused already, before
+ * its username was written (username_to_give()); asked again here, it can only
+ * pass.
  */
 function make_signin_link(array $login): string {
     if(($login['verified_at'] ?? null)===null) refuse_signin_link_until_privacy_released();
@@ -313,6 +319,11 @@ function make_signin_link(array $login): string {
  * foreign keys its private conversations - which a next holder must never see,
  * which is why the login is replaced rather than emptied. The record, its
  * address, courses, charges and invoices stay.
+ *
+ * Only a student's own login is deleted. A staff login a student's record still
+ * points to, from before ADR 0010, only lets go of the child: it is a team
+ * member's, with her chats and her role, and a stale link on a child's record
+ * must not take it. Deleting it is Konten's, where it is hers.
  */
 function replace_login_with_placeholder(array $student, array $old): int {
     $fresh=tracked('students',(int)$student['id'],$student['first_name'].' '.$student['last_name'],function() use ($student): int {
@@ -320,7 +331,7 @@ function replace_login_with_placeholder(array $student, array $old): int {
         run('UPDATE students SET account_id=?,updated_at=?,revision=revision+1 WHERE id=?',[$fresh,now(),(int)$student['id']]);
         return $fresh;
     });
-    delete_login((int)$old['id']);
+    if(($old['role']??'')==='student') delete_login((int)$old['id']);
     return $fresh;
 }
 
@@ -510,8 +521,12 @@ function dispatch_action(string $action): array {
     // consent, a problem report under their name, a trainer's work done as her.
     // So while a view is open nothing goes through but its end: stopping it, or
     // signing out. Asked here, where every action passes, rather than by each
-    // action that writes, which the next one added would not be.
-    if(impersonator() && $action!=='logout' && !($action==='impersonate' && post('mode')==='stop'))
+    // action that writes, which the next one added would not be. Decided by the
+    // session's own mark of a view, not by impersonator()'s answer, so a view it
+    // could not vouch for is refused rather than let through as the person
+    // looked at (security re-review N1). current_user() first: it ends such a
+    // view with its session, and drops a mark left with nobody signed in.
+    if(current_user() && !empty($_SESSION['impersonator_id']) && $action!=='logout' && !($action==='impersonate' && post('mode')==='stop'))
         throw new UserError(viewing_refusal());
     switch($action) {
     case 'login':
@@ -574,14 +589,9 @@ function dispatch_action(string $action): array {
         return ['forgot',[]];
     case 'activate':
         $r=token_record($_SESSION['activation_hash']??'',true);
-        /* A sign-in link is asked, as it is used, what was asked when it was
-           made (signin_link_possible()): one whose login has since become a
-           staff login, lost its student or been given an address it never
-           confirmed signs nobody in. The last is also why a first link never
-           sets up an address: an invitation by e-mail is accepted from its
-           mailbox, or not at all. */
-        if(!$r || $r['state']==='suspended' || !in_array($r['purpose'],['invite','reset','email','signin'],true)
-           || ($r['purpose']==='signin' && !signin_link_possible(['id'=>(int)$r['account_id']]+$r)))
+        // The rule the page it opens asks too (link_usable()), so the page
+        // never offers a form this refuses.
+        if(!link_usable($r))
             throw new UserError(t('Dieser Link ist ungültig oder abgelaufen. Bitte eine neue Einladung bzw. einen neuen Link anfordern.','This link is invalid or expired. Please request a new invitation or reset link.'));
         /* A sign-in link (ADR 0023 §6) sets its login up the first time, the
            way an invitation does - privacy notice, password, set up - and after
@@ -602,9 +612,12 @@ function dispatch_action(string $action): array {
             $pass=strong_password(post('password'));
             if($pass!==post('password_confirm')) throw new UserError(t('Die Passwörter stimmen nicht überein.','Passwords do not match.'));
             // Whoever this browser was signed in as is not who is setting up
-            // this login: their session ends here, and with it everything it
-            // held for them (security review F1).
-            unset($_SESSION['user_id'],$_SESSION['auth_version']); forget_session_leftovers(); current_user(true);
+            // this login: their sign-in ends here (security review F1). What
+            // the session holds for them goes as sign_in() below starts the
+            // new one - not here, where a write that fails after this line
+            // would take the link being opened with it, and a passing
+            // „Speichern fehlgeschlagen" become „Link nicht mehr gültig".
+            unset($_SESSION['user_id'],$_SESSION['auth_version']); current_user(true);
             if($details) $ownStudent=create_own_student((int)$r['account_id'],(string)$r['email'],$details);
             // Mail is asked about only of a login with an address to send it to.
             // One without - a username's first sign-in by link - has said yes or
@@ -688,6 +701,9 @@ function dispatch_action(string $action): array {
            here reads either (ADR 0020, §5). */
         require_staff();
         $s=lock_row('students',(int)student((int)post('student_id'))['id']);
+        // First: a card from before the child had a login says that, rather
+        // than refusing the address it no longer offers to use.
+        placeholder_of($s);
         $email=invitation_address((string)$s['email'],(int)$s['account_id']);
         invite_student($s,$email);
         flash(strtr(t('Die Einladung an {email} ist unterwegs.','The invitation to {email} is on its way.'),['{email}'=>$email]));
@@ -720,12 +736,16 @@ function dispatch_action(string $action): array {
         // she lands again, and an invitation by address from the students page's
         // list. Looked up now, because after a delete the foreign key has
         // already cut the link and there is nobody left to find. Whatever the
-        // login's role: a staff login on a student's record, left from before
-        // ADR 0010, is replaced there like any other - delete_login() refuses
-        // it, and sent her to the student's page, which sent her back here.
+        // login's role: delete_login() refuses any login a student points to,
+        // and sent her to the student's page, which sent her back here.
         $studentId=login_student_id($id);
         $back=$studentId?['student',['id'=>$studentId]]:(is_open_invitation($id)?['students',['invitations'=>1]]:['accounts',[]]);
         $said=t('Konto aktualisiert.','Account updated.');
+        // A staff login on a student's record, left from before ADR 0010, only
+        // lets go of the child when its sign-in is deleted or withdrawn there:
+        // the child gets a fresh placeholder, and the team member keeps her
+        // login, her chats and her role (replace_login_with_placeholder()).
+        $letGo=$studentId && $a['role']!=='student' && in_array($mode,['delete','withdraw'],true);
         // A placeholder signs in with nothing (ADR 0023 §3): there is nothing to
         // suspend, send, withdraw or delete. Its way forward is an invitation or
         // a username, on the access card.
@@ -751,7 +771,8 @@ function dispatch_action(string $action): array {
             send_account_token($a,'reset');
             // The address, so she can tell the family where to look; never the link.
             $said=t('Ein Link für ein neues Passwort ist an ','A link for a new password is on its way to ').$a['email']
-                .t(' unterwegs. Er gilt eine Stunde; bis dahin gilt das alte Passwort weiter.','. It is valid for one hour; until then the old password keeps working.');
+                .strtr(t(' unterwegs. Er gilt {valid}; bis dahin gilt das alte Passwort weiter.','. It is valid for {valid}; until then the old password keeps working.'),
+                       ['{valid}'=>token_lifetime_words('reset',locale()==='en')]);
         } elseif($mode==='delete') {
             // The sign-in name, typed: the address, or the username of a login
             // without one - it says which login this is (ADR 0021 §1, 0023 §4).
@@ -761,8 +782,9 @@ function dispatch_action(string $action): array {
                     : t('Zum Löschen den Benutzernamen eingeben.','Enter the username to delete the login.'));
             if($studentId) {
                 // Never without a login: the student is given a fresh, empty one,
-                // and this one goes (ADR 0023 §4). Named from the student's own
-                // row: by now no student points to the old login to ask.
+                // and this one goes (ADR 0023 §4) - a team member's only lets go
+                // ($letGo). Named from the student's own row: by now no student
+                // points to the old login to ask.
                 replace_login_with_placeholder($student=lock_row('students',$studentId),$a);
                 $said=strtr(t('Die Anmeldung {login} ist gelöscht, mit ihren privaten Unterhaltungen. {name} ist jetzt ohne Anmeldung; Kurse, Beiträge und Rechnungen bleiben. Eine neue Einladung oder einen Benutzernamen gibst du hier.',
                               'The login {login} has been deleted, with its private conversations. {name} is now without sign-in; courses, charges and invoices stay. You give a new invitation or a username here.'),
@@ -795,7 +817,13 @@ function dispatch_action(string $action): array {
             run('DELETE FROM auth_tokens WHERE account_id=?',[$id]);cancel_account_mail($id);
             run('UPDATE accounts SET state=?,auth_version=auth_version+1 WHERE id=?',[$mode==='suspend'?'suspended':($a['verified_at']?'active':'invited'),$id]);
         }
-        audit('account.'.$mode,'account',$id);flash($said);
+        // Said, and written down, as what happened: the team member's login let
+        // go of the child, and was neither deleted nor withdrawn - it is still
+        // there, on Konten.
+        if($letGo) $said=strtr(t('{name} hat jetzt eine neue, leere Anmeldung. Die Anmeldung von {staff} gehört zum Team und bleibt, wie sie ist.',
+                                 '{name} now has a new, empty login. The login of {staff} belongs to the team and stays as it is.'),
+                               ['{name}'=>$student['first_name'].' '.$student['last_name'],'{staff}'=>login_holder_name($a)]);
+        audit('account.'.($letGo?'let_go':$mode),'account',$id);flash($said);
         return $back;
     case 'student_save':
         /* Saving a student who exists. Making one is the wizard's - student_draft
@@ -814,7 +842,7 @@ function dispatch_action(string $action): array {
         $address=text_limit('address',200);$phone=text_limit('phone',60);
         // One text for both roles: a family cannot "compare the changes", and
         // the held form does bring back what they typed (spec §6.2).
-        $stale=fn()=>new UserError(t('Inzwischen hat jemand anderes etwas an diesem Profil gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal speichern.',
+        $stale=fn()=>new UserError(t('Inzwischen hat jemand anderer etwas an diesem Profil gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal speichern.',
                                      'Somebody else saved something on this profile in the meantime. What you typed is still here – please check it and save again.'));
         $readdress=false;
         if(is_staff($u)) {
@@ -981,10 +1009,7 @@ function dispatch_action(string $action): array {
             $email=invitation_address(post('email'));
             refuse_address_on_student_without_sign_in($email,(string)$draft['first_name']);
             $locale=choose(post('locale','de'),['de','en']);
-        } elseif($method==='username') {
-            $username=username_to_give(post('username'));
-            refuse_signin_link_until_privacy_released();
-        }
+        } elseif($method==='username') $username=username_to_give(post('username'));
         $name=$draft['first_name'].' '.$draft['last_name'];
         $id=tracked_insert('students',$name,fn()=>create_student($draft+['email'=>$email]));
         if($draft['class_id']) enrol_student($draft['class_id'],$id,$draft['tariff_id'],today());
@@ -1030,8 +1055,8 @@ function dispatch_action(string $action): array {
             $username=username_to_give(post('username'));
             give_student_username($student,$username);
         } else make_signin_link($login);
-        flash(strtr(t('Der Anmeldelink ist erstellt. Er gilt einmal, {hours} Stunden lang; ein früherer gilt nicht mehr.','The sign-in link has been created. It works once, for {hours} hours; any earlier one no longer works.'),
-                    ['{hours}'=>intdiv(token_lifetime('signin'),3600)]));
+        flash(strtr(t('Der Anmeldelink ist erstellt. Er gilt einmal, {valid} lang; ein früherer gilt nicht mehr.','The sign-in link has been created. It works once, for {valid}; any earlier one no longer works.'),
+                    ['{valid}'=>token_lifetime_words('signin',locale()==='en')]));
         return ['student',['id'=>$student['id'],'#'=>'access']];
     /* Contacts: a child always has one, and one of them is the one to try first.
        They are people to ring and nothing else now - a phone number is what

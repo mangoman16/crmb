@@ -113,7 +113,7 @@ throws(fn() => act('contact_add', ['student_id'=>(string)$neighbour, 'owner_name
 case_('A stale form is refused as a whole, its fields included');
 $stale = (int)scalar('SELECT revision FROM students WHERE id=?', [$lena]) - 1;
 throws(fn() => $familySave(['revision'=>(string)$stale, 'phone'=>'0', 'custom'=>[$shirt=>'L']]), 'an old revision is refused, without asking a family to compare changes it cannot see',
-       'Inzwischen hat jemand anderes etwas an diesem Profil gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal speichern.');
+       'Inzwischen hat jemand anderer etwas an diesem Profil gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal speichern.');
 is_same('M', field_value($lena, $shirt), 'and its custom field was not written either');
 
 case_('A required field is required of whoever fills it in');

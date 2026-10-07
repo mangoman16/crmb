@@ -101,8 +101,7 @@ is_same('Konto-Menü: Trainerin Beispiel, Online', account_menu_of(render_page('
 
 // ---------------------------------------------------------------------------
 case_('While looking through somebody else\'s eyes there is no status to change');
-sign_in_as($trainer);
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $trainer);
 $menu = account_menu_of(render_page('dashboard'));
 is_same(0, $menu['status'], 'no status block, even when the person looked at is staff');
 is_same(0, $menu['dots'], 'and no dot: it would show the person looked at as online this minute');

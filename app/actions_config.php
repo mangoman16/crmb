@@ -144,7 +144,7 @@ function dispatch_config(string $action): array {
         $kind=choose(post('kind'),array_keys(request_kinds()));
         $tariffId=post('tariff_id')!==''?(int)post('tariff_id'):null;
         if($kind==='join') {
-            $class=one('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL) AS member_count FROM classes c WHERE c.id=?',[$classId]);
+            $class=one('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND '.current_enrolment_sql().') AS member_count FROM classes c WHERE c.id=?',[$classId]);
             if(course_is_full($class)) throw new UserError(t('Dieser Kurs ist voll.','This course is full.'));
         }
         // The trainer is the person being asked, so she does not ask: her own

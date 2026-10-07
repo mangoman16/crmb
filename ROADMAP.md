@@ -15,8 +15,8 @@ In this order.
 1. **Accounts, server side (ADR 0023).** Built: work-in-progress commit `e9aff6e`, finished
    by `d095ca4`; the reviews' findings fixed in `2788c4f` (a form sent twice lands where the
    first went; viewing is look-only; the last place in a course is held). The security
-   re-review passed; the code re-review's two remaining items, and a view that outlives a
-   deleted viewer, are being fixed now. A student's login may sign in with a username instead of an address; every
+   re-review passed; the code re-review's remaining items, and a view that outlived its
+   viewer, are fixed in the commit after it. A student's login may sign in with a username instead of an address; every
    student has a login, a placeholder until it gets an address or a username; „Schüler
    anlegen" is a two-step wizard; staff make sign-in links that work once, within 48 hours;
    a student's login is replaced, never deleted (migrations 028–031). The screens are still
@@ -56,10 +56,6 @@ In this order.
    - ADR 0025, every change to a payment profile kept in „Änderungen". `profile_save` still
      writes without `tracked()`.
 5. **Security batch.** Not started.
-   - Viewing the portal as somebody else outlives the staff login: store the viewer's
-     `auth_version` when the view starts and check it again on every request
-     (`impersonator()`, `app/shell.php`); a view whose viewer was deleted must end the whole
-     session, not carry on unrestricted. Being fixed now, with item 1.
    - The example trainer login: a high-entropy password, and an expiry.
    - A throttle on `proof_upload`.
    - Unsubscribe links never expire (`valid_unsubscribe()`, `app/auth.php`), and their

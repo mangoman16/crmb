@@ -1,6 +1,6 @@
 <?php
 $overdue=!empty($_GET['overdue']);
-$period=preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D',(string)($_GET['period']??''))?(string)$_GET['period']:billing_current_period();
+$period=preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D',$_GET['period']??'')?$_GET['period']:billing_current_period();
 page_head(t('Beiträge','Payments'),t('Offene Beträge nach bestätigten Zahlungseingängen.','Outstanding amounts after confirmed payments.'));
 money_switch('payments');
 // Monthly charges: always shown as a preview first. Nothing is created until the

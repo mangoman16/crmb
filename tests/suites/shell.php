@@ -108,6 +108,9 @@ is_same(false, may_impersonate($adminRow, $adminRow),    'and nobody at themselv
 run("UPDATE accounts SET state='suspended' WHERE id=?", [$family]);
 is_same(false, may_impersonate($adminRow, one('SELECT * FROM accounts WHERE id=?', [$family])), 'nor at a suspended account');
 run("UPDATE accounts SET state='active' WHERE id=?", [$family]);
+// Asked of an open view on every request too (impersonator()), where the one
+// looking may have been suspended since.
+is_same(false, may_impersonate(['state'=>'suspended'] + $adminRow, $familyRow), 'and nobody whose own login is suspended looks at anybody');
 
 case_('Looking, and getting back out');
 sign_in_as($trainer);
@@ -224,6 +227,41 @@ act('impersonate', ['id'=>(string)$family, 'mode'=>'start']);
 act('logout', []);
 is_same(null, impersonator(), 'nothing of it survives');
 is_same(null, current_user(), 'and nobody is signed in');
+
+case_('A view lasts as long as the viewer’s own login, and takes its whole session with it');
+/* Security re-review N1. impersonator() answered nobody once the viewer's row
+   was gone, and everything that limits a view asks it - the read-only guard,
+   the chat's narrowing, the bar at the top - so a trainer whose login was
+   deleted while she looked through a child's eyes kept the child's session,
+   with no bar and no limits: the child's private chats to read, and the child's
+   name to act in. Her row is asked on every request now: still there, still
+   allowed to look, and signed in with the auth_version the view began with.
+   Each way her login ends breaks one of those, and ends the session. */
+$looked = make_account(['role'=>'student', 'name'=>'Familie Angesehen']);
+// What another phone does meanwhile, in a session of its own; this phone's is
+// put back afterwards, as the next request finds it.
+$onAnotherPhone = function (int $who, string $action, array $fields): void {
+    $thisPhone = $_SESSION;
+    sign_in_as($who);
+    act($action, $fields);
+    $_SESSION = $thisPhone;
+};
+foreach (['an administrator deletes her login'        => fn(array $viewer) => $onAnotherPhone($admin, 'account_state',
+                                                             ['id'=>(string)$viewer['id'], 'mode'=>'delete', 'confirmation'=>$viewer['email']]),
+          'an administrator suspends it'              => fn(array $viewer) => $onAnotherPhone($admin, 'account_state',
+                                                             ['id'=>(string)$viewer['id'], 'mode'=>'suspend']),
+          'she changes her password on her own phone' => fn(array $viewer) => $onAnotherPhone((int)$viewer['id'], 'password_change',
+                                                             ['current_password'=>'Test-Only-Password-2026', 'password'=>'Neues-Passwort-2026!', 'password_confirm'=>'Neues-Passwort-2026!'])]
+         as $what => $ending) {
+    $viewer = one('SELECT * FROM accounts WHERE id=?', [make_account(['role'=>'trainer', 'name'=>'Trainerin auf Zeit'])]);
+    view_as((int)$viewer['id'], $looked);
+    is_same([$looked, (int)$viewer['id']], [(int)(current_user()['id'] ?? 0), (int)(impersonator()['id'] ?? 0)], $what.': first she looks through the child’s eyes');
+    $ending($viewer);
+    is_same(null, current_user(true), $what.': her phone’s next request finds nobody signed in, so nothing is drawn for the child');
+    ok(!isset($_SESSION['user_id']) && !isset($_SESSION['auth_version']) && !isset($_SESSION['impersonator_id']),
+       $what.': the session holds neither the child nor the view');
+    is_same(null, impersonator(), $what.': and nobody is looking');
+}
 
 // ---------------------------------------------------------------------------
 case_('A report carries what nobody would think to write down');

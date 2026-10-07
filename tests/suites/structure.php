@@ -850,6 +850,53 @@ function sql_statements_in(string $php): array {
                                  (string)preg_replace('/\s+/', ' ', trim($sql))), $out);
 }
 
+case_('Whether a child is in a course now is asked of current_enrolment_sql(), never spelled by hand');
+/* ADR 0024 will change what "in the course now" means. The courses a family may
+   ask to join, the place a request counts and the mail about a changed date each
+   spelled left_on IS NULL themselves (code review), and a rule spelled in eight
+   places changes in seven. Read in the SQL a block hands over, comments aside. */
+$spelledByHand = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'),
+                     glob(APP_ROOT.'/bin/*.php')) as $path)
+    foreach (named_blocks_of($path) as $block => $code)
+        foreach (sql_statements_in($code) as $sql)
+            if (preg_match('/\bleft_on IS (NOT )?NULL\b/i', $sql)) $spelledByHand[] = substr($path, strlen(APP_ROOT) + 1).' '.$block;
+is_same(['app/enrolment.php current_enrolment_sql'], array_values(array_unique($spelledByHand)),
+        'only current_enrolment_sql() says it; every other query, ordering and mail asks it');
+
+case_('How long a link works is said from token_lifetime(), never written into a sentence');
+/* „eine Stunde" was written into the reset mail, the address mail and the
+   reset link's message beside the number that decides it (code review): a
+   lifetime changed in token_lifetime() would have left them promising the old
+   one. The server's texts are read here; the views' are frontend-dev's. */
+$writtenLifetimes = [];
+foreach (glob(APP_ROOT.'/app/*.php') as $path) {
+    if (basename($path) === 'ui.php') continue;
+    foreach (named_blocks_of($path) as $block => $code)
+        foreach (token_get_all("<?php\n".$code) as $t)
+            if (is_array($t) && in_array($t[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)
+                && preg_match('/\b(eine Stunde|one hour|\d+ Stunden|\d+ hours)\b/u', $t[1]))
+                $writtenLifetimes[] = substr($path, strlen(APP_ROOT) + 1).' '.$block;
+}
+is_same(['app/auth.php token_lifetime_words'], array_values(array_unique($writtenLifetimes)),
+        'only token_lifetime_words() words one, from the number token_lifetime() gives');
+is_same(['eine Stunde', 'one hour', '48 Stunden', '48 hours'],
+        [token_lifetime_words('reset', false), token_lifetime_words('email', true), token_lifetime_words('invite', false), token_lifetime_words('signin', true)],
+        'and says one hour, or a number of hours, in either language');
+
+case_('The address reaches every page as text: public/index.php drops every list from it first');
+/* ?tab[]=x is something anybody can type. Read as text it warned „Array to
+   string conversion", and the pages were guarded one read at a time - and a
+   child's page, one guard short, warned (code review). The router drops every
+   value that is not text before anything reads the address, boot_http() and its
+   ?lang= included. The suite draws pages from what it leaves
+   (render_as_front_controller()), and the forms suite draws one with lists in
+   its address. */
+$routerText = (string)file_get_contents(APP_ROOT.'/public/index.php');
+$dropped = strpos($routerText, "\$_GET=array_filter(\$_GET,'is_string');");
+ok($dropped !== false && $dropped === strpos($routerText, '$_GET') && $dropped < (int)strpos($routerText, "require __DIR__.'/../app/bootstrap.php'"),
+   'its first word on the address drops what is not text, before the application is loaded');
+
 case_('Every block that makes a login asks whether its address is taken');
 /* ADR 0021, §5. An address is one person's: refuse_address_in_use() says so in a
    sentence before the unique index says it as a 23000 nobody can act on. Setup,
@@ -1309,9 +1356,10 @@ $orderings = [
         'suite'   => 'accounts.php "not a single write"',
     ],
     'app/actions.php student_create' => [
-        // The last of its refusals - a username without a released privacy
-        // notice - so the draft, the address and the username come first too.
-        'call'    => 'refuse_signin_link_until_privacy_released',
+        // The last of its refusals - the username, and with it a privacy
+        // notice not yet released (username_to_give()) - so the draft and the
+        // address come first too.
+        'call'    => 'username_to_give',
         'guards'  => 'a student, a login or an enrolment written for a sign-in that cannot work (ADR 0023 §5)',
         'suite'   => 'logins.php "nothing is written"',
     ],
@@ -1402,6 +1450,15 @@ foreach (['refuse_until_invitations_can_go', 'refuse_signin_link_until_privacy_r
     is_same(null, first_main_write(action_calls_in($checkFunctions[$check] ?? ''), $writers),
             $check.'() writes nothing, so calling it first really does come before every write');
 }
+/* A placeholder's username comes with its first sign-in link, so the privacy
+   refusal is the username's: on the access card it came from make_signin_link(),
+   after give_student_username() had written the username (code review). */
+ok(call_index_in($checkFunctions['username_to_give'] ?? '', 'refuse_signin_link_until_privacy_released') !== null,
+   'username_to_give() refuses a username while the privacy notice is not released');
+$signinLink = named_blocks_of(APP_ROOT.'/app/actions.php')['signin_link'] ?? '';
+ok(call_index_in($signinLink, 'username_to_give') !== null
+   && call_index_in($signinLink, 'username_to_give') < (call_index_in($signinLink, 'give_student_username') ?? -1),
+   'and the access card asks it before give_student_username() writes, as the wizard does above');
 
 case_('One place writes the trail a problem report carries, before the POST branch');
 /* ADR 0009: the recorder is called once, from the router, after the page is
@@ -1791,7 +1848,7 @@ $refusalCopies = []; $guards = [];
 foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'),
                      glob(APP_ROOT.'/bin/*.php')) as $path)
     foreach (named_blocks_of($path) as $block => $code) {
-        if (str_contains($code, 'Beim Ansehen als jemand anderes') || str_contains($code, 'While viewing as somebody else')
+        if (str_contains($code, 'Beim Ansehen als jemand anderer') || str_contains($code, 'While viewing as somebody else')
             || str_contains($code, 'Beende zuerst die Ansicht') || str_contains($code, 'Stop viewing first'))
             $refusalCopies[] = substr($path, strlen(APP_ROOT) + 1).' '.$block;
         foreach (action_calls_in($code) as $call)
@@ -1800,10 +1857,18 @@ foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'),
     }
 sort($refusalCopies);
 is_same(['app/shell.php viewing_refusal'], $refusalCopies, 'viewing_refusal() is where the sentence is written');
+// One spelling, the trainer's Austrian one: „jemand anderer" (code review).
+$otherSpelling = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php')) as $path)
+    if (str_contains((string)file_get_contents($path), 'jemand anderes')) $otherSpelling[] = substr($path, strlen(APP_ROOT) + 1);
+is_same([], $otherSpelling, 'and every text says „jemand anderer“, never „jemand anderes“');
 is_same(['app/actions.php dispatch_action'], $guards, 'and dispatch_action() is the one action that refuses with it');
 $dispatch = named_blocks_of(APP_ROOT.'/app/actions.php')['dispatch_action'] ?? '';
-ok(preg_match("/if\(impersonator\(\) && \\\$action!=='logout' && !\(\\\$action==='impersonate' && post\('mode'\)==='stop'\)\)\s*throw new UserError\(viewing_refusal\(\)\);\s*switch\(\\\$action\)/", $dispatch) === 1,
-   'before its first case, letting through only signing out and stopping the view');
+/* Decided by the session's mark of a view rather than by impersonator()'s
+   answer: that answered nobody once the viewer's login was gone, and the guard
+   then let everything through as the child (security re-review N1). */
+ok(preg_match("/if\(current_user\(\) && !empty\(\\\$_SESSION\['impersonator_id'\]\) && \\\$action!=='logout' && !\(\\\$action==='impersonate' && post\('mode'\)==='stop'\)\)\s*throw new UserError\(viewing_refusal\(\)\);\s*switch\(\\\$action\)/", $dispatch) === 1,
+   'before its first case, decided by the session’s mark of a view, letting through only signing out and stopping the view');
 
 // ---------------------------------------------------------------------------
 case_('A link reaches its place on a page through url(), never by a „#" joined on by hand');
@@ -2024,8 +2089,14 @@ $makeLink = defined_functions_in(APP_ROOT.'/app/actions.php')['make_signin_link'
 ok(call_index_in($makeLink, 'refuse_signin_link_until_privacy_released') !== null
    && call_index_in($makeLink, 'refuse_signin_link_until_privacy_released') < call_index_in($makeLink, 'make_token'),
    'make_signin_link() waits for a released privacy notice before it makes a first link, whichever way it is made (security review, finding 6)');
-ok(call_index_in(named_blocks_of(APP_ROOT.'/app/actions.php')['activate'] ?? '', 'signin_link_possible') !== null,
-   'and activate asks signin_link_possible() again as a link is used (security review, finding 3)');
+ok(call_index_in(named_blocks_of(APP_ROOT.'/app/actions.php')['activate'] ?? '', 'link_usable') !== null
+   && str_contains(defined_functions_in(APP_ROOT.'/app/auth.php')['link_usable'] ?? '', 'signin_link_possible ('),
+   'and activate asks signin_link_possible() again as a link is used, through link_usable() (security review, finding 3)');
+/* The page a link opens asked less than the action that uses it: it offered
+   the form for a link activate refuses, and printed that login's address or
+   username to whoever held the link (security re-review N2). */
+ok(str_contains((string)file_get_contents(APP_ROOT.'/views/activate.php'), '<?php if(!link_usable($r)):'),
+   'and so does the page the link opens, before it shows anything of the login');
 /* „Noch nicht angemeldet" was worked out three times, in three slightly
    different ways (code review); username_login_waiting() is the one answer. */
 ok(str_contains(defined_functions_in(APP_ROOT.'/app/auth.php')['signin_link_possible'] ?? '', 'username_login_waiting ('), 'signin_link_possible() asks username_login_waiting()');
@@ -2054,10 +2125,16 @@ ok(!preg_match('/\b(run|tracked|tracked_insert|create_student|keep_student_draft
 /* What a session holds for its person is dropped in one place, and that place
    is asked wherever a sign-in starts or ends (security review, finding 4). */
 $authFunctions = defined_functions_in(APP_ROOT.'/app/auth.php');
-foreach (['impersonator_id', 'signin_links', 'student_drafts', 'activation_hash'] as $key)
+foreach (['impersonator_id', 'impersonator_auth_version', 'signin_links', 'student_drafts', 'activation_hash', 'answered_forms'] as $key)
     ok(str_contains($authFunctions['forget_session_leftovers'] ?? '', "\$_SESSION [ '".$key."' ]"), 'forget_session_leftovers() drops '.$key);
 foreach (['sign_in' => 'signing in', 'current_user' => 'a session that ended'] as $fn => $when)
     ok(call_index_in($authFunctions[$fn] ?? '', 'forget_session_leftovers') !== null,
        $fn.'() asks it at '.$when.', so the next person on the browser has none of it');
-ok(call_index_in(named_blocks_of(APP_ROOT.'/app/actions.php')['activate'] ?? '', 'forget_session_leftovers') !== null,
-   'and so does activate, as it signs out whoever was here before it sets up the link’s own login');
+ok(call_index_in(defined_functions_in(APP_ROOT.'/app/shell.php')['impersonator'] ?? '', 'forget_session_leftovers') !== null,
+   'and so does impersonator(), as a view whose viewer’s login has ended takes its session with it (security re-review N1)');
+/* Not activate, as it signs out whoever was here before it sets up the link's
+   own login: a write failing after that took the link being opened with it,
+   and a passing „Speichern fehlgeschlagen" became „Link nicht mehr gültig"
+   (code review). sign_in() at its end forgets the rest. */
+ok(call_index_in(named_blocks_of(APP_ROOT.'/app/actions.php')['activate'] ?? '', 'forget_session_leftovers') === null,
+   'activate leaves what the session holds to sign_in(), so a failed write keeps the link being opened');

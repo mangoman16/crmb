@@ -6,7 +6,7 @@
  * and paid is the one the trainer says. Those three words are the whole of the
  * state she has to think about, so they are the whole of the filter.
  */
-$filter=(string)($_GET['state']??'open');
+$filter=$_GET['state']??'open';
 if(!in_array($filter,[...invoice_states(),'all'],true))$filter='open';
 /* The counts and the total are over every invoice, asked of the database; the
    list is one page of fifty. Counted here from the newest 200, an invoice

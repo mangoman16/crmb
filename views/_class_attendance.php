@@ -1,7 +1,7 @@
 <?php
 // Attendance for one class. Built for a phone held in one hand during training:
 // the whole class on one screen, one tap per student, one save at the end.
-$on=date_value((string)($_GET['on']??''))??attendance_suggested_date($form);
+$on=date_value($_GET['on']??'')??attendance_suggested_date($form);
 $members=array_filter(class_members($id),fn($m)=>$m['left_on']===null||$m['left_on']>=$on);
 $recorded=attendance_for_session($id,$on);
 $reported=absences_on(array_map(fn($m)=>(int)$m['id'],$members),$on);

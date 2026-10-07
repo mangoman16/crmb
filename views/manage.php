@@ -7,7 +7,7 @@
  * the administrator's job. Renaming a level or adding an age band is the
  * trainer's daily business and should not require asking anybody.
  */
-$tab=(string)($_GET['tab']??'levels');
+$tab=$_GET['tab']??'levels';
 $items=['levels'=>t('Leistungsgruppen','Levels'),'ages'=>t('Altersgruppen','Age groups'),
         'members'=>t('Mitgliedschaft','Membership'),'tariffs'=>t('Tarife','Tariffs'),
         'templates'=>t('E-Mail-Vorlagen','Email templates'),'payments'=>t('Geld & Zahlungen','Money and payments')];

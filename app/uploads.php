@@ -607,7 +607,7 @@ function avatar_for_download(string $kind, int $id): string {
  * says so in words.
  */
 function serve_download(): void {
-    $what = is_scalar($_GET['what'] ?? '') ? (string)($_GET['what'] ?? '') : '';
+    $what = $_GET['what'] ?? '';
     $id = (int)($_GET['id'] ?? 0);
     if ($what === 'invoice') {
         $invoice = invoice($id);

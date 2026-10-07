@@ -125,14 +125,14 @@ function class_day_label(array $day, array $class=[]): string {
 function class_members(int $classId): array {
     return rows('SELECT s.*, cs.joined_on, cs.left_on FROM class_students cs'
         .' JOIN students s ON s.id=cs.student_id WHERE cs.class_id=?'
-        .' ORDER BY cs.left_on IS NOT NULL, s.last_name, s.first_name, s.id', [$classId]);
+        .' ORDER BY NOT ('.current_enrolment_sql().'), s.last_name, s.first_name, s.id', [$classId]);
 }
 
 /** Classes one student belongs to. */
 function student_classes(int $studentId): array {
     return rows('SELECT c.*, cs.joined_on, cs.left_on FROM class_students cs'
         .' JOIN classes c ON c.id=cs.class_id WHERE cs.student_id=?'
-        .' ORDER BY cs.left_on IS NOT NULL, c.sort_order, c.name', [$studentId]);
+        .' ORDER BY NOT ('.current_enrolment_sql().'), c.sort_order, c.name', [$studentId]);
 }
 
 /**

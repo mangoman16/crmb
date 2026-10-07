@@ -214,14 +214,29 @@ function avatar(array $who, string $size = '', string $kind = 'account'): string
  *
  * Kept in the session rather than in the database, so it cannot outlive the
  * browser session it was started in, and so signing out ends it whatever else
- * happens.
+ * happens. Nor does it outlive the viewer's own login: her row is asked on every
+ * request - current_user() asks this as it finds a session good - whether it is
+ * still there, still may look at this account (may_impersonate()), and still has
+ * the auth_version it had as the view began. Deleted, suspended, or with a
+ * password changed since, she is looking at nothing any more.
+ *
+ * A view that has ended takes the whole session with it. Answering nobody and
+ * carrying on is what turned one into the child's own session, with no bar and
+ * nothing to limit it - every limit on a view asks this (security re-review N1).
  */
 function impersonator(): ?array {
     if (empty($_SESSION['impersonator_id'])) return null;
     // A view needs somebody signed in to be a view of: an id left over from a
     // session that ended is no view, and is dropped (security review F1).
-    if (!current_user()) { unset($_SESSION['impersonator_id']); return null; }
-    return one('SELECT * FROM accounts WHERE id=?', [(int)$_SESSION['impersonator_id']]);
+    $looked = current_user();
+    if (!$looked) { unset($_SESSION['impersonator_id']); return null; }
+    $real = one('SELECT * FROM accounts WHERE id=?', [(int)$_SESSION['impersonator_id']]);
+    if ($real && (int)$real['auth_version'] === (int)($_SESSION['impersonator_auth_version'] ?? 0)
+        && may_impersonate($real, $looked)) return $real;
+    unset($_SESSION['user_id'], $_SESSION['auth_version']);
+    forget_session_leftovers();
+    current_user(true);
+    return null;
 }
 
 /**
@@ -231,7 +246,7 @@ function impersonator(): ?array {
  * the two cannot come to say different things.
  */
 function viewing_refusal(): string {
-    return t('Beim Ansehen als jemand anderes lässt sich nichts schreiben oder ändern. Beende zuerst die Ansicht.',
+    return t('Beim Ansehen als jemand anderer lässt sich nichts schreiben oder ändern. Beende zuerst die Ansicht.',
              'While viewing as somebody else, nothing can be written or changed. Stop viewing first.');
 }
 
@@ -248,11 +263,14 @@ function viewing_refusal(): string {
  * that login, and current_user() keeps a session for nothing else; an exception
  * for a placeholder or a login not yet signed in would widen the one check made
  * on every request, for a login with nothing of its own to show that the
- * student page does not already show staff (ADR 0023 §12, A6 overruled).
+ * student page does not already show staff (ADR 0023 §12, A6 overruled). The
+ * same of the one looking: impersonator() asks this again of an open view on
+ * every request, and a viewer suspended since may look at nobody.
  */
 function may_impersonate(array $actor, array $target): bool {
     if ((int)$actor['id'] === (int)$target['id']) return false;
-    if ($target['state'] !== 'active' || empty($target['verified_at'])) return false;
+    foreach ([$actor, $target] as $login)
+        if (($login['state'] ?? '') !== 'active' || empty($login['verified_at'])) return false;
     if (is_admin($actor)) return true;
     return is_staff($actor) && !is_staff($target);
 }
@@ -283,8 +301,10 @@ function start_impersonation(int $targetId): array {
         throw new UserError(t('Dieses Konto kannst du nicht ansehen.', 'You cannot view this account.'));
     audit('impersonation.started', 'account', $targetId);
     // Deliberately not session_regenerate_id(): the impersonator's own identity
-    // stays in this session and has to survive into the next request.
+    // stays in this session and has to survive into the next request - with
+    // her auth_version, which impersonator() asks her row for on every one.
     $_SESSION['impersonator_id'] = (int)$actor['id'];
+    $_SESSION['impersonator_auth_version'] = (int)$actor['auth_version'];
     $_SESSION['user_id'] = (int)$target['id'];
     $_SESSION['auth_version'] = (int)$target['auth_version'];
     $_SESSION['last_seen'] = time();
@@ -305,7 +325,7 @@ function stop_impersonation(): void {
     $real = impersonator();
     if (!$real) return;
     audit('impersonation.ended', 'account', (int)($_SESSION['user_id'] ?? 0));
-    unset($_SESSION['impersonator_id']);
+    unset($_SESSION['impersonator_id'], $_SESSION['impersonator_auth_version']);
     $_SESSION['user_id'] = (int)$real['id'];
     $_SESSION['auth_version'] = (int)$real['auth_version'];
     $_SESSION['last_seen'] = time();

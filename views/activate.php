@@ -1,6 +1,6 @@
 <?php $r=token_record($_SESSION['activation_hash']??''); ?>
 <div class="auth-card card">
-<?php if(!$r || $r['state']==='suspended'):
+<?php if(!link_usable($r)):
     /* What she can do about it, not only that it failed: somebody who already
        set up just signs in, and „vergessen" sends a new link, an expired
        invitation again too (ADR 0020, §4). */ ?>

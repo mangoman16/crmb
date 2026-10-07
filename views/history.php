@@ -9,7 +9,7 @@
  * left is the thing anybody actually opened it for: what changed, when, who did
  * it, and what it was before.
  */
-$entity=(string)($_GET['entity']??'');
+$entity=$_GET['entity']??'';
 $recordId=(int)($_GET['record']??0);
 $scoped=$entity!=='' && $recordId>0 && isset(tracked_entities()[$entity]);
 /* „Von Familien" (ADR 0020, §10b): what families changed on their own

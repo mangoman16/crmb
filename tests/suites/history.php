@@ -226,7 +226,7 @@ $familyLogin = make_account(['role'=>'student', 'name'=>'Familie Test']);
 $theirs = make_student(['first_name'=>'Eigen', 'last_name'=>'Kind', 'account_id'=>$familyLogin]);
 sign_in_as($familyLogin);
 tracked('students', $theirs, 'Eigen Kind', fn() => run('UPDATE students SET phone=? WHERE id=?', ['1', $theirs]));
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $familyLogin);
 tracked('students', $theirs, 'Eigen Kind', fn() => run('UPDATE students SET phone=? WHERE id=?', ['2', $theirs]));
 unset($_SESSION['impersonator_id']);
 sign_in_as($admin);

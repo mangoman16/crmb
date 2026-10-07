@@ -71,7 +71,7 @@ function student_enrolments(int $studentId): array {
     $rows = rows('SELECT '.ENROLMENT_COLUMNS.', c.archived'
         .' FROM class_students cs JOIN classes c ON c.id=cs.class_id'
         .' LEFT JOIN tariffs t ON t.id=cs.tariff_id'
-        .' WHERE cs.student_id=? ORDER BY cs.left_on IS NOT NULL, c.sort_order, c.name', [$studentId]);
+        .' WHERE cs.student_id=? ORDER BY NOT ('.current_enrolment_sql().'), c.sort_order, c.name', [$studentId]);
     $rates = tariff_rate_map(array_column($rows, 'tariff_id'));
     return array_map(fn($row) => with_tariff_rate($row, $rates), $rows);
 }
@@ -186,9 +186,9 @@ function enrolment_price(array $enrolment): array {
  * leaves behind and what most of her courses actually are.
  */
 function courses_open_to(int $studentId): array {
-    return rows('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL) AS member_count'
+    return rows('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND '.current_enrolment_sql().') AS member_count'
         .' FROM classes c WHERE c.archived=0'
-        .' AND NOT EXISTS (SELECT 1 FROM class_students cs WHERE cs.class_id=c.id AND cs.student_id=? AND cs.left_on IS NULL)'
+        .' AND NOT EXISTS (SELECT 1 FROM class_students cs WHERE cs.class_id=c.id AND cs.student_id=? AND '.current_enrolment_sql().')'
         .' ORDER BY c.sort_order, c.name, c.id', [$studentId]);
 }
 
@@ -256,7 +256,7 @@ function request_enrolment(int $studentId, int $classId, string $kind, ?int $tar
                     [$studentId, $classId]);
         if ($open) throw new UserError(t('Für diesen Kurs wartet schon eine Anfrage auf eine Entscheidung.',
                                          'A request for this course is already waiting for a decision.'));
-        $enrolled = (bool)one('SELECT 1 FROM class_students WHERE class_id=? AND student_id=? AND left_on IS NULL',
+        $enrolled = (bool)one('SELECT 1 FROM class_students cs WHERE cs.class_id=? AND cs.student_id=? AND '.current_enrolment_sql(),
                               [$classId, $studentId]);
         if ($kind === 'join' && $enrolled)
             throw new UserError(t('Dieses Kind ist schon in diesem Kurs.', 'This child is already in this course.'));
@@ -302,7 +302,7 @@ function decide_request(int $requestId, bool $approve, string $note): array {
                                           'This course has filled up in the meantime. Free a place first, or raise the number of places.'));
                 enrol_student($classId, $studentId, $r['tariff_id'] !== null ? (int)$r['tariff_id'] : null, today());
             } elseif ($r['kind'] === 'leave') {
-                run('UPDATE class_students SET left_on=? WHERE class_id=? AND student_id=? AND left_on IS NULL',
+                run('UPDATE class_students SET left_on=? WHERE class_id=? AND student_id=? AND '.current_enrolment_sql('class_students'),
                     [today(), $classId, $studentId]);
             } else {
                 run('UPDATE class_students SET tariff_id=? WHERE class_id=? AND student_id=?', [$r['tariff_id'], $classId, $studentId]);

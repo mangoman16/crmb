@@ -3,7 +3,7 @@
    ADR 0023 §5); the router sends a student page without an id there. */
 $id=(int)($_GET['id']??0);$staff=is_staff($user);
 $s=student($id);
-$tab=(string)($_GET['tab']??'details');
+$tab=$_GET['tab']??'details';
 $tabsAllowed=$staff?['details','contacts','payments','invoices','absence','classes','attendance']:['details','contacts','payments','invoices','absence','classes'];
 if(!in_array($tab,$tabsAllowed,true))$tab='details';
 page_head($s['first_name'].' '.$s['last_name'],status_label($s['status']),

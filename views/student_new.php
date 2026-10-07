@@ -9,13 +9,13 @@
    Built by backend-dev as the working minimum the actions need; frontend-dev
    gives it the designer's screens (docs/design/2026-10-05-accounts-and-chat-
    screens.md §2). */
-$step=is_string($_GET['step']??null)?(string)$_GET['step']:'';
-$key=is_string($_GET['draft']??null)?(string)$_GET['draft']:'';
+$step=$_GET['step']??'';
+$key=$_GET['draft']??'';
 $draft=student_draft($key);
 // A draft that became a child already: Back from the done page, or a step of
 // it sent again. Unless the child has been deleted since.
 $made=($madeId=student_made_from_draft($key)) ? one('SELECT id,first_name,last_name FROM students WHERE id=?',[$madeId]) : null;
-$from=in_array($_GET['from']??'',['dashboard','students','start'],true)?(string)$_GET['from']:'';
+$from=in_array($_GET['from']??'',['dashboard','students','start'],true)?$_GET['from']:'';
 $back=$from==='start'?'start':($from==='dashboard'?'dashboard':'students');
 
 if($step==='done'):

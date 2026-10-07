@@ -25,8 +25,8 @@ function icon(string $name): string {
     return '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'.($paths[$name]??$paths['arrow']).'</svg>';
 }
 function start_form(string $action,array $hidden=[],string $class='form',bool $multipart=false): void {
-    $draft=is_string($_GET['draft']??null) && student_draft_key($_GET['draft']) ? ['return_draft'=>$_GET['draft']] : [];
-    form_open($action,$hidden+['return_page'=>current_page(),'return_id'=>(int)($_GET['id']??0),'return_tab'=>is_string($_GET['tab']??null)?$_GET['tab']:'']+$draft,$class,$multipart);
+    $draft=student_draft_key($_GET['draft']??'') ? ['return_draft'=>$_GET['draft']] : [];
+    form_open($action,$hidden+['return_page'=>current_page(),'return_id'=>(int)($_GET['id']??0),'return_tab'=>$_GET['tab']??'']+$draft,$class,$multipart);
 }
 
 /**

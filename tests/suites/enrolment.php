@@ -249,15 +249,21 @@ $fillElsewhere = function (int $classId) use ($quicker) {
         ->execute([$classId, $quicker[$classId], today(), '']);
 };
 $ask = request_enrolment(make_student(['first_name'=>'Fragt']), $tight, 'join', null, '');
-throws(fn() => transactional(function () use ($fillElsewhere, $tight, $ask) {
+// What a count from the snapshot would see, so this case can fail: a decision
+// that counted this way would find the place free.
+$snapshotMisses = fn(int $classId, string $what) => is_same(0, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=?', [$classId]),
+                                                           $what.': a plain count in this transaction does not see the other connection’s child');
+throws(fn() => transactional(function () use ($fillElsewhere, $tight, $ask, $snapshotMisses) {
     scalar('SELECT COUNT(*) FROM class_students');   // the snapshot this transaction reads from starts here
     $fillElsewhere($tight);
+    $snapshotMisses($tight, 'the yes');
     return decide_request($ask, true, '');
 }), 'the yes is refused: the last place went on the other connection after this one began', 'voll');
 $_POST = ['class_id'=>(string)$late, 'student_id'=>(string)make_student(['first_name'=>'Dazu'])];
-throws(fn() => transactional(function () use ($fillElsewhere, $late) {
+throws(fn() => transactional(function () use ($fillElsewhere, $late, $snapshotMisses) {
     scalar('SELECT COUNT(*) FROM class_students');
     $fillElsewhere($late);
+    $snapshotMisses($late, '„Hinzufügen“');
     return dispatch_action('class_member_add');
 }), 'and so is adding a child by hand', 'voll');
 $_POST = [];

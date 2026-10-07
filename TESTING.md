@@ -104,7 +104,8 @@ release and emptied again for the next.
 - Every student has a login — „Ohne Anmeldung" until somebody gives it an address or a username; a wizard „Schüler anlegen" is the one way to add a child; a username signs in in the same box as an address; a one-time „Anmeldelink" with a QR code for a child without an e-mail address; deleting a child's login gives them a fresh, empty one (ADR 0023): [L.1–L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
 - A form sent twice — a double tap, or the same form sent again after Back — lands where the first one went, with the first one's message, and makes nothing twice: [L.10b, L.10c](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023) in the wizard, [15.4a](#news-email-and-the-queue) for „Warteschlange senden"
 - Viewing the portal as somebody else is looking only: everything except „Ansicht beenden" and „Abmelden" is refused, with one sentence: [5.11–5.11b](#the-shell-the-bar-notifications-feedback-impersonation), C.15, C.18
-- What the reviews of ADR 0023 found: two people cannot both take a course's last place, a child without sign-in collects no bell notices, a sign-in link dies with its child and waits for the privacy notice, a browser shared between people forgets a half-opened link, a child with a username is never recorded as saying no to e-mail, a team member's login left on a child's record can be replaced, and a child's page opened with a list in its address draws without a warning: [L.10a, L.13a, L.18a, L.20a–L.20c, L.21a, L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023), [7.23](#students-contacts-levels-and-age-groups)
+- What the reviews of ADR 0023 found: two people cannot both take a course's last place, a child without sign-in collects no bell notices, a sign-in link dies with its child and waits for the privacy notice, a browser shared between people forgets a half-opened link, a child with a username is never recorded as saying no to e-mail, a team member's login left on a child's record lets go of the child and stays hers, and a page opened with a list in its address draws without a warning: [L.10a, L.13a, L.18a, L.20a–L.20c, L.21a, L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023), [7.23](#students-contacts-levels-and-age-groups)
+- A view through somebody's eyes ends with the viewer's own login — deleted, suspended or given a new password, the browser looking is signed out on its next tap; a sign-in link's page asks what the link may still do before it shows anything of the login; a trainer is told an administrator releases the privacy notice; a stale „Einladung senden" says the child has a login: [5.11c](#the-shell-the-bar-notifications-feedback-impersonation), [L.20a, L.20d, L.21b](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
 
 ---
 
@@ -561,7 +562,7 @@ Skip on an ordinary code change; do all of it before a release.
   these: on **Mein Konto**, change the name under „Name und Darstellung" and
   save; „Etwas funktioniert hier nicht", a sentence, „Absenden"; on a child's
   page, change a detail and save; on a child whose login is in use, „Portal als
-  … ansehen". Each is refused with „Beim Ansehen als jemand anderes lässt sich
+  … ansehen". Each is refused with „Beim Ansehen als jemand anderer lässt sich
   nichts schreiben oder ändern. Beende zuerst die Ansicht." In **Nachrichten** a
   chat opens without a writing box. „Ansicht beenden" gives you yourself back,
   and nothing you tried happened: **Konten** shows the trainer's name as before,
@@ -582,6 +583,17 @@ Skip on an ordinary code change; do all of it before a release.
   refused with the same sentence. After „Ansicht beenden" the bell still shows
   its number and the group has no new message. A status chosen in such a tab's
   account menu is refused the same way.
+- [ ] **5.11c** A view ends with the viewer's own login, and signs the browser
+  out. Two browsers. In the first, as the trainer, „Portal als … ansehen" on a
+  child whose login is in use, and open the child's **Nachrichten**. In the
+  second, as the administrator, **Konten** → „Zugang sperren" beside that
+  trainer. Back in the first, tap anything — a chat, **Übersicht**, „Ansicht
+  beenden": the sign-in page, with nobody signed in, and no page of the
+  child's opens until somebody signs in. „Zugang entsperren", then the same
+  with the trainer changing her own password in a third browser (**Mein
+  Konto**) instead of the suspension; and once more, with a trainer made for
+  it, with „Zugang löschen". Each time the viewing browser is signed out on its
+  next tap, never left as the child without the bar.
 - [ ] **5.12** A family cannot impersonate anybody.
 
 ---
@@ -864,7 +876,9 @@ your picture at the top right.
 - [ ] **7.23** **(release)** Open a child's page with `&tab[]=x` added to its
   address, once as the trainer and once as the family: the page draws, on its
   first tab, and the server's PHP error log gains no „Array to string
-  conversion" line.
+  conversion" line. The same with `&tab[]=x` on **Kurse** and **Einstellungen**,
+  `&state[]=x` on **Rechnungen**, and `&page[]=x` on its own: each draws as if
+  the list were not there, and the log stays quiet.
 
 ---
 
@@ -1712,7 +1726,7 @@ where it says so
   out names nobody in the audit log.
 - [ ] **A.27** The flashes say what happened, in plain words: a family's save,
   „Deine Angaben sind gespeichert."; a family's save after somebody else saved
-  the same child, „Inzwischen hat jemand anderes etwas an diesem Profil
+  the same child, „Inzwischen hat jemand anderer etwas an diesem Profil
   gespeichert. Deine Eingaben sind noch da – bitte prüfen und noch einmal
   speichern." with the typed values still in the boxes; removing a contact,
   „Entfernt: {Name} ({Beziehung}), {Telefon}. Aus Versehen? …"; the access
@@ -1807,7 +1821,7 @@ where it says so
   another child still waiting (C.14's first step, without „Zustimmen") →
   „Portal als … ansehen" on the card „Zugang zum Portal". The view opens on
   **Übersicht**: tap „Nachricht schreiben". The page „Neue Nachricht" says
-  „Beim Ansehen als jemand anderes lässt sich nichts schreiben oder ändern.
+  „Beim Ansehen als jemand anderer lässt sich nichts schreiben oder ändern.
   Beende zuerst die Ansicht." and lists nobody — no „Trainerteam", no
   „Kinder", no „Möchte dir schreiben" with the request's text, no „Jemand
   anderen fragen". **Nachrichten** has no „Neue Nachricht" button and no „1 neue
@@ -2044,8 +2058,12 @@ the checks are about what happens, and hold for both.
   Anmeldung". The same refusal on a child with a username still waiting for
   the first sign-in (made as in L.11 before unticking). In the wizard, the card
   „Ohne E-Mail, mit Benutzername" shows „Die Datenschutzerklärung unter
-  „Einstellungen → Datenschutz“ freigeben." instead of its form. Tick the box
-  again and save.
+  „Einstellungen → Datenschutz“ freigeben." instead of its form. Then, still
+  unticked, as the trainer: the same „Link erstellen" on another child „Ohne
+  Anmeldung" is refused with „… bei der ersten Anmeldung bestätigt. Eine
+  Administratorin muss zuerst die Datenschutzerklärung freigeben." — nothing
+  sends her to „Einstellungen", which she cannot open — and the wizard's card
+  says the same sentence. Tick the box again and save.
 - [ ] **L.20b** A browser several people use, such as a tablet at the hall.
   Open a child's sign-in link there and leave its page without saving. Sign in
   on that browser as somebody else — the trainer, say — then go Back to the
@@ -2062,6 +2080,14 @@ the checks are about what happens, and hold for both.
   „Link nicht mehr gültig". This is by design and fails safe: the trainer's
   session ran out and took the half-opened link with it. Open the link again:
   it works, and the child is signed in. Put `session_idle_minutes` back.
+- [ ] **L.20d** **(release)** A sign-in link that can no longer be used shows
+  nothing of its login. On a copy: give a child a username as in L.11 and keep
+  the link. In the database, give that login an address nobody confirmed
+  (`UPDATE accounts SET email='neu@example.test' WHERE username='…'`). Open the
+  link signed out: „Link nicht mehr gültig", with no password boxes, and
+  neither the address nor the username anywhere on the page. Before this
+  release the page offered the form with the address above it, and only the
+  save was refused.
 
 **Replacing a login, and enrolment**
 
@@ -2075,10 +2101,20 @@ the checks are about what happens, and hold for both.
   one child's `students.account_id` at a trainer's login that no other child
   has. As a trainer, „Anmeldung löschen" on that child is refused. As an
   administrator, „Anmeldung löschen" with the trainer's address typed: the
-  message names the child — „Die Anmeldung {Adresse} ist gelöscht, mit ihren
-  privaten Unterhaltungen. {Vorname Nachname} ist jetzt ohne Anmeldung; …" —
-  and the child has a fresh, empty login, „Ohne Anmeldung". The trainer's
-  login is gone from **Konten** with it, which is why this is for a copy.
+  message names the child and says the team member's login stays —
+  „{Vorname Nachname} hat jetzt eine neue, leere Anmeldung. Die Anmeldung von
+  {Trainerin} gehört zum Team und bleibt, wie sie ist." — and the child has a
+  fresh, empty login, „Ohne Anmeldung". The trainer is still on **Konten**,
+  signs in as before, and finds her chats. „Zugang löschen" beside her on
+  **Konten** is then an ordinary deletion of a team login, with nothing sent
+  round in a circle.
+- [ ] **L.21b** A card opened before a child got a login. Open a child „Ohne
+  Anmeldung" whose record has an address, in two tabs. In the first, clear the
+  child's „E-Mail-Adresse" and save, then give the child a username
+  („Anmeldelink erstellen", „Link erstellen"). In the second, still offering
+  „Einladung senden", tap it: refused with „Dieses Kind hat schon eine eigene
+  Anmeldung. Zugang, Einladung und Adresse werden dort verwaltet." — not with
+  a sentence about the address — and **Postausgang** holds no invitation.
 - [ ] **L.22** On a child waiting for a first sign-in with a username,
   „Benutzernamen zurückziehen": „Ohne Anmeldung" again, and the same username
   can be given to them again.

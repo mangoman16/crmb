@@ -167,6 +167,10 @@ throws(fn() => transactional(function () use ($elsewhere, $last, $quicker) {
     scalar('SELECT COUNT(*) FROM class_students');   // the snapshot this transaction reads from starts here
     $elsewhere->prepare('INSERT INTO class_students (class_id,student_id,joined_on,left_on,tariff_id,price_cents,price_note,due_day) VALUES (?,?,?,NULL,NULL,NULL,?,0)')
         ->execute([$last, $quicker, today(), '']);
+    // What a count from the snapshot would see, so this case can fail: a step
+    // 2 that counted this way would find the place free.
+    is_same(0, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=?', [$last]),
+            'a plain count in this transaction does not see the other connection’s child');
     return dispatch_action('student_create');
 }), 'the place the other request took is seen, and step 2 is refused', 'inzwischen voll');
 $_POST = [];
@@ -305,7 +309,8 @@ foreach ([
     'a dot last is refused'                            => [fn() => username_value('lena.'), 'refused'],
     'a hyphen last is refused'                         => [fn() => username_value('lena-'), 'refused'],
     'two separators in a row are refused'              => [fn() => username_value('lena..hofer'), 'refused'],
-    'an apostrophe is dropped: O’Neill'                => [fn() => username_from_name('Seán', "O'Neill"), 'sean.oneill'],
+    "an apostrophe is dropped: O'Neill"                => [fn() => username_from_name('Seán', "O'Neill"), 'sean.oneill'],
+    'and so is a typographic one: O’Neill'             => [fn() => username_from_name('Seán', 'O’Neill'), 'sean.oneill'],
     'a name with nothing left is „konto“'              => [fn() => username_from_name('Иван', 'Петров'), 'konto'],
     'numbered like any other when taken'               => [fn() => username_first_free('konto', ['konto']), 'konto2'],
     'a long name is cut back to a separator in 26'     => [fn() => username_from_name('Alexandra', 'Zimmermann-Oberhuber'), 'alexandra.zimmermann'],
@@ -387,7 +392,8 @@ throttle_clear('signin-link', (string)$admin);
 case_('A first sign-in link waits for the privacy notice, whichever way it is made');
 /* Security review, finding 6. Its holder acknowledges the notice on the page the
    link opens, and a link that page would refuse cannot work. The gate is in
-   make_signin_link(), where every link is made. */
+   make_signin_link(), where every link is made - and, for a placeholder, in
+   username_to_give(), before its username is written (code review). */
 sign_in_as($admin);
 $noNotice = make_student(['first_name'=>'Pauline', 'last_name'=>'Wartet']);
 $waitingOne = create_through_wizard(['first_name'=>'Wim', 'last_name'=>'Wartet'], 'username', ['username'=>'wim.wartet']);
@@ -400,8 +406,18 @@ is_same(['placeholder', null], array_values(one('SELECT state,username FROM acco
 throws(fn() => act('signin_link', ['student_id'=>(string)$waitingOne, 'mode'=>'create']),
        'nor does a username login waiting for its first sign-in get a new one', 'Einstellungen → Datenschutz');
 is_same($linksBefore, (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE purpose='signin'"), 'no link was made');
+/* Settings are an administrator's: a trainer was sent to „Einstellungen →
+   Datenschutz", a page she cannot open (code review). She is told who
+   releases it, as the e-mail card tells her. */
+sign_in_as($trainer);
+$toTrainer = '';
+try { act('signin_link', ['student_id'=>(string)$noNotice, 'mode'=>'create', 'username'=>'pauline.wartet']); }
+catch (UserError $e) { $toTrainer = $e->getMessage(); }
+ok(str_contains($toTrainer, 'Eine Administratorin muss zuerst die Datenschutzerklärung freigeben.') && !str_contains($toTrainer, 'Einstellungen'),
+   'a trainer is told an administrator releases it, and sent to no page she cannot open: '.$toTrainer);
 set_setting('privacy_ready', true);
-throttle_clear('signin-link', (string)$admin);
+throttle_clear('signin-link', (string)$admin); throttle_clear('signin-link', (string)$trainer);
+sign_in_as($admin);
 
 case_('A link for a login in use changes only the password, ends the old one, and the holder can see who made it');
 $keep = one('SELECT email,username,locale,newsletter,notifications,privacy_version,verified_at FROM accounts WHERE id=?', [(int)$inUse['id']]);
@@ -433,6 +449,13 @@ run('UPDATE accounts SET email=? WHERE id=?', ['ole@beispiel.test', (int)$oleLog
 throws(fn() => $useLink($oleToken, ['password'=>$password, 'password_confirm'=>$password, 'privacy_seen'=>'1']),
        'a first link on a login that has an address now is refused: it would set up an address nobody confirmed', 'ungültig oder abgelaufen');
 is_same(['invited', null], array_values(one('SELECT state,verified_at FROM accounts WHERE id=?', [(int)$oleLogin['id']]) ?? []), 'and nothing is set up');
+/* The page the link opens asked less than the action: it offered the form for
+   it, and printed the login's address beside the new password for whoever
+   held the link (security re-review N2). Both ask link_usable() now. */
+$linkPage = render_view('activate');   // the link is still the one this browser opened
+ok(str_contains($linkPage, e('Link nicht mehr gültig')) && !str_contains($linkPage, 'name="password"'),
+   'its page says the link no longer works, rather than offering a form that is refused');
+ok(!str_contains($linkPage, 'ole@beispiel.test') && !str_contains($linkPage, 'ole.adresse'), 'and says nothing of the login: neither its address nor its username');
 sign_in_as($admin);
 $gina = create_through_wizard(['first_name'=>'Gina', 'last_name'=>'Weg'], 'username', ['username'=>'gina.weg']);
 $ginaLogin = $loginOf($gina);
@@ -447,6 +470,9 @@ $leftBehind = make_token((int)$ginaLogin['id'], 'signin');   // as a link made b
 throws(fn() => $useLink($leftBehind, ['password'=>'Neues-Passwort-2026!', 'password_confirm'=>'Neues-Passwort-2026!']),
        'and a sign-in link to a login without its student signs nobody in', 'ungültig oder abgelaufen');
 ok(password_verify($password, (string)scalar('SELECT password_hash FROM accounts WHERE id=?', [(int)$ginaLogin['id']])), 'its password is as it was');
+$linkPage = render_view('activate');
+ok(str_contains($linkPage, e('Link nicht mehr gültig')) && !str_contains($linkPage, 'name="password"') && !str_contains($linkPage, 'gina.weg'),
+   'and its page says so too, without the username of a login that is in use');
 sign_in_as($admin);
 
 case_('Withdrawing a link takes it away and says so; withdrawing a username frees it');
@@ -493,20 +519,31 @@ throws(fn() => act('account_state', ['id'=>(string)$fresh['id'], 'mode'=>'suspen
 $orphan = make_account(['role'=>'student', 'email'=>'verwaist@beispiel.test']);
 does_not_throw(fn() => transactional(fn() => delete_login($orphan)), 'a login no student points to is still deleted');
 
-case_('A staff login left on a student’s record is replaced there, not sent round in a circle');
+case_('A staff login left on a student’s record lets go of the child, and stays the team member’s');
 /* From before ADR 0010 a student's record can point to a trainer's login.
-   delete_login() refuses any login a student points to and sends her to the
+   delete_login() refuses any login a student points to and sent her to the
    student's page, whose „Anmeldung löschen" came back here and was refused
-   again. The sentence afterwards names the student from her own row: by then
-   no student points to the old login to ask. */
+   again - a circle. Then it went through, and took the trainer's login with it,
+   her chats and her role, because of a stale link on a child's record
+   (docs-writer). Now the child gets a fresh placeholder and the team member's
+   login stays as it is; deleting it is Konten's, where it is hers. */
 sign_in_as($admin);
 $oldTrainer = make_account(['role'=>'trainer', 'name'=>'Frühere Trainerin', 'email'=>'frueher@beispiel.test']);
 $rita = make_student(['first_name'=>'Rita', 'last_name'=>'Kreis', 'account_id'=>$oldTrainer]);
-is_same(['student', ['id'=>$rita]], act('account_state', ['id'=>(string)$oldTrainer, 'mode'=>'delete', 'confirmation'=>'frueher@beispiel.test']),
-        'deleting it goes through, and lands on the student');
-is_same([0, 'placeholder'], [(int)scalar('SELECT COUNT(*) FROM accounts WHERE id=?', [$oldTrainer]), $loginOf($rita)['state'] ?? null],
-        'the staff login is gone, and the student has a fresh placeholder');
-ok(str_contains((string)($_SESSION['flash']['message'] ?? ''), 'Rita Kreis ist jetzt ohne Anmeldung'), 'and the sentence names the student: '.($_SESSION['flash']['message'] ?? ''));
+$herChat = make_thread([$oldTrainer, $admin]);
+$deleteOnTheCard = fn() => act('account_state', ['id'=>(string)$oldTrainer, 'mode'=>'delete', 'confirmation'=>'frueher@beispiel.test']);
+is_same(['student', ['id'=>$rita]], $deleteOnTheCard(), '„Anmeldung löschen“ on the child goes through, and lands on the child');
+is_same(['trainer', 'active', 1], [(string)scalar('SELECT role FROM accounts WHERE id=?', [$oldTrainer]),
+        (string)scalar('SELECT state FROM accounts WHERE id=?', [$oldTrainer]), (int)scalar('SELECT COUNT(*) FROM threads WHERE id=?', [$herChat])],
+        'the team member’s login stays, with its role and its chats');
+ok(($loginOf($rita)['state'] ?? null) === 'placeholder' && (int)$loginOf($rita)['id'] !== $oldTrainer, 'and the child has a fresh placeholder of her own');
+$said = (string)($_SESSION['flash']['message'] ?? '');
+ok(str_contains($said, 'Rita Kreis hat jetzt eine neue, leere Anmeldung') && str_contains($said, 'Frühere Trainerin gehört zum Team und bleibt'),
+   'the sentence names the child and says the team member’s login stays: '.$said);
+is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.let_go' AND entity_id=?", [$oldTrainer]),
+        'and the audit says it was let go of, not deleted');
+is_same(['accounts', []], $deleteOnTheCard(), 'no circle: deleted again - on Konten - it is a team login like any other');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE id=?', [$oldTrainer]), 'and is gone');
 
 case_('No student is in a course without a login, and the access card speaks of a placeholder as one');
 $legacy = make_student(['first_name'=>'Alt', 'last_name'=>'Daten', 'account_id'=>null]);
@@ -541,6 +578,10 @@ ok(in_array('Zugang einladen', array_column(student_next_steps($jonas), 'what'),
 act('student_invite', ['student_id'=>(string)$jonas]);
 is_same(['invited', 'jonas@beispiel.test', (int)$placeholder['id']], [$loginOf($jonas)['state'], $loginOf($jonas)['email'], (int)$loginOf($jonas)['id']],
         'and the invitation turns that placeholder into the login, without a new one');
+// A card opened before the child was given a username still offers the
+// invitation. Sent, it is told what happened, not that the address is missing.
+$given = create_through_wizard(['first_name'=>'Kai', 'last_name'=>'Karte'], 'username', ['username'=>'kai.karte']);
+throws(fn() => act('student_invite', ['student_id'=>(string)$given]), 'an invitation from a card older than the child’s login says the child has one', 'schon eine eigene Anmeldung');
 $students = (int)scalar('SELECT COUNT(*) FROM students');
 throws(fn() => act('student_save', ['id'=>'0', 'first_name'=>'Neu', 'last_name'=>'Alt', 'status'=>'active']),
        'student_save makes nobody: without a student it finds none', 'nicht gefunden');
@@ -591,22 +632,30 @@ $redirect = strpos($router, "if(\$page==='student' && (int)(\$_GET['id']??0)<=0)
 ok($redirect !== false && $redirect > (int)strpos($router, '$user=$public?') && $redirect < (int)strpos($router, "require ROOT.'/views/'"),
    'a student page without an id goes to the wizard, once the router knows who is asking');
 
-case_('Signing in drops the readable links and drafts the person before made');
+case_('Signing in drops the readable links, drafts and answered forms the person before made');
 $kid = make_student(['first_name'=>'Kim', 'last_name'=>'Link']);
 mail_ready(true);
 act('signin_link', ['student_id'=>(string)$kid, 'mode'=>'create', 'username'=>'kim.link']);
 act('student_draft', ['first_name'=>'Noch', 'last_name'=>'Einer', 'birth_date'=>'', 'course'=>'none', 'status'=>'active']);
 $_SESSION['activation_hash'] = hash('sha256', $keptToken((int)$loginOf($kid)['id']));   // she opened the link on her own phone
-ok($_SESSION['signin_links'] !== [] && $_SESSION['student_drafts'] !== [], 'her session holds a link, a draft and a link being opened');
+// Where a form she sent landed: a copy sent again by whoever comes next would
+// be taken there, to her page, as though they had sent it.
+$herForm = str_repeat('d', 64);
+remember_answered_form($herForm, ['student', ['id'=>$kid]]);
+ok($_SESSION['signin_links'] !== [] && $_SESSION['student_drafts'] !== [] && answered_form_landing($herForm) !== null,
+   'her session holds a link, a draft, a link being opened and a form she sent');
 $other = make_account(['role'=>'trainer', 'email'=>'andere@beispiel.test', 'password_hash'=>password_hash($password, PASSWORD_DEFAULT)]);
 throttle_clear('auth-ip', $ip);
 submit('login', ['login'=>'andere@beispiel.test', 'password'=>$password]);
 ok(!isset($_SESSION['signin_links']) && !isset($_SESSION['student_drafts']) && !isset($_SESSION['activation_hash']),
    'whoever signs in next on the browser finds none of them');
+is_same(null, answered_form_landing($herForm), 'nor where her form landed');
 $_SESSION['user_id'] = $other; $_SESSION['auth_version'] = 999;
 $_SESSION['signin_links'] = [1=>['token'=>str_repeat('a', 64), 'by'=>$other]]; $_SESSION['activation_hash'] = str_repeat('b', 64);
+remember_answered_form($herForm, ['student', ['id'=>$kid]]);
 current_user(true);
-ok(!isset($_SESSION['signin_links']) && !isset($_SESSION['activation_hash']), 'and a session that ended keeps none either');
+ok(!isset($_SESSION['signin_links']) && !isset($_SESSION['activation_hash']) && answered_form_landing($herForm) === null,
+   'and a session that ended keeps none either');
 sign_out();
 $_SESSION['activation_hash'] = str_repeat('c', 64);
 current_user(true);

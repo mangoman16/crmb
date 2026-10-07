@@ -20,7 +20,14 @@ function current_user(bool $reload=false): ?array {
         forget_session_leftovers();
         return $cached=null;
     }
-    $_SESSION['last_seen']=time(); return $cached=$a;
+    $_SESSION['last_seen']=time(); $cached=$a;
+    // A view through somebody's eyes is only as good as the viewer's own login,
+    // and impersonator() ends this whole session when that no longer holds
+    // (security re-review N1). Asked here, where every request first asks who
+    // is signed in, so nothing is drawn or done for a view that has ended.
+    // After $cached is set, because impersonator() asks who is looked at.
+    if(!empty($_SESSION['impersonator_id']) && !impersonator()) return $cached=null;
+    return $cached;
 }
 // Staff = admin or trainer. "manager" is the pre-0.2 name for trainer; it is
 // accepted on read so a half-applied migration cannot lock anyone out.
@@ -67,15 +74,18 @@ function require_admin(): array { $a=require_user(); if($a['role']!=='admin') th
  * after them on this browser may have: a view through somebody's eyes, which
  * handed the next person „Ansicht beenden" and the staff member's login
  * (security review F1); the readable sign-in links and the wizard's drafts they
- * made (ADR 0023 §5, §6), a link being a key to a child's login; and a link
- * being opened (activation_hash), which is somebody's key too.
+ * made (ADR 0023 §5, §6), a link being a key to a child's login; a link being
+ * opened (activation_hash), which is somebody's key too; and where the forms
+ * they sent landed (remember_answered_form()), which a copy sent by the next
+ * person would otherwise be taken to.
  *
  * Asked wherever a sign-in starts or ends: sign_in(), a session that has run
- * out (current_user()), and the activation page signing out whoever was here
- * before it sets up the link's own login. Signing out empties the whole session.
+ * out (current_user()), and a view whose viewer's own login has ended
+ * (impersonator()). Signing out empties the whole session.
  */
 function forget_session_leftovers(): void {
-    unset($_SESSION['impersonator_id'],$_SESSION['signin_links'],$_SESSION['student_drafts'],$_SESSION['activation_hash']);
+    unset($_SESSION['impersonator_id'],$_SESSION['impersonator_auth_version'],$_SESSION['signin_links'],$_SESSION['student_drafts'],
+          $_SESSION['activation_hash'],$_SESSION['answered_forms']);
 }
 /** A new session for $a, and nothing of the one before it (forget_session_leftovers()). */
 function sign_in(array $a): void { session_regenerate_id(true); forget_session_leftovers(); $_SESSION['user_id']=(int)$a['id']; $_SESSION['auth_version']=(int)$a['auth_version']; $_SESSION['last_seen']=time(); $_SESSION['locale']=$a['locale']; $_SESSION['csrf']=bin2hex(random_bytes(32)); current_user(true); }
@@ -108,7 +118,8 @@ function strong_password(string $p): string {
  * Refuse an address that is already another login's (ADR 0020, §1). The only
  * refusal of an address there is: every block that makes a login, every
  * re-addressing (change_account_email()) and every placeholder given an address
- * (invite_student(), ADR 0023 §3) asks it, before it writes.
+ * asks it, before it writes - the last through invitation_address(), which the
+ * callers of invite_student() ask before anything is written (ADR 0023 §3).
  *
  * The unique index on accounts.email would refuse too, under any isolation
  * level, but with a 23000 nobody can act on; this is the sentence a person
@@ -466,6 +477,18 @@ function token_lifetime(string $purpose): int {
 }
 
 /**
+ * How long a link of $purpose works, as a sentence says it - „eine Stunde",
+ * „48 Stunden" - in English where $en: a mail speaks its recipient's language,
+ * a page the reader's. Every text that names a lifetime asks this, so none can
+ * promise a link longer than token_lifetime() gives it.
+ */
+function token_lifetime_words(string $purpose, bool $en): string {
+    $hours=intdiv(token_lifetime($purpose),3600);
+    if($hours===1) return $en?'one hour':'eine Stunde';
+    return $en?$hours.' hours':$hours.' Stunden';
+}
+
+/**
  * Make a one-time link: 32 random bytes, of which only the sha256 is stored. It
  * replaces the login's earlier link of the same purpose, so there is one per
  * login and purpose - a new sign-in link kills the old one (ADR 0023 §6).
@@ -486,6 +509,25 @@ function make_token(int $accountId,string $purpose,?string $email=null): string 
  */
 function token_record(string $hash,bool $lock=false): ?array {
     return one('SELECT t.*,a.state,a.email,a.username,a.verified_at,a.role,a.name,a.locale FROM auth_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.token_hash=? AND t.expires_at>?'.($lock?' FOR UPDATE':''),[$hash,now()]);
+}
+
+/**
+ * Whether a link token_record() found can still be used; null - no such link,
+ * or one that has run out - cannot. One rule for the page a link opens and the
+ * activate action that uses it, so the page never offers a form the action
+ * refuses, nor shows the login's address or username for a link that signs
+ * nobody in (security re-review N2).
+ *
+ * Not to a suspended login, and only for the four purposes there are. A sign-in
+ * link is asked, as it is used, what was asked when it was made
+ * (signin_link_possible()): one whose login has since become a staff login,
+ * lost its student or been given an address it never confirmed signs nobody in.
+ * The last is also why a first link never sets up an address: an invitation by
+ * e-mail is accepted from its mailbox, or not at all.
+ */
+function link_usable(?array $r): bool {
+    if(!$r || $r['state']==='suspended' || !in_array($r['purpose'],['invite','reset','email','signin'],true)) return false;
+    return $r['purpose']!=='signin' || signin_link_possible(['id'=>(int)$r['account_id']]+$r);
 }
 
 /**
@@ -677,11 +719,14 @@ function account_mail_missing(): string {
  * The step that releases the privacy notice, as the sentence that says where -
  * or '' once it is released. Everybody acknowledges the notice the first time
  * they set up their login, by invitation or by sign-in link, so neither can
- * go out before; every refusal and notice that says so quotes this.
+ * go out before; every refusal and notice that says so quotes this. Settings
+ * are an administrator's, so a trainer is told who releases it rather than sent
+ * to a page she cannot open - as the e-mail card tells her (mail_not_ready_notice()).
  */
 function privacy_notice_missing(): string {
-    return setting('privacy_ready',false) ? '' : t('Die Datenschutzerklärung unter „Einstellungen → Datenschutz“ freigeben.',
-                                                   'Release the privacy notice under “Settings → Privacy”.');
+    if(setting('privacy_ready',false)) return '';
+    return is_admin() ? t('Die Datenschutzerklärung unter „Einstellungen → Datenschutz“ freigeben.','Release the privacy notice under “Settings → Privacy”.')
+                      : t('Eine Administratorin muss zuerst die Datenschutzerklärung freigeben.','An administrator has to release the privacy notice first.');
 }
 
 /**
@@ -728,9 +773,9 @@ function send_account_token(array $account,string $purpose,?string $email=null):
     $link=url('activate',['token'=>$token]);
     $club=trim((string)setting('org_name'));
     $hello=mail_greeting($account);
-    $hours=intdiv(token_lifetime('invite'),3600);
-    $expired=($en?"The link is valid for {$hours} hours. If it has expired, “Forgot your password” on the sign-in page sends a new one."
-                 :"Der Link gilt {$hours} Stunden. Ist er abgelaufen, bekommst du auf der Anmeldeseite unter „Passwort vergessen“ einen neuen.")."\n\n";
+    $valid=token_lifetime_words($purpose,$en);
+    $expired=($en?"The link is valid for {$valid}. If it has expired, “Forgot your password” on the sign-in page sends a new one."
+                 :"Der Link gilt {$valid}. Ist er abgelaufen, bekommst du auf der Anmeldeseite unter „Passwort vergessen“ einen neuen.")."\n\n";
     $ownDetails=$purpose==='invite' && is_open_invitation((int)$account['id']);
     $body=match($purpose) {
         'invite' => $hello
@@ -749,11 +794,11 @@ function send_account_token(array $account,string $purpose,?string $email=null):
         'reset' => $hello
             .($en?'a link to set a new password was requested for your login.':'für deinen Zugang wurde ein Link für ein neues Passwort angefordert.')."\n\n"
             .($en?'If you still know your password, there is nothing to do – it keeps working.':'Weißt du dein Passwort noch, ist nichts zu tun – es gilt weiter.')."\n"
-            .($en?'Otherwise set a new one here (valid for one hour):':'Sonst leg hier ein neues fest (eine Stunde gültig):')."\n".$link."\n\n"
+            .($en?"Otherwise set a new one here (valid for {$valid}):":"Sonst leg hier ein neues fest ({$valid} gültig):")."\n".$link."\n\n"
             .($en?'If that was not you, you can ignore this email.':'Warst du das nicht, kannst du diese E-Mail ignorieren.'),
         default => $hello
             .($en?'Open this link to continue:':'Öffne diesen Link, um fortzufahren:')."\n".$link."\n\n"
-            .($en?'Valid for one hour.':'Eine Stunde gültig.')."\n\n"
+            .($en?"The link is valid for {$valid}.":"Der Link gilt {$valid}.")."\n\n"
             .($en?'If you did not expect this email, you can ignore it.':'Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.'),
     };
     queue_mail((int)$account['id'],$email??$account['email'],$subjects[$purpose],$body,'security');

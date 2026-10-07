@@ -132,7 +132,7 @@ if($picking): ?>
     if($viewing): ?>
     <p class="chat-empty"><?=e(viewing_refusal())?></p>
     <?php else:
-    $q=trim((string)($_GET['q']??''));
+    $q=trim($_GET['q']??'');
     $match=fn(array $p): bool => $q==='' || mb_stripos((string)$p['name'],$q)!==false;
     $person=function(array $p, string $small='') use ($user): void { ?>
     <a class="member-row" href="<?=e(url('messages',['with'=>$p['id'],'#'=>'chat-end']))?>">
