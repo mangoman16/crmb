@@ -1,9 +1,30 @@
 ---
-status: accepted, amended by 0022, 0026
+status: accepted, amended by 0022, 0026, 0028
 date: 2026-09-27
 ---
 
 # 0011. The start checklist, and a menu of seven
+
+> **Amended by ADR 0028 (2026-10-07).** On a phone, staff's „Mehr" is a page, `?page=more`, not the
+> side menu slid in. These parts no longer hold:
+>
+> - in Menu, seven as the length of the menu. The menu stays flat and without sections, but its
+>   length is measured against the desktop fold instead (0028 §7);
+> - in Rejected, the reason "a list of seven fits on a phone": on a phone the list is now four places
+>   on the bar and the „Mehr" page.
+>
+> Added: `nav_owner()` gains `more`, and staff's Mein Konto belongs to it.
+>
+> The family's rows in the Menu table and under "Phone bar" were already replaced by the owner's
+> decision of 2026-10-07 on the design language (ROADMAP, "Decided"), which no record had noted:
+>
+> - the side menu is Übersicht · Beiträge · Nachrichten · Profil;
+> - the bar is Übersicht · Beiträge · Chats · Profil;
+> - „Neuigkeiten", „Neues" and „Konto" are gone, and Mein Konto is a row on Profil.
+>
+> Staff's bar reads Übersicht · Schüler · Anwesend · Chats · Mehr (design language, Part 0, C3).
+>
+> Everything else stands.
 
 > **Superseded in part by ADR 0026 (2026-10-07).** Custom fields and writing to many are gone. These
 > parts no longer hold:
