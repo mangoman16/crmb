@@ -97,7 +97,7 @@ release and emptied again for the next.
 - Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
 - After an update the browser fetches the new stylesheet and script by itself: the account menu is styled and the bell stays still without clearing the cache: A.0
-- Everybody signs in with their own e-mail address; usernames are gone. A person is added either by inviting an address — they fill in their own details and choose a course — or by creating them; nobody sets another person's password (ADR 0021): A.1–A.13
+- Everybody signs in with their own e-mail address — a student may have a username instead (L.x). A person is added either by inviting an address — they fill in their own details and choose a course — or through the wizard „Schüler anlegen"; nobody sets another person's password (ADR 0021, amended by ADR 0023): A.1–A.13
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
 - The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a copied course has its group; a stored photo keeps only the picture (ADR 0022): C.1–C.20
 - Billing and invoices after the review of October 2026: an archived tariff stays on a child, a cancelled charge can be charged again, „Als bezahlt eintragen" confirms rather than doubles, a charge on an invoice cannot be cancelled, an invoice is not e-mailed to a family who said no, the invoices page counts every invoice, a membership ending mid-month is charged to that day, a child coming back starts afresh, the age filter finds the right children, background charges are German and nobody's, and the „Zahlungsziel" setting that did nothing is gone: [B.1–B.14](#billing-and-invoices-after-the-review-of-october-2026)
@@ -112,7 +112,7 @@ tests/mariadb-local.sh            # the whole suite against a throwaway MariaDB 
 tests/existing-database.sh        # the same suite against an empty _test database you made
 ```
 
-The run must end in **`0 failed`**. It takes about two minutes.
+The run must end in **`0 failed`**. It takes about three minutes.
 Anything else and the manual sweep is a waste of time — stop and report that
 first.
 
@@ -151,6 +151,8 @@ measurement.
 | `accounts` | One login is one student: invitations, own addresses, the access card's states |
 | `attendance` | Statuses, the suggested training day, the summary figures |
 | `billing` | Charge periods, intervals, discounts, proration, due and overdue dates |
+| `brand_pages` | The club's colours, logo and icon as the pages draw them |
+| `colour` | The colour arithmetic: text on and with the club's colours stays readable |
 | `contacts` | Somebody to ring, one standard contact, and an address to invoice |
 | `dates` | UTC to local conversion, money as integer cents |
 | `demo` | Example data fills, is recognisable, and comes out again completely |
@@ -162,11 +164,15 @@ measurement.
 | `history` | The change log records what differed, and only that |
 | `install` | The browser installer, migrations applying themselves, the refusals |
 | `invoices` | § 11 UStG details in the produced document, numbering, status |
+| `logins` | Every student has a login; the wizard; usernames; sign-in links that work once (ADR 0023) |
 | `messaging` | Who may read a conversation and who may write to whom |
 | `migrations` | An update carries the data with it: prices, discounts, addresses |
 | `performance` | Query counts, so a page does not issue one query per row |
+| `presence` | The dot, the status staff choose, when somebody was online, and who may see it |
+| `presence_pages` | The same on the pages, and the account menu in the top bar |
 | `reports` | A problem report's trail of steps, and nothing in it that must never be kept |
 | `security` | Authorisation boundaries, credentials, what must not leak |
+| `selfservice` | Families completing their own details, and every change in the change log |
 | `settings` | Every setting has a type and a usable default |
 | `shell` | Notifications, impersonation, avatars, themes, feedback |
 | `start` | The start checklist: each tick read from the data, example data never counting, the way on and back |
@@ -221,12 +227,13 @@ are the only ones it has proven. **Notes** at the end are things the design
 intends that are worth a decision; they do not fail it. Details:
 [tests/README.md](tests/README.md#the-first-evening-end-to-end-in-a-browser).
 
-**Last walked:** 91520db on 28.09.2026, `RESULT: PASS`, 279 checks, against
-MariaDB 10.11.14 with PHP 8.4.19 and again with 8.5.11 (`php -S`), in Chromium
-at 390px and 320px. The U.x checks it walked are marked below where they stand:
-ticked when the walk covers the whole check and it is one for whoever makes the
-release, annotated when it covers part, or when the check is yours to do on your
-own phone.
+**Last walked:** the working tree at d095ca4 on 07.10.2026, `RESULT: PASS`, 372
+checks, against MariaDB 10.11.14 with PHP 8.4.26 (`php -S`), in Chromium at
+390px and 320px ([VALIDATION.md](VALIDATION.md)). The U.x checks it walks are
+marked below where they stand: ticked when the walk covers the whole check and it
+is one for whoever makes the release, annotated when it covers part, or when the
+check is yours to do on your own phone. The annotations name the commit they were
+first written for, 91520db; the walk still covers them.
 
 It stands in for a phone, not for these, which stay by hand when the change
 touches them:
@@ -234,10 +241,10 @@ touches them:
 - [ ] **T.1** The invoice PDF the run saves (`invoice.pdf` in its work folder,
   printed at the end) opened in Preview or Adobe Reader and on the iPhone: one
   page, the address block, the amount, the IBAN in groups of four.
-  *Not done. At 91520db the walk parsed `invoice.pdf`, and pypdf (strict) read one page with Leistungszeitraum 14.09.2026 – 30.09.2026 and 19,83 €. That is a parser, not a reader.*
+  *Not done. At d095ca4 the walk parsed `invoice.pdf` and read its amount and its Leistungszeitraum, 04.10.2026 – 31.10.2026. That is a parser, not a reader.*
 - [ ] **T.2** The invitation through the real mail provider, opened on an
   iPhone in Mail: the link opens „Konto einrichten" in Safari, not a blank page.
-  *Not done. At 91520db the walk received the invitation through a local SMTP sink, not a real provider.*
+  *Not done. At d095ca4 the walk received the invitations through a local SMTP sink, not a real provider.*
 - [ ] **T.3** On the iPhone, as the family: the bell at the top right shows the
   bell alone. (Chromium draws a small ▸ above it; check whether Safari does.)
   *Not done. No iPhone here; Chromium at 91520db still draws the ▸.*
@@ -261,8 +268,8 @@ same three and the password.)
 |---|---|---|
 | Administrator | the address you just chose | everything |
 | `trainerin@beispiel.test` | trainer | what a trainer may *not* see |
-| `familie.hofer@beispiel.test` | family | what a parent sees |
-| `familie.berger@beispiel.test` | family | a second family, to prove separation |
+| `lena.hofer@beispiel.test` | family | what a parent sees |
+| `jonas.berger@beispiel.test` | family | a second family, to prove separation |
 
 **1 · Look around as the administrator.** The overview shows active children,
 outstanding money and this week's sessions. Nothing is empty, nothing says
@@ -278,9 +285,11 @@ outstanding money and this week's sessions. Nothing is empty, nothing says
 dauerhaft · Prozent · 20. Save. The list should read
 „252,00 € jährlich · 162,00 € alle 6 Monate".
 
-**4 · Add a member.** **Schüler → + Schüler anlegen**: a name, a date of birth,
-an address to write to, aktiv. Save — the page then lists what is still to do.
-Fill in the **Anschrift** and **Telefonnummer**, and add an emergency contact.
+**4 · Add a member.** **Schüler → + Schüler anlegen**: first and last name, a
+date of birth, „Noch keinen Kurs", aktiv, **Weiter**. On step 2 choose
+**„Ohne Anmeldung anlegen"**; then **Zur Seite von …**, which lists what is still
+to do. Fill in the **Anschrift** and **Telefonnummer**, and add an emergency
+contact.
 
 **5 · Enrol them and check the arithmetic.** On the child, **Kurse → In einen
 Kurs eintragen**, pick the course and `Erwachsene`. Open *Tarif, Zahlungsweise
@@ -300,23 +309,18 @@ child, **Datenblatt drucken**. Each is one sheet of A4 with headers and footers
 turned off in the print dialog. The blank one carries the price list as lines to
 tick.
 
-**8 · Be somebody else.** Open the child that `familie.berger@beispiel.test`
+**8 · Be somebody else.** Open the child that `jonas.berger@beispiel.test`
 signs in for, and on its card **„Zugang zum Portal"** choose **„Portal als …
 ansehen"**. A red strip names whose eyes you are using; the portal shows that one
 child only. **Ansicht beenden** gives you yourself back.
 
 **9 · Sign in as a family for real.** Sign out, sign in as
-`familie.hofer@beispiel.test`. Four menu entries — Übersicht, **Profil**,
+`lena.hofer@beispiel.test`. Four menu entries — Übersicht, **Profil**,
 Nachrichten, Neuigkeiten — and **Profil** opens their one child; one login is
 one child, so there is no list of children. Their own charges only. Try
 `?page=student&id=` with a number that is not theirs: it answers 404.
 
-**10 · Make a login without email.** Back as the administrator, open the child
-you added at step 4, and on **„Zugang zum Portal"** choose **„Ohne E-Mail anlegen
-(mit Passwort)"**: its address and a password. Sign out, sign in with them — it
-works with no SMTP configured anywhere, and opens that child's **Profil**.
-
-**11 · Put it back.** **Einstellungen → System → „Beispieldaten entfernen"**.
+**10 · Put it back.** **Einstellungen → System → „Beispieldaten entfernen"**.
 Every invented child, course and charge goes; anything you made yourself stays.
 
 ---
@@ -411,20 +415,19 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **3.10** Switch **Wartungsmodus** on from **Einstellungen → System**.
   Everybody else sees the closed page; you still get in, with the red strip at
   the top offering the way out.
-- [ ] **3.11** Re-count the fact table in `PROJECT.md` — tables, migrations,
-  settings, suites, undo entities and the lines of code — against the tree
-  you are about to release. Not a test, but it belongs to whoever cuts the
-  release: those counts have gone stale twice by being nobody's job.
+- [ ] **3.11** Give the release its record in `VALIDATION.md`: the commit, the
+  engine and the PHP the suite and the browser walk ran on, the suite's count and
+  what its last lines said it could not cover. Not a test, but it belongs to
+  whoever cuts the release: figures nobody owns go stale.
 
 ---
 
 ## Sign in, roles and access
 
-- [ ] **4.1** Sign in as the trainer. **Verwaltung**, **Kurse**,
-  **Anwesenheit**, **Beiträge**, **Rechnungen**, **Konten** and **Postausgang**
-  are all in the menu — **Kurse** and **Anwesenheit** inside **Training**,
-  **Beiträge** and **Rechnungen** inside **Geld**, **Konten** and
-  **Postausgang** inside **System**.
+- [ ] **4.1** Sign in as the trainer. The menu reads Übersicht, Schüler, Kurse,
+  Anwesenheit, Geld, Nachrichten and **Verwaltung**. **Rechnungen** is the
+  switch at the top of **Geld**, **Postausgang** is at the top of
+  **Nachrichten** (U.45–U.51).
 - [ ] **4.2** As the trainer, **Einstellungen** and **Änderungen** are *not* in
   the menu, and typing their addresses by hand is refused.
 - [ ] **4.3** As the administrator, everything the trainer can reach, you can
@@ -442,8 +445,13 @@ Skip on an ordinary code change; do all of it before a release.
   sharing a phone. All twelve work. A correct password must never produce „Zu
   viele Versuche": the attempt is counted before the password can be checked,
   and a correct sign-in clears the count.
-  > Afterwards, wait the hour or use a different account — this counter is
-  > deliberately not cleared by anything you can do from the portal.
+  > Each of those sign-ins also counts towards the sixty a quarter of an hour
+  > allowed from one internet connection, and that count is deliberately not
+  > cleared by anything you can do from the portal. Before the next check, wait
+  > a quarter of an hour or use another connection.
+- [ ] **4.6c** After 4.6, wait sixteen minutes: the correct password signs in
+  again. The suite ages the stored count rather than waiting, so this is the one
+  place the clock itself is proven.
 - [ ] **4.7** „Passwort vergessen" with the email address sends a link to the
   login's own address; the link sets a new password once and not twice. Asking
   four times in an hour is refused the fourth time — that counter is never
@@ -485,14 +493,9 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **5.1** Scroll a long page. The top bar stays where it is.
 - [ ] **5.1a** As the administrator, on a laptop at **110% and 125% zoom**, the
   menu on the left has no scrollbar of its own and its last entry is above the
-  fold. Open **System**: **Training** and **Geld** shut by themselves, so the
-  menu is never taller than one open section.
-- [ ] **5.1b** Whichever page you are on, its section is already open when the
-  page loads — nothing has to be clicked to see where you are.
-- [ ] **5.1c** With a course request waiting, the number is on **Training**
-  while it is shut and on **Kurse** once it is open, never on both.
-- [ ] **5.1d** On a phone the menu is still the drawer behind **Mehr**, every
-  row is still 44pt, and each section row has one arrow, not two.
+  fold. With a course request waiting, its number stands beside **Kurse**.
+- [ ] **5.1b** On a phone the menu is the drawer behind **Mehr**, and every row
+  in it is 44pt.
 - [ ] **5.2** Your name and role appear **once**, in the top bar — not again at
   the bottom of the menu.
 - [ ] **5.3** The bell shows a number when something is waiting. Opening it
@@ -539,14 +542,15 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **5.4** A family sends a message. Both the trainer *and* the
   administrator get a notification — not only one of them.
 - [ ] **5.5** Clicking a notification lands on the thing it is about.
-- [ ] **5.6** At the bottom of any page: „Etwas funktioniert hier nicht".
-  Send one with a screenshot attached.
+- [ ] **5.6** „Etwas funktioniert hier nicht" (where 5.0 and 5.0a say): send
+  one with a screenshot attached.
 - [ ] **5.7** **Einstellungen → Rückmeldungen** shows it with the page it came
   from, the browser, the address it was sent from and the portal version — none
   of which the sender had to know. The screenshot opens.
 - [ ] **5.8** Marking a report as handled removes it from the count in the tab.
-- [ ] **5.9** **Konten → „Portal als diese Person ansehen"** on a family. You
-  see exactly what they see, with a bar across the top saying so.
+- [ ] **5.9** On a child whose login is in use, card **„Zugang zum Portal"** →
+  **„Portal als … ansehen"**. You see exactly what the family sees, with a bar
+  across the top saying so.
 - [ ] **5.10** „Ansicht beenden" gives you your own account back. (This is the
   check that once failed: the way out must work from inside a borrowed session.)
 - [ ] **5.11** While impersonating, change something. **Änderungen** records
@@ -675,9 +679,10 @@ your picture at the top right.
   yellow.
 - [ ] **P.2** Tap „Automatisch": „Dein Status richtet sich wieder nach deiner
   Aktivität." and the dot is green again. Nothing new appears under
-  **Einstellungen → Änderungen**: a status is not a change to undo.
-- [ ] **P.3** Sign in as a family. The account menu has „Mein Konto" and
-  „Abmelden" only: no status, and no dot on their own picture.
+  **Einstellungen → Änderungen**: a status is not a change worth recording.
+- [ ] **P.3** Sign in as a family. The account menu has „Mein Konto",
+  „Status-Emoji" and „Abmelden", and no status to choose; their own picture
+  carries its dot, which follows what they do (C.8).
 - [ ] **P.4** As the trainer, view the portal as that family. The account menu
   has no status block. Stop viewing, then open the family's page: their „zuletzt
   online" has **not** moved to just now — it was you in the portal, not them.
@@ -712,11 +717,11 @@ your picture at the top right.
   your picture has turned from green to yellow. „Als offline anzeigen" turns it
   grey. Put it back to „Automatisch".
 - [ ] **P.12** On the iPhone, signed in as a family, tap the picture: the menu
-  holds „Mein Konto" and „Abmelden" and nothing else, and the picture has no
-  dot — P.3, on the phone.
-- [ ] **P.13** As the administrator, **Konten → „Portal als diese Person
-  ansehen"** on a family, then tap the picture: no **Status** in the menu, and
-  no dot. (P.4 is the same for the trainer.) „Ansicht beenden" afterwards.
+  holds „Mein Konto", „Status-Emoji" and „Abmelden" — P.3, on the phone.
+- [ ] **P.13** As the administrator, on a child whose login is in use, **„Portal
+  als … ansehen"**, then tap the picture: no **Status**, no „Status-Emoji" and no
+  dot — they are the reader's own. (P.4 is the same for the trainer.) „Ansicht
+  beenden" afterwards.
 - [ ] **P.14** On an iPhone 320 pixels wide (an iPhone SE of the first
   generation), as the trainer, tap your picture: „Abmelden" is above the bar at
   the bottom, or can be reached by scrolling inside the menu — never hidden
@@ -739,8 +744,9 @@ your picture at the top right.
 
 ## Students, contacts, levels and age groups
 
-- [ ] **7.1** Create a child with a name, a date of birth and a level. The level
-  offered by default is **Anfänger** unless you changed which one is default.
+- [ ] **7.1** Create a child with a name and a date of birth (L.3–L.10 walk the
+  wizard itself). On their page, under **Einteilung**, the level is **Anfänger**
+  unless you changed which one is default.
 - [ ] **7.2** The age group is worked out from the date of birth — „Unter 12",
   „Jugend", „Erwachsene" — and says it was worked out, not chosen.
 - [ ] **7.3** Set the age group by hand. It stays set, and says it was set by
@@ -751,8 +757,8 @@ your picture at the top right.
   a gap or overlap.
 - [ ] **7.6** Deleting a level or age group that is in use tells you how many
   children are in it rather than silently emptying their record.
-- [ ] **7.7** A child with no contact is named on the **Schüler** list — "1 Kind
-  ohne Standardkontakt" — with a link straight to their contacts.
+- [ ] **7.7** A child with no contact is named on the **Schüler** list — „1 Kind
+  ohne Notfallkontakt" — with a link straight to their contacts.
 - [ ] **7.8** The first contact you add becomes the **Standardkontakt** without
   being asked. It saves with only a telephone number: invoices, reminders and
   invitations go to the child's own address, not to a contact.
@@ -766,18 +772,16 @@ your picture at the top right.
   portal writes to and, once the child has a login, what it signs in with. For
   a young child that is usually a parent's address — but each child needs one of
   its own, so a brother or sister needs a different one.
-- [ ] **7.8d** **„Einladung senden"** on **„Zugang zum Portal"**, for a child with
-  no login, creates one and queues the invitation to that address. Check the
-  outbox.
+- [ ] **7.8d** **„Einladung senden"** on **„Zugang zum Portal"**, for a child
+  „Ohne Anmeldung", turns their login into an invitation to that address. Check
+  the outbox.
 - [ ] **7.8e** Invite a *second* child at an address that already signs in for
-  another child: refused, with „Jede Schülerin und jeder Schüler braucht eine
-  eigene E-Mail-Adresse. …". No login is made, no invitation is queued, and the
-  first child's login is untouched. (It used to put both children on one login;
-  one login is one child now.)
+  another child: refused, with „Diese E-Mail-Adresse gehört schon zu einem
+  anderen Zugang. Jede Person braucht ihre eigene. Es ist der Zugang von …".
+  No invitation is queued, the second child stays „Ohne Anmeldung", and the
+  first child's login is untouched. One login is one child.
 - [ ] **7.8f** Inviting a child at an address that belongs to a trainer or an
-  administrator is refused the same way, and the child stays without a login.
-- [ ] **7.8g** An invoice for a child with no account is addressed to the child
-  at the child's own address, whatever email any contact has.
+  administrator is refused the same way, and the child stays „Ohne Anmeldung".
 - [ ] **7.8h** The **Schüler** list names two gaps separately: children with
   nobody to ring, and children with no address.
 - [ ] **7.12** **Schüler → Leeres Formular drucken**: a registration form on
@@ -805,12 +809,14 @@ your picture at the top right.
   page.
 - [ ] **7.15** Both say what happens to the data, and neither is reachable by a
   family.
-- [ ] **7.16** **+ Schüler anlegen** asks for a name, a date of birth, an email
-  address and whether they are a member — and nothing else. Not the level, not
-  the tariff, not the internal notes, not your own custom fields.
-- [ ] **7.17** After **Anlegen und weiter**, the child's page opens with **Noch
-  zu tun** at the top: an emergency contact, an email address or an invitation,
-  a course, a tariff — in that order, each a link to where it is done.
+- [ ] **7.16** **+ Schüler anlegen** asks, on its first step, for the first and
+  last name, the date of birth, a course and whether they are a member — and
+  nothing else. Not the level, not the internal notes, not your own custom
+  fields.
+- [ ] **7.17** The page that says the child is added, and then the child's own
+  page, show **Noch zu tun**: an emergency contact, an email address or an
+  invitation, a course, a tariff — in that order, each a link to where it is
+  done.
 - [ ] **7.18** Do them one at a time and watch each disappear. When the last one
   goes, the card goes.
 - [ ] **7.19** A course you have just created says the same: a training day and
@@ -822,10 +828,10 @@ your picture at the top right.
   Remove the standard one when there are two, and the other one takes over.
 - [ ] **7.11** A contact can be reached from the phone: the number is a link
   that dials.
-- [ ] **7.12** Absences: add one with a reason and a date range; it shows on the
+- [ ] **7.20** Absences: add one with a reason and a date range; it shows on the
   child and in the attendance screen for those days.
-- [ ] **7.13** Delete a child. **Änderungen** still says what the record held.
-- [ ] **7.14** Open a link to a child or a course that has been deleted. The page
+- [ ] **7.21** Delete a child. **Änderungen** still says what the record held.
+- [ ] **7.22** Open a link to a child or a course that has been deleted. The page
   says **„Nicht gefunden"** — not „Kein Zugriff", which would say she is not
   allowed to see her own course.
 
@@ -882,6 +888,17 @@ your picture at the top right.
   tariff.
 - [ ] **8.8** Archive a course. It leaves the lists, keeps its history, and
   nobody can newly enrol in it.
+- [ ] **8.9** On a device whose language is set to **English (US)**, open a
+  course and its times. Every time is 24 hours — "16:00", never "04:00 PM" —
+  because the boxes are the portal's own, not the browser's picker. Change one,
+  save, reopen: it is what you chose.
+- [ ] **8.9a** A day with an hour but no minute is refused by name rather than
+  stored as "on the hour".
+- [ ] **8.9b** A course whose time is not on a five-minute boundary (17:37, say)
+  still shows 37 in the minute box, and saving something else on that form does
+  not move it.
+- [ ] **8.9c** „+ Weiterer Trainingstag" adds an empty row — the new row does
+  not inherit the time of the row above it.
 
 ---
 
@@ -903,17 +920,6 @@ your picture at the top right.
 
 ## Attendance
 
-- [ ] **9.x** On a device whose language is set to **English (US)**, open a
-  course and its times. Every time is 24 hours — "16:00", never "04:00 PM" —
-  because the boxes are the portal's own, not the browser's picker. Change one,
-  save, reopen: it is what you chose.
-- [ ] **9.x.1** A day with an hour but no minute is refused by name rather than
-  stored as "on the hour".
-- [ ] **9.x.2** A course whose time is not on a five-minute boundary (17:37, say)
-  still shows 37 in the minute box, and saving something else on that form does
-  not move it.
-- [ ] **9.x.3** „+ Weiterer Trainingstag" adds an empty row — the new row does
-  not inherit the time of the row above it.
 - [ ] **10.1** **Anwesenheit** in the menu opens one screen: pick a course, pick
   a date, see every child in it, one tap each, one save.
 - [ ] **10.2** The date offered is the course's own training day, not today when
@@ -963,7 +969,9 @@ your picture at the top right.
   there, whatever the tariff's joining rule says.
 - [ ] **11.11** Pause a child's billing. The next run skips them and says why.
 - [ ] **11.12** „Alle überfälligen per E-Mail erinnern" queues one email per
-  family, not one per charge.
+  overdue charge, to the child's own login, and counts as skipped every child it
+  cannot reach by e-mail. (Whether one per family would be better is open in
+  ROADMAP.md.)
 
 ---
 
@@ -1026,8 +1034,8 @@ your picture at the top right.
   gross are all shown, and net + tax equals the gross exactly.
 - [ ] **13.8** Numbers run consecutively within the year, with no gaps and no
   repeats. Issue two invoices in quick succession and check.
-- [ ] **13.9** „Per E-Mail schicken" queues the invoice to the family's standard
-  contact. **Postausgang** shows it.
+- [ ] **13.9** „Per E-Mail schicken" queues the invoice, with the PDF, to the
+  address of the child's login. **Postausgang** shows it.
 - [ ] **13.10** An invoice starts **offen**, becomes **überfällig** on its own
   past the payment date, and only becomes **bezahlt** when the trainer says so.
 - [ ] **13.11** Marking it paid records a real payment against the charges
@@ -1035,9 +1043,10 @@ your picture at the top right.
 - [ ] **13.12** Cancelling an invoice keeps it, marked storniert, with its
   number — it is never deleted and never renumbered.
 - [ ] **13.13** A family can download their own invoice, and nobody else's.
-- [ ] **13.14** A child with no portal login: the invoice is addressed to the
-  child at the child's own **E-Mail-Adresse**, and can be emailed there — not to
-  a contact (7.8g).
+- [ ] **13.14** A child whose login is not set up, has no address or is
+  suspended: there is no „Per E-Mail schicken", and a sentence says why and to
+  download the invoice and pass it on another way. An invoice never goes to a
+  contact's address.
 - [ ] **13.15** Two courses collecting into different bank accounts: putting a
   charge from each on one invoice is refused in words. One invoice carries one
   IBAN, and it has to be the right one.
@@ -1119,7 +1128,8 @@ your picture at the top right.
   schicken."** — the paper asks for the no, because both emails are on unless
   somebody refuses. No „Ja, ich möchte …" line is left. On the **Datenblatt** of
   the first child from 15.7 the news box is **ticked** and the message box is
-  not. Afterwards delete both logins from 15.7 in **Konten**.
+  not. Afterwards, on each of the two children's pages, **„Anmeldung löschen"**:
+  each child is „Ohne Anmeldung" again.
 
 ---
 
@@ -1179,12 +1189,12 @@ your picture at the top right.
   it. Nobody is asked to acknowledge it again: the number is recorded when a
   family accepts an invitation, and never compared afterwards.
 - [ ] **20.3** The notice is readable signed out.
-- [ ] **20.4** The notice she has released says what this version stores and
-  sends: a paragraph on when each account was online (last visit, 30 days of
-  periods, seen only by trainers and administrators) and one on club news by
-  email being on for new accounts. A portal that was updated keeps the text she
-  saved before, so these arrive only if she pasted them in (UPDATING.md). No
-  „[…]" note is left in the released text.
+- [ ] **20.4** The released notice says what this version stores and sends: when
+  each account was online (last visit, 30 days of periods, seen only by trainers
+  and administrators), club news by email being on for new accounts, the course
+  groups and the online dot, and usernames and sign-in links. A portal that was
+  updated keeps the text saved before, so these arrive only if they were pasted
+  in (UPDATING.md). No „[…]" note is left in the released text.
 
 ---
 
@@ -1201,9 +1211,10 @@ your picture at the top right.
 
 - [ ] **21.1** Interrupt a save (close the tab mid-request). Nothing half-written
   is left behind.
-- [ ] **21.2** **Einstellungen → System**: take a backup before an update. The
-  file exists and is not empty. Import it into an empty database in the hosting
-  panel once, deliberately, so you know the route works before you need it.
+- [ ] **21.2** After an update, **Einstellungen → System → Sicherungen** lists a
+  copy written just before it, and it is not empty. Once, deliberately, take that
+  file from `storage/backups` in the file manager and import it into an empty
+  database in the hosting panel, so you know the route works before you need it.
 - [ ] **21.3** An update that could not back up first refuses to run.
 - [ ] **21.4** After any update, **Einstellungen → System** shows the same
   version for the files and for the database.
@@ -1334,21 +1345,12 @@ Rückmeldungen**, „Technische Einzelheiten"
 **One login is one student** (see `docs/decisions/0010-one-account-is-one-student.md`)
 — on a child's own page, card **„Zugang zum Portal"**
 
-- [ ] **U.20** **(release)** A new child with an address nobody uses yet: on
-  **„Zugang zum Portal"** the badge says **Kein Zugang**; tap **„Einladung
-  senden"**. The badge turns to **Eingeladen** and the invitation is in
-  **Postausgang**. Now **+ Schüler anlegen** for a brother with the **same**
-  address: saving is refused with „Jede Schülerin und jeder Schüler braucht eine
-  eigene E-Mail-Adresse. … ist schon die Anmeldung eines anderen Kontos. Bitte
-  eine andere Adresse eintragen." — and nothing is created: no brother in
-  **Schüler**, no login in **Konten**, nothing new in Postausgang. A child with
-  no address at all shows „Trag oben zuerst eine E-Mail-Adresse ein und
-  speichere." on the card, and no button.
-  *`tests/e2e.sh` at 91520db walks the first half and it passed: no address, „Kein Zugang“ and the sentence with no button; the invitation, „Eingeladen an …“, Postausgang. The brother with the same address is still by hand.*
-- [ ] **U.21** **(release)** As the administrator, **„Ohne E-Mail anlegen (mit
-  Passwort)"** on a child, with a password of at least 12 characters: sign out
-  and sign in with that address and password. It works with no SMTP at all, and
-  lands on that child's **Profil**.
+- [ ] **U.20** **(release)** A child „Ohne Anmeldung" with no address at all
+  shows „Trag oben zuerst eine E-Mail-Adresse ein und speichere." on **„Zugang
+  zum Portal"**, and no button. Enter an address nobody uses yet, save, and tap
+  **„Einladung senden"**: the badge turns to **Eingeladen** and the invitation is
+  in **Postausgang**. (A brother with the same address: L.9.)
+  *`tests/e2e.sh` walks this at d095ca4 and it passed: „Ohne Anmeldung“, the sentence with no button, the invitation and Postausgang.*
 - [ ] **U.22** **(release)** A child invited but not signed up yet: change the
   address on the child's page and save. The link in the first invitation no
   longer works, and a new invitation to the new address is in Postausgang. With
@@ -1358,29 +1360,28 @@ Rückmeldungen**, „Technische Einzelheiten"
   ist die Anmeldung dieses Kontos und kann hier nicht geändert werden. …",
   pointing to „Mein Konto". Signed in as that family, **Mein Konto →
   „E-Mail-Adresse ändern"** and the confirmation link: afterwards the child's
-  page and **Konten** both show the new address.
+  page shows the new address.
 - [ ] **U.24** **(release)** From the child's page: **„Zugang sperren"**, then
   **„Zugang entsperren"**, **„Einladung erneut senden"** on an invited one, and
-  **„Zugang löschen"**. Each one lands back on the same child's page, not on
+  **„Anmeldung löschen"**. Each one lands back on the same child's page, not on
   Konten.
-- [ ] **U.25** **(release)** As the trainer, **Konten** offers to invite and create team
-  members only; there is no way to invite a family from there.
+- [ ] **U.25** **(release)** As the trainer, **Konten** lists the team and offers
+  no invitation at all: not for a team member (4.8a), and not for a family.
 - [ ] **U.26** A mail to a family — an invitation, a reminder — starts
   „Hallo <Vorname des Kindes>,".
   *The invitation part is walked by `tests/e2e.sh` („Hallo Jonas,“), passed at 91520db. The reminder is still by hand.*
 - [ ] **U.27** **Änderungen** on a child whose login changed shows the login as
   its address, or as „gelöschter Zugang" once it is gone — never a bare number.
-- [ ] **U.28** **(release)** With example data filled in, neither the overview nor
-  the **Schüler** list shows the notice „… Kinder brauchen eine eigene
-  E-Mail-Adresse" — every example child has an address of its own. (Where two
-  children do share one from before this rule, that notice names them, each card
-  says „Diese Adresse nutzt schon … Trag oben eine eigene ein." with no button,
-  and **Noch zu tun** offers „Eigene E-Mail-Adresse eintragen", which jumps to the
-  address field.)
+- [ ] **U.28** **(release)** With example data filled in, no example child's card
+  says „Diese Adresse gehört schon zum Zugang von …" — every example child has
+  an address of its own. Where a child's address is another login's (brothers and
+  sisters taken off a shared login by the update), the card says so with no
+  invitation button, and **Noch zu tun** offers „Eigene E-Mail-Adresse
+  eintragen", which jumps to the address field.
 - [ ] **U.28a** **(release)** The badge on **„Zugang zum Portal"** matches the login
-  in each state — **Kein Zugang**, **Eingeladen** („Eingeladen an …, noch nicht
-  angenommen."), **Aktiv** („Meldet sich an mit …") and **Gesperrt** — and
-  **Konten** uses the same four words and colours.
+  in each state — **Ohne Anmeldung**, **Eingeladen** („Eingeladen am …; der Link
+  gilt bis …"), **Noch nicht angemeldet** (a username waiting for its first
+  sign-in), **Aktiv** and **Gesperrt**.
 - [ ] **U.28b** **(release)** Delete a child that has a login, after first reading
   the warning that its login would be left over. **Konten** then shows that login
   under **„Zugänge ohne Schüler"**, where it can be locked or deleted and nothing
@@ -1556,15 +1557,14 @@ Rückmeldungen**, „Technische Einzelheiten"
 **One person, one address, and the address signs in** (ADR 0021) — on the iPhone
 where it says so
 
-- [ ] **A.1** Signed out, the sign-in page asks for „E-Mail-Adresse" and
-  „Passwort", nothing else. Sign in with the address in odd capitals,
+- [ ] **A.1** Signed out, the sign-in page asks for „E-Mail oder Benutzername"
+  and „Passwort", nothing else. Sign in with the address in odd capitals,
   `LENA@Beispiel.AT`: it works. On the iPhone the Keychain offers the saved
   address and fills the password.
-- [ ] **A.2** An old username (from before this update) does not sign in.
 - [ ] **A.3** A wrong password, an unknown address, a suspended login and an
   invitation not yet opened each give **the same** sentence: „Anmeldung nicht
-  möglich. Bitte E-Mail-Adresse und Passwort prüfen. Noch nicht eingerichtet?
-  Dann zuerst den Link in der Einladung öffnen."
+  möglich. Bitte E-Mail bzw. Benutzernamen und Passwort prüfen. Noch nicht
+  eingerichtet? Dann zuerst den Link öffnen, den du bekommen hast."
 - [ ] **A.4** „Passwort vergessen" with an unknown address and with a known one:
   the page says the same thing and names no address. Only the known one puts a
   mail in **Postausgang**, to the login's own address.
@@ -1601,10 +1601,10 @@ where it says so
 - [ ] **A.12** „Offene Einladungen": „Erneut senden" sends a new link (the old
   one stops working); „Zurückziehen" asks for nothing typed, and the old link
   then says „Link nicht mehr gültig". Inviting the address again works.
-- [ ] **A.13** **Schüler anlegen** with name, the child's own address and
-  **„Gleich einladen"**, then put the child into a course straight away. The
-  invitation asks only for the password and the privacy notice; afterwards the
-  family is already in the course. Delete a child whose invitation was never
+- [ ] **A.13** **Schüler anlegen** with a course on the first step and „Per
+  E-Mail einladen" with the child's own address on the second (L.9): the
+  invitation asks only for the password and the privacy notice, and afterwards
+  the family is already in the course. Delete a child whose invitation was never
   accepted: the old link is dead, and no login is left behind on **Team und
   Zugänge**. As a trainer, deleting a child that is linked to a team member's
   login never deletes that login.
@@ -1656,6 +1656,10 @@ where it says so
 - [ ] **A.23** **(release)** On a copy of a real portal, upload this version.
   Every existing login signs in with its email address exactly as before.
   Nobody was mailed about it.
+- [ ] **A.24** **(release)** `tests/mariadb-local.sh` is green, and
+  `tests/e2e.sh` ends in `RESULT: PASS`, on the MariaDB and PHP the club's host
+  runs.
+
 **After the reviews of the first build**
 
 - [ ] **A.25** On the phone, as the trainer, „Portal als {Familie} ansehen", then
@@ -1676,9 +1680,6 @@ where it says so
   „Entfernt: {Name} ({Beziehung}), {Telefon}. Aus Versehen? …"; the access
   card's invitation, resend and reset link each name the address the mail went
   to.
-
-- [ ] **A.24** **(release)** `tests/mariadb-local.sh` is green, and
-  `tests/e2e.sh` ends in `RESULT: PASS`, on the MariaDB and PHP her host runs.
 
 **The chat, like a messenger** (ADR 0022) — on the iPhone where it says so
 
@@ -1995,8 +1996,8 @@ the checks are about what happens, and hold for both.
 
 Say what you ran, not what you hope is true.
 
-- `tests/mariadb-local.sh` proves **MariaDB 10.11**, the engine her server runs,
-  and prints what it could not cover at the end of every run. **MySQL 8.0 is still
+- `tests/mariadb-local.sh` proves **MariaDB 10.11**, the engine the portal's
+  server runs, and prints what it could not cover at the end of every run. **MySQL 8.0 is still
   unverified** — it is one of the two supported engines, not both.
   `tests/existing-database.sh` proves whichever engine the hosting runs: quote the
   „Database server:" line it prints, not what you expect it to be.

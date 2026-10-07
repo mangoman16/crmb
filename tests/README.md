@@ -5,7 +5,7 @@ tests/mariadb-local.sh            # the whole suite, on a throwaway MariaDB
 tests/mariadb-local.sh billing    # one suite
 ```
 
-The suite runs on MariaDB, the engine her server runs. It builds the schema from
+The suite runs on MariaDB, the engine the portal's server runs. It builds the schema from
 the real files in `database/migrations/` and boots the real application against
 it, so a test exercises the code and the SQL that ship rather than a copy of
 them. There is no SQLite translation any more: `php tests/run.php` on its own
@@ -69,7 +69,8 @@ about `maintenance_file`, a run writes its uploads, backups and flags into a
 folder of its own under the system temp directory, prints it on its second line,
 and removes it at the end.
 
-The suite has been run against **MariaDB 10.11.14** with everything passing.
+The suite has been run against **MariaDB 10.11.14** with PHP 8.4.26, everything
+passing; [VALIDATION.md](../VALIDATION.md) has the latest run and its date.
 **MySQL 8.0 has not been tried**, so do not claim it.
 
 ## Writing a test
@@ -88,7 +89,11 @@ throws(fn() => student($kidB), 'another parent\'s child is not');
 Assertions: `ok`, `is_same`, `is_equal`, `throws`, `does_not_throw`.
 
 Fixtures: `fixture`, `make_account`, `make_student`, `make_tariff`,
-`make_class`, `sign_in_as`, `sign_out`, `test_reset`.
+`make_class`, `make_enrolment`, `make_thread`, `create_through_wizard`,
+`sign_in_as`, `sign_out`, `test_reset`. `act('action', [...])` dispatches an
+action inside one transaction, as a request does; `submit()` also goes through
+`handle_post()`, so the CSRF check, the rate limits and the duplicate-submission
+claim apply.
 
 Two more are worth knowing about:
 
@@ -137,7 +142,7 @@ tests/e2e.sh --stop-after "7 mail"    # stop once that step has run
 CRM_E2E_VERBOSE=1 tests/e2e.sh        # list every check that passed, not only the failures
 ```
 
-What the owner does on her first evening and what a family does the next
+What an administrator does on the first evening and what a family does the next
 morning, pressed through the real forms in Chromium at 390px, against a real
 MariaDB, with nothing reaching into the application from the side. No step
 calls an action directly, and there is no fallback: a form without a visible
@@ -146,7 +151,9 @@ tariff form of fd0d179 that every suite here passed.
 
 It walks `setup.php`, signing in to „Dein Portal einrichten“ at 0 of 9, each of
 the nine steps from its own button and back through „Zurück zur Einrichtung“
-with the tick checked every time, up to 9 of 9 and „Alles eingerichtet“. One
+with the tick checked every time, up to 9 of 9 and „Alles eingerichtet“. The
+children are added through the wizard, „Schüler anlegen“, and one more person
+is invited by address alone („Per E-Mail einladen“). One
 child joins the course on the day of the run and the other part-way through
 the month (its „Dabei seit“ set to a day before today); both charges must cover
 from the day they joined, be due no earlier than that day or the day they were
@@ -162,8 +169,8 @@ only the friendly page, Rückmeldungen must show it once with „3×“, one
 notification and a support text holding no name, address or IP; marked
 „Erledigt“ and broken once more it must be new again at „4×“, with a second
 notification. The table is put back each time. Every page a role opened is then opened again at
-320px. The checks that stand for a numbered one in `TESTING.md` (U.20, U.31,
-U.33, U.34, U.39–U.43, U.46, U.52, U.53, U.56) say so there.
+320px. A check that stands for a numbered one in `TESTING.md` names it in a
+comment in `e2e.mjs`, such as U.20 or U.46.
 
 On every page it records, and fails on: an HTTP 5xx the walk did not provoke,
 a JavaScript error or failed request, a warning, notice or deprecation in PHP's
@@ -197,9 +204,12 @@ What it does not prove: Safari (it is Chromium with an iPhone's size and user
 agent), a real mail provider, the PDF in a reader other than a parser, Apache or
 a host's PHP settings (it is `php -S`), and MySQL.
 
-## The other two suites
+## Two older scripts
 
-`integration.py` and `smtp_integration.py` drive a running server over HTTP and
-need a live database and a local SMTP capture server. See the instructions at
-the top of each. They are slower and cover the request path; the PHP suite here
-covers the rules.
+`integration.py` and `smtp_integration.py` (with `db.php`) drive a running server
+over HTTP and need a live database and a local SMTP capture server; the
+instructions are at the top of each. No run of either has been recorded since
+0.1.0, and as written they cannot pass: `integration.py` makes its students by posting
+`student_save` without an id, which the portal now refuses — students are made
+by the wizard — and `smtp_integration.py` builds on what `integration.py` made.
+Whether they are mended or deleted is ADR 0026's to decide.

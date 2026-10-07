@@ -1,247 +1,231 @@
 # Roadmap
 
-Where the project actually stands and what to do next, in priority order.
-Findings referenced as (A#) are numbered in [AUDIT.md](AUDIT.md). The reasoning
-behind this order — phases, decisions taken, and the questions still open for
-her — is in [PROJECT.md](PROJECT.md).
+The plan, and the only place it is kept. Read it at the start of a session, and change it in
+the commit that finishes or adds a task. What was built is in [CHANGELOG.md](CHANGELOG.md) and
+git, what was verified and on what in [VALIDATION.md](VALIDATION.md), and the structural
+decisions in [docs/decisions/](docs/decisions/README.md).
 
-Nothing has ever been deployed and no real student data exists yet, so the
-whole list is still cheap to reorder. Say what matters to her and it moves.
+**Where it stands.** Beta. Version 0.6.0, not released. No portal holds real families' data.
+The suite runs on MariaDB only; MySQL 8.0 has never been run.
 
----
+## Now and next
 
-## Done
+In this order.
 
-### v0.1.0 — as received
-Invitation-only accounts with verified email; admin / manager / student roles;
-students with contacts, membership dates, absences and configurable custom
-fields; tariffs, manual charges and partial/confirmed/voided payments; in-app
-conversations with recipient filters and templates; news with an optional
-newsletter; SMTP with a sealed password and an outgoing queue; editable
-bilingual privacy notice with consent records; versioned migrations, a
-maintenance switch and a `check` command.
+1. **Accounts, server side (ADR 0023).** Built: work-in-progress commit `e9aff6e`, finished
+   by `d095ca4`; backend-dev is fixing what the code and security reviews of 2026-10-07
+   found. A student's login may sign in with a username instead of an address; every
+   student has a login, a placeholder until it gets an address or a username; „Schüler
+   anlegen" is a two-step wizard; staff make sign-in links that work once, within 48 hours;
+   a student's login is replaced, never deleted (migrations 028–031). The screens are still
+   the minimum the server side needed: their design pass is item 4. The whole suite and the
+   browser walk pass at `d095ca4` on MariaDB 10.11.14 with PHP 8.4.26 (VALIDATION.md); the
+   sweep at phone width has not been run on it.
+2. **ADR 0026 (being written).** The core concept, the beta rules, and a verified list of what
+   to delete. The architect is writing it.
+3. **Removals.** Not started; waits for ADR 0026.
+   - Custom fields, with their data (decided 2026-10-07).
+   - The demo data, cut to the smallest set that still shows every screen.
+   - Whatever ADR 0026 marks remove.
 
-### This review
-**Security** — rate limits no longer refund themselves on failure (A1);
-whitelisted the interpolated column name (A6); password blocklist (A9);
-`unseal()` no longer aborts a mail run from inside a catch block (A8);
-COOP/CORP headers (A20); per-directory deny rules (A21).
+   A document describing a removed feature changes in the commit that removes it, never
+   before, so the documents never describe code that is not there.
+4. **Screens.** Not started.
+   - ADR 0023, as specified in
+     [docs/design/2026-10-05-accounts-and-chat-screens.md](docs/design/2026-10-05-accounts-and-chat-screens.md).
+   - ADR 0022 §11, the chat cut to its basics: administrators read every chat, a message is
+     text and photos (a student's from the camera, JPEG; staff JPEG, PNG or WebP), and no new
+     chat between two students. None of it is built: today an administrator opens the course
+     groups and the chats between a student and staff, a chat between two families is
+     private to the two, and voice notes and files can still be sent. The chat paragraph of
+     both privacy drafts, and UPDATING.md's instruction for a notice already released,
+     change in the same commit.
+   - ADR 0024, taking a child out of a course and back in. Migration 031 is in; nothing
+     writes `removed_on` yet.
+   - ADR 0025, every change to a payment profile kept in „Änderungen". `profile_save` still
+     writes without `tracked()`.
+5. **Security batch.** Not started.
+   - Viewing the portal as somebody else outlives the staff login: store the viewer's
+     `auth_version` when the view starts and check it again on every request
+     (`impersonator()`, `app/shell.php`).
+   - The example trainer login: a high-entropy password, and an expiry.
+   - A throttle on `proof_upload`.
+   - Unsubscribe links never expire (`valid_unsubscribe()`, `app/auth.php`), and their
+     „payments" wording.
+   - An invoice's recipient: the student, or the billing name.
+   - A family's notice and e-mail about a changed training date link to `?page=classes`, which
+     only staff may open; they should lead to the dashboard (`class_session_save` in
+     `app/actions_config.php`, near line 77; `notify_class_change()` in `app/mail.php`, near
+     line 192).
+   - `preferences_save` changing a consent, and a problem report carrying the wrong name,
+     while staff view the portal as somebody else: both go with the review fixes of item 1,
+     which make viewing look-only.
+   - A logo photo stored sideways (EXIF orientation) is measured unrotated and can be refused.
+   - Targets below the minimum on a desktop screen: the help button's summary (36 px),
+     „Alle ansehen" (21 px).
+6. **Robustness suite.** Unexpected values into every action, as every role (ADR 0026). Not
+   started.
+7. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
+   started.
+8. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
 
-**Correctness** — timestamps show the right calendar day (A2); failed email
-retries with backoff (A3); `current_user()` resolved once per request (A4);
-the web mail run respects `max_execution_time` (A5); `fmt_date()` no longer
-fatal on bad input (A7); indexes for the queries actually issued (A14);
-migration splitter handles quoted semicolons (A15); plus four smaller fixes
-(A16–A19).
+## The owner's goals
 
-**Design** — dark mode following the device, with three contrast defects fixed
-that only showed up in rendered screenshots (A10); home-screen install with a
-real app icon and standalone chrome (A12); unread-message markers (A11); nine
-touch targets raised to Apple's 44pt minimum (A13); appearance and text-size
-settings stored per account.
+In their words.
 
-### 0.2.0 — roles, classes, payments, skills
-**Roles** administrator / trainer / student, with configuration reserved to the
-administrator and day-to-day work open to the trainer.
+- 2026-10-07, what the portal is for:
+  - "most if not all of the users will work on phone, so we need the website to work
+    perfectly on phoney"
+  - "the trainer and students want an intuitive interface, they are non techcnical, and most
+    of them wont be really liking reading too much, with wizards and everything that make
+    following steps easy, with visual guidances"
+  - "we need this software to be robust, avoid errors and code as much as needed to make sure
+    stuff run as expected, expect all kinds of unexpected behaviours and values by users and
+    trainers"
+  - "whole goal for students is: easy roll in in courses, for beginning it probably will be
+    only 1 course / manage payments and pay for the course and see reciepts and open payments
+    and paid payments / report sick, get news from trainer for changes"
+  - "for the trainer, she wants management burden not to be here anymore, she is not
+    technical and wants smooth roll in, ways to add students to courses, student payments to
+    be easier managed, tell them if changes happen to the courses or even if she is sick,
+    communicate, help them and give feedback, have a list which students were in a course and
+    which not"
+  - "i like the settings to be comprehensive, remove nothing from settings, i want a good
+    setting, and the setting should allow customization and also in best case this should
+    work for other people too imagine this is a software you would sell, but custom fields
+    being able to add them is not needed"
+- 2026-10-07: "Clean up all files, specially all markdowns as a plan for yourself, and which to
+  check when, make sure they are accurate and correct."
+- 2026-10-07: "admin, who is me, will make the code with you"
+- 2026-10-07: "The software is now in beta, dont worry about about db changes or bigger
+  changes … software is in testing, i am unsure about most of the features, and i want you to
+  handle the thinking and planning, whenever you need my opinion you can ask me, if i have to
+  test anything or deploy anything, tell me. also stripe down the demo data or stuff that are
+  not needed anymore but are too much to maintain."
+- 2026-10-06: "trainer should be able to change iban" (ADR 0025); about taking a child out of
+  a course: "child can undo but needs to be accepted by trainer" (ADR 0024).
+- 2026-10-05: "now that usernames are allowed, no email login should also be possible, but
+  ideally discouraged" (ADR 0021, amended by 0023); "there should be no student ever in a
+  course without an account" (ADR 0010, amended by 0023); a chat that is "the absolute basics"
+  (ADR 0022 §11).
+- 2026-10-02: the chat "should basically be more like whatsapp … there should be groups for
+  courses, and children in a course will be in it, automatically, cannot leave … trainer and
+  admin see all groups" (ADR 0022).
+- "I'm not technical enough for debugging and need something that just works." (ADR 0012)
 
-**Classes** with schedule, tariff, bank details and members; a student can be in
-several, and leaving is recorded rather than erased.
+## Decided
 
-**Skill assessment**, trainer-only: configurable scales, areas, skills, dated
-values with notes, progress charts, and banding by area whose thresholds are a
-setting rather than code. Verified that a parent account sees none of it.
-*Removed again by migration 008, which dropped its four tables.*
+- **2026-10-07**
+  - The owner is the administrator, and builds the portal together with Claude. The trainer is
+    not technical and works on a phone. Students and families are not technical, work on
+    phones and read little.
+  - Beta: there are no real families' data. Schema changes and larger changes no longer wait
+    for the owner's approval; the project manager decides and tells the owner what to test or
+    deploy. What protects any install still holds: append-only migrations with the checksum
+    ledger, the update refusing rather than guessing, a backup before an update, security,
+    parameterised SQL, `e()`, cents, UTC, bilingual text.
+  - Custom fields are removed, with their data. Not yet done in the code.
+  - The demo data, and whatever is no longer needed but costs upkeep, is stripped down.
+  - Settings stay comprehensive, and the portal should work for other clubs too.
+  - Paying stays bank transfer, the QR code and an uploaded receipt.
+  - Trainer feedback to students is the chat.
+  - The project manager, on the reviews of ADR 0023:
+    - Only an administrator makes a sign-in link for a login already in use; a trainer makes
+      one only for a login not yet signed in. A child without an address who forgets the
+      password needs an administrator. The admin's half waits for ADR 0022 §11, because
+      until then such a link would open a child's private chats with other families.
+    - Viewing the portal as somebody else is look-only: every change is refused while
+      viewing, by one rule, except ending the view and signing out.
+- **2026-10-05 and 2026-10-06** — the owner's answers, and the project manager's decisions on
+  the designer's questions (ADRs 0022 to 0025, and the design specification):
+  - Administrators can read every chat, and their reading is not recorded.
+  - Students send photos from the camera only (JPEG); staff send JPEG, PNG or WebP.
+  - The trainer can change the IBAN.
+  - A child removed from a course can ask to come back, and staff accept.
+  - The student wizard, usernames and one-time sign-in links (ADR 0023).
+  - Sign-in links last 48 hours.
+  - The minimum password length stays 12.
+  - No sign-in links for staff.
+  - One quick action on the start page: „Schüler anlegen".
+  - Chats between two students are closed; the existing ones stay readable.
+  - Everybody is signed out once after the update.
+- **Earlier, still standing**
+  - Absence does not change what is charged: fees are for the place, not the session.
+  - The payment QR code carries what is still owed, not the whole charge.
+  - „Änderungen" is a change log that informs; there is no undo (removed 2026-09-16).
+  - Automatic monthly charges are switched on by hand on the Beiträge page; nothing is charged
+    without anybody having looked first.
+  - Only the German privacy notice must be released (ADR 0011).
 
-**Payment QR codes** for outstanding amounts, from an editable payload template
-defaulting to SEPA EPC069-12, generated on the server. IBANs validated by
-checksum. A charge finds its recipient from the charge, then the class, then the
-default.
+## Open
 
-**Defaults registry** — every setting declared once with a type and a default,
-rendered from that declaration, so nothing is undefined and a new setting needs
-no migration.
+For the project manager to decide:
 
-**Update path** — one `console.php update` command, verified idempotent, with a
-checksum guard against edited migrations and an actionable message when one
-fails partway.
+- Should billing warn about a „Beendet" student with no end date?
+- Rejoining a course starts new terms, while restoring a removed child keeps the old ones: is
+  that right?
+- Reminders per family instead of per charge?
 
-Also: online status, maintenance mode from the UI with an administrator bypass,
-payment reminder emails, plainer wording, and a simplified parent dashboard.
+For the owner to do:
 
-### 0.3.0 — billing, attendance, mobile
-**Monthly charges** on the 1st, first month after joining free, absence
-irrelevant to billing, per-student pause. Preview before creating; idempotent,
-so cron and the button cannot double-charge.
+- Write the privacy sentences only the operator can write — who runs the portal, the host and
+  the mail provider, how long things are kept, and the legal bases in the bracketed notes —
+  and release the German notice under **Einstellungen → Datenschutz**. Until it is released
+  no invitation goes out, and nobody can sign in for the first time with a sign-in link.
 
-**Attendance** per class and session, with configurable statuses, built for a
-phone: whole class on one screen, one tap each, one save, bulk-set to correct
-from.
+## For the owner to test or deploy
 
-**Mobile-first pass** on the densest screens, driven by measurement rather than
-taste: the attendance control was rebuilt after five labels were found
-truncating and overlapping at 390px.
+Nothing yet. The project manager adds an entry here as each phase lands: what to test or
+deploy, where, and signed in as whom.
 
-### 0.4.0 — transactions, undo, tests
-**One transaction per write**, nesting safely through savepoints, so a failure
-halfway leaves nothing half-applied and a repeated submission creates nothing.
+## Before real families use it
 
-**Undo.** Changes to fourteen tables record what the row looked like before and
-after, with a button to put each one back — including undeleting a student under
-their original number. This closes the old item 8 below. *The undo was removed
-in 0.6.0 at her request; „Änderungen“ is now a change log that informs and puts
-nothing back.*
+- One real e-mail end to end through the club's own provider: the SMTP test, an invitation,
+  the sign-up, a reset link. Only a mail server on the test machine has been used so far.
+- The German privacy notice released (see Open).
+- The background work watched on the real host: **Einstellungen → System** shows a recent
+  „Letzter Hintergrundlauf", and an invitation leaves the queue without anybody pressing
+  anything.
+- `config/config.php` kept safe, apart from the database copies: its `app_key` decrypts the
+  stored SMTP password and the queued mail, and a dump without it restores neither.
+- The portal on a real iPhone in Safari, at 320 px and in dark mode. Every walk so far has
+  been Chromium.
+- A real hosting account: the `.htaccess` rules, the https redirect behind a host's proxy,
+  nginx, and LiteSpeed's path for finishing a response have never run on one.
+- `composer audit`, where there is network access. It last reported no advisories during the
+  0.2.0 install.
+- MySQL 8.0, if a club's host runs it. INSTALL.md names it as intended; it has never been
+  run.
+- No independent security review or penetration test has been done.
 
-**A test suite that runs without MySQL.** `php tests/run.php` boots the real
-application against a disposable database built from the real migrations,
-covering dates, transactions, billing, security, attendance, settings, history,
-query counts, the rendered pages, and the shape of the source. It proves the PHP
-logic rather than the SQL dialect, so the same suite was then run against
-MariaDB 10.11.14, where it also passes — `tests/mariadb-local.sh` repeats that
-from nothing. MySQL 8.0 itself remains untried; see item 1 below. *In 0.6.0 the
-SQLite translation was removed and the suite runs on MariaDB only:
-`php tests/run.php` refuses without a `*_test` database, and
-`tests/mariadb-local.sh` starts a throwaway one.*
+## Later, not scheduled
 
-**Query counts held down where they grow with the roll**: the student list went
-from 56 queries at sixty students to 6, and the suite fails if that comes back.
+- Export to CSV of students, charges and payments, so the club's data is never hostage to the
+  portal and an accountant can be handed a file.
+- „Who is at training on Thursday": a register view that the enrolments and absences can
+  already answer.
+- Search across messages and notes.
+- Two-factor sign-in for administrators.
+- Saved filters can be made and deleted, not renamed or edited.
+- A viewer for `audit_log`. „Änderungen" is the separate change log.
+- How long `audit_log` and `consent_log` are kept. Both grow without end; decide it with the
+  privacy notice's retention periods.
+- Terms instead of months, one invoice per family, waiting lists and trial lessons: only once
+  real use asks for them.
+- Push notifications for a new message. A mail notice exists; ask before building.
+- A mail job with no account is always cancelled (`process_mail()`). No caller queues one
+  today.
+- PHP 8.2 gets security fixes until 31 December 2026, and INSTALL.md still names it as the
+  minimum.
 
-### 0.6.0 — unreleased, so far
+## Not planned
 
-The full list is in [CHANGELOG.md](CHANGELOG.md). The latest round:
-
-**One login is one student** (ADR 0010). A child's own address is the login,
-managed on the child's page; migration 019 separated the logins siblings shared,
-deleting nothing, and an index keeps it that way.
-
-**„Dein Portal einrichten“** (ADR 0011): nine steps from an empty portal to the
-first invitation, each ticked from the data. **A menu of seven**, with the rest
-reached from where it belongs, and fewer boxes on the forms at first. **Only the
-German privacy notice** has to be released.
-
-**Invitations wait for a passing mail test.** **Problem reports carry the last
-eight steps** and are deleted 30 days after being done (ADR 0009). **Errors
-report themselves** into „Rückmeldungen“, with a text to copy for support that
-holds nothing a family typed (ADR 0012). **The club's own icon** on the home
-screen (ADR 0008).
-
-**Tests that cannot touch the live portal**, `tests/existing-database.sh` for
-shared hosting, and `tests/e2e.sh`, a browser walk of the first evening against
-a real MariaDB that found six defects the suite had passed.
-
-**The top bar, and what staff can see.** The bell no longer jumps; tapping
-your picture opens „Mein Konto" and „Abmelden" (ADR 0016). Trainers and
-administrators choose a status and see, for every account, when it was online
-over the last 30 days; families see none of it (ADR 0015, migration 020).
-**Profile pictures** are cached privately and a family can fetch only its own
-and the staff's (ADR 0017). **Club news by email** starts switched on for new
-accounts (ADR 0018, migration 021). **The club's colours and logo** under
-Einstellungen → Portal (ADRs 0013, 0014). The browser walk has not been
-repeated since these were added.
-
-**Designed, not built:** sign-in by username, with one address allowed on
-several logins (ADR 0019, planned as migrations 022–024). Until it is built,
-the sign-in throttle's known weakness in VALIDATION.md stands.
-
----
-
-## Next — before she uses it
-
-These are the things that stand between "the code is good" and "her data is
-safe in it". Nothing below is optional.
-
-1. **Done for MariaDB; repeat on MySQL 8 if that is your target.**
-   All twenty-one migrations, the upgrade path and the whole suite have now run
-   against MariaDB 10.11.14 — see [VALIDATION.md](VALIDATION.md). Repeat any
-   time with `tests/mariadb-local.sh`, which starts a throwaway server and stops
-   it again, or on shared hosting with `tests/existing-database.sh` against an
-   empty `_test` database made in the panel — which also proves whatever engine
-   that host runs. MySQL 8.0 itself has not been tried: point
-   `CRM_CONFIG=…` at an empty `_test` database on one to close that. `tests/e2e.sh`
-   now delivers an invitation through a mail server of its own; still not run
-   here are `tests/integration.py` and `tests/smtp_integration.py`, which need a
-   live SMTP capture server.
-2. **Backups.** You said you will handle these yourself, so this is not on my
-   list — one thing to know: the config file holds `app_key`, which is what
-   decrypts the stored SMTP password and any queued mail. A database dump
-   without that key restores your records but not those. Back it up too, and
-   separately.
-3. **Re-run `composer audit`** somewhere with network access. It could not be
-   verified here.
-4. **Finish the privacy notice.** What the portal itself stores is written out
-   in the drafts; still open are the real operator details, the hosting and
-   SMTP providers, retention periods, and a decision on how sickness absences
-   and minors' data are handled, and the legal basis for two things she has
-   decided: recording when each account was online, and sending club news by
-   email without asking for a yes first — the draft flags these as placeholders.
-   Invitations stay disabled until the German notice is released, which is the
-   right default; an English one is optional.
-5. **Confirm the background work runs on her host.** No cron job is needed:
-   queued mail, clean-up and the optional monthly charges run just after a page
-   is served, at most once a minute. **Einstellungen → System** shows the last
-   run. It has not yet been watched on a shared host.
-   A cron job for `mail:work` can take over if she prefers, per `INSTALL.md`.
-6. **Send yourself a test invitation end to end** — pass the test under
-   **Einstellungen → SMTP**, invite, receive, activate, set a password, sign in,
-   reply to a message — before inviting a parent. „Dein Portal einrichten“
-   leads there, and `tests/e2e.sh` has walked it against a local mail server,
-   which is not the same as her provider.
-
-## Then — the things she will ask for
-
-Ordered by how likely I think each is to come up in her first month.
-
-7. **Export.** CSV of students, charges and payments, so her data is never
-   hostage to this app and she can hand her accountant a file. Use a library
-   rather than hand-rolled CSV escaping.
-8. **A calendar or term view.** "Who is at training on Thursday" is a question
-    the absence data can already answer but nothing asks.
-9. **Push notifications for a new message.** Web push works in standalone
-    iOS web apps from iOS 16.4, so the manifest added in this review is the
-    prerequisite. Email notification already exists and may well be enough —
-    worth asking before building.
-
-## Later — worth doing, not worth doing first
-
-10. **Search across messages and notes.** Fine without it at her scale.
-11. **Rename and edit saved filters.** Currently create and delete only (A22).
-12. **Two-factor authentication** for the admin account. Password plus
-    invitation-only access is a reasonable posture for a family app; this is
-    hardening, not a gap.
-13. **An audit-log viewer.** Everything is recorded in `audit_log` but nothing
-    displays it. The "Änderungen" page added in 0.4.0 shows record versions,
-    which is the part an operator acts on; this is the separate, never-rewritten
-    log of what happened.
-14. **Prune `audit_log` and `consent_log`.** They grow without bound. Not a
-    problem for years at this scale, and both are records you may want to keep
-    deliberately rather than expire — decide the retention period as part of
-    item 4.
-15. **Batch attendance entry.** Only worth it if she starts tracking
-    per-session attendance, which today she does not.
-
-## Explicitly not planned
-
-- **Online card payments.** A payment processor brings PCI scope, a contract
-  and a fraud surface. Bank transfer recorded by hand is the right answer here.
-- **Replacing this with an off-the-shelf CRM.** Reasoning in AUDIT.md.
-- **A JavaScript framework.** Server-rendered HTML with ~225 lines of
-  JavaScript, and every page working without it, is why this app is fast on an
-  old iPhone and will still run in five years. Keep it.
-- **Multi-tenancy.** One coach, one install.
-
----
-
-## Keeping it running
-
-- Read [UPDATING.md](UPDATING.md) before any update. Take a backup, switch on
-  maintenance mode, migrate, switch it off, and compare `console.php check`
-  counts before and after. After the update to 0.6.0, press „Nur Verbindung
-  prüfen“ under **Einstellungen → SMTP** once: until a test has passed,
-  invitations are refused and reset links are not sent.
-- Keep `app_key` stable across updates. Rotating it makes sealed SMTP
-  credentials and any queued mail unreadable (and, per A8, used to abort the
-  mail run outright).
-- Stay on a supported PHP version. 8.2 receives security fixes until December
-  2026; 8.3 or 8.4 buys more runway on a new server.
-- After any change to the interface, re-check a real phone in both light and
-  dark. Three of the defects found in this review were invisible in code and
-  obvious in a screenshot.
+- Online card payments: paying stays bank transfer, the QR code and an uploaded receipt.
+- A JavaScript framework or a build step (ADR 0002). Every page works without JavaScript.
+- Several clubs in one install. Another club installs its own portal.
+- Replacing the portal with an off-the-shelf CRM such as EspoCRM, SuiteCRM, Krayin or Monica.
+  They are built around leads, deals and pipelines; a club needs students, tariffs, what each
+  family has paid for which period, and a chat. They also bring a larger attack surface and an
+  upgrade treadmill.
+- Progress tracking or skill assessment. Built in 0.2.0 and removed by migration 008; trainer
+  feedback to students is the chat.

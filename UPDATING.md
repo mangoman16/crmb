@@ -4,10 +4,10 @@
 The database applies any new migrations on the first page view. There is no
 second step, and nothing to remember.
 
-This application does not manage backups; that stays with the operator. The rest
-of this document explains what that first page view actually does, what happens
-when it fails, and how to run the same thing deliberately on a server that has a
-shell.
+The portal writes a full copy of its database before it applies a migration;
+keeping regular backups is up to whoever runs it. The rest of this document
+explains what that first page view actually does, what happens when it fails,
+and how to run the same thing deliberately on a server that has a shell.
 
 ## Updating an existing portal to 0.6.0
 
@@ -17,10 +17,11 @@ drafts. A portal that already has families in it needs one thing done
 **before** the upload, and then changes in the ways below the moment the new
 files are opened.
 
-**Before you upload: add three paragraphs to your privacy notice.** This version
+**Before you upload: add four paragraphs to your privacy notice.** This version
 records when each account was in the portal, it switches club news by email
-on for new accounts, and it gives every course a group chat. Your privacy
-notice has to say all three. The drafts in
+on for new accounts, it gives every course a group chat, and a student can sign
+in with a username and a one-time sign-in link. Your privacy notice has to say
+all four. The drafts in
 the download only fill in the notice of a brand-new portal; yours keeps the
 text you saved, so the paragraphs have to be added by hand. Do it while the old
 version is still running, so that no family uses the new one under a notice
@@ -65,7 +66,16 @@ German text:
    the administrators can read chats between a child and a trainer, and
    that an uploaded photo is stored without where it was taken.
 
-4. Replace each line in square brackets with your own words, then save.
+4. After the sentence „SMTP-Passwörter und versandbereite E-Mail-Inhalte sind
+   in der Anwendungsdatenbank verschlüsselt.", add the paragraph from
+   `docs/privacy-draft-de.txt` beginning „Angemeldet wird mit der
+   E-Mail-Adresse". It says that a student can sign in with a username, that a
+   login without an address receives no e-mail, and what a sign-in link is and
+   what is kept of it. In „2.", replace the sentence „Jeder Schüler hat
+   höchstens ein eigenes Konto, …" with the draft's, which begins „Jeder
+   Schüler hat ein eigenes Konto".
+
+5. Replace each line in square brackets with your own words, then save.
 
 The old paragraph called club news voluntary and based on consent. That is no
 longer true: you decided that club news is information every member needs,
@@ -73,7 +83,7 @@ which is why it now starts switched on. Which legal basis that rests on is
 yours to decide and to have checked; the bracketed notes mark where it goes. A
 notice you have released („… zur Verwendung freigegeben") is not saved while a
 note in square brackets is still in it, and the message names the note. The
-same three paragraphs in English are in `docs/privacy-draft-en.txt` in the
+same paragraphs in English are in `docs/privacy-draft-en.txt` in the
 download, for the English version if you keep one. Saving changes the
 **Fassung** number under the notice; nobody is asked to acknowledge it again.
 
@@ -101,6 +111,16 @@ gives every account a status emoji, which starts as „Keins". No row is
 removed, so the check that counts the guarded tables before and after passes;
 only the chats grow, by one group per course.
 
+**Migrations 028 to 031 follow.** 028 lets a login have a username instead of an
+address; every existing login keeps its address and gets no username. 029 and
+030 make a student's login impossible to delete: the database refuses it, and
+the portal gives the student a fresh login in its place instead. 031 adds what
+will keep a child taken out of a course rather than deleting the enrolment;
+nothing uses it yet. After the files, every student without a login is given
+one, a placeholder that nobody can sign in with until staff give it an address
+or a username. No row is removed; the logins grow by one for each such
+student.
+
 **Brothers and sisters on one login are separated.** From this version one
 login belongs to one student, and migration 019 makes the database hold to
 that. On a login that holds several children, the child whose record was
@@ -109,12 +129,12 @@ else: their record, their courses, charges, invoices and payments, and the
 address on their record. Nothing is deleted, so the check that compares the
 nineteen guarded tables before and after passes unchanged. Each child taken
 off a login gets a line under **Änderungen** saying which login it was on. The
-update sends the families no message. Those children cannot sign in until they
-have an email address of their own and a login of their own, invited or
-created on their own page; until then the overview and the **Schüler** list
-name them under „… Kinder brauchen eine eigene E-Mail-Adresse“. A shared login
-cannot be restored once the update has run, because the database now refuses
-it: the way back is the backup the update writes first.
+update sends the families no message. Each of those children is then given a
+placeholder login (see 028 to 031 above) and cannot sign in until staff give
+it, on the child's page, an address of the child's own with an invitation, or a
+username with a sign-in link. A shared login cannot be restored once the
+update has run, because the database now refuses it: the way back is the
+backup the update writes first.
 
 **After the update, press „Nur Verbindung prüfen“ once.** Invitations,
 password-reset links and address confirmations are now only sent when the last
@@ -168,9 +188,14 @@ here so that nothing surprises you.
   to a course's group. Group messages send no e-mail. Everybody signed in sees
   who is online right now; when somebody was last here stays with trainers and
   administrators.
-- **Signing in is by address only**, and „Per E-Mail einladen" on the
-  **Schüler** page invites somebody by their address alone: they fill in their
-  own details and then choose a course.
+- **Signing in is by address, or for a student by username.** „Schüler
+  anlegen" is a wizard in two steps: who is joining and into which course, then
+  how they sign in — an invitation by e-mail, a username with a sign-in link
+  that works once within 48 hours, shown as a QR code to scan or copied to
+  send, or no sign-in for now. A child's page shows „Ohne Anmeldung" until one
+  of those is done. „Per E-Mail einladen" on the **Schüler** page still invites
+  somebody by their address alone: they fill in their own details and then
+  choose a course.
 - **When somebody was online**: under **Konten** and on each child's page, a
   line says when the account was last in the portal, and „Wann online? Letzte
   30 Tage" opens the days and times. Only trainers and administrators see it.
@@ -224,7 +249,9 @@ left to do. Then, inside that lock and **before the database is touched at all**
    list in `schema_guarded_tables()`. A count that fell stops the update. Counts
    do not prove an update was correct, but a count that fell proves it was not —
    and this catches it while the backup is still the newest thing that happened.
-6. The seeded defaults are refreshed for anything new, and the page is served.
+6. What the portal cannot work without is filled in where it is missing — the
+   lists it needs, a group chat for every course, a login for every student —
+   and the page is served.
 
 If any step fails the portal answers 503 and stays closed, saying in German and
 English what went wrong and what to do. It never prints SQL: that address is
@@ -268,7 +295,7 @@ for a server where you keep each release in its own directory.
 
 | Component | Location in the suggested layout | Update behavior |
 |---|---|---|
-| Source and dependencies | `/srv/badminton/releases/0.1.0/` | Put each new version in a new directory |
+| Source and dependencies | `/srv/badminton/releases/0.6.0/` | Put each new version in a new directory |
 | Configuration and encryption key | `/srv/badminton/shared/config.php` | Preserve the file and its `app_key` |
 | Students, fields, tariffs, payments, messages | The existing MySQL/MariaDB database | Apply only the new migrations |
 | Active web root | `/srv/badminton/current/public/` | `current` points to the selected release |
@@ -362,11 +389,11 @@ into one folder, the two sections above are the whole procedure.
 2. Put the new release in its own directory. Do not unzip it over the running application.
 3. Run `composer install --no-dev --prefer-dist --optimize-autoloader` if dependencies are not included.
 4. Test the release using a separate database and separate configuration. Do not point the test mail worker at real recipients. The integration suite deliberately creates and deletes test records and must never use the live database.
-5. Check the existing hosting recovery arrangement and who can restore it. No database export, restore or automatic backup is performed by this application.
+5. Check the existing hosting recovery arrangement and who can restore it. The portal writes a copy of the database before it migrates, but it never restores one: that is done by hand, as described in [INSTALL.md](INSTALL.md#wiederherstellen).
 
 ## With release directories: apply an update
 
-Example paths below are a layout template; `0.2.0` is an example of a future release, not an existing version.
+Example paths below are a layout template; `0.7.0` stands for whichever release you are moving to.
 
 1. Pause the mail cronjob. Enable maintenance in the active release:
 
@@ -387,9 +414,9 @@ Example paths below are a layout template; `0.2.0` is an example of a future rel
 3. Link the shared configuration into the new release, then apply its pending migrations:
 
    ```bash
-   ln -s /srv/badminton/shared/config.php /srv/badminton/releases/0.2.0/config/config.php
-   php /srv/badminton/releases/0.2.0/bin/console.php migrate
-   php /srv/badminton/releases/0.2.0/bin/console.php check > /srv/badminton/shared/after-update.json
+   ln -s /srv/badminton/shared/config.php /srv/badminton/releases/0.7.0/config/config.php
+   php /srv/badminton/releases/0.7.0/bin/console.php migrate
+   php /srv/badminton/releases/0.7.0/bin/console.php check > /srv/badminton/shared/after-update.json
    ```
 
    Stop if a command fails. The migration command does not erase the database or rerun successful migrations. MySQL schema changes may commit individually: a failed multi-statement migration can leave partial changes, so do not assume it rolled back automatically.
@@ -399,7 +426,7 @@ Example paths below are a layout template; `0.2.0` is an example of a future rel
 5. Switch the code using an atomic symlink replacement on the same filesystem:
 
    ```bash
-   ln -s /srv/badminton/releases/0.2.0 /srv/badminton/current-next
+   ln -s /srv/badminton/releases/0.7.0 /srv/badminton/current-next
    mv -Tf /srv/badminton/current-next /srv/badminton/current
    ```
 
@@ -421,13 +448,6 @@ Example paths below are a layout template; `0.2.0` is an example of a future rel
 - If a schema change is incompatible, use a reviewed forward fix or the operator’s existing recovery procedure. Restoring older data may discard newer records; identify that time window and preserve/reconcile legitimate new writes before considering a restore.
 - A lost or replaced `app_key` prevents decryption of existing encrypted mail settings and queue contents. Restore the correct configuration rather than generating a new key during an update.
 - SMTP cannot guarantee exactly-once delivery across a crash after server acceptance. Inspect uncertain/failed sends before manually retrying; a duplicate email is possible in that failure window.
-
-## Planned development sequence
-
-1. **0.1.x:** hosting feedback, accessibility corrections and bug fixes; retain the current data model where practical.
-2. **Next feature release:** confirm actual billing rules before implementing recurring charges, including unique billing-period keys to prevent duplicates.
-3. **Before any data conversion:** define the mapping, test on a separate copy, report affected rows, preserve source values and verify totals before activation.
-4. **Before removing old fields or tables:** use a separate cleanup release with a documented compatibility boundary and an explicit migration review.
 
 The schema updater only ever moves forward: it applies migration files that the
 ledger has not recorded, and refuses one whose contents changed after it ran. It

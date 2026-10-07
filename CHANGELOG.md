@@ -9,49 +9,74 @@ one thing done before the upload, and changes in several ways the first time it
 is opened; [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) has
 them in full.
 
-**First, while the old version is still running, add three paragraphs to the
+**First, while the old version is still running, add four paragraphs to the
 privacy notice** under **Einstellungen → Datenschutz**: one saying that the
-portal now records when each account was online, and who can see it, one
+portal now records when each account was online, and who can see it; one
 replacing the old newsletter paragraph, because club news by email now starts
-switched on and is no longer described as voluntary consent, and one about the
+switched on and is no longer described as voluntary consent; one about the
 course groups, the online dot everybody sees, and the administrators reading
-chats between a child and a trainer. UPDATING.md has
-the first two to copy and says where in the drafts the third one is. The drafts
-shipped with this version only fill in the notice of a new portal; an existing
-one keeps the text it had. Each paragraph
-ends in a note in square brackets for the legal basis, which is hers to decide
-and have checked, and a released notice is not saved until the notes are
+chats between a child and a trainer; and one about usernames and one-time
+sign-in links. UPDATING.md has the first two to copy and says where in the
+drafts the other two are. The drafts shipped with this version only fill in the
+notice of a new portal; an existing one keeps the text it had. Where the legal
+basis goes there is a note in square brackets, which is the operator's to
+decide and have checked, and a released notice is not saved until the notes are
 replaced.
 
-Migrations 020 to 027 then run by themselves. 020 gives every account a status
-that starts on „Automatisch" and an empty list of times online; nothing is
-filled in from before. 021 switches news by email on for accounts created from
-now on; every existing account keeps its choice. 022 to 024 give usernames and
-take them away again: every login signs in with its address, as before. 025 to
-027 give every course its group chat, let staff take a group message down, and
-add the status emoji; the old shared conversations stay readable and closed.
+Migrations 019 to 031 then run by themselves. 019 takes every child but the
+first off a login they shared; nothing is deleted, and each change is written
+under **Änderungen**. 020 gives every account a status that starts on
+„Automatisch" and an empty list of times online; nothing is filled in from
+before. 021 switches news by email on for accounts created from now on; every
+existing account keeps its choice. 022 to 024 give usernames and take them away
+again; 028 brings them back, for students only, and lets a login have no
+address. 025 to 027 give every course its group chat, let staff take a group
+message down, and add the status emoji; the old shared conversations stay
+readable and closed. 029 and 030 make a student's login impossible to delete:
+it is replaced instead. 031 prepares keeping a child taken out of a course;
+nothing uses it yet. After the files, every student without a login — the
+children 019 took off a shared one among them — is given a placeholder that
+nobody signs in with until staff give it an address or a username.
 
-Migration 019 takes every child but the first off a login they shared; nothing
-is deleted, each change is written under **Änderungen**, and those children
-need an address of their own and an invitation before they can sign in on
-their own. Invitations and „Passwort vergessen?“ links wait until **„Nur
-Verbindung prüfen“** under **Einstellungen → SMTP** has passed once. And the
-version number printed under the privacy notice changes once although the text
-does not; nobody is asked to acknowledge it again.
+Invitations and „Passwort vergessen?“ links wait until **„Nur Verbindung
+prüfen“** under **Einstellungen → SMTP** has passed once. Everybody is signed
+out once, because sign-ins are now kept in the portal's own folder. A portal
+whose address starts with `https://` is only served over https from now on. And
+the version number printed under the privacy notice changes once although the
+text does not; nobody is asked to acknowledge it again.
 
-### Signing in, and two ways to add a person
+### Signing in, adding a student, and sign-in links
 
-- **Everybody signs in with their own e-mail address.** Usernames are gone;
-  „Passwort vergessen" asks for the address too.
+- **Every student has a login from the moment they exist** (ADR 0023). Until it
+  is given an address or a username it is a placeholder nobody signs in with,
+  shown as „Ohne Anmeldung" on the child's card „Zugang zum Portal".
+- **Staff sign in with their address; a student with an address or a username**,
+  typed into one box, „E-Mail oder Benutzername", in any capitals. A username is
+  three to thirty lower-case letters, digits, dots and hyphens. „Passwort
+  vergessen" takes either, and mails nothing to a login without an address.
+- **„Schüler anlegen" is a wizard in two steps**: who is joining and into which
+  course, then how they sign in — an invitation by e-mail, a username with a
+  sign-in link, or no sign-in for now. Nothing is written before the second
+  step, and a course that filled up or was archived in between is refused with
+  everything typed still there.
+- **A sign-in link** works once, within 48 hours, and whoever uses it chooses a
+  new password. Staff show it as a QR code or copy it into a messenger; it is
+  never mailed. Staff make one for a login not yet in use, and only an
+  administrator for one already in use. A new link ends the old one, a link can
+  be withdrawn, and the child's card says who made the last one and when it was
+  used.
+- **„Anmeldung löschen" gives the child a fresh, empty login** instead of
+  leaving them without one. The child's private chats go with the old login;
+  the record, the courses, charges and invoices stay.
+- A child „Ohne Anmeldung" is sent no notice in the portal about a moved or
+  cancelled training date, so the invitation that later gives them a login does
+  not hand the family a list of old news.
 - **„Per E-Mail einladen"** on the **Schüler** page: type an address and a
   language. The person fills in their name and birth date, sets a password and
   lands on their own page with „Kurs wählen" first; choosing a course is a
   request the trainer answers. Staff are told in the bell when somebody new has
   set themselves up. Open invitations are listed there, to send again or
-  withdraw without typing anything.
-- **„Schüler anlegen"** works as before: the trainer enters the details, can put
-  the child into a course straight away, and the invitation only has the person
-  set their own password. Nobody sets another person's password.
+  withdraw without typing anything. Nobody sets another person's password.
 - A birth date in the future or more than a hundred years ago is refused,
   wherever it is typed.
 
@@ -95,7 +120,70 @@ does not; nobody is asked to acknowledge it again.
 - **„An mehrere schreiben"** (formerly „Gruppe anschreiben") puts the message in
   each child's chat with you.
 - On a phone the writing box sits above the menu bar instead of under it, and a
-  chat opens at its newest message.
+  chat opens at its newest message. The help button moves off a chat exactly
+  where the chat has a writing box, and stays put on one that can only be read.
+
+### Billing charges what is owed, once, and the invoices page counts everything
+
+- **A cancelled charge can be made again.** It kept its place in the month, so
+  after a correction the run said „Nichts zu tun". Cancelling now frees it, and
+  charges cancelled earlier are freed on the next run.
+- **„Als bezahlt eintragen" no longer pays a charge twice.** It counted only
+  confirmed payments while recording a payment counted unconfirmed ones too.
+  There is one rule now, and marking paid confirms a waiting payment instead of
+  adding a second one.
+- **A child on an archived tariff keeps it**, marked „(archiviert)" in the form,
+  and billing goes on charging them. Nobody is newly put on an archived tariff.
+- **A membership ending part-way through a period** („Mitgliedschaft bis") is
+  charged to the day it ends.
+- **The age-group filter** missed a whole year at its lower bound, so a message
+  to an age group missed those children. It now agrees with a child's age on
+  every day, birthdays and 29 February included.
+- **Background work no longer borrows the visitor's language and name.** Charges
+  were written „Beitrag October" after an English-speaking family's page view,
+  and the log named that family. They are now written in the portal's language,
+  by nobody, in one transaction; an invoice PDF is in its family's language.
+- **A charge on an invoice that stands cannot be cancelled**; it names the
+  invoice instead, and the link leads there.
+- **An invoice e-mailed to a family who switched payment e-mails off** used to
+  be dropped without a word. It is refused up front, with the reason in place of
+  the button, and the date is set only when the mail is queued. The same for a
+  child whose login is not set up or has no address.
+- **The invoices page counts and totals every invoice**, not the newest 200,
+  fifty to a page with „Seite x von y"; a part-paid invoice counts only what is
+  left.
+- **Coming back to a course starts a new agreement.** Re-joining reused the old
+  price and discount, giving „Erster Monat gratis" twice.
+- Leaving before joining is refused, a reminder run no longer counts a paid
+  charge as skipped, and a charge inside its grace days is no longer red.
+- **„Zahlungsziel für Monatsbeiträge" is gone**: it was shown and never read.
+  When a charge is due comes from the tariff.
+- Refusals that were English only are German and English now, and the mail page
+  no longer tells her to run a command she cannot run.
+
+### Setup cannot be taken over, and an https portal stays on https
+
+- **Setup no longer mistakes a database that is down for an unfinished
+  installation.** On an installed portal, a request arriving while the database
+  did not answer ran the migrations without their safeguards, and the page
+  showed the database's name and server to anyone. Setup now says only „Die
+  Datenbank antwortet gerade nicht", and the migration runner refuses to skip
+  its safeguards unless the database is empty.
+- **Finishing an installation whose configuration was already written needs a
+  setup code** from `storage/setup-code.txt`, which only somebody with access to
+  the files can read; the browser that started the installation carries it, so
+  trying again there needs nothing. Before, after a refused first administrator,
+  the next stranger to open `setup.php` could have become administrator.
+- **Installing over plain `http://` on a real host is refused**, with a button
+  to open the page over `https://`. A portal installed with an `https://`
+  address sends `http://` page views to `https://` itself, refuses a form sent
+  over `http://`, and tells browsers to stay on https. A portal with an
+  `http://` address works exactly as before.
+- **Sign-ins are kept in the portal's own folder**, `storage/sessions`, instead
+  of one the host may share with other customers. Everybody is signed out once
+  by the update.
+- The nginx example passes `setup.php` to PHP, so a portal on nginx can be
+  installed from the browser.
 
 ### After an update, the browser fetches what changed
 
@@ -105,7 +193,7 @@ does not; nobody is asked to acknowledge it again.
   Every file is now linked with a fingerprint of its own contents, the club's
   colours too.
 
-### Tests run on MariaDB, the engine her server runs
+### Tests run on MariaDB only
 
 - The SQLite translation the tests used to run on is gone. `tests/mariadb-local.sh`
   starts a throwaway MariaDB; `tests/e2e.sh` walks the first evening in a
@@ -204,19 +292,21 @@ does not; nobody is asked to acknowledge it again.
 
 ### One login is one student
 
-- **A student's email address is their login.** Brothers and sisters each need
-  an address of their own. Access is invited, suspended, sent again or deleted
-  on the student's own page, in a card „Zugang zum Portal“ whose badge says
-  **Kein Zugang**, **Eingeladen**, **Aktiv** or **Gesperrt**. An address that is
-  already somebody's login is refused with „Jede Schülerin und jeder Schüler
-  braucht eine eigene E-Mail-Adresse.“ before anything is written, and a unique
-  index in the database refuses it too, so no later mistake in the code can put
-  two children on one login again (ADR 0010).
+- **A student's address, when they have one, is their own login.** Brothers and
+  sisters each need an address of their own. Access is invited, suspended, sent
+  again or replaced on the student's own page, in a card „Zugang zum Portal“
+  whose badge says **Ohne Anmeldung**, **Eingeladen**, **Noch nicht
+  angemeldet**, **Aktiv** or **Gesperrt**. An address that is already
+  somebody's login is refused with „Diese E-Mail-Adresse gehört schon zu einem
+  anderen Zugang. Jede Person braucht ihre eigene.“ before anything is written,
+  and a unique index in the database refuses it too, so no later mistake in the
+  code can put two children on one login again (ADR 0010).
 - **Migration 019 separates the logins that were shared.** The child whose
   record was created first keeps the login; the others keep their record,
   courses, charges, invoices, payments and address, and get a line under
-  **Änderungen** saying which login they were on. The overview and the
-  **Schüler** list name the children who now need an address of their own.
+  **Änderungen** saying which login they were on. Each of them then has a
+  placeholder login, and their card says the address on the record is already
+  somebody else's.
 - **Konten is the team's page now**, „Team und Zugänge“: trainers and
   administrators. A student login that no student points to any more is listed
   there under „Zugänge ohne Schüler“, to lock or delete. A family's menu has
@@ -229,14 +319,11 @@ does not; nobody is asked to acknowledge it again.
   **Mein Konto**, confirmed from the new mailbox. Only a student's login can be
   re-addressed this way; a trainer's or administrator's pending invitation
   cannot.
-- **„Ohne E-Mail anlegen (mit Passwort)“** on a child's page lets an
-  administrator create that child's login directly, for a portal whose mail is
-  not working yet.
 - **Deleting a student no longer promises an undo** that was removed earlier in
   this release. The message now says that **Änderungen** shows what was deleted
   and that it cannot be restored.
 
-### A new portal walks her through its setup
+### A new portal walks the administrator through its setup
 
 - **„Dein Portal einrichten“** lists the nine things a portal needs before
   families come: name and address, bank account, a first course, a price for
@@ -262,7 +349,7 @@ does not; nobody is asked to acknowledge it again.
   Einstellungen — with „Einrichtung“ above them while the checklist is
   unfinished. Nothing folds open or shut. The rest is reached from where it
   belongs: **Rechnungen** by a „Beiträge · Rechnungen“ switch under Geld;
-  „Gruppe anschreiben“, „Neuigkeiten“ and „Postausgang“ from the top of
+  „An mehrere schreiben“, „Neuigkeiten“ and „Postausgang“ from the top of
   Nachrichten; Verwaltung, Konten, Änderungen, Einrichtung ansehen and Erweitert
   as cards at the top of Einstellungen. The entry a page belongs to stays
   marked while it is open.
@@ -341,8 +428,8 @@ does not; nobody is asked to acknowledge it again.
   before. The same error again counts up on the same entry instead of adding
   one, and a notification goes out only for a new error or one that came back
   after being marked done (ADR 0012).
-- **„Für den Support kopieren“** gives a block of plain text for whoever helps
-  her: what broke and where, the version, the device, and the pages visited
+- **„Für den Support kopieren“** gives a block of plain text for whoever helps:
+  what broke and where, the version, the device, and the pages visited
   with the names of the fields, never what was typed into them. No names, no
   email addresses, no IP address, search terms shown as „…“, and the portal's
   own folder on the server taken off every path. A database's own error
@@ -409,40 +496,6 @@ passed on every one of these:
   wrapped so a server without it still serves the portal. The structure suite
   reads the rule; no real Apache has been asked.
 
-### What this was checked on
-
-The whole suite: 3813 assertions, 0 failed, on the SQLite translation under PHP
-8.4.19 and 8.5.11; 3832, 0 failed, against MariaDB 10.11.14, with all nineteen
-migrations applying there. The data that migrations 015, 016 and 019 carry
-across is checked on SQLite only, as that run says at its end. The browser walk
-passed, 279 checks, against MariaDB 10.11.14 on PHP 8.4.19 and 8.5.11, with no
-PHP warning, JavaScript error or layout failure. **MySQL 8.0 was not tried**,
-nor Safari on a real iPhone, a real mail provider, a PDF reader rather than a
-parser, or a real hosting account. VALIDATION.md has the details.
-
-The top bar, online status, news by email and the colours and logo were
-checked later, at commit `dda5db0`. The whole suite gave 4840 assertions, 0
-failed, on the SQLite translation, and 4851, 0 failed, against MariaDB 10.11.14,
-with all twenty-one migrations applying there. The data that 020 and 021 find
-already in place was checked on MariaDB as well. The browser walk was **not**
-repeated for these, and nothing was tried on a real iPhone. **MySQL 8.0 was not
-tried.**
-
-Signing in by address and the chat, with the fixes from its second round of
-review, were checked on the code of commit `6a5cfc6`. The suite no longer has a
-SQLite translation; it gave 5882 assertions, 0 failed, on MariaDB 10.11.14 with
-PHP 8.4.26, with all twenty-seven migrations applying and the data that 015,
-016 and 019 to 025 carry across checked on MariaDB too. The browser walk
-passed, 361 checks, on the same versions, but it does not open the chat. The
-chat's checks by hand, C.1 to C.18 in TESTING.md, are part of neither run, and
-nothing was tried on a real iPhone. **MySQL 8.0 was not tried.**
-
-The fixes after that, up to commit `e0965a4`, were checked with the whole
-suite: 5906 assertions, 0 failed, on MariaDB 10.11.14 with PHP 8.4.26, in
-backend-dev's run. The browser walk's 361 checks above are from the code before
-them, C.19 and C.20 by hand are part of no run, and nothing was tried on a real
-iPhone. **MySQL 8.0 was not tried.**
-
 ### Signing in correctly no longer counts against her
 
 - **A sign-in that works no longer spends one of the ten attempts.** Ten are
@@ -460,24 +513,17 @@ iPhone. **MySQL 8.0 was not tried.**
   clear the count too. Without that, the reset sent to a locked-out family let
   them in once and left them locked out of the next sign-in until the quarter of
   an hour ran down.
-- **The attempts are counted against the account, not against the spelling that
-  was typed.** The database compares addresses under a collation that treats
-  upper and lower case, accents, ß and ss, ligatures and full-width letters as
-  the same, so `familie@beispiel.at` and `familie@beispiel.át` are one account
-  row and two different words to the portal. Every spelling used to get its own ten guesses, which
-  means somebody guessing passwords spelled the address differently and carried
-  on, with nothing but the limit per internet connection left in the way — and
-  behind that sign-in are children's birth dates, health notes and parents' bank
-  details. The address is now looked up first and the attempt counted against
-  the account it finds; an address with no account is counted as what was typed,
-  which is all there is. Measured on MariaDB 10.11.14 rather than assumed.
-- **What that deliberately does not close:** ten failed attempts on one spelling
-  and then one on another are refused straight away, which tells whoever is
-  trying that both reach the same account — eleven requests to learn that an
-  address is registered here. Closing it means keying the count on the
-  database's own sort key, which differs between engines, is missing from the
-  translation the test suite runs on, and is being withdrawn upstream. It is
-  accepted and written down rather than quietly left out.
+- **Only the exact address reaches a login, and the count follows what was
+  typed.** The database compares addresses under a collation that treats
+  accents, ß and ss, ligatures and full-width letters as the same, so
+  `familie@beispiel.at` and `familie@beispiel.át` were one login and two
+  spellings, each with its own ten guesses. An address is now looked up only
+  when it is plain ASCII once lower-cased, and only a login holding exactly that
+  address answers, so the other spellings reach nothing. The attempts are
+  counted against what was typed, never against the login it names, which keeps
+  the form from telling anybody whether an address has a login (ADR 0020, 0021).
+  A username counts the same way; a login with both an address and a username
+  has a count for each, an accepted risk VALIDATION.md describes.
 - **That the lockout ends was never actually checked.** „Bitte später erneut
   versuchen" is a promise that later arrives, and a count that never reset would
   have looked exactly like a working limit to every test there was: it would
@@ -492,7 +538,7 @@ iPhone. **MySQL 8.0 was not tried.**
   „Passwort vergessen" stands, because typing an address proves nothing about
   who typed it and clearing it would hand anybody an unlimited mailer pointed at
   one family's inbox. Families sharing one connection therefore share that
-  budget; TESTING.md 4.6d describes what that looks like from her side.
+  budget; TESTING.md 4.6a says what that looks like by hand.
 
 ### An account created twice, from two directions
 
@@ -500,8 +546,9 @@ iPhone. **MySQL 8.0 was not tried.**
   invite form wrote the row and left the database to refuse it, so what came
   back was the catch-all „Die Eingabe ist nicht möglich: Adresse bereits
   vergeben oder verknüpfte Daten vorhanden." — one sentence covering two quite
-  different causes. It now says „Diese Adresse hat schon ein Konto.", which is
-  what the other way of creating an account has always said.
+  different causes. It now says „Diese E-Mail-Adresse gehört schon zu einem
+  anderen Zugang. Jede Person braucht ihre eigene.", naming whose login it is to
+  staff — the same sentence every way of giving out an address uses.
 - **Two setup pages open at once cannot both create the first administrator.**
   The guard counted the administrators inside the transaction that writes the
   row, and a plain count takes no locks — measured with two connections on
@@ -513,24 +560,6 @@ iPhone. **MySQL 8.0 was not tried.**
   submissions doing the same thing twice — had been holding nothing at all
   throughout. It now dispatches the way a real request does, which is what makes
   the two items above testable rather than merely written.
-
-### The documents were describing a portal that had moved
-
-- PROJECT.md's status table rated skill assessment „Built, tested" with high
-  confidence. Migration 008 dropped its four tables and there are no such
-  screens. A status table is read by somebody deciding what to rely on, so its
-  figures were counted again rather than remembered: six migrations against
-  eighteen, 31 tables against 42, 23 settings against 52, and a header two
-  releases behind.
-- Three documents were still saying six migrations, and README.md said the
-  update guard compares ten tables before and after when it compares nineteen —
-  the number somebody reads to decide whether an update is safe to run.
-- The by-hand list printed section 4 as 4.6, 4.6d, 4.6e, 4.6g, 4.7, 4.6a, and so
-  sent anybody working down the page backwards at item seven. It runs in order
-  now.
-- `docs/decisions/` writes down the structural decisions that had only ever been
-  habits — one per file, with what was rejected and why — and CLAUDE.md now says
-  which part of the project each contributor may change.
 
 ### Trying it out no longer takes a term's worth of typing
 
@@ -545,14 +574,6 @@ iPhone. **MySQL 8.0 was not tried.**
   above" and printed no password, so the three accounts it had just made could
   not be signed in to at all. It is generated once and never stored in the
   clear, so the fill is the only moment anybody can be told it.
-- **An account can be created directly, with a password instead of a link.**
-  Inviting needs working SMTP and a released privacy notice, so a portal on its
-  first evening had no way to make a second account at all — not for a second
-  administrator, not for a trainer standing next to her, not for trying the
-  thing out. Administrators only, because handing out a login is more than
-  sending an invitation, and the flash says plainly that the address was not
-  confirmed. A family account made this way adopts the child at that address, so
-  it does not sign in to an empty portal.
 - **The layout check can use both roles on an example portal.** Its one
   `--password` could not cover an administrator and the example accounts, which
   have a password of their own; `--family-password` closes that, and the sweep
@@ -560,7 +581,7 @@ iPhone. **MySQL 8.0 was not tried.**
 - **TESTING.md opens with a twenty-minute script**: install with example data,
   build the real club's course and price list, add a member, watch the 42 €
   come out, issue the invoice, print both sheets, impersonate, sign in as a
-  family, make a login without email, and put it all back.
+  family, and put it all back.
 
 ### What a real club's own paperwork found
 
@@ -620,11 +641,11 @@ from the paper form to a printed invoice. Five things came out of that.
 
 ### Creating something asks for the basics, and then says what is left
 
-- **The form that creates a child now asks for four things**: a name, a date of
-  birth, the email address, and whether they are a member. Not the level, not
-  the tariff, not the internal notes, and not the custom fields she has added
-  herself — a form of twenty boxes is a form somebody abandons in the middle of
-  a training session.
+- **Creating a child asks for the basics first**: the names, a date of birth, a
+  course and whether they are a member, then how they sign in. Not the level,
+  not the internal notes, and not the custom fields she has added herself — a
+  form of twenty boxes is a form somebody abandons in the middle of a training
+  session.
 - **And then the child's page says what is still to do**, numbered, at the top:
   an emergency contact, an address or an invitation, a course, a tariff. Each
   one is a link to where it is done, and each disappears when it is. A child
@@ -652,21 +673,17 @@ from the paper form to a printed invoice. Five things came out of that.
   came apart in practice: the grandmother who should be rung has no email, the
   father who reads the invoices is never in the hall. The form could not answer
   either without lying about the other.
-- **The address is on the child now.** For a child that is a parent's address,
-  which is why it is a field rather than a second person: whoever reads the
-  invoices is whoever holds the login. **Zugang einladen** on the child's page
-  creates the account and sends the invitation there; a second child at the same
-  address joins the same account, which is how siblings share a login without a
-  second concept for it.
+- **The address is on the child now**, and it is the child's own: whoever reads
+  the invoices is whoever holds the login. **„Einladung senden"** on the child's
+  page sends the invitation there. A parent's address belongs on the contacts.
 - **Contacts are emergency contacts.** They need a phone number and no longer
   need an email address. Nothing is sent to them.
 - An invitation is not sent twice to an account that has already set a password:
   that link would have replaced a password that works.
 - The **Schüler** list names the two gaps separately, because they are filled in
   in two different places.
-- Nobody is signed out by the update: every account keeps its own address and
-  its own password, and the new field is filled from whatever the portal was
-  already writing to.
+- Every account keeps its own address and its own password, and the new field
+  is filled from whatever the portal was already writing to.
 - **A form inside a form** on the student page meant the browser was throwing
   the inner one away: „Bild speichern" was submitting the whole record. Every
   page is now counted for that, for every role.
@@ -692,8 +709,8 @@ from the paper form to a printed invoice. Five things came out of that.
   wrong price comes from.
 - Nobody's next invoice changes because of the update: every tariff's price
   becomes its first rate, every discount becomes a template *and* is copied onto
-  every enrolment that was getting it. That sentence, and "nobody is signed out"
-  above it, are now checked rather than asserted: the suite builds a portal as it
+  every enrolment that was getting it. That sentence, and "every account keeps
+  its own address and password" above it, are checked rather than asserted: the suite builds a portal as it
   stood before the update, applies the rest, and reads back the prices, the
   discounts and the addresses.
 - **Everything she builds by hand can be copied** — a course with its training
@@ -702,15 +719,8 @@ from the paper form to a printed invoice. Five things came out of that.
   copy is written down rather than followed from the foreign keys, because a
   course's training days belong to it and the children enrolled in it do not.
 
-### A menu that fits, and a mail test that answers
+### A mail test that answers
 
-- **The menu on the left scrolled.** Thirteen destinations in one column are
-  958px tall, and a 1920x1080 screen at 110% zoom leaves 873px, so the last
-  three were below the fold. Six of them now sit inside three sections —
-  **Training**, **Geld** and **System** — and only the section you are working
-  in is open, which the browser keeps true by shutting the others. 715px at a
-  full window, 541px at the zoom it was reported at. The count of what is
-  waiting moves up to the section while the section is shut.
 - **„Testmail vormerken" was not a test.** It queued a message and sent the
   operator to the outbox to look for it, where a blocked port, a wrong
   certificate and a rejected password all looked the same: nothing arrived.
@@ -719,8 +729,8 @@ from the paper form to a printed invoice. Five things came out of that.
   and says which one failed in a sentence she can act on, with the server's own
   words underneath. The user name and the password are taken back out of the
   transcript, because the whole point of it is to be forwarded to a host.
-- The sign-in page no longer explains which address to use. It asks for an email
-  address and a password, which is what the form already said.
+- The sign-in page no longer carries a paragraph about what to type; the boxes
+  say it.
 - **„Etwas funktioniert hier nicht" was under the last card**, which meant it
   was only ever found by somebody who scrolled to the bottom of a page they had
   already given up on. On a desktop screen it is a button in the bottom right
@@ -740,12 +750,11 @@ from the paper form to a printed invoice. Five things came out of that.
   every device, every five minutes, and a time already stored that is not on
   that grid keeps its place in the list rather than being quietly moved. An hour
   with no minute is refused instead of being stored as "on the hour".
-- **Every signed-out page says what happens to the data**: the privacy notice
-  applies, only the cookies the portal needs to work are set, there is no
-  analytics and no advertising, and nothing is sold or passed to anybody else.
-  The same paragraph is in the shipped privacy draft under *Empfänger* —
-  a portal installed before this keeps its own edited notice, so add the
-  sentence there by hand if you want it.
+- **The shipped privacy draft says what happens to the data** under
+  *Empfänger*: nothing is sold, rented or passed to anybody else for
+  advertising, and it is used only for running the training. A portal installed
+  before this keeps its own edited notice, so add the sentence there by hand if
+  you want it.
 
 Her half of the portal: what she runs day to day, in the words she uses for it,
 after a round of testing that produced a list of about forty things.
@@ -787,8 +796,9 @@ running on the server could have:
 
 `node tests/mobile.mjs` is the check itself, kept in the repository: it opens
 every page for every role at both widths and fails on anything wider than the
-screen, any tap target under 44pt, text under 12px, or a browser error. It
-reports 120 screens with nothing to fix; before this pass it found eight.
+screen, any tap target under 44pt, text under 12px, or a browser error. After
+this pass it reported 120 screens with nothing to fix; before it, it found
+eight.
 
 ### A pass over the whole thing, and what it found
 
@@ -860,8 +870,8 @@ open it.
   anlegen"** fills a portal with three courses, fifteen children aged 7 to 41,
   contacts, enrolments, charges, payments, attendance, absences, news and a
   conversation, so the app can be tried before it holds anybody real. It refuses
-  to run twice, and refuses to mix into real students. „Beispieldaten entfernen"
-  takes all of it out again.
+  to run twice, and mixes into real students only when that is ticked as
+  understood. „Beispieldaten entfernen" takes all of it out again.
 - **A rejected form no longer empties itself.** A euro sign in a number field
   used to cost the whole page of typing. What was entered comes back, the error
   sits beside the field that caused it, and passwords are deliberately not
@@ -932,13 +942,23 @@ open it.
   and the screen says why the rest — courses, tariffs, charges, invoices — has
   fixed fields, and where the lists that *are* hers to change live instead.
 - **Every child has somebody to ring.** One contact is the standard one — the
-  number you reach for and the address an invoice goes to — so it cannot be
-  saved without an email, the last contact cannot be removed, and a child
-  without one is named on the student list. An invoice for a family with no
-  portal account is addressed to that contact.
+  number you reach for first —, the last contact cannot be removed, and a child
+  without one is named on the student list.
 - **A feature list with steps to test it** — [TESTING.md](TESTING.md) — for the
   administrator to walk after a code change or a release, alongside the
-  automated suites, which now run 1957 assertions.
+  automated suites, which then ran 1957 assertions.
+
+### What this was checked on
+
+At `d095ca4`, on MariaDB 10.11.14 with PHP 8.4.26, the whole suite passes —
+6703 assertions in a git checkout, 6702 in an exported copy, which has no
+`.git/` for one check to look at — with all thirty-one migrations applying and
+the data they carry across checked on a second database. The browser walk
+passes, 372 checks, with no PHP warning, no browser error and no layout failure.
+**MySQL 8.0 has never been run**, nor Safari on a real iPhone, a real mail
+provider, a PDF reader rather than a parser, or a real hosting account, and the
+sweep at phone width was last run before the wizard and the sign-in screens
+existed. VALIDATION.md has the details, and says which runs were whose.
 
 ## 0.5.0 — unreleased
 
@@ -1055,7 +1075,8 @@ Transactions, undo, and a test suite that runs anywhere.
   application against a disposable database built from the real migrations, and
   covers dates, transactions, billing, security, attendance, settings, history,
   query counts, the rendered pages and the shape of the source itself. This
-  proves the PHP logic, not the MySQL dialect — see AUDIT.md.
+  proves the PHP logic, not the MySQL dialect — see AUDIT.md, the review of
+  v0.1.0, which git keeps.
 - The rule for what counts as a received payment — confirmed and not voided —
   was written out in six places across three files, where every balance, the
   overdue filter and the payments screen each carried their own copy. It is now
@@ -1145,7 +1166,7 @@ Roles, classes, payment QR codes and skill assessment.
 ## 0.1.0 review — included in 0.2.0
 
 Review of 0.1.0: bug, security and design findings and their fixes. Full detail
-in AUDIT.md, priorities in ROADMAP.md.
+was in AUDIT.md, which git keeps; what is still open is in ROADMAP.md.
 
 Security:
 

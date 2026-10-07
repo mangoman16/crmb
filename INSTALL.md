@@ -5,12 +5,15 @@ Auf einem normalen Webhosting-Paket, ohne Kommandozeile, in drei Schritten.
 ## Was das Hosting können muss
 
 - PHP ab 8.2 mit `pdo_mysql`, `mbstring`, `openssl` und Sitzungen.
-- MySQL ab 5.7 oder MariaDB ab 10.4, InnoDB, `utf8mb4`.
+- MariaDB mit InnoDB und `utf8mb4`. Geprüft ist das Portal nur mit MariaDB 10.11;
+  MySQL 8.0 ist vorgesehen, aber noch nie ausprobiert worden.
 - Apache oder LiteSpeed mit `.htaccess`, oder Nginx (Beispiel in `docs/nginx.conf.example`).
 - HTTPS. Bei den meisten Anbietern ist ein Let's-Encrypt-Zertifikat im Panel enthalten.
 
-Die Einrichtungsseite prüft jeden dieser Punkte und sagt, was fehlt. Wenn PHP
-zu alt ist, lässt sich die Version im Hosting-Panel meist selbst umstellen.
+Die Einrichtungsseite prüft HTTPS, die PHP-Version, die Erweiterungen und ob
+`config/` und `storage/` beschreibbar sind, und sagt, was fehlt. Die Version der
+Datenbank und den Webserver prüft sie nicht. Wenn PHP zu alt ist, lässt sich die
+Version im Hosting-Panel meist selbst umstellen.
 
 Ein Cronjob wird **nicht** benötigt. Das Portal erledigt Versand und
 Aufräumarbeiten selbst; siehe [Cronjob statt Seitenaufruf](#optional-cronjob-statt-seitenaufruf).
@@ -100,7 +103,7 @@ Seite über `http://` aufruft, selbst zur selben Seite mit `https://`.
 
 Dort werden abgefragt:
 
-- die vier Datenbank-Angaben aus Schritt 1,
+- die vier Datenbank-Angaben aus Schritt 1 (der Port ist schon ausgefüllt),
 - Name, E-Mail-Adresse und Passwort für das erste Konto (mindestens 12 Zeichen),
 - Adresse und Zeitzone, beide bereits ausgefüllt.
 
@@ -173,8 +176,10 @@ und führt mit einem Tippen jeweils dorthin, wo es erledigt wird:
    englische Fassung ist freiwillig; wer das Portal auf Englisch nutzt, sieht
    sonst die deutsche mit einem Hinweis darauf.
 9. **Familien einladen** – geht erst, wenn 7 und 8 erledigt sind. Jedes Kind
-   bekommt seine Einladung auf seiner eigenen Seite, an seine eigene
-   E-Mail-Adresse; Geschwister brauchen jeweils eine eigene.
+   bekommt seinen Zugang auf seiner eigenen Seite: eine Einladung an seine
+   eigene E-Mail-Adresse – Geschwister brauchen jeweils eine eigene –, oder,
+   für ein Kind ohne eigene Adresse, einen Benutzernamen und einen
+   Anmeldelink, den die Trainerin als QR-Code zeigt oder weiterschickt.
 
 Jeder Schritt wird aus den Daten abgehakt, nicht von Hand. Wer von der Liste
 aus einen Schritt öffnet, findet nach dem Speichern oben auf der Seite
@@ -191,22 +196,9 @@ sonst landen die Einladungen im Spam.
 Die neuen Dateien über die alten hochladen und das Portal öffnen. Die Datenbank
 passt sich beim ersten Aufruf selbst an. Kein weiterer Schritt.
 
-> **Beim Update eines Portals, in dem schon Familien sind, auf Version 0.6.0:**
-> **vor** dem Hochladen unter **Einstellungen → Datenschutz** zwei Absätze in
-> die Datenschutzerklärung übernehmen – einen darüber, dass das Portal jetzt
-> speichert, wann jemand online war, und einen, der den alten Absatz zum
-> Newsletter ersetzt, weil Neuigkeiten per E-Mail bei neuen Konten jetzt
-> eingeschaltet sind. Beide Absätze zum Kopieren stehen in
-> [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060); die
-> Rechtsgrundlage an der Stelle in eckigen Klammern selbst eintragen. Nach dem
-> Hochladen einmal unter **Einstellungen → SMTP** auf **„Nur Verbindung prüfen“**
-> tippen und das grüne **Erfolgreich** abwarten. Vorher gehen keine
-> Einladungen und keine „Passwort vergessen?“-Links hinaus. Außerdem hat ab
-> dieser Version jedes Kind einen eigenen Zugang: Geschwister, die sich bisher
-> eine Anmeldung geteilt haben, werden getrennt – das zuerst angelegte Kind
-> behält sie, die anderen brauchen eine eigene E-Mail-Adresse und eine eigene
-> Einladung. Gelöscht wird dabei nichts. Einzelheiten:
-> [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060).
+Ist schon ein Portal mit Familien in Betrieb, vorher in
+[UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) den Abschnitt zu
+dieser Version lesen: ein paar Dinge sind **vor** dem Hochladen zu erledigen.
 
 Mit Shell-Zugang macht `bin/update.sh` dasselbe in einem Befehl: es holt die
 neuen Dateien per Git, installiert die Abhängigkeiten, schaltet den
@@ -215,8 +207,11 @@ Wartungsmodus ein, sichert, migriert und schaltet ihn wieder aus.
 ```bash
 bin/update.sh            # aktualisieren
 bin/update.sh --check    # nur anzeigen, was passieren würde
-bin/update.sh --ref v0.6.0   # auf eine bestimmte Version festlegen
+bin/update.sh --help     # alle Möglichkeiten
 ```
+
+Mit `--ref` lässt sich eine bestimmte Version festlegen, sobald es eine gibt:
+bisher ist keine Version als Release markiert.
 
 Die Version steht an zwei Stellen: in der Datei `VERSION` und in der Datenbank.
 `php bin/console.php status` – oder **Einstellungen → System** – vergleicht
@@ -264,16 +259,26 @@ wenn eingeschaltet – einmal im Monat die Monatsbeiträge anlegen. Höchstens e
 Minute, und nach dem Absenden der Seite, sodass niemand darauf wartet. Der Stand
 steht unter **Einstellungen → System**.
 
-Wer viele wartende E-Mails hat oder lieber einen echten Cronjob möchte, legt im
-Panel diese Zeile an und schaltet unter **Einstellungen → System** die Option
-„Wartende Aufgaben beim Seitenaufruf erledigen“ aus:
+Wer lieber echte Cronjobs möchte, schaltet unter **Einstellungen → System →
+Erweitert** die Option „Wartende Aufgaben beim Seitenaufruf erledigen“ aus. Dann
+erledigt das Portal **alle drei** Aufgaben nicht mehr selbst, und es braucht im
+Panel eine Zeile für jede:
 
 ```cron
 * * * * * /usr/bin/php /pfad/zum/portal/bin/console.php mail:work 25
+30 3 * * * /usr/bin/php /pfad/zum/portal/bin/console.php maintenance
+0 6 1 * * /usr/bin/php /pfad/zum/portal/bin/console.php billing:run
 ```
 
-Beides gleichzeitig ist nicht schädlich – ein Datenbankschloss verhindert, dass
-zwei Läufe dieselbe E-Mail verschicken.
+Die erste verschickt die E-Mails. Die zweite räumt einmal in der Nacht auf; ohne
+sie bleiben unter anderem die Zeiten, wann jemand online war, länger als die 30
+Tage gespeichert, die die Datenschutzerklärung zusagt. Die dritte legt am
+Monatsersten die Beiträge an – nur eintragen, wenn das Portal die Monatsbeiträge
+automatisch anlegen soll, denn sie tut es auch, wenn das auf der Seite
+**Beiträge** ausgeschaltet ist.
+
+Cronjob und Seitenaufruf gleichzeitig sind nicht schädlich – ein
+Datenbankschloss verhindert, dass zwei Läufe dieselbe E-Mail verschicken.
 
 ## Mit Shell-Zugang
 
@@ -310,8 +315,9 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 | „Die hochgeladenen Dateien sind älter als die Datenbank“ | Das falsche Paket hochgeladen. Die neueste Version holen und noch einmal entpacken. |
 | „Die hochgeladenen Dateien sind unvollständig“ | Das Entpacken ist abgebrochen, oder der Upload lief über FTP im Textmodus. Noch einmal hochladen, FTP auf Binärmodus stellen. |
 | E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang** (unter **Nachrichten**), dort steht der Fehler der letzten Zustellung. |
-| „Eine Einladung lässt sich noch nicht verschicken. E-Mail-Versand zuerst testen …“ | **Einstellungen → SMTP** → **„Nur Verbindung prüfen“**. Erst wenn dort **Erfolgreich** steht, gehen Einladungen hinaus. Nach jeder Änderung der SMTP-Angaben noch einmal prüfen. |
-| „Jede Schülerin und jeder Schüler braucht eine eigene E-Mail-Adresse …“ | Die Adresse ist schon die Anmeldung eines anderen Kindes, oft eines Geschwisters. Für dieses Kind eine andere Adresse eintragen. |
+| „Eine Einladung lässt sich noch nicht verschicken …“ | Die Meldung sagt, was fehlt: unter **Einstellungen → SMTP** **„Nur Verbindung prüfen“**, bis dort **Erfolgreich** steht – nach jeder Änderung der SMTP-Angaben noch einmal –, und unter **Einstellungen → Datenschutz** die deutsche Datenschutzerklärung freigeben. |
+| „Ein Anmeldelink geht erst, wenn die Datenschutzerklärung freigegeben ist …“ | Unter **Einstellungen → Datenschutz** die deutsche Datenschutzerklärung freigeben; sie wird bei der ersten Anmeldung bestätigt. |
+| „Diese E-Mail-Adresse gehört schon zu einem anderen Zugang …“ | Die Adresse ist schon die Anmeldung einer anderen Person, oft eines Geschwisters. Für dieses Kind eine andere Adresse eintragen – oder einen Benutzernamen. |
 | Jemand sieht „Die Anwendung ist vorübergehend nicht verfügbar“ oder „Speichern fehlgeschlagen. Bitte erneut versuchen.“ | Das Portal hat den Fehler selbst festgehalten: **Einstellungen → Rückmeldungen**, Eintrag „Automatisch erfasst“, mit der Zahl, wie oft er vorkam. Unter **„Für den Support kopieren“** steht ein Text ohne Namen, E-Mail-Adressen und Eingaben, der an die Person gehen kann, die hilft. |
 
 ## Was geprüft wurde
@@ -321,7 +327,7 @@ Seitenaufruf und jede der vier Prüfungen vor einem Update sind gegen
 **MariaDB 10.11.14** mit echten HTTP-Anfragen durchgespielt worden – samt einer
 Sicherung, die anschließend in eine zweite Datenbank zurückgespielt wurde und
 dort vollständig ankam. Die gesamte Testsuite läuft dort ebenfalls durch, mit
-allen einundzwanzig Datenbankänderungen.
+allen 31 Datenbankänderungen, zuletzt am 7. Oktober 2026.
 
 Für Version 0.6.0 wurde außerdem der erste Abend von Anfang bis Ende in einem
 echten Browser in Telefonbreite durchgespielt, gegen MariaDB 10.11.14: die

@@ -1,5 +1,7 @@
 # UI spec: student wizard, sign-in links, accounts page, basic chat (ui-ux-designer, 2026-10-05)
 
+Status 2026-10-07: what §0 assumes of the server is built as ADR 0023 settled it (commits e9aff6e and d095ca4), with a first, minimal form of the wizard (§2), the link card (§3), the page the link opens (§4) and the sign-in box (§5). The start page (§1), the accounts page (§6) and the chat (§7, ADR 0022 §11) are not built. Building this specification is ROADMAP.md item 4. Where this text and ADR 0023 disagree, ADR 0023 wins.
+
 Project manager's decisions on the designer's open issues (binding unless the owner overrules):
 - Chats between two students: CLOSED (no new ones, no contact requests); what exists stays readable. Admins read every chat.
 - Sign-in link validity: 48 hours (same as an invitation), works once.
