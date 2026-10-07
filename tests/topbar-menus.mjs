@@ -1,6 +1,7 @@
 /**
- * What the top bar's menus do when tapped, swiped and escaped, run against the
- * real public/assets/app.js - called by the shell suite, not by hand:
+ * What the top bar's menus do when tapped, swiped and escaped, and what a form
+ * does when it is sent twice or comes back with the Back button, run against
+ * the real public/assets/app.js - called by the shell suite, not by hand:
  *
  *   node tests/topbar-menus.mjs    prints one JSON array of {what, pass, detail}
  *
@@ -12,12 +13,17 @@
  * „toggle" after the change rather than during it, so toggles wait in a queue
  * until settle().
  *
+ * The page also holds one form sent by POST, with two buttons. A timer the
+ * script sets runs when runTimers() says so, and the window's listeners
+ * (pageshow) are kept to be sent like the document's.
+ *
  * What the stand-in page does not do: document.querySelectorAll() answers only
- * '.topbar-menu' (anything else finds nothing, so the rest of app.js stays out
- * of the way - and so would a menu script that looked for its menus another
- * way); getElementById() and querySelector() find nothing. On the stand-in
- * elements, closest(), matches() and querySelector() understand a tag, classes
- * and [open], and throw on any other selector rather than guess.
+ * the selectors in `answered` (anything else finds nothing, so the rest of
+ * app.js stays out of the way - and so would a script that looked for its menus
+ * or forms another way); getElementById() and querySelector() find nothing. On
+ * the stand-in elements, closest(), matches() and querySelector() understand a
+ * tag, classes and attributes - [open], [name] and [name="value"] - and throw on
+ * any other selector rather than guess.
  */
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -31,6 +37,7 @@ class FakeElement {
     this.parent = parent;
     this.children = [];
     this.listeners = {};
+    this.attributes = {};
     this._open = false;
     if (parent) parent.children.push(this);
   }
@@ -42,14 +49,26 @@ class FakeElement {
     if (this.tagName === 'DETAILS') pendingToggles.push(this);
   }
   addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  getAttribute(name) { return this.attributes[name] ?? null; }
+  removeAttribute(name) { delete this.attributes[name]; }
+  // data-* attributes, as element.dataset reads and writes them.
+  get dataset() {
+    const name = key => 'data-' + String(key).replace(/[A-Z]/g, c => '-' + c.toLowerCase());
+    return new Proxy({}, {
+      get: (_, key) => this.attributes[name(key)],
+      set: (_, key, value) => { this.attributes[name(key)] = String(value); return true; },
+      deleteProperty: (_, key) => { delete this.attributes[name(key)]; return true; },
+    });
+  }
   matches(selector) {
-    const m = /^([a-z]+)?((?:\.[\w-]+)*)((?:\[[\w-]+\])*)$/.exec(selector.trim());
+    const m = /^([a-z]+)?((?:\.[\w-]+)*)((?:\[[\w-]+(?:="[^"]*")?\])*)$/.exec(selector.trim());
     if (!m) throw new Error('the stand-in page cannot answer the selector ' + JSON.stringify(selector));
     if (m[1] && this.tagName !== m[1].toUpperCase()) return false;
     for (const cls of (m[2].match(/[\w-]+/g) ?? [])) if (!this.classes.has(cls)) return false;
-    for (const attr of (m[3].match(/[\w-]+/g) ?? [])) {
-      if (attr !== 'open') throw new Error('the stand-in page knows no attribute ' + attr);
-      if (!this._open) return false;
+    for (const [, attr, value] of m[3].matchAll(/\[([\w-]+)(?:="([^"]*)")?\]/g)) {
+      if (attr === 'open') { if (value !== undefined || !this._open) return false; continue; }
+      if (value === undefined ? !(attr in this.attributes) : this.attributes[attr] !== value) return false;
     }
     return true;
   }
@@ -82,8 +101,18 @@ const other = menu('account-menu');
 const elsewhere = new FakeElement('a', ['language'], topbar);
 const main = new FakeElement('main', [], body);
 const heading = new FakeElement('h1', [], main);
+// A form sent by POST, with the button pressed and one beside it.
+const form = new FakeElement('form', [], main);
+form.setAttribute('method', 'post');
+const pressed = new FakeElement('button', [], form);
+const beside = new FakeElement('button', [], form);
+for (const button of [pressed, beside]) { button.setAttribute('type', 'submit'); button.disabled = false; }
+const answered = new Set(['.topbar-menu', 'form[method="post"]', 'form[data-submitted]', 'dialog.sheet-dialog[open]']);
 
 const documentListeners = {};
+const windowListeners = {};
+const timers = [];
+const runTimers = () => { while (timers.length) timers.shift()(); };
 const page = {
   activeElement: body,
   body: Object.assign(body, { classList: { remove() {}, toggle() { return false; } } }),
@@ -91,9 +120,9 @@ const page = {
   documentElement: { classList: { add() {} } },
   getElementById: () => null,
   querySelector: () => null,
-  // Only the menus are on this page: every other feature of app.js finds nothing
-  // to attach to and stays out of the way.
-  querySelectorAll: selector => (selector === '.topbar-menu' ? body.querySelectorAll(selector) : []),
+  // Only the menus and the form are on this page: every other feature of app.js
+  // finds nothing to attach to and stays out of the way.
+  querySelectorAll: selector => (answered.has(selector) ? body.querySelectorAll(selector) : []),
   addEventListener: (type, fn) => { (documentListeners[type] ??= []).push(fn); },
   createElement: tag => new FakeElement(tag),
 };
@@ -105,8 +134,8 @@ const context = vm.createContext({
   history: { replaceState() {} },
   navigator: {},
   console,
-  // The window's own listeners (pageshow) are not exercised here.
-  addEventListener() {},
+  addEventListener: (type, fn) => { (windowListeners[type] ??= []).push(fn); },
+  setTimeout: fn => { timers.push(fn); return timers.length; },
 });
 context.window = context;
 vm.runInContext(readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8'), context,
@@ -208,6 +237,29 @@ try {
   tap(bell.summary);
   key('Enter');
   check('another key leaves it open', bell.details.open, state());
+
+  // A form is sent once, and a page come back to with Back is a page to use.
+  const submit = () => {
+    const event = { submitter: pressed, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    for (const fn of form.listeners.submit ?? []) fn(event);
+    return event;
+  };
+  const formState = () => JSON.stringify({ form: form.attributes, pressed: pressed.attributes, pressedOff: pressed.disabled,
+                                           beside: beside.attributes, besideOff: beside.disabled });
+  check('the first send goes through', !submit().defaultPrevented, formState());
+  check('and the button pressed says it is working', pressed.getAttribute('aria-busy') === 'true', formState());
+  check('its buttons stay on while it is being sent, so the pressed one sends its name', !pressed.disabled && !beside.disabled, formState());
+  runTimers();
+  check('and are off once it is on its way', pressed.disabled && beside.disabled, formState());
+  check('a second send is stopped', submit().defaultPrevented, formState());
+  for (const fn of windowListeners.pageshow ?? []) fn({ persisted: false });
+  check('a page loaded afresh is left alone', form.dataset.submitted === '1' && pressed.disabled, formState());
+  for (const fn of windowListeners.pageshow ?? []) fn({ persisted: true });
+  check('back to the page as it was left, its buttons are on again', !pressed.disabled && !beside.disabled, formState());
+  check('nothing says it is working', pressed.getAttribute('aria-busy') === null, formState());
+  check('and the form is no longer marked sent', form.dataset.submitted === undefined
+        && pressed.dataset.sendingOff === undefined && beside.dataset.sendingOff === undefined, formState());
+  check('so it can be sent again', !submit().defaultPrevented, formState());
 } catch (error) {
   check('the menu code ran against the stand-in page', false, String(error && error.stack || error));
 }

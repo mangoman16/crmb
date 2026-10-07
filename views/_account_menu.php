@@ -34,7 +34,7 @@ $emoji=status_emoji($user);
     <div class="topbar-menu-panel account-menu-panel">
         <?php /* Who this is, for a phone, where the button is the picture alone. */ ?>
         <div class="account-menu-head"><strong><?=chat_name($user)?></strong><small><?=e(role_label($user['role']).($own?' · '.$statusText:''))?></small></div>
-        <a class="account-menu-row" href="<?=e(url('profile'))?>"><span class="account-menu-text"><?=e(t('Mein Konto','My account'))?><small><?=e(t('Bild, Name, Passwort, Farbe','Picture, name, password, colour'))?></small></span></a>
+        <a class="account-menu-row" href="<?=e(url('profile'))?>"><span class="account-menu-text"><?=e(t('Mein Konto','My account'))?><small><?=e(my_account_hint())?></small></span></a>
         <?php if($statusShown): ?>
         <div class="account-menu-status" role="group" aria-labelledby="account-menu-status">
             <span class="account-menu-label" id="account-menu-status"><?=e(t('Status','Status'))?></span>

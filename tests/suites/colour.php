@@ -130,6 +130,27 @@ set_setting('brand_primary', '#1f5fa9');
 ok(!isset(brand_palette()['adjusted']['brand_primary']), 'a blue that already reads is used as chosen and not reported');
 is_same('#1f5fa9', brand_palette()['used']['brand_primary'], 'and is what the card says is in use');
 
+case_('The main colour reads on the club\'s own background too');
+/* Text in the main colour - a link under a group, „Alle ansehen" beside a
+   heading - stands on the background behind the groups as well as in them, and
+   a background she chose may be darker than the built-in grey. */
+branding_clear();
+set_setting('brand_background', '#e5e5e5');
+set_setting('brand_primary', $grey);
+$palette = brand_palette();
+is_same('#e5e5e5', $palette['used']['brand_background'], 'a grey background still light enough for grey text is used as chosen');
+ok(colour_contrast($palette['light']['--teal'], '#e5e5e5') >= 4.5,
+   'and a mid-grey main colour is darkened until it reads on it, not only on the built-in grey: '.$palette['light']['--teal']);
+
+case_('The soft tint is mixed into the group it fills, in dark as in light');
+/* --teal-soft fills a selected row or a pale button inside a group. Mixed into
+   the black ground behind the groups instead, it came out darker than the
+   group around it: a hole rather than a tint. */
+branding_clear();
+set_setting('brand_primary', '#06736c');
+is_same('#182c2c', brand_palette()['dark']['--teal-soft'],
+        'the built-in teal, chosen: 18 % of it in a dark group (#1c1c1e), not in the black ground (#011513)');
+
 case_('The menu keeps readable text on any menu colour');
 foreach ([$navy, '#e8eef4', $grey, $red, $pale, '#13243a'] as $n) {
     branding_clear();

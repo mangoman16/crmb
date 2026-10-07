@@ -22,7 +22,8 @@ page_head(
     t('Änderungen','Changes'),
     $scoped?t('Alle Änderungen an diesem Eintrag.','Every change to this record.')
            :t('Was zuletzt geändert wurde, und von wem.','What changed recently, and who changed it.'),
-    $scoped?link_button(t('Alle Änderungen','All changes'),'history',[],'secondary'):''
+    // up-link: on a phone the bar's „‹ Änderungen" is this way back.
+    $scoped?link_button(t('Alle Änderungen','All changes'),'history',[],'secondary up-link'):''
 );
 if(!$scoped) tabs(['all'=>t('Alle','All'),'family'=>t('Von Familien','By families')],$tab,'history',[],t('Wessen Änderungen','Whose changes'));
 

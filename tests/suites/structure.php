@@ -151,6 +151,7 @@ $expected = [
     'accounts' => 'staff', 'payments' => 'staff', 'outbox' => 'staff',
     'classes' => 'staff', 'manage' => 'staff', 'invoices' => 'staff', 'attendance' => 'staff',
     'student_new' => 'staff',   // the wizard „Schüler anlegen" (ADR 0023 §5)
+    'more' => 'staff',          // „Mehr", the fifth place on staff's bar (ADR 0028)
     'settings' => 'admin', 'history' => 'admin',
     'start' => 'admin',   // the setup checklist: administrator decisions only (ADR 0011)
 ];
@@ -365,7 +366,7 @@ function printable_parts(string $expr): array {
    mb_substr() or looking a code up in a settings array does not make it safe. */
 $escaping = ['e',                                                   // escapes
              'icon','link_button','qr_svg','progress_chart','avatar', // build their own markup and escape inside
-             'sidebar_nav','time_cells','select_options',           // build their own markup and escape inside
+             'sidebar_nav','nav_link','time_cells','select_options', // build their own markup and escape inside
              'presence_dot','presence_dot_for','presence_line',     // build their own markup and escape inside
              'chat_name','status_emoji_mark',                       // build their own markup and escape inside
              'money','number_format','count','ceil','floor','round','array_sum','plural',  // numbers

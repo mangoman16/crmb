@@ -25,7 +25,7 @@ try {
     $page=$_GET['page']??'dashboard';
     // Every page there is. allowed_pages() reads this list for a way back that
     // an action works out itself, so it is written here and only here.
-    $allowed=['dashboard','start','students','student','student_new','payments','classes','accounts','messages','news','outbox','manage','invoices','attendance','download','settings','history','profile','login','forgot','activate','unsubscribe','privacy','icon','manifest','brand','logo'];
+    $allowed=['dashboard','start','students','student','student_new','payments','classes','accounts','messages','news','outbox','manage','invoices','attendance','download','settings','history','profile','more','login','forgot','activate','unsubscribe','privacy','icon','manifest','brand','logo'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
     // The trail a problem report carries. Here, before the POST branch, because
     // that branch redirects and never comes back: recorded any later, the trail
@@ -66,7 +66,7 @@ try {
     // fetches those on its own, from a tab left open or a home-screen icon, and
     // counting them would show somebody as online who is not looking (ADR 0015).
     if($user && !in_array($page,['icon','manifest','brand','logo'],true))presence_touch($user);
-    if(in_array($page,['accounts','payments','outbox','classes','manage','invoices','attendance','student_new'],true))require_staff();
+    if(in_array($page,['accounts','payments','outbox','classes','manage','invoices','attendance','student_new','more'],true))require_staff();
     // A family's list is their own student; an old bookmark to the students list
     // opens that page instead. Not a change of who may open it.
     if($page==='students' && ($instead=students_list_instead($user)))go($instead[0],$instead[1]);

@@ -111,7 +111,7 @@ function notification_link(array $notification): string {
 
 function notification_icon(string $kind): string {
     return match ($kind) {
-        'payment' => 'wallet', 'message' => 'mail', 'request' => 'users',
+        'payment' => 'wallet', 'message' => 'chat', 'request' => 'users',
         'schedule' => 'calendar', 'problem' => 'lock', default => 'news',
     };
 }

@@ -72,14 +72,7 @@ foreach(accents() as $key=>$label): ?>
 </div><p class="muted"><?=e(t('„Wie am Gerät eingestellt“ übernimmt den Dunkelmodus von iPhone, iPad oder Mac automatisch.','“Match my device” follows the dark mode setting on your iPhone, iPad or Mac automatically.'))?></p><?php check_field('newsletter',t('Neuigkeiten per E-Mail erhalten','Receive news by email'),(bool)$user['newsletter'],'',false,true);check_field('notifications',t('E-Mail-Hinweise bei privaten Nachrichten erhalten','Receive email notifications for private messages'),(bool)$user['notifications'],'',false,true);
 check_field('payment_notices',t('Erinnerung, wenn ein Beitrag offen ist','Remind me when a payment is outstanding'),(bool)($user['payment_notices']??true),'',false,true);
 submit_button();?></form></section>
-<?php /* The foot of the side menu holds these, and on a phone a family has no
-         „Mehr" to open it with (ADR 0011), so they are here as well - Mein
-         Konto is a row on their Profil. */ ?>
-<section class="card help-card"><h2><?=e(t('Datenschutz und Hilfe','Privacy and help'))?></h2>
-    <ul class="link-list">
-        <li><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?><?=icon('chevron')?></a></li>
-        <li><a href="#feedback"><?=e(t('Etwas funktioniert nicht','Something is wrong'))?><?=icon('chevron')?></a></li>
-    </ul>
-    <p class="muted version-line"><?=e(t('Version ','Version ').app_version())?></p>
-</section>
-<?php start_form('logout',[],'inline-form');submit_button(t('Abmelden','Sign out'),'secondary');?></form>
+<?php /* The sidebar's foot holds these on a computer; on a phone a family has
+         no „Mehr", so they are here - and on staff's „Mehr" too. */
+privacy_and_help_group();
+sign_out_row(); ?>

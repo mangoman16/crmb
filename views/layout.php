@@ -49,17 +49,16 @@ $realUser=$public?null:impersonator();
 <?php if(!$public):
 $unreadNotes=unread_notifications((int)$user['id']);
 ?>
-<aside class="sidebar" id="sidebar">
-    <?php /* The way out of the side menu on a phone. A link, so it works without
-             JavaScript: „Mehr" opens the menu as #sidebar, and this leaves it. */
-    if(is_staff($user)): ?><a class="menu-close" id="menu-close" href="#main"><?=e(t('Menü schließen','Close menu'))?></a><?php endif ?>
+<?php /* The menu on a computer. On a phone it is not shown: the bar at the
+         bottom holds four places and „Mehr" the rest (ADR 0028). It stays in
+         the markup, because the server does not know how wide the screen is. */ ?>
+<aside class="sidebar">
     <?php brand_block($user,'sidebar',url('dashboard')); ?>
     <?=sidebar_nav($user,$page)?>
     <?php /* The account used to be here as well as in the top bar. One of the two
              was always redundant, and the top bar is the one on screen whatever
              you have scrolled to, so only what it has no room for stays here. */ ?>
     <div class="sidebar-bottom">
-        <a class="feedback-link" href="#feedback"><?=icon('help')?><span><?=e(t('Etwas funktioniert nicht','Something is wrong'))?></span></a>
         <div class="sidebar-meta"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutz','Privacy'))?></a><span>v<?=e(app_version())?></span></div>
     </div>
 </aside>
@@ -136,7 +135,8 @@ if(isset($_SESSION['flash'])):$f=$_SESSION['flash'];unset($_SESSION['flash']);?>
          lived in every product she has ever used. On a phone it stays at the end
          of the page: the bottom of a phone screen already holds the menu bar and
          the sticky save button, and a third thing floating over them is how a
-         Save button becomes unreachable. The menu carries a link down to it.
+         Save button becomes unreachable. Mein Konto and „Mehr" carry a link
+         down to it (privacy_and_help_group()).
 
          A conversation with a writing box keeps it at the end of the page on a
          desktop screen too: the box is pinned to the bottom of the window as
@@ -166,14 +166,7 @@ $pinnedHelp=!($page==='messages' && $writable); ?>
 <?php foreach(mobile_nav_entries($user) as $item):?><a href="<?=e(url($item['route'],$item['params']))?>" <?=nav_item_current($item,$page,$user)?'aria-current="page"':''?>><?=icon($item['icon'])?><?php
     // The bar prints the short word; a screen reader hears the entry's full name.
     if($item['short']!==$item['label']):?><span aria-hidden="true"><?=e($item['short'])?></span><span class="visually-hidden"><?=e($item['label'])?></span><?php else:?><span><?=e($item['label'])?></span><?php endif ?><?php if($item['count']):?><span class="count" aria-label="<?=e($item['count'].' '.t('ungelesen','unread'))?>"><?=e((string)$item['count'])?></span><?php endif ?></a><?php endforeach ?>
-<?php /* A link to the side menu, so the entries that are not on the bar - Kurse,
-         Geld, Einstellungen - are reachable without JavaScript (the stylesheet
-         opens #sidebar when it is the target). app.js turns it into a button
-         that slides the menu in and out without touching the address. */
-if(is_staff($user)): ?><a href="#sidebar" id="menu-toggle" aria-controls="sidebar"><?=icon('more')?><span><?=e(t('Mehr','More'))?></span></a>
-<?php endif ?>
 </nav>
-<a class="menu-backdrop" id="menu-backdrop" href="#main" aria-label="<?=e(t('Menü schließen','Close menu'))?>"></a>
 <?php else: ?>
 <?php /* Only the way to the privacy notice and the version. The paragraph that
          stood here was repeated at the foot of every public page, which is where

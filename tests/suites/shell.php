@@ -389,7 +389,7 @@ is_same(array_values(array_unique(menu_routes($adminUser))), menu_routes($adminU
 // 2026-10-07).
 is_same(0, (int)scalar('SELECT COUNT(*) FROM students WHERE account_id=?', [$family]), 'this family login has no student');
 is_same(['dashboard','messages'], menu_routes($familyUser), 'so it sees two pages');
-is_same(null, people_nav_entry($familyUser), 'and no „Profil" entry that would lead nowhere');
+is_same([], family_nav_entries($familyUser), 'and no „Beiträge" or „Profil" entry that would lead nowhere');
 $ownLogin = make_account(['role'=>'student', 'name'=>'Familie Profil']);
 $ownStudent = make_student(['first_name'=>'Pia', 'last_name'=>'Profil', 'account_id'=>$ownLogin, 'email'=>'profil@example.test']);
 $otherStudent = make_student(['first_name'=>'Nicht', 'last_name'=>'Ihres']);
@@ -397,21 +397,21 @@ $ownUser = one('SELECT * FROM accounts WHERE id=?', [$ownLogin]);
 is_same(['dashboard','student','messages','student'], menu_routes($ownUser), 'a family with a student sees four: Übersicht, Beiträge, Nachrichten, Profil');
 is_same([['id'=>$ownStudent,'tab'=>'payments'], ['id'=>$ownStudent]], array_values(array_column(array_filter(nav_entries($ownUser), fn($e) => $e['route'] === 'student'), 'params')),
         'Beiträge is their student\'s money tab, Profil the page itself');
-$profile = people_nav_entry($ownUser);
+$profile = family_nav_entries($ownUser)['profile'] ?? [];
 is_same(['student', ['id'=>$ownStudent], 'Profil'], [$profile['route'] ?? null, $profile['params'] ?? null, $profile['label'] ?? null],
         '„Profil" is their own student\'s page');
 ok($ownStudent !== $otherStudent && ($profile['params']['id'] ?? null) !== $otherStudent, 'and never another student\'s');
 ok(str_contains(sidebar_nav($ownUser, 'dashboard'), 'href="'.e(url('student', ['id'=>$ownStudent])).'"'), 'the menu links there');
 
 case_('The bar along the bottom of a phone');
-/* An iOS tab bar (design language, Part 0 C3): four places for staff and „Mehr"
-   for the rest; four for a family and no „Mehr", because everything on their
-   side menu is on the bar already. The short word is what the bar prints; the
-   full one is what a screen reader says. */
+/* An iOS tab bar (design language, Part 0 C3): four places for staff and „Mehr",
+   a page holding the rest (ADR 0028); four for a family and no „Mehr", because
+   everything on their side menu is on the bar already. The short word is what
+   the bar prints; the full one is what a screen reader says. */
 $bar = fn(array $who) => [array_column(mobile_nav_entries($who), 'route'), array_column(mobile_nav_entries($who), 'short')];
 foreach (['administrator' => $adminUser, 'trainer' => $trainerUser] as $role => $who)
-    is_same([['dashboard','students','attendance','messages'], ['Übersicht','Schüler','Anwesend','Chats']], $bar($who),
-            'staff ('.$role.'): Übersicht, Schüler, Anwesend, Chats');
+    is_same([['dashboard','students','attendance','messages','more'], ['Übersicht','Schüler','Anwesend','Chats','Mehr']], $bar($who),
+            'staff ('.$role.'): Übersicht, Schüler, Anwesend, Chats, and „Mehr" last');
 is_same([['dashboard','student','messages','student'], ['Übersicht','Beiträge','Chats','Profil']], $bar($ownUser),
         'a family: Übersicht, Beiträge, Chats, Profil');
 is_same(['dashboard','messages'], array_column(mobile_nav_entries($familyUser), 'route'),
@@ -432,11 +432,26 @@ function shell_page(string $page, array $query = []): string {
     ob_start(); require APP_ROOT.'/views/layout.php'; $html = (string)ob_get_clean(); $_GET = $restore;
     return $html;
 }
+/** The bar as a page draws it: the address of each of its links. */
+$drawnBar = function (string $html): array {
+    preg_match('~<nav class="mobile-nav".*?</nav>~s', $html, $nav);
+    preg_match_all('~href="([^"]*)"~', $nav[0] ?? '', $hrefs);
+    return array_map(fn($href) => html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8'), $hrefs[1]);
+};
 sign_in_as($trainer);
-ok(str_contains(shell_page('dashboard'), 'id="menu-toggle"'), 'staff have „Mehr", which opens the side menu');
+is_same(url('more'), array_slice($drawnBar(shell_page('dashboard')), -1)[0] ?? null, 'staff\'s bar, as drawn, ends in „Mehr", a page');
 sign_in_as($ownLogin);
 $familyFrame = shell_page('dashboard');
-ok(!str_contains($familyFrame, 'id="menu-toggle"'), 'a family has no „Mehr"');
+ok($drawnBar($familyFrame) !== [] && !in_array(url('more'), $drawnBar($familyFrame), true), 'a family\'s bar has no „Mehr"');
+// The side menu that slid in over a phone (ADR 0011) is gone, and with it
+// everything that only it used; on a phone the sidebar is simply not shown.
+$layoutSource = (string)file_get_contents(APP_ROOT.'/views/layout.php');
+$scriptSource = (string)file_get_contents(APP_ROOT.'/public/assets/app.js');
+foreach (['menu-toggle', 'menu-backdrop', 'menu-close', 'menu-open', '#sidebar', 'id="sidebar"'] as $drawer)
+    ok(!str_contains($layoutSource, $drawer) && !str_contains($scriptSource, $drawer), 'nothing of the drawer is left: no '.$drawer.' in the layout or in app.js');
+$sidebarOnPhone = array_filter(css_matching(css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css')), '/^\.sidebar$/'),
+    fn($r) => $r['property'] === 'display' && css_max_width($r['media']) >= 320);
+is_same(['none'], array_values(array_unique(array_column($sidebarOnPhone, 'value'))), 'and on a phone the sidebar is display:none, nothing else');
 ok(str_contains(render_view('student', ['id'=>$ownStudent]), 'href="'.e(url('profile')).'"'),
    'their Mein Konto is a row on Profil instead, „Anmeldung und Darstellung"');
 
@@ -552,9 +567,19 @@ foreach ($people as $who => [$accountId, $setupOpen]) {
             ok(isset($entries[$owner]) && $reaches($user, $owner, $entries[$owner], $page),
                $page.' is linked from '.$owner.' for '.$who.', or from a page that belongs to it');
         }
-        if ($owner !== '')
-            is_same([$owner], array_values(array_filter(array_keys($entries), fn($route) => nav_is_current($route, $page, $user))),
-                    'while '.$page.' is open, only '.$owner.' is highlighted for '.$who);
+        // One entry lit in each menu, checked per menu: the sidebar lights the
+        // page's own entry, and so does the bar, unless the entry is on
+        // „Mehr" - then „Mehr" is lit (ADR 0028 §4), and on a computer the
+        // sidebar has no „Mehr" to light.
+        if ($owner !== '') {
+            $lit = fn(array $menu) => array_values(array_unique(array_column(array_filter($menu, fn($e) => nav_is_current($e['route'], $page, $user)), 'route')));
+            $inSidebar = in_array($owner, array_column(nav_entries($user, false), 'route'), true);
+            $onBar = in_array($owner, array_column(mobile_nav_entries($user, false), 'route'), true);
+            is_same($inSidebar ? [$owner] : [], $lit(nav_entries($user, false)),
+                    'while '.$page.' is open, the side menu lights '.($inSidebar ? 'only '.$owner : 'nothing').' for '.$who);
+            is_same($onBar ? [$owner] : (is_staff($user) ? ['more'] : []), $lit(mobile_nav_entries($user, false)),
+                    'and the bar lights '.($onBar ? 'only '.$owner : '„Mehr"').' for '.$who);
+        }
     }
 }
 ok($checkedPairs >= 50, $checkedPairs.' pages checked across four kinds of person');
@@ -591,6 +616,130 @@ $drawn = [];
 foreach ($links as [, $route, $inside])
     $drawn[$route] = preg_match('~<span class="count"[^>]*>(\d+)</span>~', $inside, $n) ? (int)$n[1] : 0;
 is_same(array_column(nav_entries($adminUser), 'count', 'route'), $drawn, 'the side menu draws each number on its own entry and nowhere else');
+// „Mehr" draws the entries the bar has no room for with the same nav_link(),
+// so the number is on Kurse's row there too; „Mehr" itself carries none.
+sign_in_as($admin);
+preg_match_all('~<a class="editor-list-item nav-row" href="[^"]*page=(\w+)[^"]*"[^>]*>(.*?)</a>~s', render_view('more'), $links, PREG_SET_ORDER);
+$drawn = [];
+foreach ($links as [, $route, $inside])
+    $drawn[$route] = preg_match('~<span class="count"[^>]*>(\d+)</span>~', $inside, $n) ? (int)$n[1] : 0;
+is_same(array_column(more_entries($adminUser), 'count', 'route') + ['profile' => 0], $drawn,
+        '„Mehr" draws each number on its own row, and none on Mein Konto');
+is_same(1, $drawn['classes'] ?? null, 'Kurse\'s among them');
+is_same(0, array_column(mobile_nav_entries($adminUser), 'count', 'route')['more'] ?? null, 'and the bar\'s „Mehr" has no number of its own');
+
+case_('On a phone „Mehr" holds what the bar has no room for, worked out from the full menu');
+/* ADR 0028 §2 and §7: the full menu without the bar's routes, in its order, and
+   never listed a second time - so every entry is on the bar or on „Mehr",
+   whatever is added to the menu later. */
+$moreRoutes = fn(array $who) => array_column(more_entries($who), 'route');
+$setupShown(true);
+is_same(['start','classes','payments','settings'], $moreRoutes($adminUser),
+        'an administrator while the checklist is unfinished: Einrichtung, Kurse, Geld, Einstellungen');
+$setupShown(false);
+is_same(['classes','payments','settings'], $moreRoutes($adminUser), 'once it is hidden: Kurse, Geld, Einstellungen');
+is_same(['classes','payments','manage'], $moreRoutes($trainerUser), 'a trainer: Kurse, Geld, Verwaltung');
+is_same([], more_entries($ownUser), 'a family has no „Mehr", and nothing for one');
+foreach (['an administrator, setup unfinished' => [$adminUser, true], 'an administrator, setup hidden' => [$adminUser, false],
+          'a trainer' => [$trainerUser, false], 'a family' => [$ownUser, false]] as $who => [$person, $open]) {
+    $setupShown($open);
+    $onPhone = array_merge(array_column(mobile_nav_entries($person, false), 'route'), $moreRoutes($person));
+    foreach (nav_entries($person, false) as $entry)
+        ok(in_array($entry['route'], $onPhone, true), $entry['label'].' is on the bar or on „Mehr" for '.$who);
+}
+
+case_('On a phone the back button leads up to the page above, named as the bar names it');
+/* nav_back()'s table row by row (ADR 0028 §5), for each kind of person, through
+   its $query parameter as an address would give it. A row is the page and its
+   address, then the name of the page above, where the button leads, and what it
+   says where that is not the name: past twelve characters, „Zurück". No name:
+   nothing is above. Every place it leads is a page the router lets that person
+   open. */
+$walk = function (string $who, array $rows) use ($allowed, $staffOnly, $adminOnly): void {
+    $user = current_user();
+    foreach ($rows as $row) {
+        [$page, $query, $name, $target, $params, $label] = $row + [null, [], null, '', [], null];
+        $up = nav_back($page, $user, $query);
+        $where = $page.($query ? '?'.http_build_query($query) : '').' for '.$who;
+        if ($name === null) { is_same(null, $up, 'nothing is above '.$where); continue; }
+        is_same([$label ?? $name, $name, url($target, $params)], [$up['label'] ?? null, $up['name'] ?? null, $up['href'] ?? null],
+                'above '.$where.': „'.($label ?? $name).'"'.($label !== null ? ', for '.$name : '').', to '.$target);
+        ok(in_array($target, $allowed, true) && (is_staff($user) || !in_array($target, $staffOnly, true))
+           && (is_admin($user) || !in_array($target, $adminOnly, true)), 'and '.$target.' is a page the router lets '.$who.' open');
+    }
+};
+$shortCourse = make_class(['name'=>'Anfänger']);
+$longCourse = make_class(['name'=>'Kindertraining am Mittwoch']);
+sign_in_as($admin);
+$draftKey = (string)act('student_draft', ['first_name'=>'Mia', 'last_name'=>'Oben', 'birth_date'=>'', 'course'=>'none', 'status'=>'active'])[1]['draft'];
+$setupShown(true);
+$walk('an administrator', [
+    ['dashboard', []], ['students', []], ['attendance', []], ['messages', []], ['more', []], ['privacy', []],
+    ['student', ['id'=>$kid], 'Schüler', 'students'],
+    ['student', ['id'=>$kid, 'tab'=>'payments'], 'Schüler', 'students'],
+    ['student_new', [], 'Schüler', 'students'],
+    ['student_new', ['from'=>'dashboard'], 'Übersicht', 'dashboard'],
+    ['student_new', ['from'=>'start'], 'Einrichtung', 'start'],
+    ['student_new', ['draft'=>$draftKey, 'from'=>'dashboard'], 'Schritt 1', 'student_new', ['draft'=>$draftKey, 'step'=>'1', 'from'=>'dashboard']],
+    ['student_new', ['draft'=>$draftKey, 'step'=>'1', 'from'=>'dashboard'], 'Übersicht', 'dashboard'],
+    ['classes', [], 'Mehr', 'more'],
+    ['classes', ['id'=>$shortCourse], 'Kurse', 'classes'],
+    ['classes', ['new'=>'1'], 'Kurse', 'classes'],
+    ['classes', ['id'=>$shortCourse, 'edit'=>'1'], 'Anfänger', 'classes', ['id'=>$shortCourse]],
+    ['classes', ['id'=>$longCourse, 'edit'=>'1'], 'Kindertraining am Mittwoch', 'classes', ['id'=>$longCourse], 'Zurück'],
+    ['payments', [], 'Mehr', 'more'],
+    ['invoices', [], 'Mehr', 'more'],
+    ['download', ['invoice'=>'1'], 'Geld', 'payments'],
+    ['settings', [], 'Mehr', 'more'],
+    ['settings', ['tab'=>'system'], 'Mehr', 'more'],
+    ['start', [], 'Mehr', 'more'],
+    ['manage', [], 'Einstellungen', 'settings', [], 'Zurück'],
+    ['accounts', [], 'Einstellungen', 'settings', [], 'Zurück'],
+    ['history', [], 'Einstellungen', 'settings', [], 'Zurück'],
+    ['history', ['entity'=>'students', 'record'=>(string)$kid], 'Änderungen', 'history'],
+    ['messages', ['id'=>$thread], 'Chats', 'messages'],
+    ['messages', ['new'=>'1'], 'Chats', 'messages'],
+    ['messages', ['with'=>(string)$family], 'Chats', 'messages'],
+    ['messages', ['contacts'=>'1'], 'Chats', 'messages'],
+    ['messages', ['id'=>$thread, 'members'=>'1'], 'Chat', 'messages', ['id'=>$thread, '#'=>'chat-end']],
+    ['outbox', [], 'Chats', 'messages'],
+    ['news', [], 'Chats', 'messages'],
+    ['news', ['id'=>'1'], 'Neuigkeiten', 'news'],
+    ['news', ['new'=>'1'], 'Neuigkeiten', 'news'],
+    ['profile', [], 'Mehr', 'more'],
+]);
+$setupShown(false);
+$walk('an administrator, setup hidden', [
+    ['start', [], 'Einstellungen', 'settings', [], 'Zurück'],
+    ['student_new', ['from'=>'start'], 'Einrichtung', 'start'],
+]);
+sign_in_as($trainer);
+$walk('a trainer', [
+    ['dashboard', []], ['students', []], ['more', []],
+    ['student', ['id'=>$kid], 'Schüler', 'students'],
+    ['classes', [], 'Mehr', 'more'],
+    ['payments', [], 'Mehr', 'more'],
+    ['invoices', [], 'Mehr', 'more'],
+    ['manage', [], 'Mehr', 'more'],
+    ['accounts', [], 'Verwaltung', 'manage'],
+    ['news', [], 'Chats', 'messages'],
+    ['profile', [], 'Mehr', 'more'],
+]);
+// A family's own child's page is two of their entries, Beiträge and Profil, so
+// nothing is above it on either tab; for staff the same page is below Schüler.
+sign_in_as($ownLogin);
+$walk('a family', [
+    ['dashboard', []], ['messages', []], ['privacy', []],
+    ['student', ['id'=>$ownStudent]],
+    ['student', ['id'=>$ownStudent, 'tab'=>'payments']],
+    ['student', ['id'=>$ownStudent, 'tab'=>'invoices']],
+    ['profile', [], 'Profil', 'student', ['id'=>$ownStudent]],
+    ['download', ['invoice'=>'1'], 'Profil', 'student', ['id'=>$ownStudent]],
+    ['news', [], 'Übersicht', 'dashboard'],
+    ['news', ['id'=>'1'], 'Neuigkeiten', 'news'],
+    ['messages', ['id'=>$thread], 'Chats', 'messages'],
+]);
+$setupShown(true);
 
 // ---------------------------------------------------------------------------
 case_('A menu in the top bar is a <details> of its own kind, with a panel');
@@ -734,7 +883,7 @@ $value = fn(array $rows, string $property) => array_column(array_filter($rows, f
 ok($value($menuCount, 'background') !== [] && $value($bellCount, 'background') === $value($menuCount, 'background'),
    'the bell\'s number has the background of the menu\'s ('.implode(', ', $value($bellCount, 'background')).')');
 is_same(['var(--badge-ink)'], $value($bellCount, 'color'), 'and its figure is in var(--badge-ink)');
-$hardCoded = array_filter($css, fn($r) => $notPrint($r) && preg_match('/(\.notification-pane>summary|\.mobile-nav a|\.sidebar nav a)\)? \.count$/', $r['selector'])
+$hardCoded = array_filter($css, fn($r) => $notPrint($r) && preg_match('/(\.notification-pane>summary|\.mobile-nav a|\.sidebar nav a|\.nav-row)\)? \.count$/', $r['selector'])
     && $r['property'] === 'color' && $r['value'] !== 'var(--badge-ink)');
 is_same([], array_map(fn($r) => $r['selector'].' { color: '.$r['value'].' }', array_values($hardCoded)), 'no rule gives a number any other colour');
 foreach ([':root' => 'light', 'html:not([data-theme=light])' => 'dark by the device', 'html[data-theme=dark]' => 'dark by choice'] as $selector => $mode)
@@ -742,23 +891,27 @@ foreach ([':root' => 'light', 'html:not([data-theme=light])' => 'dark by the dev
        '--on-accent is set for '.$mode);
 ok(array_filter(css_matching($css, '/^:root$/'), fn($r) => $r['property'] === '--badge-ink') !== [],
    '--badge-ink is set once, for both appearances');
+foreach (['html:not([data-theme=light])' => 'dark by the device', 'html[data-theme=dark]' => 'dark by choice'] as $selector => $mode)
+    is_same([], array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'), fn($r) => $r['property'] === '--badge-ink'), 'value'),
+            'and not set again for '.$mode.', where a second value would part the two');
 
 case_('A tap elsewhere, a swipe and Escape do what they should to an open menu');
 /* The behaviour itself, run against the real app.js in tests/topbar-menus.mjs:
-   the stylesheet can keep the bell still, but only the script closes it. */
+   the stylesheet can keep the bell still, but only the script closes it. The
+   same stand-in page sends a form twice and comes back to it with Back. */
 $appJs = (string)file_get_contents(APP_ROOT.'/public/assets/app.js');
 ok(preg_match('/querySelectorAll\(\s*([\'"])\.topbar-menu\1\s*\)/', $appJs) === 1,
    'app.js finds the top bar\'s menus by the class the layout gives them');
 $node = function_exists('exec') ? trim((string)exec('command -v node 2>/dev/null')) : '';
 if ($node === '') {
     test_unsupported(array_merge(test_unsupported(),
-        ['what a tap, a swipe and Escape do to a top-bar menu (tests/topbar-menus.mjs needs node)']));
+        ['what a tap, a swipe and Escape do to a top-bar menu, and a form sent twice (tests/topbar-menus.mjs needs node)']));
 } else {
     $output = [];
     exec(escapeshellarg($node).' '.escapeshellarg(TEST_ROOT.'/topbar-menus.mjs').' 2>&1', $output, $status);
     $results = json_decode(implode("\n", $output), true);
     ok($status === 0 && is_array($results), 'tests/topbar-menus.mjs ran'.($status === 0 && is_array($results) ? '' : ': '.implode("\n", $output)));
-    ok(is_array($results) && count($results) >= 16, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
+    ok(is_array($results) && count($results) >= 26, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
     foreach (is_array($results) ? $results : [] as $result)
         ok($result['pass'] === true, $result['what'].($result['pass'] ? '' : ' — '.$result['detail']));
 }

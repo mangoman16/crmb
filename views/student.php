@@ -149,7 +149,7 @@ select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),arra
          child, reached from here since their bar has four places and no
          „Konto" (owner, 2026-10-07). */ ?>
 <section class="card"><a class="editor-list-item" href="<?=e(url('profile'))?>"><span><strong><?=e(t('Anmeldung und Darstellung','Sign-in and appearance'))?></strong>
-    <small><?=e(t('Passwort, E-Mail-Adresse, Sprache und Farbe','Password, email address, language and colour'))?></small></span><?=icon('chevron')?></a></section>
+    <small><?=e(my_account_hint())?></small></span><?=icon('chevron')?></a></section>
 <?php endif ?>
 <?php if($staff):
 /* Everything about this student's login, in one card and in the order it

@@ -7,39 +7,6 @@
 document.addEventListener('touchstart', () => {}, { passive: true });
 document.documentElement.classList.add('js');
 
-// „Mehr" is a link to #sidebar, which the stylesheet opens without JavaScript.
-// Here it becomes the button it stands for: it slides the menu in and out and
-// leaves the address alone, and the backdrop and „Menü schließen" close it.
-let menu = document.getElementById('menu-toggle');
-const backdrop = document.getElementById('menu-backdrop');
-const menuClose = document.getElementById('menu-close');
-if (menu && menu.tagName === 'A') {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.id = menu.id;
-  button.setAttribute('aria-controls', 'sidebar');
-  button.setAttribute('aria-expanded', 'false');
-  button.append(...menu.childNodes);
-  menu.replaceWith(button);
-  menu = button;
-}
-if (backdrop) backdrop.hidden = true;
-function closeMenu() {
-  document.body.classList.remove('menu-open');
-  if (menu) menu.setAttribute('aria-expanded', 'false');
-  if (backdrop) backdrop.hidden = true;
-  // Opened as #sidebar before this script ran (or by a bookmarked address):
-  // dropping the fragment is what closes it then.
-  if (location.hash === '#sidebar') history.replaceState(null, '', location.pathname + location.search);
-}
-menu?.addEventListener('click', () => {
-  const open = document.body.classList.toggle('menu-open');
-  menu.setAttribute('aria-expanded', String(open));
-  if (backdrop) backdrop.hidden = !open;
-});
-[backdrop, menuClose].forEach(link => link?.addEventListener('click', event => { event.preventDefault(); closeMenu(); }));
-document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
-
 // The top bar's menus are <details>: without this each opens and closes by its
 // own button and nothing else. Added here is what a menu is expected to do as
 // well: Escape closes it (and puts focus back on its button if focus was in it),
@@ -120,6 +87,8 @@ let sheets = 0;
 document.querySelectorAll('details[data-sheet]').forEach(fold => {
   const summary = fold.querySelector(':scope > summary');
   if (!summary || typeof window.HTMLDialogElement !== 'function') return;
+  // Said before the tap: this opens a sheet, not a fold in place.
+  summary.setAttribute('aria-haspopup', 'dialog');
   const open = () => {
     const dialog = document.createElement('dialog');
     dialog.className = 'sheet-dialog';
@@ -140,7 +109,7 @@ document.querySelectorAll('details[data-sheet]').forEach(fold => {
     cancel.type = 'button';
     cancel.className = 'button subtle sheet-cancel';
     // The word comes from the page, in the page's language, like every other.
-    cancel.textContent = document.body.dataset.sheetCancel || 'Abbrechen';
+    cancel.textContent = document.body.dataset.sheetCancel;
     dialog.append(grabber, title, body, cancel);
     document.body.append(dialog);
     cancel.addEventListener('click', () => { dialog.close(); });

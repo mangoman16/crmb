@@ -67,7 +67,7 @@ if(is_admin($user) && setup_unfinished()): $setup=setup_progress();$left=$setup[
 <?php endif ?>
 <?php if($staff): ?>
 <div class="stats-grid">
-<div class="stat accent"><span><?=e(t('Aktive Schüler','Active students'))?></span><strong><?=$active?></strong><small><?=e(t('im Training','in training'))?></small><?=icon('users')?></div>
+<div class="stat"><span><?=e(t('Aktive Schüler','Active students'))?></span><strong><?=$active?></strong><small><?=e(t('im Training','in training'))?></small><?=icon('users')?></div>
 <div class="stat"><span><?=e(t('Offene Beiträge','Outstanding charges'))?></span><strong><?=e(money($open))?></strong><small><?=e(t('Noch nicht bestätigt','Not yet confirmed'))?></small><?=icon('wallet')?></div>
 <div class="stat"><span><?=e(t('Davon überfällig','Of which overdue'))?></span><strong class="<?=$overdue?'due':''?>"><?=e(money($overdue))?></strong><small><?=e(t('Fälligkeit überschritten','Past the due date'))?></small><?=icon('calendar')?></div>
 <div class="stat"><span><?=e(t('Heute abwesend','Absent today'))?></span><strong><?=$absent?></strong><small><?=e(t('Krank, Urlaub oder abgemeldet','Sick, away or unavailable'))?></small><?=icon('calendar')?></div>

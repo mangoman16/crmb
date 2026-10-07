@@ -67,8 +67,9 @@ const pages = async (page, role) => {
         return own ? [...common, own.split('?page=')[1]] : common;
     }
     // students&invite=1 opens „Per E-Mail einladen“ and the open invitations (ADR 0021);
-    // student_new is the wizard „Schüler anlegen“, at its first step (ADR 0023).
-    const staff = ['students', 'students&invite=1', 'student_new', 'classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox',
+    // student_new is the wizard „Schüler anlegen“, at its first step (ADR 0023);
+    // more is „Mehr“, the bar's fifth place (ADR 0028).
+    const staff = ['more', 'students', 'students&invite=1', 'student_new', 'classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox',
                    'manage', 'manage&tab=ages', 'manage&tab=payments'];
     const admin = ['settings', 'settings&tab=organisation', 'settings&tab=smtp',
                    'settings&tab=privacy', 'settings&tab=system', 'history'];

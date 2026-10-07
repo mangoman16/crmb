@@ -903,12 +903,27 @@ step('an English invitation, withdrawn', async ({ browser }) => {
     must(await row.count() === 1, 'the English invitation is listed', await mainText(admin));
     // A fold that removes something opens as a sheet from the bottom of the
     // screen, with what it held moved into it (design language, Part 0 C11).
-    await row.locator('summary', { hasText: 'Zurückziehen' }).click();
+    const opener = row.locator('summary', { hasText: 'Zurückziehen' });
+    const withdraw = 'form:has(input[name=mode][value=withdraw])';
     const sheet = admin.locator('dialog.sheet-dialog[open]');
+    await opener.click();
     ok(await sheet.count() === 1 && (await sheet.locator('.sheet-title').innerText()).includes('Zurückziehen'),
        '„Zurückziehen“ opens a sheet titled with it', await sheet.innerText().catch(() => 'no sheet'));
     ok(await sheet.locator('button.sheet-cancel').count() === 1, 'with „Abbrechen“ under it');
-    await save(admin, sheet.locator('form:has(input[name=mode][value=withdraw])'), '„Einladung zurückziehen“');
+    // „Abbrechen“ and Escape each shut it and change nothing: the form goes back
+    // into its fold, where it lives without the script, ready to open again.
+    const shutWith = async (how, shut) => {
+        await shut();
+        await admin.locator('dialog.sheet-dialog').waitFor({ state: 'detached', timeout: 3000 }).catch(() => {});
+        ok(await admin.locator('dialog.sheet-dialog').count() === 0, `${how} shuts the sheet`, await admin.locator('dialog.sheet-dialog').count() + ' sheet(s) left');
+        ok(await row.locator('details[data-sheet] ' + withdraw).count() === 1, `and after ${how} the fold holds its form again`,
+           await row.innerHTML().catch(() => 'no row'));
+    };
+    await shutWith('„Abbrechen“', () => sheet.locator('button.sheet-cancel').click());
+    await opener.click();
+    await shutWith('Escape', () => admin.keyboard.press('Escape'));
+    await opener.click();
+    await save(admin, sheet.locator(withdraw), '„Einladung zurückziehen“');
     await look(admin, 'admin');
     ok((await flash(admin)).includes(`Die Einladung an ${GUEST_EN.email} ist zurückgezogen.`), '„Die Einladung an … ist zurückgezogen.“', await flash(admin));
     ok(sql(`SELECT COUNT(*) FROM accounts WHERE email='${GUEST_EN.email}'`) === '0', 'the login is gone');
@@ -961,7 +976,7 @@ step('family: Profil and charges', async () => {
     await page.goto(BASE + '/index.php?page=dashboard&lang=de');
     await look(page, 'family');
     ok((await mainText(page)).includes('Hallo'), 'and back in German', (await mainText(page)).slice(0, 80));
-    // The bottom bar a phone shows; the sidebar copy sits off-canvas at this width.
+    // The bottom bar a phone shows; at this width the sidebar is not shown at all (ADR 0028).
     const profil = barLink(page, 'Profil');
     must(await profil.count() === 1, 'the family menu has „Profil“');
     await submit(page, profil);

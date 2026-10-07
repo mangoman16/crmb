@@ -9,16 +9,11 @@
    Built by backend-dev as the working minimum the actions need; frontend-dev
    gives it the designer's screens (docs/design/2026-10-05-accounts-and-chat-
    screens.md §2). */
-$step=$_GET['step']??'';
-$key=$_GET['draft']??'';
-$draft=student_draft($key);
-// A draft that became a child already: Back from the done page, or a step of
-// it sent again. Unless the child has been deleted since.
-$made=($madeId=student_made_from_draft($key)) ? one('SELECT id,first_name,last_name FROM students WHERE id=?',[$madeId]) : null;
-$from=in_array($_GET['from']??'',['dashboard','students','start'],true)?$_GET['from']:'';
-$back=$from==='start'?'start':($from==='dashboard'?'dashboard':'students');
+// Which step is showing, read once with the bar's back button (student_new_state()).
+$wizard=student_new_state($_GET);
+['key'=>$key,'draft'=>$draft,'made'=>$made,'from'=>$from,'back'=>$back]=$wizard;
 
-if($step==='done'):
+if($wizard['step']==='done'):
     /* Afterwards: what happened, and where to go next. A student added by
        mistake is deleted at the bottom of their page while there are no
        charges - there is no undo, and that is the way back. */
@@ -54,7 +49,7 @@ endif ?>
 </div>
 <p class="muted"><?=e(strtr(t('Versehentlich angelegt? Ganz unten auf der Seite von {name} löschen – das geht, solange es keine Beiträge gibt.',
                               'Added by mistake? Delete it at the very bottom of {name}’s page – possible while there are no charges.'),['{name}'=>$name]))?></p>
-<?php elseif($made):
+<?php elseif($wizard['step']==='made'):
     /* Not the form again: it would make the child a second time. Where the
        first went instead, and a fresh start for somebody else. */
     page_head(t('Neuer Schüler','New student')); ?>
@@ -63,7 +58,7 @@ endif ?>
     <?=link_button(t('Noch einen Schüler anlegen','Add another student'),'student_new',$from!==''?['from'=>$from]:[],'secondary')?></div></div>
 <?php /* A refused step 1 comes back with its draft key when it was a change to
          one, and has to show step 1 again with what was typed, not step 2. */
-elseif($draft && $step!=='1' && !held_for('student_draft')):
+elseif($wizard['step']==='2'):
     /* Step 2: how they sign in. Three cards, each its own form with one
        button, so nothing needs JavaScript. */
     $name=(string)$draft['first_name'];
@@ -71,7 +66,7 @@ elseif($draft && $step!=='1' && !held_for('student_draft')):
     page_head(t('Neuer Schüler','New student'),strtr(t('Schritt 2 von 2: Wie meldet sich {name} an?','Step 2 of 2: How does {name} sign in?'),['{name}'=>$name]));
     wizard_progress(2,2); ?>
 <p class="muted"><?=e(implode(' · ',array_filter([$draft['first_name'].' '.$draft['last_name'],$draft['birth_date']?fmt_date((string)$draft['birth_date']):'',(string)($course['name']??'')])))?>
-    <a class="text-link" href="<?=e(url('student_new',['draft'=>$key,'step'=>'1']+($from!==''?['from'=>$from]:[])))?>"><?=e(t('Ändern','Change'))?></a></p>
+    <a class="text-link" href="<?=e(url('student_new',$wizard['again']))?>"><?=e(t('Ändern','Change'))?></a></p>
 <section class="card" id="by-email">
     <div class="badge-line"><h2><?=e(t('Per E-Mail einladen','Invite by email'))?></h2><?php badge(t('Empfohlen','Recommended'),'green'); ?></div>
     <p><?=e(strtr(t('{name} bekommt einen Link per E-Mail, legt ein Passwort fest und kann alle Angaben selbst ergänzen oder ändern.',

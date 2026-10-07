@@ -333,38 +333,43 @@ function render_filters(array $f,string $target='students'): void {
 }
 
 /**
- * The main menu: one flat list, no sections (ADR 0011).
+ * The main menu: one flat list, no sections (ADR 0011, 0028).
  *
- * Seven entries for staff, because a section hides what it holds and seven fit
- * on a phone. Every page that has no entry of its own is reached from the page
- * that owns it (nav_owner()), and that entry is the one highlighted there.
+ * All of it is the sidebar on a computer. On a phone the bar holds four places
+ * and, for staff, „Mehr", whose page holds the rest (more_entries()). Every
+ * page that has no entry of its own is reached from the page that owns it
+ * (nav_owner()), and that entry is the one highlighted there.
  *
  *   administrator  (Einrichtung, while unfinished) · Übersicht · Schüler · Kurse
  *                  · Anwesenheit · Geld · Nachrichten · Einstellungen
  *   trainer        the same, with Verwaltung last: Einstellungen is an
  *                  administrator's page, Verwaltung is what she can open
  *   family         Übersicht · Beiträge · Nachrichten · Profil, the same four as
- *                  on the bar at the bottom of a phone (mobile_nav_entries())
+ *                  on the bar at the bottom of a phone
  *
  * Each entry is ['route'=>…, 'params'=>[…], 'icon'=>…, 'label'=>…, 'count'=>int].
+ * $counted=false leaves every count at 0, for a question about which entries
+ * there are: it is asked on every page, and the unread count is not a small
+ * query to run twice (ADR 0028 §4).
  */
-function nav_entries(array $user): array {
+function nav_entries(array $user,bool $counted=true): array {
     $entry=fn(string $route,string $symbol,string $label,int $count=0)=>
         ['route'=>$route,'params'=>[],'icon'=>$symbol,'label'=>$label,'count'=>$count];
+    $unread=$counted?unread_count($user):0;
     if(!is_staff($user)) {
         $own=family_nav_entries($user);
         return array_values(array_filter([$entry('dashboard','home',t('Übersicht','Overview')),$own['payments']??null,
-            $entry('messages','chat',t('Nachrichten','Messages'),unread_count($user)),$own['profile']??null]));
+            $entry('messages','chat',t('Nachrichten','Messages'),$unread),$own['profile']??null]));
     }
     $admin=is_admin($user);
     $out=[];
     if($admin && setup_unfinished()) $out[]=$entry('start','check',t('Einrichtung','Setup'));
     $out[]=$entry('dashboard','home',t('Übersicht','Overview'));
-    $out[]=people_nav_entry($user);
-    $out[]=$entry('classes','calendar',t('Kurse','Courses'),pending_request_count());
+    $out[]=$entry('students','users',t('Schüler','Students'));
+    $out[]=$entry('classes','calendar',t('Kurse','Courses'),$counted?pending_request_count():0);
     $out[]=$entry('attendance','check',t('Anwesenheit','Attendance'));
     $out[]=$entry('payments','wallet',t('Geld','Money'));
-    $out[]=$entry('messages','chat',t('Nachrichten','Messages'),unread_count($user));
+    $out[]=$entry('messages','chat',t('Nachrichten','Messages'),$unread);
     $out[]=$admin?$entry('settings','settings',t('Einstellungen','Settings'))
                  :$entry('manage','settings',t('Verwaltung','Management'));
     return $out;
@@ -393,13 +398,13 @@ function nav_entries(array $user): array {
  *                               a family's list holds their one child and no menu
  *                               entry of theirs leads to it (ADR 0010)
  *   download                  → payments for staff (invoices), Profil for a family
+ *   more                      → itself, staff's „Mehr" on a phone (ADR 0028)
+ *   profile                   → more for staff, whose Mehr has the row Mein Konto;
+ *                               for a family their child's page, where Profil has
+ *                               the row „Anmeldung und Darstellung"
  *
- *   profile                   → '' for staff (the account in the top bar); for a
- *                               family their child's page, where Profil has the row
- *                               „Anmeldung und Darstellung" that leads to it
- *
- * '' for a page that belongs to no entry: profile for staff, privacy (Mein
- * Konto and the side menu's foot) and the pages shown to nobody signed in.
+ * '' for a page that belongs to no entry: privacy (Mein Konto and the sidebar's
+ * foot) and the pages shown to nobody signed in.
  */
 function nav_owner(string $page,?array $user=null): string {
     $user??=current_user();
@@ -416,7 +421,8 @@ function nav_owner(string $page,?array $user=null): string {
         'download'                    => $staff?'payments':'student',
         'students'                    => $staff?'students':'student',
         'dashboard','classes','attendance','payments','messages','settings' => $page,
-        'profile'                     => $staff?'':'student',
+        'more'                        => $staff?'more':'',
+        'profile'                     => $staff?'more':'student',
         default                       => '',
     };
 }
@@ -424,13 +430,17 @@ function nav_owner(string $page,?array $user=null): string {
 /**
  * Whether a menu entry is the one standing for the page being looked at.
  *
- * A family has two entries on their own child's page (family_nav_entries()):
- * „Beiträge" stands for its money tabs, „Profil" for every other one, and for
- * Mein Konto, which is reached from it. $params are the entry's own and $tab is
- * the tab being looked at; without a tab the route alone decides.
+ * „Mehr" stands for every page under it (nav_under_more()). A family has two
+ * entries on their own child's page (family_nav_entries()): „Beiträge" stands
+ * for its money tabs, „Profil" for every other one, and for Mein Konto, which is
+ * reached from it. $params are the entry's own and $tab is the tab being looked
+ * at; without a tab the route alone decides.
  */
 function nav_is_current(string $route,string $page,?array $user=null,array $params=[],?string $tab=null): bool {
-    if($route==='' || $route!==nav_owner($page,$user)) return false;
+    $user??=current_user();
+    if(!$user || $route==='') return false;
+    if($route==='more') return nav_under_more($page,$user);
+    if($route!==nav_owner($page,$user)) return false;
     if($route!=='student' || $tab===null) return true;
     $money=$page==='student' && in_array($tab,family_money_tabs(),true);
     return isset($params['tab'])===$money;
@@ -446,10 +456,10 @@ function family_money_tabs(): array { return ['payments','invoices']; }
 
 /**
  * A family's two entries, both on their own child's page (ADR 0010): „Beiträge",
- * its money tabs, and „Profil", the record - the same in the side menu and on the
- * bar. "Mein Konto" stays what it is, the login: its address, its password, how
- * the portal looks, reached from a row on Profil. A login no student points to
- * has no page to lead to, and gets neither rather than two that lead nowhere.
+ * its money tabs, and „Profil", the record - the same in the sidebar and on the
+ * bar. "Mein Konto" stays what it is, the login, reached from a row on Profil. A
+ * login no student points to has no page to lead to, and gets neither rather
+ * than two that lead nowhere.
  */
 function family_nav_entries(array $user): array {
     $id=login_student_id((int)$user['id']);
@@ -459,39 +469,58 @@ function family_nav_entries(array $user): array {
 }
 
 /**
- * The menu's "people" entry, the same in the side menu and the bar at the bottom:
- * the list of students for staff, a family's Profil (family_nav_entries()).
- */
-function people_nav_entry(array $user): ?array {
-    if(is_staff($user)) return ['route'=>'students','params'=>[],'icon'=>'users','label'=>t('Schüler','Students'),'count'=>0];
-    return family_nav_entries($user)['profile']??null;
-}
-
-/**
  * The bar along the bottom of a phone, as an iOS tab bar: four places and, for
- * staff, „Mehr", which the layout adds as the button that opens the side menu.
+ * staff, „Mehr", a page holding the rest of the menu (ADR 0028).
  *
- *   staff   Übersicht · Schüler · Anwesend · Chats (· Mehr)
+ *   staff   Übersicht · Schüler · Anwesend · Chats · Mehr
  *   family  Übersicht · Beiträge · Chats · Profil
  *
- * A family has no „Mehr": everything in their side menu is already on the bar,
- * news reaches them through the bell and the overview, and the privacy notice
- * and the version are on „Mein Konto", a row on Profil.
+ * A family has no „Mehr" (the owner, 2026-10-07): everything in their menu is on
+ * the bar already, news reaches them on the overview, and the privacy notice and
+ * the version are on Mein Konto, a row on Profil. „Mehr" carries no count.
  * 'short' is the label the bar prints, 'label' the full name a screen reader
- * says: „Chats" on the bar, „Nachrichten" read out.
+ * says: „Chats" on the bar, „Nachrichten" read out. $counted as for nav_entries().
  */
-function mobile_nav_entries(array $user): array {
+function mobile_nav_entries(array $user,bool $counted=true): array {
     $entry=fn(string $route,string $symbol,string $label,string $short='',int $count=0)=>
         ['route'=>$route,'params'=>[],'icon'=>$symbol,'label'=>$label,'short'=>$short!==''?$short:$label,'count'=>$count];
-    $messages=$entry('messages','chat',t('Nachrichten','Messages'),t('Chats','Chats'),unread_count($user));
+    $messages=$entry('messages','chat',t('Nachrichten','Messages'),t('Chats','Chats'),$counted?unread_count($user):0);
     if(is_staff($user))
         return [$entry('dashboard','home',t('Übersicht','Overview')),
-                people_nav_entry($user)+['short'=>t('Schüler','Students')],
+                $entry('students','users',t('Schüler','Students')),
                 $entry('attendance','check',t('Anwesenheit','Attendance'),t('Anwesend','Attendance')),
-                $messages];
+                $messages,
+                $entry('more','more',t('Mehr','More'))];
     $own=array_map(fn(array $item)=>$item+['short'=>$item['label']],family_nav_entries($user));
     return array_values(array_filter([$entry('dashboard','home',t('Übersicht','Overview')),$own['payments']??null,
         $messages,$own['profile']??null]));
+}
+
+/**
+ * The places on staff's „Mehr" (ADR 0028 §2): the full menu without what the bar
+ * holds, in the full menu's order, with their counts - worked out, never written
+ * down a second time, so an entry or a count added to the menu arrives here by
+ * itself. Today: (Einrichtung, while unfinished) · Kurse · Geld · Einstellungen
+ * for an administrator, Kurse · Geld · Verwaltung for a trainer. A family has no
+ * „Mehr", and none.
+ */
+function more_entries(array $user,bool $counted=true): array {
+    if(!is_staff($user)) return [];
+    $onBar=array_column(mobile_nav_entries($user,false),'route');
+    return array_values(array_filter(nav_entries($user,$counted),fn(array $item)=>!in_array($item['route'],$onBar,true)));
+}
+
+/**
+ * Whether $page sits under „Mehr" on a phone (ADR 0028 §4): „Mehr" itself, or a
+ * page whose entry is one of its places - Kurse and a course, Geld and
+ * Rechnungen, Einstellungen and the pages of its hub, Verwaltung and Team und
+ * Zugänge, the checklist - or staff's Mein Konto. The one answer for both the lit
+ * tab and nav_back(), so the bar and the back button cannot disagree. It asks
+ * for routes only, never counts.
+ */
+function nav_under_more(string $page,array $user): bool {
+    $owner=nav_owner($page,$user);
+    return $owner==='more' || in_array($owner,array_column(more_entries($user,false),'route'),true);
 }
 
 /**
@@ -501,24 +530,23 @@ function mobile_nav_entries(array $user): array {
  * the portal or nowhere. null on a page nothing is above, which shows the club's
  * mark there instead.
  *
- *   a child's page, staff            → Schüler
- *   a course, any of its tabs        → Kurse
- *   a course's form                  → the course, or Kurse for a new one
- *   a chat, „Neue Nachricht"          → Chats
- *   a group's members                → the chat
- *   one news item, or its form       → Neuigkeiten
- *   all news                         → Chats for staff, Übersicht for a family
- *   Postausgang                      → Chats
- *   „Schüler anlegen", step 2         → step 1
- *   „Schüler anlegen", step 1, done  → where it was opened from
- *   one record's changes             → Änderungen
- *   Verwaltung, Team und Zugänge,
- *   Änderungen, Einrichtung (hidden) → Einstellungen, for an administrator
- *   Team und Zugänge, for a trainer  → Verwaltung
- *   Mein Konto, for a family         → Profil
+ * Above a page is the menu entry it belongs to (nav_owner()), named as the bar
+ * names it: a child's page → Schüler, news and Postausgang → Chats, Team und
+ * Zugänge → Einstellungen or Verwaltung, a family's Mein Konto → Profil, staff's
+ * Mein Konto → Mehr. An entry's own page has nothing above it - unless it is
+ * under „Mehr" (nav_under_more()), and then „Mehr" is: Kurse, Geld,
+ * Einstellungen, a trainer's Verwaltung, the checklist. These are the rows that
+ * are not that rule:
  *
- * Kurse, Geld, Rechnungen, Einstellungen and staff's Mein Konto are reached from
- * „Mehr", which is not a page yet (ADR 0011), so they have no back button.
+ *   a course, a new course              → Kurse
+ *   a course's form                     → the course
+ *   a chat, „Neue Nachricht"             → Chats
+ *   a group's members                   → the chat
+ *   one news item, or its form          → Neuigkeiten
+ *   one record's changes                → Änderungen
+ *   Rechnungen                          → as Geld: beside it, not below it
+ *   „Schüler anlegen", step 2            → step 1
+ *   „Schüler anlegen", otherwise         → where it was opened from
  *
  * ['href', 'label', 'name']: 'name' is the parent's, for „Zurück zu {name}";
  * 'label' is what the button shows, the name or, past twelve characters,
@@ -528,59 +556,60 @@ function nav_back(string $page,?array $user=null,?array $query=null): ?array {
     $user??=current_user();
     if(!$user) return null;
     $query??=$_GET;
-    $staff=is_staff($user); $admin=is_admin($user);
     $id=(int)($query['id']??0);
     $to=fn(string $name,string $target,array $params=[])=>
         ['href'=>url($target,$params),'name'=>$name,'label'=>mb_strlen($name)>12?t('Zurück','Back'):$name];
-    $chats=fn()=>$to(t('Chats','Chats'),'messages');
+    // An entry as the bar shows it on a phone, else as the sidebar does; of a
+    // family's two on their child's page, the one lit on this page.
+    $entry=function(string $route) use ($user,$page,$query): ?array {
+        foreach([mobile_nav_entries($user,false),nav_entries($user,false)] as $menu)
+            foreach($menu as $item)
+                if($item['route']===$route && ($route!==nav_owner($page,$user) || nav_is_current($route,$page,$user,$item['params'],(string)($query['tab']??''))))
+                    return $item;
+        return null;
+    };
+    $toEntry=function(string $route,string $unlisted='') use ($entry,$to): ?array {
+        $item=$entry($route);
+        if(!$item && $unlisted==='') return null;
+        return $item ? $to($item['short']??$item['label'],$item['route'],$item['params']) : $to($unlisted,$route);
+    };
     switch($page) {
-        case 'student':
-            return $staff?$to(t('Schüler','Students'),'students'):null;
         case 'classes':
-            if(!empty($query['edit']) && $id) return $to((string)(scalar('SELECT name FROM classes WHERE id=?',[$id])?:t('Kurs','Course')),'classes',['id'=>$id]);
-            return $id || !empty($query['new']) ? $to(t('Kurse','Courses'),'classes') : null;
+            if($id && !empty($query['edit'])) return $to((string)(scalar('SELECT name FROM classes WHERE id=?',[$id])?:t('Kurs','Course')),'classes',['id'=>$id]);
+            if($id || !empty($query['new'])) return $toEntry('classes');
+            break;
         case 'messages':
             if($id && !empty($query['members'])) return $to(t('Chat','Chat'),'messages',['id'=>$id,'#'=>'chat-end']);
-            return $id || !empty($query['with']) || !empty($query['new']) || !empty($query['contacts']) ? $chats() : null;
+            if($id || !empty($query['with']) || !empty($query['new']) || !empty($query['contacts'])) return $toEntry('messages');
+            break;
         case 'news':
             if($id || !empty($query['new'])) return $to(t('Neuigkeiten','News'),'news');
-            return $staff ? $chats() : $to(t('Übersicht','Overview'),'dashboard');
-        case 'outbox':
-            return $chats();
-        case 'student_new':
-            // The wizard's own rule for which step is showing, and its own way
-            // back to step 1 - the link „Ändern" beside the details.
-            $from=in_array($query['from']??'',['dashboard','students','start'],true)?(string)$query['from']:'';
-            if(!in_array($query['step']??'',['1','done'],true) && student_draft((string)($query['draft']??''))!==null && !held_for('student_draft'))
-                return $to(t('Schritt 1','Step 1'),'student_new',['draft'=>(string)$query['draft'],'step'=>'1']+($from!==''?['from'=>$from]:[]));
-            return match($from) {
-                'dashboard' => $to(t('Übersicht','Overview'),'dashboard'),
-                'start'     => $to(t('Einrichtung','Setup'),'start'),
-                default     => $to(t('Schüler','Students'),'students'),
-            };
+            break;
         case 'history':
             if(!empty($query['entity']) && !empty($query['record'])) return $to(t('Änderungen','Changes'),'history');
-            return $admin ? $to(t('Einstellungen','Settings'),'settings') : null;
-        case 'manage':
-            return $admin ? $to(t('Einstellungen','Settings'),'settings') : null;
-        case 'accounts':
-            return $admin ? $to(t('Einstellungen','Settings'),'settings') : $to(t('Verwaltung','Management'),'manage');
-        case 'start':
-            return $admin && !setup_unfinished() ? $to(t('Einstellungen','Settings'),'settings') : null;
-        case 'profile':
-            $own=$staff ? null : (family_nav_entries($user)['profile']??null);
-            return $own ? $to($own['label'],'student',$own['params']) : null;
-        default:
-            return null;
+            break;
+        case 'student_new':
+            $wizard=student_new_state($query);
+            if($wizard['step']==='2') return $to(t('Schritt 1','Step 1'),'student_new',$wizard['again']);
+            // The checklist is no menu entry once it is hidden, so it is named here.
+            return $toEntry($wizard['back'],t('Einrichtung','Setup'));
+        case 'invoices':
+            // Geld's other half, beside it rather than below it: up is where Geld's is.
+            $page='payments';
+            break;
     }
+    $owner=nav_owner($page,$user);
+    if($owner!=='' && $owner!==$page) return $toEntry($owner);
+    return $page!=='more' && nav_under_more($page,$user) ? $toEntry('more') : null;
 }
 
-/** One menu row: the link, its label, and the number waiting behind it. */
-function nav_link(array $item,string $page,?array $user=null): string {
+/** One menu row: the link, its label, and the number waiting behind it; a row of „Mehr" ($row) ends in a chevron. */
+function nav_link(array $item,string $page,?array $user=null,bool $row=false): string {
     $count=(int)($item['count']??0);
-    return '<a href="'.e(url($item['route'],$item['params']??[])).'" '.(nav_item_current($item,$page,$user)?'aria-current="page"':'').'>'
-        .icon($item['icon']).'<span>'.e($item['label']).'</span>'
+    return '<a '.($row?'class="editor-list-item nav-row" ':'').'href="'.e(url($item['route'],$item['params']??[])).'" '.(nav_item_current($item,$page,$user)?'aria-current="page"':'').'>'
+        .($row?'<span>'.icon($item['icon']).'<strong>'.e($item['label']).'</strong></span><span class="row-actions">':icon($item['icon']).'<span>'.e($item['label']).'</span>')
         .($count?'<span class="count" aria-label="'.e($count.' '.t('wartet','waiting')).'">'.e((string)$count).'</span>':'')
+        .($row?icon('chevron').'</span>':'')
         .'</a>';
 }
 
@@ -589,6 +618,60 @@ function sidebar_nav(array $user,string $page): string {
     $html='<nav aria-label="'.e(t('Hauptmenü','Main menu')).'">';
     foreach(nav_entries($user) as $entry) $html.=nav_link($entry,$page,$user);
     return $html.'</nav>';
+}
+
+/**
+ * Where „Schüler anlegen" stands, read from its address (ADR 0023 §5). One
+ * reading for the wizard's page and for nav_back(), so the bar's back button and
+ * the step it is on cannot disagree. It only reads.
+ *
+ *   step   'done' afterwards; 'made' for a draft that became a child already
+ *          (Back from the done page, or a step sent again), unless that child has
+ *          been deleted since; '2', how they sign in, while a draft is held and
+ *          step 1 is not asked for again or refused; else '1', who is joining
+ *   key    the draft's key, draft its details or null, made the child's row or null
+ *   from   where it was opened: dashboard, students, start, or ''
+ *   back   where „Abbrechen" and the back button lead: from, or the list
+ *   again  step 1 of this draft, for „Ändern" and step 2's back button
+ */
+function student_new_state(array $query): array {
+    $key=is_string($query['draft']??null)?$query['draft']:'';
+    $asked=is_string($query['step']??null)?$query['step']:'';
+    $draft=student_draft($key);
+    $madeId=student_made_from_draft($key);
+    $made=$madeId?(one('SELECT id,first_name,last_name FROM students WHERE id=?',[$madeId])?:null):null;
+    $from=in_array($query['from']??'',['dashboard','students','start'],true)?(string)$query['from']:'';
+    return ['step'=>match(true) {
+                $asked==='done'                                                  => 'done',
+                $made!==null                                                     => 'made',
+                $draft!==null && $asked!=='1' && !held_for('student_draft')      => '2',
+                default                                                          => '1',
+            },
+            'key'=>$key,'draft'=>$draft,'made'=>$made,'from'=>$from,'back'=>$from!==''?$from:'students',
+            'again'=>['draft'=>$key,'step'=>'1']+($from!==''?['from'=>$from]:[])];
+}
+
+/** „Abmelden" at the foot of Mein Konto and of „Mehr": a row of its own, red, as iOS signs out. */
+function sign_out_row(): void {
+    start_form('logout',[],'inline-form sign-out');
+    submit_button(t('Abmelden','Sign out'),'danger-text');
+    echo '</form>';
+}
+
+/** What Mein Konto is for, said the same wherever a row leads to it. */
+function my_account_hint(): string { return t('Passwort, E-Mail-Adresse, Sprache und Farbe','Password, email address, language and colour'); }
+
+/**
+ * „Datenschutz und Hilfe": the privacy notice, „Etwas funktioniert nicht" -
+ * which leads to the form at the end of every page - and the version. On Mein
+ * Konto, and on staff's „Mehr" (ADR 0028 §2); the sidebar's foot holds the same
+ * on a computer.
+ */
+function privacy_and_help_group(): void {
+    echo '<section class="card help-card"><h2>'.e(t('Datenschutz und Hilfe','Privacy and help')).'</h2><ul class="link-list">'
+        .'<li><a href="'.e(url('privacy')).'">'.e(t('Datenschutzerklärung','Privacy notice')).icon('chevron').'</a></li>'
+        .'<li><a href="#feedback">'.e(t('Etwas funktioniert nicht','Something is wrong')).icon('chevron').'</a></li>'
+        .'</ul><p class="muted version-line">'.e(t('Version ','Version ').app_version()).'</p></section>';
 }
 
 /**

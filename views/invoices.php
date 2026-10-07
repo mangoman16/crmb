@@ -36,7 +36,7 @@ if($problems): ?>
 <?php endif ?>
 
 <div class="stats-grid compact">
-    <div class="stat accent"><span><?=e(t('Offen und überfällig','Open and overdue'))?></span><strong><?=e(money($outstanding))?></strong><small><?=e(plural($counts['open']+$counts['overdue'],'Rechnung','Rechnungen','invoice','invoices'))?></small><?=icon('wallet')?></div>
+    <div class="stat"><span><?=e(t('Offen und überfällig','Open and overdue'))?></span><strong><?=e(money($outstanding))?></strong><small><?=e(plural($counts['open']+$counts['overdue'],'Rechnung','Rechnungen','invoice','invoices'))?></small><?=icon('wallet')?></div>
     <div class="stat"><span><?=e(t('Überfällig','Overdue'))?></span><strong><?=(int)$counts['overdue']?></strong><small><?=e(t('über das Zahlungsziel hinaus','past the payment date'))?></small><?=icon('calendar')?></div>
 </div>
 

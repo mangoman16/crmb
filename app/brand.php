@@ -111,10 +111,13 @@ function brand_palette(): array {
 function brand_scheme_light(array $chosen, array $builtin): array {
     [$p, $n, $h, $b] = array_map(fn($f) => $chosen[$f], brand_families());
     $tokens = [];
+    $bg = $b !== '' ? $b : $builtin['brand_background'];
+    if ($b !== '') $tokens += ['--bg' => $bg, '--scrim-bg' => $bg.'ee'];
     // White is printed on the main colour (--on-accent), so white has to read
-    // on it - and the main colour has to read as text on a group and on the
-    // grey ground, which is the darker of the two.
-    $teal = $p !== '' ? colour_until_contrast($p, BRAND_SURFACES_LIGHT, 4.5, 'darker') : $builtin['brand_primary'];
+    // on it - and the main colour has to read as text on a group, on the grey
+    // ground and on the club's own background where she chose one, which may
+    // be darker than both.
+    $teal = $p !== '' ? colour_until_contrast($p, [...BRAND_SURFACES_LIGHT, $bg], 4.5, 'darker') : $builtin['brand_primary'];
     if ($p !== '') {
         $soft = colour_mix($p, BRAND_SURFACES_LIGHT[0], .12);
         $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => '#ffffff', '--teal-soft' => $soft,
@@ -125,8 +128,6 @@ function brand_scheme_light(array $chosen, array $builtin): array {
     if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '0d');
     $bright = $h !== '' ? colour_until_contrast($h, [$nav], 3, brand_toward($onNav)) : $builtin['brand_highlight'];
     if ($h !== '') $tokens['--teal-bright'] = $bright;
-    $bg = $b !== '' ? $b : $builtin['brand_background'];
-    if ($b !== '') $tokens += ['--bg' => $bg, '--scrim-bg' => $bg.'ee'];
     // The club's name on the sign-in page is printed in the menu colour on the
     // background, and a light menu colour on a light page would vanish.
     if ($n !== '' || $b !== '') $tokens['--brand-ink'] = colour_contrast($nav, $bg) >= 4.5 ? $nav : BRAND_INK_LIGHT;
@@ -138,7 +139,9 @@ function brand_scheme_light(array $chosen, array $builtin): array {
  * The dark scheme. $overrides holds the _dark colours that apply, by family,
  * '' where none does and the colour is worked out from the light choice. An
  * empty family is its _dark built-in colour, and the dark background's
- * built-in colour is also what the light choices are shaded toward.
+ * built-in colour is what a light background is shaded toward. The soft tint
+ * is mixed into the group it is drawn on, as in light - into the black ground
+ * it came out darker than app.css's own dark tints.
  */
 function brand_scheme_dark(array $chosen, array $overrides, array $builtin): array {
     $ground = $builtin['brand_background_dark'];
@@ -150,7 +153,7 @@ function brand_scheme_dark(array $chosen, array $overrides, array $builtin): arr
     $p = $pick('brand_primary');
     $teal = $p !== '' ? colour_until_contrast($p, [...BRAND_SURFACES_DARK, COLOUR_DARK_INK], 4.5, 'lighter') : $builtin['brand_primary_dark'];
     if ($p !== '') {
-        $soft = colour_mix($p, $ground, .18);
+        $soft = colour_mix($p, BRAND_SURFACES_DARK[0], .18);
         $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => COLOUR_DARK_INK, '--teal-soft' => $soft,
                     '--teal-ink' => colour_until_contrast($teal, [...BRAND_SURFACES_DARK, $soft], 7, 'lighter')];
     }
