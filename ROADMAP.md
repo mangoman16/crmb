@@ -68,13 +68,13 @@ In this order.
    - A logo photo stored sideways (EXIF orientation) is measured unrotated and can be refused.
    - Targets below the minimum on a desktop screen: the help button's summary (36 px),
      „Alle ansehen" (21 px).
-6. **A refused update stays refused.** The update guard keeps the portal closed for the
-   request that found the loss only: each migration is in the ledger as soon as it ran, so
-   the next request finds nothing pending, counts after the loss, and opens the portal
-   (found by database-engineer, 2026-10-07; true before 0.6.0 too). UPDATING.md's „stays
-   closed" is not yet true. The architect decides how the counts from before the update are
-   kept until it passes, and how the owner reopens a portal without a shell; then
-   database-engineer builds it. Before real families use the portal.
+6. **A refused update stays refused (ADR 0027, accepted).** The update guard kept the portal
+   closed only for the request that found the loss. From now the counts from before an update
+   are kept in `storage/update-unfinished.json` until a run passes; while it exists no page is
+   served and nothing writes, and the portal reopens by itself once every guarded table has
+   its rows back — after the previous version's files and the backup are put back — or when a
+   release takes the table off the guard. database-engineer builds `app/schema.php` and its
+   tests, backend-dev the bootstrap and console lines, in one change after the removals.
 7. **Robustness suite.** Unexpected values into every action, as every role (ADR 0026). Not
    started.
 8. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
