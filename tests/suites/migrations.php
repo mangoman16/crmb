@@ -12,8 +12,9 @@
  *
  * tests/migration-data.php builds a portal as it stood before 015, 019, 020, 022,
  * 024, 025, 028 and 032, applies the rest, and prints what it finds; then it runs
- * this release's update through the application's own runner, and one more file
- * that drops a guarded table. This reads that and holds it to the promise.
+ * this release's update through the application's own runner, and the mistakes
+ * ADR 0027 keeps the portal closed for, page view after page view, with the
+ * imports that reopen it. This reads that and holds it to the promise.
  *
  * What it does not yet hold to it: 017 backfills covered_from and covered_to on
  * every charge that carries a period, and no case below looks at a charge. The
@@ -1016,20 +1017,183 @@ is_same($except($u['before']['sums'], array_merge($custom, $views, ['settings', 
         $except($u['release']['state']['sums'], ['settings', 'schema_migrations']),
         'every table but the settings and the ledger, which record the update, has every row it had: the backup, the files and the step after them changed nothing else');
 is_same($u['before']['counts'], $u['release']['state']['counts'], 'every guarded table has as many rows as before');
+is_same(null, $u['release']['record'], 'and it leaves no record of an unfinished update behind: the run that passes deletes it [ADR 0027 §1]');
 
-case_('An update whose migration drops a guarded table is refused, and does not open the portal [ADR 0026 §7]');
-// The file runs and contacts is gone; the guard counted it before, cannot count
-// it now, and reads that as emptied. Before 0026 it skipped what it could not
-// count, and this update opened the portal with every contact lost.
+// ---------------------------------------------------------------------------
+// A refused update stays refused (ADR 0027). Each mistake is one more file in
+// that release, and each schema_apply() one page view. The numbers from before
+// an update are kept in storage/update-unfinished.json from just before its
+// first migration until a run passes; while they are, every run compares first
+// and refuses on a shortfall, writes no copy, and only a run that passes
+// deletes them.
 $m = $u['mistake'];
-$lost = 'contacts ' . ($m['before']['contacts'] ?? '?') . ' -> 0';
-ok(($m['before']['contacts'] ?? 0) > 0, 'contacts, which the update guards, had rows to lose: ' . ($m['before']['contacts'] ?? 0));
-ok(!in_array('contacts', $m['tables'], true), 'the file ran: contacts is gone');
-is_same('UpdateBlocked', $m['refused']['class'] ?? null, 'schema_apply() refuses the update, which a page view answers with the closed page');
-ok(str_contains($m['refused']['de'] ?? '', 'Nach der Aktualisierung fehlen Datensätze (' . $lost . '). Das Portal bleibt geschlossen.'),
-   'saying in German that records are missing, the table counted as emptied, and that the portal stays closed: ' . $lost);
-ok(str_contains($m['refused']['en'] ?? '', 'Records are missing after the update (' . $lost . ').'), 'and in English');
-is_same(false, $m['current'], 'files and database are not recorded as agreeing: the portal is not opened by this update');
-is_same($u['release']['backups'] + 1, count($m['backups']), 'a copy was taken before the file ran');
-is_same(array_fill(0, count($m['backups']), $m['before']['contacts'] ?? -1), $m['backups'],
-        'and every copy, that one included, holds every contact the file dropped');
+$guardedBefore = $m['before']['counts'];
+$contacts = $guardedBefore['contacts'] ?? 0;
+$app = $u['app_version'];
+$saidBy = fn(array $requests): array => array_map(fn(array $r): array => [$r['said']['de'] ?? null, $r['said']['en'] ?? null], $requests);
+// The sentences of §4 for this loss, with the record's own versions and copy.
+$lossDe = fn(string $lost, array $data): string => 'Nach der Aktualisierung auf Version ' . $data['to'] . ' fehlen Datensätze: ' . $lost
+    . '. Deshalb bleibt das Portal geschlossen. So kommen sie zurück: zuerst die Dateien von Version ' . $data['from']
+    . ' wieder hochladen, dann die Sicherung „' . $data['backup'] . '-…“ aus dem Ordner storage/backups einspielen, wie INSTALL.md unter „Wiederherstellen“ beschreibt.'
+    . ' Beim nächsten Aufruf zählt das Portal nach und öffnet sich, wenn nichts mehr fehlt.';
+$lossEn = fn(string $lost, array $data): string => 'Records are missing after the update to version ' . $data['to'] . ': ' . $lost
+    . '. That is why the portal stays closed. To bring them back: first upload the files of version ' . $data['from']
+    . ' again, then import the copy “' . $data['backup'] . '-…” from the storage/backups folder, as INSTALL.md describes under „Wiederherstellen“.'
+    . ' On the next page view the portal counts again and opens once nothing is missing.';
+$recordData = fn(array $state): array => (array)($state['record']['data'] ?? []) + ['from' => '?', 'to' => '?', 'backup' => '?', 'counts' => null];
+
+case_('A migration that drops a guarded table is refused on the first page view, and on every one after it [ADR 0026 §7, 0027 §2]');
+// Before 0027 the next page view found nothing pending, counted after the loss,
+// compared that with itself and opened the portal with every contact gone.
+ok($contacts > 0, 'contacts, which the update guards, had rows to lose: ' . $contacts);
+$first = $m['requests'][1] ?? [];
+ok(!in_array('contacts', $first['tables'] ?? ['contacts'], true), 'the file ran on the first page view: contacts is gone');
+foreach ($m['requests'] as $n => $r)
+    is_same('UpdateBlocked', $r['said']['class'] ?? null, 'page view ' . $n . ' is refused, so it gets the closed page');
+$data = $recordData($first);
+is_same([$lossDe('contacts (vorher ' . $contacts . ', jetzt 0)', $data), $lossEn('contacts (' . $contacts . ' before, 0 now)', $data)],
+        [$first['said']['de'] ?? null, $first['said']['en'] ?? null],
+        'the first says in German and English which table lost how many records, counting the dropped one as emptied, and the way back');
+is_same(array_fill(1, 3, $saidBy([$first])[0]), $saidBy($m['requests']), 'and the second and third say exactly the same');
+foreach ($m['requests'] as $n => $r)
+    is_same($guardedBefore, $recordData($r)['counts'], 'after page view ' . $n . ' the record is there, holding the counts from before the update');
+is_same([$m['before']['version'], $app], [$data['from'], $data['to']], 'it names the version the database was on and the version of the files');
+
+case_('The record names the copy taken before the update, without the part that keeps it from being fetched [ADR 0027 §1]');
+$copy = $m['copy'][0] ?? '';
+is_same(1, count($m['copy']), 'the first page view took one copy: ' . $copy);
+ok(preg_match('/^' . preg_quote((string)$data['backup'], '/') . '-([0-9a-f]{8})\.sql$/D', $copy, $random) === 1,
+   'the record’s „backup“ is that copy’s name without its random part and extension: ' . test_show($data['backup']));
+ok(isset($random[1]) && !str_contains((string)($first['record']['text'] ?? ''), $random[1]), 'and the random part appears nowhere in the file');
+is_same($contacts, $m['copy_contacts'], 'the copy holds every contact the file dropped');
+
+case_('Page views after a refusal change nothing: not the ledger, not the copies, not the stamp [ADR 0027 §2]');
+foreach ([2, 3] as $n)
+    is_same([$first['ledger'] ?? null, $first['copies'] ?? null, $first['stamp'] ?? null],
+            [$m['requests'][$n]['ledger'] ?? null, $m['requests'][$n]['copies'] ?? null, $m['requests'][$n]['stamp'] ?? null],
+            'page view ' . $n . ' leaves the ledger, the copies and the stamp as the first left them');
+is_same($m['before']['stamp'], $first['stamp'] ?? null, 'and the first did not write the stamp either');
+
+case_('A stamp and settings that match the files cannot reopen an unfinished update [ADR 0027 §2]');
+// After an import with the previous files, either can match the files again
+// without a single row being back.
+$f = $m['forged'];
+is_same(false, $f['current'], 'with schema_state() in the stamp and the fingerprint and the version in the settings, schema_is_current() is false');
+is_same($f['stamp'], $f['next']['stamp'] ?? null, 'the stamp really did say the files are current');
+is_same('UpdateBlocked', $f['next']['said']['class'] ?? null, 'and the next page view is refused, naming the same loss');
+is_same($saidBy([$first])[0], $saidBy([$f['next']])[0], 'with the same sentences');
+
+case_('Nothing runs on top of a loss: a newer upload’s migration waits [ADR 0027 §2]');
+$newer = $m['newer'];
+is_same('UpdateBlocked', $newer['said']['class'] ?? null, 'a further file that makes a table is refused');
+is_same($saidBy([$first])[0], $saidBy([$newer])[0], 'for the missing contacts, before it is even looked at');
+ok(!in_array('999_b_a_newer_release_makes_a_table.sql', array_column($newer['ledger'] ?? [], 'version'), true), 'it is not in the ledger');
+ok(!in_array('made_by_a_newer_release', $newer['tables'] ?? [], true), 'and its table does not exist');
+
+case_('Imported with the new files still in place, the copy is taken again, and still no second copy is written [ADR 0027 §5 a]');
+$i = $m['imported'];
+is_same($contacts, $i['contacts'], 'the import put every contact back');
+is_same('UpdateBlocked', $i['request']['said']['class'] ?? null, 'the next page view applied the new files again and is refused again');
+ok(!in_array('contacts', $i['request']['tables'] ?? ['contacts'], true), 'contacts is gone again');
+is_same($first['copies'] ?? null, $i['request']['copies'] ?? [], 'no copy was written: the one from before the update is still among them');
+is_same($contacts, $i['copy_contacts'], 'and it still holds every contact');
+
+case_('A partial import keeps the portal closed, a complete one reopens it [ADR 0026 §7, 0027 §5 a]');
+$p = $m['partial'];
+is_same('UpdateBlocked', $p['said']['class'] ?? null, 'the previous files and the copy broken off at contacts: refused');
+ok(str_contains($p['said']['de'] ?? '', 'contacts (vorher ' . $contacts . ', jetzt 0)'), 'naming contacts, which the import never reached');
+ok(str_contains($p['said']['en'] ?? '', 'contacts (' . $contacts . ' before, 0 now)'), 'in both languages');
+ok(!in_array('students', $p['tables'] ?? ['students'], true) && str_contains($p['said']['de'] ?? '', 'students (vorher'),
+   'and every guarded table after it, which it never reached either');
+$c = $m['complete'];
+is_same(null, $c['said'], 'imported in full: the run passes');
+is_same($guardedBefore, $c['counts'], 'every guarded table, contacts with them, has as many rows as before the update');
+is_same($m['before']['ledger'], $c['ledger'], 'the ledger is the one from before the update');
+is_same($m['before']['version'], $c['version'], 'the version is the one from before');
+is_same($m['before']['history'], $c['history'], 'and the release history has no new entry');
+
+case_('A run that passes deletes the record, and the next page view asks the database nothing [ADR 0027 §1]');
+is_same(null, $c['record'], 'after the complete import none is left');
+is_same(true, $m['afterwards']['current'], 'files and database agree');
+is_same(0, $m['afterwards']['queries'], 'and the next page view takes the fast path, without a query');
+
+case_('A release that takes a table off the guard reopens the portal its predecessor closed, without an import [ADR 0027 §5 b]');
+$o = $u['off_list'];
+is_same('UpdateBlocked', $o['refused']['said']['class'] ?? null, 'the file that drops contacts is refused');
+is_same(null, $o['released']['said'], 'with contacts counted under a name no longer on the list - what that release looks like to the record - the run passes');
+is_same(null, $o['released']['record'], 'and deletes the record');
+is_same(null, $o['restored']['said'], 'the previous files and the copy then bring the contacts back, and the run passes');
+is_same($guardedBefore, $o['restored']['counts'], 'with every row');
+
+case_('A migration that deletes the rows of a guarded table, dropping nothing, is refused on every page view too [ADR 0027 §2]');
+$e = $u['emptied'];
+$data = $recordData($e['requests'][1] ?? []);
+ok(in_array('contacts', $e['requests'][1]['tables'] ?? [], true), 'the table is still there, empty');
+foreach ($e['requests'] as $n => $r)
+    is_same('UpdateBlocked', $r['said']['class'] ?? null, 'page view ' . $n . ' is refused');
+is_same(array_fill(1, 3, [$lossDe('contacts (vorher ' . $contacts . ', jetzt 0)', $data), $lossEn('contacts (' . $contacts . ' before, 0 now)', $data)]),
+        $saidBy($e['requests']), 'each with the same German and English, naming contacts');
+foreach ($e['requests'] as $n => $r)
+    is_same($guardedBefore, $recordData($r)['counts'], 'after page view ' . $n . ' the record holds the counts from before');
+is_same([$e['before']['version'], $app], [$data['from'], $data['to']], 'and the versions');
+is_same(1, count($e['copy']), 'one copy, written by the first page view');
+foreach ([2, 3] as $n)
+    is_same([$e['requests'][1]['ledger'] ?? null, $e['requests'][1]['copies'] ?? null, $e['requests'][1]['stamp'] ?? null],
+            [$e['requests'][$n]['ledger'] ?? null, $e['requests'][$n]['copies'] ?? null, $e['requests'][$n]['stamp'] ?? null],
+            'page view ' . $n . ' changes neither the ledger, nor the copies, nor the stamp');
+is_same(null, $e['restored']['said'], 'and the previous files and the copy reopen it');
+
+case_('A migration that loses a row and then stops is not tried again on top of the loss [ADR 0027 §2]');
+$h = $u['halfway'];
+is_same('SchemaError', $h['requests'][1]['said']['class'] ?? null, 'the first page view stops in the file, at its second statement');
+is_same($guardedBefore, $recordData($h['requests'][1] ?? [])['counts'], 'and the record of the update is written, with the counts from before');
+is_same('UpdateBlocked', $h['requests'][2]['said']['class'] ?? null, 'the second is refused for the missing contact, not stopped a second time');
+ok(str_contains($h['requests'][2]['said']['de'] ?? '', 'contacts (vorher ' . $contacts . ', jetzt ' . ($contacts - 1) . ')'), 'naming the one contact it lost');
+is_same($contacts - 1, $h['requests'][2]['counts']['contacts'] ?? null, 'and the file did not run again: one contact is missing, not two');
+is_same($h['requests'][1]['copies'] ?? null, $h['requests'][2]['copies'] ?? [], 'and it wrote no copy');
+is_same(null, $h['restored']['said'], 'the previous files and the copy reopen it');
+
+case_('A migration that stops every time writes one copy, and the copy from before stays among those kept [ADR 0027 §2]');
+// Before 0027 each page view took a copy before trying again, and five later
+// (BACKUP_KEEP) the copy from before the update had been pruned.
+$s = $u['stopping'];
+$name = '999_e_mistake_makes_a_table_and_stops.sql';
+is_same(array_fill(1, count($s['requests']), 'SchemaError'), array_map(fn(array $r): ?string => $r['said']['class'] ?? null, $s['requests']),
+        count($s['requests']) . ' page views, each stopped in the file');
+is_same(1, count($s['copy']), 'the first wrote one copy');
+foreach ($s['requests'] as $n => $r)
+    if ($n > 1) is_same($s['requests'][1]['copies'] ?? null, $r['copies'] ?? [], 'page view ' . $n . ' wrote none');
+ok(in_array($s['copy'][0] ?? '?', end($s['requests'])['copies'] ?? [], true), 'the copy from before the update is still there after the last');
+is_same($contacts, $s['copy_contacts'], 'holding every contact');
+is_same(null, $s['restored']['said'], 'and the previous files with it reopen the portal');
+
+case_('A retry reports how far the update got, not where the retry stopped');
+// Every retry starts at statement 1 and stops there, on the table the first
+// attempt made. Reporting that said "Statements 1 to 0 were applied".
+is_same(2, $s['requests'][1]['said']['statement'] ?? null, 'the first attempt stopped at statement 2');
+is_same(1, $s['requests'][2]['said']['statement'] ?? null, 'a retry at statement 1, on the table the first attempt made');
+foreach ($s['requests'] as $n => $r)
+    is_same($name . ': 2/2', $r['said']['summary'] ?? null, 'page view ' . $n . ' reports the update stopped at 2 of 2');
+ok(str_contains($s['requests'][2]['said']['de'] ?? '', $name . ' (2/2)'), 'and the closed page says so');
+ok(str_contains($s['requests'][2]['said']['log'] ?? '', 'Statements 1 to 1 were applied'), 'as does the log, which says statement 1 is applied');
+
+case_('Without the record, nothing is migrated [ADR 0027 §1]');
+$w = $u['unwritable'];
+is_same('UpdateBlocked', $w['request']['said']['class'] ?? null, 'with its place taken by a folder, the update is refused');
+is_same(['Vor der Aktualisierung konnte das Portal im Ordner storage nicht schreiben. Ohne die Zahlen von vorher fängt es nicht an, und es hat nichts geändert. Bitte im Dateimanager dem Ordner storage Schreibrechte geben (755) und die Seite neu laden.',
+         'Before updating, the portal could not write into the storage folder. Without the numbers from before it does not start, and it has changed nothing. Please make the storage folder writable in the file manager (755), then reload the page.'],
+        $saidBy([$w['request']])[0], 'with the sentences for a record that cannot be written');
+is_same([$w['before']['ledger'], $w['before']['tables'], $w['before']['counts']],
+        [$w['request']['ledger'] ?? null, $w['request']['tables'] ?? null, $w['request']['counts'] ?? null], 'the ledger, the tables and the rows are unchanged');
+is_same(false, $w['part_left'], 'and nothing half-written is left beside it');
+
+case_('A record that cannot be read refuses, and nothing runs [ADR 0027 §1]');
+$r = $u['unreadable'];
+$unreadableSaid = ['Die Datei storage/update-unfinished.json mit den Zahlen von vor der Aktualisierung lässt sich nicht lesen. Deshalb bleibt das Portal geschlossen. Bitte die Sicherung von vorher aus dem Ordner storage/backups einspielen, wie INSTALL.md unter „Wiederherstellen“ beschreibt, und danach diese Datei löschen.',
+                   'The file storage/update-unfinished.json, which holds the numbers from before the update, cannot be read. That is why the portal stays closed. Please import the copy from before the update from the storage/backups folder, as INSTALL.md describes under „Wiederherstellen“, then delete that file.'];
+foreach (['broken' => 'half a JSON object', 'counts_text' => 'counts that are a sentence'] as $key => $what) {
+    is_same($unreadableSaid, $saidBy([$r[$key]])[0], $what . ': refused, with the sentences for a record that cannot be read');
+    is_same([$r['before']['ledger'], $r['before']['tables'], $r['before']['copies']],
+            [$r[$key]['ledger'] ?? null, $r[$key]['tables'] ?? null, $r[$key]['copies'] ?? null], $what . ': nothing ran, and no copy was written');
+}
+is_same(null, $r['after']['said'], 'deleted, the next page view runs as before');

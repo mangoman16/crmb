@@ -48,8 +48,14 @@ declare(strict_types=1);
  * templates and the change-log lines that name them, which 032 and 033 must drop
  * and touch nothing else; each file is run twice, and stopped after its first
  * statement and started again. Then the update this release brings, through the
- * application's own runner on a release of this run's own, and one more file
- * that drops a guarded table, which the runner must refuse.
+ * application's own runner on a release of this run's own, and the mistakes ADR
+ * 0027 is about, one file at a time, one page view after another: a file that
+ * drops a guarded table, refused on every page view; the stamp and the settings
+ * forged as a pass would write them; a newer upload on top; the copy imported
+ * with the new files still in place, then broken off at contacts, then whole; a
+ * release that takes the table off the list; a file that empties the table, one
+ * that loses a row and stops, one that stops every time; and the record of the
+ * unfinished update unwritable, then unreadable.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -122,6 +128,20 @@ function drop_every_table(PDO $pdo): void {
 /** The statements of one migration file, split as the runner splits them. */
 function migration_statements(string $path): array {
     return split_sql((string)file_get_contents($path));
+}
+
+/**
+ * Put a copy back as INSTALL.md has it done: every table dropped, then the copy
+ * run statement by statement. With $until, the import breaks off at the first
+ * statement of that table, as one that stopped partway would. Not phpMyAdmin;
+ * TESTING.md walks the same with phpMyAdmin.
+ */
+function import_copy(PDO $pdo, string $path, ?string $until = null): void {
+    drop_every_table($pdo);
+    foreach (split_sql((string)file_get_contents($path)) as $statement) {
+        if ($until !== null && str_starts_with($statement, 'DROP TABLE IF EXISTS `' . $until . '`')) break;
+        $pdo->exec($statement);
+    }
 }
 
 /** Run statements, stopping the whole process with the file named if one fails. */
@@ -282,18 +302,23 @@ function build_portal_before_019(): array {
     ]];
 }
 
-/** What 019 is about, read back: every child, every change-log line, every count. */
-function portal_state(PDO $pdo): array {
+/** The rows of every table schema_guarded_tables() names, leaving out any that is not there. */
+function guarded_counts(PDO $pdo): array {
     $counts = [];
     foreach (schema_guarded_tables() as $table) {
         try { $counts[$table] = (int)$pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn(); }
-        catch (PDOException) { /* not created by these migrations */ }
+        catch (PDOException) { /* not created by these migrations, or not there any more */ }
     }
+    return $counts;
+}
+
+/** What 019 is about, read back: every child, every change-log line, every count. */
+function portal_state(PDO $pdo): array {
     return [
         'students' => $pdo->query('SELECT id, first_name, last_name, account_id, email, revision, updated_at FROM students ORDER BY id')->fetchAll(),
         'versions' => $pdo->query('SELECT entity, entity_id, operation, label, before_json, after_json, actor_id, created_at'
             . ' FROM record_versions ORDER BY id')->fetchAll(),
-        'counts' => $counts,
+        'counts' => guarded_counts($pdo),
     ];
 }
 
@@ -524,7 +549,7 @@ function chat_state(PDO $pdo): array {
  */
 function login_state(PDO $pdo): array {
     return ['accounts' => every_login($pdo), 'columns' => table_columns($pdo, 'accounts'), 'indexes' => login_indexes($pdo),
-            'counts' => portal_state($pdo)['counts'],
+            'counts' => guarded_counts($pdo),
             'tokens' => $pdo->query('SELECT * FROM auth_tokens ORDER BY id')->fetchAll(),
             'versions' => $pdo->query("SELECT * FROM record_versions WHERE entity = 'accounts' ORDER BY id")->fetchAll()];
 }
@@ -627,7 +652,7 @@ function login_rule_state(PDO $pdo): array {
                           'left_on' => column_facts($pdo, 'class_students', 'left_on'),
                           'removed_on' => column_facts($pdo, 'class_students', 'removed_on')],
             'keys' => student_keys($pdo), 'indexes' => login_indexes($pdo), 'one_account' => one_account_index($pdo),
-            'counts' => portal_state($pdo)['counts'],
+            'counts' => guarded_counts($pdo),
             'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn()];
 }
 
@@ -756,9 +781,9 @@ $again = portal_state($pdo);
 // a NULL for its status. One with news on is added so that "unchanged" is not
 // only ever checked against zeros.
 add_subscribed_login($pdo);
-$twentyBefore = ['accounts' => login_choices($pdo), 'counts' => portal_state($pdo)['counts']];
+$twentyBefore = ['accounts' => login_choices($pdo), 'counts' => guarded_counts($pdo)];
 apply_migrations($pdo, '020', '999');
-$twentyAfter = ['accounts' => login_choices($pdo), 'counts' => portal_state($pdo)['counts'],
+$twentyAfter = ['accounts' => login_choices($pdo), 'counts' => guarded_counts($pdo),
                 'online_periods' => table_columns($pdo, 'online_periods'),
                 'online_period_rows' => (int)$pdo->query('SELECT COUNT(*) FROM online_periods')->fetchColumn(),
                 'indexes' => online_period_indexes($pdo), 'new_login' => new_login($pdo, 'neu@beispiel.test')];
@@ -889,7 +914,7 @@ foreach (glob(APP_ROOT . '/database/migrations/*.sql') as $file)
         foreach (split_sql((string)file_get_contents($file)) as $statement) $pdo->exec($statement);
 $runnerState = function () use ($pdo): array {
     setting_cache_clear();
-    return ['accounts' => every_login($pdo), 'counts' => portal_state($pdo)['counts'],
+    return ['accounts' => every_login($pdo), 'counts' => guarded_counts($pdo),
             'without_login' => (int)$pdo->query('SELECT COUNT(*) FROM students WHERE account_id IS NULL')->fetchColumn(),
             'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn(),
             'courses' => (int)$pdo->query('SELECT COUNT(*) FROM classes')->fetchColumn(),
@@ -1116,19 +1141,188 @@ $runner['previous_step_error'] = $runnerStep();
 $update = static function (): ?array {
     try { schema_apply(); return null; }
     catch (Throwable $e) {
-        return ['class' => get_class($e), 'log' => $e->getMessage()] + ($e instanceof UpdateBlocked ? ['de' => $e->de, 'en' => $e->en] : []);
+        return ['class' => get_class($e), 'log' => $e->getMessage()]
+            + ($e instanceof UpdateBlocked ? ['de' => $e->de, 'en' => $e->en] : [])
+            + ($e instanceof SchemaError ? ['statement' => $e->statement, 'summary' => $e->summary()] : []);
     }
 };
-$ledger = fn(): array => $pdo->query('SELECT version, checksum FROM schema_migrations ORDER BY version')->fetchAll();
-$runner['before'] = every_table($pdo) + ['counts' => portal_state($pdo)['counts'], 'ledger' => $ledger()];
+// Null when there is no ledger at all, as after an import that broke off before it.
+$ledger = function () use ($pdo): ?array {
+    try { return $pdo->query('SELECT version, checksum FROM schema_migrations ORDER BY version')->fetchAll(); }
+    catch (PDOException) { return null; }
+};
+$runner['before'] = every_table($pdo) + ['counts' => guarded_counts($pdo), 'ledger' => $ledger()];
 $runner['release'] = ['refused' => $update(), 'current' => schema_is_current(), 'backups' => count(backups())];
-$runner['release']['state'] = every_table($pdo) + ['counts' => portal_state($pdo)['counts'], 'ledger' => $ledger()];
+$runner['release']['state'] = every_table($pdo) + ['counts' => guarded_counts($pdo), 'ledger' => $ledger()];
 
-file_put_contents($release . '/database/migrations/999_a_mistake_drops_the_contacts.sql', "DROP TABLE contacts;\n");
-$mistake = ['before' => portal_state($pdo)['counts'], 'refused' => $update(), 'current' => schema_is_current(),
-            'tables' => every_table($pdo)['tables']];
-// Every copy the updates took, newest first: how many contacts each holds.
-$mistake['backups'] = array_map(fn(array $copy): int => substr_count((string)file_get_contents($copy['path']), 'INSERT INTO `contacts` VALUES'), backups());
-$result['runner'] = $runner + ['mistake' => $mistake];
+// --- a refused update stays refused (ADR 0027) ----------------------------------------
+// One schema_apply() is one page view, with the caches a request starts without;
+// after it, what it said and everything ADR 0027 holds it to: the ledger, the
+// copies, the stamp, the record of an unfinished update, the guarded counts, the
+// tables, the version and the release history. Each mistake below is a file of
+// this run's release, and each ends where it began: its file taken out again,
+// the copy imported, and a run that passes. The copies that are no longer
+// needed are removed, so pruning never has to choose between two taken in the
+// same second.
+$record = function (): ?array {
+    clearstatcache();
+    if (!is_file(schema_unfinished_file())) return null;
+    $text = (string)file_get_contents(schema_unfinished_file());
+    return ['text' => $text, 'data' => json_decode($text, true)];
+};
+$state = function () use ($pdo, $ledger, $record): array {
+    clearstatcache();
+    setting_cache_clear();
+    return ['ledger' => $ledger(), 'copies' => array_column(backups(), 'name'),
+            'stamp' => is_file(schema_stamp_file()) ? (string)file_get_contents(schema_stamp_file()) : null,
+            'record' => $record(), 'counts' => guarded_counts($pdo),
+            'tables' => array_column($pdo->query('SELECT table_name AS name FROM information_schema.tables'
+                . ' WHERE table_schema = DATABASE() ORDER BY table_name')->fetchAll(), 'name'),
+            'version' => database_version(), 'history' => count(version_history())];
+};
+$request = function () use ($update, $state): array {
+    clearstatcache();
+    setting_cache_clear();
+    return ['said' => $update()] + $state();
+};
+$migrations = $release . '/database/migrations';
+$add = fn(string $name, string $sql) => file_put_contents($migrations . '/' . $name, $sql);
+$take = fn(string $name) => unlink($migrations . '/' . $name);
+// The copy a request wrote: the names in the folder it added.
+$written = fn(array $before, array $after): array => array_values(array_diff($after['copies'], $before['copies']));
+$contactsIn = fn(string $name): int => is_file(backup_dir() . '/' . $name)
+    ? substr_count((string)file_get_contents(backup_dir() . '/' . $name), 'INSERT INTO `contacts` VALUES') : -1;
+// The portal as this release's update left it, taken outside the copies folder
+// so that neither pruning nor a scenario can touch it: what each scenario that
+// does not import its own copy goes back to.
+$untouched = test_run_dir() . '/as-this-release-left-it.sql';
+$handle = fopen($untouched, 'wb');
+backup_write($handle, connect(), 'test');
+fclose($handle);
+$putBack = function (string $mistake, string $copy) use ($take, $pdo, $request): array {
+    $take($mistake);
+    import_copy($pdo, $copy);
+    return $request();
+};
+// Every scenario after the first starts with no update unfinished. Code that
+// leaves a record behind fails the scenario that left it; removing it here keeps
+// that one failure from turning each scenario after it into a crash that hides
+// which rule broke.
+$clean = function (): void {
+    clearstatcache();
+    if (is_file(schema_unfinished_file())) unlink(schema_unfinished_file());
+};
+$runner['app_version'] = app_version();
+$runner['release']['record'] = $record();
+
+// 1. A loss stays refused, request after request: a file that drops contacts.
+$add('999_a_mistake_drops_the_contacts.sql', "DROP TABLE contacts;\n");
+$mistake = ['before' => $state(), 'requests' => []];
+foreach ([1, 2, 3] as $n) $mistake['requests'][$n] = $request();
+$mistake['copy'] = $written($mistake['before'], $mistake['requests'][1]);
+$named = backup_dir() . '/' . ($mistake['copy'][0] ?? 'none');
+$mistake['copy_contacts'] = $contactsIn($mistake['copy'][0] ?? 'none');
+
+// 3. The stamp and the settings written as a run that passes would write them.
+file_put_contents(schema_stamp_file(), schema_state());
+set_setting('schema_fingerprint', schema_fingerprint());
+set_setting('schema_written_by', app_version());
+clearstatcache();
+setting_cache_clear();
+$mistake['forged'] = ['stamp' => schema_state(), 'current' => schema_is_current(), 'next' => $request()];
+
+// 4. A newer upload on top of the loss: its migration must not run.
+$add('999_b_a_newer_release_makes_a_table.sql', "CREATE TABLE made_by_a_newer_release (id INT PRIMARY KEY) ENGINE=InnoDB;\n");
+$mistake['newer'] = $request();
+$take('999_b_a_newer_release_makes_a_table.sql');
+
+// 6. The copy imported with the new files still in place: they take the same
+//    rows again, and still no second copy is written.
+import_copy($pdo, $named);
+$mistake['imported'] = ['contacts' => guarded_counts($pdo)['contacts'] ?? 0, 'request' => $request(),
+                        'copy_contacts' => $contactsIn($mistake['copy'][0] ?? 'none')];
+
+// 5. The previous files - the release without the file that lost the rows -
+//    then the copy the record names, first broken off at contacts, then whole.
+$take('999_a_mistake_drops_the_contacts.sql');
+import_copy($pdo, $named, 'contacts');
+$mistake['partial'] = $request();
+import_copy($pdo, $named);
+$mistake['complete'] = $request();
+// 2. ... after which the next page view takes the fast path, asking nothing.
+clearstatcache();
+setting_cache_clear();
+$mistake['afterwards'] = ['current' => schema_is_current(), 'queries' => query_count(fn() => schema_is_current())];
+@unlink($named);
+
+// 7. A release that takes contacts off the list, as the record sees it: the
+//    table it counted is one no longer guarded. The run passes and deletes it.
+$clean();
+$add('999_a_mistake_drops_the_contacts.sql', "DROP TABLE contacts;\n");
+$offList = ['before' => $state()];
+$offList['refused'] = $request();
+$offList['copy'] = $written($offList['before'], $offList['refused']);
+$kept = $offList['refused']['record']['data']['counts'] ?? null;
+if (is_array($kept)) {
+    $renamed = $offList['refused']['record']['data'];
+    $renamed['counts'] = array_combine(array_map(fn(string $table): string => $table === 'contacts' ? 'contacts_no_longer_guarded' : $table,
+                                                  array_keys($kept)), $kept);
+    file_put_contents(schema_unfinished_file(), json_encode($renamed, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+$offList['released'] = $request();
+$offList['restored'] = $putBack('999_a_mistake_drops_the_contacts.sql', $untouched);
+foreach ($offList['copy'] as $name) @unlink(backup_dir() . '/' . $name);
+
+// 1. The same with a file that deletes every contact and drops nothing.
+$clean();
+$add('999_c_mistake_empties_the_contacts.sql', "DELETE FROM contacts;\n");
+$emptied = ['before' => $state(), 'requests' => []];
+foreach ([1, 2, 3] as $n) $emptied['requests'][$n] = $request();
+$emptied['copy'] = $written($emptied['before'], $emptied['requests'][1]);
+$emptied['restored'] = $putBack('999_c_mistake_empties_the_contacts.sql', $untouched);
+foreach ($emptied['copy'] as $name) @unlink(backup_dir() . '/' . $name);
+
+// 4. A file that deletes one contact and then stops: the retry must not run.
+$clean();
+$add('999_d_mistake_deletes_a_contact_and_stops.sql', "DELETE FROM contacts ORDER BY id LIMIT 1;\nINSERT INTO no_such_table VALUES (1);\n");
+$halfway = ['before' => $state(), 'requests' => []];
+foreach ([1, 2] as $n) $halfway['requests'][$n] = $request();
+$halfway['copy'] = $written($halfway['before'], $halfway['requests'][1]);
+$halfway['restored'] = $putBack('999_d_mistake_deletes_a_contact_and_stops.sql', $untouched);
+foreach ($halfway['copy'] as $name) @unlink(backup_dir() . '/' . $name);
+
+// 6. A file that makes a table and then stops, six page views in a row: six
+//    times as many as the copies that are kept, plus one.
+$clean();
+$add('999_e_mistake_makes_a_table_and_stops.sql', "CREATE TABLE made_before_stopping (id INT PRIMARY KEY) ENGINE=InnoDB;\nINSERT INTO no_such_table VALUES (1);\n");
+$stopping = ['before' => $state(), 'requests' => []];
+for ($n = 1; $n <= BACKUP_KEEP + 1; $n++) $stopping['requests'][$n] = $request();
+$stopping['copy'] = $written($stopping['before'], $stopping['requests'][1]);
+$stopping['copy_contacts'] = $contactsIn($stopping['copy'][0] ?? 'none');
+$stopping['restored'] = $putBack('999_e_mistake_makes_a_table_and_stops.sql', $untouched);
+foreach ($stopping['copy'] as $name) @unlink(backup_dir() . '/' . $name);
+
+// 8. No record, no migration: its place taken by a folder, which no write can
+//    replace, for root as for anybody (a read-only folder stops nobody as root).
+$clean();
+mkdir(schema_unfinished_file());
+$add('999_f_a_release_makes_a_table.sql', "CREATE TABLE made_without_the_numbers (id INT PRIMARY KEY) ENGINE=InnoDB;\n");
+$unwritable = ['before' => $state(), 'request' => $request(), 'part_left' => is_file(schema_unfinished_file() . '.part')];
+rmdir(schema_unfinished_file());
+
+// 9. A record that cannot be read: half a JSON object, then one whose counts are
+//    a sentence. Nothing may run either time.
+file_put_contents(schema_unfinished_file(), "{\n");
+$unreadable = ['before' => $state(), 'broken' => $request()];
+file_put_contents(schema_unfinished_file(), json_encode(['started' => now(), 'from' => app_version(), 'to' => app_version(),
+                                                         'backup' => null, 'counts' => 'alle Kontakte']));
+$unreadable['counts_text'] = $request();
+$clean();
+$take('999_f_a_release_makes_a_table.sql');
+$unreadable['after'] = $request();
+foreach ($written($unwritable['before'], $unreadable['after']) as $name) @unlink(backup_dir() . '/' . $name);
+
+$result['runner'] = $runner + ['mistake' => $mistake, 'off_list' => $offList, 'emptied' => $emptied, 'halfway' => $halfway,
+                               'stopping' => $stopping, 'unwritable' => $unwritable, 'unreadable' => $unreadable];
 
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

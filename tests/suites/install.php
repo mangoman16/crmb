@@ -247,12 +247,122 @@ does_not_throw(fn() => schema_verify_counts(['students' => 0], fn(string $l) => 
 $dropped = null;
 try { schema_verify_counts($before, fn(string $l) => null); } catch (Throwable $e) { $dropped = $e; }
 ok($dropped instanceof UpdateBlocked, 'a table that shrank stops the update');
-ok(str_contains($dropped?->de ?? '', 'students'), 'and names the table');
+ok(str_contains($dropped?->de ?? '', 'students (vorher 12, jetzt 0)'), 'and names the table, with its rows before and now');
+ok(str_contains($dropped?->en ?? '', 'students (12 before, 0 now)'), 'in English too');
 ok(str_contains($dropped?->de ?? '', 'storage/backups'), 'and says where the copy from beforehand is');
+
+case_('Only tables still guarded are compared, and a guarded table that is gone counts as emptied [ADR 0026 §7, 0027 §2]');
+/* A table counted before the update that is no longer in schema_guarded_tables()
+   is one a release took off the list on purpose, with the reason beside it:
+   comparing it would keep closed the portal that release exists to reopen
+   (ADR 0027 §5 b). Within one run the list cannot change, so there this skips
+   nothing. A table still on the list that cannot be counted has lost every row. */
+does_not_throw(fn() => schema_verify_counts(['no_such_table' => 5, 'students' => 0], fn(string $l) => null),
+               'a table that is not on the list is not compared, whatever it held before');
+ok(in_array('contacts', schema_guarded_tables(), true), 'contacts is on the list');
+db()->exec('RENAME TABLE contacts TO contacts_away_for_a_moment');
 $gone = null;
-try { schema_verify_counts(['no_such_table' => 5], fn(string $l) => null); } catch (Throwable $e) { $gone = $e; }
-ok($gone instanceof UpdateBlocked && str_contains($gone->de, 'no_such_table 5 -> 0'),
-   'a table counted before the update and gone after it counts as emptied, rather than being skipped [ADR 0026 §7]');
+try { schema_verify_counts(['contacts' => 3], fn(string $l) => null); } catch (Throwable $e) { $gone = $e; }
+finally { db()->exec('RENAME TABLE contacts_away_for_a_moment TO contacts'); }
+ok($gone instanceof UpdateBlocked && str_contains($gone->de, 'contacts (vorher 3, jetzt 0)'),
+   'and with contacts gone, three contacts counted before are three lost, rather than a table skipped');
+
+case_('A refusal during an unfinished update names the versions, the copy and the way back [ADR 0027 §4]');
+$now = schema_counts();
+$record = ['started' => '2026-10-07 12:32:10', 'from' => '0.5.2', 'to' => '0.6.0', 'backup' => '2026-10-07-123210-vor-update',
+           'counts' => ['contacts' => ($now['contacts'] ?? 0) + 120, 'students' => $now['students'] ?? 0]];
+$refusal = function (array $record): ?UpdateBlocked {
+    try { schema_verify_counts($record['counts'], fn(string $l) => null, $record); } catch (UpdateBlocked $e) { return $e; }
+    return null;
+};
+$lost = $refusal($record);
+$was = $record['counts']['contacts'];
+$is = $now['contacts'] ?? 0;
+is_same('Nach der Aktualisierung auf Version 0.6.0 fehlen Datensätze: contacts (vorher ' . $was . ', jetzt ' . $is . '). Deshalb bleibt das Portal geschlossen.'
+        . ' So kommen sie zurück: zuerst die Dateien von Version 0.5.2 wieder hochladen, dann die Sicherung „2026-10-07-123210-vor-update-…“ aus dem Ordner storage/backups einspielen,'
+        . ' wie INSTALL.md unter „Wiederherstellen“ beschreibt. Beim nächsten Aufruf zählt das Portal nach und öffnet sich, wenn nichts mehr fehlt.',
+        $lost?->de, 'in German: which table lost how many, only the one that fell, and the order of the way back');
+is_same('Records are missing after the update to version 0.6.0: contacts (' . $was . ' before, ' . $is . ' now). That is why the portal stays closed.'
+        . ' To bring them back: first upload the files of version 0.5.2 again, then import the copy “2026-10-07-123210-vor-update-…” from the storage/backups folder,'
+        . ' as INSTALL.md describes under „Wiederherstellen“. On the next page view the portal counts again and opens once nothing is missing.',
+        $lost?->en, 'and in English');
+$log = $lost?->getMessage() ?? '';
+ok(str_contains($log, schema_unfinished_file()) && str_contains($log, '2026-10-07 12:32:10 UTC'), 'the log line names the file’s full path and when the update began');
+ok(str_contains($log, 'storage/backups/2026-10-07-123210-vor-update-*.sql') && str_contains($log, 'off schema_guarded_tables()')
+   && str_contains($log, 'delete that file'), 'and the three ways back');
+$skipped = $refusal(['backup' => null] + $record);
+ok(str_contains($skipped?->de ?? '', 'dann die Sicherung, die vor der Aktualisierung im Hosting-Panel angelegt wurde, einspielen, wie INSTALL.md'),
+   'an update run with skip-backup names the copy exported from the hosting panel instead');
+ok(str_contains($skipped?->en ?? '', 'then import the copy exported from the hosting panel before the update, as INSTALL.md'), 'in English too');
+$unknown = $refusal(['from' => ''] + $record);
+ok(str_contains($unknown?->de ?? '', 'zuerst die Dateien der vorherigen Version wieder hochladen'), 'without the version it came from, it says the previous version');
+ok(str_contains($unknown?->en ?? '', 'first upload the files of the previous version again'), 'in English too');
+
+case_('The numbers from before an update are kept in a file, and only a run that passes deletes it [ADR 0027 §1]');
+@unlink(schema_unfinished_file());
+is_same(false, schema_is_unfinished(), 'without the file no update is unfinished');
+is_same(null, schema_unfinished(), 'and there is no record to read');
+$version = one("SELECT setting_value FROM settings WHERE setting_key='schema_written_by'");
+set_setting('schema_written_by', '0.5.2');
+setting_cache_clear();
+$copy = backup_database('vor-update');
+$written = schema_mark_unfinished(['contacts' => 3, 'students' => 2], $copy);
+$text = (string)file_get_contents(schema_unfinished_file());
+is_same(true, schema_is_unfinished(), 'written, an update is unfinished');
+is_same($written, schema_unfinished(), 'and the record reads back exactly as it was written');
+is_same(['0.5.2', app_version()], [$written['from'], $written['to']], 'naming the version the database was on, and the version of the files');
+is_same(['contacts' => 3, 'students' => 2], $written['counts'], 'with the counts it was given');
+ok(preg_match('/^' . preg_quote((string)$written['backup'], '/') . '-([0-9a-f]{8})\.sql$/D', basename($copy), $random) === 1,
+   'and the copy’s name without its random part and extension: ' . test_show($written['backup']));
+ok(isset($random[1]) && !str_contains($text, $random[1]), 'which appears nowhere in the file');
+ok(str_contains($text, 'UPDATING.md') && str_contains($text, '„A refused update“'), 'a note in it says, in German and English, where to read what to do');
+is_same(false, schema_is_current(), 'while it is there the portal is not current, whatever the stamp and the settings say');
+schema_mark_finished();
+is_same(false, schema_is_unfinished(), 'the end of a run that passes deletes it');
+does_not_throw(fn() => schema_mark_finished(), 'and there being none to delete is no error');
+is_same(null, schema_mark_unfinished(['contacts' => 3], null)['backup'], 'an update run with skip-backup names no copy');
+schema_mark_finished();
+@unlink($copy);
+if ($version === null) run("DELETE FROM settings WHERE setting_key='schema_written_by'");
+else run("UPDATE settings SET setting_value=? WHERE setting_key='schema_written_by'", [$version['setting_value']]);
+setting_cache_clear();
+
+case_('Without a record nothing is migrated, and a record that cannot be read refuses [ADR 0027 §1]');
+mkdir(schema_unfinished_file());
+throws(fn() => schema_mark_unfinished(['contacts' => 3], null), 'a record whose place a folder takes cannot be written, and the update is refused', 'Cannot write');
+ok(!is_file(schema_unfinished_file() . '.part'), 'with nothing half-written left beside it');
+rmdir(schema_unfinished_file());
+$shape = ['started' => '2026-10-07 12:32:10', 'from' => '0.5.2', 'to' => '0.6.0', 'backup' => null, 'counts' => ['contacts' => 3]];
+foreach (['{' => 'half a JSON object', '[]' => 'an empty list', '"contacts"' => 'a string',
+          json_encode(['counts' => 'alle Kontakte'] + $shape) => 'counts that are a sentence',
+          json_encode(['counts' => [3, 2]] + $shape) => 'counts without table names',
+          json_encode(['counts' => ['contacts' => -1]] + $shape) => 'a count below nothing',
+          json_encode(['counts' => ['contacts' => 2.5]] + $shape) => 'a count that is not a whole number',
+          json_encode(['from' => 52] + $shape) => 'a version that is a number',
+          json_encode(array_diff_key($shape, ['backup' => 1])) => 'no word on the copy at all'] as $broken => $what) {
+    file_put_contents(schema_unfinished_file(), $broken);
+    throws(fn() => schema_unfinished(), 'refused, rather than read as no record: ' . $what, 'Cannot read');
+}
+file_put_contents(schema_unfinished_file(), json_encode($shape));
+does_not_throw(fn() => schema_unfinished(), 'while the same shape, whole, is read');
+@unlink(schema_unfinished_file());
+
+case_('The closed page tells a family there is nothing to do, and whoever looks after the portal what happened [ADR 0027 §4]');
+$page = schema_blocked_html(new UpdateBlocked('Grund <script>alert(1)</script>', 'Reason <script>alert(2)</script>', 'SQLSTATE[42S02]: for the log only'));
+foreach (['Das Portal ist vorübergehend geschlossen.', 'Du musst nichts tun. Bitte versuche es später noch einmal.',
+          'Für die Person, die das Portal betreut: ', 'The portal is temporarily closed.',
+          'There is nothing you need to do. Please try again later.', 'For whoever looks after the portal: '] as $line)
+    ok(str_contains($page, $line), 'it says ' . test_show($line));
+ok(strpos($page, 'Das Portal ist') < strpos($page, 'The portal is'), 'German first');
+ok(!str_contains($page, '<script>') && str_contains($page, 'Grund &lt;script&gt;alert(1)&lt;/script&gt;')
+   && str_contains($page, 'Reason &lt;script&gt;alert(2)'), 'a reason carrying markup is printed as text, in both languages');
+ok(!str_contains($page, 'SQLSTATE'), 'and the log line, which may carry SQL, is not on it');
+$lostPage = schema_blocked_html($lost ?? new RuntimeException('none'));
+ok(str_contains($lostPage, 'contacts (vorher ' . $was . ', jetzt ' . $is . ')') && str_contains($lostPage, 'contacts (' . $was . ' before, ' . $is . ' now)')
+   && str_contains($lostPage, '„2026-10-07-123210-vor-update-…“'), 'a loss is named on it with its counts and its copy, in both languages');
+$failed = schema_blocked_html(new PDOException("SQLSTATE[HY000] [1045] Access denied for user 'crm_live'@'localhost'"));
+ok(!str_contains($failed, 'SQLSTATE') && !str_contains($failed, 'crm_live'), 'a database error is not quoted at all');
+ok(str_contains($failed, 'Fehlerprotokoll') && str_contains($failed, 'error log'), 'the page points at the hosting error log instead');
 
 case_('A migration statement that returns rows does not poison the rest of the run');
 // PDO::exec() leaves an open result set behind for anything that returns rows -
@@ -302,6 +412,39 @@ file_put_contents(backup_override_file(), '');
 ok(backup_override_claimed(), 'the file in storage/ lets an operator who backed up herself proceed');
 ok(!is_file(backup_override_file()), 'and it is consumed, so it cannot quietly disable the next update too');
 ok(!backup_override_claimed(), 'a second update needs a fresh one');
+
+case_('A skip-backup or a record the portal cannot delete is refused, not taken as done');
+/* A skip-backup that stays would skip the copy before every later update, and a
+   record that stays would refuse a later update for rows removed on purpose
+   since. Both live in a folder the portal must be able to write; here a folder
+   it may not, beside the maintenance flag as the real ones are. */
+$keptFlag = $GLOBALS['config']['maintenance_file'];
+$locked = test_run_dir() . '/locked-' . bin2hex(random_bytes(4));
+mkdir($locked, 0700);
+$GLOBALS['config']['maintenance_file'] = $locked . '/maintenance.flag';
+file_put_contents(backup_override_file(), '');
+file_put_contents(schema_unfinished_file(), '{}');
+file_put_contents($locked . '/probe', '');
+chmod($locked, 0500);
+try {
+    if (@unlink($locked . '/probe')) {
+        test_unsupported(array_merge(test_unsupported(),
+            ['a skip-backup and a record the portal cannot delete (this run is root, whom a read-only folder does not stop)']));
+    } else {
+        // An empty ledger, so that every migration is pending.
+        db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
+        $said = null;
+        try { schema_refuse_unsafe(fn(string $l) => null); } catch (Throwable $e) { $said = $e; }
+        ok($said instanceof UpdateBlocked && str_contains($said->de, 'skip-backup, die das Portal nicht löschen kann') && str_contains($said->de, '(755)'),
+           'with something pending, a skip-backup the portal cannot delete refuses the update rather than skipping the copy, saying the folder must be writable'
+           . ($said && !$said instanceof UpdateBlocked ? ': ' . $said->getMessage() : ''));
+        ok(is_file(backup_override_file()), 'and the file is still there, still meaning one update');
+        throws(fn() => schema_mark_finished(), 'a record the portal cannot delete refuses the run that passed', 'cannot be deleted');
+    }
+} finally {
+    chmod($locked, 0700);
+    $GLOBALS['config']['maintenance_file'] = $keptFlag;
+}
 
 case_('The backup is real SQL carrying the real data');
 /* The proof that it imports again lives outside this suite, because importing
@@ -783,6 +926,96 @@ if (!function_exists('exec')) {
     is_same($hostDefault, $fallback['path'], 'where the folder cannot be made, the host\'s folder is used rather than no session at all');
     ok($fallback['id'] !== '' && is_file($hostDefault.'/sess_'.$fallback['id']), 'and sign-in still works');
     ok(str_contains($fallback['log'], $blockedWork.'/sessions'), 'with a warning in the error log naming the folder it could not make');
+}
+
+/* What an unfinished update looks like on disk, for a request or the console
+   started in a folder of their own: counts far above anything in this run's
+   database, so that a run comparing with them refuses before it writes. */
+$unfinishedRecord = fn(): string => (string)json_encode(['started' => now(), 'from' => '0.5.2', 'to' => app_version(),
+    'backup' => '2026-10-07-123210-vor-update', 'counts' => ['accounts' => 1000000, 'students' => 0]]);
+
+case_('Nobody gets in through maintenance mode while an update is unfinished, an administrator included [ADR 0027 §3]');
+/* Maintenance mode lets an administrator in, so she can switch it off without a
+   shell. While an update is unfinished, what she added would change the numbers
+   the update compares, and the way back is the file manager anyway. Asked of a
+   request started for real, signed in as an administrator by her session. */
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['an administrator kept out by an unfinished update, asked of a request started for real (this PHP disables exec)']));
+} else {
+    $work = test_run_dir().'/unfinished-'.bin2hex(random_bytes(4));
+    $config = $sessionProbe($work);
+    $admin = make_account(['role' => 'admin', 'email' => 'verwaltung.wartung@example.test']);
+    mkdir($work.'/sessions', 0700);
+    $sid = bin2hex(random_bytes(16));
+    file_put_contents($work.'/sessions/sess_'.$sid, 'user_id|i:'.$admin.';auth_version|i:1;last_seen|i:'.time().';');
+    $asAdmin = '$_COOKIE = '.var_export(['badminton_session' => $sid], true).';';
+    file_put_contents($work.'/update-unfinished.json', $unfinishedRecord());
+    $held = $startRequest($config, 'is_admin()', $asAdmin);
+    is_same(503, $held['status'], 'with the record and the maintenance flag, the administrator\'s request is answered 503'.($held['status'] !== 503 ? ': '.$held['log'] : ''));
+    ok(str_contains($held['log'], 'Das Portal wird gerade aktualisiert.'), 'with the maintenance notice');
+    is_same(true, $held['then'], 'although the session is the administrator\'s: it is the unfinished update that keeps her out');
+    unlink($work.'/maintenance.flag');
+    $closed = $startRequest($config, 'null', $asAdmin);
+    is_same(503, $closed['status'], 'without the flag, the same request runs the update, which refuses: 503'.($closed['status'] !== 503 ? ': '.$closed['log'] : ''));
+    ok(str_contains($closed['log'], 'Für die Person, die das Portal betreut: Nach der Aktualisierung auf Version '.app_version().' fehlen Datensätze: accounts (vorher 1000000,'),
+       'with the closed page, naming what is missing');
+    file_put_contents($work.'/maintenance.flag', now());
+    unlink($work.'/update-unfinished.json');
+    $in = $startRequest($config, 'is_admin()', $asAdmin);
+    ok($in['status'] !== 503 && $in['then'] === true, 'without the record, the same administrator gets in through maintenance mode'.($in['status'] === 503 ? ': '.$in['log'] : ''));
+}
+
+case_('The console writes nothing while an update is unfinished [ADR 0027 §3]');
+/* Only check, status, migrate, update, maintenance:on and maintenance:off run;
+   everything else stops with one sentence on STDERR and exit code 1, as an
+   allowlist, so a command added later is refused too. billing:run is the one a
+   cron job runs on the 1st: here it has a child to charge. */
+if (!function_exists('proc_open')) {
+    test_unsupported(array_merge(test_unsupported(), ['the console refusing to write during an unfinished update (this PHP disables proc_open)']));
+} else {
+    $work = test_run_dir().'/console-'.bin2hex(random_bytes(4));
+    mkdir($work, 0700);
+    write_run_config($work.'/config.php', $ownDb, $work);
+    // Nothing to read on its input, so a command that asks - create-admin - ends
+    // rather than waiting for somebody to type.
+    $console = function (string ...$arguments) use ($work): array {
+        $process = proc_open(array_merge([PHP_BINARY, APP_ROOT.'/bin/console.php'], $arguments), [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                             $pipes, null, ['CRM_CONFIG' => $work.'/config.php'] + getenv());
+        fclose($pipes[0]);
+        $out = (string)stream_get_contents($pipes[1]);
+        $err = (string)stream_get_contents($pipes[2]);
+        fclose($pipes[1]); fclose($pipes[2]);
+        return ['out' => $out, 'err' => $err, 'code' => proc_close($process)];
+    };
+    $course = make_class();
+    $child = make_student();
+    $tariff = make_tariff(['class_id' => $course]);
+    make_enrolment($course, $child, ['tariff_id' => $tariff]);
+    $charges = fn(): int => (int)scalar('SELECT COUNT(*) FROM charges');
+    $before = $charges();
+    file_put_contents($work.'/update-unfinished.json', $unfinishedRecord());
+    $refused = $console('billing:run', '2026-09');
+    is_same(1, $refused['code'], 'billing:run stops with exit code 1');
+    is_same(['An update is unfinished ('.$work.'/update-unfinished.json), so until it has passed only check, status, migrate, update, maintenance:on and maintenance:off run; UPDATING.md, "A refused update", says what to do.'],
+            explode("\n", trim($refused['err'])), 'with one sentence on STDERR');
+    is_same($before, $charges(), 'and adds no charge');
+    foreach (['mail:work', 'backup', 'maintenance', 'demo:fill', 'create-admin', 'a-command-added-later'] as $command) {
+        $other = $console($command);
+        ok($other['code'] === 1 && str_starts_with($other['err'], 'An update is unfinished'), $command.' is refused the same way'.($other['code'] !== 1 ? ': '.$other['out'] : ''));
+    }
+    $status = $console('status');
+    ok(str_contains($status['out'], 'files    '.app_version()) && str_contains($status['out'], 'state'), 'status runs'.($status['err'] !== '' ? ': '.$status['err'] : ''));
+    unlink($work.'/update-unfinished.json');
+    $charged = $console('billing:run', '2026-09');
+    ok($charged['code'] === 0 && $charges() > $before, 'without the record the same command charges the child, so it was the record that held it back'
+       .($charged['code'] !== 0 ? ': '.$charged['err'] : ''));
+    $login = (int)scalar('SELECT account_id FROM students WHERE id=?', [$child]);
+    run('DELETE FROM charges WHERE student_id=?', [$child]);
+    run('DELETE FROM class_students WHERE student_id=?', [$child]);
+    run('DELETE FROM students WHERE id=?', [$child]);
+    run('DELETE FROM accounts WHERE id=?', [$login]);
+    run('DELETE FROM tariffs WHERE id=?', [$tariff]);
+    run('DELETE FROM classes WHERE id=?', [$course]);
 }
 
 case_('A portal with an https:// address is only ever served over HTTPS');

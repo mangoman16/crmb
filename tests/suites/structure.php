@@ -531,7 +531,8 @@ $runDir = test_run_dir();
 ok(!test_path_inside($runDir, APP_ROOT), 'the run\'s own folder is outside the portal: '.$runDir);
 $stored = ['the maintenance flag' => maintenance_file(), 'the backups' => backup_dir(),
            'the invoice proofs' => invoice_dir(), 'the schema marker' => schema_stamp_file(),
-           'the backup override' => backup_override_file(), 'the sign-in sessions' => session_dir()];
+           'the backup override' => backup_override_file(), 'the sign-in sessions' => session_dir(),
+           'the record of an unfinished update' => schema_unfinished_file()];
 $kinds = array_keys(upload_references());
 foreach (['avatar', 'proof', 'message'] as $kind)
     ok(in_array($kind, $kinds, true), 'uploads of kind '.$kind.' are among the folders checked');

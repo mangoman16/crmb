@@ -32,6 +32,12 @@ if($command==='help'){
 }
 try{
     require __DIR__.'/../app/bootstrap.php';
+    // While an update is unfinished only the update changes the database: rows
+    // added meanwhile could make up a count that fell and hide what is missing.
+    // An allowlist, so a command added later is refused until somebody decides
+    // otherwise (ADR 0027 §3).
+    if(schema_is_unfinished()&&!in_array($command,['check','status','migrate','update','maintenance:on','maintenance:off'],true))
+        throw new RuntimeException('An update is unfinished ('.schema_unfinished_file().'), so until it has passed only check, status, migrate, update, maintenance:on and maintenance:off run; UPDATING.md, "A refused update", says what to do.');
     if($command==='maintenance:on'){
         if(file_put_contents(maintenance_file(),now().PHP_EOL)===false)throw new RuntimeException('Cannot create maintenance file.');
         echo "Maintenance enabled. New web requests and mail workers are paused. Let running requests finish before migrating.\n";exit;

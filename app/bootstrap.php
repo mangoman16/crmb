@@ -261,7 +261,10 @@ function boot_http(): void {
     // the maintenance page rather than a database error.
     if (is_file(maintenance_file())) {
         $bypass = false;
-        try { $bypass = is_admin(); } catch (Throwable) { $bypass = false; }
+        // Nobody, administrators included, while an update is unfinished: what
+        // they add would change the numbers the update compares, and enough new
+        // rows hide a loss. The way back is the file manager (ADR 0027 §3).
+        try { $bypass = !schema_is_unfinished() && is_admin(); } catch (Throwable) { $bypass = false; }
         if (!$bypass) {
             http_response_code(503); header('Content-Type: text/plain; charset=utf-8'); header('Retry-After: 120');
             exit("Das Portal wird gerade aktualisiert. Bitte versuche es in wenigen Minuten erneut.\nThe portal is being updated. Please try again in a few minutes.\n");
