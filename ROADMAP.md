@@ -72,11 +72,18 @@ In this order.
    - A logo photo stored sideways (EXIF orientation) is measured unrotated and can be refused.
    - Targets below the minimum on a desktop screen: the help button's summary (36 px),
      „Alle ansehen" (21 px).
-6. **Robustness suite.** Unexpected values into every action, as every role (ADR 0026). Not
+6. **A refused update stays refused.** The update guard keeps the portal closed for the
+   request that found the loss only: each migration is in the ledger as soon as it ran, so
+   the next request finds nothing pending, counts after the loss, and opens the portal
+   (found by database-engineer, 2026-10-07; true before 0.6.0 too). UPDATING.md's „stays
+   closed" is not yet true. The architect decides how the counts from before the update are
+   kept until it passes, and how the owner reopens a portal without a shell; then
+   database-engineer builds it. Before real families use the portal.
+7. **Robustness suite.** Unexpected values into every action, as every role (ADR 0026). Not
    started.
-7. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
+8. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
    started.
-8. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
+9. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
 
 ## The owner's goals
 
