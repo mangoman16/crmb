@@ -54,8 +54,9 @@ declare(strict_types=1);
  * forged as a pass would write them; a newer upload on top; the copy imported
  * with the new files still in place, then broken off at contacts, then whole; a
  * release that takes the table off the list; a file that empties the table, one
- * that loses a row and stops, one that stops every time; and the record of the
- * unfinished update unwritable, then unreadable.
+ * that loses a row and stops, one that stops every time, one that stops in an
+ * update run with skip-backup; and the record of the unfinished update
+ * unwritable, then unreadable.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -1302,12 +1303,24 @@ $stopping['copy_contacts'] = $contactsIn($stopping['copy'][0] ?? 'none');
 $stopping['restored'] = $putBack('999_e_mistake_makes_a_table_and_stops.sql', $untouched);
 foreach ($stopping['copy'] as $name) @unlink(backup_dir() . '/' . $name);
 
+// A file that stops in an update run with skip-backup: there is no copy, so the
+// refusal sends nobody looking for one.
+$clean();
+$add('999_g_mistake_stops_without_a_copy.sql', "INSERT INTO no_such_table VALUES (1);\n");
+file_put_contents(backup_override_file(), '');
+$uncopied = ['before' => $state(), 'request' => $request(), 'skip_backup_left' => is_file(backup_override_file())];
+$take('999_g_mistake_stops_without_a_copy.sql');
+$uncopied['after'] = $request();
+
 // 8. No record, no migration: its place taken by a folder, which no write can
 //    replace, for root as for anybody (a read-only folder stops nobody as root).
+//    Several page views, none of which may write a copy.
 $clean();
 mkdir(schema_unfinished_file());
 $add('999_f_a_release_makes_a_table.sql', "CREATE TABLE made_without_the_numbers (id INT PRIMARY KEY) ENGINE=InnoDB;\n");
-$unwritable = ['before' => $state(), 'request' => $request(), 'part_left' => is_file(schema_unfinished_file() . '.part')];
+$unwritable = ['before' => $state(), 'requests' => []];
+foreach ([1, 2, 3] as $n) $unwritable['requests'][$n] = $request();
+$unwritable['part_left'] = is_file(schema_unfinished_file() . '.part');
 rmdir(schema_unfinished_file());
 
 // 9. A record that cannot be read: half a JSON object, then one whose counts are
@@ -1323,6 +1336,6 @@ $unreadable['after'] = $request();
 foreach ($written($unwritable['before'], $unreadable['after']) as $name) @unlink(backup_dir() . '/' . $name);
 
 $result['runner'] = $runner + ['mistake' => $mistake, 'off_list' => $offList, 'emptied' => $emptied, 'halfway' => $halfway,
-                               'stopping' => $stopping, 'unwritable' => $unwritable, 'unreadable' => $unreadable];
+                               'stopping' => $stopping, 'uncopied' => $uncopied, 'unwritable' => $unwritable, 'unreadable' => $unreadable];
 
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

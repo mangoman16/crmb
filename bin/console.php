@@ -51,9 +51,19 @@ try{
         try{$schema=scalar('SELECT MAX(version) FROM schema_migrations');}catch(PDOException){$schema='not migrated';}
         try{$pending=schema_pending();}catch(PDOException){$pending=array_map('basename',migration_files());}
         $result=['version'=>app_version(),'php'=>PHP_VERSION,'maintenance'=>is_file(maintenance_file()),'schema'=>$schema,'pending'=>$pending];
-        foreach(['accounts','students','contacts','absences','charges','payments','threads','messages','news','mail_jobs'] as $table)$result['rows'][$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
-        $result['totals_cents']=['charges'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM charges WHERE cancelled=0'),'confirmed_payments'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE voided=0 AND confirmed_at IS NOT NULL')];
-        echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE).PHP_EOL;exit;
+        // A table that is not there is null and named in a sentence, not the
+        // engine's error: this is the command somebody runs when an update has
+        // lost one (ADR 0027).
+        $missing=[];
+        $count=function(string $table,string $sql)use(&$missing):?int{
+            try{return (int)scalar($sql);}
+            catch(PDOException $e){if($e->getCode()!=='42S02')throw $e;$missing[$table]=$table;return null;}
+        };
+        foreach(['accounts','students','contacts','absences','charges','payments','threads','messages','news','mail_jobs'] as $table)$result['rows'][$table]=$count($table,'SELECT COUNT(*) FROM '.$table);
+        $result['totals_cents']=['charges'=>$count('charges','SELECT COALESCE(SUM(amount_cents),0) FROM charges WHERE cancelled=0'),'confirmed_payments'=>$count('payments','SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE voided=0 AND confirmed_at IS NOT NULL')];
+        echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE).PHP_EOL;
+        if($missing){fwrite(STDERR,'The database is missing '.(count($missing)>1?'the tables ':'the table ').implode(', ',$missing).'; UPDATING.md, "A refused update", says how to bring '.(count($missing)>1?'them':'it')." back.\n");exit(1);}
+        exit;
     }
     if($command==='status'){
         // Deliberately readable rather than JSON: this is the command a person

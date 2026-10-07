@@ -127,7 +127,16 @@ function schema_mark_unfinished(array $counts, ?string $backup): array {
         'counts' => $counts,
     ];
     if (schema_unfinished_write($record)) return $record;
-    throw new UpdateBlocked(
+    throw schema_unwritable();
+}
+
+/**
+ * The refusal for an update that cannot keep its numbers. schema_refuse_unsafe()
+ * gives it before the copy is taken; schema_mark_unfinished() after, should the
+ * write still fail.
+ */
+function schema_unwritable(): UpdateBlocked {
+    return new UpdateBlocked(
         'Vor der Aktualisierung konnte das Portal im Ordner storage nicht schreiben. Ohne die Zahlen von vorher fängt es nicht an, und es hat nichts geändert. Bitte im Dateimanager dem Ordner storage Schreibrechte geben (755) und die Seite neu laden.',
         'Before updating, the portal could not write into the storage folder. Without the numbers from before it does not start, and it has changed nothing. Please make the storage folder writable in the file manager (755), then reload the page.',
         'Cannot write ' . schema_unfinished_file() . ': without the counts from before the update, nothing is migrated.');
@@ -310,6 +319,10 @@ class UpdateBlocked extends RuntimeException {
  * attempt of the same update stopped (schema_record_stop()). What it reports as
  * applied is the furthest: a retry starts at statement 1 and often stops there,
  * on what an earlier attempt already did.
+ *
+ * $copied: whether the copy from before the update is there. An update run
+ * with skip-backup has none, nor does a first install, and the sentence that
+ * sends her to it is said only when it is.
  */
 class SchemaError extends UpdateBlocked {
     public function __construct(
@@ -319,12 +332,13 @@ class SchemaError extends UpdateBlocked {
         public readonly string $sql,
         public readonly string $reason,
         public readonly int $reached = 0,
+        public readonly bool $copied = false,
     ) {
         $furthest = max($statement, $reached);
         $where = $version . ' (' . $furthest . '/' . $statements . ')';
         parent::__construct(
-            'Eine Datenbankänderung ist fehlgeschlagen: ' . $where . '. Die Sicherung von vorher liegt im Ordner storage/backups.',
-            'A database change failed: ' . $where . '. The copy taken beforehand is in storage/backups.',
+            'Eine Datenbankänderung ist fehlgeschlagen: ' . $where . '.' . ($copied ? ' Die Sicherung von vorher liegt im Ordner storage/backups.' : ''),
+            'A database change failed: ' . $where . '.' . ($copied ? ' The copy taken beforehand is in storage/backups.' : ''),
             $version . ' failed at statement ' . $statement . ' of ' . $statements . ":\n\n"
             . substr(preg_replace('/\s+/', ' ', $sql) ?? '', 0, 300) . "\n\n" . $reason . "\n\n"
             . ($furthest > $statement ? 'An earlier attempt of this update stopped at statement ' . $furthest . ".\n" : '')
@@ -419,7 +433,8 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
                 try { run_migration_statement($statement); }
                 catch (Throwable $e) {
                     $reached = schema_record_stop($unfinished, $version, $i + 1, count($statements));
-                    throw new SchemaError($version, $i + 1, count($statements), $statement, $e->getMessage(), $reached);
+                    $copied = is_string($unfinished['backup'] ?? null) && glob(backup_dir() . '/' . $unfinished['backup'] . '-*.sql');
+                    throw new SchemaError($version, $i + 1, count($statements), $statement, $e->getMessage(), $reached, $copied);
                 }
             }
             run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)', [$version, $hash, now()]);
@@ -470,11 +485,11 @@ function run_migration_statement(string $statement): void {
 }
 
 /**
- * The three things that must be true before a migration may run.
+ * What must be true before a migration may run.
  *
- * All of them are about the upload rather than the SQL, because by the time
- * this runs the old files are already gone and the only remaining choice is
- * whether to touch the database as well.
+ * All of it is about the upload and the storage folder rather than the SQL,
+ * because by the time this runs the old files are already gone and the only
+ * remaining choice is whether to touch the database as well.
  *
  * Returns the copy it wrote, or null when it wrote none: nothing was pending,
  * the operator's skip-backup was there, or an update is $unfinished. That update
@@ -504,19 +519,24 @@ function schema_refuse_unsafe(callable $log, bool $unfinished = false): ?string 
     // 3. Nothing to migrate means nothing to protect, and a fresh install has no
     //    data yet either.
     if (!schema_pending()) return null;
+    // Somewhere to keep the numbers from before (ADR 0027 §1), asked before the
+    // copy: refused after it, every page view would write one more, and five
+    // later the copies from before earlier updates would be pruned. Before the
+    // skip-backup is used up, too. A record already there was read before this
+    // runs, so anything in its place now is not one.
+    $record = schema_unfinished_file();
+    if (!$unfinished && (file_exists($record) || !@touch($record . '.part') || !@unlink($record . '.part')))
+        throw schema_unwritable();
     // Consumed whenever something is pending, an update unfinished or not, so
     // that its meaning does not change.
-    if (backup_override_claimed()) {
-        // It answers true for a file it could not remove, and one left behind
-        // would skip the copy before every later update too.
-        if (is_file(backup_override_file()))
-            throw new UpdateBlocked(
-                'Im Ordner storage liegt eine Datei skip-backup, die das Portal nicht löschen kann. Sie gilt nur für eine Aktualisierung, deshalb fängt das Portal nicht an, und es hat nichts geändert. Bitte im Dateimanager dem Ordner storage Schreibrechte geben (755) und die Seite neu laden.',
-                'There is a file named skip-backup in the storage folder that the portal cannot delete. It is meant for one update only, so the portal does not start, and it has changed nothing. Please make the storage folder writable in the file manager (755), then reload the page.',
-                'Cannot remove ' . backup_override_file() . ': one the portal cannot consume would skip the copy before every later update too.');
-        $log('Backup skipped: storage/skip-backup was present.');
-        return null;
+    try { $skipped = backup_override_claimed(); }
+    catch (BackupError $e) {
+        throw new UpdateBlocked(
+            'Im Ordner storage liegt eine Datei skip-backup, die das Portal nicht löschen kann. Sie gilt nur für eine Aktualisierung, deshalb fängt das Portal nicht an, und es hat nichts geändert. Bitte im Dateimanager dem Ordner storage Schreibrechte geben (755) und die Seite neu laden.',
+            'There is a file named skip-backup in the storage folder that the portal cannot delete. It is meant for one update only, so the portal does not start, and it has changed nothing. Please make the storage folder writable in the file manager (755), then reload the page.',
+            $e->getMessage() . ': one the portal cannot consume would skip the copy before every later update too.');
     }
+    if ($skipped) { $log('Backup skipped: storage/skip-backup was present.'); return null; }
     if ($unfinished) { $log('No backup: this update has its copy from before it began.'); return null; }
     try {
         $copy = backup_database('vor-update');

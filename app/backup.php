@@ -159,8 +159,17 @@ function backup_prune(int $keep = BACKUP_KEEP): void {
  */
 function backup_override_file(): string { return dirname(maintenance_file()) . '/skip-backup'; }
 
+/**
+ * Whether the file is there, consuming it if so.
+ *
+ * One that cannot be removed is refused with a BackupError, neither claimed nor
+ * ignored: claimed, it would skip the copy before every later update too;
+ * ignored, an update whose backup fails would ask her for the very file that is
+ * already there.
+ */
 function backup_override_claimed(): bool {
-    if (!is_file(backup_override_file())) return false;
-    @unlink(backup_override_file());
-    return true;
+    $file = backup_override_file();
+    if (!is_file($file)) return false;
+    if (@unlink($file)) return true;
+    throw new BackupError('Cannot remove ' . $file);
 }

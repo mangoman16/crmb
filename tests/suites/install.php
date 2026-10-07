@@ -416,35 +416,56 @@ ok(!backup_override_claimed(), 'a second update needs a fresh one');
 case_('A skip-backup or a record the portal cannot delete is refused, not taken as done');
 /* A skip-backup that stays would skip the copy before every later update, and a
    record that stays would refuse a later update for rows removed on purpose
-   since. Both live in a folder the portal must be able to write; here a folder
-   it may not, beside the maintenance flag as the real ones are. */
+   since. Each in a folder of its own, beside the maintenance flag as the real
+   ones are, made so the portal cannot delete it: for anybody but root a folder
+   without write permission does that; root it does not stop, so for root the
+   file is made immutable (chattr +i), where the file system allows. Returns how
+   to undo that, or null where this run can do neither. */
 $keptFlag = $GLOBALS['config']['maintenance_file'];
-$locked = test_run_dir() . '/locked-' . bin2hex(random_bytes(4));
-mkdir($locked, 0700);
-$GLOBALS['config']['maintenance_file'] = $locked . '/maintenance.flag';
-file_put_contents(backup_override_file(), '');
-file_put_contents(schema_unfinished_file(), '{}');
-file_put_contents($locked . '/probe', '');
-chmod($locked, 0500);
+$undeletable = function (string $name): ?Closure {
+    $folder = test_run_dir().'/locked-'.bin2hex(random_bytes(4));
+    mkdir($folder, 0700);
+    $GLOBALS['config']['maintenance_file'] = $folder.'/maintenance.flag';
+    file_put_contents($folder.'/'.$name, '{}');
+    file_put_contents($folder.'/probe', '');
+    chmod($folder, 0500);
+    if (!@unlink($folder.'/probe')) return fn() => chmod($folder, 0700);
+    chmod($folder, 0700);
+    if (!function_exists('exec')) return null;
+    exec('chattr +i '.escapeshellarg($folder.'/'.$name).' 2>&1', $out, $code);
+    return $code === 0 ? fn() => exec('chattr -i '.escapeshellarg($folder.'/'.$name).' 2>&1') : null;
+};
+$unprotected = [];
+$undo = $undeletable('skip-backup');
 try {
-    if (@unlink($locked . '/probe')) {
-        test_unsupported(array_merge(test_unsupported(),
-            ['a skip-backup and a record the portal cannot delete (this run is root, whom a read-only folder does not stop)']));
-    } else {
+    if ($undo === null) $unprotected[] = 'a skip-backup the portal cannot delete';
+    else {
+        throws(fn() => backup_override_claimed(), 'a skip-backup the portal cannot delete is not claimed', 'Cannot remove');
         // An empty ledger, so that every migration is pending.
         db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
         $said = null;
         try { schema_refuse_unsafe(fn(string $l) => null); } catch (Throwable $e) { $said = $e; }
-        ok($said instanceof UpdateBlocked && str_contains($said->de, 'skip-backup, die das Portal nicht löschen kann') && str_contains($said->de, '(755)'),
-           'with something pending, a skip-backup the portal cannot delete refuses the update rather than skipping the copy, saying the folder must be writable'
-           . ($said && !$said instanceof UpdateBlocked ? ': ' . $said->getMessage() : ''));
+        // Where the whole folder is read-only, the record's place is refused
+        // first, with the same remedy.
+        ok($said instanceof UpdateBlocked && str_contains($said->de, '(755)') && str_contains($said->en, '(755)'),
+           'with something pending the update is refused rather than run without a copy, saying the storage folder must be writable'
+           .($said && !$said instanceof UpdateBlocked ? ': '.$said->getMessage() : ''));
         ok(is_file(backup_override_file()), 'and the file is still there, still meaning one update');
-        throws(fn() => schema_mark_finished(), 'a record the portal cannot delete refuses the run that passed', 'cannot be deleted');
     }
 } finally {
-    chmod($locked, 0700);
+    if ($undo) $undo();
     $GLOBALS['config']['maintenance_file'] = $keptFlag;
 }
+$undo = $undeletable('update-unfinished.json');
+try {
+    if ($undo === null) $unprotected[] = 'a record the portal cannot delete';
+    else throws(fn() => schema_mark_finished(), 'a record the portal cannot delete refuses the run that passed', 'cannot be deleted');
+} finally {
+    if ($undo) $undo();
+    $GLOBALS['config']['maintenance_file'] = $keptFlag;
+}
+if ($unprotected)
+    test_unsupported(array_merge(test_unsupported(), [implode(' and ', $unprotected).' (this run can make no file undeletable: root, and no chattr)']));
 
 case_('The backup is real SQL carrying the real data');
 /* The proof that it imports again lives outside this suite, because importing
@@ -504,6 +525,10 @@ ok(str_contains($stopped->getMessage(), 'Duplicate column name'), 'the long form
 ok(str_contains($stopped->getMessage(), 'ALTER TABLE students'), 'and the statement, for the log and the console');
 ok(str_contains($stopped->getMessage(), 'NOT recorded'), 'and says re-running would start it again');
 ok(!str_contains($stopped->summary(), 'ALTER TABLE'), 'the short form carries no SQL, because a visitor may be reading it');
+ok(!str_contains($stopped->de.$stopped->en, 'storage/backups'), 'told nothing about a copy, it sends nobody looking for one');
+$copied = new SchemaError('007_example.sql', 4, 12, 'ALTER TABLE students ADD COLUMN x INT', 'Duplicate column name', copied: true);
+ok(str_contains($copied->de, 'Die Sicherung von vorher liegt im Ordner storage/backups.') && str_contains($copied->en, 'The copy taken beforehand is in storage/backups.'),
+   'told the copy is there, it says where');
 
 case_('The first administrator can only be created once');
 run('DELETE FROM accounts');
@@ -1005,6 +1030,19 @@ if (!function_exists('proc_open')) {
     }
     $status = $console('status');
     ok(str_contains($status['out'], 'files    '.app_version()) && str_contains($status['out'], 'state'), 'status runs'.($status['err'] !== '' ? ': '.$status['err'] : ''));
+    // check is what somebody runs when an update has lost a table: it names the
+    // table in a sentence rather than stopping on the engine's error.
+    $healthy = $console('check');
+    is_same([0, ''], [$healthy['code'], $healthy['err']], 'check runs, and finds nothing missing');
+    db()->exec('RENAME TABLE contacts TO contacts_away_for_a_moment');
+    try { $short = $console('check'); }
+    finally { db()->exec('RENAME TABLE contacts_away_for_a_moment TO contacts'); }
+    is_same([1, ['The database is missing the table contacts; UPDATING.md, "A refused update", says how to bring it back.']],
+            [$short['code'], explode("\n", trim($short['err']))], 'with contacts gone, check exits 1 naming it in one sentence');
+    $report = json_decode($short['out'], true);
+    ok(is_array($report) && array_key_exists('contacts', $report['rows'] ?? []) && $report['rows']['contacts'] === null
+       && is_int($report['rows']['students'] ?? null), 'and still reports every other table, with contacts as null');
+    ok(!str_contains($short['out'].$short['err'], 'SQLSTATE'), 'and no engine error');
     unlink($work.'/update-unfinished.json');
     $charged = $console('billing:run', '2026-09');
     ok($charged['code'] === 0 && $charges() > $before, 'without the record the same command charges the child, so it was the record that held it back'

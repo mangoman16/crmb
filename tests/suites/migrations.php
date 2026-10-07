@@ -1166,6 +1166,19 @@ foreach ($s['requests'] as $n => $r)
 ok(in_array($s['copy'][0] ?? '?', end($s['requests'])['copies'] ?? [], true), 'the copy from before the update is still there after the last');
 is_same($contacts, $s['copy_contacts'], 'holding every contact');
 is_same(null, $s['restored']['said'], 'and the previous files with it reopen the portal');
+ok(str_contains($s['requests'][1]['said']['de'] ?? '', 'Die Sicherung von vorher liegt im Ordner storage/backups.')
+   && str_contains($s['requests'][1]['said']['en'] ?? '', 'The copy taken beforehand is in storage/backups.'), 'its refusal says the copy from before is in storage/backups, which it is');
+
+case_('A migration that stops in an update run with skip-backup sends nobody looking for a copy that was never taken');
+$c = $u['uncopied'];
+is_same('SchemaError', $c['request']['said']['class'] ?? null, 'the file stops');
+is_same(false, $c['skip_backup_left'], 'skip-backup was used up');
+is_same($c['before']['copies'], $c['request']['copies'] ?? null, 'and no copy was written');
+$data = (array)($c['request']['record']['data'] ?? []);
+ok(array_key_exists('backup', $data) && $data['backup'] === null, 'the record names none');
+is_same(['Eine Datenbankänderung ist fehlgeschlagen: 999_g_mistake_stops_without_a_copy.sql (1/1).', 'A database change failed: 999_g_mistake_stops_without_a_copy.sql (1/1).'],
+        $saidBy([$c['request']])[0], 'and the refusal names the file and the statement, and no copy');
+is_same(null, $c['after']['said'], 'without the file the next page view passes');
 
 case_('A retry reports how far the update got, not where the retry stopped');
 // Every retry starts at statement 1 and stops there, on the table the first
@@ -1177,14 +1190,18 @@ foreach ($s['requests'] as $n => $r)
 ok(str_contains($s['requests'][2]['said']['de'] ?? '', $name . ' (2/2)'), 'and the closed page says so');
 ok(str_contains($s['requests'][2]['said']['log'] ?? '', 'Statements 1 to 1 were applied'), 'as does the log, which says statement 1 is applied');
 
-case_('Without the record, nothing is migrated [ADR 0027 §1]');
+case_('Without the record, nothing is migrated, and no copy is written either [ADR 0027 §1]');
+// Refused after the copy, each page view wrote one more, and BACKUP_KEEP page
+// views later the copies from before earlier updates had been pruned.
 $w = $u['unwritable'];
-is_same('UpdateBlocked', $w['request']['said']['class'] ?? null, 'with its place taken by a folder, the update is refused');
-is_same(['Vor der Aktualisierung konnte das Portal im Ordner storage nicht schreiben. Ohne die Zahlen von vorher fängt es nicht an, und es hat nichts geändert. Bitte im Dateimanager dem Ordner storage Schreibrechte geben (755) und die Seite neu laden.',
-         'Before updating, the portal could not write into the storage folder. Without the numbers from before it does not start, and it has changed nothing. Please make the storage folder writable in the file manager (755), then reload the page.'],
-        $saidBy([$w['request']])[0], 'with the sentences for a record that cannot be written');
-is_same([$w['before']['ledger'], $w['before']['tables'], $w['before']['counts']],
-        [$w['request']['ledger'] ?? null, $w['request']['tables'] ?? null, $w['request']['counts'] ?? null], 'the ledger, the tables and the rows are unchanged');
+$unwritableSaid = ['Vor der Aktualisierung konnte das Portal im Ordner storage nicht schreiben. Ohne die Zahlen von vorher fängt es nicht an, und es hat nichts geändert. Bitte im Dateimanager dem Ordner storage Schreibrechte geben (755) und die Seite neu laden.',
+                   'Before updating, the portal could not write into the storage folder. Without the numbers from before it does not start, and it has changed nothing. Please make the storage folder writable in the file manager (755), then reload the page.'];
+foreach ($w['requests'] as $n => $r) {
+    is_same($unwritableSaid, $saidBy([$r])[0], 'with its place taken by a folder, page view ' . $n . ' is refused with the sentences for a record that cannot be written');
+    is_same([$w['before']['ledger'], $w['before']['tables'], $w['before']['counts']],
+            [$r['ledger'] ?? null, $r['tables'] ?? null, $r['counts'] ?? null], 'page view ' . $n . ' leaves the ledger, the tables and the rows as they were');
+    is_same($w['before']['copies'], $r['copies'] ?? null, 'and writes no copy, so none is pruned');
+}
 is_same(false, $w['part_left'], 'and nothing half-written is left beside it');
 
 case_('A record that cannot be read refuses, and nothing runs [ADR 0027 §1]');
