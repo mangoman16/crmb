@@ -21,12 +21,21 @@ In this order.
    the minimum the server side needed: their design pass is item 4. The whole suite and the
    browser walk pass at `d095ca4` on MariaDB 10.11.14 with PHP 8.4.26 (VALIDATION.md); the
    sweep at phone width has not been run on it.
-2. **ADR 0026 (being written).** The core concept, the beta rules, and a verified list of what
-   to delete. The architect is writing it.
-3. **Removals.** Not started; waits for ADR 0026.
-   - Custom fields, with their data (decided 2026-10-07).
-   - The demo data, cut to the smallest set that still shows every screen.
-   - Whatever ADR 0026 marks remove.
+2. **ADR 0026.** Accepted (`4314eef`): who the portal is for, the beta rules, the goals as the
+   scope test with eight gaps (G1–G8), the robustness rule, and what goes. The architect is
+   adding the owner's answers of 2026-10-07 to it.
+3. **Removals (ADR 0026 §7–§12).** Not started; waits for item 1's review fixes, so nothing
+   collides. In separate commits, each with its migration:
+   - custom fields, with their data;
+   - copying records, saved views, writing to many with its templates, the queue button,
+     the printed sheets, and Verwaltung's „Tarife" tab;
+   - online dots, the chosen status, the status emoji and the online history, and profile
+     pictures;
+   - levels and configured age groups. Children are still sorted and filtered by age,
+     worked out from the birth date;
+   - the example data, cut to one course, four children and two family logins (§9).
+
+   The robustness suite (item 6) is being built meanwhile on a copy of the code.
 
    A document describing a removed feature changes in the commit that removes it, never
    before, so the documents never describe code that is not there.
@@ -136,6 +145,11 @@ In their words.
       until then such a link would open a child's private chats with other families.
     - Viewing the portal as somebody else is look-only: every change is refused while
       viewing, by one rule, except ending the view and signing out.
+  - The owner, on ADR 0026's questions: the online dots, the chosen status, the status emoji
+    and the online history go ("Remove all"). Levels go. Age groups: "trainer needs to sort
+    them by age groups, if it is possible to do that with only birth dates and without
+    explicit groups then well do it" — so no configured bands; the list sorts and filters by
+    age from the birth date.
 - **2026-10-05 and 2026-10-06** — the owner's answers, and the project manager's decisions on
   the designer's questions (ADRs 0022 to 0025, and the design specification):
   - Administrators can read every chat, and their reading is not recorded.

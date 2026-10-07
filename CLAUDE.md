@@ -14,7 +14,7 @@ and a chat. It is in **beta**: no portal holds real families' data yet.
 | When | Read |
 | --- | --- |
 | Starting a session | [ROADMAP.md](ROADMAP.md) — the plan, what is decided, what is open |
-| Before a structural change | [docs/decisions/README.md](docs/decisions/README.md), then the accepted ADRs it names; ADR 0026 (being written) holds the beta rules |
+| Before a structural change | [docs/decisions/README.md](docs/decisions/README.md), then the records it lists as holding; ADR 0026 holds the beta rules and what was removed |
 | Before building a screen | its specification in `docs/design/` |
 | Before a schema change | ADR 0004 and [UPDATING.md](UPDATING.md) |
 | After building anything | [TESTING.md](TESTING.md), and the unreleased section of [CHANGELOG.md](CHANGELOG.md) |
@@ -83,8 +83,8 @@ small too.
 Schema changes and larger changes no longer wait for the owner's approval: the project
 manager decides, and writes under „For the owner to test or deploy" in ROADMAP.md what the
 owner has to test or deploy. Ask the owner when a decision is genuinely theirs — what the
-portal is for, what the trainer or the families should see, what may go — and say what you
-would do and why. What protects any install still holds: the conventions below, the
+portal is for, what the trainer or the families should see, what may go, anything that costs
+money or takes back something they asked for — and say what you would do and why. What protects any install still holds: the conventions below, the
 checksum ledger, an update that refuses rather than guesses, and a backup before every
 update.
 
@@ -217,7 +217,7 @@ claim.
 ## The people using it
 
 - **Mobile first, and measured.** 44pt minimum touch targets. Check 320px, not
-  just 390px. Measure the dense screens rather than eyeballing them — the
+  just 390px, as staff and as a family, light and dark. Measure the dense screens rather than eyeballing them — the
   attendance control had to be rebuilt after five labels were found overlapping.
 - **Plain language, no jargon**, in German by default.
 - **Wizards and visual guidance** for anything with more than one step: one
