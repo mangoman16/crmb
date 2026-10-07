@@ -69,8 +69,11 @@ function dispatch_config(string $action): array {
         // made to correct a typo should not send fifteen emails.
         if(post('notify')) {
             $entry=class_session((int)$c['id'],$on);
+            // Not a placeholder (ADR 0023 §3): nobody reads it, and the
+            // invitation that later turns it into a login would hand the
+            // family a list of old news.
             foreach(rows('SELECT DISTINCT s.account_id FROM class_students cs JOIN students s ON s.id=cs.student_id'
-                .' WHERE cs.class_id=? AND cs.left_on IS NULL AND s.account_id IS NOT NULL',[(int)$c['id']]) as $who)
+                .' WHERE cs.class_id=? AND cs.left_on IS NULL AND NOT '.student_without_sign_in_sql(),[(int)$c['id']]) as $who)
                 notify((int)$who['account_id'],'schedule',$c['name'].' – '.fmt_date($on),
                     session_statuses()[$entry['status']??'planned']??'','classes',['id'=>(int)$c['id'],'tab'=>'dates']);
             $sent=notify_class_change($c,$on,$entry,text_limit('note',500));

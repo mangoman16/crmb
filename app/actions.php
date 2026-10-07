@@ -927,7 +927,7 @@ function dispatch_action(string $action): array {
         $method=choose(post('method'),['email','username','none']);
         // Checked again: a status removed since, a course archived or filled
         // since step 1, are refused now rather than written.
-
+        $draft=student_draft_checked($draft,true);
         $locale='de';$email='';$username='';
         if($method==='email') {
             $email=email_value(post('email'));

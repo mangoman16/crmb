@@ -372,6 +372,12 @@ is_same(0, (int)scalar('SELECT COUNT(*) FROM class_students WHERE student_id=?',
 does_not_throw(fn() => act('class_member_add', ['class_id'=>(string)$open, 'student_id'=>(string)$jonas]), 'a placeholder is a login, and enrols');
 give_every_student_a_login();
 does_not_throw(fn() => act('class_member_add', ['class_id'=>(string)$open, 'student_id'=>(string)$legacy]), 'once the update has given the student one, so does that student');
+make_enrolment($open, make_student(['account_id'=>$signsIn = make_account()]));
+act('class_session_save', ['class_id'=>(string)$open, 'session_on'=>'2026-11-02', 'status'=>'cancelled', 'location'=>'', 'note'=>'', 'notify'=>'1']
+    + time_post('starts_at', '') + time_post('ends_at', ''));
+is_same([1, 0, 0], array_map(fn(int $a) => (int)scalar("SELECT COUNT(*) FROM notifications WHERE kind='schedule' AND account_id=?", [$a]),
+        [$signsIn, (int)$loginOf($jonas)['id'], (int)$loginOf($legacy)['id']]),
+        'a changed date is told to a login that signs in, never to a placeholder, whose later holder would find old news');
 $card = render_view('student', ['id'=>$jonas]);
 ok(str_contains($card, e('Ohne Anmeldung')) && str_contains($card, 'value="signin_link"') && str_contains($card, 'name="username"'),
    'the access card of a placeholder says „Ohne Anmeldung“ and offers a link with a username');

@@ -101,7 +101,7 @@ release and emptied again for the next.
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
 - The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a copied course has its group; a stored photo keeps only the picture (ADR 0022): C.1–C.20
 - Billing and invoices after the review of October 2026: an archived tariff stays on a child, a cancelled charge can be charged again, „Als bezahlt eintragen" confirms rather than doubles, a charge on an invoice cannot be cancelled, an invoice is not e-mailed to a family who said no, the invoices page counts every invoice, a membership ending mid-month is charged to that day, a child coming back starts afresh, the age filter finds the right children, background charges are German and nobody's, and the „Zahlungsziel" setting that did nothing is gone: [B.1–B.14](#billing-and-invoices-after-the-review-of-october-2026)
-- Every student has a login — „Ohne Anmeldung" until somebody gives it an address or a username; a wizard „Schüler anlegen" is the one way to add a child; a username signs in in the same box as an address; a one-time „Anmeldelink" with a QR code for a child without an e-mail address; deleting a child's login gives them a fresh, empty one (ADR 0023): [L.1–L.24](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
+- Every student has a login — „Ohne Anmeldung" until somebody gives it an address or a username; a wizard „Schüler anlegen" is the one way to add a child; a username signs in in the same box as an address; a one-time „Anmeldelink" with a QR code for a child without an e-mail address; deleting a child's login gives them a fresh, empty one (ADR 0023): [L.1–L.25](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
 
 ---
 
@@ -1983,6 +1983,11 @@ the checks are about what happens, and hold for both.
   angemeldet".
 - [ ] **L.24** A child „Ohne Anmeldung" can be put into a course on its
   **Kurse** tab as before; billing runs for them as for anybody.
+- [ ] **L.25** In a course with a child „Ohne Anmeldung" and a child whose
+  login is in use, change a date with „Alle Kursteilnehmer per E-Mail
+  informieren" ticked. Signed in as the child in use, the bell shows the change.
+  Then invite the first child and accept the invitation: their bell does not
+  list the change from before they had a login.
 
 ---
 
