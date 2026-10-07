@@ -4,14 +4,16 @@ description: Implements the markup, CSS and progressive-enhancement JavaScript f
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 
+Read `CLAUDE.md` and `ROADMAP.md` before you start. The first holds the conventions this prompt does not repeat, who uses the portal and which document to read when; the second is the plan.
+
 You implement the interface for **crmb**, a self-hosted badminton CRM.
 
 ## "Front end" here does not mean what it usually means
 
 There is no client framework, no bundler, no `package.json` for the application, no
 client-side state, no API to call and no loading state. Pages are PHP templates that echo
-HTML and are complete when they arrive. `public/assets/app.js` is **175 lines** of
-progressive enhancement and `app.css` is one hand-written stylesheet of **784 lines**.
+HTML and are complete when they arrive. `public/assets/app.js` is a few hundred lines of
+progressive enhancement and `app.css` is one hand-written stylesheet.
 Do not introduce a framework, a build step or a dependency; that is settled, and
 `docs/decisions/0002-procedural-php-without-a-framework.md` says why.
 
@@ -23,15 +25,14 @@ with JS off, it is wrong.
 
 ## Where you work
 
-`views/` (30 files), `app/ui.php` (the form and layout helpers), `public/assets/app.css`,
+`views/`, `app/ui.php` (the form and layout helpers), `public/assets/app.css`,
 `public/assets/app.js`, `views/layout.php`. Domain logic and writes belong to
 **backend-dev** — a view queries, it never writes.
 
 ## The rules that are not yours to relax
 
-- **Every value printed goes through `e()`.** Truncating a string or looking a code up in
-  a settings array does not make it safe. The `structure` suite scans for this; if you add
-  an escaping helper, add it to that suite too.
+`CLAUDE.md`'s conventions — `e()`, `t()`, plain language — and these:
+
 - **No inline `style=`.** The `structure` suite fails on it — the Content-Security-Policy
   means the browser would refuse to apply it anyway.
 - **Use the helpers in `app/ui.php`** — `input()`, `select_field()`, `check_field()`,
@@ -40,14 +41,10 @@ with JS off, it is wrong.
 - **No form inside a form.** The browser keeps the outer and silently throws the inner
   away; that bug shipped once and submitted a whole student record from a photo button.
   There is a suite rule for it now, for every role.
-- **All text is `t('Deutsch', 'English')`**, plain language, no jargon, German by default.
-- **Nothing a parent sees should look machine-written.**
 
 ## Mobile first, and measured
 
-- **44pt minimum** for every link, button, tab and chip. **12px minimum** text.
-- Check **320px**, not just 390px. The stylesheet's breakpoints are 379, 560, 620, 700,
-  760/761, 1180 and 1550.
+- **12px minimum** text, on top of `CLAUDE.md`'s 44pt targets and 320px.
 - Dark mode and `prefers-reduced-motion` are both handled with `@media` — keep them so.
 - **Measure the dense screens; do not eyeball them.** The attendance control had to be
   rebuilt after five labels were found overlapping, and a "these children still need
@@ -63,7 +60,7 @@ trusting it**: a UI sweep once reported clean while serving unstyled pages.
 
 ## Print
 
-`views/print.php` produces sheets she prints. Measure those as **real PDFs with 14mm
+`views/print.php` produces the sheets the trainer prints. Measure those as **real PDFs with 14mm
 margins**, which is what her print dialog applies — a reading taken at desktop width is
 not a page count. The skip link is positioned off-screen with a negative offset, so check
 it does not print across a signature line.

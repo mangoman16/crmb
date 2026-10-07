@@ -1,8 +1,28 @@
 # Working on this codebase
 
-A self-hosted CRM for one badminton coach and her students. It is used by a
-trainer who is not technical, on a phone, with real families' data in it. That
-is the whole design constraint, and it decides most arguments.
+A self-hosted portal for a badminton club: students, courses, attendance, fees and invoices,
+and a chat. It is in **beta**: no portal holds real families' data yet.
+
+- **The owner** is the administrator and builds the portal together with Claude. Use
+  they/them for the owner.
+- **The trainer** is not technical and works on a phone, an iPhone.
+- **Students and families** are not technical, work on phones and read little. They see a
+  deliberately small part of the portal.
+
+## Which document, when
+
+| When | Read |
+| --- | --- |
+| Starting a session | [ROADMAP.md](ROADMAP.md) — the plan, what is decided, what is open |
+| Before a structural change | [docs/decisions/README.md](docs/decisions/README.md), then the accepted ADRs it names; ADR 0026 (being written) holds the beta rules |
+| Before building a screen | its specification in `docs/design/` |
+| Before a schema change | ADR 0004 and [UPDATING.md](UPDATING.md) |
+| After building anything | [TESTING.md](TESTING.md), and the unreleased section of [CHANGELOG.md](CHANGELOG.md) |
+| Before a release | [VALIDATION.md](VALIDATION.md), [UPDATING.md](UPDATING.md), [INSTALL.md](INSTALL.md) and `VERSION` |
+| A change that touches personal data | `docs/privacy-draft-de.txt` and `docs/privacy-draft-en.txt` |
+| Tests | [tests/README.md](tests/README.md) |
+
+ROADMAP.md is updated in the commit that finishes or adds a task.
 
 ## This session is the project manager
 
@@ -52,17 +72,21 @@ small too.
 
 - **Work on a feature branch.** Never push to `main` directly.
 - **Small commits with clear messages**, one change each, in the style already in the log:
-  a subject line that says what changed for the operator, then prose explaining why.
+  a subject line that says what changed for the people using the portal, then prose
+  explaining why.
 - **Never commit secrets.** `config/config.php` holds the database password and the mail
   credentials; `.gitignore` already covers it and `/.env`, and it stays that way. A new
   file that holds a credential goes into `.gitignore` in the commit that creates it.
 
-### Stop and ask
+### Beta, and when to ask the owner
 
-Stop and ask the owner whenever a decision is **ambiguous**, **destructive**, or **changes
-the database schema**. Say what you would do and why, and wait. She has no staging copy,
-no shell and no way to undo a migration that has already run against her families' data —
-the cost of asking is a minute and the cost of guessing is hers to carry.
+Schema changes and larger changes no longer wait for the owner's approval: the project
+manager decides, and writes under „For the owner to test or deploy" in ROADMAP.md what the
+owner has to test or deploy. Ask the owner when a decision is genuinely theirs — what the
+portal is for, what the trainer or the families should see, what may go — and say what you
+would do and why. What protects any install still holds: the conventions below, the
+checksum ledger, an update that refuses rather than guesses, and a backup before every
+update.
 
 ## Leave the code better than you found it — without being asked
 
@@ -76,7 +100,7 @@ What that means concretely:
   general fix and a test that fails without it.
 - **Remove duplication when you are already in the file.** Two copies of a rule
   will diverge; the second one is always the one that gets forgotten.
-- **Name things after what they mean to the operator**, not after their
+- **Name things after what they mean to the people using it**, not after their
   mechanism. `billing_free_period()`, not `calc_bp()`.
 - **Delete dead code** rather than commenting it out. Git remembers it.
 - **Write the comment that says why**, never the one that restates the code. If
@@ -86,8 +110,23 @@ What that means concretely:
   right call, say so and make the case.
 
 What "better" is not: a framework, a build step, a new dependency, or a
-rewrite of something that works. Every dependency is a thing she must keep
+rewrite of something that works. Every dependency is a thing somebody must keep
 patched. The bar for adding one is high and the reason goes in the commit.
+
+### The owner's rule: the best code is the code never written
+
+Understand the problem first: read the task and the code it touches, and trace
+the real flow end to end. Then stop at the first rung that holds: does it need
+to be built at all; does it already exist here (reuse the helper); does PHP or
+the browser already do it; does an installed dependency do it; can it be one
+line; only then write the least code that works. Deletion over addition, boring
+over clever, the fewest files, no abstraction nobody asked for. A bug is fixed
+in the shared function once, not in each caller. A deliberate shortcut with a
+known ceiling gets a `ponytail:` comment naming the ceiling and the way up.
+
+None of this excuses less care for input validation, errors that could lose
+data, security or accessibility — and logic that is not trivial leaves one
+check behind that fails if it breaks.
 
 ## Conventions this codebase already follows
 
@@ -99,10 +138,14 @@ Match them; do not introduce a second style alongside one that works.
   `views/<page>.php`. Actions chain through `app/actions*.php`.
 - **Every query is parameterised.** `ATTR_EMULATE_PREPARES` is off. If a table
   or column name must be interpolated, validate it against an allowlist first —
-  see `tracked_entities()` and `revert_version()` for the pattern.
+  `tracked_entity()` before `entity_snapshot()` puts a table name into SQL
+  (`app/history.php`), and `sql_name()` for any other identifier.
 - **Every write goes through `transactional()`** (`app/tx.php`), which nests
-  safely via savepoints. Writes worth undoing go through `tracked()`
-  (`app/history.php`) so the operator can reverse a mis-tap.
+  safely via savepoints. Writes worth recording go through `tracked()` or
+  `tracked_insert()` (`app/history.php`), so „Änderungen" shows what changed,
+  field by field, and who changed it. It informs and puts nothing back — there is
+  no undo, and the `history` suite checks that `revert_version()` stays gone — so
+  a destructive action needs a way back of its own.
 - **Every value printed to a page goes through `e()`.** Truncating a string or
   looking a code up in a settings array does not make it safe. The `structure`
   test suite enforces this; if you add an escaping helper, add it there too.
@@ -110,7 +153,7 @@ Match them; do not introduce a second style alongside one that works.
 - **Timestamps are UTC** via `now()`; display goes through `fmt_date()` /
   `fmt_datetime()`, which convert. DATE columns are calendar dates and are
   deliberately not shifted.
-- **All operator-facing text is bilingual** via `t('Deutsch', 'English')`.
+- **All text people read is bilingual** via `t('Deutsch', 'English')`.
   German is the default.
 - **Every setting is declared once** in `app/defaults.php` with a type and a
   default, so no value is ever undefined and a new setting needs no migration.
@@ -118,11 +161,11 @@ Match them; do not introduce a second style alongside one that works.
   edit one that has shipped — the ledger stores checksums and will refuse it.
   Give every new column a `DEFAULT` so rows written by the previous version
   cannot leave a NULL the new code has to guess about.
-- **The operator has no shell.** She installs by opening `setup.php` and updates
-  by uploading files, so a change that needs a command run afterwards is not
-  finished. The migration runner in `app/schema.php` is the one copy the
-  installer, the console and the first request after an upload all use; adding a
-  second path for any of them is how they start disagreeing.
+- **Whoever runs a portal may have no shell.** A portal is installed by opening
+  `setup.php` and updated by uploading files, so a change that needs a command
+  run afterwards is not finished. The migration runner in `app/schema.php` is the
+  one copy the installer, the console and the first request after an upload all
+  use; adding a second path for any of them is how they start disagreeing.
 - **An update refuses rather than guesses.** Older files than the database, an
   incomplete upload, a database it could not back up first, or a result with
   fewer rows in `schema_guarded_tables()` than it started with: each one keeps
@@ -132,7 +175,7 @@ Match them; do not introduce a second style alongside one that works.
 ## Before you say something works
 
 ```bash
-tests/mariadb-local.sh                 # the whole suite on a throwaway MariaDB, about two minutes
+tests/mariadb-local.sh                 # the whole suite on a throwaway MariaDB, about three minutes
 tests/mariadb-local.sh billing views   # one or more suites
 tests/e2e.sh                           # the first evening, end to end, in a real browser
 php -l <file>                          # after any edit that a test might not reach
@@ -158,26 +201,36 @@ test that has never failed has not been tested.
 
 ## Honesty about what has been verified
 
-The suite runs on **MariaDB only** — the engine her server runs (10.11, with PHP
-8.4). There is no SQLite translation any more: `php tests/run.php` refuses
-without a `*_test` database, and `tests/mariadb-local.sh` starts a throwaway one.
-A run prints, at the end, whatever it could not cover. The suite and the browser
-walk have been run on **MariaDB 10.11.14 with PHP 8.4.26**; her server runs
-10.11.19 and 8.4.24.
+The suite runs on **MariaDB only**. There is no SQLite translation any more:
+`php tests/run.php` refuses without a `*_test` database, and
+`tests/mariadb-local.sh` starts a throwaway one. A run prints, at the end,
+whatever it could not cover. The suite and the browser walk have been run on
+**MariaDB 10.11.14 with PHP 8.4.26** ([VALIDATION.md](VALIDATION.md) has each run
+and its date); the server the portal is meant for runs MariaDB 10.11.19 with PHP
+8.4.24.
 
-**MySQL 8.0 itself is still unverified** — MariaDB is one of the two supported
-engines, not both. Say which engine you actually ran on rather than implying
-coverage that does not exist: the operator is making decisions about her
-family's data based on what you claim.
+**MySQL 8.0 has never been run** — MariaDB is one of the two engines meant to
+work, not both. Say which engine you actually ran on rather than implying
+coverage that does not exist: the owner decides what to rely on from what you
+claim.
 
-## The person using this
-
-A middle-aged trainer, iOS user, not technical. Mostly on a phone.
+## The people using it
 
 - **Mobile first, and measured.** 44pt minimum touch targets. Check 320px, not
   just 390px. Measure the dense screens rather than eyeballing them — the
   attendance control had to be rebuilt after five labels were found overlapping.
 - **Plain language, no jargon**, in German by default.
-- **Nothing should look machine-written to a parent.** Students and parents see
-  a deliberately small portion of the app.
+- **Wizards and visual guidance** for anything with more than one step: one
+  question per step, the progress shown, an icon beside a short word. People
+  here read little.
+- **Expect any value from anyone**: a missing field, an array where a string
+  belongs, a huge string, a negative number, an impossible date, somebody else's
+  id, a double tap, the Back button. Every input is checked where it enters; a
+  refusal is one plain sentence on the same page; never a 500, a blank page or a
+  PHP warning.
+- **Another club could run it too.** Nothing specific to one club is hard-coded:
+  it is a setting declared in `app/defaults.php`, and the settings stay
+  comprehensive. No fields defined by users: a new field is a real column.
+- **Nothing should look machine-written to a family.** Students and families
+  see a deliberately small part of the portal.
 - **Destructive actions need a way back**, not just a confirmation box.
