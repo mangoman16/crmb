@@ -319,14 +319,25 @@ function make_account(array $over=[]): int {
     ], $over));
 }
 
+/**
+ * A student, with the placeholder login every student has from the moment they
+ * exist (ADR 0023 §4), unless 'account_id' is given: a login of the case's own,
+ * or null for a student the previous version wrote, which the update's step
+ * (give_every_student_a_login()) has not reached yet.
+ */
 function make_student(array $over=[]): int {
     static $n = 0; $n++;
-    return fixture('students', array_merge([
+    $row = array_merge([
         'first_name' => 'Kind'.$n, 'last_name' => 'Test', 'status' => 'active',
         'joined_on' => '2025-01-01', 'price_cents' => 4500, 'price_note' => '',
         'billing_paused' => 0, 'billing_note' => '', 'internal_notes' => '',
         'revision' => 1, 'created_at' => now(), 'updated_at' => now(),
-    ], $over));
+    ], $over);
+    if (!array_key_exists('account_id', $over))
+        $row['account_id'] = make_account(['name' => login_name_for((string)$row['first_name'], (string)$row['last_name']),
+            'email' => null, 'password_hash' => null, 'state' => 'placeholder', 'verified_at' => null,
+            'is_demo' => (int)($row['is_demo'] ?? 0)]);
+    return fixture('students', $row);
 }
 
 /**
@@ -393,6 +404,18 @@ function make_thread(array $accountIds, array $over=[]): int {
 }
 
 /** A student in a course, on a tariff. Returns the course id for chaining. */
+/**
+ * Make a student the way staff do (ADR 0023 §5): step 1 posts student_draft,
+ * step 2 posts student_create with $method - 'none', 'email' or 'username' -
+ * and what that card asks for in $fields. Returns the new student's id.
+ */
+function create_through_wizard(array $details = [], string $method = 'none', array $fields = []): int {
+    $step2 = act('student_draft', $details + ['first_name' => 'Neu', 'last_name' => 'Kind', 'birth_date' => '',
+                                              'course' => 'none', 'status' => 'active']);
+    $done = act('student_create', ['draft' => (string)$step2[1]['draft'], 'method' => $method] + $fields);
+    return (int)$done[1]['id'];
+}
+
 function make_enrolment(int $classId, int $studentId, array $over=[]): int {
     fixture('class_students', array_merge([
         'class_id' => $classId, 'student_id' => $studentId, 'joined_on' => '2025-01-01',

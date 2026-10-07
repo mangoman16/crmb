@@ -44,7 +44,9 @@ function demo_present(): bool {
 function demo_counts(): array {
     return [
         'students' => (int)scalar('SELECT COUNT(*) FROM students WHERE is_demo=1'),
-        'accounts' => (int)scalar('SELECT COUNT(*) FROM accounts WHERE is_demo=1'),
+        // The logins somebody signs in with: an example student's placeholder
+        // is no more a login to her than it is to the student (ADR 0023 §3).
+        'accounts' => (int)scalar("SELECT COUNT(*) FROM accounts WHERE is_demo=1 AND state<>'placeholder'"),
         'courses'  => (int)scalar('SELECT COUNT(*) FROM classes WHERE is_demo=1'),
     ];
 }
@@ -175,13 +177,15 @@ function demo_fill(bool $force = false): array {
             // The address the portal writes to, and that a login signs in with:
             // every student's own, children's included (ADR 0020) - a parent's
             // is on the emergency contacts below. The first two are the two
-            // family logins, one student each; everybody else has no login yet,
+            // family logins, one student each; everybody else has a placeholder,
+            // as every student has a login (ADR 0023 §4) - example data like
+            // them, so demo_clear() takes it - and nobody signs in with it yet,
             // which is what "Zugang einladen" is for.
             $writeTo = demo_address($n[0], $n[1]);
             run('INSERT INTO students (account_id,first_name,last_name,email,birth_date,joined_on,ended_on,status,level_id,age_group_id,tariff_id,'
                 .'price_cents,price_note,billing_paused,billing_note,internal_notes,revision,created_at,updated_at,is_demo)'
                 .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,1)',
-                [$i < 2 ? $accounts[$writeTo] : null,
+                [$i < 2 ? $accounts[$writeTo] : placeholder_login($n[0], $n[1], true),
                  $n[0], $n[1], $writeTo, $birth->format('Y-m-d'), $joined->format('Y-m-d'),
                  $status === 'ended' ? $today->modify('-30 days')->format('Y-m-d') : null,
                  $status,
@@ -315,10 +319,12 @@ function demo_fill(bool $force = false): array {
 
 /**
  * The example logins, as address and role, staff first. For the setup page,
- * the console and the notice that shows the password.
+ * the console and the notice that shows the password. Only those somebody signs
+ * in with: the example students' placeholders have neither an address nor a
+ * password (ADR 0023 §3).
  */
 function demo_logins(): array {
-    return rows("SELECT email,role FROM accounts WHERE is_demo=1 ORDER BY role='student', id");
+    return rows("SELECT email,role FROM accounts WHERE is_demo=1 AND state<>'placeholder' ORDER BY role='student', id");
 }
 
 /**

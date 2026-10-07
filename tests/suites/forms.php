@@ -11,20 +11,28 @@ $reject = function (string $action, array $fields) {
 };
 
 case_('What was typed survives a rejected save');
-/* Creating a child asks for the basics only now, so this is the form that is
-   actually in front of somebody: a name, a date, and the address the portal
-   writes to - which is the one that gets this refused. */
-$reject('student_save', ['return_page'=>'student','return_id'=>'0','return_tab'=>'',
-    'first_name'=>'Lena','last_name'=>'Hofer','birth_date'=>'2015-04-02','status'=>'active',
-    'joined_on'=>'2026-01-15',
-    'email'=>'maria.hofer@',                  // half an address is what gets it refused
-]);
-$html = render_view('student', ['id'=>0]);
+/* Making a child is the wizard now (ADR 0023 §5), so this is the form that is
+   actually in front of somebody: step 1, a name, a date and a course - and a
+   date of birth that does not exist is what gets it refused. */
+$reject('student_draft', ['return_page'=>'student_new','return_id'=>'0','return_tab'=>'',
+    'first_name'=>'Lena','last_name'=>'Hofer','birth_date'=>'2015-02-30','status'=>'active','course'=>'none']);
+$html = render_view('student_new');
 ok(str_contains($html, 'value="Lena"'), 'the first name is still there');
 ok(str_contains($html, 'value="Hofer"'), 'and the surname');
-ok(str_contains($html, 'value="2015-04-02"'), 'and the date of birth');
-ok(str_contains($html, 'value="2026-01-15"'), 'and the day they joined');
-ok(str_contains($html, 'maria.hofer@'), 'and the value that was refused, so it can be corrected rather than guessed at');
+ok(str_contains($html, '2015-02-30'), 'and the value that was refused, so it can be corrected rather than guessed at');
+ok(preg_match('~<option value="none"[^>]*selected~', $html) === 1, 'and the course chosen');
+
+case_('And on step 2, which comes back to step 2 with its draft whole');
+$draftKey = (string)act('student_draft', ['first_name'=>'Lena','last_name'=>'Hofer','birth_date'=>'2015-04-02','status'=>'active','course'=>'none'])[1]['draft'];
+mail_ready(true);
+$_POST = ['return_draft'=>$draftKey, 'return_page'=>'student_new'];
+is_same(['student_new', ['draft'=>$draftKey]], form_return(), 'a refusal returns to the page with the draft’s key, so a reload keeps step 2');
+$reject('student_create', ['return_page'=>'student_new','return_id'=>'0','return_tab'=>'','return_draft'=>$draftKey,
+    'draft'=>$draftKey, 'method'=>'email', 'email'=>'maria.hofer@', 'locale'=>'de']);
+$html = render_view('student_new', ['draft'=>$draftKey]);
+ok(str_contains($html, e('Schritt 2 von 2')) && str_contains($html, 'Lena Hofer'), 'step 2, with the draft’s details');
+ok(str_contains($html, 'maria.hofer@'), 'and the address that was refused, back in its box');
+mail_ready(false);
 
 case_('And on the full form, which has the boxes the short one leaves out');
 $existing = make_student(['first_name'=>'Tobias', 'last_name'=>'Hofer']);
@@ -42,34 +50,36 @@ ok(str_contains($html, '+43 660 7654321'), 'and the one typed beside it');
 ok(str_contains($html, 'Trainiert seit Herbst'), 'and the long text nobody wants to type twice');
 
 case_('A new child is asked the few things that cannot wait');
-$blank = render_view('student', ['id'=>0]);
-foreach (['first_name', 'last_name', 'birth_date', 'email', 'status', 'joined_on'] as $asked)
-    ok(str_contains($blank, 'name="'.$asked.'"'), 'the create form asks for '.$asked);
-foreach (['price_note', 'internal_notes', 'level_id', 'age_group_id'] as $later)
-    ok(!str_contains($blank, 'name="'.$later.'"'), $later.' waits until the record exists');
+$blank = render_view('student_new');
+foreach (['first_name', 'last_name', 'birth_date', 'course', 'status'] as $asked)
+    ok(str_contains($blank, 'name="'.$asked.'"'), 'step 1 asks for '.$asked);
+foreach (['email', 'price_note', 'internal_notes', 'level_id', 'age_group_id', 'joined_on'] as $later)
+    ok(!str_contains($blank, 'name="'.$later.'"'), $later.' waits: the sign-in on step 2, the rest until the record exists');
 // Her own fields wait too. They are the ones most likely to be many, and a
 // create form that grows every time she adds one is a create form that is back
 // where it started.
 $own = fixture('field_definitions', ['label'=>'Bisheriger Verein', 'label_en'=>'', 'field_type'=>'text',
     'section_name'=>'', 'options_json'=>'[]', 'default_json'=>'null', 'required'=>0,
     'visibility'=>'view', 'sort_order'=>9, 'archived'=>0]);
-$blank = render_view('student', ['id'=>0]);
+$blank = render_view('student_new');
 ok(!str_contains($blank, 'custom['.$own.']'), 'and so does a custom field she added herself');
-ok(str_contains($blank, 'Anlegen und weiter'), 'and the button says there is more to come');
+ok(str_contains($blank, e('Weiter')), 'and the button says there is more to come');
 $existingHtml = render_view('student', ['id'=>$existing]);
 ok(str_contains($existingHtml, 'custom['.$own.']'), 'while the record’s own page has it');
 
 case_('It is offered back once, and then forgotten');
 // The next request takes it out of the session again and finds nothing, which is
 // what stops a rejected edit reappearing on a page she opens tomorrow.
+$reject('student_draft', ['return_page'=>'student_new','return_id'=>'0','return_tab'=>'',
+    'first_name'=>'Lena','last_name'=>'Hofer','birth_date'=>'2015-02-30','status'=>'active','course'=>'none']);
 take_held_input();
 is_same(null, $GLOBALS['crm_held_input'], 'the session no longer holds it');
-$html = render_view('student', ['id'=>0]);
+$html = render_view('student_new');
 ok(!str_contains($html, 'value="Lena"'), 'so the same page is empty again');
 
 case_('It is never offered to a different form, page or record');
-$reject('student_save', ['return_page'=>'student','return_id'=>'0','return_tab'=>'',
-    'first_name'=>'Lena','last_name'=>'Hofer','status'=>'active','joined_on'=>'1.9.2025']);
+$reject('student_draft', ['return_page'=>'student_new','return_id'=>'0','return_tab'=>'',
+    'first_name'=>'Lena','last_name'=>'Hofer','status'=>'active','course'=>'']);
 $other = make_student(['first_name'=>'Jonas','last_name'=>'Berger']);
 $html = render_view('student', ['id'=>$other]);
 ok(!str_contains($html, 'value="Lena"'), 'another student keeps their own name');
@@ -92,7 +102,9 @@ is_same(['q'=>'Hofer'], $_SESSION['form_input']['fields'], 'only the field she f
    both leave out. It is only right while it is exactly what a form adds on its
    own, so read that off a rendered form: a field start_form() gains tomorrow
    fails here until the list names it too. */
-$GLOBALS['page'] = 'student'; $_GET = ['id'=>7, 'tab'=>'contacts'];
+// With a wizard draft's key in the address too, which a form carries back after
+// a refusal (ADR 0023 §5); without one, return_draft is simply not written.
+$GLOBALS['page'] = 'student'; $_GET = ['id'=>7, 'tab'=>'contacts', 'draft'=>str_repeat('a', 32)];
 ob_start(); start_form('student_save', ['id'=>7]); echo '</form>'; $rendered = (string)ob_get_clean();
 preg_match_all('/<input type="hidden" name="([^"]+)"/', $rendered, $hidden);
 $added = array_values(array_diff($hidden[1], ['id', 'csrf']));
@@ -254,9 +266,8 @@ sign_in_as(make_account(['role'=>'admin']));
 $course = make_class(['name'=>'Kindertraining']);
 $priced = make_tariff(['class_id'=>$course, 'name'=>'Beitrag', 'interval_months'=>3,
                        'rates'=>[1=>3700, 3=>9900]]);
-act('student_save', ['first_name'=>'Preis', 'last_name'=>'Folger', 'birth_date'=>'', 'joined_on'=>today(),
-                     'ended_on'=>'', 'status'=>'active', 'tariff_id'=>(string)$priced, 'price'=>'12,00',
-                     'price_cents'=>'1200', 'price_note'=>'Sonderpreis', 'internal_notes'=>'', 'revision'=>'1']);
+create_through_wizard(['first_name'=>'Preis', 'last_name'=>'Folger', 'tariff_id'=>(string)$priced, 'price'=>'12,00',
+                       'price_cents'=>'1200', 'price_note'=>'Sonderpreis']);
 $saved = one("SELECT * FROM students WHERE first_name='Preis'");
 is_same(null, $saved['tariff_id'], 'a new child gets no tariff from the posted one');
 is_same(null, $saved['price_cents'], 'nor a price from the posted one');

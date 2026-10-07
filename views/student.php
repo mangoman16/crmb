@@ -1,25 +1,20 @@
 <?php
-$id=(int)($_GET['id']??0);$staff=is_staff($user);if(!$id)require_staff();
-// A new record starts from what an invitation by address starts from too
-// (new_student_defaults(), ADR 0021, §3), so the two ways in cannot differ.
-$s=$id?student($id):new_student_defaults()+['id'=>0,'first_name'=>'','last_name'=>'','email'=>'','birth_date'=>'','ended_on'=>'','account_id'=>null];
+/* A student who exists. A new one is made by the wizard (views/student_new.php,
+   ADR 0023 §5); the router sends a student page without an id there. */
+$id=(int)($_GET['id']??0);$staff=is_staff($user);
+$s=student($id);
 $tab=(string)($_GET['tab']??'details');
 $tabsAllowed=$staff?['details','contacts','payments','invoices','absence','classes','attendance']:['details','contacts','payments','invoices','absence','classes'];
 if(!in_array($tab,$tabsAllowed,true))$tab='details';
-page_head($id?$s['first_name'].' '.$s['last_name']:t('Neuen Schüler anlegen','Add a student'),$id?status_label($s['status']):'',
-    ($id&&$staff?link_button(t('Datenblatt drucken','Print the data sheet'),'print',['id'=>$id],'secondary'):'')
-    // Somebody joining on paper: the blank form is printed from where they would
-    // otherwise be typed in.
-    .(!$id?link_button(t('Leeres Formular drucken','Print a blank form'),'print',[],'secondary'):'')
+page_head($s['first_name'].' '.$s['last_name'],status_label($s['status']),
+    ($staff?link_button(t('Datenblatt drucken','Print the data sheet'),'print',['id'=>$id],'secondary'):'')
     // A family has one student and this is their page (ADR 0010): a list of one
     // is not somewhere to go back to.
     .($staff?link_button(t('Alle Schüler','All students'),'students',[],'secondary'):''));
-if($id){
-    $tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),
-                'invoices'=>t('Rechnungen','Invoices'),'classes'=>t('Kurse','Courses'),'absence'=>t('Abwesenheit','Absences')];
-    if($staff){$tabLabels['attendance']=t('Anwesenheit','Attendance');}
-    tabs($tabLabels,$tab,'student',['id'=>$id]);
-}
+$tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),
+            'invoices'=>t('Rechnungen','Invoices'),'classes'=>t('Kurse','Courses'),'absence'=>t('Abwesenheit','Absences')];
+if($staff){$tabLabels['attendance']=t('Anwesenheit','Attendance');}
+tabs($tabLabels,$tab,'student',['id'=>$id]);
 /* Creating a child asks for a name and an address and nothing else - a form
    with twenty boxes on it is a form somebody abandons half-way. The rest is not
    optional, though: a child with no course is a child nobody bills. So the page
@@ -27,8 +22,8 @@ if($id){
    remember four days later. A family gets the list of what is theirs to fill
    in (ADR 0020, §7): the details, somebody to ring, and the fields she asked
    for. On every tab, like hers. */
-if($id) next_steps_card($staff?student_next_steps($id):family_next_steps($id),$staff?'':t('Noch zu ergänzen','Still to fill in'));
-if($tab==='details' || !$id):
+next_steps_card($staff?student_next_steps($id):family_next_steps($id),$staff?'':t('Noch zu ergänzen','Still to fill in'));
+if($tab==='details'):
     $login=$staff && $s['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$s['account_id']]):null;
     $firstName=$s['first_name']!==''?$s['first_name']:t('die Schülerin oder der Schüler','the student');
     $mailReady=$staff && account_mail_ready();
@@ -54,12 +49,16 @@ input('last_name',t('Nachname','Last name'),$s['last_name'],'text',true,'','',['
    said on the access card below before anybody taps. */
 if($staff):
     echo '<div id="email">';
-    if($login && $login['state']!=='invited') {
+    // Only a login with an address signs in with it: a placeholder signs in
+    // with nothing and a username login with its username (ADR 0023 §3), so
+    // for them the address on the record is hers to type, as before a login.
+    $signsInWithAddress=(string)($login['email']??'')!=='';
+    if($signsInWithAddress && $login['state']!=='invited') {
         echo '<div class="field"><label>'.e(t('E-Mail-Adresse','Email address')).'</label><div class="readonly">'.e($login['email']).'</div><small>'
             .e($firstName.t(' meldet sich damit an und ändert sie selbst unter „Mein Konto“ – mit Bestätigung aus dem neuen Postfach. Dorthin gehen auch Rechnungen und Erinnerungen.',
                             ' signs in with it and changes it themselves under “My account” – confirmed from the new mailbox. Invoices and reminders go there too.'))
             .'</small></div>';
-    } elseif($login) {
+    } elseif($signsInWithAddress) {
         input('email',t('E-Mail-Adresse','Email address'),$login['email'],'email',true,
               t('Einladung noch nicht angenommen. Änderst du die Adresse, geht die Einladung beim Speichern an die neue; der alte Link gilt dann nicht mehr.',
                 'The invitation has not been accepted yet. If you change the address, saving sends the invitation to the new one; the old link then stops working.'));
@@ -68,15 +67,6 @@ if($staff):
         input('email',t('E-Mail-Adresse','Email address'),$s['email'],'email',false,
               t('Die eigene Adresse der Schülerin oder des Schülers – die der Eltern gehört zu den Kontakten.',
                 'The student’s own address – a parent’s belongs with the contacts.'));
-        /* „Gleich einladen" (ADR 0020, §6), ticked to start with: in the hall it
-           is "here is her address, send it", and a tick she has to remember is
-           the step that gets forgotten. Not offered when mail cannot go out;
-           the card says what is missing instead. The short label is one line,
-           above the sticky button at 320px; a longer one wrapped under it. */
-        if(!$id) {
-            if($mailReady) check_field('invite',t('Gleich einladen','Invite straight away'),true);
-            else mail_not_ready_notice($user);
-        }
     }
     echo '</div>';
 endif;
@@ -85,8 +75,7 @@ echo '<div id="birth-date">';
 input('birth_date',t('Geburtsdatum','Date of birth'),$s['birth_date'],'date',false,
     match(true) {
         $age!==null => plural($age,'Jahr alt','Jahre alt','year old','years old').' · '.t('Altersgruppe: ','Age group: ').age_group_name($s),
-        $id>0       => t('Fehlt noch. Danach richtet sich die Altersgruppe.','Still missing. It decides the age group.'),
-        default     => t('Bestimmt die Altersgruppe.','Decides the age group.'),
+        default     => t('Fehlt noch. Danach richtet sich die Altersgruppe.','Still missing. It decides the age group.'),
     });
 echo '</div>';
 ?></div>
@@ -116,21 +105,7 @@ input('phone',t('Telefonnummer','Telephone number'),$s['phone']??'','tel',false,
 ?>
 </section>
 
-<?php /* A new child gets the two questions that cannot be answered later - what
-         is this child called, where do we write - and the one that decides
-         whether they count as a member. Everything else has a default, a tab of
-         its own, or a place on the list above, and a form of twenty boxes is a
-         form somebody abandons in the middle of a training session. */
-if($staff && !$id): ?>
-<section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><div class="grid two"><?php
-select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$s['status'],true);
-input('joined_on',t('Dabei seit','Member since'),$s['joined_on'],'date');
-?></div>
-<p class="muted"><?=e(t('Leistungsgruppe, Kurs und Tarif trägst du gleich auf der Seite des Kindes ein – dort stehen sie als „Noch zu tun“. Geburtsdatum, Notfallkontakte und was die Familie selbst ausfüllt, ergänzt sie nach der Einladung.',
-                        'The level, the course and the tariff are entered on the child’s page next – they are listed there as “Still to do”. The date of birth, the emergency contacts and whatever the family fills in themselves, they add after the invitation.'))?></p>
-</section>
-<?php endif ?>
-<?php if($staff && $id):
+<?php if($staff):
 /* What the child is in the club, in the order it is asked: whether and since
    when they are a member, then how far along and how old. The prices went to
    the course (ADR 0011) - a tariff on the child billed nobody - and the two
@@ -150,7 +125,7 @@ select_field('level_id',t('Leistungsgruppe','Level'),array_column(rows('SELECT i
 select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),array_column(age_groups(),'name','id'),$s['age_group_id'],false,false,
     $s['age_group_id']?t('Fest eingestellt. Leer lassen, damit sie sich wieder aus dem Geburtsdatum ergibt.','Pinned. Clear it to let the date of birth decide again.'):t('Leer = ergibt sich aus dem Geburtsdatum: ','Empty = worked out from the date of birth: ').age_group_name($s));
 ?></div></section>
-<?php elseif($id):?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Dabei seit','Member since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div></dl></section><?php endif ?>
+<?php else:?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Dabei seit','Member since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div></dl></section><?php endif ?>
 <?php
 /* The custom fields: 'view' ones are read to a family, 'edit' ones are theirs
    to fill in, 'internal' ones they never see. A required field is required of
@@ -158,7 +133,7 @@ select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),arra
    so the mark and the browser's own check follow it, and an empty one that
    is the family's says so to her instead of holding up her save. Each field
    carries the anchor the family's „Noch zu ergänzen" leads to. */
-$fields=$id?array_filter(field_definitions(),fn($f)=>$staff || $f['visibility']!=='internal'):[];if($fields): ?><section class="card" id="more-details"><h2><?=e(t('Weitere Angaben','Additional details'))?></h2><div class="grid two">
+$fields=array_filter(field_definitions(),fn($f)=>$staff || $f['visibility']!=='internal');if($fields): ?><section class="card" id="more-details"><h2><?=e(t('Weitere Angaben','Additional details'))?></h2><div class="grid two">
 <?php $lastSection='';foreach($fields as $f):$v=field_value($id,(int)$f['id']);$label=field_label($f);$n='custom['.$f['id'].']';
 $required=custom_field_required_of($f,$staff);
 $hint=$f['required'] && $f['visibility']==='edit' && custom_value_empty($v)
@@ -172,14 +147,13 @@ elseif($f['field_type']==='checkbox')check_field($n,$label,(bool)$v,$hint,$requi
 else input($n,$label,$v??'',$f['field_type']==='number'?'text':$f['field_type'],$required,$hint);
 echo '</div>';
 endforeach ?></div></section><?php endif ?>
-<?php if($staff && $id):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>
-<div class="form-footer"><?php submit_button(!$id?t('Anlegen und weiter','Create and continue'):($staff?t('Schüler speichern','Save student'):t('Angaben speichern','Save the details')));?></div></form>
+<?php if($staff):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>
+<div class="form-footer"><?php submit_button($staff?t('Schüler speichern','Save student'):t('Angaben speichern','Save the details'));?></div></form>
 <?php /* The picture, after the details rather than before them: at 320px it was
          a whole screen a family scrolled past to reach „Persönliche Daten"
          (ADR 0020, §10e). Outside the form above - a form inside a form is
          markup the browser throws away, so the picture would have been saved by
-         whichever button was pressed last. */
-if($id): ?>
+         whichever button was pressed last. */ ?>
 <section class="card">
     <h2><?=e(t('Bild','Picture'))?></h2>
     <div class="avatar-editor">
@@ -193,25 +167,30 @@ if($id): ?>
         </div>
     </div>
 </section>
-<?php endif ?>
-<?php if($staff && $id):
+<?php if($staff):
 /* Everything about this student's login, in one card and in the order it
-   happens: invited, active, suspended, gone. Outside the student form, because
-   each of these is its own decision and its own POST - saving a birth date
-   should not send anybody an email - and a form inside a form is thrown away
-   by the browser. Logins are made by invitation only, and nobody here sets or
-   sees a password (ADR 0020, §5). */
-$loginState=$login['state']??'none'; ?>
+   happens: without sign-in, invited or waiting for a first sign-in, active,
+   suspended. Outside the student form, because each of these is its own
+   decision and its own POST - saving a birth date should not send anybody an
+   email - and a form inside a form is thrown away by the browser. Nobody here
+   sets or sees a password (ADR 0020, §5); a sign-in link is shown only to the
+   member of staff who made it, while it works (ADR 0023 §6).
+
+   Backend-dev's working minimum for ADR 0023; frontend-dev gives it the
+   designer's card (spec §3). */
+$loginState=login_without_sign_in($login)?'placeholder':(($login['state']==='invited' && (string)($login['email']??'')==='')?'waiting':$login['state']);
+$maySignin=$login && may_create_signin_link($user,$login);
+$lastLink=$login?(signin_links_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[0]??null):null; ?>
 <section class="card access-card" id="access">
     <div class="badge-line access-title"><h2><?=e(t('Zugang zum Portal','Access to the portal'))?></h2><?php login_state_badge($login); ?></div>
-<?php if(!$login):
+<?php if($loginState==='placeholder'):
     /* Said before she taps rather than in the refusal after it (ADR 0020, §1):
        the address on the record is somebody else's login - a brother's or a
        parent's, typed in before every login needed its own. Staff only, so the
        holder may be named. No button, because an invitation there can only be
        refused. */
     $holder=$s['email']!==''?account_with_address((string)$s['email']):null; ?>
-    <p><?=e($firstName.t(' hat noch keinen Zugang.',' has no access yet.')
+    <p><?=e($firstName.t(' meldet sich noch nicht an. Du trägst alles selbst ein.',' does not sign in yet. You enter everything yourself.')
         .($s['email']!=='' && !$holder?t(' Die Einladung geht an ',' The invitation goes to ').$s['email'].'.':''))?></p>
     <?php if($s['email']===''): ?>
     <p class="muted"><?=e(t('Trag oben zuerst eine E-Mail-Adresse ein und speichere.','Enter an email address above first, and save.'))?></p>
@@ -223,10 +202,11 @@ $loginState=$login['state']??'none'; ?>
     <?php else: ?>
     <div class="row-actions access-actions"><?php start_form('student_invite',['student_id'=>$id],'inline-form');submit_button(t('Einladung senden','Send the invitation'));?></form></div>
     <?php endif ?>
+    <?php if($maySignin): ?><div class="row-actions access-actions"><?php signin_link_details($login,$s,true); ?></div><?php endif ?>
 <?php else:
     $deleteText=t('Löscht die Anmeldung und die privaten Unterhaltungen. ','Deletes the login and the private conversations. ')
-        .$firstName.t(', Kurse, Beiträge und Rechnungen bleiben; du kannst später neu einladen. Nur vorübergehend? Dann lieber sperren.',
-                      ', the courses, charges and invoices stay; you can invite again later. Only for a while? Then suspend instead.');
+        .$firstName.t(' bekommt eine neue, leere; Kurse, Beiträge und Rechnungen bleiben, und du kannst neu einladen. Nur vorübergehend? Dann lieber sperren.',
+                      ' gets a new, empty one; the courses, charges and invoices stay, and you can invite again. Only for a while? Then suspend instead.');
     if($loginState==='suspended'): ?>
     <p><?=e(t('Gesperrt – ','Suspended – ').$firstName.t(' kann sich nicht anmelden. Daten und Nachrichten bleiben.',' cannot sign in. Details and messages stay.'))?></p>
     <?php endif;
@@ -251,11 +231,24 @@ $loginState=$login['state']??'none'; ?>
                              'The invitation has expired. Send it again – the new link is valid for another 48 hours.'),
     })?></p>
     <?php if(!$mailReady) mail_not_ready_notice($user);
-    endif ?>
-    <?php /* When the login was last used, as this viewer may know it: through
-             presence_line(), never last_seen_at itself, which for somebody who
-             appears offline is a time a trainer is not to see (ADR 0015). An
-             invitation has not been used, so there is nothing to show. */
+    endif;
+    /* The newest sign-in link: when it was made and by whom, and until when it
+       works or when it was used (ADR 0023 §6, "Every use is visible"). */
+    if($lastLink): ?>
+    <p class="muted"><?=e(strtr(match(true) {
+        $lastLink['used_at']!==null      => t('Anmeldelink vom {sent} ({who}), benutzt am {used}.','Sign-in link of {sent} ({who}), used on {used}.'),
+        $lastLink['withdrawn_at']!==null => t('Anmeldelink vom {sent} ({who}), zurückgezogen.','Sign-in link of {sent} ({who}), withdrawn.'),
+        $lastLink['expires_at']!==null   => t('Anmeldelink erstellt am {sent} ({who}); er gilt einmal, bis {until}.','Sign-in link created on {sent} ({who}); it works once, until {until}.'),
+        default                          => t('Der Anmeldelink vom {sent} ({who}) ist abgelaufen. Erstell einen neuen – er gilt wieder 48 Stunden.','The sign-in link of {sent} ({who}) has expired. Create a new one – it is valid for another 48 hours.'),
+    },['{sent}'=>fmt_datetime($lastLink['created_at']),'{who}'=>$lastLink['made_by']!==''?$lastLink['made_by']:t('gelöschter Zugang','deleted login'),
+       '{used}'=>fmt_datetime($lastLink['used_at']),'{until}'=>fmt_datetime($lastLink['expires_at'])]))?></p>
+    <?php endif;
+    $signinLogin=$login; $signinFirstName=$firstName; $signinStudentId=$id;
+    require __DIR__.'/_signin_link.php';
+    /* When the login was last used, as this viewer may know it: through
+       presence_line(), never last_seen_at itself, which for somebody who
+       appears offline is a time a trainer is not to see (ADR 0015). A login
+       not yet set up has not been used, so there is nothing to show. */
     if(presence_shown_for($user,$login)): ?>
     <p class="access-presence"><?=presence_line($user,$login)?></p>
     <?php presence_history_details($user,presence_history($user,[(int)$login['id']])[(int)$login['id']]??[],presence_recorded_since());
@@ -263,7 +256,7 @@ $loginState=$login['state']??'none'; ?>
     /* Whether a mailed link set the password lately - „vergessen", or the
        button below (ADR 0019, I1; 0020, §8): the same thing the holder sees on
        Mein Konto. */
-    if($loginState!=='invited' && ($lastReset=password_resets_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[0]??null)): ?>
+    if(!in_array($loginState,['invited','waiting'],true) && ($lastReset=password_resets_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[0]??null)): ?>
     <p class="muted"><?=e(t('Passwort zuletzt per E-Mail-Link neu gesetzt: ','Password last set anew through an email link: ').fmt_datetime((string)$lastReset['created_at']))?></p>
     <?php endif ?>
     <div class="row-actions access-actions">
@@ -279,6 +272,16 @@ $loginState=$login['state']??'none'; ?>
                 .$firstName.t(', Kurse, Beiträge und Rechnungen bleiben. Versehentlich? Einfach neu einladen.',', the courses, charges and invoices stay. By mistake? Just invite again.'));
         else
             login_delete_details($login,t('Einladung zurückziehen','Withdraw the invitation'),$deleteText,t('Einladung endgültig zurückziehen','Withdraw the invitation for good'));
+    elseif($loginState==='waiting'):
+        // A username waiting for its first sign-in: a new link, the link
+        // withdrawn, or the username given back - to change it, or to invite
+        // by e-mail instead (ADR 0023 §1, §4).
+        if($maySignin) signin_link_details($login,$s,false);
+        if($lastLink && $lastLink['expires_at']!==null){start_form('signin_link',['student_id'=>$id,'mode'=>'withdraw'],'inline-form');submit_button(t('Link zurückziehen','Withdraw the link'),'subtle danger-text');echo '</form>';}
+        invitation_withdraw_details($login,t('Benutzernamen zurückziehen','Withdraw the username'),
+            t('Der Benutzername wird wieder frei, und ein Anmeldelink gilt nicht mehr. ','The username becomes free again, and any sign-in link stops working. ')
+            .$firstName.t(' ist dann wieder ohne Anmeldung; Kurse, Beiträge und Rechnungen bleiben.',' is then without sign-in again; the courses, charges and invoices stay.'),
+            t('Benutzernamen zurückziehen','Withdraw the username'));
     elseif($loginState==='active'):
         if(may_impersonate($user,$login)){start_form('impersonate',['id'=>$login['id'],'mode'=>'start'],'inline-form');submit_button(t('Portal als ','View the portal as ').$firstName.t(' ansehen',''),'secondary');echo '</form>';}
         /* A link for a new password, to the login's own address (ADR 0020,
@@ -286,11 +289,14 @@ $loginState=$login['state']??'none'; ?>
            and the link lapses in an hour. Only for a login in use, and only
            when mail can go out - a button that can only fail is not offered. */
         if($mailReady && reset_link_possible($login)){start_form('account_state',['id'=>$login['id'],'mode'=>'reset_link'],'inline-form');submit_button(t('Link zum Zurücksetzen senden','Send a reset link'),'secondary');echo '</form>';}
+        // The way back from a forgotten password without a mailbox; only an
+        // administrator's, for a login in use (may_create_signin_link()).
+        if($maySignin) signin_link_details($login,$s,false);
         start_form('account_state',['id'=>$login['id'],'mode'=>'suspend'],'inline-form');submit_button(t('Zugang sperren','Suspend the access'),'secondary');echo '</form>';
-        login_delete_details($login,t('Zugang löschen','Delete the access'),$deleteText,t('Zugang endgültig löschen','Delete the access for good'));
+        login_delete_details($login,t('Anmeldung löschen','Delete the sign-in'),$deleteText,t('Anmeldung endgültig löschen','Delete the sign-in for good'));
     else:
         start_form('account_state',['id'=>$login['id'],'mode'=>'restore'],'inline-form');submit_button(t('Zugang entsperren','Restore the access'),'secondary');echo '</form>';
-        login_delete_details($login,t('Zugang löschen','Delete the access'),$deleteText,t('Zugang endgültig löschen','Delete the access for good'));
+        login_delete_details($login,t('Anmeldung löschen','Delete the sign-in'),$deleteText,t('Anmeldung endgültig löschen','Delete the sign-in for good'));
     endif ?>
     </div>
 <?php endif ?>
@@ -302,7 +308,8 @@ $loginState=$login['state']??'none'; ?>
     <?php /* A student's login never set up is deleted with the student, so its
              link cannot rebuild the record (ADR 0021, §4); any other login stays
              - the foreign key only unhooks it - and turns up under Konten. */
-    if(login_goes_with_student($login)): ?><p><?=e(t('Die offene Einladung wird dabei zurückgezogen.','The open invitation is withdrawn with it.'))?></p>
+    if($loginState==='placeholder'): ?><p><?=e(t('Die leere Anmeldung geht mit.','The empty login goes with it.'))?></p>
+    <?php elseif(login_goes_with_student($login)): ?><p><?=e(t('Die offene Einladung wird dabei zurückgezogen.','The open invitation is withdrawn with it.'))?></p>
     <?php elseif($login): ?><p><?=e($firstName.t(' hat einen Zugang. Lösche ihn vorher, sonst bleibt er unter „Konten“ ohne Schüler übrig.',' has an access. Delete it first, or it is left under “Accounts” with no student.'))?></p><?php endif ?>
     <?php start_form('student_delete',['id'=>$id]);input('confirmation',t('Vollständigen Namen zur Bestätigung eingeben','Enter the full name to confirm'),'','text',true);submit_button(t('Schüler endgültig löschen','Permanently delete student'),'danger');?></form>
 </details>

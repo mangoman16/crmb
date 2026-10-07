@@ -13,7 +13,7 @@ declare(strict_types=1);
  * keeping only one of them. "Nobody's next invoice changes" was a claim with
  * nothing behind it.
  *
- * Six pauses. Before 015, a portal as it stood with prices on the tariff and
+ * Seven pauses. Before 015, a portal as it stood with prices on the tariff and
  * addresses on the contacts. Before 019, a portal where one login holds several
  * brothers and sisters and a child's address has drifted from its login's. 019
  * is then applied three ways: straight through; stopped after each of its
@@ -35,7 +35,15 @@ declare(strict_types=1);
  * version wrote - a trainer's chat with a student, one between two students and
  * a desk thread the trainer answered - which 025 must sort into the right kind
  * and owner and lose nothing of; 025 is stopped and started again the same way,
- * and its UPDATE run twice.
+ * and its UPDATE run twice. Before 028, on that portal with 025 to 027 applied,
+ * the people ADR 0023 §4 is about - students without a login, two brothers on one
+ * parent's address, an example student, a student whose invitation is not yet
+ * taken up, a login whose student is gone - and enrolments on terms of their own,
+ * one of them a past membership. 028 to 031 are applied one at a time, each run
+ * a second time straight after; 029 is also stopped after each statement and
+ * started again on a new connection, and run on a key with another name. Then
+ * the runner's step, stopped part way after each placeholder but the last, then
+ * through, then again; and what the database refuses afterwards.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -515,6 +523,134 @@ function login_state(PDO $pdo): array {
             'versions' => $pdo->query("SELECT * FROM record_versions WHERE entity = 'accounts' ORDER BY id")->fetchAll()];
 }
 
+/**
+ * The people 028 to 031 and the runner's step after them are about, written the
+ * way the version before 028 writes them (ADR 0023 §4, 0024 §1).
+ *
+ * The portal 024 left has most of them already: students with a login, students
+ * the earlier updates left without one (019 took brothers and sisters off a
+ * shared login), one whose name is longer than a login's name holds, Ida, whose
+ * address is the Novak family's login, a login whose student is gone, and
+ * invitations by address that no student points to. Beside them: two brothers
+ * on one parent's address, neither with a login, whom a placeholder carrying
+ * the address would make collide; an example student without a login, whose
+ * placeholder has to go with demo_clear(); a student invited by e-mail who has
+ * not accepted yet, whose invitation has to stay exactly as it is; and a course
+ * with enrolments of students with and without a login, one of them a past
+ * membership, each on terms of its own so a term lost would show.
+ */
+function add_people_before_028(PDO $pdo): array {
+    $at = '2026-09-25 08:00:00';
+    $child = fn(?int $account, string $first, string $last, string $email, int $demo = 0): int => insert_row($pdo, 'students', [
+        'account_id' => $account, 'first_name' => $first, 'last_name' => $last, 'email' => $email, 'status' => 'active',
+        'joined_on' => '2026-09-01', 'revision' => 2, 'is_demo' => $demo, 'created_at' => $at, 'updated_at' => $at]);
+    $people = ['max' => $child(null, 'Max', 'Wagner', 'familie.wagner@beispiel.test'),
+               'moritz' => $child(null, 'Moritz', 'Wagner', 'familie.wagner@beispiel.test'),
+               'example' => $child(null, 'Beispiel', 'Kind', '', 1)];
+    // As invite_student() writes one: the login first, with its link, then the
+    // student pointing at it.
+    $people['clara_login'] = insert_row($pdo, 'accounts', ['name' => 'Clara Fuchs', 'email' => 'clara@beispiel.test',
+        'role' => 'student', 'state' => 'invited', 'locale' => 'de', 'created_at' => $at]);
+    insert_row($pdo, 'auth_tokens', ['account_id' => $people['clara_login'], 'token_hash' => hash('sha256', 'einladung-clara'),
+        'purpose' => 'invite', 'expires_at' => '2026-09-27 08:00:00', 'created_at' => $at]);
+    $people['clara'] = $child($people['clara_login'], 'Clara', 'Fuchs', 'clara@beispiel.test');
+    $people['course'] = insert_row($pdo, 'classes', ['name' => 'Jugendtraining', 'description' => '', 'location' => 'Halle Süd',
+        'capacity' => 12, 'sort_order' => 10, 'archived' => 0, 'created_at' => $at]);
+    $enrol = fn(int $student, int $price, ?string $left, int $discount) => insert_row($pdo, 'class_students', [
+        'class_id' => $people['course'], 'student_id' => $student, 'joined_on' => '2026-02-01', 'left_on' => $left,
+        'price_cents' => $price, 'price_note' => 'vereinbart', 'due_day' => 15, 'interval_months' => 3,
+        'discount_months' => $discount ? 2 : 0, 'discount_kind' => 'amount', 'discount_value' => $discount,
+        'discount_note' => $discount ? 'Geschwister' : '']);
+    $enrol(20, 3900, null, 0);            // Paul, on his family's login
+    $enrol(51, 3600, null, 500);          // Lisa, taken off it by 019
+    $enrol(50, 3900, '2026-06-30', 0);    // Jonas, who has left: a past membership
+    $enrol($people['max'], 3600, null, 500);
+    $enrol($people['moritz'], 3600, null, 500);
+    $enrol($people['example'], 3000, null, 0);
+    $enrol($people['clara'], 3900, null, 0);
+    return $people;
+}
+
+/** 001 to 027 with every portal above written in, and the people 028 is about. */
+function build_portal_before_028(): array {
+    [$pdo, $logins] = build_portal_before_024();
+    apply_migrations($pdo, '024', '027');
+    return [$pdo, $logins + add_people_before_028($pdo)];
+}
+
+/**
+ * The keys from students to other tables, as the engine describes them: the
+ * name, the column, the table it points at, and what deleting a row there does.
+ */
+function student_keys(PDO $pdo): array {
+    return $pdo->query('SELECT k.constraint_name AS name, k.column_name AS col, k.referenced_table_name AS refers_to, r.delete_rule AS on_delete'
+        . ' FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r'
+        . ' ON r.constraint_schema = k.constraint_schema AND r.constraint_name = k.constraint_name AND r.table_name = k.table_name'
+        . " WHERE k.table_schema = DATABASE() AND k.table_name = 'students' AND k.referenced_table_name IS NOT NULL"
+        . ' ORDER BY k.column_name, k.constraint_name')->fetchAll();
+}
+
+/**
+ * What the engine says of one column: its type, whether it may be NULL, its
+ * default, its collation and its place, or null when there is no such column.
+ */
+function column_facts(PDO $pdo, string $table, string $column): ?array {
+    $query = $pdo->prepare('SELECT column_type AS type, is_nullable AS nullable, column_default AS default_value,'
+        . ' collation_name AS collation, ordinal_position AS position FROM information_schema.columns'
+        . ' WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?');
+    $query->execute([$table, $column]);
+    $facts = $query->fetch();
+    if (!$facts) return null;
+    // MariaDB reports a default of NULL as the text 'NULL', MySQL 8.0 as NULL.
+    if ($facts['default_value'] !== null && strtoupper((string)$facts['default_value']) === 'NULL') $facts['default_value'] = null;
+    $facts['position'] = (int)$facts['position'];
+    return $facts;
+}
+
+/**
+ * What 028 to 031 and the step after them are held to, read back: every login,
+ * student, enrolment and link, the columns and keys they change, the indexes,
+ * every guarded count and the mail waiting.
+ */
+function login_rule_state(PDO $pdo): array {
+    return ['accounts' => every_login($pdo),
+            'students' => $pdo->query('SELECT id, account_id, first_name, last_name, email, is_demo, revision, updated_at FROM students ORDER BY id')->fetchAll(),
+            'enrolments' => $pdo->query('SELECT * FROM class_students ORDER BY class_id, student_id')->fetchAll(),
+            'tokens' => $pdo->query('SELECT * FROM auth_tokens ORDER BY id')->fetchAll(),
+            'columns' => ['email' => column_facts($pdo, 'accounts', 'email'), 'username' => column_facts($pdo, 'accounts', 'username'),
+                          'left_on' => column_facts($pdo, 'class_students', 'left_on'),
+                          'removed_on' => column_facts($pdo, 'class_students', 'removed_on')],
+            'keys' => student_keys($pdo), 'indexes' => login_indexes($pdo), 'one_account' => one_account_index($pdo),
+            'counts' => portal_state($pdo)['counts'],
+            'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn()];
+}
+
+/**
+ * Run a file's statements again on a connection of its own, as the next page
+ * view does after an update that applied the file but stopped before the ledger
+ * recorded it: the SQLSTATE the engine refused it with, or null if it ran.
+ */
+function run_again(string $path): ?string {
+    // A new connection: no variable or prepared statement of the first run survives into it.
+    $next = connect();
+    try { foreach (migration_statements($path) as $statement) $next->exec($statement); return null; }
+    catch (PDOException $e) { return (string)$e->getCode(); }
+}
+
+/**
+ * What the database said to these writes, as [SQLSTATE, the engine's own error
+ * number] for the first it refused, or null when it took them all. Undone either
+ * way, so the next attempt meets the portal as it was.
+ */
+function attempt(PDO $pdo, array $writes): ?array {
+    $pdo->beginTransaction();
+    $said = null;
+    try { foreach ($writes as [$sql, $params]) $pdo->prepare($sql)->execute($params); }
+    catch (PDOException $e) { $said = [(string)$e->getCode(), (int)($e->errorInfo[1] ?? 0)]; }
+    $pdo->rollBack();
+    return $said;
+}
+
 $nineteen = migration_path('019');
 $statements = migration_statements($nineteen);
 
@@ -671,6 +807,7 @@ foreach (glob(APP_ROOT . '/database/migrations/*.sql') as $file)
 $runnerState = function () use ($pdo): array {
     setting_cache_clear();
     return ['accounts' => every_login($pdo), 'counts' => portal_state($pdo)['counts'],
+            'without_login' => (int)$pdo->query('SELECT COUNT(*) FROM students WHERE account_id IS NULL')->fetchColumn(),
             'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn(),
             'courses' => (int)$pdo->query('SELECT COUNT(*) FROM classes')->fetchColumn(),
             'dummy_hash' => (string)setting('sign_in_dummy_hash')];
@@ -700,5 +837,120 @@ for ($stopped = 1; $stopped <= count($twentyFiveStatements); $stopped++) {
         ? $twentyFiveStatements : array_slice($twentyFiveStatements, 0, -1));
     $result['twentyfive']['retried'][$stopped] = chat_state($pdo);
 }
+
+// --- 028 to 031 and the runner's step after them ----------------------------------
+// A login may have a username and no address (028); the key that emptied a
+// student's login on delete goes (029) and comes back as RESTRICT (030); an
+// enrolment gets removed_on (031); and the runner's step gives every student
+// without a login a placeholder (ADR 0023 §2-§4, 0024 §1). One portal, one file
+// at a time, with each file run a second time straight after, as the next page
+// view does after an update that applied it but stopped before the ledger
+// recorded it: 029 must then do nothing, the others be refused and change
+// nothing.
+$files = [];
+foreach (['028', '029', '030', '031'] as $number) $files[$number] = migration_path($number);
+[$pdo, $people] = build_portal_before_028();
+$state = ['before' => login_rule_state($pdo)];
+$refused = [];
+foreach ($files as $number => $path) {
+    run_statements($pdo, $path, migration_statements($path));
+    $state[$number] = login_rule_state($pdo);
+    $refused[$number] = run_again($path);
+    $state[$number . '_again'] = login_rule_state($pdo);
+    // And 029 once more after 030 has added the key it must never take.
+    if ($number === '030') {
+        $refused['029_after_030'] = run_again($files['029']);
+        $state['029_after_030'] = login_rule_state($pdo);
+    }
+}
+
+// The runner's step on that portal: database/defaults.php on the application's
+// own connection, as schema_apply() requires it after the files. First stopped
+// part way, after each placeholder but the last, by a trigger that refuses the
+// next one, the way a lost connection or a full disk would stop it: each time,
+// every student and every login must be as before the step. Then through, then
+// once more as the next update would run it.
+$pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
+$withoutLogin = (int)$pdo->query('SELECT COUNT(*) FROM students WHERE account_id IS NULL')->fetchColumn();
+$step = ['without_login' => $withoutLogin, 'stopped' => []];
+for ($stopped = 1; $stopped < $withoutLogin; $stopped++) {
+    $pdo->exec("CREATE TRIGGER stop_the_step BEFORE INSERT ON accounts FOR EACH ROW"
+        . " IF NEW.state = 'placeholder' AND (SELECT COUNT(*) FROM accounts WHERE state = 'placeholder') >= $stopped"
+        . " THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'stopped by the test'; END IF");
+    setting_cache_clear();
+    $error = $runnerStep();
+    $pdo->exec('DROP TRIGGER stop_the_step');
+    $step['stopped'][$stopped] = ['error' => $error, 'state' => login_rule_state($pdo)];
+}
+setting_cache_clear();
+$step['first_error'] = $runnerStep();
+$step['first'] = login_rule_state($pdo);
+setting_cache_clear();
+$step['second_error'] = $runnerStep();
+$step['second'] = login_rule_state($pdo);
+
+// What the database says afterwards, each write undone again. A student's login
+// of every kind - a placeholder, one in use, an invitation not yet taken up - is
+// refused; a login nobody points to, and a student's login once the student is
+// gone, are not; a student cannot be pointed at a login that does not exist.
+// And the address and username rules 028 sets: a login with neither, twice; one
+// with a username alone; a username taken in other capitals; an address taken.
+$loginOf = fn(int $studentId): int => (int)$pdo->query('SELECT account_id FROM students WHERE id = ' . $studentId)->fetchColumn();
+$delete = fn(int $account): array => [['DELETE FROM accounts WHERE id = ?', [$account]]];
+$login = fn(string $name, ?string $email, ?string $username): array =>
+    ['INSERT INTO accounts (name, email, username, role, state, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+     [$name, $email, $username, 'student', 'invited', '2026-10-01 08:00:00']];
+$step['attempts'] = [
+    'placeholder' => attempt($pdo, $delete($loginOf((int)$people['max']))),
+    // Paul's family login, in use since before 019.
+    'in_use' => attempt($pdo, $delete($loginOf(20))),
+    'invitation_of_a_student' => attempt($pdo, $delete((int)$people['clara_login'])),
+    'orphan' => attempt($pdo, $delete((int)$people['orphan'])),
+    'invitation_by_address' => attempt($pdo, $delete((int)$people['invitation'])),
+    'student_first' => attempt($pdo, [['DELETE FROM students WHERE id = ?', [$people['max']]],
+                                      ['DELETE FROM accounts WHERE id = ?', [$loginOf((int)$people['max'])]]]),
+    'missing_login' => attempt($pdo, [['UPDATE students SET account_id = ? WHERE id = ?', [987654, $people['max']]]]),
+    'student_without_login' => attempt($pdo, [['INSERT INTO students (first_name, last_name, status, revision, created_at, updated_at)'
+        . " VALUES ('Ohne', 'Zugang', 'active', 1, '2026-10-01 08:00:00', '2026-10-01 08:00:00')", []]]),
+    'neither_twice' => attempt($pdo, [$login('Erster Platzhalter', null, null), $login('Zweiter Platzhalter', null, null)]),
+    'username_alone' => attempt($pdo, [$login('Lena Hofer', null, 'lena.hofer')]),
+    'username_other_case' => attempt($pdo, [$login('Lena Hofer', null, 'lena.hofer'), $login('Lena Hofer', null, 'Lena.Hofer')]),
+    'username_own' => attempt($pdo, [$login('Lena Hofer', null, 'lena.hofer'), $login('Lena Hofer', null, 'lena.hofer2')]),
+    'address_taken' => attempt($pdo, [$login('Zweiter Zugang', 'mueller@beispiel.test', null)]),
+];
+$step['after_attempts'] = login_rule_state($pdo);
+
+// --- 029 stopped after each statement and started again on a new connection --------
+// The next page view is a new connection, with neither the first one's variable
+// nor its prepared statement. Each round on a portal of its own; then 030, which
+// must add its key as it does after one run.
+$twentyNine = migration_statements($files['029']);
+$retried = [];
+for ($stopped = 1; $stopped < count($twentyNine); $stopped++) {
+    [$pdo] = build_portal_before_028();
+    apply_migrations($pdo, '028', '028');
+    $before = login_rule_state($pdo);
+    run_statements($pdo, $files['029'], array_slice($twentyNine, 0, $stopped));
+    $pdo = null;
+    $next = connect();
+    run_statements($next, $files['029'], $twentyNine);
+    $retried[$stopped] = ['before' => $before, 'after' => login_rule_state($next)];
+    run_statements($next, $files['030'], migration_statements($files['030']));
+    $retried[$stopped]['keys_after_030'] = student_keys($next);
+}
+
+// --- 029 on a key that has another name ----------------------------------------------
+// The name was the engine's choice (001 gave none). A database whose key is
+// called something else - another engine, a restore by a tool that names keys
+// its own way - must come out the same.
+[$pdo] = build_portal_before_028();
+$pdo->exec('ALTER TABLE students DROP FOREIGN KEY students_ibfk_1');
+$pdo->exec('ALTER TABLE students ADD CONSTRAINT login_of_this_student FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE SET NULL');
+$renamed = ['before' => student_keys($pdo)];
+apply_migrations($pdo, '028', '030');
+$renamed['after'] = student_keys($pdo);
+
+$result['twentyeight'] = ['people' => $people, 'statements' => array_map(fn($path) => count(migration_statements($path)), $files),
+                          'state' => $state, 'refused' => $refused, 'step' => $step, 'retried' => $retried, 'renamed' => $renamed];
 
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

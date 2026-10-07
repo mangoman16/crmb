@@ -24,7 +24,7 @@ $mine=$staff?null:($students[0]??null);
 $hasCourse=$staff && real_course_exists();
 page_head(t('Hallo ','Hello ').($staff?explode(' ',$user['name'])[0]:greeting_name($user)),
     $staff?t('Übersicht über Schüler, Beiträge und Abwesenheiten.','Students, charges and absences at a glance.'):t('Deine Termine, Beiträge und Nachrichten.','Your dates, payments and messages.'),
-    $staff?($hasCourse?link_button(t('+ Schüler anlegen','+ Add student'),'student'):''):($mine?link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]):''));
+    $staff?($hasCourse?link_button(t('+ Schüler anlegen','+ Add student'),'student_new',['from'=>'dashboard']):''):($mine?link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]):''));
 if(!$staff):
     /* The family's page, in the order they read it: who, what is owed, when is
        training, what is new. Every part the full width - there is one of
@@ -135,7 +135,7 @@ if($timeline): ?>
 <?php endif ?>
 <?php if($staff): ?><div class="dashboard-grid"><section class="card"><div class="section-heading"><h2><?=e(t('Schüler','Students'))?></h2><a href="<?=e(url('students'))?>"><?=e(t('Alle ansehen','View all'))?> <?=icon('arrow')?></a></div>
 <?php if(!$students&&!$hasCourse)empty_state(t('Noch keine Schüler','No students yet'),t('Leg zuerst einen Kurs an – Kinder werden in Kurse eingetragen.','Create a course first – children are put into courses.'),link_button(t('Ersten Kurs anlegen','Create the first course'),'classes',['new'=>1]));
-elseif(!$students)empty_state(t('Noch keine Schüler','No students yet'),t('Lege zuerst einen Schüler an. Einen Zugang lädst du danach auf seiner Seite ein.','Add your first student. You invite them in from their own page afterwards.'),link_button(t('Ersten Schüler anlegen','Add first student'),'student'));else foreach(array_slice($students,0,6) as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0,'course_price'=>$coursePrices[(int)$s['id']]??course_price_label([])]); ?>
+elseif(!$students)empty_state(t('Noch keine Schüler','No students yet'),t('Lege zuerst einen Schüler an. Einen Zugang lädst du danach auf seiner Seite ein.','Add your first student. You invite them in from their own page afterwards.'),link_button(t('Ersten Schüler anlegen','Add first student'),'student_new',['from'=>'dashboard']));else foreach(array_slice($students,0,6) as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0,'course_price'=>$coursePrices[(int)$s['id']]??course_price_label([])]); ?>
 </section><?php endif ?><section class="card news-panel"><div class="section-heading"><h2><?=e(t('Neuigkeiten','News'))?></h2><?=icon('news')?></div>
 <?php $items=rows('SELECT * FROM news WHERE published=1 ORDER BY updated_at DESC LIMIT 3');if(!$items):?><p class="muted"><?=e(t('Noch keine Neuigkeiten.','No news yet.'))?></p><?php else:foreach($items as $n):?><a class="news-summary" href="<?=e(url('news',['id'=>$n['id']]))?>"><small><?=e(fmt_date($n['updated_at']))?></small><h3><?=e($n['title'])?></h3><p><?=e(mb_substr($n['body'],0,140))?></p></a><?php endforeach;endif ?>
 <?php if($staff):?><div class="quick-actions"><?=link_button(t('Neuigkeit schreiben','Write news'),'news',['new'=>1],'secondary')?><?=link_button(t('An mehrere schreiben','Write to several'),'compose',[],'secondary')?></div><?php endif ?></section><?php if($staff): ?></div><?php endif ?>

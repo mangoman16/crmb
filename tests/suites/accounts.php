@@ -65,26 +65,29 @@ try { make_student(['first_name'=>'Tobias', 'last_name'=>'Hofer', 'account_id'=>
 catch (PDOException $e) { $code = (string)$e->getCode(); }
 is_same('23000', $code, 'the unique index answers a second student with 23000');
 is_same(1, (int)scalar('SELECT COUNT(*) FROM students WHERE account_id=?', [$login]), 'and the login still holds one');
-make_student(['first_name'=>'Ohne', 'last_name'=>'Zugang']);
-does_not_throw(fn() => make_student(['first_name'=>'Auch', 'last_name'=>'Ohne']), 'while any number of students have no login at all');
+make_student(['first_name'=>'Ohne', 'last_name'=>'Zugang', 'account_id'=>null]);
+does_not_throw(fn() => make_student(['first_name'=>'Auch', 'last_name'=>'Ohne', 'account_id'=>null]),
+               'while the database lets any number of students have no login at all - the code and the update hold that rule (ADR 0023 §4)');
 
 // ---------------------------------------------------------------------------
 case_('Inviting a student makes a login of their own, at their address');
 mail_ready(true);
 $mia = make_student(['first_name'=>'Mia', 'last_name'=>'Gruber', 'email'=>'Gruber.Familie@Beispiel.test']);
+$miaPlaceholder = (int)scalar('SELECT account_id FROM students WHERE id=?', [$mia]);
 act('student_invite', ['student_id'=>(string)$mia]);
 $miaLogin = one('SELECT * FROM accounts WHERE id=?', [(int)scalar('SELECT account_id FROM students WHERE id=?', [$mia])]);
 ok($miaLogin !== null, 'a login was made and the student points at it');
+is_same($miaPlaceholder, (int)($miaLogin['id'] ?? 0), 'the placeholder she had from the start, now given her address (ADR 0023 §3)');
 is_same('student', $miaLogin['role'] ?? null, 'a student’s login');
 is_same('invited', $miaLogin['state'] ?? null, 'waiting for its invitation to be accepted');
 is_same('gruber.familie@beispiel.test', $miaLogin['email'] ?? null, 'at the address on the student, written the one way');
 is_same('Mia Gruber', $miaLogin['name'] ?? null, 'under the student’s own name');
 is_same(1, links_queued_to('gruber.familie@beispiel.test'), 'with the invitation queued to it');
 is_same(0, address_drift(), 'the student’s copy of the address is the login’s, byte for byte');
-$logged = version_changes(history_for('students', $mia)[0]);
-ok(isset($logged['account_id']), 'the student’s change log says they got a login');
-is_same('Mia Gruber', history_value($logged['account_id']['to'], 'account_id'),
-        'and names whose it is, not a number');
+$logged = version_changes(history_for('accounts', (int)$miaLogin['id'])[0] ?? []);
+is_same(['placeholder', 'invited'], [$logged['state']['from'] ?? null, $logged['state']['to'] ?? null],
+        'the change log says when the placeholder became her login');
+is_same('gruber.familie@beispiel.test', $logged['email']['to'] ?? null, 'and at which address');
 $invitation = unseal((string)scalar("SELECT payload FROM mail_jobs WHERE account_id=? AND category='security'", [(int)$miaLogin['id']]));
 ok(str_starts_with($invitation, "Hallo Mia,\n\n") && str_contains($invitation, 'Du meldest dich mit dieser E-Mail-Adresse an.')
    && !str_contains($invitation, 'Benutzername') && !str_contains($invitation, 'Geburtsdatum'),
@@ -116,7 +119,9 @@ throws(fn() => act('student_invite', ['student_id'=>(string)$brother]),
        'the second student at a login’s address is refused', 'Jede Person braucht ihre eigene');
 throws(fn() => act('student_invite', ['student_id'=>(string)$brother, 'same_family'=>'1']),
        'and the refusal names whose login it is, so she knows; a „same family“ tick from an old page changes nothing', 'Es ist der Zugang von Mia Gruber.');
-is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$brother]), 'he is not put on his sister’s login');
+$brotherLogin = (int)scalar('SELECT account_id FROM students WHERE id=?', [$brother]);
+ok($brotherLogin !== (int)$miaLogin['id'] && scalar('SELECT state FROM accounts WHERE id=?', [$brotherLogin]) === 'placeholder',
+   'he is not put on his sister’s login, and keeps his own placeholder');
 is_same($accountsBefore, (int)scalar('SELECT COUNT(*) FROM accounts'), 'and no second login was made for the address');
 is_same($revisionBefore, (int)scalar('SELECT revision FROM students WHERE id=?', [$brother]),
         'and the brother was not touched at all');
@@ -130,12 +135,13 @@ $paul = make_student(['first_name'=>'Paul', 'last_name'=>'Mayr', 'email'=>'die-t
 throws(fn() => act('student_invite', ['student_id'=>(string)$paul]),
        'a trainer’s address cannot become a student’s login', 'Es ist der Zugang von Trainerin.');
 is_same('trainer', (string)scalar('SELECT role FROM accounts WHERE email=?', ['die-trainerin@beispiel.test']), 'and it is still hers');
-is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$paul]), 'and the student is left without one rather than half-attached');
+is_same('placeholder', (string)scalar('SELECT a.state FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.id=?', [$paul]),
+        'and the student is left on his placeholder rather than half-attached');
 run('UPDATE students SET email=? WHERE id=?', ['paul@beispiel.test', $paul]);   // he is given one of his own
 
 case_('A student who already has a login is not given a second one');
 throws(fn() => act('student_invite', ['student_id'=>(string)$mia]),
-       'inviting her again is refused', 'schon ein eigenes Konto');
+       'inviting her again is refused', 'schon eine eigene Anmeldung');
 is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['gruber.familie@beispiel.test']), 'and no second login was made');
 
 case_('Without mail, an invitation says what to do instead, and writes nothing');
@@ -188,7 +194,7 @@ case_('Saving a student never changes whose login they are');
 /* The old page offered "Bestehendes Konto verknüpfen" and posted account_id,
    and a page opened before the update still does. */
 does_not_throw(fn() => save_student($brother, ['account_id'=>(string)$miaLogin['id']]), 'a page that still posts account_id saves');
-is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$brother]), 'a student without a login is not given one by a save');
+is_same($brotherLogin, (int)scalar('SELECT account_id FROM students WHERE id=?', [$brother]), 'a student without sign-in is not given another login by a save');
 does_not_throw(fn() => save_student($paul, ['account_id'=>(string)$miaLogin['id']]), 'for a student with a login too');
 is_same((int)$paulLogin['id'], (int)scalar('SELECT account_id FROM students WHERE id=?', [$paul]), 'nor moved to another by one');
 save_student($paul, ['account_id'=>'']);
@@ -207,9 +213,10 @@ save_student($brother, ['email'=>'jonas@beispiel.test']);
 is_same('jonas@beispiel.test', (string)scalar('SELECT email FROM students WHERE id=?', [$brother]), 'and an address of his own is simply saved');
 $twin = make_student(['first_name'=>'Zwilling', 'last_name'=>'Gruber', 'email'=>'jonas@beispiel.test']);
 does_not_throw(fn() => save_student($twin, ['phone'=>'1']), 'two students without a login may carry one address: nothing signs in with it yet');
-throws(fn() => act('student_save', ['first_name'=>'Neu', 'last_name'=>'Anmeldung', 'email'=>'paul@beispiel.test', 'status'=>'active',
-    'joined_on'=>today(), 'birth_date'=>'', 'ended_on'=>'', 'tariff_id'=>'', 'price'=>'', 'price_note'=>'', 'internal_notes'=>'']),
-    'a new student at somebody’s login is refused', 'Jede Person braucht ihre eigene');
+mail_ready(true);
+throws(fn() => create_through_wizard(['first_name'=>'Neu', 'last_name'=>'Anmeldung'], 'email', ['email'=>'paul@beispiel.test']),
+    'a new student invited at somebody’s login is refused', 'Jede Person braucht ihre eigene');
+mail_ready(false);
 is_same(0, (int)scalar("SELECT COUNT(*) FROM students WHERE first_name='Neu'"), 'nor is a new student created at somebody’s login');
 throws(fn() => save_student($brother, ['email'=>'"jonas gruber"@beispiel.test']),
        'and an address that is deliverable but not plain is refused for writing (M1)', 'Ungültige E-Mail-Adresse');
@@ -355,7 +362,10 @@ throws(fn() => act('account_state', ['id'=>(string)$paulLogin['id'], 'mode'=>'wi
        'and a login that was set up cannot be withdrawn without typing it', 'noch nicht angenommen');
 is_same(['student', ['id'=>$paul]], act('account_state', ['id'=>(string)$paulLogin['id'], 'mode'=>'delete', 'confirmation'=>' PAUL@Beispiel.test ']),
         'but by the address, however it was typed - and it still finds the student, because it looked before the link was cut');
-is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$paul]), 'he is kept, without a login');
+$paulNow = one('SELECT a.* FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.id=?', [$paul]);
+ok($paulNow !== null && (int)$paulNow['id'] !== (int)$paulLogin['id'] && $paulNow['state'] === 'placeholder',
+   'he is kept, on a fresh placeholder of his own: never without a login (ADR 0023 §4)');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE id=?', [(int)$paulLogin['id']]), 'and the login that was in use is gone');
 is_same(['accounts', []], act('account_state', ['id'=>(string)$trainer, 'mode'=>'suspend']), 'a staff login returns to the Konten page');
 act('account_state', ['id'=>(string)$trainer, 'mode'=>'restore']);
 sign_in_as($trainer);
@@ -503,51 +513,52 @@ is_same([], $consents($bystander), 'the login that was not activated gets no rec
 sign_out();
 
 // ---------------------------------------------------------------------------
-case_('Creating a student with „Gleich einladen“ makes the student, the login and the invitation in one step');
-/* ADR 0020, §6. Every refusal comes before the first write, so a refused
-   invitation leaves no student behind either. */
+case_('The wizard’s „Per E-Mail einladen“ makes the student, the login and the invitation in one step');
+/* ADR 0023 §5, card (a): every refusal comes before the first write, so a
+   refused invitation leaves no student behind either - and comes back to step 2
+   with the draft whole. */
 test_reset();
 $boss = make_account(['role'=>'admin', 'name'=>'Chefin']);
 $coach = make_account(['role'=>'trainer', 'name'=>'Trainerin', 'email'=>'coach@beispiel.test']);
 sign_in_as($coach);
-$create = fn(array $over = []) => act('student_save', $over + ['first_name'=>'Lea', 'last_name'=>'Neumann', 'email'=>'lea.neumann@beispiel.test',
-    'status'=>'active', 'joined_on'=>today(), 'birth_date'=>'', 'ended_on'=>'', 'internal_notes'=>'', 'invite'=>'1']);
+$draft = (string)act('student_draft', ['first_name'=>'Lea', 'last_name'=>'Neumann', 'birth_date'=>'', 'course'=>'none', 'status'=>'active'])[1]['draft'];
+$create = fn(array $over = []) => act('student_create', $over + ['draft'=>$draft, 'method'=>'email', 'email'=>'lea.neumann@beispiel.test', 'locale'=>'de']);
 $counts = fn() => [(int)scalar('SELECT COUNT(*) FROM students'), (int)scalar('SELECT COUNT(*) FROM accounts'),
                    (int)scalar('SELECT COUNT(*) FROM auth_tokens'), (int)scalar('SELECT COUNT(*) FROM mail_jobs')];
 $nothing = $counts();
 mail_ready(false);
-throws(fn() => $create(), 'without mail it is refused, saying what is missing', 'E-Mail-Versand zuerst testen');
-throws(fn() => $create(), 'and that without the tick the student is saved now and invited later',
-       'Einladen geht noch nicht. '.account_mail_missing().' Ohne das Häkchen wird Lea jetzt angelegt und später eingeladen. Nichts wurde gespeichert.');
+throws(fn() => $create(), 'without mail it is refused, saying what is missing', 'Eine Einladung lässt sich noch nicht verschicken. E-Mail-Versand zuerst testen');
 is_same($nothing, $counts(), 'and nothing at all was created');
 mail_ready(true);
-throws(fn() => $create(['email'=>'']), 'an empty address is refused',
-       'Für „Gleich einladen“ fehlt die E-Mail-Adresse. Trag sie ein, oder nimm das Häkchen weg – dann wird nur angelegt. Nichts wurde gespeichert.');
+throws(fn() => $create(['email'=>'']), 'an empty address is refused', 'Ungültige E-Mail-Adresse');
 throws(fn() => $create(['email'=>'lea@']), 'an invalid one is refused', 'Ungültige E-Mail-Adresse');
-throws(fn() => $create(['email'=>'Coach@Beispiel.test']), 'and one that is somebody’s login is refused, saying nothing was saved',
-       'Jede Person braucht ihre eigene. Es ist der Zugang von Trainerin. Nichts wurde gespeichert.');
+throws(fn() => $create(['email'=>'Coach@Beispiel.test']), 'and one that is somebody’s login is refused, naming whose',
+       'Jede Person braucht ihre eigene. Es ist der Zugang von Trainerin.');
 is_same($nothing, $counts(), 'none of the three created anything');
+ok(student_draft($draft) !== null, 'and the draft is still there for the next try');
 $landed = $create();
 $lea = (int)scalar("SELECT id FROM students WHERE first_name='Lea'");
-is_same(['student', ['id'=>$lea]], $landed, 'with mail and an address of her own, the student is created, and her page opens');
+is_same(['student_new', ['step'=>'done', 'id'=>$lea]], $landed, 'with mail and an address of her own, the student is created, and the done page opens');
 $leaLogin = one('SELECT * FROM accounts WHERE id=?', [(int)scalar('SELECT account_id FROM students WHERE id=?', [$lea])]);
 is_same(['invited', 'lea.neumann@beispiel.test'], [$leaLogin['state'] ?? null, $leaLogin['email'] ?? null],
         'with an invited login of her own');
 is_same(1, (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE account_id=? AND purpose='invite'", [(int)$leaLogin['id']]), 'a token');
 is_same(1, links_queued_to('lea.neumann@beispiel.test'), 'and the invitation queued');
-is_same('Lea Neumann ist angelegt. Die Einladung an lea.neumann@beispiel.test ist unterwegs.', $_SESSION['flash']['message'] ?? null,
-        'the flash names the student and the address');
-is_same(['insert', 'update'], array_reverse(array_column(history_for('students', $lea), 'operation')), 'the change log has her creation and her login');
-act('student_save', ['first_name'=>'Ohne', 'last_name'=>'Haken', 'email'=>'ohne.haken@beispiel.test', 'status'=>'active',
-    'joined_on'=>today(), 'birth_date'=>'', 'ended_on'=>'', 'internal_notes'=>'']);
-is_same(null, scalar("SELECT account_id FROM students WHERE first_name='Ohne'"), 'without the tick, only the student is made');
-is_same(0, links_queued_to('ohne.haken@beispiel.test'), 'and nobody is mailed');
+is_same(0, address_drift(), 'her record carries the login’s address');
+is_same(['insert'], array_column(history_for('students', $lea), 'operation'), 'the change log has her creation');
+is_same(null, student_draft($draft), 'and the draft is gone');
+create_through_wizard(['first_name'=>'Ohne', 'last_name'=>'Haken'], 'none');
+is_same('placeholder', (string)scalar("SELECT a.state FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.first_name='Ohne'"),
+        '„Ohne Anmeldung anlegen“ makes the student with a placeholder');
+is_same(0, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE subject LIKE '%Einladung%' AND account_id=(SELECT account_id FROM students WHERE first_name='Ohne')"),
+        'and nobody is mailed');
 
-case_('A reset link can go only to a login in use');
-is_same([true, false, false, false], array_map(fn($a) => reset_link_possible($a), [
-    ['state'=>'active', 'verified_at'=>now()], ['state'=>'invited', 'verified_at'=>null],
-    ['state'=>'suspended', 'verified_at'=>now()], ['state'=>'active', 'verified_at'=>null]]),
-    'active and verified, and nothing else - the one rule for the action and the card');
+case_('A reset link can go only to a login in use, at its address');
+is_same([true, false, false, false, false], array_map(fn($a) => reset_link_possible($a), [
+    ['state'=>'active', 'verified_at'=>now(), 'email'=>'a@b.test'], ['state'=>'invited', 'verified_at'=>null, 'email'=>'a@b.test'],
+    ['state'=>'suspended', 'verified_at'=>now(), 'email'=>'a@b.test'], ['state'=>'active', 'verified_at'=>null, 'email'=>'a@b.test'],
+    ['state'=>'active', 'verified_at'=>now(), 'email'=>null, 'username'=>'lena.hofer']]),
+    'active, verified and with an address, and nothing else - a username login gets a sign-in link instead (ADR 0023 §6)');
 
 case_('Staff can have a link for a new password mailed, and never see it');
 /* ADR 0020, §5: an active login only, never one's own, a trainer for students'
@@ -791,7 +802,8 @@ is_same([$boss, $coach], array_map('intval', array_column($told, 'account_id')),
 is_same(['Neu im Portal: Ida Neumann', 'Hat sich über die Einladung an ida.neumann@beispiel.test eingerichtet. Noch in keinem Kurs.', 'student', 'id='.$own],
         [$told[0]['title'] ?? null, $told[0]['body'] ?? null, $told[0]['link_page'] ?? null, $told[0]['link_params'] ?? null],
         'naming her, with a link to her page');
-is_same('Dein Konto ist bereit. Du meldest dich ab jetzt mit ida.neumann@beispiel.test an.', $_SESSION['flash']['message'] ?? null, 'and told how she signs in from now on');
+is_same('Dein Konto ist bereit. Du meldest dich ab jetzt mit ida.neumann@beispiel.test an. Willkommen, Ida! Schau kurz, ob alles stimmt, und ergänze, was fehlt. Frag deine Eltern, wenn du etwas nicht weißt.',
+        $_SESSION['flash']['message'] ?? null, 'and told how she signs in from now on, and welcomed to check her details (ADR 0023 §5)');
 ok(!in_array((int)$ida['id'], array_map('intval', array_column(open_invitations(), 'id')), true)
    && !in_array((int)$ida['id'], array_map('intval', array_column(orphan_logins(), 'id')), true), 'no longer an open invitation, nor a login left behind');
 
@@ -831,7 +843,11 @@ act('student_invite', ['student_id' => (string)$cardKid]);
 $cardLogin = (int)scalar('SELECT account_id FROM students WHERE id=?', [$cardKid]);
 is_same(['student', ['id' => $cardKid]], act('account_state', ['id' => (string)$cardLogin, 'mode' => 'withdraw']),
         'a student’s own invitation is withdrawn from their page, and returns there');
-is_same(null, scalar('SELECT account_id FROM students WHERE id=?', [$cardKid]), 'the student stays, without a login, ready to be invited again');
+$cardNow = one('SELECT a.* FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.id=?', [$cardKid]);
+ok($cardNow !== null && (int)$cardNow['id'] !== $cardLogin && $cardNow['state'] === 'placeholder' && $cardNow['email'] === null,
+   'the student stays, on a fresh placeholder, ready to be invited again');
+is_same([0, 0], [(int)scalar('SELECT COUNT(*) FROM accounts WHERE id=?', [$cardLogin]), (int)scalar('SELECT COUNT(*) FROM auth_tokens WHERE account_id=?', [$cardLogin])],
+        'and the invitation, its login and its link are gone');
 
 case_('Deleting a student takes a login never set up with it, and keeps one that was');
 /* ADR 0021, §4: left standing, the live link would let the person make the

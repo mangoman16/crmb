@@ -22,8 +22,14 @@ const MAIL_STRUCTURED = "\x01crm-mail\n";
  * passed the first; a legacy one may fail the second, and a throw here rolls
  * back the whole action - a newsletter to every other family with it (ADR 0019,
  * R2).
+ *
+ * A login signing in with a username may have no address at all (ADR 0023 §7):
+ * then $recipient is null, and nothing is queued and nothing thrown, for the
+ * same reason - one child without a mailbox must not roll back a newsletter to
+ * everybody else.
  */
-function queue_mail(?int $accountId,string $recipient,string $subject,string $body,string $category,array $attach=[]): void {
+function queue_mail(?int $accountId,?string $recipient,string $subject,string $body,string $category,array $attach=[]): void {
+    if($recipient===null) return;
     if(!email_deliverable(email_normalised($recipient))) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.'));
     if(preg_match('/[\r\n]/',$subject) || mb_strlen($subject)>255) throw new UserError(t('Ungültiger Betreff.','Invalid subject.'));
     $payload=$attach
@@ -96,7 +102,8 @@ function account_in_use(array $account): bool { return ($account['state']??'')==
  * third, so an invoice was queued, dropped, and marked as e-mailed.
  */
 function account_takes_mail(array $account, string $category): bool {
-    if(!account_in_use($account)) return false;
+    // A username login without an address has nowhere to take it (ADR 0023 §7).
+    if(!account_in_use($account) || (string)($account['email']??'')==='') return false;
     $switch=unsubscribe_categories()[$category]??null;
     return $switch===null || (bool)($account[$switch]??1);
 }
@@ -222,6 +229,9 @@ function invoice_mail_refusal(array $invoice): ?string {
     if(!account_in_use($account))
         return t('Der Zugang dieses Kindes ist noch nicht eingerichtet oder gesperrt. Lade die Rechnung herunter und gib sie anders weiter.',
                  'This child’s login is not set up yet, or is suspended. Download the invoice and pass it on another way.');
+    if((string)($account['email']??'')==='')
+        return t('Dieses Kind meldet sich ohne E-Mail-Adresse an, also gibt es keine, an die die Rechnung gehen könnte. Lade sie herunter und gib sie anders weiter.',
+                 'This child signs in without an email address, so there is none for the invoice to go to. Download it and pass it on another way.');
     if(!account_takes_mail($account,'payments'))
         return t('Diese Familie hat E-Mails zu Beiträgen abbestellt („Erinnerung, wenn ein Beitrag offen ist“ unter „Mein Konto“). Lade die Rechnung herunter und gib sie anders weiter.',
                  'This family has switched off emails about payments (“Remind me when a payment is outstanding” under “My account”). Download the invoice and pass it on another way.');

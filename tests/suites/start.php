@@ -25,7 +25,7 @@ is_same(array_fill_keys(array_keys($fresh), false), $done(), 'and nothing on a n
 foreach ($fresh as $key => $step) {
     ok($step['what'] !== '' && $step['why'] !== '', $key.' says what and why');
     is_same('start', $step['params']['from'] ?? null, $key.' carries from=start, so the page can offer the way back');
-    ok(in_array($step['page'], ['settings','manage','classes','student','students','payments'], true), $key.' leads to a page that exists');
+    ok(in_array($step['page'], ['settings','manage','classes','student','student_new','students','payments'], true), $key.' leads to a page that exists');
 }
 $progress = setup_progress();
 is_same([0, 9], [$progress['done'], $progress['total']], 'none of nine');

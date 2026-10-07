@@ -173,7 +173,7 @@ function is_secret_field(string $key): bool {
  * confirmation, record_step() also drops csrf, which is_secret_field() would
  * otherwise record as ***.
  */
-const FORM_BOOKKEEPING_FIELDS = ['request_id', 'action', 'return_page', 'return_id', 'return_tab'];
+const FORM_BOOKKEEPING_FIELDS = ['request_id', 'action', 'return_page', 'return_id', 'return_tab', 'return_draft'];
 
 /**
  * Keep what was typed when one value is rejected.
@@ -276,6 +276,12 @@ function form_return(string $fallback='dashboard', ?array $pages=null): array {
     $params=[];
     if((int)post('return_id')>0) $params['id']=(int)post('return_id');
     if(post('return_tab')!=='') $params['tab']=post('return_tab');
+    // The wizard's draft key (ADR 0023 §5), so a refused step 2 comes back to
+    // step 2 with the draft whole - and stays there when the phone reloads the
+    // tab. Only something shaped like a key; never the details.
+    // student_draft_key() is in app/domain.php, loaded after this file: safe,
+    // because a form is only ever returned from while a request runs.
+    if(student_draft_key(post('return_draft'))) $params['draft']=post('return_draft');
     return [$page,$params];
 }
 // form_text() is in app/install.php, so the installer reads its form by the same rule.
@@ -494,6 +500,117 @@ function email_value(string $value): string {
     $v=email_normalised($value);
     if(!email_deliverable($v) || !email_is_dot_atom($v)) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.'));
     return $v;
+}
+
+/*
+ * Usernames (ADR 0023 §1): the sign-in name of a student's login that has no
+ * address, such as lena.hofer. Staff logins never have one.
+ *
+ * Lower-case a-z, digits, dot and hyphen; starting with a letter, ending with a
+ * letter or digit, never two separators in a row, 3 to 30 characters. No '@', so
+ * a username and an address can never be the same text. No underscore, because
+ * username_for_new_account() builds a LIKE pattern from a username and '_' is a
+ * LIKE wildcard: without it the pattern is literal (A1).
+ *
+ * Pure functions, here beside the address rules, so the sign-in, the access card
+ * and the wizard read one rule and the suite can test it without a database.
+ */
+const USERNAME_PATTERN = '/^[a-z](?:[a-z0-9]|[.-](?=[a-z0-9])){2,29}$/D';
+
+/**
+ * Letters written the German way or stripped to their base letter, keyed by
+ * what they become. Lower case only: everything is lower-cased first.
+ *
+ * One table in this file rather than ext-intl or iconv('…//TRANSLIT'). The first
+ * is not a requirement of the portal and a shared host may lack it; the second
+ * depends on the locale and answers differently on glibc and musl. This gives
+ * the same username on every host.
+ */
+const USERNAME_LETTERS = [
+    'ae' => 'äæ', 'oe' => 'öœ', 'ue' => 'ü', 'ss' => 'ßẞ', 'th' => 'þ', 'ij' => 'ĳ',
+    'a' => 'àáâãåāăą', 'c' => 'çćĉċč', 'd' => 'ðďđ', 'e' => 'èéêëēĕėęě', 'g' => 'ĝğġģ', 'h' => 'ĥħ',
+    'i' => 'ìíîïĩīĭįı', 'j' => 'ĵ', 'k' => 'ķĸ', 'l' => 'ĺļľŀł', 'n' => 'ñńņňŉŋ', 'o' => 'òóôõøōŏő',
+    'r' => 'ŕŗř', 's' => 'śŝşšſ', 't' => 'ţťŧ', 'u' => 'ùúûũūŭůűų', 'w' => 'ŵ', 'y' => 'ýÿŷ', 'z' => 'źżž',
+];
+
+/** A text in lower case with USERNAME_LETTERS applied, and nothing else changed. */
+function username_transliterated(string $text): string {
+    static $map=null;
+    if($map===null) {
+        // mb_strtolower() turns the Turkish capital İ into i and a combining dot
+        // above, which is not a letter of its own; it goes with the capital.
+        $map=["i\u{307}"=>'i'];
+        foreach(USERNAME_LETTERS as $to=>$letters) foreach(mb_str_split($letters) as $letter) $map[$letter]=$to;
+    }
+    return strtr(mb_strtolower($text),$map);
+}
+
+/**
+ * A typed username in the one form it is stored and looked up in.
+ *
+ * Everything outside the table is kept, so a value that still does not match the
+ * pattern is refused rather than quietly turned into somebody else's name. That
+ * way `Lena.Hofer`, capitalised by an iPhone, signs in as lena.hofer.
+ */
+function username_normalised(string $typed): string { return username_transliterated(trim($typed)); }
+
+/** The username to write, from what was typed - or a refusal that says the rule. The only way a typed username reaches a write. */
+function username_value(string $typed): string {
+    $username=username_normalised($typed);
+    if(!preg_match(USERNAME_PATTERN,$username))
+        throw new UserError(t('Ein Benutzername hat 3 bis 30 Zeichen: Kleinbuchstaben a–z, Ziffern, Punkt und Bindestrich. Er beginnt mit einem Buchstaben, endet mit einem Buchstaben oder einer Ziffer, und Punkt oder Bindestrich stehen nie zweimal hintereinander.',
+                              'A username has 3 to 30 characters: lower-case letters a–z, digits, dot and hyphen. It starts with a letter, ends with a letter or a digit, and never has two dots or hyphens in a row.'));
+    return $username;
+}
+
+/**
+ * The username a person's name suggests, with no number: lena.mueller.
+ *
+ * Inside each name a run of spaces, hyphens or dots becomes one hyphen,
+ * apostrophes are dropped (O'Neill is oneill) and so is anything else outside
+ * the alphabet. The two parts are joined with a dot. The result is cut to 26
+ * characters, leaving room for a number up to 9999, at a separator where that
+ * still leaves a name. A name that leaves nothing usable - written only in
+ * Cyrillic, Greek or Chinese, say - gives 'konto', which is numbered like any
+ * other.
+ */
+function username_from_name(string $first, string $last): string {
+    $parts=[];
+    foreach([$first,$last] as $name) {
+        $part=preg_replace("/['’ʼ‘`´]/u",'',username_transliterated($name));
+        $part=preg_replace('/[^a-z0-9\s.-]/u','',(string)$part);
+        $part=trim((string)preg_replace('/[\s.-]+/u','-',(string)$part),'-');
+        if($part!=='') $parts[]=$part;
+    }
+    $base=implode('.',$parts);
+    if(strlen($base)>26) {
+        $cut=substr($base,0,26);
+        $boundary=max((int)strrpos($cut,'.'),(int)strrpos($cut,'-'));
+        // At the last separator, unless the next character is one anyway or
+        // cutting there would leave too little to be a name.
+        $base=rtrim(($base[26]==='.' || $base[26]==='-' || $boundary<3) ? $cut : substr($cut,0,$boundary),'.-');
+    }
+    // A name of digits first, or of one letter, is no username; the rule, not a guess, says so.
+    return preg_match(USERNAME_PATTERN,$base) ? $base : 'konto';
+}
+
+/**
+ * $base if nobody has it, otherwise $base2, $base3 … - the lowest that is free,
+ * or null when none of them is a username any more (a base of 30 characters has
+ * no room for a number).
+ *
+ * So a number appears only when the name is taken, and a number freed by a
+ * deleted login is handed out again.
+ */
+function username_first_free(string $base, array $taken): ?string {
+    $taken=array_flip($taken);
+    if(!isset($taken[$base])) return $base;
+    for($n=2;$n<=9999;$n++) {
+        $candidate=$base.$n;
+        if(!preg_match(USERNAME_PATTERN,$candidate)) return null;
+        if(!isset($taken[$candidate])) return $candidate;
+    }
+    return null;
 }
 
 function choose(string $value,array $allowed): string { if(!in_array($value,$allowed,true)) throw new UserError(t('Ungültige Auswahl.','Invalid choice.')); return $value; }

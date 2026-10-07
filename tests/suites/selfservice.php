@@ -21,23 +21,17 @@ function make_field(string $label, string $visibility, bool $required, string $t
         'required'=>$required ? 1 : 0, 'visibility'=>$visibility, 'sort_order'=>0, 'archived'=>0]);
 }
 
-/** A new student as the create form posts one: no custom fields, nothing but the five boxes. */
-function create_student(array $extra = []): array {
-    return act('student_save', $extra + ['first_name'=>'Neu', 'last_name'=>'Kind', 'email'=>'', 'status'=>'active',
-        'joined_on'=>today(), 'birth_date'=>'', 'ended_on'=>'', 'internal_notes'=>'']);
-}
-
 // ---------------------------------------------------------------------------
 case_('Creating a student is never refused by a required field, of any visibility');
-/* save_custom_fields() was handed $new and never read it. The create form
-   carries no custom fields - "a form with twenty boxes is a form somebody
-   abandons" - so one field marked required refused the creation of every
-   student, whoever was to fill it in. */
+/* save_custom_fields() was handed $new and never read it. The wizard carries
+   no custom fields - "a form with twenty boxes is a form somebody abandons"
+   (ADR 0023 §5) - so one field marked required must not refuse the creation of
+   every student, whoever is to fill it in. */
 $required = [];
 foreach (['internal', 'view', 'edit'] as $visibility) {
     $required[$visibility] = make_field('Pflicht '.$visibility, $visibility, true);
     $before = (int)scalar('SELECT COUNT(*) FROM students');
-    does_not_throw(fn() => create_student(['first_name'=>'Neu '.$visibility]), 'with a required field at '.$visibility.', a student is created');
+    does_not_throw(fn() => create_through_wizard(['first_name'=>'Neu '.$visibility]), 'with a required field at '.$visibility.', a student is created');
     is_same($before + 1, (int)scalar('SELECT COUNT(*) FROM students'), 'and is really there');
 }
 

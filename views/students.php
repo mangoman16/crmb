@@ -7,7 +7,7 @@ $overdueBy=balances(true);$coursePrices=course_prices_by_student();
 // second one's page.
 page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in this selection'),
     $staff?link_button(t('Per E-Mail einladen','Invite by email'),'students',['invite'=>1,'#'=>'invite'],'secondary')
-           .link_button(t('+ Schüler anlegen','+ Add student'),'student'):'');
+           .link_button(t('+ Schüler anlegen','+ Add student'),'student_new',['from'=>'students']):'');
 if($staff): ?>
 <?php /* Option 1 (ADR 0021, §3): an address and a language, and the person sets
          themselves up and chooses a course. Only when asked for, or when a

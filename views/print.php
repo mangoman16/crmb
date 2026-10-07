@@ -144,10 +144,12 @@ $minor = $student ? (($age = student_age($student['birth_date'] ?? null)) !== nu
         // paper asks for the no. A pre-printed tick cannot be taken back with a
         // pen; an empty box for "please don't" can simply be left alone. A data
         // sheet shows what the portal holds, so a no already given is ticked
-        // there to be checked; without a login there is nothing to show yet.
+        // there to be checked; without sign-in there is nothing to show yet -
+        // a placeholder's switches are nobody's answer (ADR 0023 §3).
         $login = !empty($student['account_id'])
-            ? one('SELECT newsletter, notifications FROM accounts WHERE id=?', [(int)$student['account_id']])
+            ? one('SELECT state, newsletter, notifications FROM accounts WHERE id=?', [(int)$student['account_id']])
             : null;
+        if (login_without_sign_in($login)) $login = null;
         print_tick(t('Bitte keine Neuigkeiten des Vereins per E-Mail schicken.','Please do not send me club news by email.'),
             $login ? !(int)$login['newsletter'] : null);
         print_tick(t('Bitte keine E-Mail bei neuen Nachrichten schicken.','Please do not email me when there is a new message.'),

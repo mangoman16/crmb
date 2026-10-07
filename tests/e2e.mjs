@@ -225,7 +225,8 @@ const barLink = (page, word) => page.locator('.mobile-nav a').filter({ has: page
 async function signIn(page, who, role = who === ADMIN ? 'admin' : 'family') {
     if (!/page=login/.test(page.url())) await page.goto(BASE + '/index.php?page=login');
     await look(page, role);
-    await page.fill('input[name=email]', who.email); await page.fill('input[name=password]', who.password);
+    // One box for the address or the username (ADR 0023 §7), posted as login.
+    await page.fill('input[name=login]', who.email); await page.fill('input[name=password]', who.password);
     await submit(page, page.locator('main form button[type=submit]'));
     await look(page, role);
 }
@@ -471,22 +472,34 @@ step('5 children', async () => {
     for (const [i, child] of CHILDREN.entries()) {
         await openStep(page, 'students');
         // With a child already there, the step leads to the list, and a new
-        // child starts from its „Neu“ link.
+        // child starts from its „+ Schüler anlegen“; with none, the step opens
+        // the wizard itself (ADR 0023 §5, §9).
         if (label(page.url()) === '?page=students') {
             // By its words: „Per E-Mail einladen“ beside it is a link to
             // page=students&invite=1, which an href match would take instead.
-            const add = page.locator('main a[href*="page=student"]:not([href*="id="])', { hasText: 'Schüler anlegen' });
+            const add = page.locator('main a[href*="page=student_new"]', { hasText: 'Schüler anlegen' });
             must(await add.count() === 1, 'the list of children offers „+ Schüler anlegen“', await mainText(page));
             await submit(page, add);
             await look(page, 'admin');
         }
-        const f = page.locator('form:has(input[name=action][value=student_save])');
+        ok(new URL(page.url()).searchParams.get('page') === 'student_new', `${child.first} is added through the wizard`, page.url());
+        // Step 1: who is joining. No course yet, so the checklist below still
+        // leads to the child's „Kurse“ tab as it did.
+        const f = page.locator('form:has(input[name=action][value=student_draft])');
         await f.locator('[name=first_name]').fill(child.first);
         await f.locator('[name=last_name]').fill(child.last);
         await f.locator('[name=birth_date]').fill(child.born);
-        const status = f.locator('[name=status]');
-        if (await status.count()) await status.selectOption('active');
-        await save(page, f, 'the new child form');
+        await f.locator('[name=course]').selectOption('none');
+        await f.locator('[name=status]').selectOption('active');
+        await save(page, f, 'step 1 of the wizard');
+        await look(page, 'admin');
+        ok(sql(`SELECT COUNT(*) FROM students WHERE first_name='${child.first}' AND last_name='${child.last}'`) === '0',
+           `step 1 writes nothing: ${child.first} is not stored yet`, await mainText(page));
+        // Step 2: how they sign in. Mail is not set up yet at this step, so
+        // „Ohne Anmeldung anlegen“; the invitation comes at step 9.
+        const later = page.locator('#later form:has(input[name=action][value=student_create])');
+        must(await later.count() === 1, 'step 2 offers „Ohne Anmeldung anlegen“', await mainText(page));
+        await save(page, later, '„Ohne Anmeldung anlegen“');
         await look(page, 'admin');
         const id = Number(sql(`SELECT id FROM students WHERE first_name='${child.first}' AND last_name='${child.last}'`));
         must(id > 0, `${child.first} is stored`, await flash(page));
@@ -627,11 +640,12 @@ step('9 invite', async () => {
     S.childName = sql(`SELECT first_name FROM students WHERE id=${S.invitedChild}`);
     // The child has no address yet: the access card says to enter one above first.
     const card = page.locator('#access');
-    // U.20: no address yet - „Kein Zugang“, the sentence, and no button.
+    // U.20: no address yet - „Ohne Anmeldung“ (the placeholder every student
+    // has, ADR 0023 §3), the sentence, and no invitation button.
     const empty = (await card.innerText()).replace(/\s+/g, ' ');
-    ok(empty.includes('Kein Zugang') && empty.includes('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')
+    ok(empty.includes('Ohne Anmeldung') && empty.includes('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')
        && await card.locator('form:has(input[name=action][value=student_invite])').count() === 0,
-       'with no address the card says „Kein Zugang“ and „Trag oben zuerst eine E-Mail-Adresse ein und speichere.“, with no button', empty);
+       'with no address the card says „Ohne Anmeldung“ and „Trag oben zuerst eine E-Mail-Adresse ein und speichere.“, with no invitation button', empty);
     const f = page.locator('form:has(input[name=action][value=student_save])');
     await f.locator('[name=email]').fill(FAMILY.email);
     await save(page, f, 'the child form');

@@ -131,13 +131,122 @@ function orphan_logins(): array {
         .' AND a.verified_at IS NOT NULL ORDER BY a.name,a.id');
 }
 
+/*
+ * „Zugänge" in three categories (ADR 0023 §8): the trainers, the
+ * administrators, and one row per student, each leading to that student's
+ * access card. The page only reads; every action on a student's login is on
+ * the access card.
+ */
+
+/** The team's logins by role, in the owner's order: trainers, then administrators. */
+function team_logins(): array {
+    $team = ['trainer' => [], 'admin' => []];
+    foreach (rows("SELECT * FROM accounts WHERE role IN ('admin','trainer','manager') ORDER BY name,id") as $a)
+        $team[$a['role'] === 'admin' ? 'admin' : 'trainer'][] = $a;
+    return $team;
+}
+
+/** How many student rows the Schüler card shows at a time. */
+const STUDENT_LOGINS_PER_PAGE = 50;
+
 /**
- * The student without a login of their own who already carries this address,
- * or null. An invitation by address to it would make the same person twice, so
- * email_invite refuses it and points to that student's own page (ADR 0021, §3).
+ * The Schüler card's filter chips, as key => the condition on the login aliased
+ * a. „Noch nicht angemeldet" is every login waiting for its first sign-in - an
+ * invitation by e-mail and a username with a link alike: the badge tells the
+ * two apart, the chip asks who has not arrived yet.
+ */
+function student_login_filters(): array {
+    return [
+        'all'         => '1=1',
+        'waiting'     => "a.state='invited'",
+        'placeholder' => "a.state='placeholder'",
+        'suspended'   => "a.state='suspended'",
+    ];
+}
+
+/**
+ * How many students each chip holds, as key => n: one query for all four. The
+ * column aliases are numbered, because a chip's key - „all" - can be a word the
+ * database reserves.
+ */
+function student_login_counts(): array {
+    $filters = student_login_filters();
+    $sums = [];
+    foreach (array_values($filters) as $i => $condition) $sums[] = 'COALESCE(SUM('.$condition.'),0) AS n'.$i;
+    return array_combine(array_keys($filters), array_map('intval', array_values(one('SELECT '.implode(',', $sums).' FROM students s JOIN accounts a ON a.id=s.account_id') ?? [])));
+}
+
+/**
+ * One page of the Schüler card: every student with their login, sorted by last
+ * name, as the login's columns - for login_state_badge(), presence_line() and
+ * the sign-in name - plus the student's id and names, and link_expires_at: when
+ * the newest invitation or sign-in link still waiting runs out, or null when
+ * there is none (lapsed links are pruned every night). An unknown filter is
+ * 'all'. The link's date only, never its hash.
+ */
+function student_logins(string $filter, int $page): array {
+    $condition = student_login_filters()[$filter] ?? student_login_filters()['all'];
+    $offset = (max(1, $page) - 1) * STUDENT_LOGINS_PER_PAGE;
+    return rows('SELECT a.*, s.id AS student_id, s.first_name, s.last_name,'
+        ." (SELECT MAX(t.expires_at) FROM auth_tokens t WHERE t.account_id=a.id AND t.purpose IN ('invite','signin')) AS link_expires_at"
+        .' FROM students s JOIN accounts a ON a.id=s.account_id WHERE '.$condition
+        .' ORDER BY s.last_name, s.first_name, s.id LIMIT '.STUDENT_LOGINS_PER_PAGE.' OFFSET '.$offset);
+}
+
+/*
+ * The wizard's draft (ADR 0023 §5): step 1's details, kept in the session under
+ * a random key between the two steps, so the address carries the key and never
+ * the details. Only the student_draft action writes one; a page reads it and
+ * writes nothing (ADR 0003).
+ */
+
+/** How long a draft is kept, and how many one session holds. */
+const STUDENT_DRAFT_SECONDS = 7200;
+const STUDENT_DRAFTS_KEPT = 10;
+
+/** Whether $key is shaped like a draft's key: 32 hex characters, nothing a person typed. */
+function student_draft_key(string $key): bool { return preg_match('/^[a-f0-9]{32}$/D', $key) === 1; }
+
+/**
+ * The draft kept under $key, or null when there is none - never made, dropped
+ * by student_create, pushed out by ten newer ones, or older than two hours. The
+ * last is decided here, as it is read, so a stale draft is gone for every page
+ * at the same moment; student_draft removes it from the session the next time it
+ * writes.
+ */
+function student_draft(string $key): ?array {
+    if (!student_draft_key($key)) return null;
+    $draft = $_SESSION['student_drafts'][$key] ?? null;
+    if (!is_array($draft) || (int)($draft['saved_at'] ?? 0) < time() - STUDENT_DRAFT_SECONDS) return null;
+    return $draft;
+}
+
+/*
+ * "Has a login", in the trainer's sense (ADR 0023 §3): somebody can sign in
+ * with it, or has been asked to. Every student has a login from the moment the
+ * student exists, but a placeholder signs in with nothing - „Ohne Anmeldung" -
+ * and to everything that asks "can we write to them, invite them, is that
+ * done?" it is no login at all. Asked here and nowhere else, in the two forms it
+ * is asked in, written side by side so they cannot drift apart. A student with
+ * no account_id at all can only be one an update has not reached yet; it reads
+ * the same.
+ */
+function login_without_sign_in(?array $account): bool {
+    return $account === null || ($account['state'] ?? '') === 'placeholder';
+}
+function student_without_sign_in_sql(string $student = 's'): string {
+    $s = sql_name($student, 'alias');
+    return '('.$s.'.account_id IS NULL OR EXISTS (SELECT 1 FROM accounts pl WHERE pl.id='.$s.".account_id AND pl.state='placeholder'))";
+}
+
+/**
+ * The student whose login is still a placeholder and whose record carries this
+ * address, or null. An invitation by address to it would make the same person
+ * twice, so email_invite and the wizard refuse it and point to that student's
+ * own page (ADR 0021 §3, 0023 §3).
  */
 function student_without_login_at(string $email): ?array {
-    return one('SELECT id,first_name,last_name FROM students WHERE email=? AND account_id IS NULL ORDER BY id LIMIT 1', [$email]);
+    return one('SELECT s.id,s.first_name,s.last_name FROM students s WHERE s.email=? AND '.student_without_sign_in_sql().' ORDER BY s.id LIMIT 1', [$email]);
 }
 
 /**
@@ -209,14 +318,15 @@ function students_missing_contact(): array {
 function student_next_steps(int $studentId): array {
     // The waiting join request comes with the row, so the page pays nothing
     // extra for it on every tab.
-    $student = one('SELECT s.*, '.pending_join_sql().' AS pending_join FROM students s WHERE s.id=?', [$studentId]);
+    $student = one('SELECT s.*, '.student_without_sign_in_sql().' AS without_sign_in, '.pending_join_sql().' AS pending_join FROM students s WHERE s.id=?', [$studentId]);
     if (!$student) return [];
     $steps = [];
+    $withoutSignIn = (bool)$student['without_sign_in'];
     if (!primary_contact($studentId))
         $steps[] = ['what' => t('Notfallkontakt eintragen', 'Add an emergency contact'),
                     'why'  => t('Wen du anrufst, wenn etwas ist.', 'Who you ring if something happens.'),
                     'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'contacts'], 'anchor' => 'add-contact'];
-    if ((string)$student['email'] === '' && $student['account_id'] === null)
+    if ((string)$student['email'] === '' && $withoutSignIn)
         $steps[] = ['what' => t('E-Mail-Adresse eintragen', 'Add an email address'),
                     'why'  => t('Dorthin gehen Einladung, Rechnungen und Erinnerungen.', 'The invitation, the invoices and the reminders go there.'),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
@@ -224,12 +334,12 @@ function student_next_steps(int $studentId): array {
     // (refuse_address_in_use()), and a button that can only fail is not a next
     // step. Typically a brother's or a parent's address, typed in before the
     // rule came back; a parent's belongs on the contacts.
-    elseif ($student['account_id'] === null && account_with_address((string)$student['email']))
+    elseif ($withoutSignIn && account_with_address((string)$student['email']))
         $steps[] = ['what' => t('Eigene E-Mail-Adresse eintragen', 'Enter an email address of their own'),
                     'why'  => t('Die eingetragene Adresse ist schon der Zugang einer anderen Person. Jede Person braucht ihre eigene; die Adresse der Eltern gehört zu den Kontakten.',
                                 'The address on the record is already somebody else’s login. Everybody needs their own; a parent’s address belongs on the contacts.'),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
-    elseif ($student['account_id'] === null)
+    elseif ($withoutSignIn)
         $steps[] = ['what' => t('Zugang einladen', 'Invite them in'),
                     'why'  => t('Damit die Familie Termine und Beiträge selbst sieht.', 'So the family can see dates and charges themselves.'),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'access'];
@@ -337,7 +447,7 @@ function pending_join_sql(string $student = 's'): string {
 /** The children with nowhere to send an invitation or an invoice. */
 function students_missing_email(): array {
     return rows('SELECT s.id,s.first_name,s.last_name FROM students s'
-        ." WHERE s.status<>'ended' AND s.email='' AND s.account_id IS NULL"
+        ." WHERE s.status<>'ended' AND s.email='' AND ".student_without_sign_in_sql()
         .' ORDER BY s.first_name,s.last_name');
 }
 

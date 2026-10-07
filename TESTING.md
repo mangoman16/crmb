@@ -101,6 +101,7 @@ release and emptied again for the next.
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
 - The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a copied course has its group; a stored photo keeps only the picture (ADR 0022): C.1–C.20
 - Billing and invoices after the review of October 2026: an archived tariff stays on a child, a cancelled charge can be charged again, „Als bezahlt eintragen" confirms rather than doubles, a charge on an invoice cannot be cancelled, an invoice is not e-mailed to a family who said no, the invoices page counts every invoice, a membership ending mid-month is charged to that day, a child coming back starts afresh, the age filter finds the right children, background charges are German and nobody's, and the „Zahlungsziel" setting that did nothing is gone: [B.1–B.14](#billing-and-invoices-after-the-review-of-october-2026)
+- Every student has a login — „Ohne Anmeldung" until somebody gives it an address or a username; a wizard „Schüler anlegen" is the one way to add a child; a username signs in in the same box as an address; a one-time „Anmeldelink" with a QR code for a child without an e-mail address; deleting a child's login gives them a fresh, empty one (ADR 0023): [L.1–L.24](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
 
 ---
 
@@ -1870,6 +1871,118 @@ cancel, mark paid or e-mail.
 - [ ] **B.14** **Verwaltung → Geld & Zahlungen**, the defaults under the
   payment recipients: there is no „Zahlungsziel für Monatsbeiträge" any more. When a charge is due comes from the tariff's
   „Zahltag" and „Tage bis überfällig", which B.9's charge shows.
+
+### Every student has a login, the wizard and sign-in links (ADR 0023)
+
+On the example data or a copy, never on a real family: several of these make,
+use and delete logins. The screens are backend-dev's working minimum until
+frontend-dev builds the designer's (docs/design/2026-10-05-accounts-and-chat-screens.md);
+the checks are about what happens, and hold for both.
+
+**The update**
+
+- [ ] **L.1** **(release)** On a copy of a portal from before this release with
+  children who have no login — two of them sharing a parent's address — upload
+  the files and open any page. The update runs without a command, the portal
+  opens again, and **Schüler** shows every child as before. Each child's
+  **„Zugang zum Portal"** card says „Ohne Anmeldung"; children who had a login
+  keep it, with the same address and state.
+- [ ] **L.2** **(release)** On that copy, **Einstellungen → System → Beispieldaten**:
+  „Beispieldaten entfernen" still removes every example child, and **Konten**
+  lists no example login afterwards.
+
+**The wizard „Schüler anlegen"**
+
+- [ ] **L.3** **Schüler → „+ Schüler anlegen"** (and the overview's button, and
+  the checklist's „Kinder eintragen" on a portal with no child) opens „Neuer
+  Schüler – Schritt 1 von 2". An old bookmark to the student page without a
+  child opens it too.
+- [ ] **L.4** Leave the first name empty and tap **Weiter**: refused in a
+  sentence, what you typed still there. Fill in first and last name, a course
+  from the list, a status, and **Weiter**: step 2 names the child. The address
+  bar shows `draft=` and a string of letters and digits — never the child's
+  name or birth date. **Schüler** does not list the child yet.
+- [ ] **L.5** On step 2, **Ändern**: step 1 again with everything filled in.
+  Change the first name, **Weiter**: step 2 shows the new name.
+- [ ] **L.6** On step 2, switch to WhatsApp and back on the iPhone (the tab
+  reloads): still step 2, with the same child. Leave the tab for more than two
+  hours and tap a card's button: „Die Angaben waren nicht mehr da. Bitte noch
+  einmal eintragen." and step 1. Nothing was created.
+- [ ] **L.7** In a second tab, start another child. Finish both: two children,
+  each with their own name — the tabs did not mix them.
+- [ ] **L.8** Card **„Ohne Anmeldung anlegen"**: the child is created, in the
+  course and on the tariff chosen at step 1, from today. The done page says
+  „Ohne Anmeldung – du trägst alles selbst ein." and „Versehentlich angelegt?
+  …"; the child's access card says „Ohne Anmeldung".
+- [ ] **L.9** Card **„Per E-Mail einladen"** with an address another login has:
+  refused, naming whose; nothing created, and the card comes back with the
+  address. With an address of the child's own: created, the invitation in
+  **Postausgang**, and the done page names the address and until when its link
+  works. With mail not set up, the card says what is missing instead of a form.
+- [ ] **L.10** Choose a course with one place left at step 1, fill its last
+  place on another child (**Kurse**), then tap a card on step 2: „Dieser Kurs ist
+  inzwischen voll …"; nothing created. **Ändern**, „Noch keinen Kurs", and it
+  works.
+
+**Usernames and the „Anmeldelink"**
+
+- [ ] **L.11** Card **„Ohne E-Mail, mit Benutzername"**: the box suggests
+  first name, dot, last name (`lena.hofer`, umlauts as ae/oe/ue, ß as ss). Try
+  `lena_hofer` and `lena@hofer`: refused, saying the rule. Try a username
+  another child has, in capitals: refused, naming a free one. Accept the
+  suggestion: the done page shows a QR code, the link, the username and until
+  when it works (48 hours), and the warning to send it only to the child or the
+  parents. **Postausgang** holds nothing for this child.
+- [ ] **L.12** **(iPhone)** Scan the QR code from the screen with a second
+  phone's camera: the link opens. Send the link to yourself on WhatsApp: the
+  preview appears, and the link still works afterwards — the preview used
+  nothing up. (Once frontend-dev adds „Teilen", it opens the share sheet.)
+- [ ] **L.13** Open the link signed out: the page shows the username, read-only,
+  asks for a new password twice and for the privacy tick, and offers no e-mail
+  ticks. Tap save without a password, with two different ones, and without the
+  tick: each refused, and the link still works. Then do it properly: you land
+  on the child's own page, told „Du meldest dich ab jetzt mit lena.hofer an.
+  Willkommen, Lena! …". **(iPhone)** iCloud Keychain offers to save the password
+  under `lena.hofer`.
+- [ ] **L.14** Open the same link again: „Link nicht mehr gültig", with the
+  sentence that a link from the trainer works only once.
+- [ ] **L.15** Sign out and sign in with `Lena.Hofer` in the box „E-Mail oder
+  Benutzername", as an iPhone capitalises it: it works. Sign in with an address
+  in the same box: it works.
+- [ ] **L.16** „Passwort vergessen" with `lena.hofer`: the same answer as for
+  any address, the page says a login without an address gets a new link from
+  the trainer, and **Postausgang** holds nothing.
+- [ ] **L.17** As the trainer, on that child's access card (the login is now in
+  use): no „Anmeldelink erstellen", no „Link zum Zurücksetzen senden". As an
+  administrator: „Anmeldelink erstellen" is there. Make one, then make another:
+  the first link no longer works. Use the second: only the password changes;
+  the card says who made the link and that it was used, and the child's old
+  password no longer signs in.
+- [ ] **L.18** Make a link, then „Link zurückziehen": the link no longer works.
+  Make one and „Zugang sperren": the link no longer works; „Zugang entsperren"
+  makes no new one.
+- [ ] **L.19** A link made by one member of staff is not shown to another, nor
+  to the same person after signing out and in again; it can then only be made
+  anew.
+- [ ] **L.20** A child invited by e-mail and not set up yet: no
+  „Anmeldelink erstellen" for anybody. A trainer's or an administrator's login
+  never has one either.
+
+**Replacing a login, and enrolment**
+
+- [ ] **L.21** On a child whose login is in use, **„Anmeldung löschen"** asks
+  for the address (or the username) typed; typed in other capitals, it deletes.
+  The child stays, „Ohne Anmeldung", with courses, charges and invoices; the
+  child's chat with you is gone from **Nachrichten**. The address is still on
+  the record, so „Einladung senden" is offered again.
+- [ ] **L.22** On a child waiting for a first sign-in with a username,
+  „Benutzernamen zurückziehen": „Ohne Anmeldung" again, and the same username
+  can be given to them again.
+- [ ] **L.23** „Ansehen" (view the portal as the child) is offered only for a
+  login in use — never for „Ohne Anmeldung", „Eingeladen" or „Noch nicht
+  angemeldet".
+- [ ] **L.24** A child „Ohne Anmeldung" can be put into a course on its
+  **Kurse** tab as before; billing runs for them as for anybody.
 
 ---
 

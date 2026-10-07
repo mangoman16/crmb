@@ -71,7 +71,7 @@ is_same(0, (int)scalar("SELECT COUNT(*) FROM threads WHERE kind IN ('course','st
 is_same(0, (int)scalar('SELECT COUNT(*) FROM charges'), 'their charges gone with them');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM payments'), 'and the payments against those charges');
 is_same($before, (int)scalar('SELECT COUNT(*) FROM students WHERE is_demo=0'), 'the real student is untouched');
-is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE is_demo=0'), 'and so is the real account');
+is_same(2, (int)scalar('SELECT COUNT(*) FROM accounts WHERE is_demo=0'), 'and so are the real accounts: the administrator’s, and the real student’s login');
 
 case_('Clearing twice is not an error');
 does_not_throw(fn() => demo_clear(), 'a second clear finds nothing and says so');

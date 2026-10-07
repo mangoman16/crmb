@@ -152,6 +152,7 @@ $expected = [
     'accounts' => 'staff', 'payments' => 'staff', 'compose' => 'staff', 'outbox' => 'staff',
     'classes' => 'staff', 'manage' => 'staff', 'invoices' => 'staff', 'attendance' => 'staff',
     'print' => 'staff',
+    'student_new' => 'staff',   // the wizard „Schüler anlegen" (ADR 0023 §5)
     'settings' => 'admin', 'history' => 'admin',
     'start' => 'admin',   // the setup checklist: administrator decisions only (ADR 0011)
 ];
@@ -857,8 +858,20 @@ case_('Every block that makes a login asks whether its address is taken');
 
    The rule asserts once per block rather than once per call it happens to find:
    an earlier version only ever spoke about lookups that existed, so a handler
-   with none passed it in silence. */
-$examined = [];
+   with none passed it in silence.
+
+   A login written with no address has none to ask about: a placeholder (ADR
+   0023 §3) names email as NULL, the one value the unique index lets any number
+   of logins share. That is read from the statement itself, so a block that
+   started writing an address would be held to the rule again, and the blocks it
+   lets through are named below. */
+$writesAddress = function (string $sql): bool {
+    // A statement this does not read is held to the rule.
+    if (!preg_match('/^INSERT INTO `?accounts`? ?\(([^)]*)\) ?VALUES ?\((.*)\)$/i', $sql, $m)) return true;
+    $at = array_search('email', array_map(fn($c) => trim($c, ' `'), explode(',', $m[1])), true);
+    return $at === false ? false : strtoupper(trim(explode(',', $m[2])[$at] ?? '?')) !== 'NULL';
+};
+$examined = []; $addressless = [];
 foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/public/*.php')) as $path) {
     foreach (named_blocks_of($path) as $name => $block) {
         $sql = sql_statements_in($block);
@@ -866,6 +879,7 @@ foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), g
         if (!$insert) continue;
         $handler = substr($path, strlen(APP_ROOT) + 1).' '.$name;
         $examined[] = $handler;
+        if (!array_filter($insert, $writesAddress)) { $addressless[] = $handler; continue; }
         $calls = array_column(array_filter(action_calls_in($block), fn($c) => !$c['method']), 'index', 'name');
         ok(isset($calls['refuse_address_in_use']), $handler.' calls refuse_address_in_use()');
         $firstInsert = min(array_map(fn($c) => $c['index'], array_filter(action_calls_in($block), fn($c) => $c['dml'] && $c['name'] === 'run')) ?: [PHP_INT_MAX]);
@@ -875,14 +889,23 @@ foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), g
 /* Named rather than counted: a count says "five of them" whether or not the
    five are the ones that matter, and a handler that stops inserting - or a
    file truncated to nothing - would just make the count smaller. */
-/* These three and nothing else (ADR 0021, §5): every invitation - a team
-   member's, a student's own, one by address - goes through invite_login(), and
-   the two exceptions are the first administrator and the example data. */
-$creators = ['app/actions.php invite_login', 'app/auth.php create_admin_account', 'app/demo.php demo_fill'];
+/* These four and nothing else (ADR 0021, §5; 0023 §3): every invitation - a
+   team member's, a student's own, one by address - goes through invite_login(),
+   the two exceptions are the first administrator and the example data, and a
+   student's placeholder is the one login made without an address. */
+$creators = ['app/actions.php invite_login', 'app/auth.php create_admin_account', 'app/demo.php demo_fill',
+             // Writes no address, so it has none to ask about (ADR 0023 §3).
+             'app/auth.php placeholder_login'];
 foreach ($creators as $known)
     ok(in_array($known, $examined, true), 'the rule reached '.$known);
 foreach (array_diff($examined, $creators) as $new)
     ok(false, $new.' creates accounts too and nobody has said so here - add it to the list above');
+is_same(['app/auth.php placeholder_login'], $addressless,
+        'and the only block that makes a login without an address is the placeholder, which nobody can sign in with');
+ok($writesAddress("INSERT INTO accounts (name,email,role,created_at) VALUES (?,?,?,?)")
+   && !$writesAddress("INSERT INTO accounts (name,email,role) VALUES (?,NULL,'student')")
+   && !$writesAddress("INSERT INTO accounts (name,role) VALUES (?,'student')"),
+   'what lets a block through is an address written as NULL or not at all, and nothing else');
 
 case_('The locking read every creator shares actually holds');
 $auth = named_blocks_of(APP_ROOT.'/app/auth.php');
@@ -1173,6 +1196,7 @@ $throttled = [
     'app/actions_config.php feedback_send'    => 'a problem report, which can carry a file',
     'app/actions_settings.php smtp_test'      => 'the SMTP test, which talks to the mail server',
     'app/actions_settings.php email_change'   => 'a change of address, which checks a password',
+    'app/actions.php signin_link'             => 'a member of staff making sign-in links, each a key to a child’s login (ADR 0023 §6)',
     // Not a dispatcher case: the request's own throttles, before the
     // transaction is opened at all. Same ordering, same reason, so it is held
     // to the same rule rather than left as the one place nobody checks.
@@ -1278,11 +1302,33 @@ $orderings = [
         'suite'   => 'accounts.php "and nothing was written: no student, the login as it was"',
     ],
     'app/actions.php student_save' => [
-        // The last of its refusals - „Gleich einladen" without working mail -
-        // so the address refusals above it come first too.
-        'refusal' => 'Ohne das Häkchen wird ',
-        'guards'  => 'a student created with an invitation that could not be sent (ADR 0020, §6)',
-        'suite'   => 'accounts.php "and nothing was created"',
+        // The last of its refusals - a new address for an invitation that
+        // cannot be sent - so the address refusals above it come first too.
+        'refusal' => 'lässt sich erst eintragen',
+        'guards'  => 'a new address for an invited login when the invitation could not go there (ADR 0020, §5)',
+        'suite'   => 'accounts.php "not a single write"',
+    ],
+    'app/actions.php student_create' => [
+        // The last of its refusals - a username without a released privacy
+        // notice - so the draft, the address and the username come first too.
+        'refusal' => 'Ein Anmeldelink geht erst',
+        'guards'  => 'a student, a login or an enrolment written for a sign-in that cannot work (ADR 0023 §5)',
+        'suite'   => 'logins.php "nothing is written"',
+    ],
+    'app/actions.php invite_student' => [
+        'refusal' => 'Eine Einladung lässt sich noch nicht verschicken. ',
+        'guards'  => 'a placeholder given an address nobody can be invited to (ADR 0023 §3)',
+        'suite'   => 'accounts.php "and nothing was written"',
+    ],
+    'app/actions.php give_student_username' => [
+        'refusal' => 'Ein Anmeldelink geht erst',
+        'guards'  => 'a username given that its first sign-in could not use (ADR 0023 §3)',
+        'suite'   => 'logins.php "nothing is written"',
+    ],
+    'app/actions.php delete_login' => [
+        'refusal' => 'wird nie allein gelöscht',
+        'guards'  => 'a student’s login deleted from under the student (ADR 0023 §4)',
+        'suite'   => 'logins.php "refused in words"',
     ],
     'app/actions_settings.php portal_icon_save' => [
         // The refusals are in check_portal_icon(), checked separately below.
@@ -1386,13 +1432,16 @@ foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), g
 }
 $allowedWriters = [
     'account_id' => [
-        'app/actions.php invite_student'     => 'the way staff give a student a login: a new one, never a sibling’s',
+        'app/actions.php create_student'     => 'makes the student with the placeholder login they have from their first moment (ADR 0023 §4)',
+        'app/actions.php replace_login_with_placeholder' => 'moves a student onto a fresh placeholder of their own before their old login is deleted (ADR 0023 §4)',
         'app/actions.php create_own_student' => 'an invitation by address, whose holder makes their own student on its login (ADR 0021, §3)',
         'app/demo.php demo_fill'             => 'example data: two fixed logins, one student each, and the index would refuse more',
+        'app/auth.php give_every_student_a_login' => 'is the update’s step that gives each student without a login a fresh placeholder of their own, never one a student already has (ADR 0023 §4)',
     ],
     'email' => [
         'app/actions.php change_account_email' => 'moves the login’s address and the student’s copy together',
-        'app/actions.php invite_student'       => 'writes both copies when it makes the login',
+        'app/actions.php invite_student'       => 'writes both copies when it gives the placeholder its address',
+        'app/actions.php create_student'       => 'writes the address the wizard’s invitation is about to go to, which invite_student() then gives the login',
         'app/actions.php create_own_student'   => 'gives the student it makes the login’s own address',
         'app/actions.php student_save'         => 'writes the login’s own address back for a student who has one',
         'app/demo.php demo_fill'               => 'example data, each login’s student given that login’s address',
@@ -1538,21 +1587,24 @@ $lookup = defined_functions_in(APP_ROOT.'/app/auth.php')['account_for_sign_in'] 
 // The statement is a literal, with nothing joined to it but the literal FOR
 // UPDATE, and that only for „vergessen".
 preg_match_all('~\bone \( \x27([^\x27]*)\x27 (?:\. \( \$lock \? \x27 FOR UPDATE\x27 : \x27\x27 \) )?,~', $lookup, $literal);
-is_same(['SELECT * FROM accounts WHERE email=?'], $literal[1], 'account_for_sign_in() sends the one literal statement');
-ok(str_contains(named_blocks_of(APP_ROOT.'/app/actions.php')['login'] ?? '', 'account_for_sign_in(attempted_address());'),
+is_same(['SELECT * FROM accounts WHERE email=?', 'SELECT * FROM accounts WHERE username=?'], $literal[1],
+        'account_for_sign_in() sends one literal statement per kind, an address or a username (ADR 0023 §7)');
+ok(str_contains(named_blocks_of(APP_ROOT.'/app/actions.php')['login'] ?? '', 'account_for_sign_in(...attempted_sign_in());'),
    'login reads without a lock, so a missing login and an existing one take the same path (F2)');
-ok(str_contains(named_blocks_of(APP_ROOT.'/app/actions.php')['forgot'] ?? '', 'account_for_sign_in(attempted_address(),lock:true);'),
+ok(str_contains(named_blocks_of(APP_ROOT.'/app/actions.php')['forgot'] ?? '', 'account_for_sign_in(...attempted_sign_in(),lock:true);'),
    'while „vergessen“ locks, so two requests at once cannot leave two live links');
-is_same(1, substr_count($lookup, 'one ('), 'and no other, so nothing is joined into a statement');
-ok(strpos($lookup, 'email_is_dot_atom (') < strpos($lookup, "WHERE email=?"), 'behind its format gate');
-ok(str_contains($lookup, "email_normalised ( (string) \$a [ 'email' ] ) === \$address"), 'and the row used only when it is exactly what was typed');
+is_same(2, substr_count($lookup, 'one ('), 'and no other, so nothing is joined into a statement');
+ok(strpos($lookup, 'email_is_dot_atom (') < strpos($lookup, "WHERE email=?"), 'the address behind its format gate');
+ok(strpos($lookup, 'preg_match ( USERNAME_PATTERN') < strpos($lookup, "WHERE username=?"), 'and the username behind its own');
+ok(str_contains($lookup, "email_normalised ( (string) \$a [ 'email' ] ) === \$value"), 'and an address row used only when it is exactly what was typed');
+ok(str_contains($lookup, "(string) \$a [ 'username' ] === \$value"), 'and a username row too, so the collation’s fold finds nothing');
 $loginBlock = named_blocks_of(APP_ROOT.'/app/actions.php')['login'] ?? '';
 is_same(['UPDATE accounts SET password_hash=? WHERE id=? AND password_hash=?'],
         array_values(array_filter(sql_statements_in($loginBlock), fn($sql) => str_starts_with($sql, 'UPDATE'))),
         'the rehash writes only over the very hash it verified, so it needs no lock taken before');
 foreach (['login', 'forgot'] as $case) {
     $block = named_blocks_of(APP_ROOT.'/app/actions.php')[$case] ?? '';
-    ok(str_contains($block, 'account_for_sign_in(attempted_address()'), $case.' looks up through account_for_sign_in()');
+    ok(str_contains($block, 'account_for_sign_in(...attempted_sign_in()'), $case.' looks up through account_for_sign_in()');
     is_same([], array_values(array_filter(sql_statements_in($block), fn($sql) => str_starts_with($sql, 'SELECT'))), 'and sends no SELECT of its own');
 }
 
@@ -1561,11 +1613,12 @@ case_('What ADRs 0020 and 0021 removed is gone, and nothing calls it');
 $gone = ['staff_address_conflict', 'send_sign_in_details', 'confirm_same_family', 'recent_password_reset_notice',
          'own_address_missing_sql', 'students_needing_own_address', 'own_address_taken_by', 'attempted_email', 'attempted_username',
          'logins_on_address', 'accounts_sharing_address', 'own_address_notice',
-         // And what ADR 0021 removed with usernames.
-         'username_transliterated', 'username_normalised', 'username_value', 'username_from_name', 'full_name_parts',
-         'username_from_full_name', 'username_first_free', 'username_for_new_account', 'give_every_account_a_username',
-         'change_own_username', 'username_taken_answer', 'attempted_sign_in', 'username_identity', 'sign_in_identity',
-         'account_identity', 'username_attributes'];
+         // And what ADR 0021 removed with usernames and ADR 0023 did not bring
+         // back: a username for every login, and the holder changing their own.
+         'full_name_parts', 'username_from_full_name', 'give_every_account_a_username',
+         'change_own_username', 'username_taken_answer', 'account_identity', 'username_attributes',
+         // The address-only derivation ADR 0023 §7 replaced with attempted_sign_in().
+         'attempted_address'];
 $mentions = [];
 foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $file)
     foreach (action_calls_in((string)file_get_contents($file)) as $call)
@@ -1784,3 +1837,160 @@ foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/public/*.php')
 is_same([], $untranslated, 'no UserError or NotFound is thrown with a bare string');
 ok(!str_contains((string)file_get_contents(APP_ROOT.'/app/mail.php'), 'composer install'),
    'and nothing tells her to run a command she has nowhere to type');
+
+// ---------------------------------------------------------------------------
+// ADR 0023: every student has a login, a wizard adds one, one-time sign-in links.
+// Each rule below is the "Must stay true" list of the record, read from the code.
+
+/** Every named block, in app/, bin/, public/ and database/*.php, that sends a statement $match finds, as "file block". */
+$blocksSending = function (callable $match): array {
+    $found = [];
+    foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/public/*.php'),
+                         glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/database/*.php')) as $path)
+        foreach (named_blocks_of($path) as $name => $block)
+            if (array_filter(sql_statements_in($block), $match)) $found[] = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+    $found = array_values(array_unique($found));
+    sort($found);
+    return $found;
+};
+
+case_('A student is inserted in three places, and every one names the login [ADR 0023 §4]');
+/* Every student has a login from the moment the student exists: create_student()
+   with a fresh placeholder, create_own_student() on the invitation's own login,
+   and demo_fill() with the example logins and placeholders. A fourth INSERT is
+   how a student without a login comes back; the key is RESTRICT, not NOT NULL,
+   so nothing in the database would stop it. */
+$inserts = $blocksSending(fn($sql) => preg_match('/^INSERT INTO `?students`? ?\(/i', $sql) === 1);
+is_same(['app/actions.php create_own_student', 'app/actions.php create_student', 'app/demo.php demo_fill'], $inserts,
+        'INSERT INTO students is in create_student(), create_own_student() and demo_fill(), and nowhere else');
+foreach ($inserts as $where) {
+    [$file, $name] = explode(' ', $where);
+    foreach (sql_statements_in(named_blocks_of(APP_ROOT.'/'.$file)[$name]) as $sql)
+        if (preg_match('/^INSERT INTO `?students`? ?\(([^)]*)\)/i', $sql, $columns))
+            ok(in_array('account_id', array_map(fn($c) => trim($c, ' `'), explode(',', $columns[1])), true), $where.' names account_id in its insert');
+}
+$create = defined_functions_in(APP_ROOT.'/app/actions.php')['create_student'] ?? '';
+ok(strpos($create, 'placeholder_login (') !== false && strpos($create, 'placeholder_login (') < strpos($create, 'INSERT INTO students'),
+   'and create_student() makes the placeholder before it inserts the student that points to it');
+
+case_('A child is put into a course in one place, which refuses a child without a login [ADR 0023 §4]');
+/* enrol_student() is the one copy of the insert; demo_fill() writes its example
+   enrolments with every login already in place. Read from the text as well as
+   from the statements, because enrol_student() builds its column list. */
+$enrolments = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/views/*.php')) as $path)
+    foreach (named_blocks_of($path) as $name => $block)
+        if (preg_match('/INSERT\s+INTO\s+`?class_students`?/i', $block)) $enrolments[] = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+sort($enrolments);
+is_same(['app/demo.php demo_fill', 'app/enrolment.php enrol_student'], array_values(array_unique($enrolments)),
+        'INSERT INTO class_students is in enrol_student() and demo_fill(), and nowhere else');
+$enrol = defined_functions_in(APP_ROOT.'/app/enrolment.php')['enrol_student'] ?? '';
+ok(strpos($enrol, "SELECT id, account_id FROM students WHERE id=? FOR UPDATE") !== false
+   && strpos($enrol, "SELECT id, account_id FROM students WHERE id=? FOR UPDATE") < strpos($enrol, 'INSERT INTO class_students'),
+   'enrol_student() locks the student and reads its login before it inserts');
+ok(refusal_index_in($enrol, 'ohne sie kommt niemand in einen Kurs') !== null, 'and refuses one without, in words');
+
+case_('A student’s login is replaced, never removed, and delete_login() says so first [ADR 0023 §4]');
+$delete = defined_functions_in(APP_ROOT.'/app/actions.php')['delete_login'] ?? '';
+ok(strpos($delete, 'SELECT first_name,last_name FROM students WHERE account_id=? FOR UPDATE') !== false
+   && strpos($delete, 'SELECT first_name,last_name FROM students WHERE account_id=? FOR UPDATE') < strpos($delete, 'DELETE FROM accounts'),
+   'delete_login() asks, with a lock, whether a student points to the login before it deletes it');
+$replace = defined_functions_in(APP_ROOT.'/app/actions.php')['replace_login_with_placeholder'] ?? '';
+ok($replace !== '' && strpos($replace, 'UPDATE students SET account_id') < strpos($replace, 'delete_login ('),
+   'replace_login_with_placeholder() moves the student before it deletes the old login, so the student is never without one');
+$state = named_blocks_of(APP_ROOT.'/app/actions.php')['account_state'] ?? '';
+is_same(2, substr_count($state, 'replace_login_with_placeholder(lock_row(\'students\',$studentId),$a);'),
+        'account_state’s delete and withdraw both replace a student’s login rather than delete it');
+
+case_('Every write of a login’s address asks refuse_address_in_use() first [ADR 0023, must stay true]');
+/* The INSERTs are held to it above; this is the UPDATEs. A placeholder given its
+   address (invite_student()) is the write ADR 0023 added. */
+$addressWriters = $blocksSending(fn($sql) => preg_match('/^UPDATE `?accounts`? SET (.*?)(?: WHERE |$)/i', $sql, $set) === 1
+    && in_array('email', array_map(fn($pair) => trim(explode('=', $pair)[0], ' `'), explode(',', $set[1])), true));
+is_same(['app/actions.php change_account_email', 'app/actions.php invite_student'], $addressWriters,
+        'accounts.email is updated by change_account_email() and invite_student(), and nowhere else');
+foreach ($addressWriters as $where) {
+    [$file, $name] = explode(' ', $where);
+    $block = named_blocks_of(APP_ROOT.'/'.$file)[$name];
+    $write = min(array_map(fn($c) => $c['index'], array_filter(action_calls_in($block), fn($c) => $c['dml'] && str_contains((string)$c['literal'], 'UPDATE accounts'))) ?: [PHP_INT_MAX]);
+    ok((call_index_in($block, 'refuse_address_in_use') ?? PHP_INT_MAX) < $write, $where.' asks refuse_address_in_use() before it writes the address');
+}
+
+case_('Every write of a username goes through username_value() and the locking read [ADR 0023 §1]');
+$usernameWriters = $blocksSending(fn($sql) => (preg_match('/^UPDATE `?accounts`? SET (.*?)(?: WHERE |$)/i', $sql, $set) === 1
+        && in_array('username', array_map(fn($pair) => trim(explode('=', $pair)[0], ' `'), explode(',', $set[1])), true))
+    || (preg_match('/^INSERT INTO `?accounts`? ?\(([^)]*)\) ?VALUES ?\((.*)\)$/i', $sql, $ins) === 1
+        && ($at = array_search('username', array_map(fn($c) => trim($c, ' `'), explode(',', $ins[1])), true)) !== false
+        && strtoupper(trim(explode(',', $ins[2])[$at] ?? '')) !== 'NULL'));
+is_same(['app/actions.php give_student_username'], $usernameWriters, 'a username is written by give_student_username() alone');
+$give = defined_functions_in(APP_ROOT.'/app/actions.php')['give_student_username'] ?? '';
+ok(strpos($give, 'username_value (') !== false && strpos($give, 'refuse_username_in_use (') !== false
+   && strpos($give, 'username_value (') < strpos($give, 'refuse_username_in_use (')
+   && strpos($give, 'refuse_username_in_use (') < strpos($give, 'UPDATE accounts SET'),
+   'which checks the rule, then reads the name with a lock, then writes');
+ok(str_contains(defined_functions_in(APP_ROOT.'/app/auth.php')['refuse_username_in_use'] ?? '', 'username_for_new_account ('),
+   'and the read is username_for_new_account()’s, which holds what it reads');
+throws(fn() => username_for_new_account('lena.hofer'), 'username_for_new_account() refuses outside a transaction, where it would hold nothing', 'outside a transaction');
+
+case_('A sign-in link is never mailed, and only make_signin_link() makes one [ADR 0023 §6]');
+$signinMakers = []; $mailedSignin = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $path)
+    foreach (named_blocks_of($path) as $name => $block) {
+        $tokens = action_tokens($block);
+        foreach (action_calls_in($block) as $call) {
+            if ($call['method'] || !in_array($call['name'], ['make_token', 'send_account_token'], true)) continue;
+            // The purpose is the second argument: read the tokens up to the
+            // call's closing bracket for the literal 'signin'.
+            $depth = 0; $text = '';
+            for ($j = $call['index'] + 1; $j < count($tokens); $j++) {
+                $t = is_array($tokens[$j]) ? $tokens[$j][1] : $tokens[$j];
+                if ($t === '(') $depth++; elseif ($t === ')' && --$depth === 0) break;
+                $text .= $t;
+            }
+            if (!str_contains($text, "'signin'")) continue;
+            if ($call['name'] === 'make_token') $signinMakers[] = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+            else $mailedSignin[] = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+        }
+    }
+is_same([], $mailedSignin, 'send_account_token() is never called with signin');
+is_same(['app/actions.php make_signin_link'], array_values(array_unique($signinMakers)), 'and make_token(…, signin) only by make_signin_link()');
+$linkCallers = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $path)
+    foreach (named_blocks_of($path) as $name => $block)
+        foreach (action_calls_in($block) as $call)
+            if ($call['name'] === 'make_signin_link' && !$call['method']) $linkCallers[] = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+sort($linkCallers);
+is_same(['app/actions.php give_student_username', 'app/actions.php signin_link'], $linkCallers,
+        'make_signin_link() is called by the signin_link action and when a placeholder gets its username, nowhere else');
+$linkAction = named_blocks_of(APP_ROOT.'/app/actions.php')['signin_link'] ?? '';
+ok(call_index_in($linkAction, 'may_create_signin_link') !== null
+   && call_index_in($linkAction, 'may_create_signin_link') < call_index_in($linkAction, 'make_signin_link')
+   && call_index_in($linkAction, 'may_create_signin_link') < call_index_in($linkAction, 'give_student_username'),
+   'and the action asks may_create_signin_link() before it makes one either way');
+ok(call_index_in($give, 'placeholder_of') !== null && call_index_in($give, 'placeholder_of') < call_index_in($give, 'make_signin_link'),
+   'give_student_username() makes a link only for a login it found to be a placeholder, which any member of staff may give one');
+ok(str_contains(defined_functions_in(APP_ROOT.'/app/shell.php')['may_create_signin_link'] ?? '', 'signin_link_possible ('),
+   'may_create_signin_link() asks signin_link_possible(), the one rule of which logins can have a link');
+
+case_('The readable link and the wizard’s drafts live in the session, written by their own functions only [ADR 0023 §5, §6]');
+$sessionWriters = ['signin_links' => [], 'student_drafts' => []];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php')) as $path)
+    foreach (named_blocks_of($path) as $name => $block)
+        foreach (array_keys($sessionWriters) as $key)
+            if (preg_match('/\$_SESSION\[\''.$key.'\'\](\[[^\]]*\])*\s*(?:=(?!=)|\?\?=)/', $block)) $sessionWriters[$key][] = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+is_same(['app/auth.php remember_signin_link'], $sessionWriters['signin_links'], 'only remember_signin_link() puts a readable link into the session');
+is_same(['app/actions.php keep_student_draft'], $sessionWriters['student_drafts'], 'only keep_student_draft() writes a draft');
+$keepCallers = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php')) as $path)
+    foreach (named_blocks_of($path) as $name => $block)
+        foreach (action_calls_in($block) as $call)
+            if (in_array($call['name'], ['keep_student_draft', 'remember_signin_link'], true) && !$call['method']) $keepCallers[$call['name']][] = substr($path, strlen(APP_ROOT) + 1).' '.$name;
+is_same(['app/actions.php student_draft'], $keepCallers['keep_student_draft'] ?? [], 'and only the student_draft action calls it, never a page');
+is_same(['app/actions.php make_signin_link'], $keepCallers['remember_signin_link'] ?? [], 'and the link is kept only as it is made');
+$wizardView = (string)file_get_contents(APP_ROOT.'/views/student_new.php');
+ok(!preg_match('/\b(run|tracked|tracked_insert|create_student|keep_student_draft|drop_student_draft)\s*\(/', $wizardView),
+   'the wizard’s page writes nothing: no statement, no draft');
+foreach (['sign_in' => 'signing in', 'current_user' => 'a session that ended'] as $fn => $when)
+    ok(preg_match("/unset\([^)]*\\\$_SESSION\['signin_links'\][^)]*\\\$_SESSION\['student_drafts'\]/", defined_functions_in(APP_ROOT.'/app/auth.php')[$fn] ?? '') === 1
+       || preg_match("/unset \([^)]*\\\$_SESSION \[ 'signin_links' \][^)]*\\\$_SESSION \[ 'student_drafts' \]/", defined_functions_in(APP_ROOT.'/app/auth.php')[$fn] ?? '') === 1,
+       $fn.'() drops the readable links and the drafts at '.$when.', so the next person on the browser never has them');

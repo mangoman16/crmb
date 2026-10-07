@@ -143,9 +143,21 @@ function enrolment_has_own_terms(array $enrolment): bool {
  *
  * A child who is in the course already is refused rather than re-joined: that
  * moved the day they joined and, with it, every charge worked out from it.
+ *
+ * No student is ever in a course without a login (ADR 0023 §4). The student is
+ * locked first, so the login cannot be taken away between this question and the
+ * insert; a placeholder is a login, and a student without even that is one the
+ * update has not reached, which is refused rather than enrolled. demo_fill() is
+ * the one named exception that writes its own enrolments, with every login
+ * already in place.
  */
 function enrol_student(int $classId, int $studentId, ?int $tariffId, string $joinedOn): bool {
     return transactional(function () use ($classId, $studentId, $tariffId, $joinedOn): bool {
+        $student = one('SELECT id, account_id FROM students WHERE id=? FOR UPDATE', [$studentId]);
+        if (!$student) throw new NotFound(t('Schüler nicht gefunden.', 'Student not found.'));
+        if ($student['account_id'] === null)
+            throw new UserError(t('Dieses Kind hat keine Anmeldung, und ohne sie kommt niemand in einen Kurs. Bitte unten über „Etwas funktioniert hier nicht“ melden.',
+                                  'This child has no login, and nobody joins a course without one. Please report it below under “Something is wrong on this page”.'));
         $before = one('SELECT * FROM class_students WHERE class_id=? AND student_id=? FOR UPDATE', [$classId, $studentId]);
         if ($before && enrolment_is_current($before))
             throw new UserError(t('Dieses Kind ist schon in diesem Kurs.', 'This child is already in this course.'));

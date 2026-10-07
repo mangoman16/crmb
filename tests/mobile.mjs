@@ -174,7 +174,8 @@ const run = async () => {
         const session = await browser.newContext({ viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true });
         const door = await session.newPage();
         await door.goto(BASE + '?page=login');
-        await door.fill('input[name=email]', email);
+        // One box for the address or the username (ADR 0023 §7), posted as login.
+        await door.fill('input[name=login]', email);
         await door.fill('input[name=password]', role === 'family' ? FAMILY_PASSWORD : PASSWORD);
         await door.click('form button[type=submit]');
         await door.waitForLoadState('networkidle');
