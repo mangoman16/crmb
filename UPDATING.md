@@ -197,8 +197,17 @@ here so that nothing surprises you.
   Anybody else appears as initials, in **Nachrichten** too. A new picture shows at once; an
   old one can stay in a phone's memory for up to seven days.
 - **The bell stays where it is** when you open it, its panel fits on the
-  phone's screen, and the number of unread notices is a small badge in the
-  portal's colour. Tapping anywhere else, or Escape, closes it.
+  phone's screen, and the number of unread notices is a small red badge.
+  Tapping anywhere else, or Escape, closes it.
+- **It looks and behaves like an iPhone app**: the phone's own font, white
+  grouped lists on a grey ground, switches, sheets from the bottom for anything
+  that deletes, and a back button with the name of the page above. Tell the
+  families what moved in their bar at the bottom, which now reads Übersicht ·
+  Beiträge · Chats · Profil: their **Mein Konto** is the row „Anmeldung und
+  Darstellung" on **Profil**, and the news is on the overview. Yours reads
+  Übersicht · Schüler · Anwesend · Chats · Mehr; „Post" is „Chats". The language
+  is chosen under **Mein Konto → Sprache**; the EN/DE switch is only on the
+  sign-in pages now.
 - **Your picture at the top right opens a menu**: „Mein Konto",
   „Status-Emoji" and „Abmelden", and a coloured dot on the picture: green
   online, blue recently, yellow away, grey offline. For you and the other
@@ -223,13 +232,13 @@ here so that nothing surprises you.
   30 Tage" opens the days and times. Only trainers and administrators see it.
   When you view the portal as a family, it is your visit that is recorded, not
   theirs.
-- **Club news by email starts switched on** for a new family: the box on the
-  invitation page is already ticked, and they can untick it there, or later
+- **Club news by email starts switched on** for a new family: the switch on
+  the invitation page is already on, and they can switch it off there, or later
   under **Mein Konto**.
 - **Your club's colours and logo**, under **Einstellungen → Portal**, on the
-  cards „Aussehen" and „Logo". Until you set something, the portal looks exactly
-  as before. A colour too pale or too dark to read text on is used darker or
-  lighter, in the same hue, and the card shows both. A logo can be a PNG, JPEG or WebP
+  cards „Aussehen" and „Logo". Until you set something, the portal keeps its
+  built-in colours. A colour too pale or too dark to read text on is used darker
+  or lighter, in the same hue, and the card shows both. A logo can be a PNG, JPEG or WebP
   of at most 1 MB. A photo taken on a phone can be measured the wrong way round
   and refused; saving it again from an image editor, or as a screenshot, fixes
   that.
@@ -261,8 +270,11 @@ left to do. Then, inside that lock and **before the database is touched at all**
    time and an FTP client in text mode rewrites the line endings of everything it
    copies; both leave a directory that lists perfectly. A mismatch stops the
    update and names the files. A git checkout ships no manifest and is skipped.
-3. **Can a backup be written?** A full SQL dump goes to `storage/backups` before
-   anything is migrated. If it cannot be written, nothing is migrated. See
+3. **Can a backup be written?** First the portal checks that `storage/` can hold
+   the file of step 4; if it cannot, the update is refused here, before any copy
+   is taken, so a page view that is refused never writes a copy and never prunes
+   an older one. Then a full SQL dump goes to `storage/backups` before anything
+   is migrated. If it cannot be written, nothing is migrated. See
    [Backups](#backups) for the way past this when you have taken your own.
 4. **The numbers from before are written down.** The rows of the eighteen tables
    in `schema_guarded_tables()` are counted — `accounts`, `students`,
@@ -346,7 +358,10 @@ alike, and maintenance mode does not change that. The console runs only `check`,
 billing, the nightly cleanup and `backup` wait. Any other command stops with one
 sentence saying that an update is unfinished, and exits with 1; a cron job set
 up in the panel fails the same way each time it runs. Anything else that added
-rows could make up a count that fell and hide what is missing.
+rows could make up a count that fell and hide what is missing. On a server with
+a shell, `php bin/console.php check` is the quickest look: it prints the row
+counts, `null` for a table that is gone, and then names the missing table in one
+sentence that points here, ending with exit code 1.
 
 **The last way out.** `storage/update-unfinished.json` holds the numbers from
 before. Deleting it tells the portal to accept the database as it is: the next

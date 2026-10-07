@@ -21,8 +21,9 @@ with MariaDB; MySQL is meant to work but has never been run.
   ticked from the data. An administrator lands there at every sign-in until it is done or
   hidden.
 - **A menu of seven**: Übersicht, Schüler, Kurse, Anwesenheit, Geld, Nachrichten, and
-  Einstellungen for an administrator or Verwaltung for a trainer. „Mehr" opens it on a phone,
-  without JavaScript.
+  Einstellungen for an administrator or Verwaltung for a trainer. On a phone a bar at the
+  bottom holds Übersicht · Schüler · Anwesend · Chats · Mehr for staff, „Mehr" opening the
+  rest without JavaScript, and Übersicht · Beiträge · Chats · Profil for a family.
 - **Courses** with a timetable of several days a week, each with its own time and place, and
   their own tariffs and bank account. A child can be in several courses, and can ask to join,
   leave or change tariff; staff accept or decline.
@@ -53,8 +54,13 @@ with MariaDB; MySQL is meant to work but has never been run.
 - **For staff**: when each account was online over the last 30 days, date and time only, and
   a status („Automatisch", „Abwesend", „Als offline anzeigen"). Families see the dot, never
   the times.
-- **The club's own look**: colours, a logo and a home-screen icon. Light and dark follow the
-  device; text size and a personal colour are per person.
+- **The look of an iPhone app**: the phone's own font at the reader's text size, white grouped
+  lists on a grey ground, capsule buttons that show a tap and a spinner while sending,
+  switches, sheets for anything that deletes, a back button with the parent page's name, and
+  pages that fade into each other where the browser can. So far seen in Chromium only, not
+  on a real iPhone.
+- **The club's own look** within that: colours, a logo and a home-screen icon. Light and dark
+  follow the device; text size, language and a personal colour are per person, in Mein Konto.
 - **Problem reports** from any page, with a screenshot and the last eight steps, and
   **unexpected errors** that write themselves down under **Einstellungen → Rückmeldungen**
   with a text to copy for whoever helps. Both are deleted 30 days after they are done or last

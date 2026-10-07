@@ -82,6 +82,51 @@ What the portal carries has been cut to what the trainer and the families need
   tariffs are on its own „Tarife" tab, which also names any tariff that belongs
   to no course.
 
+### The portal looks and behaves like an iPhone app
+
+The owner asked for it to be "as intuitive and easy to use as a modern ios app".
+This is the first phase of the design language in
+`docs/design/2026-10-07-ios-design-language-and-goal-screens.md`.
+
+- **A family's bar at the bottom reads Übersicht · Beiträge · Chats · Profil.**
+  „Neues" is gone from it: the news is on the overview. „Konto" is gone too:
+  **Mein Konto** — password, e-mail address, language, colour and the privacy
+  notice — is the row „Anmeldung und Darstellung" on **Profil**.
+- **Staff's bar reads Übersicht · Schüler · Anwesend · Chats · Mehr.** „Post" is
+  „Chats" now. The numbers on the bar and on the bell are red with a white
+  figure, in light and in dark, where they were in the portal's colour.
+- **The language is set under Mein Konto**, „Sprache", once signed in; the EN/DE
+  switch is no longer in the bar at the top. The sign-in pages keep it.
+- **The phone's own font**, and the reader's own text size: the page no longer
+  fixes its text at 16 pixels. „Schriftgröße" under Mein Konto makes the text an
+  eighth, a quarter or a half larger.
+- **White grouped lists on a grey ground**, without borders or shadows; buttons
+  as capsules. Every tap shows: a row darkens, a button fades. While a form is
+  sending, its button shows a spinner and a second tap does nothing.
+- **On/off settings are switches**, such as the three e-mail settings under
+  Mein Konto. Two or three choices side by side, such as „Beiträge ·
+  Rechnungen", are one segmented control. Deleting something opens as a sheet
+  from the bottom of the screen with „Abbrechen" under it. „Schüler anlegen"
+  shows how many steps it has.
+- **A back button with the name of the page above**, such as „‹ Schüler" on a
+  child's page, and — where the browser supports it — the page's title in the
+  bar once its large title has scrolled away. In the app on the home screen
+  there was no way back at all before. Kurse, Geld and Einstellungen, reached
+  through „Mehr", have none yet.
+- **Pages fade into each other** where the browser can; nothing moves for
+  anybody who has asked their phone for less motion.
+- **The bar at the very top of the browser** takes the page's background — the
+  light grey, or the club's „Hintergrund" — instead of the menu colour.
+- The portal's built-in teal is a shade darker, so that it reads on the grey
+  ground. Every text is at least 4.5:1 against what is behind it in both
+  themes, as frontend-dev measured it in Chromium.
+- Without JavaScript the folds open in place, as before, and everything works.
+
+Not in this phase: a child's page and a course's page as lists to tap through,
+„Mehr" as a page of its own, and the screens for the owner's goals. **Seen in
+Chromium only**, at 320 and 390 pixels, as each role, light and dark; not yet on
+a real iPhone, which TESTING.md I.1–I.11 walk.
+
 ### An update that lost records stays closed until they are back
 
 - **Before, the portal closed for one page view and then opened as if nothing
@@ -106,7 +151,11 @@ What the portal carries has been cut to what the trainer and the families need
   `migrate`, `update`, `maintenance:on` and `maintenance:off`, and says why for
   anything else.
 - **One copy per update.** No further copy is written while an update is
-  unfinished, so the copy from before is never pruned away.
+  unfinished, so the copy from before is never pruned away. A `storage` folder
+  that cannot hold the numbers from before refuses the update before any copy
+  is taken, so a page view that is refused writes none either.
+- `php bin/console.php check` names a missing guarded table in one sentence
+  that points to UPDATING.md, and ends with exit code 1.
 - A `skip-backup` file the portal cannot delete now refuses the update, instead
   of skipping the copy before every later one too. A migration that keeps
   failing reports how far the update got, not where the last retry stopped.
@@ -349,9 +398,9 @@ What the portal carries has been cut to what the trainer and the families need
 
 - **Opening the bell no longer moves anything.** On a phone the whole bar used
   to jump and the panel ran off the left edge of the screen. The panel now
-  stays on the screen, the number of unread notices is a badge in the portal's
-  colour, like the one on **Post**, and Escape, a tap anywhere else or opening
-  the other menu closes it.
+  stays on the screen, the number of unread notices is a red badge, like the
+  one on **Chats**, and Escape, a tap anywhere else or opening the other menu
+  closes it.
 - **Tapping your picture opens „Mein Konto" and „Abmelden".** Trainers and
   administrators also get a status there: „Automatisch", „Abwesend" or „Als
   offline anzeigen". The menu works without JavaScript. Families have the menu,
@@ -399,9 +448,9 @@ What the portal carries has been cut to what the trainer and the families need
   advertising (ADR 0018). New accounts therefore start with „Neuigkeiten per
   E-Mail" switched on (migration 021). Existing accounts keep what they had.
 - The invitation page shows „Neuigkeiten des Vereins per E-Mail erhalten.
-  Jederzeit abbestellbar." already ticked. A family can untick it there, later
-  under **Mein Konto**, or through the link in every such email; a no is kept,
-  with a record of when it was given.
+  Jederzeit abbestellbar." already switched on. A family can switch it off
+  there, later under **Mein Konto**, or through the link in every such email; a
+  no is kept, with a record of when it was given.
 - The news form no longer says „Newsletter-Abonnenten"; it sends to everyone
   who receives news by email.
 - The privacy drafts say so; see the first section above for an existing
@@ -492,10 +541,10 @@ What the portal carries has been cut to what the trainer and the families need
   Nachrichten; Verwaltung, Konten, Änderungen, Einrichtung ansehen and Erweitert
   as cards at the top of Einstellungen. The entry a page belongs to stays
   marked while it is open.
-- **The phone bar** reads Übersicht, Schüler, Post, Anwesend, Mehr for the
-  trainer, and Übersicht, Profil, Post, Neues, Konto for a family. „Mehr“ opens
-  the menu without JavaScript. A family's way to the privacy notice and the
-  version is at the end of **Mein Konto**, under „Datenschutz und Hilfe“.
+- **The phone bar** got the order and the names it has now in „The portal
+  looks and behaves like an iPhone app“, above. „Mehr“ opens the menu without
+  JavaScript. A family's way to the privacy notice and the version is at the
+  end of **Mein Konto**, under „Datenschutz und Hilfe“.
 - **The price box on a child's page is gone.** Its tariff and agreed price
   billed nobody: what bills is the price of the course the child is in. The
   stored values are kept and a save no longer changes them. „Dabei seit“ and
@@ -1057,11 +1106,14 @@ existed. VALIDATION.md has the details, and says which runs were whose.
 
 Since then, on the same engine and PHP, in exported copies: at `bfeb592`, where an
 update that lost records stays closed, 6835 passed, 0 failed, with all
-thirty-three migrations; at `21f02c8`, with the robustness suite, 7608 passed,
-0 failed. Neither run could make a file the portal cannot delete, because it ran
-as root, so the two refusals for such a file were read in the code, not watched,
-and the refused update with its restore in phpMyAdmin (TESTING.md G.1–G.9) has not
-been walked.
+thirty-three migrations; at `aa5b1b7`, with the robustness suite, 7608 passed,
+0 failed; at `f5d3c28`, with the new look, 7665 passed, 0 failed, and the browser
+walk 377 checks, 0 failed, in Chromium. Since `1ad0488` the suite can make a
+file the portal cannot delete even as root, which the earlier runs could not; in
+the run at `f5d3c28` both refusals for such a file ran and passed. The refused
+update with its restore in phpMyAdmin (TESTING.md G.1–G.9) has not been walked,
+and the new look has not been seen in Safari or on an iPhone (TESTING.md
+I.1–I.11).
 
 ## 0.5.0 — unreleased
 

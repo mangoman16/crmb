@@ -203,8 +203,11 @@ For the owner to do:
 
 ## For the owner to test or deploy
 
-Nothing yet. The project manager adds an entry here as each phase lands: what to test or
-deploy, where, and signed in as whom.
+- **The new iOS look on your iPhone** (from `f5d3c28`). On the beta install, with test data
+  only: walk TESTING.md I.1–I.11 as the trainer and as a family — the font and your text
+  size, the bars around the notch, the home-screen app's status bar, pressed states, the
+  sheet, the switches, the back button. It has only been seen in Chromium. Say what feels
+  wrong; it is cheap to change before the screens are built on it.
 
 ## Before real families use it
 

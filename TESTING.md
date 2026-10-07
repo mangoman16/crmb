@@ -70,7 +70,7 @@ nothing to read first. Only 1.4 changes anything, and you put it back.
   selben Version."**, and **Version der Dateien** and **Version in der
   Datenbank** show the same number — the one at the top of the release notes.
   A yellow box, or any other sentence, fails this check.
-- [ ] **1.6** Tap **Post** in the bar at the bottom. **Nachrichten** opens with
+- [ ] **1.6** Tap **Chats** in the bar at the bottom. **Nachrichten** opens with
   its list of **Unterhaltungen**; tap one and its messages appear. With none yet
   it says „Noch keine Nachrichten.", and that passes too.
 
@@ -91,8 +91,8 @@ release and emptied again for the next.
 - The portal's own icon: U.2–U.8 · the sign-in line: U.1 · rows that line up: U.9–U.12
 - The privacy notice in English is optional: U.35, U.56
 - A profile picture is kept by the browser instead of fetched on every page, and another family's is never shown: U.58–U.62
-- News by email starts switched on for a new login, and can be unticked when accepting the invitation: [15.2, 15.7](#news-email-and-the-queue), in News and email
-- The bell no longer jumps when opened, its panel stays on a phone's screen, its number is a badge in the portal's colour like the one on **Post**, and a tap elsewhere or Escape closes it: [5.3a–5.3g](#the-shell-the-bar-notifications-feedback-impersonation), in The shell
+- News by email starts switched on for a new login, and can be switched off when accepting the invitation: [15.2, 15.7](#news-email-and-the-queue), in News and email
+- The bell no longer jumps when opened, its panel stays on a phone's screen, its number is a red badge like the one on **Chats**, and a tap elsewhere or Escape closes it: [5.3a–5.3g](#the-shell-the-bar-notifications-feedback-impersonation), in The shell
 - A status to choose — „Automatisch", „Abwesend", „Als offline anzeigen" — for trainers and administrators, a coloured dot, and when each account was online over the last 30 days: [P.1–P.10](#online-status-and-when-somebody-was-online)
 - Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
@@ -109,6 +109,7 @@ release and emptied again for the next.
 - What ADR 0026 takes out, round one: custom fields with what was typed into them, copying, saved views, writing to many with its templates, „Warteschlange senden", the printed form and data sheet, and Verwaltung's „Tarife" tab: [R.1–R.8](#what-adr-0026-removes-round-one)
 - An update that lost records keeps the portal closed, for everybody, on every page view, until the rows are back; the way back is the previous version's files, then the copy from before, in phpMyAdmin (ADR 0027): [G.1–G.9](#an-update-that-lost-records-stays-closed-adr-0027)
 - Any value from anyone is answered with one sentence on the same page: numbers, dates and pages held to their range, a family writes only to the trainer team, and nothing reaches the error log: [V.1–V.11](#any-value-from-anyone-adr-0026-5), 14.5, 14.7
+- The portal looks and behaves like an iPhone app: the phone's own font, grouped lists, a tab bar (Übersicht · Schüler · Anwesend · Chats · Mehr for staff, Übersicht · Beiträge · Chats · Profil for a family), red counts, switches, sheets, a back button, pages that fade; Mein Konto for a family through Profil, the language in Mein Konto — on a real iPhone: [I.1–I.11](#the-portal-as-an-iphone-app-design-language-phase-1), and 1.6, 5.3c, 6.10, U.46, U.48, U.52, U.56
 
 ---
 
@@ -518,8 +519,8 @@ Skip on an ordinary code change; do all of it before a release.
   with a little space on each side — it used to run off the left edge — and
   nothing on the page scrolls sideways. The first word of each notification is
   readable, and „Alle gelesen" can be tapped.
-- [ ] **5.3c** The number on the bell is a badge in the portal's colour, the
-  same as the number on **Post** in the bar at the bottom, and its figure can be
+- [ ] **5.3c** The number on the bell is a red badge with a white figure, the
+  same as the number on **Chats** in the bar at the bottom, and its figure can be
   read — in light mode and in dark. In dark, the open panel is dark too and
   every line in it can be read.
 - [ ] **5.3d** With the bell open, **swipe the page to scroll**: the panel stays
@@ -621,7 +622,7 @@ sign-in page, and a family's login at hand. Before you start, note what the
 - [ ] **6.7** Nothing set: every colour field on **Aussehen** is empty and says
   „Standard". Open the sign-in page with the browser's developer tools on the
   network tab and reload: there is **no** request for `page=brand`. The portal
-  looks exactly as before the update.
+  shows its built-in colours.
 - [ ] **6.8** Set **Hauptfarbe** `#8a1538`, **Menüfarbe** `#0a1030`,
   **Hervorhebung** `#ffcc00`, **Hintergrund** `#fffaf0` and save. The message
   reads „Vorgaben gespeichert. Vorher: Hauptfarbe Standard, Menüfarbe Standard,
@@ -633,7 +634,8 @@ sign-in page, and a family's login at hand. Before you start, note what the
   your colours; no text disappears into its background, and the text on a
   button stays readable.
 - [ ] **6.10** On an iPhone, the bar at the very top of Safari (and of the
-  home-screen app) is the menu colour in light mode and the dark background in
+  home-screen app) is the page's background: the light grey ground — or the
+  **Hintergrund** set on „Aussehen" — in light mode, and the dark background in
   dark mode.
 - [ ] **6.11** Set **Hauptfarbe** to a pale yellow, `#fdf6b2`. It is saved, not
   refused, and the card says „Für gute Lesbarkeit verwendet: #837703" next to
@@ -683,10 +685,10 @@ sign-in page, and a family's login at hand. Before you start, note what the
 - [ ] **6.18** Upload a logo 40 pixels tall, a 6:1 banner, a GIF and a
   photograph over 1 MB. Each is refused with its size and what is needed, and
   the logo you had stays.
-- [ ] **6.19** On **Aussehen**, tick „Portalnamen neben dem Logo ausblenden" and
-  „Zeile „Verwaltung“ / „Mein Portal“ … ausblenden". Check each with a logo, with
-  only the portal icon, and with neither: with neither, the name still shows.
-  Saving the **Logo** card leaves both ticks as they were.
+- [ ] **6.19** On **Aussehen**, switch on „Portalnamen neben dem Logo ausblenden"
+  and „Zeile „Verwaltung“ / „Mein Portal“ … ausblenden". Check each with a logo,
+  with only the portal icon, and with neither: with neither, the name still
+  shows. Saving the **Logo** card leaves both switches as they were.
 - [ ] **6.20** „Logo entfernen": the portal icon comes back top left, and after
   removing the icon too, the „B". The message says which.
 
@@ -1092,9 +1094,10 @@ your picture at the top right.
 
 ## News, email and the queue
 
-- [ ] **15.1** Publish a news item. Families see it under **Neuigkeiten**.
+- [ ] **15.1** Publish a news item. Families see it on their **Übersicht**, in
+  the group **Neuigkeiten**, whose „Alle ansehen" opens the full list.
 - [ ] **15.2** Save a news item with **„Diese Fassung auch an alle senden, die
-  Neuigkeiten per E-Mail erhalten"** ticked. **Postausgang** holds one email for
+  Neuigkeiten per E-Mail erhalten"** switched on. **Postausgang** holds one email for
   each family whose **„Neuigkeiten per E-Mail erhalten"** is on under **Mein
   Konto**, and none for a family who switched it off.
 - [ ] **15.3** **Einstellungen → SMTP → Verbindung testen**: with a target
@@ -1119,11 +1122,11 @@ your picture at the top right.
   two email addresses of your own that have no login yet. On a child,
   **„Zugang zum Portal" → „Einladung senden"** to the first; open the invitation
   and its link. **„Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit
-  abbestellbar."** is **already ticked**. Untick it, tick „Ich habe die
+  abbestellbar."** is **already switched on**. Switch it off, tick „Ich habe die
   Datenschutzhinweise gelesen.", choose a password and tap **„Konto
   aktivieren"**. Signed in as that family, **Mein Konto** shows **„Neuigkeiten
   per E-Mail erhalten"** switched off. Do the same for the second address on
-  another child, but leave the box ticked. Now save a news item as in 15.2:
+  another child, but leave the switch on. Now save a news item as in 15.2:
   **Postausgang** has one for the second address and **none for the first**, and
   only the second inbox receives it. Without the second address, a news mail
   that reached nobody would pass this check. Afterwards, on each of the two
@@ -1457,14 +1460,15 @@ Rückmeldungen**, „Technische Einzelheiten"
   folds open or shut. Open **Rechnungen** or a single child: **Geld** or
   **Schüler** stays marked, so you always see where you are.
 - [ ] **U.46** On your phone, the bar at the bottom reads **Übersicht, Schüler,
-  Post, Anwesend, Mehr**. **Mehr** opens the same seven.
-  *`tests/e2e.sh` reads the bar at 390px in Chromium, passed at 91520db. „Mehr“ opening the seven is still by hand.*
+  Anwesend, Chats, Mehr**. **Mehr** opens the same seven.
+  *`tests/e2e.sh` reads the bar at 390px in Chromium, passed at f5d3c28. „Mehr“ opening the seven is still by hand.*
 - [ ] **U.47** **(release)** As a trainer, the seventh entry is **Verwaltung**, not
   Einstellungen, and the phone bar is the same as yours.
 - [ ] **U.48** On a child that has a login, **„Portal als … ansehen"**, on your
-  phone: the family's bar reads **Übersicht, Profil, Post, Neues, Konto**, with no
-  **Mehr**. **Konto** opens their **Mein Konto**. **Ansicht beenden** afterwards.
-  *`tests/e2e.sh` reads the family's bar signed in as the family, not through „Portal als … ansehen“, passed at 91520db.*
+  phone: the family's bar reads **Übersicht, Beiträge, Chats, Profil**, with no
+  **Mehr**. **Profil** has a row **„Anmeldung und Darstellung"**, which opens
+  their **Mein Konto**. **Ansicht beenden** afterwards.
+  *`tests/e2e.sh` reads the family's bar and the row „Anmeldung und Darstellung“ signed in as the family, not through „Portal als … ansehen“, passed at f5d3c28.*
 - [ ] **U.49** **Einstellungen** opens with cards above the tabs: **Verwaltung**,
   **Konten**, **Änderungen**, **Einrichtung ansehen** and **Erweitert**. Each card
   opens its page, and **Einstellungen** stays marked in the menu. Postausgang is
@@ -1477,9 +1481,9 @@ Rückmeldungen**, „Technische Einzelheiten"
   on both.
 - [ ] **U.52** **Mein Konto** ends with **„Datenschutz und Hilfe"**: the
   Datenschutzerklärung, „Etwas funktioniert nicht", the version and **Abmelden**.
-  On a family's phone (U.48) this is the only way to the privacy notice, so check
-  it there too.
-  *`tests/e2e.sh` checks it as the family, passed at 91520db. As yourself it is still by hand.*
+  On a family's phone this is the only way to the privacy notice — **Profil →
+  „Anmeldung und Darstellung"** (U.48) — so check it there too.
+  *`tests/e2e.sh` checks it as the family, reached from Profil, passed at f5d3c28. As yourself it is still by hand.*
 
 **Fewer fields at first**
 
@@ -1496,11 +1500,13 @@ Rückmeldungen**, „Technische Einzelheiten"
 - [ ] **U.55** **Verwaltung → Geld & Zahlungen**: „Standard-Zahlungsempfänger" is a
   list of your recipients by name — not a number to type — and an archived one is
   not offered.
-- [ ] **U.56** Switch the portal to **EN** at the top, open the privacy notice
+- [ ] **U.56** Under **Mein Konto**, set **Sprache** to English and save — the
+  signed-in bar has no language switch any more — then open the privacy notice
   (**Mein Konto → Datenschutz und Hilfe**). With no English text written, you see
   the German one with „This privacy notice is only available in German. …" above
-  it. Switch back to **DE**.
-  *Also walked by `tests/e2e.sh` as the family, passed at 91520db.*
+  it. Set **Sprache** back to Deutsch. Signed out, the sign-in page still has its
+  **EN**/**DE** switch at the top.
+  *`tests/e2e.sh` opens the notice with `&lang=en` in the address rather than through Mein Konto, passed at f5d3c28.*
 - [ ] **U.57** **(release)** On the copy, save SMTP and do not test it. **„Einladung
   senden"** on a child is refused with „Eine Einladung lässt sich noch nicht
   verschicken. E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP" die
@@ -1752,17 +1758,17 @@ where it says so
   the camera data, which was removed before. Write down which of the two your
   file had, or that there was no exiftool to ask.
 - [ ] **C.20** On the example data, not on a course with real families: the
-  tick below sends every family in the course an e-mail. Sign in as a child who
+  switch below sends every family in the course an e-mail. Sign in as a child who
   has a login and, if the bell shows a number, tap „Alle gelesen"; sign out.
   As the trainer, write to that child in your chat with them. Then **Kurse** →
   the child's course → „Termine" → a coming date → „Was ist damit": „Entfällt",
-  tick „Alle Kursteilnehmer per E-Mail informieren", „Speichern". Now
+  switch on „Alle Kursteilnehmer per E-Mail informieren", „Speichern". Now
   **Schüler** → the child → „Portal als … ansehen" on the card „Zugang zum
   Portal": the number on the bell is 1, and the pane shows „{Kurs} – {Datum}"
   with „Entfällt" under it and no „Neue Nachricht von …" line. „Ansicht
   beenden", then sign in as the child: the number is 2, and both are there.
   Afterwards, as the trainer, open the same date again and save it as „Findet
-  statt" without the tick: „Termin folgt wieder dem normalen Plan."
+  statt" with that switch off: „Termin folgt wieder dem normalen Plan."
 
 ### Billing and invoices after the review of October 2026
 
@@ -1794,11 +1800,11 @@ cancel, mark paid or e-mail.
   invoice; now the charge can be cancelled. (Once the page is updated, the
   button is not offered while the invoice stands, and the charge says which
   invoice holds it.)
-- [ ] **B.6** As a family, **Mein Konto**: untick „Erinnerung, wenn ein Beitrag
+- [ ] **B.6** As a family, **Mein Konto**: switch off „Erinnerung, wenn ein Beitrag
   offen ist" and save. As the trainer, on that child's invoice „Per E-Mail
   schicken": refused in a sentence that says the family switched these e-mails
   off. The invoice does **not** say „per E-Mail geschickt am", and
-  **Postausgang** holds nothing new. Tick the box again as the family: the
+  **Postausgang** holds nothing new. Switch it on again as the family: the
   invoice goes, and only then says so.
 - [ ] **B.7** A family whose language is English (**Mein Konto → Sprache**):
   issue them an invoice and download the PDF as the trainer, in German. It is
@@ -1920,7 +1926,7 @@ the checks are about what happens, and hold for both.
   nothing up. (Once frontend-dev adds „Teilen", it opens the share sheet.)
 - [ ] **L.13** Open the link signed out: the page shows the username, read-only,
   asks for a new password twice and for the privacy tick, and offers no e-mail
-  ticks. Tap save without a password, with two different ones, and without the
+  switches. Tap save without a password, with two different ones, and without the
   tick: each refused, and the link still works. Then do it properly: you land
   on the child's own page, told „Du meldest dich ab jetzt mit lena.hofer an.
   Willkommen, Lena! …". **(iPhone)** iCloud Keychain offers to save the password
@@ -2031,7 +2037,7 @@ the checks are about what happens, and hold for both.
   **Kurse** tab as before; billing runs for them as for anybody.
 - [ ] **L.25** In a course with a child „Ohne Anmeldung" and a child whose
   login is in use, change a date with „Alle Kursteilnehmer per E-Mail
-  informieren" ticked. Signed in as the child in use, the bell shows the change.
+  informieren" switched on. Signed in as the child in use, the bell shows the change.
   Then invite the first child and accept the invitation: their bell does not
   list the change from before they had a login.
 - [ ] **L.25a** On a child „Ohne Anmeldung" who has a charge, **Rechnungen →
@@ -2080,6 +2086,56 @@ On the example data or a copy.
   Mitgliedschaft, Geld & Zahlungen — no „Tarife". A tariff that belongs to no
   course is named on every course's „Tarife" tab, as not billed until it has
   one.
+
+### The portal as an iPhone app (design language, phase 1)
+
+The new look has been measured in Chromium only. These are the checks only a real
+iPhone can pass: walk them in Safari, once in light mode and once in dark, at 390
+and — if one is to hand — at 320 (an iPhone SE of the first generation), and write
+down what could not be checked rather than ticking it.
+
+- [ ] **I.1** The text is set in the iPhone's own typeface, the one the Settings
+  app uses, with large page titles. In Safari, „aA" → larger text: the portal's
+  text grows, and nothing runs off the screen sideways or covers anything. Then
+  **Mein Konto → Schriftgröße „Am größten"**: the same, and the labels of the bar
+  at the bottom stay their size. Put both back.
+- [ ] **I.2** The bars and the notch: the bar at the top sits below the clock and
+  the notch, the bar at the bottom above the home indicator. Turn the phone
+  sideways: nothing on the page or in the bars is under the notch at the side.
+- [ ] **I.3** **(release)** Add the portal to the home screen (Teilen → „Zum
+  Home-Bildschirm") and open it from its icon. The clock and the battery at the
+  very top can be read, in light mode and in dark; in dark, write down whether
+  they turned white. Then I.2 again in the app.
+- [ ] **I.4** Pressed states: keep a finger on a child in **Schüler**, on a button
+  and on an entry of the bar at the bottom. Each darkens or fades while it is
+  held, and comes back when the finger lifts or slides away. Nothing flashes
+  grey across the whole row.
+- [ ] **I.5** On a slow connection, tap a button that saves: it shows a small
+  spinner, and a second tap does nothing. The page that comes back is ordinary
+  again, and so is the form after going Back to it.
+- [ ] **I.6** Between pages: from **Übersicht** to **Schüler** and back, the bars
+  stay still and the page in between fades over. With Einstellungen →
+  Bedienungshilfen → Bewegung → „Bewegung reduzieren" on, the page changes at once.
+- [ ] **I.7** The back button, in the app from the home screen (I.3), where Safari
+  gives no Back of its own: a child's page shows „‹ Schüler" at the top left and
+  it leads to **Schüler**; a chat „‹ Chats"; a course „‹ Kurse"; a family's Mein
+  Konto „‹ Profil". Kurse, Geld and Einstellungen themselves have none yet:
+  „Mehr" is not a page. Scroll a long page: the page's title appears small in the
+  bar once the large one has gone — or nothing does, where Safari cannot do it
+  yet; write down which.
+- [ ] **I.8** A sheet: on a child whose login is in use, open „Anmeldung löschen"
+  in „Zugang zum Portal" — do not confirm it. It rises from the bottom, with its
+  title on top and „Abbrechen" under it. „Abbrechen" closes it and nothing is
+  deleted; a tap on the dimmed page above it closes it too.
+- [ ] **I.9** Switches: under **Mein Konto** the three e-mail settings are
+  switches. Tap anywhere on a row and it flips, the knob sliding across; save,
+  reload, and it is as you left it. With VoiceOver on, each is read as a switch,
+  on or off.
+- [ ] **I.10** On **Geld**, „Beiträge · Rechnungen" is one segmented control, the
+  current half white and raised; tap the other. On **Schüler → + Schüler
+  anlegen**, a line of two capsules under the title shows the step you are on.
+- [ ] **I.11** The numbers on the bell and on **Chats** are red with a white
+  figure, readable in light and in dark.
 
 ### An update that lost records stays closed (ADR 0027)
 

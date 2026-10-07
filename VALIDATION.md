@@ -6,7 +6,39 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
-## 0.6.0, unreleased — at `bfeb592` and `21f02c8`: a refused update stays refused, and any value from anyone
+## 0.6.0, unreleased — at `f5d3c28`: the look of an iPhone app, and a refused update that costs no backup
+
+Recorded 2026-10-07 by docs-writer. `f5d3c28` holds `1ad0488` before it. Both runs on
+MariaDB 10.11.14 (`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP 8.4.26, on port 3431 with
+a work folder of their own. MySQL 8.0 was not run, and neither was Safari.
+
+- **The whole suite: 7665 passed, 0 failed**, in 244 seconds, on a copy exported with
+  `git archive f5d3c28` and `vendor/` copied in; all thirty-three migrations apply. The
+  two refusals for a file the portal cannot delete ran this time and passed: since
+  `1ad0488` the `install` suite makes the file immutable with `chattr +i` where the file
+  system allows, and the run no longer lists them as not covered. It still lists the
+  three robustness gaps of `aa5b1b7` below: the seven actions no page draws a form for,
+  a form sent twice where the form as drawn is refused (28 actions and roles), and what an
+  action does with an uploaded file.
+- **The browser walk, `tests/e2e.sh` with `CRM_E2E_REF=f5d3c28`**: `RESULT: PASS`, 377
+  checks, 0 failed, in 123 seconds, under `php -S`, in Chromium at 390px with a 320px pass
+  over every page each role opened: 39 for the administrator, 6 for the family, 3 for the
+  person invited by address alone. No PHP warning, notice or deprecation; no JavaScript
+  error, failed request or unexpected 4xx/5xx; no overflow and no tap target under 44px;
+  four 503s, all provoked on purpose; four mails captured. Among the checks: the staff
+  bar, and the family's bar with the row „Anmeldung und Darstellung" on Profil, read
+  signed in as the family.
+- **What neither run can see.** Neither uses Safari. The system font, the sheets, the
+  pressed states, the page fades, the back button in the home-screen app and its status
+  bar have not been seen in Safari or on an iPhone; TESTING.md I.1–I.11 are those checks,
+  and none has been walked.
+
+Reported and **not** reproduced here, from the commit message of `f5d3c28`: every text at
+least 4.5:1 against its background in both themes (lowest 4.59 light, 5.38 dark), and
+`tests/mobile.mjs` clean on every screen at 320 and 390px, as administrator, trainer and
+family, light and dark, with nothing wider than the screen at 200 % text.
+
+## 0.6.0, unreleased — at `bfeb592` and `aa5b1b7`: a refused update stays refused, and any value from anyone
 
 Recorded 2026-10-07 by docs-writer. Both runs on MariaDB 10.11.14
 (`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP 8.4.26, started by `tests/mariadb-local.sh`
@@ -25,10 +57,11 @@ MySQL 8.0 was not run.
   deleted every `news` row was refused on the first `schema_apply()`, and the second, with
   nothing left pending, opened the portal with the rows still missing (a scratch check of
   ten assertions; with the deletion taken out, five of them failed).
-- **At `21f02c8`, the robustness batch: 7608 passed, 0 failed**, in 250 seconds, the
+- **At `aa5b1b7`, the robustness batch: 7608 passed, 0 failed**, in 250 seconds, the
   `robustness` suite among them with 751 passed; on its own it passed 751 in 41 seconds.
-  The commit message reports 7452 passed for its run; the difference is not explained
-  here. The run listed as not covered: the same file the portal cannot delete; actions no
+  The run was made on `21f02c8`, which was amended into `aa5b1b7` before it was pushed:
+  the two have the same tree, and only the message changed, to the count above. The run
+  listed as not covered: the same file the portal cannot delete; actions no
   page draws a form for (`login`, `activate`, `unsubscribe`, `student_invite`,
   `attendance_clear`, `contact_decide`, `setup_visibility`), which get every value but no
   form sent twice; a form sent twice where the form as drawn is refused (28 actions and
