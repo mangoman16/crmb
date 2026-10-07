@@ -52,17 +52,14 @@ In this order.
 5. **Screens.** Not started.
    - ADR 0023, as specified in
      [docs/design/2026-10-05-accounts-and-chat-screens.md](docs/design/2026-10-05-accounts-and-chat-screens.md).
-   - ADR 0022 §11, the chat cut to its basics: administrators read every chat, a message is
+   - ADR 0022 §11, the chat cut to its basics. Built with round 2 (`8e5ce48`): a message is
      text and photos (a student's from the camera, JPEG; staff JPEG, PNG or WebP), and no new
-     chat between two students. None of it is built: today an administrator opens the course
-     groups and the chats between a student and staff, a chat between two families is
-     private to the two, and voice notes and files can still be sent. The chat paragraph of
-     both privacy drafts, and UPDATING.md's instruction for a notice already released,
-     change in the same commit.
+     chat between two students — old ones are readable and closed. Being built now: §11.1 and
+     §11.2, administrators read every chat with nothing recorded about their reading, and
+     „Alle Einzelchats"; the chat paragraph of both privacy drafts changes in the same commit.
    - ADR 0024, taking a child out of a course and back in. Migration 031 is in; nothing
      writes `removed_on` yet.
-   - ADR 0025, every change to a payment profile kept in „Änderungen". `profile_save` still
-     writes without `tracked()`.
+   - ADR 0025, every change to a payment profile kept in „Änderungen": being built now.
 6. **Security batch.** Not started.
    - The example trainer login: a high-entropy password, and an expiry.
    - A throttle on `proof_upload`.
