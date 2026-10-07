@@ -16,7 +16,8 @@ $waiting=pending_request_count();
 page_head(
     $id?$form['name']:t('Kurse','Courses'),
     $id?class_schedule($form,$days):t('Wann trainiert wird, was es kostet und wer dabei ist.','When training happens, what it costs and who takes part.'),
-    $id?link_button(t('Alle Kurse','All courses'),'classes',[],'secondary')
+    // up-link: on a phone the bar's „‹ Kurse" is this way back.
+    $id?link_button(t('Alle Kurse','All courses'),'classes',[],'secondary up-link')
        :($mayEdit?link_button(t('+ Kurs anlegen','+ Add a course'),'classes',['new'=>1]):'')
 );
 
@@ -42,7 +43,7 @@ if(!$id && !$edit && $tab==='list'):
     if(!$list):
         empty_state(t('Noch keine Kurse.','No courses yet.'),
             t('Ein Kurs sagt, wann und wo trainiert wird, welche Tarife es dafür gibt und wer dabei ist.','A course says when and where training happens, which tariffs there are for it, and who takes part.'),
-            $mayEdit?link_button(t('Ersten Kurs anlegen','Add the first course'),'classes',['new'=>1]):'');
+            $mayEdit?link_button(t('Ersten Kurs anlegen','Add the first course'),'classes',['new'=>1]):'','calendar');
     else: ?>
     <div class="card">
     <?php foreach($list as $row): ?>
@@ -53,7 +54,7 @@ if(!$id && !$edit && $tab==='list'):
                 <small><?=e(plural((int)$row['tariff_count'],'Tarif','Tarife','tariff','tariffs'))?><?php if($row['trainer_name'])echo ' · '.e($row['trainer_name']);?></small>
             </div>
             <span class="class-count"><strong><?=(int)$row['member_count']?></strong><small><?=e(t('Schüler','students'))?></small></span>
-            <?=icon('arrow')?>
+            <?=icon('chevron')?>
         </a>
     <?php endforeach ?>
     </div>
@@ -175,7 +176,7 @@ elseif($id && !$edit && $tab==='tariffs'):
         <?php input('description',t('Erklärung für die Familie','Explanation for the family'),$tf['description'],'text');
         input('sort_order',t('Reihenfolge in der Liste','Position in the list'),(int)$tf['sort_order'],'number',false,
               t('Kleine Zahl zuerst. Nur dafür da, in welcher Reihenfolge die Tarife dieses Kurses erscheinen.','Lowest number first. This only decides the order the tariffs of this course are listed in.'));
-        check_field('archived',t('Archivieren (bestehende Anmeldungen bleiben)','Archive (existing enrolments stay)'),(bool)$tf['archived']); ?>
+        check_field('archived',t('Archivieren (bestehende Anmeldungen bleiben)','Archive (existing enrolments stay)'),(bool)$tf['archived'],'',false,true); ?>
         </details>
         <?php submit_button();?></form>
     </section>
@@ -199,7 +200,7 @@ elseif($id && !$edit && $tab==='dates'):
         <?php foreach($calendar as $entry): ?>
         <a class="editor-list-item <?=$chosen===$entry['date']?'selected':''?> <?=$entry['status']==='cancelled'?'is-off':''?>" href="<?=e(url('classes',['id'=>$id,'tab'=>'dates','on'=>$entry['date']]))?>">
             <span><strong class="badge-line"><span><?=e(fmt_date($entry['date']))?></span><?php if($entry['date']===today())badge(t('Heute','Today'),'green');?></strong><small><?=e(session_label($entry))?></small></span>
-            <span><?php if($entry['status']!=='planned')badge(session_statuses()[$entry['status']]??$entry['status'],$entry['status']==='cancelled'?'red':'amber'); echo icon('arrow');?></span>
+            <span><?php if($entry['status']!=='planned')badge(session_statuses()[$entry['status']]??$entry['status'],$entry['status']==='cancelled'?'red':'amber'); echo icon('chevron');?></span>
         </a>
         <?php endforeach ?>
     </section>
@@ -217,7 +218,7 @@ elseif($id && !$edit && $tab==='dates'):
               t('Leer lassen, wenn der übliche Ort gilt: ','Leave empty for the usual place: ').($form['location']?:t('nicht hinterlegt','not set')));
         input('note',t('Hinweis für die Familien','Note for the families'),$current['note']??'','textarea',false,
               t('Steht in der E-Mail, falls du sie verschickst.','Goes into the email, if you send one.'));
-        check_field('notify',t('Alle Kursteilnehmer per E-Mail informieren','Email everybody in this course'));
+        check_field('notify',t('Alle Kursteilnehmer per E-Mail informieren','Email everybody in this course'),false,'',false,true);
         submit_button(); ?></form>
     </section>
 </div>
@@ -324,11 +325,11 @@ elseif($edit): ?>
 
     <?php
     input('description',t('Beschreibung','Description'),$form['description'],'textarea');
-    check_field('archived',t('Kurs archivieren','Archive course'),(bool)$form['archived']);
+    check_field('archived',t('Kurs archivieren','Archive course'),(bool)$form['archived'],'',false,true);
     submit_button(); ?></form>
 </section>
 <?php if($id): ?>
-<details class="danger-zone">
+<details class="danger-zone" data-sheet>
     <summary><?=e(t('Kurs löschen','Delete course'))?></summary>
     <p><?=e(t('Der Kurs wird entfernt, mit seinen Terminen und Tarifen. Schüler, Beiträge und Zahlungen bleiben erhalten.','The course is removed, along with its dates and tariffs. Students, charges and payments are kept.'))?></p>
     <?php start_form('class_delete',['id'=>$id]);

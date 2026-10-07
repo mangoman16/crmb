@@ -87,6 +87,8 @@ const documentListeners = {};
 const page = {
   activeElement: body,
   body: Object.assign(body, { classList: { remove() {}, toggle() { return false; } } }),
+  // app.js marks the page as scripted ("js" on <html>), which is all it asks of it.
+  documentElement: { classList: { add() {} } },
   getElementById: () => null,
   querySelector: () => null,
   // Only the menus are on this page: every other feature of app.js finds nothing
@@ -103,6 +105,8 @@ const context = vm.createContext({
   history: { replaceState() {} },
   navigator: {},
   console,
+  // The window's own listeners (pageshow) are not exercised here.
+  addEventListener() {},
 });
 context.window = context;
 vm.runInContext(readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8'), context,

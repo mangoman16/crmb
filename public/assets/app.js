@@ -1,4 +1,12 @@
 'use strict';
+// iOS shows :active - a row turning grey, a button dimming while it is pressed -
+// only while a touch listener exists, and an inline one is refused by the
+// portal's own Content-Security-Policy. This one does nothing but exist. The
+// class says the script ran: only then does the stylesheet switch off the
+// system's grey tap flash, because only then is :active there to replace it.
+document.addEventListener('touchstart', () => {}, { passive: true });
+document.documentElement.classList.add('js');
+
 // „Mehr" is a link to #sidebar, which the stylesheet opens without JavaScript.
 // Here it becomes the button it stands for: it slides the menu in and out and
 // leaves the address alone, and the backdrop and „Menü schließen" close it.
@@ -74,13 +82,89 @@ document.querySelectorAll('[data-add-option]').forEach(button => {
     row.querySelector('select, input:not([type="hidden"])')?.focus();
   });
 });
-// The database request id also prevents duplicate records after a repeated POST.
+// A form is sent once. The database request id already refuses a second post;
+// here a second tap does nothing at all, and the button that was pressed says it
+// is working (aria-busy, which the stylesheet draws as a spinner) until the next
+// page arrives. The buttons are switched off after the submit, not during it, so
+// the one pressed still sends its name and value.
 document.querySelectorAll('form[method="post"]').forEach(form => {
-  form.addEventListener('submit', () => {
-    if (form.dataset.submitted) return;
+  form.addEventListener('submit', event => {
+    if (form.dataset.submitted) { event.preventDefault(); return; }
     form.dataset.submitted = '1';
-    window.setTimeout(() => { form.querySelectorAll('button[type="submit"]').forEach(button => { button.disabled = true; }); }, 0);
+    event.submitter?.setAttribute('aria-busy', 'true');
+    window.setTimeout(() => {
+      form.querySelectorAll('button[type="submit"]').forEach(button => { button.disabled = true; button.dataset.sendingOff = '1'; });
+    }, 0);
   });
+});
+// Back to a page the browser kept as it was left - a form sent, its buttons off,
+// a sheet open: it is a page to use again, not one still sending.
+window.addEventListener('pageshow', event => {
+  if (!event.persisted) return;
+  document.querySelectorAll('form[data-submitted]').forEach(form => {
+    delete form.dataset.submitted;
+    form.querySelectorAll('[data-sending-off]').forEach(button => { button.disabled = false; delete button.dataset.sendingOff; });
+    form.querySelectorAll('[aria-busy]').forEach(button => { button.removeAttribute('aria-busy'); });
+  });
+  document.querySelectorAll('dialog.sheet-dialog[open]').forEach(dialog => { dialog.close(); });
+});
+
+// A fold that removes or makes something (details[data-sheet]) opens as a sheet
+// from the bottom of the screen, the way iOS asks before it deletes: the fold's
+// summary as the title, what it holds under it, and „Abbrechen", which shuts it
+// and changes nothing. What it holds is moved into a <dialog> and back again,
+// never copied, so the form in it is the same form with the same fields. Escape
+// and a tap on the dimmed page beside it shut it too. Without this the fold
+// opens in place, as it always did; a browser without <dialog> keeps that.
+let sheets = 0;
+document.querySelectorAll('details[data-sheet]').forEach(fold => {
+  const summary = fold.querySelector(':scope > summary');
+  if (!summary || typeof window.HTMLDialogElement !== 'function') return;
+  const open = () => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'sheet-dialog';
+    const title = document.createElement('h2');
+    title.className = 'sheet-title';
+    title.id = 'sheet-title-' + (++sheets);
+    title.tabIndex = -1;
+    title.textContent = summary.textContent.trim();
+    dialog.setAttribute('aria-labelledby', title.id);
+    const grabber = document.createElement('span');
+    grabber.className = 'sheet-grabber';
+    grabber.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('div');
+    body.className = 'sheet-body';
+    const held = [...fold.childNodes].filter(node => node !== summary);
+    body.append(...held);
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'button subtle sheet-cancel';
+    // The word comes from the page, in the page's language, like every other.
+    cancel.textContent = document.body.dataset.sheetCancel || 'Abbrechen';
+    dialog.append(grabber, title, body, cancel);
+    document.body.append(dialog);
+    cancel.addEventListener('click', () => { dialog.close(); });
+    // A tap on the dimmed page lands on the dialog itself, outside its box; a
+    // tap inside it, on its padding, lands there too, so where it landed decides.
+    dialog.addEventListener('click', event => {
+      if (event.target !== dialog) return;
+      const box = dialog.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+      fold.append(...held);
+      fold.open = false;
+      dialog.remove();
+      summary.focus();
+    });
+    dialog.showModal();
+    // The title first, so what happens is read before anything is typed, and a
+    // phone does not put its keyboard over the sentence that explains it.
+    title.focus();
+  };
+  summary.addEventListener('click', event => { event.preventDefault(); open(); });
+  // Opened by the page itself: as a sheet as well.
+  if (fold.open) { fold.open = false; open(); }
 });
 
 // Reveal controls that only make sense with JavaScript available.

@@ -79,7 +79,7 @@ $dates=attendance_session_dates($id);
     <?php endforeach ?>
     </div>
     <?php if(isset($recorded) && $recorded): ?>
-    <details class="danger-zone">
+    <details class="danger-zone" data-sheet>
         <summary><?=e(t('Eintrag für diesen Tag löschen','Delete the entry for this day'))?></summary>
         <?php start_form('attendance_clear',['class_id'=>$id,'session_on'=>$on],'inline-form');
               submit_button(t('Ja, Tag löschen','Yes, delete this day'),'danger'); ?></form>

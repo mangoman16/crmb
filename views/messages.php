@@ -123,7 +123,8 @@ if($staff): ?>
 // ---------------------------------------------------------------------------
 // „Neue Nachricht": who to write to.
 if($picking): ?>
-    <header class="chat-head"><a class="chat-back" href="<?=e(url('messages'))?>"><?=icon('arrow')?><span class="visually-hidden"><?=e(t('Zurück zu allen Nachrichten','Back to all messages'))?></span></a><div class="chat-head-who"><span class="chat-head-text"><h2><?=e(t('Neue Nachricht','New message'))?></h2><?php if(!$viewing): ?><small><?=e(t('An wen?','Who to?'))?></small><?php endif ?></span></div></header>
+    <?php /* The way back to the list is the bar's „‹ Chats" (nav_back()). */ ?>
+    <header class="chat-head"><div class="chat-head-who"><span class="chat-head-text"><h2><?=e(t('Neue Nachricht','New message'))?></h2><?php if(!$viewing): ?><small><?=e(t('An wen?','Who to?'))?></small><?php endif ?></span></div></header>
     <?php /* The one answer while looking through somebody's eyes (above), in the
              words the actions refuse with: nobody listed, nothing to ask or agree to. */
     if($viewing): ?>
@@ -134,7 +135,7 @@ if($picking): ?>
     $person=function(array $p, string $small='') use ($user): void { ?>
     <a class="member-row" href="<?=e(url('messages',['with'=>$p['id'],'#'=>'chat-end']))?>">
         <span class="avatar-presence"><?=avatar($p)?><?=presence_dot($user,$p)?></span>
-        <span class="member-row-text"><strong><?=chat_name($p)?></strong><?php if($small!==''):?><small><?=e($small)?></small><?php endif ?></span><?=icon('arrow')?>
+        <span class="member-row-text"><strong><?=chat_name($p)?></strong><?php if($small!==''):?><small><?=e($small)?></small><?php endif ?></span><?=icon('chevron')?>
     </a>
 <?php };
     $contacts=array_filter(contacts_for($user),$match);
@@ -188,7 +189,6 @@ elseif($showMembers): $thread=thread_record($id);
     if($thread['kind']!=='course') throw new NotFound(t('Unterhaltung nicht gefunden.','Conversation not found.'));
     $people=course_group_people((int)$thread['class_id']); $class=training_class((int)$thread['class_id']); ?>
     <header class="chat-head">
-        <a class="chat-back" href="<?=e(url('messages',['id'=>$id,'#'=>'chat-end']))?>"><?=icon('arrow')?><span class="visually-hidden"><?=e(t('Zurück zur Gruppe','Back to the group'))?></span></a>
         <div class="chat-head-who"><span class="hue hue-<?=e(chat_hue((int)$thread['class_id']))?>"><?=avatar(['name'=>$thread['class_name']],'small')?></span>
             <span class="chat-head-text"><h2><?=e($thread['class_name'])?></h2><small><?=e(class_schedule($class))?></small></span></div>
     </header>
@@ -200,7 +200,7 @@ elseif($showMembers): $thread=thread_record($id);
         $tag=$canWrite?'a':'div'; ?>
     <<?=e($tag)?> class="member-row"<?php if($canWrite):?> href="<?=e(url('messages',['with'=>$p['id'],'#'=>'chat-end']))?>"<?php endif ?>>
         <span class="avatar-presence"><?=avatar($p)?><?=$p['id']!==null?presence_dot($user,$p):''?></span>
-        <span class="member-row-text"><strong><?=chat_name($p)?></strong><?php if($small!==''):?><small><?=e($small)?></small><?php endif ?></span><?=$canWrite?icon('arrow'):''?>
+        <span class="member-row-text"><strong><?=chat_name($p)?></strong><?php if($small!==''):?><small><?=e($small)?></small><?php endif ?></span><?=$canWrite?icon('chevron'):''?>
     </<?=e($tag)?>>
     <?php }; ?>
     <h2 class="chat-section"><?=e(t('Trainerteam','Coaching team').' ('.count($people['staff']).')')?></h2>
@@ -240,7 +240,6 @@ elseif($id || $with):
     $other=count($others)===1?$others[0]:null;
     $writable=$id?may_write_thread($user,$thread):!$viewing; ?>
     <header class="chat-head">
-        <a class="chat-back" href="<?=e(url('messages'))?>"><?=icon('arrow')?><span class="visually-hidden"><?=e(t('Zurück zu allen Nachrichten','Back to all messages'))?></span></a>
         <?php if($group): $count=count(course_group_people((int)$thread['class_id'])['members']); ?>
         <a class="chat-head-who" href="<?=e(url('messages',['id'=>$id,'members'=>1]))?>">
             <span class="hue hue-<?=e(chat_hue((int)$thread['class_id']))?>"><?=avatar(['name'=>$thread['class_name']],'small')?></span>

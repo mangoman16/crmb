@@ -245,7 +245,7 @@ function setting_schema(): array {
         // readability instead of refused, because a club's colours are not hers
         // to change (brand_palette()).
         'brand_primary' => [
-            'kind' => 'colour', 'default' => '', 'builtin' => '#077e76', 'group' => 'branding',
+            'kind' => 'colour', 'default' => '', 'builtin' => '#06736c', 'group' => 'branding',
             'label' => ['Hauptfarbe', 'Main colour'],
             'hint'  => ['Knöpfe, Links und Markierungen. Wer sich unter „Mein Konto“ eine eigene Farbe ausgesucht hat, behält sie.',
                         'Buttons, links and highlights. Anyone who picked their own colour under “My account” keeps it.'],
@@ -263,7 +263,7 @@ function setting_schema(): array {
                         'The dot on the “B” and the marker on the menu entry of the current page.'],
         ],
         'brand_background' => [
-            'kind' => 'colour', 'default' => '', 'builtin' => '#f3f6f9', 'text_on' => '#5d6e7e', 'group' => 'branding',
+            'kind' => 'colour', 'default' => '', 'builtin' => '#f2f2f7', 'text_on' => '#636366', 'group' => 'branding',
             'label' => ['Hintergrund', 'Background'],
             'hint'  => ['Die Fläche hinter den Karten. Muss hell genug sein, dass graue Schrift darauf gut lesbar bleibt.',
                         'The area behind the cards. It has to be light enough for grey text on it to stay readable.'],
@@ -287,7 +287,7 @@ function setting_schema(): array {
                         'Empty = worked out from the light colour. Only takes effect while the light colour is set above.'],
         ],
         'brand_background_dark' => [
-            'kind' => 'colour', 'default' => '', 'builtin' => '#101922', 'text_on' => '#9aabba', 'group' => 'branding', 'advanced' => true,
+            'kind' => 'colour', 'default' => '', 'builtin' => '#000000', 'text_on' => '#aeaeb2', 'group' => 'branding', 'advanced' => true,
             'label' => ['Hintergrund im Dunkelmodus', 'Background in dark mode'],
             'hint'  => ['Leer = aus der hellen Farbe berechnet. Wirkt nur, solange oben die helle Farbe eingetragen ist. Muss dunkel genug sein, dass graue Schrift darauf gut lesbar bleibt.',
                         'Empty = worked out from the light colour. Only takes effect while the light colour is set above. It has to be dark enough for grey text on it to stay readable.'],

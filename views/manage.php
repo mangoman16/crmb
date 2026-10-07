@@ -39,7 +39,7 @@ tabs($items,$tab,'manage');
         <?php foreach(levels(true) as $row): $count=$usage['levels'][(int)$row['id']]??0; ?>
         <a class="editor-list-item <?=$edit===(int)$row['id']?'selected':''?>" href="<?=e(url('manage',['tab'=>'levels','edit'=>$row['id']]))?>">
             <span><strong><?=e($row['name'])?></strong><small><?=e($row['description']?:plural($count,'Kind','Kinder','child','children'))?></small></span>
-            <span class="row-actions"><?php if($row['is_default'])badge(t('Standard','Default'),'green'); if($row['archived'])badge(t('Archiviert','Archived'),'amber'); echo icon('arrow');?></span>
+            <span class="row-actions"><?php if($row['is_default'])badge(t('Standard','Default'),'green'); if($row['archived'])badge(t('Archiviert','Archived'),'amber'); echo icon('chevron');?></span>
         </a>
         <?php endforeach ?>
         <p class="muted"><?=e(t('Umbenennen wirkt überall sofort, weil die Schüler auf den Eintrag zeigen und nicht auf das Wort. Archivieren behält die Zuordnung bestehender Kinder.','Renaming takes effect everywhere at once, because a student points at the entry rather than at the word. Archiving keeps the children already assigned.'))?></p>
@@ -50,8 +50,8 @@ tabs($items,$tab,'manage');
         input('name',t('Name','Name'),$level['name']??'','text',true,'',t('z. B. Anfänger','e.g. Beginner'));
         input('description',t('Kurze Erklärung','Short explanation'),$level['description']??'','text',false,t('Wofür steht diese Gruppe? Wird in der Liste angezeigt.','What does this level mean? Shown in the list.'));
         input('sort_order',t('Reihenfolge (kleine Zahl zuerst)','Order (lowest first)'),$level['sort_order']??0,'number');
-        check_field('is_default',t('Neue Kinder starten in dieser Gruppe','New children start in this level'),(bool)($level['is_default']??false));
-        check_field('archived',t('Archivieren (bestehende Zuordnungen bleiben)','Archive (keeps existing assignments)'),(bool)($level['archived']??false));
+        check_field('is_default',t('Neue Kinder starten in dieser Gruppe','New children start in this level'),(bool)($level['is_default']??false),'',false,true);
+        check_field('archived',t('Archivieren (bestehende Zuordnungen bleiben)','Archive (keeps existing assignments)'),(bool)($level['archived']??false),'',false,true);
         submit_button();?></form>
     </section>
 </div>
@@ -63,7 +63,7 @@ tabs($items,$tab,'manage');
         <?php foreach(age_groups(true) as $row): $count=$usage['age_groups'][(int)$row['id']]??0; ?>
         <a class="editor-list-item <?=$edit===(int)$row['id']?'selected':''?>" href="<?=e(url('manage',['tab'=>'ages','edit'=>$row['id']]))?>">
             <span><strong><?=e($row['name'])?></strong><small><?=e(age_group_range($row).' · '.plural($count,'Kind','Kinder','child','children'))?></small></span>
-            <span class="row-actions"><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber'); echo icon('arrow');?></span>
+            <span class="row-actions"><?php if($row['archived'])badge(t('Archiviert','Archived'),'amber'); echo icon('chevron');?></span>
         </a>
         <?php endforeach ?>
         <?php if($usage['unplaced']): ?>
@@ -81,7 +81,7 @@ tabs($items,$tab,'manage');
         input('min_age',t('Ab diesem Alter','From this age'),$group['min_age']??0,'number');
         input('max_age',t('Bis zu diesem Alter','Up to this age'),$group['max_age']??'','number',false,t('Leer lassen für „und älter“.','Leave empty for “and older”.'));?></div><?php
         input('sort_order',t('Reihenfolge (kleine Zahl zuerst)','Order (lowest first)'),$group['sort_order']??0,'number',false,t('Bei Überschneidungen gewinnt die erste passende Gruppe.','Where bands overlap, the first matching one wins.'));
-        check_field('archived',t('Archivieren','Archive'),(bool)($group['archived']??false));
+        check_field('archived',t('Archivieren','Archive'),(bool)($group['archived']??false),'',false,true);
         submit_button();?></form>
     </section>
 </div>

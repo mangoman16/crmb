@@ -17,7 +17,7 @@ $everyday=array_diff_key($specs,$advanced);
 $registryField=function(string $key,array $spec): void {
     $value=setting($key); $label=setting_label($spec); $hint=setting_hint($spec); $name='set_'.$key;
     switch($spec['kind']):
-        case 'bool': echo '<div class="field">';check_field($name,$label,(bool)$value);if($hint)echo '<small>'.e($hint).'</small>';echo '</div>';break;
+        case 'bool': echo '<div class="field">';check_field($name,$label,(bool)$value,'',false,true);if($hint)echo '<small>'.e($hint).'</small>';echo '</div>';break;
         case 'int': input($name,$label,(string)(int)$value,'number',false,$hint);break;
         case 'longtext': echo '<div class="full">';input($name,$label,(string)$value,'textarea',false,$hint);echo '</div>';break;
         case 'list': input($name,$label,implode("\n",(array)$value),'textarea',false,$hint?:t('Ein Eintrag pro Zeile.','One item per line.'));break;

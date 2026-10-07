@@ -356,7 +356,7 @@ step('admin signs in', async ({ browser }) => {
     ok(p && p[0] === 0 && p[1] === 9, '0 von 9 erledigt on a fresh portal', JSON.stringify(p));
     ok(await page.locator('li.step.is-done').count() === 0, 'nothing ticked on a fresh portal');
     // U.46: the phone's bar.
-    ok(await barWords(page) === 'Übersicht Schüler Post Anwesend Mehr', 'the phone bar reads Übersicht, Schüler, Post, Anwesend, Mehr', await barWords(page));
+    ok(await barWords(page) === 'Übersicht Schüler Anwesend Chats Mehr', 'the phone bar reads Übersicht, Schüler, Anwesend, Chats, Mehr', await barWords(page));
     // U.31: signing out and in again lands on the checklist again.
     await signOut(page);
     await signIn(page, ADMIN);
@@ -901,8 +901,14 @@ step('an English invitation, withdrawn', async ({ browser }) => {
     await look(admin, 'admin');
     const row = admin.locator('#invitations .record-row', { hasText: GUEST_EN.email });
     must(await row.count() === 1, 'the English invitation is listed', await mainText(admin));
+    // A fold that removes something opens as a sheet from the bottom of the
+    // screen, with what it held moved into it (design language, Part 0 C11).
     await row.locator('summary', { hasText: 'Zurückziehen' }).click();
-    await save(admin, row.locator('form:has(input[name=mode][value=withdraw])'), '„Einladung zurückziehen“');
+    const sheet = admin.locator('dialog.sheet-dialog[open]');
+    ok(await sheet.count() === 1 && (await sheet.locator('.sheet-title').innerText()).includes('Zurückziehen'),
+       '„Zurückziehen“ opens a sheet titled with it', await sheet.innerText().catch(() => 'no sheet'));
+    ok(await sheet.locator('button.sheet-cancel').count() === 1, 'with „Abbrechen“ under it');
+    await save(admin, sheet.locator('form:has(input[name=mode][value=withdraw])'), '„Einladung zurückziehen“');
     await look(admin, 'admin');
     ok((await flash(admin)).includes(`Die Einladung an ${GUEST_EN.email} ist zurückgezogen.`), '„Die Einladung an … ist zurückgezogen.“', await flash(admin));
     ok(sql(`SELECT COUNT(*) FROM accounts WHERE email='${GUEST_EN.email}'`) === '0', 'the login is gone');
@@ -918,18 +924,26 @@ step('an English invitation, withdrawn', async ({ browser }) => {
 step('family: Profil and charges', async () => {
     const page = S.family.page;
     // U.46/U.48: the family's bar.
-    ok(await barWords(page) === 'Übersicht Profil Post Neues Konto', 'the family\'s bar reads Übersicht, Profil, Post, Neues, Konto', await barWords(page));
+    ok(await barWords(page) === 'Übersicht Beiträge Chats Profil', 'the family\'s bar reads Übersicht, Beiträge, Chats, Profil', await barWords(page));
     // U.31: the checklist is the administrator's alone.
     page.__expect4xx = true;
     const start = await page.goto(BASE + '/index.php?page=start');
     ok(start.status() === 403 && (await mainText(page)).includes('Nur für Administratoren'), '?page=start answers „Nur für Administratoren“ to a family',
        `${start.status()} ${(await mainText(page)).slice(0, 120)}`);
     page.__expect4xx = false;
-    // U.52: Mein Konto ends with „Datenschutz und Hilfe“. (The refusal page has
-    // no bar; back to the overview first, as she would.)
+    // U.52: Mein Konto ends with „Datenschutz und Hilfe“. A family reaches it
+    // from Profil, „Anmeldung und Darstellung“. (The refusal page has no bar;
+    // back to the overview first, as she would.)
     await page.goto(BASE + '/index.php?page=dashboard');
-    await submit(page, barLink(page, 'Konto'));
+    await submit(page, barLink(page, 'Profil'));
     await look(page, 'family');
+    const account = page.locator('main a[href*="page=profile"]', { hasText: 'Anmeldung und Darstellung' });
+    must(await account.count() === 1, 'Profil has the row „Anmeldung und Darstellung“', await mainText(page));
+    await submit(page, account);
+    await look(page, 'family');
+    ok(label(page.url()) === '?page=profile', 'and it opens Mein Konto', page.url());
+    ok((await page.locator('.topbar .nav-back').innerText().catch(() => '')).trim() === 'Profil', 'whose bar leads back to „Profil“',
+       await page.locator('.topbar').innerText());
     // The card, and „Abmelden“ straight under it as the last thing on the page.
     const ending = await page.evaluate(() => {
         const cards = [...document.querySelectorAll('main section.card')];

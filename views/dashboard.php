@@ -32,7 +32,7 @@ if(!$staff):
     if(!$mine) {
         empty_state(t('Hier ist noch nichts','Nothing here yet'),
             t('Zu diesem Zugang gehört gerade keine Mitgliedschaft. Schreib deiner Trainerin, wenn das nicht stimmt.','No membership belongs to this login at the moment. Write to your coach if that is not right.'),
-            link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]));
+            link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]),'person');
     } else {
         /* What the family still has to fill in, first: the same list as on
            their Profil tab (ADR 0020, §7), each step a way to where it is
@@ -133,9 +133,11 @@ if($timeline): ?>
     </ol>
 </section>
 <?php endif ?>
-<?php if($staff): ?><div class="dashboard-grid"><section class="card"><div class="section-heading"><h2><?=e(t('Schüler','Students'))?></h2><a href="<?=e(url('students'))?>"><?=e(t('Alle ansehen','View all'))?> <?=icon('arrow')?></a></div>
-<?php if(!$students&&!$hasCourse)empty_state(t('Noch keine Schüler','No students yet'),t('Leg zuerst einen Kurs an – Kinder werden in Kurse eingetragen.','Create a course first – children are put into courses.'),link_button(t('Ersten Kurs anlegen','Create the first course'),'classes',['new'=>1]));
+<?php if($staff): ?><div class="dashboard-grid"><section class="card"><div class="section-heading"><h2><?=e(t('Schüler','Students'))?></h2><a href="<?=e(url('students'))?>"><?=e(t('Alle ansehen','View all'))?><?=icon('chevron')?></a></div>
+<?php if(!$students&&!$hasCourse)empty_state(t('Noch keine Schüler','No students yet'),t('Leg zuerst einen Kurs an – Kinder werden in Kurse eingetragen.','Create a course first – children are put into courses.'),link_button(t('Ersten Kurs anlegen','Create the first course'),'classes',['new'=>1]),'calendar');
 elseif(!$students)empty_state(t('Noch keine Schüler','No students yet'),t('Lege zuerst einen Schüler an. Einen Zugang lädst du danach auf seiner Seite ein.','Add your first student. You invite them in from their own page afterwards.'),link_button(t('Ersten Schüler anlegen','Add first student'),'student_new',['from'=>'dashboard']));else foreach(array_slice($students,0,6) as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0,'course_price'=>$coursePrices[(int)$s['id']]??course_price_label([])]); ?>
-</section><?php endif ?><section class="card news-panel"><div class="section-heading"><h2><?=e(t('Neuigkeiten','News'))?></h2><?=icon('news')?></div>
+</section><?php endif ?><?php /* All the news, from here: a family's bar no longer has „Neues" - news
+         reaches them through the bell and this group. */ ?>
+<section class="card news-panel"><div class="section-heading"><h2><?=e(t('Neuigkeiten','News'))?></h2><a href="<?=e(url('news'))?>"><?=e(t('Alle ansehen','View all'))?><?=icon('chevron')?></a></div>
 <?php $items=rows('SELECT * FROM news WHERE published=1 ORDER BY updated_at DESC LIMIT 3');if(!$items):?><p class="muted"><?=e(t('Noch keine Neuigkeiten.','No news yet.'))?></p><?php else:foreach($items as $n):?><a class="news-summary" href="<?=e(url('news',['id'=>$n['id']]))?>"><small><?=e(fmt_date($n['updated_at']))?></small><h3><?=e($n['title'])?></h3><p><?=e(mb_substr($n['body'],0,140))?></p></a><?php endforeach;endif ?>
 <?php if($staff):?><div class="quick-actions"><?=link_button(t('Neuigkeit schreiben','Write news'),'news',['new'=>1],'secondary')?></div><?php endif ?></section><?php if($staff): ?></div><?php endif ?>

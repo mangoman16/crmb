@@ -37,7 +37,7 @@ $willSkip=array_values(array_filter($plan,fn($r)=>$r['skip']!==null));
     <div class="auto-charges" id="auto-charges">
         <p class="auto-charges-status"><?=e($status)?></p>
         <?php if(is_admin($user)): start_form('auto_billing_save',[],'form auto-charges-form');
-            check_field('auto_billing',t('Jeden Monat automatisch anlegen','Create them every month automatically'),$auto); ?>
+            check_field('auto_billing',t('Jeden Monat automatisch anlegen','Create them every month automatically'),$auto,'',false,true); ?>
             <small class="auto-charges-hint"><?=e(t('Beim ersten Aufruf des Portals im Monat, nicht auf die Minute am 1.','On the first page view of the month, not on the stroke of the 1st.'))?></small>
             <?php submit_button(t('Speichern','Save'),'secondary'); ?></form>
         <?php endif ?>
@@ -82,4 +82,4 @@ $charges=rows('SELECT c.*,s.first_name,s.last_name,'.charge_paid_sql().' AS paid
 ?>
 <div class="saved-filters"><a class="chip" href="<?=e(url('payments'))?>"><?=e(t('Alle offenen Beiträge','All outstanding charges'))?></a><a class="chip" href="<?=e(url('payments',['overdue'=>1]))?>"><?=e(t('Nur überfällig','Overdue only'))?></a>
 <?php start_form('payment_remind',[],'inline-form');submit_button(t('Alle überfälligen per E-Mail erinnern','Email everyone overdue'),'secondary');?></form></div>
-<div class="card"><?php $count=0;foreach($charges as $c):$due=(int)$c['amount_cents']-(int)$c['paid'];if($due<=0)continue;$count++;?><a class="payment-row" href="<?=e(url('student',['id'=>$c['student_id'],'tab'=>'payments']))?>"><div><h3><?=e($c['first_name'].' '.$c['last_name'])?></h3><p><?=e($c['label'])?></p><small><?=e(t('Fällig am ','Due ').fmt_date($c['due_on']))?></small></div><strong class="<?=($c['overdue_on']??$c['due_on'])<today()?'due':''?>"><?=e(money($due))?></strong><?=icon('arrow')?></a><?php endforeach;if(!$count)empty_state(t('Alles ausgeglichen.','All settled.'),t('Für diese Auswahl sind keine offenen Beiträge vorhanden.','No outstanding charges in this selection.'));?></div>
+<div class="card"><?php $count=0;foreach($charges as $c):$due=(int)$c['amount_cents']-(int)$c['paid'];if($due<=0)continue;$count++;?><a class="payment-row" href="<?=e(url('student',['id'=>$c['student_id'],'tab'=>'payments']))?>"><div><h3><?=e($c['first_name'].' '.$c['last_name'])?></h3><p><?=e($c['label'])?></p><small><?=e(t('Fällig am ','Due ').fmt_date($c['due_on']))?></small></div><strong class="<?=($c['overdue_on']??$c['due_on'])<today()?'due':''?>"><?=e(money($due))?></strong><?=icon('chevron')?></a><?php endforeach;if(!$count)empty_state(t('Alles ausgeglichen.','All settled.'),t('Für diese Auswahl sind keine offenen Beiträge vorhanden.','No outstanding charges in this selection.'),'','check');?></div>

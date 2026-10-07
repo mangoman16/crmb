@@ -382,37 +382,49 @@ foreach ([$adminUser, $trainerUser, $familyUser] as $who)
 ok(!str_contains(sidebar_nav($adminUser, 'attendance'), 'nav-section'), 'and the side menu draws no section at all');
 is_same(array_values(array_unique(menu_routes($adminUser))), menu_routes($adminUser), 'no destination is offered twice');
 
-// One login is one student (ADR 0010): the family's second entry is their own
-// student's page, called „Profil", and a login no student points to has no
-// record to show, so it gets no entry rather than one that leads nowhere.
+// One login is one student (ADR 0010): a family's „Beiträge" and „Profil" are
+// both their own student's page, and a login no student points to has no
+// record to show, so it gets neither rather than two that lead nowhere. News
+// reaches a family through the bell and the overview, not an entry (owner,
+// 2026-10-07).
 is_same(0, (int)scalar('SELECT COUNT(*) FROM students WHERE account_id=?', [$family]), 'this family login has no student');
-is_same(['dashboard','messages','news'], menu_routes($familyUser), 'so it sees three pages');
+is_same(['dashboard','messages'], menu_routes($familyUser), 'so it sees two pages');
 is_same(null, people_nav_entry($familyUser), 'and no „Profil" entry that would lead nowhere');
 $ownLogin = make_account(['role'=>'student', 'name'=>'Familie Profil']);
 $ownStudent = make_student(['first_name'=>'Pia', 'last_name'=>'Profil', 'account_id'=>$ownLogin, 'email'=>'profil@example.test']);
 $otherStudent = make_student(['first_name'=>'Nicht', 'last_name'=>'Ihres']);
 $ownUser = one('SELECT * FROM accounts WHERE id=?', [$ownLogin]);
-is_same(['dashboard','student','messages','news'], menu_routes($ownUser), 'a family with a student sees four pages');
+is_same(['dashboard','student','messages','student'], menu_routes($ownUser), 'a family with a student sees four: Übersicht, Beiträge, Nachrichten, Profil');
+is_same([['id'=>$ownStudent,'tab'=>'payments'], ['id'=>$ownStudent]], array_values(array_column(array_filter(nav_entries($ownUser), fn($e) => $e['route'] === 'student'), 'params')),
+        'Beiträge is their student\'s money tab, Profil the page itself');
 $profile = people_nav_entry($ownUser);
 is_same(['student', ['id'=>$ownStudent], 'Profil'], [$profile['route'] ?? null, $profile['params'] ?? null, $profile['label'] ?? null],
-        'the second is „Profil", their own student\'s page');
+        '„Profil" is their own student\'s page');
 ok($ownStudent !== $otherStudent && ($profile['params']['id'] ?? null) !== $otherStudent, 'and never another student\'s');
 ok(str_contains(sidebar_nav($ownUser, 'dashboard'), 'href="'.e(url('student', ['id'=>$ownStudent])).'"'), 'the menu links there');
 
 case_('The bar along the bottom of a phone');
-/* Four places for staff and „Mehr" for the rest; five for a family and no „Mehr",
-   because everything on their side menu is on the bar already. The short word
-   is what fits five to a 320px screen; the full one is what a screen reader says. */
+/* An iOS tab bar (design language, Part 0 C3): four places for staff and „Mehr"
+   for the rest; four for a family and no „Mehr", because everything on their
+   side menu is on the bar already. The short word is what the bar prints; the
+   full one is what a screen reader says. */
 $bar = fn(array $who) => [array_column(mobile_nav_entries($who), 'route'), array_column(mobile_nav_entries($who), 'short')];
 foreach (['administrator' => $adminUser, 'trainer' => $trainerUser] as $role => $who)
-    is_same([['dashboard','students','messages','attendance'], ['Übersicht','Schüler','Post','Anwesend']], $bar($who),
-            'staff ('.$role.'): Übersicht, Schüler, Post, Anwesend');
-is_same([['dashboard','student','messages','news','profile'], ['Übersicht','Profil','Post','Neues','Konto']], $bar($ownUser),
-        'a family: Übersicht, Profil, Post, Neues, Konto');
-is_same(['dashboard','messages','news','profile'], array_column(mobile_nav_entries($familyUser), 'route'),
-        'and a login with no student simply has no Profil');
-is_same('Mein Konto', array_column(mobile_nav_entries($ownUser), 'label', 'route')['profile'] ?? null,
-        '„Konto" is read out as „Mein Konto"');
+    is_same([['dashboard','students','attendance','messages'], ['Übersicht','Schüler','Anwesend','Chats']], $bar($who),
+            'staff ('.$role.'): Übersicht, Schüler, Anwesend, Chats');
+is_same([['dashboard','student','messages','student'], ['Übersicht','Beiträge','Chats','Profil']], $bar($ownUser),
+        'a family: Übersicht, Beiträge, Chats, Profil');
+is_same(['dashboard','messages'], array_column(mobile_nav_entries($familyUser), 'route'),
+        'and a login with no student simply has no Beiträge and no Profil');
+is_same('Nachrichten', array_column(mobile_nav_entries($ownUser), 'label', 'route')['messages'] ?? null,
+        '„Chats" is read out as „Nachrichten"');
+// Both of a family's entries lead to the same page; the tab decides which one is lit.
+[$money, $record] = array_values(array_filter(mobile_nav_entries($ownUser), fn($e) => $e['route'] === 'student'));
+foreach (['payments' => 'Beiträge', 'invoices' => 'Beiträge', 'details' => 'Profil', 'contacts' => 'Profil', '' => 'Profil'] as $tab => $lit)
+    is_same([$lit], array_column(array_filter([$money, $record], fn($e) => nav_is_current($e['route'], 'student', $ownUser, $e['params'], $tab)), 'short'),
+            'on the child\'s page'.($tab !== '' ? ' at tab='.$tab : '').' only „'.$lit.'" is lit');
+is_same(['Profil'], array_column(array_filter([$money, $record], fn($e) => nav_is_current($e['route'], 'profile', $ownUser, $e['params'], '')), 'short'),
+        'and on Mein Konto, reached from Profil, „Profil"');
 /** A whole page as the browser gets it: the view inside the layout. */
 function shell_page(string $page, array $query = []): string {
     $content = render_view($page, $query);
@@ -425,7 +437,8 @@ ok(str_contains(shell_page('dashboard'), 'id="menu-toggle"'), 'staff have „Meh
 sign_in_as($ownLogin);
 $familyFrame = shell_page('dashboard');
 ok(!str_contains($familyFrame, 'id="menu-toggle"'), 'a family has no „Mehr"');
-ok(str_contains($familyFrame, 'href="'.e(url('profile')).'"'), 'their Konto is on the bar instead');
+ok(str_contains(render_view('student', ['id'=>$ownStudent]), 'href="'.e(url('profile')).'"'),
+   'their Mein Konto is a row on Profil instead, „Anmeldung und Darstellung"');
 
 // ---------------------------------------------------------------------------
 case_('Every page a person may open is on their menu, or reached from the entry it belongs to');
@@ -511,8 +524,13 @@ foreach ($people as $who => [$accountId, $setupOpen]) {
     $setupShown($setupOpen);
     sign_in_as($accountId);
     $user = current_user();
-    $entries = [];
-    foreach (array_merge(nav_entries($user), mobile_nav_entries($user)) as $entry) $entries[$entry['route']] ??= $entry['params'] ?? [];
+    // A route can stand for more than one entry: a family's Beiträge and Profil
+    // are both their child's page. $entries keeps the first, $entryParams all.
+    $entries = []; $entryParams = [];
+    foreach (array_merge(nav_entries($user), mobile_nav_entries($user)) as $entry) {
+        $entries[$entry['route']] ??= $entry['params'] ?? [];
+        $entryParams[$entry['route']][] = $entry['params'] ?? [];
+    }
     $frameLinks = array_column($linksOn(shell_page('dashboard')), 0);
     foreach ($allowed as $page) {
         if (in_array($page, $signedOutOnly, true)) continue;
@@ -523,7 +541,7 @@ foreach ($people as $who => [$accountId, $setupOpen]) {
         $instead = isset($redirects[$page]) && function_exists($redirects[$page]) ? $redirects[$page]($user) : null;
         if ($instead !== null) {
             [$landing, $landingParams] = $instead;
-            ok(isset($entries[$landing]) && $entries[$landing] == $landingParams,
+            ok(in_array($landingParams, $entryParams[$landing] ?? [], false),
                $page.' sends '.$who.' to '.$landing.' '.json_encode($landingParams).', one of their own entries');
         } elseif (isset($entries[$page])) {
             is_same($page, $owner, $page.' is on the menu of '.$who.', and its own entry is the one highlighted');
@@ -544,10 +562,10 @@ is_same(['student', ['id'=>$ownStudent]], students_list_instead($ownUser), 'a fa
 is_same(['dashboard', []], students_list_instead($familyUser), 'one with no student to the overview');
 foreach ([$adminUser, $trainerUser] as $staffUser)
     is_same(null, students_list_instead($staffUser), 'and staff are not sent anywhere: the list is theirs');
-// A family's phone has no side menu, so its way to the notice is Konto.
+// A family's phone has no side menu, so its way to the notice is Mein Konto.
 sign_in_as($ownLogin);
 ok(in_array('privacy', array_column($linksOn(render_view('profile')), 0), true) && str_contains(render_view('profile'), e('Datenschutz und Hilfe')),
-   'on a family\'s phone the privacy notice is under Konto, in „Datenschutz und Hilfe"');
+   'on a family\'s phone the privacy notice is under Mein Konto, in „Datenschutz und Hilfe"');
 $setupShown(true);
 
 case_('Every menu entry names an icon that exists and a page the router allows');
@@ -706,22 +724,24 @@ $last = end($barPosition) ?: ['value' => 'nothing'];
 ok(in_array($last['value'], ['sticky', 'fixed', 'relative', 'absolute'], true),
    'the bar is positioned, so the panel is measured from it ('.$last['value'].')');
 
-/* The bell's number is a badge like the menu's: the same background, and its
-   figure in --on-accent, the colour made for text on the accent, which the
-   stylesheet sets once for light and once for each way of being dark. A
-   hard-coded colour on a number is how the bell's came to differ before. */
+/* The bell's number is a badge like the menu's: the same red background, and
+   its figure in --badge-ink, the colour made for text on that red in both
+   appearances (design language, Part 0 C12). A hard-coded colour on a number
+   is how the bell's came to differ before. */
 $bellCount = css_matching($css, '/^\.notification-pane>summary \.count$/');
 $menuCount = css_matching($css, '/^\.mobile-nav a \.count$/');
 $value = fn(array $rows, string $property) => array_column(array_filter($rows, fn($r) => $r['media'] === '' && $r['property'] === $property), 'value');
 ok($value($menuCount, 'background') !== [] && $value($bellCount, 'background') === $value($menuCount, 'background'),
    'the bell\'s number has the background of the menu\'s ('.implode(', ', $value($bellCount, 'background')).')');
-is_same(['var(--on-accent)'], $value($bellCount, 'color'), 'and its figure is in var(--on-accent)');
+is_same(['var(--badge-ink)'], $value($bellCount, 'color'), 'and its figure is in var(--badge-ink)');
 $hardCoded = array_filter($css, fn($r) => $notPrint($r) && preg_match('/(\.notification-pane>summary|\.mobile-nav a|\.sidebar nav a)\)? \.count$/', $r['selector'])
-    && $r['property'] === 'color' && $r['value'] !== 'var(--on-accent)');
+    && $r['property'] === 'color' && $r['value'] !== 'var(--badge-ink)');
 is_same([], array_map(fn($r) => $r['selector'].' { color: '.$r['value'].' }', array_values($hardCoded)), 'no rule gives a number any other colour');
 foreach ([':root' => 'light', 'html:not([data-theme=light])' => 'dark by the device', 'html[data-theme=dark]' => 'dark by choice'] as $selector => $mode)
     ok(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'), fn($r) => $r['property'] === '--on-accent') !== [],
        '--on-accent is set for '.$mode);
+ok(array_filter(css_matching($css, '/^:root$/'), fn($r) => $r['property'] === '--badge-ink') !== [],
+   '--badge-ink is set once, for both appearances');
 
 case_('A tap elsewhere, a swipe and Escape do what they should to an open menu');
 /* The behaviour itself, run against the real app.js in tests/topbar-menus.mjs:

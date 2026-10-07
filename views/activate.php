@@ -71,7 +71,7 @@ if($invite || $firstSignIn): ?>
 <p><a class="text-link" href="<?=e(url('privacy'))?>" target="_blank" rel="noopener"><?=e(privacy_in_german_only()?t('Datenschutzerklärung lesen','Read the privacy notice (in German)'):t('Datenschutzerklärung lesen','Read the privacy notice'))?></a></p>
 <?php check_field('privacy_seen',t('Ich habe die Datenschutzhinweise gelesen.','I have read the privacy notice.'));
 // The mail ticks only for a login with an address to send to (ADR 0023 §6).
-if((string)($r['email']??'')!==''){check_field('newsletter',t('Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit abbestellbar.','Receive club news by email. You can stop them at any time.'),true);check_field('notifications',t('Bei neuen privaten Nachrichten per E-Mail benachrichtigen.','Email me about new private messages.'),true);}
+if((string)($r['email']??'')!==''){check_field('newsletter',t('Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit abbestellbar.','Receive club news by email. You can stop them at any time.'),true,'',false,true);check_field('notifications',t('Bei neuen privaten Nachrichten per E-Mail benachrichtigen.','Email me about new private messages.'),true,'',false,true);}
 endif;
 submit_button($signin?t('Speichern und anmelden','Save and sign in'):($invite?t('Konto aktivieren','Activate account'):($r['purpose']==='email'?t('Bestätigen','Confirm'):t('Passwort speichern','Save the password'))));?></form>
 <?php endif ?></div>

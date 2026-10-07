@@ -15,7 +15,7 @@ $sepa="BCD\n002\n1\nSCT\n{bic}\n{recipient}\n{iban}\n{currency}{amount}\n\n{refe
         <?php foreach(payment_profiles(true) as $row):?>
         <a class="editor-list-item <?=$editProfile===(int)$row['id']?'selected':''?>" href="<?=e(url('manage',['tab'=>'payments','edit'=>$row['id']]))?>">
             <span><strong><?=e($row['name'])?></strong><small class="mono"><?=e($row['iban']!==''?iban_groups($row['iban']):t('Keine IBAN hinterlegt','No IBAN set'))?></small></span>
-            <?php if($row['archived'])badge(t('Archiviert','Archived'));else echo icon('arrow');?>
+            <?php if($row['archived'])badge(t('Archiviert','Archived'));else echo icon('chevron');?>
         </a>
         <?php endforeach ?>
         <p class="muted"><?=e(t('Ein Kurs kann einen eigenen Empfänger haben. Ohne eigenen wird der Standard aus „Vorgaben“ verwendet.','A class can have its own recipient. Without one, the default from “Defaults” is used.'))?></p>
@@ -33,7 +33,7 @@ $sepa="BCD\n002\n1\nSCT\n{bic}\n{recipient}\n{iban}\n{currency}{amount}\n\n{refe
         <?php input('note',t('Hinweis für Eltern','Note shown to parents'),$profile['note']??'');
         input('qr_template',t('Inhalt des QR-Codes','QR code contents'),$profile['qr_template']??$sepa,'textarea',false,
             t('Platzhalter: {recipient} {iban} {bic} {currency} {amount} {reference}. Die Vorgabe ist das SEPA-Format, das Bank-Apps lesen.','Placeholders: {recipient} {iban} {bic} {currency} {amount} {reference}. The default is the SEPA format banking apps read.'));
-        check_field('archived',t('Archivieren','Archive'),(bool)($profile['archived']??false));
+        check_field('archived',t('Archivieren','Archive'),(bool)($profile['archived']??false),'',false,true);
         submit_button();?></form>
         <?php if($profile && $profile['iban']!==''): $demo=qr_payload($profile,4500,t('Beispiel','Example'));?>
         <h3><?=e(t('Vorschau','Preview'))?></h3>

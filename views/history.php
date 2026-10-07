@@ -24,10 +24,10 @@ page_head(
            :t('Was zuletzt geändert wurde, und von wem.','What changed recently, and who changed it.'),
     $scoped?link_button(t('Alle Änderungen','All changes'),'history',[],'secondary'):''
 );
-if(!$scoped) tabs(['all'=>t('Alle','All'),'family'=>t('Von Familien','By families')],$tab,'history');
+if(!$scoped) tabs(['all'=>t('Alle','All'),'family'=>t('Von Familien','By families')],$tab,'history',[],t('Wessen Änderungen','Whose changes'));
 
 if(!$versions): empty_state(t('Noch keine Änderungen','No changes yet'),
-    t('Sobald jemand etwas ändert, steht hier was es war und was daraus wurde.','Once somebody changes something, this says what it was and what it became.'));
+    t('Sobald jemand etwas ändert, steht hier was es war und was daraus wurde.','Once somebody changes something, this says what it was and what it became.'),'','news');
 else: ?>
 <p class="muted"><?=e(t('Zum Nachlesen, nicht zum Zurücknehmen. Einträge, die älter sind als ','To read, not to undo. Entries older than ')
     .plural((int)setting('history_months'),'Monat','Monate','month','months')

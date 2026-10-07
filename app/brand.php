@@ -17,16 +17,19 @@ declare(strict_types=1);
  */
 
 /**
- * The fixed colours every derivation works against: app.css's card surfaces,
- * its light ink, and the near-black the dark menu is shaded toward. None of
- * them is hers to choose (ADR 0013 rejects a custom surface). The built-in
- * colours she can choose are not here: each is declared once, as 'builtin' in
- * app/defaults.php.
+ * The fixed colours every derivation works against: what app.css puts text on
+ * in each appearance - a group and the grey ground around it in light, a
+ * group and the field or track inside it in dark (Part 0.2 of the design
+ * language) - its light ink, and the near-black the dark menu is shaded
+ * toward. None of them is hers to choose (ADR 0013 rejects a custom surface).
+ * The first surface of each pair is the one a soft tint is mixed into. The
+ * built-in colours she can choose are not here: each is declared once, as
+ * 'builtin' in app/defaults.php.
  */
-const BRAND_SURFACE_LIGHT = '#ffffff';
-const BRAND_SURFACE_DARK = '#182430';
+const BRAND_SURFACES_LIGHT = ['#ffffff', '#f2f2f7'];
+const BRAND_SURFACES_DARK = ['#1c1c1e', '#2c2c2e'];
 const BRAND_NAV_SHADE = '#0d141b';
-const BRAND_INK_LIGHT = '#172d42';
+const BRAND_INK_LIGHT = '#000000';
 
 /** The four colours she chooses, by family; each also has a _dark override. */
 function brand_families(): array {
@@ -109,17 +112,17 @@ function brand_scheme_light(array $chosen, array $builtin): array {
     [$p, $n, $h, $b] = array_map(fn($f) => $chosen[$f], brand_families());
     $tokens = [];
     // White is printed on the main colour (--on-accent), so white has to read
-    // on it - and then the main colour also reads as text on white.
-    $teal = $p !== '' ? colour_until_contrast($p, [BRAND_SURFACE_LIGHT], 4.5, 'darker') : $builtin['brand_primary'];
+    // on it - and the main colour has to read as text on a group and on the
+    // grey ground, which is the darker of the two.
+    $teal = $p !== '' ? colour_until_contrast($p, BRAND_SURFACES_LIGHT, 4.5, 'darker') : $builtin['brand_primary'];
     if ($p !== '') {
-        $soft = colour_mix($p, BRAND_SURFACE_LIGHT, .12);
-        $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => '#ffffff',
-                    '--teal-soft' => $soft, '--teal-border' => colour_mix($p, BRAND_SURFACE_LIGHT, .30),
+        $soft = colour_mix($p, BRAND_SURFACES_LIGHT[0], .12);
+        $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => '#ffffff', '--teal-soft' => $soft,
                     '--teal-ink' => colour_until_contrast($teal, [$soft], 4.5, 'darker')];
     }
     $nav = $n !== '' ? $n : $builtin['brand_secondary'];
     $onNav = colour_text_on($nav);
-    if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '0d', '26');
+    if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '0d');
     $bright = $h !== '' ? colour_until_contrast($h, [$nav], 3, brand_toward($onNav)) : $builtin['brand_highlight'];
     if ($h !== '') $tokens['--teal-bright'] = $bright;
     $bg = $b !== '' ? $b : $builtin['brand_background'];
@@ -142,14 +145,14 @@ function brand_scheme_dark(array $chosen, array $overrides, array $builtin): arr
     $pick = fn(string $family) => $overrides[$family] !== '' ? $overrides[$family] : $chosen[$family];
     $tokens = [];
     // The dark scheme prints the dark ink on the main colour, and uses the main
-    // colour as text on the dark surface: it has to read against both.
+    // colour as text on a group and on what sits inside one: it has to read
+    // against all three. The black ground is darker than both surfaces.
     $p = $pick('brand_primary');
-    $teal = $p !== '' ? colour_until_contrast($p, [BRAND_SURFACE_DARK, COLOUR_DARK_INK], 4.5, 'lighter') : $builtin['brand_primary_dark'];
+    $teal = $p !== '' ? colour_until_contrast($p, [...BRAND_SURFACES_DARK, COLOUR_DARK_INK], 4.5, 'lighter') : $builtin['brand_primary_dark'];
     if ($p !== '') {
         $soft = colour_mix($p, $ground, .18);
-        $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => COLOUR_DARK_INK,
-                    '--teal-soft' => $soft, '--teal-border' => colour_mix($p, $ground, .35),
-                    '--teal-ink' => colour_until_contrast($teal, [BRAND_SURFACE_DARK, $soft], 7, 'lighter')];
+        $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => COLOUR_DARK_INK, '--teal-soft' => $soft,
+                    '--teal-ink' => colour_until_contrast($teal, [...BRAND_SURFACES_DARK, $soft], 7, 'lighter')];
     }
     $n = $chosen['brand_secondary'];
     $nav = match (true) {
@@ -158,7 +161,7 @@ function brand_scheme_dark(array $chosen, array $overrides, array $builtin): arr
         default => $builtin['brand_secondary_dark'],
     };
     $onNav = colour_text_on($nav);
-    if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '12', '1a');
+    if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '12');
     $h = $pick('brand_highlight');
     $bright = $h !== '' ? colour_until_contrast($h, [$nav], 3, brand_toward($onNav)) : $builtin['brand_highlight_dark'];
     if ($h !== '') $tokens['--teal-bright'] = $bright;
@@ -178,16 +181,14 @@ function brand_scheme_dark(array $chosen, array $overrides, array $builtin): arr
  *
  * The menu's text is a blend of its colour into that text, then darkened or
  * lightened until it reads: 7:1 for the entries, 4.5:1 for the quieter line.
- * The hover and faint lines are the text colour at a low alpha, as in app.css.
+ * The hover is the text colour at a low alpha, as in app.css.
  */
-function brand_nav_tokens(string $nav, string $onNav, string $hoverAlpha, string $faintAlpha): array {
+function brand_nav_tokens(string $nav, string $onNav, string $hoverAlpha): array {
     $ink = colour_until_contrast(colour_mix($onNav, $nav, .82), [$nav], 7, brand_toward($onNav));
-    $second = colour_mix($onNav, $nav, .08);
     return ['--navy' => $nav, '--nav-bg' => $nav, '--on-nav' => $onNav,
-            '--navy-2' => $second, '--nav-bg-2' => $second, '--nav-active' => colour_mix($onNav, $nav, .14),
-            '--nav-ink' => $ink, '--on-navy' => $ink,
+            '--nav-active' => colour_mix($onNav, $nav, .14), '--nav-ink' => $ink,
             '--nav-ink-2' => colour_until_contrast(colour_mix($onNav, $nav, .68), [$nav], 4.5, brand_toward($onNav)),
-            '--nav-hover' => $onNav.$hoverAlpha, '--on-navy-faint' => $onNav.$faintAlpha];
+            '--nav-hover' => $onNav.$hoverAlpha];
 }
 
 /** Text of the colour $onNav reads better the further a colour moves toward it: white is lighter, the dark ink darker. */
@@ -229,7 +230,7 @@ function brand_css(): string {
     $memoKey = implode(',', $chosen);
     if (isset($memo[$memoKey])) return $memo[$memoKey];
     $palette = brand_palette();
-    $primary = ['--teal', '--teal-ink', '--teal-soft', '--teal-border', '--focus', '--on-accent'];
+    $primary = ['--teal', '--teal-ink', '--teal-soft', '--focus', '--on-accent'];
     $split = function (array $tokens) use ($primary): array {
         return [array_intersect_key($tokens, array_flip($primary)), array_diff_key($tokens, array_flip($primary))];
     };
@@ -304,12 +305,14 @@ function serve_brand_css(): never {
 }
 
 /**
- * The browser's own bar colour: the menu colour in light, the background in
- * dark - as the layout's theme-color tags and the manifest have always had it.
+ * The browser's own bar colour, for the layout's theme-color tags and the
+ * manifest: the grey ground in light and the black one in dark, which the
+ * portal's own bars sit on, so the phone's status bar runs into them without
+ * a band (Part 0.5). A club's own background, where she set one.
  */
 function brand_theme_colour(string $scheme): string {
     $used = brand_palette()['used'];
-    return $scheme === 'dark' ? $used['brand_background_dark'] : $used['brand_secondary'];
+    return $scheme === 'dark' ? $used['brand_background_dark'] : $used['brand_background'];
 }
 
 /** The page colour an installed portal opens on, before its first page is drawn. */

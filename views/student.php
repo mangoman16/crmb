@@ -9,7 +9,8 @@ if(!in_array($tab,$tabsAllowed,true))$tab='details';
 page_head($s['first_name'].' '.$s['last_name'],status_label($s['status']),
     // A family has one student and this is their page (ADR 0010): a list of one
     // is not somewhere to go back to.
-    $staff?link_button(t('Alle Schüler','All students'),'students',[],'secondary'):'');
+    // up-link: on a phone the bar's „‹ Schüler" is this way back.
+    $staff?link_button(t('Alle Schüler','All students'),'students',[],'secondary up-link'):'');
 $tabLabels=['details'=>t('Profil','Profile'),'contacts'=>t('Kontakte','Contacts'),'payments'=>t('Beiträge','Payments'),
             'invoices'=>t('Rechnungen','Invoices'),'classes'=>t('Kurse','Courses'),'absence'=>t('Abwesenheit','Absences')];
 if($staff){$tabLabels['attendance']=t('Anwesenheit','Attendance');}
@@ -144,6 +145,12 @@ select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),arra
         </div>
     </div>
 </section>
+<?php if(!$staff): /* Mein Konto, for a family: the login rather than the
+         child, reached from here since their bar has four places and no
+         „Konto" (owner, 2026-10-07). */ ?>
+<section class="card"><a class="editor-list-item" href="<?=e(url('profile'))?>"><span><strong><?=e(t('Anmeldung und Darstellung','Sign-in and appearance'))?></strong>
+    <small><?=e(t('Passwort, E-Mail-Adresse, Sprache und Farbe','Password, email address, language and colour'))?></small></span><?=icon('chevron')?></a></section>
+<?php endif ?>
 <?php if($staff):
 /* Everything about this student's login, in one card and in the order it
    happens: without sign-in, invited or waiting for a first sign-in, active,
@@ -278,7 +285,7 @@ $lastLink=$login?(signin_links_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[
     </div>
 <?php endif ?>
 </section>
-<details class="danger-zone"><summary><?=e(t('Schüler löschen','Delete student'))?></summary>
+<details class="danger-zone" data-sheet><summary><?=e(t('Schüler löschen','Delete student'))?></summary>
     <?php /* Said before the tap: the change log records what was deleted, but
              nothing brings it back. */ ?>
     <p><?=e(t('Das lässt sich nicht rückgängig machen. Die Änderungen verzeichnen zwar, was gelöscht wurde, stellen es aber nicht wieder her. Nur möglich, wenn keine Beiträge vorhanden sind – sonst die Mitgliedschaft beenden.','This cannot be undone. The change log records what was deleted, but it cannot bring it back. Only possible when no charges exist – otherwise, end the membership.'))?></p>
@@ -543,7 +550,7 @@ $lastLink=$login?(signin_links_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[
                 <?php else: start_form('invoice_state',['id'=>$inv['id'],'mode'=>'send'],'inline-form');submit_button(t('Per E-Mail schicken','Email it'),'subtle');?></form>
                 <?php endif ?>
                 <?php if((int)$inv['paid_cents']===0): ?>
-                <details class="account-delete"><summary><?=e(t('Stornieren','Cancel'))?></summary>
+                <details class="account-delete" data-sheet><summary><?=e(t('Stornieren','Cancel'))?></summary>
                     <p><?=e(t('Die Nummer bleibt vergeben – eine Lücke in der Nummernfolge wäre bei einer Prüfung nicht erklärbar.','The number stays used – a hole in the sequence would be impossible to explain at an audit.'))?></p>
                     <?php start_form('invoice_state',['id'=>$inv['id'],'mode'=>'cancel']);
                     input('note',t('Grund','Reason'),'','text',true);

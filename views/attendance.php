@@ -28,7 +28,7 @@ page_head(t('Anwesenheit','Attendance'),
 if(!$classes):
     empty_state(t('Noch keine Kurse.','No courses yet.'),
         t('Anwesenheit wird je Kurs erfasst. Lege zuerst einen Kurs an.','Attendance is recorded per course. Create a course first.'),
-        link_button(t('Kurs anlegen','Create a course'),'classes',['new'=>1]));
+        link_button(t('Kurs anlegen','Create a course'),'classes',['new'=>1]),'calendar');
 else: ?>
 
 <?php /* The course picker is chips rather than a dropdown: on a phone a chip is

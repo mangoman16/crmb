@@ -68,7 +68,8 @@ elseif($draft && $step!=='1' && !held_for('student_draft')):
        button, so nothing needs JavaScript. */
     $name=(string)$draft['first_name'];
     $course=$draft['class_id']?one('SELECT name FROM classes WHERE id=?',[(int)$draft['class_id']]):null;
-    page_head(t('Neuer Schüler','New student'),strtr(t('Schritt 2 von 2: Wie meldet sich {name} an?','Step 2 of 2: How does {name} sign in?'),['{name}'=>$name])); ?>
+    page_head(t('Neuer Schüler','New student'),strtr(t('Schritt 2 von 2: Wie meldet sich {name} an?','Step 2 of 2: How does {name} sign in?'),['{name}'=>$name]));
+    wizard_progress(2,2); ?>
 <p class="muted"><?=e(implode(' · ',array_filter([$draft['first_name'].' '.$draft['last_name'],$draft['birth_date']?fmt_date((string)$draft['birth_date']):'',(string)($course['name']??'')])))?>
     <a class="text-link" href="<?=e(url('student_new',['draft'=>$key,'step'=>'1']+($from!==''?['from'=>$from]:[])))?>"><?=e(t('Ändern','Change'))?></a></p>
 <section class="card" id="by-email">
@@ -111,6 +112,7 @@ elseif($draft && $step!=='1' && !held_for('student_draft')):
 <?php else:
     /* Step 1: who is joining. A draft being changed fills the form in again. */
     page_head(t('Neuer Schüler','New student'),t('Schritt 1 von 2: Wer kommt dazu?','Step 1 of 2: Who is joining?'));
+    wizard_progress(1,2);
     if($key!=='' && !$draft): ?>
 <div class="notice warn"><p><?=e(t('Die Angaben waren nicht mehr da. Bitte noch einmal eintragen.','The details were no longer there. Please enter them again.'))?></p></div>
 <?php endif;

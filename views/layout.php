@@ -43,7 +43,8 @@ $realUser=$public?null:impersonator();
     if(($brandCss=brand_css_url())!==''): ?><link rel="stylesheet" href="<?=e($brandCss)?>"><?php endif ?>
     <script defer src="<?=e(asset_url('app.js'))?>"></script>
 </head>
-<body class="<?=$public?'public-page':'app-page'?>">
+<?php /* data-sheet-cancel: the word under a sheet (app.js), in the page's language. */ ?>
+<body class="<?=$public?'public-page':'app-page'?>" data-sheet-cancel="<?=e(t('Abbrechen','Cancel'))?>">
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
 <?php if(!$public):
 $unreadNotes=unread_notifications((int)$user['id']);
@@ -63,14 +64,20 @@ $unreadNotes=unread_notifications((int)$user['id']);
     </div>
 </aside>
 <div class="app-shell">
-<?php /* Pinned, because everything in it - the language switch, what is waiting,
-         who you are, and the way back out of impersonation - is wanted from
-         wherever you happen to have scrolled to. */ ?>
+<?php /* Pinned, because everything in it - the way back up, what is waiting and
+         who you are - is wanted from wherever you happen to have scrolled to.
+         On a phone it is an iOS navigation bar (Part 0, C1): on a page with
+         something above it, the way back there, named after it; on the others,
+         the club's mark. The page's title joins it once the large title has
+         scrolled away. The language is set in Mein Konto, so it is not here;
+         the pages before signing in keep their switch. */ ?>
 <header class="topbar">
     <span class="topbar-context"><?=e((string)setting('portal_tagline'))?></span>
-    <?php brand_block($user,'bar',url('dashboard')); ?>
+    <?php if($up=nav_back($page,$user)): ?>
+    <a class="nav-back" href="<?=e($up['href'])?>" aria-label="<?=e(t('Zurück zu ','Back to ').$up['name'])?>"><?=icon('chevron')?><span><?=e($up['label'])?></span></a>
+    <?php if(($barTitle=page_title())!==''): ?><span class="nav-title" aria-hidden="true"><?=e($barTitle)?></span><?php endif ?>
+    <?php else: brand_block($user,'bar',url('dashboard')); endif ?>
     <div class="topbar-actions">
-        <a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['id','tab']))))?>"><?=locale()==='de'?'EN':'DE'?></a>
         <details class="topbar-menu notification-pane">
             <summary aria-label="<?=e($unreadNotes?$unreadNotes.' '.t('neue Hinweise','new notifications'):t('Hinweise','Notifications'))?>">
                 <?=icon('bell')?><?php if($unreadNotes):?><span class="count"><?=e($unreadNotes)?></span><?php endif ?>
@@ -108,7 +115,7 @@ $unreadNotes=unread_notifications((int)$user['id']);
 </div>
 <?php endif ?>
 <?php if(!$public && is_admin($user) && is_file(maintenance_file())): ?>
-<div class="flash error" role="status"><?=e(t('Wartungsmodus ist aktiv – für alle anderen ist das Portal geschlossen.','Maintenance mode is on – the portal is closed for everyone else.'))?> <a href="<?=e(url('settings',['tab'=>'system']))?>"><?=e(t('Beenden','Switch off'))?></a></div>
+<div class="flash error" role="status"><?=icon('alert')?><span><?=e(t('Wartungsmodus ist aktiv – für alle anderen ist das Portal geschlossen.','Maintenance mode is on – the portal is closed for everyone else.'))?> <a href="<?=e(url('settings',['tab'=>'system']))?>"><?=e(t('Beenden','Switch off'))?></a></span></div>
 <?php endif ?>
 <?php /* The way back to the checklist (ADR 0011), after she left it to do one of
          its steps. The flag is in the session, so it outlives the redirect after
@@ -116,7 +123,9 @@ $unreadNotes=unread_notifications((int)$user['id']);
 if(!$public && is_staff($user) && setup_return_active() && setup_unfinished()): $setup=setup_progress(); ?>
 <nav class="setup-return" aria-label="<?=e(t('Einrichtung','Setup'))?>"><a href="<?=e(url('start'))?>"><span aria-hidden="true">←</span> <?=e(t('Zurück zur Einrichtung','Back to the setup').' ('.$setup['done'].' '.t('von','of').' '.$setup['total'].' '.t('erledigt','done').')')?></a></nav>
 <?php endif ?>
-<?php if(isset($_SESSION['flash'])):$f=$_SESSION['flash'];unset($_SESSION['flash']);?><div class="flash <?=e($f['kind'])?>" role="status"><?=e($f['message'])?></div><?php endif ?>
+<?php /* The banner (Part 0, C14): what a save did, in one sentence under the bar.
+         It stays until the next page, because people here read slowly. */
+if(isset($_SESSION['flash'])):$f=$_SESSION['flash'];unset($_SESSION['flash']);?><div class="flash <?=e($f['kind'])?>" role="status"><?=icon($f['kind']==='error'?'alert':'check')?><span><?=e($f['message'])?></span></div><?php endif ?>
 <?=$content?>
 <?php if(!$public): ?>
 <?php /* On every page, because the page something goes wrong on is the page you
@@ -154,7 +163,7 @@ $pinnedHelp=!($page==='messages' && $writable); ?>
 <?php if(!$public): ?>
 </div>
 <nav class="mobile-nav" aria-label="<?=e(t('Mobilmenü','Mobile menu'))?>">
-<?php foreach(mobile_nav_entries($user) as $item):?><a href="<?=e(url($item['route'],$item['params']))?>" <?=nav_is_current($item['route'],$page,$user)?'aria-current="page"':''?>><?=icon($item['icon'])?><?php
+<?php foreach(mobile_nav_entries($user) as $item):?><a href="<?=e(url($item['route'],$item['params']))?>" <?=nav_item_current($item,$page,$user)?'aria-current="page"':''?>><?=icon($item['icon'])?><?php
     // The bar prints the short word; a screen reader hears the entry's full name.
     if($item['short']!==$item['label']):?><span aria-hidden="true"><?=e($item['short'])?></span><span class="visually-hidden"><?=e($item['label'])?></span><?php else:?><span><?=e($item['label'])?></span><?php endif ?><?php if($item['count']):?><span class="count" aria-label="<?=e($item['count'].' '.t('ungelesen','unread'))?>"><?=e((string)$item['count'])?></span><?php endif ?></a><?php endforeach ?>
 <?php /* A link to the side menu, so the entries that are not on the bar - Kurse,
