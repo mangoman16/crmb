@@ -20,7 +20,7 @@ In this order.
    student has a login, a placeholder until it gets an address or a username; „Schüler
    anlegen" is a two-step wizard; staff make sign-in links that work once, within 48 hours;
    a student's login is replaced, never deleted (migrations 028–031). The screens are still
-   the minimum the server side needed: their design pass is item 4. The whole suite and the
+   the minimum the server side needed: their design pass is item 5. The whole suite and the
    browser walk pass at `2788c4f` on MariaDB 10.11.14 with PHP 8.4.26; the sweep at phone
    width has not been run on it.
 2. **ADR 0026.** Accepted (`4314eef`): who the portal is for, the beta rules, the goals as the
@@ -28,20 +28,28 @@ In this order.
    recorded the owner's answers of 2026-10-07 in it (`b5d92e1`).
 3. **Removals (ADR 0026 §7–§12).** Not started; waits for item 1's review fixes, so nothing
    collides. In separate commits, each with its migration:
-   - custom fields, with their data;
-   - copying records, saved views, writing to many with its templates, the queue button,
-     the printed sheets, and Verwaltung's „Tarife" tab;
+   - round 1, in one commit with migrations 032 and 033: custom fields, with their data;
+     copying records; saved views; writing to many, with its templates; the queue button
+     „Warteschlange senden"; the printed sheets; and Verwaltung's „Tarife" tab;
    - online dots, the chosen status, the status emoji and the online history, and profile
      pictures;
    - levels and configured age groups. Children are still sorted and filtered by age,
      worked out from the birth date;
    - the example data, cut to one course, four children and two family logins (§9).
 
-   The robustness suite (item 6) is being built meanwhile on a copy of the code.
+   The robustness suite (item 8) is built, on a copy of the code; it lands after round 1
+   with the fixes it forces.
 
    A document describing a removed feature changes in the commit that removes it, never
    before, so the documents never describe code that is not there.
-4. **Screens.** Not started.
+4. **The iOS design language (owner, 2026-10-07: "Make sure it is as intuitive and easy to use
+   as a modern ios app, design, design language").** ui-ux-designer writes the language —
+   the system font, inset grouped lists, large titles, a tab bar at the bottom on phones,
+   segmented controls, switches, sheets, the club's colour as the tint, safe areas, transitions
+   — with an audit of every screen; frontend-dev applies it globally (app.css, layout.php, the
+   helpers in app/ui.php) after the removals, and the owner sees screenshots before the
+   screens below are built in it.
+5. **Screens.** Not started.
    - ADR 0023, as specified in
      [docs/design/2026-10-05-accounts-and-chat-screens.md](docs/design/2026-10-05-accounts-and-chat-screens.md).
    - ADR 0022 §11, the chat cut to its basics: administrators read every chat, a message is
@@ -55,7 +63,7 @@ In this order.
      writes `removed_on` yet.
    - ADR 0025, every change to a payment profile kept in „Änderungen". `profile_save` still
      writes without `tracked()`.
-5. **Security batch.** Not started.
+6. **Security batch.** Not started.
    - The example trainer login: a high-entropy password, and an expiry.
    - A throttle on `proof_upload`.
    - Unsubscribe links never expire (`valid_unsubscribe()`, `app/auth.php`), and their
@@ -68,18 +76,18 @@ In this order.
    - A logo photo stored sideways (EXIF orientation) is measured unrotated and can be refused.
    - Targets below the minimum on a desktop screen: the help button's summary (36 px),
      „Alle ansehen" (21 px).
-6. **A refused update stays refused (ADR 0027, accepted).** The update guard kept the portal
+7. **A refused update stays refused (ADR 0027, accepted).** The update guard kept the portal
    closed only for the request that found the loss. From now the counts from before an update
    are kept in `storage/update-unfinished.json` until a run passes; while it exists no page is
    served and nothing writes, and the portal reopens by itself once every guarded table has
    its rows back — after the previous version's files and the backup are put back — or when a
    release takes the table off the guard. database-engineer builds `app/schema.php` and its
    tests, backend-dev the bootstrap and console lines, in one change after the removals.
-7. **Robustness suite.** Unexpected values into every action, as every role (ADR 0026). Not
+8. **Robustness suite.** Unexpected values into every action, as every role (ADR 0026). Not
    started.
-8. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
+9. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
    started.
-9. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
+10. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
 
 ## The owner's goals
 
@@ -229,7 +237,6 @@ deploy, where, and signed in as whom.
   already answer.
 - Search across messages and notes.
 - Two-factor sign-in for administrators.
-- Saved filters can be made and deleted, not renamed or edited.
 - A viewer for `audit_log`. „Änderungen" is the separate change log.
 - How long `audit_log` and `consent_log` are kept. Both grow without end; decide it with the
   privacy notice's retention periods.
