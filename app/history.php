@@ -68,7 +68,7 @@ function history_field_label(string $column): string {
         'internal_notes' => t('Interne Notizen', 'Internal notes'),
         'name' => t('Name', 'Name'),
         'email' => t('E-Mail-Adresse', 'Email address'),
-        // Gone with ADR 0021, but change-log lines written before keep the key.
+        // What a login without an address signs in with (ADR 0023 §1).
         'username' => t('Benutzername', 'Username'),
         'role' => t('Rolle', 'Role'),
         'state' => t('Zustand', 'State'),

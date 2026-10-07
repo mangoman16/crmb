@@ -462,6 +462,23 @@ $_SESSION['locale'] = 'en';
 try { $germanPdf = $pdfText(invoice_pdf(invoice($wholeInvoice))); } finally { $_SESSION['locale'] = 'de'; }
 ok(str_contains($germanPdf, 'Rechnungsnummer'), 'and a German family’s invoice stays German for an English-speaking one');
 
+case_('A new invoice is told in the bell to a login that signs in, never to a placeholder');
+/* ADR 0023 §3: nobody reads a placeholder's bell, and the invitation that later
+   turns it into a login would hand the family a list of old news. notify()
+   decides it once, for every caller - the invoice, the decided request and the
+   changed date each asked it for themselves, or forgot to. */
+sign_in_as($trainer);
+$unbilled = fn(int $studentId): int => fixture('charges', ['student_id'=>$studentId, 'label'=>'Beitrag Dezember', 'amount_cents'=>4500,
+    'gross_cents'=>4500, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>'2026-12-01', 'period_to'=>'2026-12-31',
+    'due_on'=>'2026-12-01', 'overdue_on'=>'2026-12-08', 'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+$told = fn(int $accountId): int => (int)scalar("SELECT COUNT(*) FROM notifications WHERE account_id=? AND kind='payment'", [$accountId]);
+$withoutSignIn = make_student(['first_name'=>'Ohne', 'last_name'=>'Anmeldung']);
+$withSignIn = make_student(['first_name'=>'Mit', 'last_name'=>'Anmeldung', 'account_id'=>$signsIn = make_account()]);
+foreach ([$withoutSignIn, $withSignIn] as $who)
+    act('invoice_create', ['student_id'=>(string)$who, 'charge_ids'=>[(string)$unbilled($who)], 'issued_on'=>today(), 'terms'=>'14']);
+$placeholderLogin = (int)scalar('SELECT account_id FROM students WHERE id=?', [$withoutSignIn]);
+is_same([0, 1], [$told($placeholderLogin), $told($signsIn)], 'the child who signs in hears of it; the placeholder gets nothing written');
+
 case_('The overview counts every invoice, and a part-paid one owes only what is left');
 /* Only the newest 200 invoices were loaded, so one unpaid since 2020 fell out of
    „Überfällig“, its count and the total, and the total added the whole gross of
@@ -602,3 +619,4 @@ ok(!str_contains($unaddressedRow, 'name="mode" value="send"')
 sign_in_as($quietLogin);
 ok(!str_contains(render_view('student', ['id'=>$family, 'tab'=>'payments']), e(t('Steht auf Rechnung ', 'On invoice '))),
    'the family is not told to cancel an invoice, which is not theirs to do');
+

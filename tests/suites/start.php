@@ -144,7 +144,7 @@ set_setting('org_name', '');
 setup_cache_clear();
 sign_out();
 $signIn = function (int $id) { setup_cache_clear();
-    return submit('login', ['email'=>(string)scalar('SELECT email FROM accounts WHERE id=?', [$id]), 'password'=>'Test-Only-Password-2026']); };
+    return submit('login', ['login'=>(string)scalar('SELECT email FROM accounts WHERE id=?', [$id]), 'password'=>'Test-Only-Password-2026']); };
 is_same(['start', []], $signIn($admin), 'an administrator signing in is taken to the checklist');
 is_same(['start', []], $signIn($admin), 'at every sign-in, not only the first');
 is_same(['dashboard', []], $signIn($trainer), 'a trainer is taken to the overview');

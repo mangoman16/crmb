@@ -29,9 +29,14 @@ function weekdays(): array {
     ];
 }
 
+/**
+ * The courses with how many children are in each now. current_enrolment_sql()
+ * is in app/enrolment.php, loaded after this file: safe, because this runs only
+ * while a request runs, never while files load.
+ */
 function training_classes(bool $archived=false): array {
     return rows('SELECT c.*, p.name AS profile_name, a.name AS trainer_name,'
-        .' (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL) AS member_count,'
+        .' (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND '.current_enrolment_sql().') AS member_count,'
         .' (SELECT COUNT(*) FROM tariffs t WHERE t.class_id=c.id AND t.archived=0) AS tariff_count'
         .' FROM classes c'
         .' LEFT JOIN payment_profiles p ON p.id=c.payment_profile_id'

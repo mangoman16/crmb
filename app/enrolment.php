@@ -144,20 +144,18 @@ function enrolment_has_own_terms(array $enrolment): bool {
  * A child who is in the course already is refused rather than re-joined: that
  * moved the day they joined and, with it, every charge worked out from it.
  *
- * No student is ever in a course without a login (ADR 0023 §4). The student is
- * locked first, so the login cannot be taken away between this question and the
- * insert; a placeholder is a login, and a student without even that is one the
- * update has not reached, which is refused rather than enrolled. demo_fill() is
- * the one named exception that writes its own enrolments, with every login
- * already in place.
+ * No student is ever in a course without a login (ADR 0023 §4). The student and
+ * then their login are locked first, so the login cannot be taken away between
+ * this question and the insert; a placeholder is a login, and a student without
+ * even that stops here (student_login_locked()) rather than being enrolled.
+ * demo_fill() is the one named exception that writes its own enrolments, with
+ * every login already in place.
  */
 function enrol_student(int $classId, int $studentId, ?int $tariffId, string $joinedOn): bool {
     return transactional(function () use ($classId, $studentId, $tariffId, $joinedOn): bool {
         $student = one('SELECT id, account_id FROM students WHERE id=? FOR UPDATE', [$studentId]);
         if (!$student) throw new NotFound(t('Schüler nicht gefunden.', 'Student not found.'));
-        if ($student['account_id'] === null)
-            throw new UserError(t('Dieses Kind hat keine Anmeldung, und ohne sie kommt niemand in einen Kurs. Bitte unten über „Etwas funktioniert hier nicht“ melden.',
-                                  'This child has no login, and nobody joins a course without one. Please report it below under “Something is wrong on this page”.'));
+        student_login_locked($student);
         $before = one('SELECT * FROM class_students WHERE class_id=? AND student_id=? FOR UPDATE', [$classId, $studentId]);
         if ($before && enrolment_is_current($before))
             throw new UserError(t('Dieses Kind ist schon in diesem Kurs.', 'This child is already in this course.'));
@@ -196,6 +194,26 @@ function courses_open_to(int $studentId): array {
 
 function course_is_full(array $class): bool {
     return (int)$class['capacity'] > 0 && (int)($class['member_count'] ?? 0) >= (int)$class['capacity'];
+}
+
+/**
+ * A course held for the rest of the transaction, with member_count: how many
+ * children are in it now. Null when there is no such course. Asked by every
+ * decision that puts one more child in - the trainer's yes (decide_request()),
+ * „Hinzufügen" (class_member_add) and the wizard (student_draft_checked()) -
+ * because two families on one evening can both be given the last place.
+ *
+ * Two statements on purpose. The course row is locked first, so two such
+ * decisions about one course take turns. The count is then a locking read of
+ * its own, which reads what is committed now: a FOR UPDATE on the course does
+ * not reach a subquery, which would read the snapshot this transaction began
+ * with and miss a place another request took since.
+ */
+function course_held(int $classId): ?array {
+    $class = lock_row('classes', $classId);
+    if (!$class) return null;
+    $class['member_count'] = (int)scalar('SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=? AND '.current_enrolment_sql().' FOR UPDATE', [$classId]);
+    return $class;
 }
 
 /** The courses a student could ask to join that still have a place. */
@@ -278,8 +296,7 @@ function decide_request(int $requestId, bool $approve, string $note): array {
                 // families can ask for the last place on the same evening, and
                 // the second yes would otherwise put a ninth child into an
                 // eight-place hall without anybody being told.
-                $class = one('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL)'
-                    .' AS member_count FROM classes c WHERE c.id=? FOR UPDATE', [$classId]);
+                $class = course_held($classId);
                 if ($class && course_is_full($class))
                     throw new UserError(t('Dieser Kurs ist inzwischen voll. Erst einen Platz frei machen oder die Plätze erhöhen.',
                                           'This course has filled up in the meantime. Free a place first, or raise the number of places.'));

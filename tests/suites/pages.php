@@ -314,6 +314,12 @@ run('UPDATE accounts SET newsletter=0, notifications=0 WHERE id=(SELECT account_
 $bareSheet = render_view('print', ['id'=>$bare]);
 is_same([false, false], [$tick($bareSheet, $noNews), $tick($bareSheet, $noReminder)],
         'a child without sign-in yet has nothing to show, so both boxes are empty');
+// Nor does a child who signs in with a username and no address: nobody asked
+// them about mail they cannot receive, so their switches are off, not a no.
+$byName = make_student(['first_name'=>'Nur', 'last_name'=>'Benutzername', 'account_id'=>make_account(['email'=>null, 'username'=>'nur.benutzername', 'newsletter'=>0, 'notifications'=>0])]);
+$byNameSheet = render_view('print', ['id'=>$byName]);
+is_same([false, false], [$tick($byNameSheet, $noNews), $tick($byNameSheet, $noReminder)],
+        'a child signing in without an address has both boxes empty, not a no they never gave');
 
 case_('And it is staff-only, because it carries a family’s details');
 sign_in_as($family);

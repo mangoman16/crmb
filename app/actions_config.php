@@ -69,11 +69,8 @@ function dispatch_config(string $action): array {
         // made to correct a typo should not send fifteen emails.
         if(post('notify')) {
             $entry=class_session((int)$c['id'],$on);
-            // Not a placeholder (ADR 0023 §3): nobody reads it, and the
-            // invitation that later turns it into a login would hand the
-            // family a list of old news.
             foreach(rows('SELECT DISTINCT s.account_id FROM class_students cs JOIN students s ON s.id=cs.student_id'
-                .' WHERE cs.class_id=? AND cs.left_on IS NULL AND NOT '.student_without_sign_in_sql(),[(int)$c['id']]) as $who)
+                .' WHERE cs.class_id=? AND '.current_enrolment_sql(),[(int)$c['id']]) as $who)
                 notify((int)$who['account_id'],'schedule',$c['name'].' – '.fmt_date($on),
                     session_statuses()[$entry['status']??'planned']??'','classes',['id'=>(int)$c['id'],'tab'=>'dates']);
             $sent=notify_class_change($c,$on,$entry,text_limit('note',500));
@@ -98,10 +95,8 @@ function dispatch_config(string $action): array {
 
     case 'class_member_add':
         require_staff(); $c=training_class((int)post('class_id')); $s=student((int)post('student_id'));
-        if((int)$c['capacity']>0) {
-            $current=(int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND left_on IS NULL',[$c['id']]);
-            if($current>=(int)$c['capacity']) throw new UserError(t('Dieser Kurs ist voll. Plätze in den Kurseinstellungen erhöhen.','This class is full. Raise the number of places in the class settings.'));
-        }
+        if(($held=course_held((int)$c['id'])) && course_is_full($held))
+            throw new UserError(t('Dieser Kurs ist voll. Plätze in den Kurseinstellungen erhöhen.','This class is full. Raise the number of places in the class settings.'));
         $tariffId=reference_or_null('tariffs','tariff_id','class_id='.(int)$c['id']);
         if(enrol_student((int)$c['id'],(int)$s['id'],$tariffId,date_value(post('joined_on'))??today()))
             flash(strtr(t('{name} ist wieder im Kurs. Ein früher vereinbarter Preis oder Rabatt gilt nicht mehr – beim Kind unter „Tarif, Zahlungsweise und Rabatt“ neu eintragen, wenn er weiter gelten soll.',
@@ -427,11 +422,6 @@ function dispatch_config(string $action): array {
     // ---- the shell: notifications, pictures, colours, impersonation ------
 
     case 'notifications_read':
-        // Asked first, like the status: while staff look through a family's
-        // eyes the notices are the family's, and „Alle gelesen" would mark them
-        // read before the family ever saw them - the chat notices included,
-        // which the bell does not even show in that view.
-        if(impersonator())throw new UserError(t('Hinweise als gelesen markieren kann nur die Person selbst. Beende zuerst die Ansicht.','Only the person themselves can mark their notifications as read. Stop viewing first.'));
         $u=require_user();
         if(post('id')!=='') run('UPDATE notifications SET read_at=? WHERE id=? AND account_id=? AND read_at IS NULL',[now(),(int)post('id'),$u['id']]);
         else run('UPDATE notifications SET read_at=? WHERE account_id=? AND read_at IS NULL',[now(),$u['id']]);

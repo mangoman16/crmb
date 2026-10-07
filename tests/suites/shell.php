@@ -137,6 +137,30 @@ is_same($trainer, (int)scalar('SELECT actor_id FROM audit_log ORDER BY id DESC L
         'the trainer, not the account they are borrowing');
 act('impersonate', ['mode'=>'stop']);
 
+case_('Viewing as somebody is looking: nothing goes through but the view’s end');
+/* Every action would speak as the person looked at. An administrator viewing a
+   trainer's portal could save a child, report a problem or give a consent in
+   the trainer's name - or start a view as the trainer, which „Ansicht beenden"
+   then turned into the trainer's own session, without her password. */
+$looked = make_student(['first_name'=>'Angesehen', 'last_name'=>'Kind']);
+sign_in_as($admin);
+act('impersonate', ['id'=>(string)$trainer, 'mode'=>'start']);
+$untouched = fn(): array => [one('SELECT name,newsletter FROM accounts WHERE id=?', [$trainer]), (int)scalar('SELECT COUNT(*) FROM feedback'),
+    (int)scalar('SELECT COUNT(*) FROM consent_log'), (int)scalar('SELECT revision FROM students WHERE id=?', [$looked])];
+$before = $untouched();
+foreach (['preferences_save' => ['name'=>'Anders', 'locale'=>'de', 'newsletter'=>'1'],
+          'feedback_send'    => ['message'=>'Im Namen der Trainerin', 'page'=>'dashboard'],
+          'student_save'     => ['id'=>(string)$looked, 'revision'=>'1', 'first_name'=>'Umbenannt', 'last_name'=>'Kind', 'status'=>'active'],
+          'impersonate'      => ['id'=>(string)$family, 'mode'=>'start']] as $action => $fields)
+    throws(fn() => act($action, $fields), $action.' is refused while viewing, in the one sentence', viewing_refusal());
+is_same($before, $untouched(), 'and nothing was written: no consent, no report, no change to the child');
+is_same([$trainer, $admin], [(int)current_user()['id'], (int)(impersonator()['id'] ?? 0)], 'the view is still the administrator’s, of the trainer');
+act('impersonate', ['mode'=>'stop']);
+is_same([$admin, null], [(int)current_user()['id'], impersonator()], 'stopping it goes through, back to the administrator herself');
+act('impersonate', ['id'=>(string)$trainer, 'mode'=>'start']);
+act('logout', []);
+is_same([null, null], [current_user(), impersonator()], 'and so does signing out');
+
 case_('A view that timed out is not handed to whoever signs in next on that browser');
 /* Security review F1. The trainer's „Portal als … ansehen" session expired; the
    impersonator id was left in the session; the next person to sign in on that
@@ -175,7 +199,7 @@ throttle_clear('auth-ip', $_SERVER['REMOTE_ADDR'] ?? 'local');
 // Left over in the raw session, where only sign_in() itself can drop it:
 // nothing asks who is signed in before the sign-in does.
 $_SESSION['impersonator_id'] = $trainer;
-submit('login', ['email'=>'naechste@beispiel.test', 'password'=>'Federball-2026-Halle!']);
+submit('login', ['login'=>'naechste@beispiel.test', 'password'=>'Federball-2026-Halle!']);
 is_same($visitor, (int)(current_user()['id'] ?? 0), 'the next person signs in as themselves');
 ok(!isset($_SESSION['impersonator_id']), 'into a session that carries no view of anybody');
 is_same(null, impersonator(), 'with no view of anybody else’s left over');

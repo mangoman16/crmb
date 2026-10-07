@@ -124,7 +124,7 @@ act('logout', []);
 is_same(null, current_user(), 'nobody is signed in');
 $familyRow = one('SELECT * FROM accounts WHERE id=?', [$family]);
 visit('login');
-send('login', ['email'=>$familyRow['email'], 'password'=>'Test-Only-Password-2026'] + on_page('login'));
+send('login', ['login'=>$familyRow['email'], 'password'=>'Test-Only-Password-2026'] + on_page('login'));
 is_same($family, (int)(current_user()['id'] ?? 0), 'the sign-in worked');
 /* Read from the session itself, not through recent_steps(): a step recorded
    for nobody would be hidden by the change of account at sign-in, and the

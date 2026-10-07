@@ -197,10 +197,6 @@ function dispatch_settings_or_messages(string $action): array {
         if((bool)$u['notifications']!==$notifications)record_consent((int)$u['id'],'notifications',$notifications);
         $_SESSION['locale']=post('locale');flash(t('Einstellungen gespeichert.','Preferences saved.'));return ['profile',[]];
     case 'presence_save':
-        // Asked before who is asking: while staff look through a family's eyes
-        // the session is the family's, and the answer she needs is how to get
-        // back to her own, not that families have no status (ADR 0016).
-        if(impersonator())throw new UserError(t('Den Status kann nur die Person selbst ändern. Beende zuerst die Ansicht.','Only the person themselves can change their status. Stop viewing first.'));
         // Staff only: the owner decided a family has no status to choose (ADR 0015).
         $u=require_user();
         if(!is_staff($u))throw new UserError(t('Einen Status wählen nur Trainerinnen und Administratoren.','Only trainers and administrators choose a status.'));
@@ -218,9 +214,7 @@ function dispatch_settings_or_messages(string $action): array {
         });
         return form_return();
     case 'status_emoji_save':
-        // Anybody's own, from the account menu (ADR 0022) - and so, like the
-        // status, never while looking through somebody else's eyes.
-        if(impersonator())throw new UserError(t('Das Status-Emoji kann nur die Person selbst ändern. Beende zuerst die Ansicht.','Only the person themselves can change their status emoji. Stop viewing first.'));
+        // Anybody's own, from the account menu (ADR 0022).
         $u=require_user();
         // A key from the fixed list, or '' for none: never what was typed.
         run('UPDATE accounts SET status_emoji=? WHERE id=?',[choose(post('status_emoji'),['',...array_keys(status_emojis())]),$u['id']]);

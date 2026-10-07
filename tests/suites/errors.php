@@ -138,8 +138,8 @@ $token = bin2hex(random_bytes(32));
 claim_request($token);
 $capture(fn() => claim_request($token));
 is_same($before, count($automatic()), 'nor a form sent twice, which is handled');
-ok(preg_match("/if\(\\\$ex->getCode\(\)==='23000' && str_contains\(\\\$ex->getMessage\(\),'form_requests'\)\)\s*flash\([^;]*;\s*else \{\s*capture_error\(\\\$ex\);/", $router) === 1,
-   'and the router’s database catch leaves the double tap out too');
+ok(!str_contains($router, 'form_requests'),
+   'and the router’s database catch keeps no second copy of it: claim_request() answers a form sent twice before the database error could reach it');
 
 case_('A database error keeps its codes and never its message');
 sign_in_as($family);

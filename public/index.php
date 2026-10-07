@@ -30,28 +30,15 @@ try {
     note_setup_return($page);
     if($_SERVER['REQUEST_METHOD']==='POST') {
         try {
-            [$target,$params]=handle_post();
-            if($target==='outbox' && isset($params['process'])) {
-                // Leave a margin below max_execution_time so the response still renders.
-                $limit=(int)ini_get('max_execution_time');
-                $count=process_mail(25,$limit>0?max(5.0,$limit-8.0):45.0);
-                $note=$count['sent'].' '.t('gesendet, ','sent, ').$count['failed'].' '.t('fehlgeschlagen.','failed.');
-                if($count['deferred'])$note.=' '.$count['deferred'].' '.t('warten noch und werden automatisch weiter versendet.','still waiting; they will be sent automatically.');
-                flash($note);$params=[];
-            }
-            go($target,$params);
+            go(...handle_post());
         } catch(UserError $ex) {flash($ex->getMessage(),'error');remember_input(post('action'));}
         catch(PDOException $ex) {
+            // What the database refused is written down for the administrators
+            // (ADR 0012), and the person is told in a sentence. A form sent
+            // twice never gets here: handle_post() answers it.
             remember_input(post('action'));
-            // A form sent twice is handled, not broken: the second copy is told
-            // so. Anything else the database refused is written down for the
-            // administrators (ADR 0012), and the person is told in a sentence.
-            if($ex->getCode()==='23000' && str_contains($ex->getMessage(),'form_requests'))
-                flash(t('Diese Eingabe wurde bereits verarbeitet.','This submission has already been processed.'),'error');
-            else {
-                capture_error($ex);
-                flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: ein Wert ist schon vergeben, oder verknüpfte Daten sind vorhanden.','Cannot save: a value is already taken, or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
-            }
+            capture_error($ex);
+            flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: ein Wert ist schon vergeben, oder verknüpfte Daten sind vorhanden.','Cannot save: a value is already taken, or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
         }
         [$back,$params]=form_return(current_user()?'dashboard':'login',$allowed);
         go($back,$params);

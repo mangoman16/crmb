@@ -7,18 +7,17 @@ function current_user(bool $reload=false): ?array {
     if($resolved) return $cached;
     $resolved=true;
     // Nobody signed in is nobody viewing as anybody either: an id left over
-    // from a session that ended is forgotten here, wherever it is first asked
-    // (security review F1).
+    // from a session written before F1 is forgotten here, wherever it is first
+    // asked (security review F1). Not forget_session_leftovers(): nothing ended
+    // here, and a link being opened by whoever holds this browser lives in
+    // exactly this session between opening it and sending its page - dropped
+    // here, no invitation, reset or sign-in link would ever work signed out.
     if(empty($_SESSION['user_id'])) { unset($_SESSION['impersonator_id']); return $cached=null; }
     $a=one('SELECT * FROM accounts WHERE id=?',[(int)$_SESSION['user_id']]);
     $expired=time()-(int)($_SESSION['last_seen']??0)>(int)config('session_idle_minutes')*60;
     if(!$a || $a['state']!=='active' || !$a['verified_at'] || (int)$a['auth_version']!==(int)($_SESSION['auth_version']??0) || $expired) {
-        // A view through somebody's eyes ends with the session it was opened
-        // in. Left behind, it handed whoever signed in next on that browser
-        // „Ansicht beenden" - and the staff member's account (security review F1).
-        // So do the sign-in links and the wizard's drafts its holder made: a
-        // readable link is a key to a child's login (ADR 0023 §6, A5).
-        unset($_SESSION['user_id'],$_SESSION['auth_version'],$_SESSION['impersonator_id'],$_SESSION['signin_links'],$_SESSION['student_drafts']);
+        unset($_SESSION['user_id'],$_SESSION['auth_version']);
+        forget_session_leftovers();
         return $cached=null;
     }
     $_SESSION['last_seen']=time(); return $cached=$a;
@@ -64,11 +63,22 @@ function require_user(): array { $a=current_user(); if(!$a) go('login'); return 
 function require_staff(): array { $a=require_user(); if(!is_staff($a)) throw new UserError(t('Kein Zugriff.','Access denied.')); return $a; }
 function require_admin(): array { $a=require_user(); if($a['role']!=='admin') throw new UserError(t('Nur für Administratoren.','Administrators only.')); return $a; }
 /**
- * A new session for $a, and nothing of the one before it: no view through
- * somebody else's eyes (F1), and none of the sign-in links or wizard drafts the
- * person before made (ADR 0023 §6, A5) - those are only ever their maker's.
+ * Forget what a session holds for the person signed in to it, which nobody
+ * after them on this browser may have: a view through somebody's eyes, which
+ * handed the next person „Ansicht beenden" and the staff member's login
+ * (security review F1); the readable sign-in links and the wizard's drafts they
+ * made (ADR 0023 §5, §6), a link being a key to a child's login; and a link
+ * being opened (activation_hash), which is somebody's key too.
+ *
+ * Asked wherever a sign-in starts or ends: sign_in(), a session that has run
+ * out (current_user()), and the activation page signing out whoever was here
+ * before it sets up the link's own login. Signing out empties the whole session.
  */
-function sign_in(array $a): void { session_regenerate_id(true); unset($_SESSION['impersonator_id'],$_SESSION['signin_links'],$_SESSION['student_drafts']); $_SESSION['user_id']=(int)$a['id']; $_SESSION['auth_version']=(int)$a['auth_version']; $_SESSION['last_seen']=time(); $_SESSION['locale']=$a['locale']; $_SESSION['csrf']=bin2hex(random_bytes(32)); current_user(true); }
+function forget_session_leftovers(): void {
+    unset($_SESSION['impersonator_id'],$_SESSION['signin_links'],$_SESSION['student_drafts'],$_SESSION['activation_hash']);
+}
+/** A new session for $a, and nothing of the one before it (forget_session_leftovers()). */
+function sign_in(array $a): void { session_regenerate_id(true); forget_session_leftovers(); $_SESSION['user_id']=(int)$a['id']; $_SESSION['auth_version']=(int)$a['auth_version']; $_SESSION['last_seen']=time(); $_SESSION['locale']=$a['locale']; $_SESSION['csrf']=bin2hex(random_bytes(32)); current_user(true); }
 function strong_password(string $p): string {
     if(strlen($p)<12 || strlen($p)>72) throw new UserError(t('Das Passwort muss 12 bis 72 Byte lang sein. Umlaute zählen doppelt.','The password must be 12 to 72 bytes long. Accented characters count double.'));
     // A 12-character minimum alone still admits these; they are the passwords an
@@ -229,9 +239,9 @@ function give_every_student_a_login(): int {
  * wildcard but its own.
  */
 
-/** The usernames $base and $base followed by digits that logins already have. */
+/** The usernames $base and $base followed by digits that logins already have. $base% takes in $base itself. */
 function usernames_taken_near(string $base, bool $lock): array {
-    $near=rows('SELECT username FROM accounts WHERE username=? OR username LIKE ?'.($lock?' FOR UPDATE':''),[$base,$base.'%']);
+    $near=rows('SELECT username FROM accounts WHERE username LIKE ?'.($lock?' FOR UPDATE':''),[$base.'%']);
     return array_values(array_filter(array_map('strval',array_column($near,'username')),
         fn(string $u)=>$u===$base || preg_match('/^'.preg_quote($base,'/').'[0-9]+$/D',$u)===1));
 }
@@ -536,12 +546,17 @@ function reset_link_possible(array $account): bool {
  */
 function signin_link_possible(array $account): bool {
     if(($account['role'] ?? '')!=='student' || !isset($account['id']) || !login_student_id((int)$account['id'])) return false;
-    return match($account['state'] ?? '') {
-        'placeholder' => true,
-        'invited'     => (string)($account['email'] ?? '')==='' && (string)($account['username'] ?? '')!=='',
-        'active'      => !empty($account['verified_at']),
-        default       => false,
-    };
+    return ($account['state'] ?? '')==='placeholder' || username_login_waiting($account) || account_in_use($account);
+}
+
+/**
+ * A username login waiting for its first sign-in (ADR 0023 §3): given a
+ * username and a link, and no address - „Noch nicht angemeldet". An invitation
+ * by e-mail waits too, but at an address, and is „Eingeladen". One rule for the
+ * badge, the access card and signin_link_possible().
+ */
+function username_login_waiting(array $account): bool {
+    return ($account['state'] ?? '')==='invited' && (string)($account['email'] ?? '')==='' && (string)($account['username'] ?? '')!=='';
 }
 
 /**
@@ -654,9 +669,42 @@ function account_mail_missing(): string {
     $missing=[];
     if(!smtp_tested_ok()) $missing[]=t('E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP“ die Verbindung prüfen.',
                                        'Test sending email first: check the connection under “Settings → SMTP”.');
-    if(!setting('privacy_ready',false)) $missing[]=t('Die Datenschutzerklärung unter „Einstellungen → Datenschutz“ freigeben.',
-                                                     'Release the privacy notice under “Settings → Privacy”.');
+    if(($privacy=privacy_notice_missing())!=='') $missing[]=$privacy;
     return implode(' ',$missing);
+}
+
+/**
+ * The step that releases the privacy notice, as the sentence that says where -
+ * or '' once it is released. Everybody acknowledges the notice the first time
+ * they set up their login, by invitation or by sign-in link, so neither can
+ * go out before; every refusal and notice that says so quotes this.
+ */
+function privacy_notice_missing(): string {
+    return setting('privacy_ready',false) ? '' : t('Die Datenschutzerklärung unter „Einstellungen → Datenschutz“ freigeben.',
+                                                   'Release the privacy notice under “Settings → Privacy”.');
+}
+
+/**
+ * Refuse an invitation that cannot go out yet, naming what is missing: a login
+ * nobody can be invited to is somebody locked out of something they never saw.
+ * Asked before anything is written by every way a login is invited.
+ */
+function refuse_until_invitations_can_go(): void {
+    if(!account_mail_ready())
+        throw new UserError(t('Eine Einladung lässt sich noch nicht verschicken. ','An invitation cannot be sent yet. ').account_mail_missing());
+}
+
+/**
+ * Refuse a first sign-in link while the privacy notice is not released: its
+ * holder acknowledges the notice on the page the link opens, and a link that
+ * page would refuse is a link that cannot work. Asked by make_signin_link() for
+ * every login not yet set up (security review, finding 6), and by the wizard
+ * before it writes anything (ADR 0023 §5).
+ */
+function refuse_signin_link_until_privacy_released(): void {
+    if(($missing=privacy_notice_missing())!=='')
+        throw new UserError(t('Ein Anmeldelink geht erst, wenn die Datenschutzerklärung freigegeben ist – sie wird bei der ersten Anmeldung bestätigt. ',
+                              'A sign-in link only works once the privacy notice is released – it is acknowledged at the first sign-in. ').$missing);
 }
 /**
  * Mail a one-time link: an invitation, a reset, or the confirmation of a new
@@ -680,8 +728,9 @@ function send_account_token(array $account,string $purpose,?string $email=null):
     $link=url('activate',['token'=>$token]);
     $club=trim((string)setting('org_name'));
     $hello=mail_greeting($account);
-    $expired=($en?'The link is valid for 48 hours. If it has expired, “Forgot your password” on the sign-in page sends a new one.'
-                 :'Der Link gilt 48 Stunden. Ist er abgelaufen, bekommst du auf der Anmeldeseite unter „Passwort vergessen“ einen neuen.')."\n\n";
+    $hours=intdiv(token_lifetime('invite'),3600);
+    $expired=($en?"The link is valid for {$hours} hours. If it has expired, “Forgot your password” on the sign-in page sends a new one."
+                 :"Der Link gilt {$hours} Stunden. Ist er abgelaufen, bekommst du auf der Anmeldeseite unter „Passwort vergessen“ einen neuen.")."\n\n";
     $ownDetails=$purpose==='invite' && is_open_invitation((int)$account['id']);
     $body=match($purpose) {
         'invite' => $hello

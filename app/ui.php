@@ -26,7 +26,7 @@ function icon(string $name): string {
 }
 function start_form(string $action,array $hidden=[],string $class='form',bool $multipart=false): void {
     $draft=is_string($_GET['draft']??null) && student_draft_key($_GET['draft']) ? ['return_draft'=>$_GET['draft']] : [];
-    form_open($action,$hidden+['return_page'=>current_page(),'return_id'=>(int)($_GET['id']??0),'return_tab'=>(string)($_GET['tab']??'')]+$draft,$class,$multipart);
+    form_open($action,$hidden+['return_page'=>current_page(),'return_id'=>(int)($_GET['id']??0),'return_tab'=>is_string($_GET['tab']??null)?$_GET['tab']:'']+$draft,$class,$multipart);
 }
 
 /**
@@ -682,8 +682,7 @@ function students_notice(array $students,string $heading,string $body='',array $
  * no update has given a login yet - „Kein Zugang", which should never show.
  */
 function login_state_badge(?array $account): void {
-    $state = $account['state'] ?? 'none';
-    if ($state === 'invited' && (string)($account['email'] ?? '') === '') $state = 'waiting';
+    $state = $account !== null && username_login_waiting($account) ? 'waiting' : ($account['state'] ?? 'none');
     badge(match ($state) {
         'active'      => t('Aktiv','Active'),
         'invited'     => t('Eingeladen','Invited'),

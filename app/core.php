@@ -577,8 +577,9 @@ function username_value(string $typed): string {
 function username_from_name(string $first, string $last): string {
     $parts=[];
     foreach([$first,$last] as $name) {
-        $part=preg_replace("/['’ʼ‘`´]/u",'',username_transliterated($name));
-        $part=preg_replace('/[^a-z0-9\s.-]/u','',(string)$part);
+        // An apostrophe is outside the alphabet like anything else, and goes
+        // with it: O'Neill is oneill, not o-neill.
+        $part=preg_replace('/[^a-z0-9\s.-]/u','',username_transliterated($name));
         $part=trim((string)preg_replace('/[\s.-]+/u','-',(string)$part),'-');
         if($part!=='') $parts[]=$part;
     }

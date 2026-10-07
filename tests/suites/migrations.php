@@ -146,7 +146,7 @@ $runnerStep();
 is_same($dummy, (string)setting('sign_in_dummy_hash'), 'the next update keeps a current one rather than hashing again');
 $outdated = password_hash('x', PASSWORD_BCRYPT, ['cost' => 4]);
 set_setting('sign_in_dummy_hash', $outdated);
-throws(fn() => submit('login', ['email' => 'niemand@hier.test', 'password' => 'falsch']), 'a sign-in with no such address is refused', 'Anmeldung nicht möglich');
+throws(fn() => submit('login', ['login' => 'niemand@hier.test', 'password' => 'falsch']), 'a sign-in with no such address is refused', 'Anmeldung nicht möglich');
 setting_cache_clear();
 is_same($outdated, (string)setting('sign_in_dummy_hash'), 'and leaves even an outdated hash alone: a request refreshes nothing');
 throttle_clear('login', address_identity('niemand@hier.test'));

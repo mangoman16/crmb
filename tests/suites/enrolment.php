@@ -233,6 +233,38 @@ is_same(1, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND
 does_not_throw(fn() => decide_request($askSecond, false, 'Leider voll.'),
                'declining it is still possible, which is how the trainer answers');
 
+case_('A place taken on another connection while a yes or an „Hinzufügen" is on its way is seen');
+/* The count is a locking read of its own. A FOR UPDATE on the course row does
+   not reach a subquery, which reads the snapshot the transaction began with: a
+   place another request took and committed since would not be in it, and the
+   hall would get a ninth child. */
+sign_in_as($trainer);
+$tight = make_class(['name'=>'Eng', 'capacity'=>1, 'days'=>[]]);
+$late = make_class(['name'=>'Spät dran', 'capacity'=>1, 'days'=>[]]);
+// Made, and committed, before the transaction below begins: the other
+// connection's foreign-key check would otherwise wait on a row this one holds.
+$quicker = [$tight => make_student(['first_name'=>'Flinker']), $late => make_student(['first_name'=>'Flotter'])];
+$fillElsewhere = function (int $classId) use ($quicker) {
+    connect()->prepare('INSERT INTO class_students (class_id,student_id,joined_on,left_on,tariff_id,price_cents,price_note,due_day) VALUES (?,?,?,NULL,NULL,NULL,?,0)')
+        ->execute([$classId, $quicker[$classId], today(), '']);
+};
+$ask = request_enrolment(make_student(['first_name'=>'Fragt']), $tight, 'join', null, '');
+throws(fn() => transactional(function () use ($fillElsewhere, $tight, $ask) {
+    scalar('SELECT COUNT(*) FROM class_students');   // the snapshot this transaction reads from starts here
+    $fillElsewhere($tight);
+    return decide_request($ask, true, '');
+}), 'the yes is refused: the last place went on the other connection after this one began', 'voll');
+$_POST = ['class_id'=>(string)$late, 'student_id'=>(string)make_student(['first_name'=>'Dazu'])];
+throws(fn() => transactional(function () use ($fillElsewhere, $late) {
+    scalar('SELECT COUNT(*) FROM class_students');
+    $fillElsewhere($late);
+    return dispatch_action('class_member_add');
+}), 'and so is adding a child by hand', 'voll');
+$_POST = [];
+is_same([1, 1], [(int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND left_on IS NULL', [$tight]),
+                 (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND left_on IS NULL', [$late])],
+        'each course holds the one child who got there first');
+
 case_('A tariff outlives the course it belonged to, as something unattached');
 // Not as a row pointing at a course that is gone: invisible on every course
 // page because nothing joins, and absent from the unattached list because

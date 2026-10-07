@@ -183,10 +183,15 @@ function student_login_counts(): array {
  * the newest invitation or sign-in link still waiting runs out, or null when
  * there is none (lapsed links are pruned every night). An unknown filter is
  * 'all'. The link's date only, never its hash.
+ *
+ * The page is held to what an offset can be: a ?p= of twenty nines would
+ * otherwise multiply out past the largest integer into a float, which the
+ * database refuses as an OFFSET - a 503 for a typo. Past the last page, a page
+ * is empty.
  */
 function student_logins(string $filter, int $page): array {
     $condition = student_login_filters()[$filter] ?? student_login_filters()['all'];
-    $offset = (max(1, $page) - 1) * STUDENT_LOGINS_PER_PAGE;
+    $offset = (min(max(1, $page), intdiv(PHP_INT_MAX, STUDENT_LOGINS_PER_PAGE)) - 1) * STUDENT_LOGINS_PER_PAGE;
     return rows('SELECT a.*, s.id AS student_id, s.first_name, s.last_name,'
         ." (SELECT MAX(t.expires_at) FROM auth_tokens t WHERE t.account_id=a.id AND t.purpose IN ('invite','signin')) AS link_expires_at"
         .' FROM students s JOIN accounts a ON a.id=s.account_id WHERE '.$condition
@@ -196,8 +201,9 @@ function student_logins(string $filter, int $page): array {
 /*
  * The wizard's draft (ADR 0023 §5): step 1's details, kept in the session under
  * a random key between the two steps, so the address carries the key and never
- * the details. Only the student_draft action writes one; a page reads it and
- * writes nothing (ADR 0003).
+ * the details; once student_create has made the student, the same slot keeps
+ * which student it became. Only the wizard's two actions write one; a page
+ * reads it and writes nothing (ADR 0003).
  */
 
 /** How long a draft is kept, and how many one session holds. */
@@ -208,17 +214,32 @@ const STUDENT_DRAFTS_KEPT = 10;
 function student_draft_key(string $key): bool { return preg_match('/^[a-f0-9]{32}$/D', $key) === 1; }
 
 /**
- * The draft kept under $key, or null when there is none - never made, dropped
- * by student_create, pushed out by ten newer ones, or older than two hours. The
- * last is decided here, as it is read, so a stale draft is gone for every page
- * at the same moment; student_draft removes it from the session the next time it
+ * What the session keeps under $key - a draft, or the student it became - or
+ * null: never made, pushed out by ten newer ones, or older than two hours. The
+ * age is decided here, as it is read, so a stale slot is gone for every page at
+ * the same moment; student_draft removes it from the session the next time it
  * writes.
  */
-function student_draft(string $key): ?array {
+function student_draft_slot(string $key): ?array {
     if (!student_draft_key($key)) return null;
-    $draft = $_SESSION['student_drafts'][$key] ?? null;
-    if (!is_array($draft) || (int)($draft['saved_at'] ?? 0) < time() - STUDENT_DRAFT_SECONDS) return null;
-    return $draft;
+    $slot = $_SESSION['student_drafts'][$key] ?? null;
+    return is_array($slot) && (int)($slot['saved_at'] ?? 0) >= time() - STUDENT_DRAFT_SECONDS ? $slot : null;
+}
+
+/** The draft kept under $key while it is still one, or null - gone, or made into a student already. */
+function student_draft(string $key): ?array {
+    $slot = student_draft_slot($key);
+    return $slot !== null && !isset($slot['made']) ? $slot : null;
+}
+
+/**
+ * The student a draft became, or 0. student_create keeps the slot with the
+ * student's id in it, under the same two hours and ten slots, so Back from the
+ * done page - or a step of it sent again - finds the child made, rather than an
+ * empty form that would make them twice (ADR 0023 §5).
+ */
+function student_made_from_draft(string $key): int {
+    return (int)(student_draft_slot($key)['made'] ?? 0);
 }
 
 /*
@@ -261,6 +282,21 @@ function new_student_defaults(): array {
     return ['joined_on' => today(), 'status' => (string)setting('default_status', 'active'),
             'level_id' => level_default()['id'] ?? null, 'age_group_id' => null,
             'address' => '', 'phone' => '', 'internal_notes' => ''];
+}
+
+/**
+ * A student's login, held for the rest of the transaction. Every student has
+ * one (ADR 0023 §4): the update gives one to every student it finds without,
+ * every way of making a student makes one, and the key is RESTRICT. A student
+ * without is that promise broken, not something the trainer can put right, so
+ * it stops the request and reports itself (ADR 0012) - it is not a refusal for
+ * her to read. The column itself may be NULL: the update gives the logins only
+ * after the migrations have run, so NOT NULL would stop it (ADR 0023, Rejected).
+ */
+function student_login_locked(array $student): array {
+    $login = $student['account_id'] ? lock_row('accounts', (int)$student['account_id']) : null;
+    if (!$login) throw new LogicException('A student without a login: give_every_student_a_login() gives every student one.');
+    return $login;
 }
 
 /** The student a login belongs to (ADR 0010), or 0 when it belongs to none. */

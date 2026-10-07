@@ -237,7 +237,7 @@ $familyBucket = address_identity($familyEmail);
 $ourIp = $_SERVER['REMOTE_ADDR'] ?? 'local';
 $hits = fn(string $name, string $identity) => (int)(run_counter('SELECT hits FROM rate_limits WHERE bucket=?',
     [rate_limit_bucket($name, $identity)])->fetchColumn() ?: 0);
-$signIn = fn() => submit('login', ['email' => $familyEmail, 'password' => $familyPassword]);
+$signIn = fn() => submit('login', ['login' => $familyEmail, 'password' => $familyPassword]);
 
 case_('Signing in correctly never locks the family out');
 $ipBefore = $hits('auth-ip', $ourIp);
@@ -260,10 +260,14 @@ case_('A sign-in that does not complete forgets nothing');
    committed. A request that authenticated and then failed for some other reason
    must leave its attempt counted rather than forgetting one it never finished. */
 $replayed = bin2hex(random_bytes(32));
-$sent = ['email' => $familyEmail, 'password' => $familyPassword, 'request_id' => $replayed];
+$sent = ['login' => $familyEmail, 'password' => $familyPassword, 'request_id' => $replayed];
 does_not_throw(fn() => submit('login', $sent), 'the first submission signs in');
 is_same(0, $hits('login', $familyBucket), 'and its attempt is forgotten');
-throws(fn() => submit('login', $sent), 'sending the very same submission again is refused as a replay', 'bereits verarbeitet');
+// A copy this session remembers answering lands where the first went and
+// counts nothing (answered_form_landing()). One arriving where its answer is
+// not remembered reaches the claim, which refuses it.
+unset($_SESSION['answered_forms']);
+throws(fn() => submit('login', $sent), 'sending the very same submission again, where its answer is not remembered, is refused as a replay', 'bereits verarbeitet');
 is_same(1, $hits('login', $familyBucket), 'and that attempt stays counted, having proved nothing');
 
 case_('Spelling an address differently does not buy a fresh ten guesses, and nothing is looked up to count');
@@ -273,7 +277,7 @@ case_('Spelling an address differently does not buy a fresh ten guesses, and not
    would be ADR 0007's oracle again. */
 throttle_clear('login', $familyBucket);
 foreach (['familie@beispiel.test', ' Familie@Beispiel.TEST', "FAMILIE@beispiel.test\n"] as $spelling) {
-    $_POST = ['email' => $spelling];
+    $_POST = ['login' => $spelling];
     is_same($familyBucket, sign_in_identity(attempted_sign_in()), 'counted in the one bucket: '.json_encode($spelling));
 }
 $actions = (string)file_get_contents(APP_ROOT.'/app/actions.php');
@@ -285,10 +289,10 @@ $lockout = function (string $typed) use ($hits, $ourIp): array {
     run_counter('UPDATE rate_limits SET window_start = window_start - 901 WHERE bucket = ?', [rate_limit_bucket('auth-ip', $ourIp)]);
     $answers = [];
     for ($i = 0; $i < 11; $i++) {
-        try { submit('login', ['email' => $typed, 'password' => 'falsch-geraten']); $answers[] = 'in'; }
+        try { submit('login', ['login' => $typed, 'password' => 'falsch-geraten']); $answers[] = 'in'; }
         catch (UserError $e) { $answers[] = str_contains($e->getMessage(), 'Zu viele') ? 'throttled' : $e->getMessage(); }
     }
-    $_POST = ['email' => $typed];
+    $_POST = ['login' => $typed];
     $bucket = sign_in_identity(attempted_sign_in());
     $counted = $hits('login', $bucket);
     throttle_clear('login', $bucket);
@@ -300,18 +304,19 @@ is_same(['throttled'], array_slice($known[0], 10), 'an address that has a login 
 is_same($known, $lockout('niemand@beispiel.test'), 'and one that has none gets exactly the same answers, counted exactly the same way');
 is_same($known, $lockout('familie.sieber'), 'and so does something that is no address at all');
 
-case_('The address signs in, in any capitals, and a former username does not');
-/* ADR 0021, §1: the address is the only name a login has. What used to be a
-   username is just text that is no address now, refused in the same words. */
+case_('The address signs in, in any capitals, and a username its login does not have does not');
+/* ADR 0023 §1: a username signs in only to the login that has it, and this
+   family's login has its address and no username - so the name it carried
+   under ADR 0019 is a username nobody has now, refused in the same words. */
 sign_out();
-does_not_throw(fn() => submit('login', ['email' => ' Familie@Beispiel.test ', 'password' => $familyPassword]), 'the address signs in, in any capitals');
+does_not_throw(fn() => submit('login', ['login' => ' Familie@Beispiel.test ', 'password' => $familyPassword]), 'the address signs in, in any capitals');
 is_same($familyId, (int)(current_user()['id'] ?? 0), 'as the right login');
 sign_out();
-throws(fn() => submit('login', ['email' => 'familie.sieber', 'password' => $familyPassword]),
-       'the name that was its username is refused, with the right password', 'Anmeldung nicht möglich');
+throws(fn() => submit('login', ['login' => 'familie.sieber', 'password' => $familyPassword]),
+       'the name that was once its username is refused, with the right password', 'Anmeldung nicht möglich');
 is_same(null, current_user(), 'and nobody is signed in');
 throws(fn() => submit('login', ['username' => $familyEmail, 'password' => $familyPassword]),
-       'and a page from before that still posts a username box signs nobody in', 'Anmeldung nicht möglich');
+       'and the address posted under any name but the one box, login, signs nobody in', 'Anmeldung nicht möglich');
 throttle_clear('login', username_identity('familie.sieber')); throttle_clear('login', username_identity(''));
 $_POST = [];
 
@@ -321,7 +326,7 @@ case_('An address that reaches a login only through the collation signs nobody i
    'straße@…'; the exact-match check refuses it. */
 $folded = make_account(['email' => 'straße@beispiel.test', 'password_hash' => password_hash($familyPassword, PASSWORD_DEFAULT)]);
 ok(one('SELECT id FROM accounts WHERE email=?', ['strasse@beispiel.test']) !== null, 'the collation does find the row, so this is a real test');
-throws(fn() => submit('login', ['email' => 'strasse@beispiel.test', 'password' => $familyPassword]), 'but it does not sign in', 'Anmeldung nicht möglich');
+throws(fn() => submit('login', ['login' => 'strasse@beispiel.test', 'password' => $familyPassword]), 'but it does not sign in', 'Anmeldung nicht möglich');
 is_same(null, current_user(), 'nobody is signed in');
 throttle_clear('login', address_identity('strasse@beispiel.test'));
 run('DELETE FROM accounts WHERE id=?', [$folded]);
@@ -351,9 +356,9 @@ $said = [];
 foreach (['an invitation not yet accepted' => ['eingeladen-noch@beispiel.test', ''], 'a suspended login with its right password' => ['gesperrt@beispiel.test', $familyPassword],
           'a value that cannot be an address' => ['a..b@beispiel.test', $familyPassword],
           'an address nobody has' => ['niemand@beispiel.test', $familyPassword], 'a wrong password' => [$familyEmail, 'falsch']] as $what => [$typed, $typedPassword]) {
-    try { submit('login', ['email' => $typed, 'password' => $typedPassword]); $said[$what] = 'in'; }
+    try { submit('login', ['login' => $typed, 'password' => $typedPassword]); $said[$what] = 'in'; }
     catch (UserError $e) { $said[$what] = $e->getMessage(); }
-    $_POST = ['email' => $typed]; throttle_clear('login', sign_in_identity(attempted_sign_in()));
+    $_POST = ['login' => $typed]; throttle_clear('login', sign_in_identity(attempted_sign_in()));
 }
 is_same(['Anmeldung nicht möglich. Bitte E-Mail bzw. Benutzernamen und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link öffnen, den du bekommen hast.'],
         array_values(array_unique($said)), 'every one of them gets the one sentence, word for word: '.implode(', ', array_keys($said)));
@@ -361,7 +366,7 @@ $_POST = [];
 
 case_('An outdated password hash is brought to today’s cost by the next correct sign-in');
 $cheap = make_account(['email' => 'alt.hash@beispiel.test', 'password_hash' => password_hash($familyPassword, PASSWORD_BCRYPT, ['cost' => 4])]);
-does_not_throw(fn() => submit('login', ['email' => 'alt.hash@beispiel.test', 'password' => $familyPassword]), 'the old hash still signs in');
+does_not_throw(fn() => submit('login', ['login' => 'alt.hash@beispiel.test', 'password' => $familyPassword]), 'the old hash still signs in');
 $renewed = (string)scalar('SELECT password_hash FROM accounts WHERE id=?', [$cheap]);
 ok(!password_needs_rehash($renewed, PASSWORD_DEFAULT) && password_verify($familyPassword, $renewed), 'and is replaced by one at today’s cost, of the same password');
 sign_out();
@@ -373,13 +378,13 @@ run("DELETE FROM settings WHERE setting_key='sign_in_dummy_hash'"); setting_cach
 run_counter('UPDATE rate_limits SET window_start = window_start - 901 WHERE bucket = ?', [rate_limit_bucket('auth-ip', $ourIp)]);
 is_same('', (string)setting('sign_in_dummy_hash'), 'there is none');
 $logged = ini_get('error_log'); $logFile = test_run_dir().'/dummy-hash.log'; ini_set('error_log', $logFile);
-try { throws(fn() => submit('login', ['email' => 'niemand@beispiel.test', 'password' => 'falsch']), 'a refused sign-in', 'Anmeldung nicht möglich'); }
+try { throws(fn() => submit('login', ['login' => 'niemand@beispiel.test', 'password' => 'falsch']), 'a refused sign-in', 'Anmeldung nicht möglich'); }
 finally { ini_set('error_log', (string)$logged); }
 setting_cache_clear();
 $repaired = (string)setting('sign_in_dummy_hash');
 ok($repaired !== '', 'leaves one stored, although the sign-in itself was rolled back');
 ok(str_contains((string)@file_get_contents($logFile), 'sign_in_dummy_hash'), 'and says so in the log');
-throws(fn() => submit('login', ['email' => 'niemand@beispiel.test', 'password' => 'falsch']), 'the next refusal', 'Anmeldung nicht möglich');
+throws(fn() => submit('login', ['login' => 'niemand@beispiel.test', 'password' => 'falsch']), 'the next refusal', 'Anmeldung nicht möglich');
 setting_cache_clear();
 is_same($repaired, (string)setting('sign_in_dummy_hash'), 'uses that one rather than making another');
 throttle_clear('login', address_identity('niemand@beispiel.test'));
@@ -426,7 +431,7 @@ sign_out();
 throttle_clear('login', $familyBucket); // a known slate, not the behaviour under test
 throttle('login', $familyBucket, 10);
 is_same(1, $hits('login', $familyBucket), 'one attempt is counted');
-$_POST = ['email' => $familyEmail];   // the address was typed; nobody got in with it
+$_POST = ['login' => $familyEmail];   // the address was typed; nobody got in with it
 forget_attempts_after_success('login');
 is_same(1, $hits('login', $familyBucket), 'a sign-in that signed nobody in clears nothing');
 forget_attempts_after_success('activate');
@@ -438,7 +443,7 @@ throttle_clear('login', $familyBucket); // the suite's own clean slate, not the 
 run_counter('UPDATE rate_limits SET window_start = window_start - 901 WHERE bucket = ?', [rate_limit_bucket('auth-ip', $ourIp)]);
 $outcome = ['in' => 0, 'refused' => 0, 'throttled' => 0];
 for ($i = 0; $i < 12; $i++) {
-    try { submit('login', ['email' => $familyEmail, 'password' => 'das-ist-nicht-es']); $outcome['in']++; }
+    try { submit('login', ['login' => $familyEmail, 'password' => 'das-ist-nicht-es']); $outcome['in']++; }
     catch (UserError $e) { str_contains($e->getMessage(), 'Zu viele') ? $outcome['throttled']++ : $outcome['refused']++; }
 }
 is_same(0, $outcome['in'], 'none of the twelve gets in');
@@ -471,8 +476,8 @@ $waitingPassword = 'Schlaeger-Tasche-2026!';
 $waitingId = make_account(['email' => $waitingEmail, 'name' => 'Familie Wartinger',
                            'password_hash' => password_hash($waitingPassword, PASSWORD_DEFAULT)]);
 $waitingBucket = address_identity($waitingEmail);
-$rightPassword = fn() => submit('login', ['email' => $waitingEmail, 'password' => $waitingPassword]);
-$wrongPassword = fn() => submit('login', ['email' => $waitingEmail, 'password' => 'falsch-getippt']);
+$rightPassword = fn() => submit('login', ['login' => $waitingEmail, 'password' => $waitingPassword]);
+$wrongPassword = fn() => submit('login', ['login' => $waitingEmail, 'password' => 'falsch-getippt']);
 // The per-IP bucket is aged too, so that how much traffic the rest of this
 // suite sent from the same address cannot decide whether this case passes.
 $ageWindow('auth-ip', $ourIp, 901);
@@ -554,7 +559,7 @@ mail_ready(true);
 run('DELETE FROM mail_jobs'); run('DELETE FROM auth_tokens');
 $mia = make_account(['email' => 'mia.stein@beispiel.test', 'name' => 'Mia Stein']);
 sign_out(); $freshIp();
-is_same(['forgot', []], submit('forgot', ['email' => ' MIA.Stein@Beispiel.test ']), 'it lands on the same page');
+is_same(['forgot', []], submit('forgot', ['login' => ' MIA.Stein@Beispiel.test ']), 'it lands on the same page');
 $jobs = rows("SELECT * FROM mail_jobs WHERE category='security'");
 is_same([['mia.stein@beispiel.test', $mia]], array_map(fn($j) => [$j['recipient'], (int)$j['account_id']], $jobs),
         'one mail, to the login’s own address, however it was typed');
@@ -569,7 +574,7 @@ $flash = (string)($_SESSION['flash']['message'] ?? '');
 is_same('Wenn dazu ein Zugang mit E-Mail-Adresse gehört, ist eine E-Mail dorthin unterwegs.', $flash, 'the answer names no address (spec S3), and is the same for an address and a username (ADR 0023 §7)');
 foreach (['niemand@beispiel.test', 'mia.stein'] as $unknown) {
     run('DELETE FROM mail_jobs'); $freshIp();
-    is_same(['forgot', []], submit('forgot', ['email' => $unknown]), 'an unknown '.$unknown.' lands on the same page');
+    is_same(['forgot', []], submit('forgot', ['login' => $unknown]), 'an unknown '.$unknown.' lands on the same page');
     is_same($flash, (string)($_SESSION['flash']['message'] ?? ''), 'with the same answer, word for word');
     is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs'), 'and nothing is sent');
 }
@@ -580,16 +585,16 @@ $ole = make_account(['email' => 'ole.stein@beispiel.test', 'state' => 'suspended
 $stale = fixture('mail_jobs', ['account_id'=>$ida, 'recipient'=>'ida.stein@beispiel.test', 'subject'=>'Einladung', 'payload'=>seal('alt'),
                                'category'=>'security', 'status'=>'queued', 'attempts'=>0, 'created_at'=>now()]);
 run('DELETE FROM mail_jobs WHERE id<>?', [$stale]); $freshIp();
-submit('forgot', ['email' => 'ida.stein@beispiel.test']);
+submit('forgot', ['login' => 'ida.stein@beispiel.test']);
 is_same('invite', (string)scalar('SELECT purpose FROM auth_tokens WHERE account_id=?', [$ida]), 'the invited login gets an invitation, not a reset');
 is_same(1, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE account_id=? AND status='queued'", [$ida]), 'one invitation waiting');
 is_same('cancelled', (string)scalar('SELECT status FROM mail_jobs WHERE id=?', [$stale]), 'and the one before it is not sent as well');
 run('DELETE FROM mail_jobs'); $freshIp();
-submit('forgot', ['email' => 'ole.stein@beispiel.test']);
+submit('forgot', ['login' => 'ole.stein@beispiel.test']);
 is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs') + (int)scalar('SELECT COUNT(*) FROM auth_tokens WHERE account_id=?', [$ole]),
         'a suspended login gets nothing, and no link');
 mail_ready(false); $freshIp();
-submit('forgot', ['email' => 'mia.stein@beispiel.test']);
+submit('forgot', ['login' => 'mia.stein@beispiel.test']);
 is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs'), 'without mail nothing is queued');
 is_same($flash, (string)($_SESSION['flash']['message'] ?? ''), 'and the answer is the same');
 mail_ready(true);
@@ -598,7 +603,7 @@ mail_ready(true);
    everything was lower-cased, which the tables' collation matches. */
 $capitalised = make_account(['email' => 'Gross.Familie@Beispiel.test']);
 $freshIp();
-submit('forgot', ['email' => 'gross.familie@beispiel.test']);
+submit('forgot', ['login' => 'gross.familie@beispiel.test']);
 is_same('Gross.Familie@Beispiel.test', (string)scalar("SELECT recipient FROM mail_jobs WHERE account_id=? AND category='security'", [$capitalised]),
         'a stored address with capitals gets its mail at the address as stored');
 
@@ -624,13 +629,13 @@ ok(security_mail_links_live(url('activate', ['token' => make_token($moving, 'ema
 case_('„Vergessen“ counts per typed address and per requester, and both on every request [S7]');
 $freshIp();
 throttle_clear('forgot', address_identity('dreimal@beispiel.test'));
-for ($i = 0; $i < 3; $i++) submit('forgot', ['email' => 'dreimal@beispiel.test']);
-throws(fn() => submit('forgot', ['email' => 'Dreimal@Beispiel.test']), 'the fourth request for one address in an hour is refused, in any capitals', 'Zu viele');
+for ($i = 0; $i < 3; $i++) submit('forgot', ['login' => 'dreimal@beispiel.test']);
+throws(fn() => submit('forgot', ['login' => 'Dreimal@Beispiel.test']), 'the fourth request for one address in an hour is refused, in any capitals', 'Zu viele');
 is_same(4, $hits('forgot-ip', $ip), 'and it still counted against the requester');
 is_same(4, $hits('forgot', address_identity('dreimal@beispiel.test')), 'counted under the address as typed, not under a login');
 $freshIp();
-for ($i = 0; $i < 10; $i++) submit('forgot', ['email' => 'anders'.$i.'@beispiel.test']);
-throws(fn() => submit('forgot', ['email' => 'elftens@beispiel.test']), 'the eleventh from one requester is refused, whatever it names', 'Zu viele');
+for ($i = 0; $i < 10; $i++) submit('forgot', ['login' => 'anders'.$i.'@beispiel.test']);
+throws(fn() => submit('forgot', ['login' => 'elftens@beispiel.test']), 'the eleventh from one requester is refused, whatever it names', 'Zu viele');
 is_same(1, $hits('forgot', address_identity('elftens@beispiel.test')), 'and still counted against that address');
 $freshIp();
 
@@ -651,7 +656,7 @@ $audited = one("SELECT * FROM audit_log WHERE action='account.password_reset' OR
 is_same([$holder, $holder], [(int)($audited['entity_id'] ?? 0), (int)($audited['actor_id'] ?? 0)], 'the reset is in the audit log, done by the holder of the link');
 is_same('Dein neues Passwort gilt ab sofort.', $_SESSION['flash']['message'] ?? null, 'and the sign-in it performs says so');
 sign_out(); $freshIp(); unset($_SESSION['flash']);
-submit('login', ['email' => 'kern@beispiel.test', 'password' => 'Federball-2026-Halle!']);
+submit('login', ['login' => 'kern@beispiel.test', 'password' => 'Federball-2026-Halle!']);
 is_same('', (string)($_SESSION['flash']['message'] ?? ''), 'the next sign-in is not warned about it');
 is_same(14, PASSWORD_RESET_SHOWN_DAYS, 'Mein Konto and the access card list resets for two weeks [I1]');
 fixture('audit_log', ['actor_id' => $holder, 'action' => 'account.password_reset', 'entity_type' => 'account',

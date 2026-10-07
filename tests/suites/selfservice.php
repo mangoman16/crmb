@@ -104,7 +104,9 @@ run("UPDATE students SET address='Hauptstraße 5, 4020 Linz', phone='+43 660 123
 case_('A family reaches its own student only');
 throws(fn() => act('student_save', ['id'=>(string)$neighbour, 'revision'=>'1', 'first_name'=>'X', 'last_name'=>'Y', 'birth_date'=>'']),
        'another student’s id is not found', 'nicht gefunden');
-throws(fn() => act('student_save', ['first_name'=>'Neu', 'last_name'=>'Kind']), 'and a family creates no student', 'Kein Zugriff');
+$students = (int)scalar('SELECT COUNT(*) FROM students');
+throws(fn() => act('student_save', ['first_name'=>'Neu', 'last_name'=>'Kind']), 'and a family creates no student: without one there is none to find', 'nicht gefunden');
+is_same($students, (int)scalar('SELECT COUNT(*) FROM students'), 'none is written');
 throws(fn() => act('contact_add', ['student_id'=>(string)$neighbour, 'owner_name'=>'X', 'relation_label'=>'Y', 'phone'=>'', 'email'=>'']),
        'nor adds a contact to somebody else’s', 'nicht gefunden');
 

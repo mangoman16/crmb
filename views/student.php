@@ -178,7 +178,7 @@ endforeach ?></div></section><?php endif ?>
 
    Backend-dev's working minimum for ADR 0023; frontend-dev gives it the
    designer's card (spec §3). */
-$loginState=login_without_sign_in($login)?'placeholder':(($login['state']==='invited' && (string)($login['email']??'')==='')?'waiting':$login['state']);
+$loginState=login_without_sign_in($login)?'placeholder':(username_login_waiting($login)?'waiting':$login['state']);
 $maySignin=$login && may_create_signin_link($user,$login);
 $lastLink=$login?(signin_links_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[0]??null):null; ?>
 <section class="card access-card" id="access">

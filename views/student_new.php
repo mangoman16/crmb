@@ -12,6 +12,9 @@
 $step=is_string($_GET['step']??null)?(string)$_GET['step']:'';
 $key=is_string($_GET['draft']??null)?(string)$_GET['draft']:'';
 $draft=student_draft($key);
+// A draft that became a child already: Back from the done page, or a step of
+// it sent again. Unless the child has been deleted since.
+$made=($madeId=student_made_from_draft($key)) ? one('SELECT id,first_name,last_name FROM students WHERE id=?',[$madeId]) : null;
 $from=in_array($_GET['from']??'',['dashboard','students','start'],true)?(string)$_GET['from']:'';
 $back=$from==='start'?'start':($from==='dashboard'?'dashboard':'students');
 
@@ -51,6 +54,13 @@ endif ?>
 </div>
 <p class="muted"><?=e(strtr(t('Versehentlich angelegt? Ganz unten auf der Seite von {name} löschen – das geht, solange es keine Beiträge gibt.',
                               'Added by mistake? Delete it at the very bottom of {name}’s page – possible while there are no charges.'),['{name}'=>$name]))?></p>
+<?php elseif($made):
+    /* Not the form again: it would make the child a second time. Where the
+       first went instead, and a fresh start for somebody else. */
+    page_head(t('Neuer Schüler','New student')); ?>
+<div class="notice"><p><?=e(strtr(t('{name} ist schon angelegt.','{name} has already been added.'),['{name}'=>$made['first_name'].' '.$made['last_name']]))?></p>
+    <div class="row-actions"><?=link_button(t('Weiter','Continue'),'student_new',['step'=>'done','id'=>$made['id']]+($from!==''?['from'=>$from]:[]))?>
+    <?=link_button(t('Noch einen Schüler anlegen','Add another student'),'student_new',$from!==''?['from'=>$from]:[],'secondary')?></div></div>
 <?php /* A refused step 1 comes back with its draft key when it was a change to
          one, and has to show step 1 again with what was typed, not step 2. */
 elseif($draft && $step!=='1' && !held_for('student_draft')):
@@ -81,8 +91,8 @@ elseif($draft && $step!=='1' && !held_for('student_draft')):
     <div class="notice warn"><strong><?=e(t('Ohne E-Mail-Adresse fehlt einiges','Without an email address, some things are missing'))?></strong>
         <p><?=e(t('Kein „Passwort vergessen“ – ein neues Passwort gibt es nur über einen neuen Link von dir. Keine Rechnungen, Erinnerungen und Hinweise per E-Mail.',
                   'No “forgot your password” – a new password only comes through a new link from you. No invoices, reminders or notices by email.'))?></p></div>
-    <?php if(!setting('privacy_ready',false)): ?>
-    <div class="notice"><p><?=e(t('Die Datenschutzerklärung unter „Einstellungen → Datenschutz“ freigeben.','Release the privacy notice under “Settings → Privacy”.'))?></p></div>
+    <?php if(($privacyMissing=privacy_notice_missing())!==''): ?>
+    <div class="notice"><p><?=e($privacyMissing)?></p></div>
     <?php else:
     start_form('student_create',['draft'=>$key,'method'=>'username']);
     input('username',t('Benutzername','Username'),username_suggested((string)$draft['first_name'],(string)$draft['last_name']),'text',true,
@@ -107,8 +117,7 @@ elseif($draft && $step!=='1' && !held_for('student_draft')):
     // Running courses with a place, each with the tariffs it offers; a course
     // with no tariff yet is offered as it is. Full courses are left out.
     $courses=[];
-    foreach(rows('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND '.current_enrolment_sql().') AS member_count'
-        .' FROM classes c WHERE c.archived=0 ORDER BY c.sort_order, c.name, c.id') as $c) {
+    foreach(training_classes() as $c) {
         if(course_is_full($c)) continue;
         $tariffs=class_tariffs((int)$c['id']);
         if(!$tariffs) $courses[$c['id'].':0']=$c['name'].' · '.t('noch ohne Tarif','no tariff yet');

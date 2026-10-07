@@ -21,11 +21,17 @@ declare(strict_types=1);
  * $page and $params are where to go about it, kept as a page name and a few
  * values rather than a URL, so a notification written today still points
  * somewhere real after the address of the portal changes.
+ *
+ * Nothing is written for a placeholder (ADR 0023 §3): nobody reads its bell,
+ * and the invitation that later turns it into a login would hand the family a
+ * list of old news. Decided here, in the statement that writes, so no caller
+ * has to remember it - the invoice, the decided request and the changed date
+ * each had to, and two did not.
  */
 function notify(int $accountId, string $kind, string $title, string $body = '', string $page = '', array $params = []): void {
-    run('INSERT INTO notifications (account_id,kind,title,body,link_page,link_params,created_at) VALUES (?,?,?,?,?,?,?)',
-        [$accountId, mb_substr($kind, 0, 40), mb_substr($title, 0, 180), mb_substr($body, 0, 500),
-         mb_substr($page, 0, 40), mb_substr(http_build_query($params), 0, 255), now()]);
+    run("INSERT INTO notifications (account_id,kind,title,body,link_page,link_params,created_at) SELECT id,?,?,?,?,?,? FROM accounts WHERE id=? AND state<>'placeholder'",
+        [mb_substr($kind, 0, 40), mb_substr($title, 0, 180), mb_substr($body, 0, 500),
+         mb_substr($page, 0, 40), mb_substr(http_build_query($params), 0, 255), now(), $accountId]);
 }
 
 /** Tell every member of staff. Used for the things only they can act on. */
@@ -219,12 +225,14 @@ function impersonator(): ?array {
 }
 
 /**
- * What the chat says while somebody looks through another's eyes: the refusal
- * of every message action, and the line the chat shows where its writing box
- * would be. One sentence, so the two cannot come to say different things.
+ * What the portal says while somebody looks through another's eyes: the refusal
+ * of every action but stopping the view and signing out (dispatch_action()),
+ * and the line the chat shows where its writing box would be. One sentence, so
+ * the two cannot come to say different things.
  */
 function viewing_refusal(): string {
-    return t('Schreiben kann nur die Person selbst. Beende zuerst die Ansicht.', 'Only the person themselves can write. Stop viewing first.');
+    return t('Beim Ansehen als jemand anderes lässt sich nichts schreiben oder ändern. Beende zuerst die Ansicht.',
+             'While viewing as somebody else, nothing can be written or changed. Stop viewing first.');
 }
 
 /**

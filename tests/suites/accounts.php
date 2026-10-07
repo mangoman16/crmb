@@ -717,7 +717,7 @@ $refusals = [
     'an address that is not one'                   => [['email' => 'nicht-gueltig'], 'Ungültige E-Mail-Adresse.'],
     'an address that is a login'                    => [['email' => 'Familie.Berg@beispiel.test'], 'Diese E-Mail-Adresse gehört schon zu einem anderen Zugang. Jede Person braucht ihre eigene. Es ist der Zugang von Kim Berg.'],
     'an address with an invitation on its way'      => [['email' => 'ida.neumann@beispiel.test'], 'An diese Adresse ist schon eine Einladung unterwegs. Du findest sie unter „Offene Einladungen“.'],
-    'an address on a student without a login'       => [['email' => 'TOM@beispiel.test'], 'Diese Adresse steht schon bei Tom Weber. Lade dort unter „Zugang zum Portal“ ein – sonst gibt es die Person zweimal.'],
+    'an address on a student without a login'       => [['email' => 'TOM@beispiel.test'], 'Diese Adresse steht schon bei Tom Weber. Ist es Tom Weber, lade dort ein; sonst braucht die eingeladene Person eine eigene Adresse – die der Eltern gehört zu den Kontakten.'],
 ];
 foreach ($refusals as $what => [$posted, $said]) {
     $before = $counts();

@@ -99,6 +99,43 @@ function claim_request(string $token): void {
 }
 
 /**
+ * How many answered forms a session remembers the landing of, for a form sent
+ * again: enough for a double tap and for Back a few pages and send, few enough
+ * to cost the session nothing.
+ *
+ * ponytail: the landing lives in the session, so a copy sent after ten newer
+ * forms, or into another session, gets claim_request()'s „bereits verarbeitet"
+ * instead. The way up is keeping the landing with the claim in form_requests,
+ * which is a migration.
+ */
+const ANSWERED_FORMS_KEPT = 10;
+
+/**
+ * Remember where an answered form went - [page, params] for go() - in the
+ * session, for its last ANSWERED_FORMS_KEPT forms. handle_post() writes it once
+ * the action has committed and its landing is final.
+ */
+function remember_answered_form(string $requestId, array $landing): void {
+    $answered = is_array($_SESSION['answered_forms'] ?? null) ? $_SESSION['answered_forms'] : [];
+    unset($answered[$requestId]);
+    $answered[$requestId] = $landing;
+    $_SESSION['answered_forms'] = array_slice($answered, -ANSWERED_FORMS_KEPT, null, true);
+}
+
+/**
+ * Where this session's answered form went, or null when it was not answered
+ * here or is no longer remembered. A form sent again - a double tap, or Back
+ * and send - lands there, and whatever the first one said is still there to
+ * read: refused, it overwrote the first one's „angelegt" with an error and
+ * went back to the form, where she did it again. claim_request() remains the
+ * refusal for a copy this session does not remember.
+ */
+function answered_form_landing(string $requestId): ?array {
+    $landing = $_SESSION['answered_forms'][$requestId] ?? null;
+    return is_array($landing) ? $landing : null;
+}
+
+/**
  * Abandon any open transaction before leaving the request.
  *
  * PHP would roll back on connection teardown anyway, but silently. Calling this

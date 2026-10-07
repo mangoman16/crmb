@@ -415,7 +415,7 @@ is_same($sent['password'], $sent['repeat'], 'and its repetition the same way');
 is_same('Trainerin', $sent['form']['admin_name'], 'and the other fields too');
 is_same(' vom Panel ', $sent['db_password'], 'only the database password arrives as typed: the server checks it, not the portal');
 create_admin_account($sent['form']['admin_name'], $sent['form']['admin_email'], $sent['password']);
-does_not_throw(fn() => submit('login', ['email' => $sent['form']['admin_email'], 'password' => ' korrektesPferdBatterie ']),
+does_not_throw(fn() => submit('login', ['login' => $sent['form']['admin_email'], 'password' => ' korrektesPferdBatterie ']),
                'signing in with the address and the password typed at setup works');
 sign_out();
 run('DELETE FROM accounts');
