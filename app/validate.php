@@ -46,6 +46,38 @@ function posted_time(string $name): ?string {
     return time_value($hour.':'.$minute);
 }
 
+/**
+ * A whole number typed into a form, from $min to $max, or a refusal in one
+ * sentence.
+ *
+ * For every number that is not an id - a course's places, a day of the month,
+ * the days until „überfällig", a port, an invoice's terms, a position in a list
+ * (ADR 0026 §5). A cast turned „1,5" into 1, „abc" into 0 - which for places
+ * means unlimited - and twenty nines into the largest integer there is, which
+ * the database then refused with an error of its own. Digits only, with a minus
+ * where $min allows one.
+ *
+ * $refusal is the sentence for a field whose range needs saying in its own words
+ * („Zahltag: 1 bis 28 …"); without it the sentence names the range.
+ */
+function whole_number_value(string $value, int $min, int $max, ?string $refusal = null): int {
+    $value=trim($value);
+    if(preg_match('/^-?[0-9]{1,18}$/D',$value) && (int)$value>=$min && (int)$value<=$max) return (int)$value;
+    throw new UserError($refusal ?? strtr(t('Bitte eine ganze Zahl von {min} bis {max} eingeben.','Please enter a whole number from {min} to {max}.'),
+                                          ['{min}'=>$min,'{max}'=>$max]));
+}
+
+/**
+ * Where a course, a tariff, a level or an age group stands in its list: a
+ * whole number, smallest first. Bounded where nobody's list reaches, so the
+ * column always takes it.
+ */
+function list_position_value(string $value): int {
+    return whole_number_value($value?:'0',-99999,99999,
+        t('Reihenfolge: bitte eine ganze Zahl von -99999 bis 99999 eingeben, die kleinste steht zuerst.',
+          'Order: please enter a whole number from -99999 to 99999; the smallest comes first.'));
+}
+
 /** A decimal from a form, accepting a comma as the separator. */
 function decimal_value(string $value): float {
     $v=str_replace(',','.',trim($value));
@@ -74,9 +106,9 @@ function map_from_post(string $key, array $spec): array {
     if(!is_array($keys)||!is_array($labels)) throw new UserError(t('Ungültige Liste.','Invalid list.'));
     $out=[];
     foreach($labels as $i=>$label) {
-        if(!is_scalar($label)||!is_scalar($keys[$i]??'')) throw new UserError(t('Ungültige Liste.','Invalid list.'));
-        $label=trim((string)$label); if($label==='') continue;
-        $code=trim((string)($keys[$i]??''));
+        $label=form_text($label); $code=form_text($keys[$i]??'');
+        if($label===null||$code===null) throw new UserError(t('Ungültige Liste.','Invalid list.'));
+        if($label==='') continue;
         if($code==='') $code='custom_'.bin2hex(random_bytes(4));
         if(!preg_match('/^[a-z0-9][a-z0-9_]{0,39}$/D',$code) || mb_strlen($label)>100)
             throw new UserError(setting_label($spec).': '.t('Bitte gültige Bezeichnungen eingeben.','Please enter valid labels.'));
@@ -122,8 +154,8 @@ function posted_time_rows(string $name): array {
     if(!is_array($hours) || !is_array($minutes)) throw new UserError(t('Ungültige Termine.','Invalid schedule.'));
     $out=[];
     foreach($hours as $i=>$hour) {
-        $hour=is_scalar($hour)?trim((string)$hour):'';
-        $minute=is_scalar($minutes[$i]??'')?trim((string)($minutes[$i]??'')):'';
+        $hour=form_text($hour)??'';
+        $minute=form_text($minutes[$i]??'')??'';
         if($hour==='' && $minute==='') { $out[$i]=null; continue; }
         if($hour==='' || $minute==='') throw new UserError(t('Bitte Stunde und Minute angeben.','Please give both the hour and the minute.'));
         $out[$i]=time_value($hour.':'.$minute);
@@ -145,9 +177,9 @@ function posted_tariff_rates(bool $recurring): array {
     if(!is_array($intervals) || !is_array($prices)) throw new UserError(t('Ungültige Preise.','Invalid prices.'));
     $out=[];
     foreach($intervals as $i=>$months) {
-        $price=is_scalar($prices[$i]??'')?trim((string)($prices[$i]??'')):'';
+        $price=form_text($prices[$i]??'')??'';
         if($price==='') continue;
-        $months=$recurring?billing_valid_interval((int)(is_scalar($months)?$months:0)):1;
+        $months=$recurring?billing_valid_interval((int)(form_text($months)??'0')):1;
         if(isset($out[$months])) continue;
         $out[$months]=cents($price);
     }
@@ -170,7 +202,7 @@ function posted_discount_templates(): array {
         if(!is_array($list)) throw new UserError(t('Ungültige Rabatte.','Invalid discounts.'));
     $out=[];
     foreach($names as $i=>$name) {
-        $name=is_scalar($name)?trim((string)$name):'';
+        $name=form_text($name)??'';
         if($name==='') continue;
         if(mb_strlen($name)>120) throw new UserError(t('Der Name des Rabatts ist zu lang.','That discount name is too long.'));
         $out[]=['name'=>$name]+discount_from_post($kinds[$i]??'percent',$months[$i]??'0',$values[$i]??'0');
@@ -188,13 +220,11 @@ function posted_discount_templates(): array {
  * asking anybody to type a negative number.
  */
 function discount_from_post(mixed $kind,mixed $months,mixed $value): array {
-    $kind=choose(is_scalar($kind)?trim((string)$kind):'percent',['percent','fixed']);
-    $months=(int)(is_scalar($months)?trim((string)$months):0);
-    if($months<-1||$months>120) throw new UserError(t('Rabattdauer: 0 bis 120 Monate, oder dauerhaft.','Discount length: 0 to 120 months, or permanent.'));
-    $raw=is_scalar($value)?trim((string)$value):'';
-    $amount=$months===0||$raw===''?0:($kind==='fixed'?cents($raw):(int)$raw);
-    if($kind==='percent'&&($amount<0||$amount>100)) throw new UserError(t('Rabatt: 0 bis 100 Prozent.','Discount: 0 to 100 per cent.'));
-    if($amount<0) throw new UserError(t('Ein Rabatt kann nicht negativ sein.','A discount cannot be negative.'));
+    $kind=choose(form_text($kind)??'percent',['percent','fixed']);
+    $months=whole_number_value((form_text($months)??'')?:'0',-1,120,
+        t('Rabattdauer: 0 bis 120 Monate, oder dauerhaft.','Discount length: 0 to 120 months, or permanent.'));
+    $raw=form_text($value)??'';
+    $amount=$months===0||$raw===''?0:($kind==='fixed'?cents($raw):whole_number_value($raw,0,100,t('Rabatt: eine ganze Zahl von 0 bis 100 Prozent.','Discount: a whole number from 0 to 100 per cent.')));
     return ['months'=>$amount===0?0:$months,'kind'=>$kind,'value'=>$amount];
 }
 
@@ -213,12 +243,13 @@ function class_days_from_post(): array {
         if(!is_array($list)) throw new UserError(t('Ungültige Termine.','Invalid schedule.'));
     $out=[]; $seen=[];
     foreach($weekdays as $i=>$weekday) {
-        if(!is_scalar($weekday) || trim((string)$weekday)==='') continue;
-        $day=(int)choose(trim((string)$weekday),array_map('strval',array_keys(weekdays())));
+        $weekday=form_text($weekday)??'';
+        if($weekday==='') continue;
+        $day=(int)choose($weekday,array_map('strval',array_keys(weekdays())));
         $from=$starts[$i]??null; $to=$ends[$i]??null;
         if($from && $to && $from>=$to)
             throw new UserError(weekdays()[$day].': '.t('Das Ende muss nach dem Beginn liegen.','The end time must be after the start time.'));
-        $where=is_scalar($places[$i]??'')?trim((string)($places[$i]??'')):'';
+        $where=form_text($places[$i]??'')??'';
         if(mb_strlen($where)>160) throw new UserError(t('Der Ort ist zu lang.','That place name is too long.'));
         // Two entries for the same weekday at the same time is a double-tap on a
         // phone, not a course that meets twice at once.

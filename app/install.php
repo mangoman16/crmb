@@ -38,15 +38,23 @@ function install_e(mixed $value): string {
 
 /**
  * A submitted field as every form here reads it: text, without the spaces
- * around it. null when it is not text at all, which only a crafted request sends.
+ * around it. null when it is not text at all, which only a crafted request sends:
+ * a list, or bytes that are not UTF-8 - which the database refuses with an error
+ * of its own on every text column, after the action has begun (ADR 0026 §5).
  *
  * The one copy of the rule. It lives here because the installer runs before the
  * rest of the application is loaded; post() uses it for every other form, sign-in
- * included. Setup once kept the spaces around the first administrator's password
- * while sign-in removed them, so a password typed with a stray space was stored
- * as one thing and checked as another, and she could never sign in.
+ * included, and every list a form posts is read item by item through it. Setup
+ * once kept the spaces around the first administrator's password while sign-in
+ * removed them, so a password typed with a stray space was stored as one thing
+ * and checked as another, and she could never sign in. Checked with PCRE rather
+ * than mbstring, which the installer has not yet confirmed the server has.
  */
-function form_text(mixed $value): ?string { return is_scalar($value) ? trim((string)$value) : null; }
+function form_text(mixed $value): ?string {
+    if (!is_scalar($value)) return null;
+    $text = trim((string)$value);
+    return preg_match('//u', $text) === 1 ? $text : null;
+}
 
 /**
  * The text the installer's form sent, read the way every other form is read.

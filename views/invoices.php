@@ -19,7 +19,7 @@ $outstanding=$totals['outstanding_cents'];
 // after invoices were paid and left „Offen" - shows the last one.
 $perPage=50;
 $pages=max(1,(int)ceil(($filter==='all'?array_sum($counts):$counts[$filter])/$perPage));
-$pageNum=min($pages,max(1,(int)($_GET['p']??1)));
+$pageNum=min($pages,page_number());
 $shown=invoice_list($filter,$pageNum,$perPage);
 
 page_head(t('Rechnungen','Invoices'),

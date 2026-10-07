@@ -376,59 +376,21 @@ function pending_contact_count(int $accountId): int {
 }
 
 /**
- * Accounts this family already has permission to write to.
+ * Whom „Neue Nachricht" offers: the coaching team, first, because they are the
+ * answer to "who can I ask about this" and should never be something to go
+ * looking for - and for staff, every family too.
  *
- * Staff are always in the list, first, because they are the answer to "who can
- * I ask about this" and should never be something to go looking for.
+ * A family is offered the team and nobody else. Chats between students have
+ * closed (ADR 0022 §11.3), so no other family is listed, agreed to before or
+ * not, and none can be asked any more.
  */
 function contacts_for(array $user): array {
     $cols = chat_person_columns('a');
     $staff = rows("SELECT $cols FROM accounts a WHERE a.role IN ('admin','trainer','manager')"
         ." AND a.state='active' AND a.id<>? ORDER BY a.name", [(int)$user['id']]);
-    if (is_staff($user))
-        return array_merge($staff, rows("SELECT $cols FROM accounts a WHERE a.role='student'"
-            ." AND a.state='active' ORDER BY a.name"));
-    $agreed = rows("SELECT $cols"
-        .' FROM contact_requests r JOIN accounts a ON a.id = IF(r.from_account_id=?, r.to_account_id, r.from_account_id)'
-        ." WHERE r.state='accepted' AND (r.from_account_id=? OR r.to_account_id=?) AND a.state='active'"
-        .' ORDER BY a.name', [(int)$user['id'], (int)$user['id'], (int)$user['id']]);
-    return array_merge($staff, $agreed);
-}
-
-/**
- * Ask somebody if you may write to them.
- *
- * One row per pair per direction, so pressing the button twice on a slow
- * connection asks once. A request to somebody who already asked you is taken as
- * an answer: both of you want this, so there is nothing left to decide.
- */
-function request_contact(array $from, int $toId, string $message): string {
-    if (is_staff($from)) throw new UserError(t('Du darfst ohnehin schreiben.', 'You may write to them anyway.'));
-    $to = one("SELECT * FROM accounts WHERE id=? AND state='active'", [$toId]);
-    if (!$to || (int)$to['id'] === (int)$from['id']) throw new UserError(t('Dieses Konto gibt es nicht.', 'No such account.'));
-    if (is_staff($to)) throw new UserError(t('Der Trainerin kannst du immer schreiben.', 'You can always write to the trainer.'));
-    return transactional(function () use ($from, $toId, $message): string {
-        $theirs = one("SELECT * FROM contact_requests WHERE from_account_id=? AND to_account_id=? FOR UPDATE", [$toId, (int)$from['id']]);
-        if ($theirs && $theirs['state'] === 'pending') {
-            run("UPDATE contact_requests SET state='accepted', decided_at=? WHERE id=?", [now(), (int)$theirs['id']]);
-            audit('contact.accepted', 'account', $toId);
-            return 'accepted';
-        }
-        $mine = one('SELECT * FROM contact_requests WHERE from_account_id=? AND to_account_id=? FOR UPDATE', [(int)$from['id'], $toId]);
-        if ($mine) {
-            if ($mine['state'] === 'accepted') return 'accepted';
-            if ($mine['state'] === 'pending') throw new UserError(t('Die Anfrage läuft schon.', 'That request is already waiting.'));
-            // A declined request may be asked again, once, by clearing the old
-            // answer rather than piling up a second row.
-            run("UPDATE contact_requests SET state='pending', message=?, decided_at=NULL, created_at=? WHERE id=?",
-                [mb_substr($message, 0, 300), now(), (int)$mine['id']]);
-        } else {
-            run("INSERT INTO contact_requests (from_account_id,to_account_id,state,message,created_at) VALUES (?,?,'pending',?,?)",
-                [(int)$from['id'], $toId, mb_substr($message, 0, 300), now()]);
-        }
-        audit('contact.requested', 'account', $toId);
-        return 'pending';
-    });
+    if (!is_staff($user)) return $staff;
+    return array_merge($staff, rows("SELECT $cols FROM accounts a WHERE a.role='student'"
+        ." AND a.state='active' ORDER BY a.name"));
 }
 
 /** Answer one. Only the person who was asked may. */

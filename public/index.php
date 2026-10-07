@@ -23,6 +23,8 @@ try {
     require ROOT.'/app/actions_config.php';
     require ROOT.'/app/ui.php';
     $page=$_GET['page']??'dashboard';
+    // Every page there is. allowed_pages() reads this list for a way back that
+    // an action works out itself, so it is written here and only here.
     $allowed=['dashboard','start','students','student','student_new','payments','classes','accounts','messages','news','outbox','manage','invoices','attendance','download','settings','history','profile','login','forgot','activate','unsubscribe','privacy','icon','manifest','brand','logo'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
     // The trail a problem report carries. Here, before the POST branch, because
@@ -35,12 +37,16 @@ try {
     if($_SERVER['REQUEST_METHOD']==='POST') {
         try {
             go(...handle_post());
-        } catch(UserError $ex) {flash($ex->getMessage(),'error');remember_input(post('action'));}
+        } catch(SignInRequired) {go('login');}
+        // The action is read here as the form's own bookkeeping, which cannot
+        // refuse: post() would answer a list with a second refusal, from inside
+        // this catch, and the way back would end in „Kein Zugriff".
+        catch(UserError $ex) {flash($ex->getMessage(),'error');remember_input(form_bookkeeping('action'));}
         catch(PDOException $ex) {
             // What the database refused is written down for the administrators
             // (ADR 0012), and the person is told in a sentence. A form sent
             // twice never gets here: handle_post() answers it.
-            remember_input(post('action'));
+            remember_input(form_bookkeeping('action'));
             capture_error($ex);
             flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: ein Wert ist schon vergeben, oder verknüpfte Daten sind vorhanden.','Cannot save: a value is already taken, or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
         }
@@ -89,6 +95,10 @@ try {
     else require ROOT.'/views/'.$page.'.php';
     $content=ob_get_clean();
     require ROOT.'/views/layout.php';
+} catch(SignInRequired) {
+    // A page that needs somebody signed in, asked for by nobody.
+    if(ob_get_level())ob_end_clean();
+    go('login');
 } catch(UserError $ex) {
     // A record that is gone is not a refusal. "Kein Zugriff" over "Kurs nicht
     // gefunden" tells the trainer she is not allowed to see her own course,

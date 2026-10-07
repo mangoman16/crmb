@@ -1223,7 +1223,7 @@ do {
    while the entries that matter drop out of it. */
 foreach (['audit' => 'writes the change log', 'set_setting' => 'writes the settings table',
           'notify' => 'writes a notification row', 'record_consent' => 'writes the consent log',
-          'send_account_token' => 'writes an auth token', 'request_contact' => 'writes a contact request',
+          'send_account_token' => 'writes an auth token', 'decide_contact' => 'answers a contact request',
           'direct_thread' => 'creates the conversation', 'notify_payment' => 'queues mail',
           'queue_mail' => 'writes the outbox'] as $name => $what)
     ok(isset($writers[$name]), $name.'() is recognised as writing on the main connection, because it '.$what);
@@ -1237,7 +1237,6 @@ foreach (['run' => 'hands over whatever statement its caller gave it',
    seven and nobody would know which one was new. */
 $throttled = [
     'app/actions_messages.php message_send'   => 'a family writing a message',
-    'app/actions_messages.php contact_request'=> 'a family asking to write to somebody',
     'app/actions_config.php payment_remind'   => 'the reminder run, which sends mail',
     'app/actions_config.php feedback_send'    => 'a problem report, which can carry a file',
     'app/actions_settings.php smtp_test'      => 'the SMTP test, which talks to the mail server',

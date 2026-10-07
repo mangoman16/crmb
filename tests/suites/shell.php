@@ -298,8 +298,14 @@ is_same('payments', $params['tab'] ?? '', 'and the same tab');
 [$target, $params] = act('feedback_send', ['message'=>'Die Liste ist leer.', 'page'=>'news',
     'return_page'=>'news', 'return_id'=>'0', 'return_tab'=>'']);
 is_same(['news', []], [$target, $params], 'a page without an id gets none made up for it');
+// While the router answers, its own list of pages is the rule (allowed_pages()):
+// shaped like a page and not one of them, it is the overview, as after a refusal.
+$GLOBALS['allowed'] = ['dashboard', 'student', 'news'];
+[$target] = act('feedback_send', ['message'=>'Die Seite gibt es nicht.', 'page'=>'layout', 'return_page'=>'layout']);
+unset($GLOBALS['allowed']);
+is_same('dashboard', $target, 'a page the router does not open leads to the overview');
 sign_in_as($admin);
-run("UPDATE feedback SET state='done' WHERE message IN ('Der Beleg ist weg.','Die Liste ist leer.')");
+run("UPDATE feedback SET state='done' WHERE message IN ('Der Beleg ist weg.','Die Liste ist leer.','Die Seite gibt es nicht.')");
 
 case_('Reports can be worked through');
 is_same(1, unread_feedback(), 'one is new');

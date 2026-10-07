@@ -139,14 +139,24 @@ function tracked_entity(string $entity): array {
 }
 
 /**
- * What an entity is called in the change log. One no longer in
- * tracked_entities() - a feature that has gone, whose lines are kept - is named
- * by the name it was stored under rather than refusing to draw the page, so the
- * log outlives any feature (ADR 0026 §7).
+ * What an entity is called in the change log.
+ *
+ * One no longer in tracked_entities() is a feature that has gone, whose lines
+ * stay until the horizon removes them (ADR 0026 §7). Each of those is named as
+ * it was, marked as former - a table's name reads as machine-written - and a
+ * name nobody wrote here is shown as it was stored rather than refusing to draw
+ * the page, so the log outlives any feature.
  */
 function entity_label(string $entity): string {
-    $e = tracked_entities()[$entity] ?? null;
-    return $e ? t($e['label'][0], $e['label'][1]) : $entity;
+    $former = [
+        'field_definitions' => ['Früheres eigenes Feld', 'Former custom field'],
+        'message_templates' => ['Frühere E-Mail-Vorlage', 'Former email template'],
+        'skills'            => ['Frühere Fähigkeit', 'Former skill'],
+        'skill_areas'       => ['Früherer Bereich', 'Former skill area'],
+        'rating_scales'     => ['Frühere Skala', 'Former rating scale'],
+    ];
+    $label = tracked_entities()[$entity]['label'] ?? $former[$entity] ?? null;
+    return $label ? t($label[0], $label[1]) : $entity;
 }
 
 /** The current state of a row, or null when it does not exist. */

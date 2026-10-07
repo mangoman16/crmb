@@ -96,6 +96,9 @@ function billing_current_period(): string { return date('Y-m'); }
 function billing_valid_period(string $period): string {
     if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $period))
         throw new UserError(t('Bitte einen Monat im Format JJJJ-MM angeben.', 'Please give a month as YYYY-MM.'));
+    // In the years every date is held to (date_value()): the charges of 9999-12
+    // would fall due in a year the database cannot store.
+    date_value($period . '-01');
     return $period;
 }
 

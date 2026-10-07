@@ -66,7 +66,7 @@ function may_see_account_picture(array $viewer, array $account): bool {
         || (int)$viewer['id'] === (int)($account['id'] ?? 0)
         || (isset($account['role']) && is_staff($account));
 }
-function require_user(): array { $a=current_user(); if(!$a) go('login'); return $a; }
+function require_user(): array { $a=current_user(); if(!$a) throw new SignInRequired(); return $a; }
 function require_staff(): array { $a=require_user(); if(!is_staff($a)) throw new UserError(t('Kein Zugriff.','Access denied.')); return $a; }
 function require_admin(): array { $a=require_user(); if($a['role']!=='admin') throw new UserError(t('Nur für Administratoren.','Administrators only.')); return $a; }
 /**
@@ -706,12 +706,26 @@ function account_mail_ready(): bool { return account_mail_missing()===''; }
  * What is in the way of sending a link, as the sentences that say what to do,
  * or '' when nothing is. Every refusal quotes this, so each one names the step
  * that is actually missing and where to take it.
+ *
+ * Where only an administrator can take it, as privacy_notice_missing() does:
+ * an administrator is sent to the tab, anybody else is told who sets it up
+ * rather than sent to a page they cannot open - in one sentence when both
+ * steps are missing, not the same opening twice.
  */
 function account_mail_missing(): string {
-    $missing=[];
-    if(!smtp_tested_ok()) $missing[]=t('E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP“ die Verbindung prüfen.',
-                                       'Test sending email first: check the connection under “Settings → SMTP”.');
-    if(($privacy=privacy_notice_missing())!=='') $missing[]=$privacy;
+    $mail=!smtp_tested_ok();
+    $privacy=privacy_notice_missing();
+    if(!is_admin()) {
+        if(!$mail) return $privacy;
+        return $privacy!==''
+            ? t('Eine Administratorin muss zuerst den E-Mail-Versand einrichten und testen und die Datenschutzerklärung freigeben.',
+                'An administrator has to set up and test sending email and release the privacy notice first.')
+            : t('Eine Administratorin muss zuerst den E-Mail-Versand einrichten und testen.',
+                'An administrator has to set up and test sending email first.');
+    }
+    $missing=$mail?[t('E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP“ die Verbindung prüfen.',
+                      'Test sending email first: check the connection under “Settings → SMTP”.')]:[];
+    if($privacy!=='') $missing[]=$privacy;
     return implode(' ',$missing);
 }
 

@@ -48,19 +48,6 @@ function dispatch_messages(string $action): array {
                       :t('Nachricht entfernt. Du kannst sie an derselben Stelle wiederherstellen.','Message removed. You can restore it in the same place.'));
         return ['messages',['id'=>$threadId,'#'=>'m'.$messageId]];
 
-    case 'contact_request':
-        $u=require_user();throttle('contact',(string)$u['id'],20,3600);
-        $to=(int)post('to');
-        $state=request_contact($u,$to,text_limit('message',300));
-        if($state==='accepted') {
-            notify($to,'message',t('Ihr könnt euch jetzt schreiben','You can write to each other now'),$u['name'],'messages',[]);
-            flash(t('Ihr könnt euch jetzt schreiben.','You can write to each other now.'));
-        } else {
-            notify($to,'message',t('Jemand möchte dir schreiben','Somebody would like to write to you'),$u['name'],'messages',['contacts'=>1]);
-            flash(t('Anfrage geschickt. Sobald zugestimmt wird, könnt ihr schreiben.','Request sent. Once they agree, you can write to each other.'));
-        }
-        return ['messages',['contacts'=>1]];
-
     case 'contact_decide':
         $u=require_user();
         $accept=post('decision')==='accept';

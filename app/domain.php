@@ -184,14 +184,14 @@ function student_login_counts(): array {
  * there is none (lapsed links are pruned every night). An unknown filter is
  * 'all'. The link's date only, never its hash.
  *
- * The page is held to what an offset can be: a ?p= of twenty nines would
- * otherwise multiply out past the largest integer into a float, which the
- * database refuses as an OFFSET - a 503 for a typo. Past the last page, a page
- * is empty.
+ * The page is held as every pager holds it (page_in_range()): a page number
+ * of twenty nines would otherwise multiply out past the largest integer into a
+ * float, which the database refuses as an OFFSET - a 503 for a typo. Past the
+ * last page, a page is empty.
  */
 function student_logins(string $filter, int $page): array {
     $condition = student_login_filters()[$filter] ?? student_login_filters()['all'];
-    $offset = (min(max(1, $page), intdiv(PHP_INT_MAX, STUDENT_LOGINS_PER_PAGE)) - 1) * STUDENT_LOGINS_PER_PAGE;
+    $offset = (page_in_range($page) - 1) * STUDENT_LOGINS_PER_PAGE;
     return rows('SELECT a.*, s.id AS student_id, s.first_name, s.last_name,'
         ." (SELECT MAX(t.expires_at) FROM auth_tokens t WHERE t.account_id=a.id AND t.purpose IN ('invite','signin')) AS link_expires_at"
         .' FROM students s JOIN accounts a ON a.id=s.account_id WHERE '.$condition

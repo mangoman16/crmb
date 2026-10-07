@@ -138,10 +138,12 @@ case_('A line about a feature that has gone is named, not refused');
 foreach (['message_templates'=>'Zahlungserinnerung', 'field_definitions'=>'T-Shirt-Größe'] as $entity => $label)
     fixture('record_versions', ['entity'=>$entity, 'entity_id'=>1, 'operation'=>'update', 'label'=>$label,
         'before_json'=>json_encode(['name'=>'Alt']), 'after_json'=>json_encode(['name'=>'Neu']), 'actor_id'=>$admin, 'created_at'=>now()]);
-is_same(['message_templates', 'field_definitions'], [entity_label('message_templates'), entity_label('field_definitions')],
-        'an entity no longer tracked is named by the name it was stored under');
+is_same(['Frühere E-Mail-Vorlage', 'Früheres eigenes Feld'], [entity_label('message_templates'), entity_label('field_definitions')],
+        'an entity no longer tracked is named as it was, marked as former, never by its table');
+is_same('irgendetwas_altes', entity_label('irgendetwas_altes'), 'and one nobody named is shown as it was stored, rather than refusing the page');
 $page = render_view('history');
-ok(str_contains($page, 'Zahlungserinnerung') && str_contains($page, 'T-Shirt-Größe'), 'and the change log draws both lines');
+ok(str_contains($page, e('Geändert: Frühere E-Mail-Vorlage · Zahlungserinnerung')) && str_contains($page, e('Geändert: Früheres eigenes Feld · T-Shirt-Größe')),
+   'and the change log draws both lines, in words');
 ok(str_contains($page, 'Früheres eigenes Feld') && str_contains($page, 'rot, blau'), 'and the student’s line with its former custom values');
 
 case_('A staff save that changes nothing has nothing to say');

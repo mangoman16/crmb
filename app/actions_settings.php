@@ -15,15 +15,13 @@ function dispatch_settings_or_messages(string $action): array {
         // one thing and the tariff says another - and the enrolments that follow
         // the tariff would be billed at a price that is not written down.
         if(!isset($rates[$interval]))throw new UserError(t('Für den üblichen Zeitraum ist kein Preis eingetragen.','There is no price for the usual interval.'));
-        $dueDay=(int)post('due_day','1');
-        if($dueDay<1||$dueDay>28)throw new UserError(t('Zahltag: 1 bis 28. Der 29. bis 31. existiert nicht in jedem Monat.','Payment day: 1 to 28. The 29th to 31st do not exist in every month.'));
-        $grace=(int)post('grace_days','7');
-        if($grace<0||$grace>365)throw new UserError(t('Frist bis „überfällig“: 0 bis 365 Tage.','Days before overdue: 0 to 365.'));
+        $dueDay=whole_number_value(post('due_day','1'),1,28,t('Zahltag: 1 bis 28. Der 29. bis 31. existiert nicht in jedem Monat.','Payment day: 1 to 28. The 29th to 31st do not exist in every month.'));
+        $grace=whole_number_value(post('grace_days','7'),0,365,t('Frist bis „überfällig“: 0 bis 365 Tage.','Days before overdue: 0 to 365.'));
         $firstPeriod=choose(post('first_period','prorate'),array_keys(billing_first_period_rules()));
         $templates=posted_discount_templates();
         $args=[$classId,required_text('name',120),text_limit('description',300),
                $recurring?'recurring':'once',$interval,$dueDay,$grace,$firstPeriod,
-               (int)post('sort_order','0'),post('archived')?1:0];
+               list_position_value(post('sort_order')),post('archived')?1:0];
         $id=transactional(function() use ($id,$args,$rates,$templates) {
             if($id)run('UPDATE tariffs SET class_id=?,name=?,description=?,period=?,interval_months=?,due_day=?,grace_days=?,first_period=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
             else {run('INSERT INTO tariffs (class_id,name,description,period,interval_months,due_day,grace_days,first_period,sort_order,archived) VALUES (?,?,?,?,?,?,?,?,?,?)',$args);$id=(int)db()->lastInsertId();}
@@ -45,7 +43,7 @@ function dispatch_settings_or_messages(string $action): array {
     case 'smtp_save':
         require_admin();$old=setting('smtp',[]);$host=required_text('host',253);
         if(!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9.-]*$/D',$host))throw new UserError(t('SMTP-Hostname ohne Protokoll oder Pfad eingeben.','Enter an SMTP hostname without a protocol or path.'));
-        $port=(int)post('port');if($port<1 || $port>65535)throw new UserError(t('Bitte einen Port zwischen 1 und 65535 eingeben – meist 587 oder 465.','Please enter a port between 1 and 65535 – usually 587 or 465.'));
+        $port=whole_number_value(post('port'),1,65535,t('Bitte einen Port zwischen 1 und 65535 eingeben – meist 587 oder 465.','Please enter a port between 1 and 65535 – usually 587 or 465.'));
         $s=['host'=>$host,'port'=>$port,'username'=>text_limit('username',254),'password'=>post('smtp_password')!==''?seal(post('smtp_password')):($old['password']??''),'encryption'=>choose(post('encryption'),['tls','ssl']),'from_email'=>email_value(post('from_email')),'from_name'=>required_text('from_name',120)];
         if(post('clear_password'))$s['password']='';
         // The last test was of the old settings, and smtp_tested_ok() would go
@@ -118,8 +116,10 @@ function dispatch_settings_or_messages(string $action): array {
         // same way, because a half-translated notice is not one to release.
         if(post('privacy_ready')) foreach(['Deutsch'=>$de]+($en!==''?['English'=>$en]:[]) as $which=>$text) {
             if(mb_strlen($text)<300) throw new UserError(t('Die Fassung „','The “').$which.t('“ ist noch zu kurz, um freigegeben zu werden.','” version is still too short to be released.'));
-            // Quoted by its start: enough to find it, and some run to 300 characters.
-            if($left=privacy_draft_placeholders($text)) throw new UserError(t('In der Fassung „','In the “').$which.t('“ steht noch ein Platzhalter: ','” version there is still a placeholder: ').mb_strimwidth($left[0],0,100,'…'));
+            // Quoted by its start: enough to find it, and some run to 300
+            // characters. At most 60, the most of what was typed any refusal
+            // repeats (ADR 0026 §5).
+            if($left=privacy_draft_placeholders($text)) throw new UserError(t('In der Fassung „','In the “').$which.t('“ steht noch ein Platzhalter: ','” version there is still a placeholder: ').mb_strimwidth($left[0],0,60,'…'));
         }
         set_setting('privacy_de',$de);set_setting('privacy_en',$en);set_setting('privacy_ready',(bool)post('privacy_ready'));
         audit('privacy.saved','settings');flash(t('Datenschutzerklärung gespeichert.','Privacy notice saved.'));return ['settings',['tab'=>'privacy']];

@@ -1,6 +1,6 @@
 <?php
 $staff=is_staff($user);$f=filters_from($_GET);
-$all=filtered_students($f,$staff?null:(int)$user['id']);$pageNum=max(1,(int)($_GET['p']??1));$visible=array_slice($all,($pageNum-1)*50,50);
+$all=filtered_students($f,$staff?null:(int)$user['id']);$pageNum=page_number();$visible=array_slice($all,($pageNum-1)*50,50);
 $overdueBy=balances(true);$coursePrices=course_prices_by_student();
 // The two ways to add a person (ADR 0021, §3).
 page_head(t('Schüler','Students'),count($all).' '.t('in dieser Auswahl','in this selection'),

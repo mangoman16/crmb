@@ -157,6 +157,10 @@ if($picking): ?>
     endif;
     if(!$groups && !$team && !$others): ?><p class="chat-empty"><?=e(t('Niemand mit diesem Namen.','Nobody by that name.'))?></p><?php endif ?>
     <?php else:
+    /* A family writes to the coaching team (ADR 0022 §11.3): chats between
+       students have closed, so no other family is listed and nobody can be
+       asked. A request made before that still waits here to be answered,
+       until the requests go with the rest of the chat's extras. */
     $requests=contact_requests_for($me);
     if($requests): ?>
     <h2 class="chat-section"><?=e(t('Möchte dir schreiben','Would like to write to you'))?></h2>
@@ -175,22 +179,7 @@ if($picking): ?>
     <?php endforeach; endif ?>
     <h2 class="chat-section"><?=e(t('Trainerteam','Coaching team'))?></h2>
     <?php foreach($team as $p) $person($p,role_label((string)$p['role']));
-    if($others): ?><h2 class="chat-section"><?=e(t('Kinder','Children'))?></h2><?php foreach($others as $p) $person($p); endif;
-    $strangers=rows("SELECT a.id,a.name,a.avatar_name,a.role FROM accounts a WHERE a.role='student' AND a.state='active' AND a.id<>?"
-        ." AND NOT EXISTS (SELECT 1 FROM contact_requests r WHERE (r.from_account_id=a.id AND r.to_account_id=?) OR (r.from_account_id=? AND r.to_account_id=a.id))"
-        .' ORDER BY a.name LIMIT 100',[$me,$me,$me]);
-    if($strangers): ?>
-    <details class="ask-others"><summary><?=e(t('Jemand anderen fragen','Ask somebody else'))?></summary>
-    <p class="muted"><?=e(t('Andere Familien bekommen erst eine Nachricht von dir, wenn sie zugestimmt haben. Der Trainerin kannst du immer schreiben.','Other families only get a message from you once they have agreed. You can always write to the trainer.'))?></p>
-    <?php foreach($strangers as $c): ?>
-    <div class="record-row with-form">
-        <div class="account-identity"><?=avatar($c)?><div><strong><?=e($c['name'])?></strong></div></div>
-        <?php start_form('contact_request',['to'=>$c['id']],'row-form');
-        input('message',t('Kurz dazu','A word about it'),'','text',false,'',t('Wer bist du?','Who are you?'));
-        submit_button(t('Anfragen','Ask'),'subtle');?></form>
-    </div>
-    <?php endforeach ?></details>
-    <?php endif; endif; endif ?>
+    endif; endif ?>
 
 <?php
 // ---------------------------------------------------------------------------

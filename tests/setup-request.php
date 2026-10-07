@@ -13,8 +13,9 @@ declare(strict_types=1);
  * run's own folder, and nothing it does can reach the portal's.
  *
  * The request file names the method, the host, whether it arrived over HTTPS,
- * any forwarded headers, the fields posted and the cookies sent. What comes back
- * on the last line is JSON: the status the page set and the page itself.
+ * any forwarded headers, the address's query, the fields posted and the cookies
+ * sent. What comes back on the last line is JSON: the status the page set and
+ * the page itself.
  */
 
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
@@ -30,7 +31,7 @@ $_SERVER['SERVER_PORT'] = $request['https'] ? 443 : 80;
 if ($request['https']) $_SERVER['HTTPS'] = 'on';
 foreach ((array)($request['headers'] ?? []) as $name => $value)
     $_SERVER['HTTP_' . strtoupper(str_replace('-', '_', (string)$name))] = (string)$value;
-$_GET = [];
+$_GET = (array)($request['query'] ?? []);
 $_POST = (array)$request['post'];
 $_COOKIE = (array)$request['cookie'];
 

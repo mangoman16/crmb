@@ -50,12 +50,17 @@ throws(fn() => chat_list(current_user(), true), 'nor list everybody’s', 'Nur f
 sign_in_as($berger);
 throws(fn() => thread_record((int)$thread['id']), 'nor can another family', 'nicht gefunden');
 
-case_('Writing to another family has to be agreed to first');
+case_('Another family cannot be asked any more, and a request from before waits to be answered');
+/* Chats between students have closed (ADR 0022 §11.3): asking another family
+   went, and a request made before still waits until the requests go with the
+   rest of the chat's extras. */
 sign_in_as($hofer);
 throws(fn() => direct_thread(current_user(), $berger), 'not before they agree', 'noch nicht zugestimmt');
-is_same('pending', request_contact(current_user(), $berger, 'Hallo, wir sind im Montagstraining.'), 'so ask');
-is_same(1, pending_contact_count($berger), 'and they are asked');
-throws(fn() => request_contact(current_user(), $berger, ''), 'asking twice is refused', 'läuft schon');
+throws(fn() => act('contact_request', ['to'=>(string)$berger, 'message'=>'Hallo']), 'asking another family is refused', 'Unbekannte Aktion');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM contact_requests'), 'and nothing is written');
+fixture('contact_requests', ['from_account_id'=>$hofer, 'to_account_id'=>$berger, 'state'=>'pending',
+                             'message'=>'Hallo, wir sind im Montagstraining.', 'created_at'=>now()]);
+is_same(1, pending_contact_count($berger), 'a request from before is waiting');
 is_same(false, may_message(current_user(), $berger), 'and still nothing may be written');
 
 case_('Once they agree, both directions open');
@@ -66,21 +71,19 @@ sign_in_as($hofer);
 is_same(true, may_message(current_user(), $berger), 'and so may the one who asked');
 is_same(0, pending_contact_count($berger), 'nothing is waiting any more');
 
-case_('Declining keeps it shut, and may be asked again once');
-sign_in_as($hofer);
-request_contact(current_user(), $gruber, 'Hallo');
+case_('Declining keeps it shut');
+$declined = fixture('contact_requests', ['from_account_id'=>$hofer, 'to_account_id'=>$gruber, 'state'=>'pending',
+                                         'message'=>'Hallo', 'created_at'=>now()]);
 sign_in_as($gruber);
-decide_contact((int)contact_requests_for($gruber)[0]['id'], false);
+decide_contact($declined, false);
 sign_in_as($hofer);
 is_same(false, may_message(current_user(), $gruber), 'still shut');
-is_same('pending', request_contact(current_user(), $gruber, 'Noch einmal'), 'and asking again is allowed');
-is_same(1, (int)scalar('SELECT COUNT(*) FROM contact_requests WHERE from_account_id=? AND to_account_id=?', [$hofer, $gruber]),
-        'on the same row rather than a second one');
 
 case_('Only the person who was asked may answer');
+run("UPDATE contact_requests SET state='pending', decided_at=NULL WHERE id=?", [$declined]);
 sign_in_as($berger);
-$open = (int)scalar("SELECT id FROM contact_requests WHERE state='pending' ORDER BY id DESC LIMIT 1");
-throws(fn() => decide_contact($open, true), 'somebody else’s request is not theirs to accept', 'gibt es nicht');
+throws(fn() => decide_contact($declined, true), 'somebody else’s request is not theirs to accept', 'gibt es nicht');
+run("UPDATE contact_requests SET state='declined', decided_at=? WHERE id=?", [now(), $declined]);
 
 case_('A direct conversation is private, from both sides');
 sign_in_as($hofer);
@@ -142,17 +145,14 @@ throws(fn() => thread_record($direct), 'and the conversation is still shut to th
 case_('A staff member may write to a family without being asked');
 sign_in_as($trainer);
 is_same(true, may_message(current_user(), $hofer), 'she may');
-throws(fn() => request_contact(current_user(), $hofer, ''), 'so she has nothing to ask for', 'ohnehin');
 
 case_('Deleting an account takes their side of a private conversation with it');
 // threads.account_id cascades, so the conversation goes when the family who
 // started it does. That is the right answer for a family asking to be forgotten,
 // and it is worth being explicit about: the other side loses the thread too.
 $leaving = make_account(['role'=>'student', 'name'=>'Familie Zieht Weg']);
-sign_in_as($leaving);
-request_contact(current_user(), $gruber, 'Hallo');
-sign_in_as($gruber);
-decide_contact((int)contact_requests_for($gruber)[0]['id'], true);
+fixture('contact_requests', ['from_account_id'=>$leaving, 'to_account_id'=>$gruber, 'state'=>'accepted',
+                             'message'=>'Hallo', 'created_at'=>now(), 'decided_at'=>now()]);
 sign_in_as($leaving);
 $goodbye = direct_thread(current_user(), $gruber);
 act('message_send', ['thread_id'=>(string)$goodbye, 'body'=>'Wir ziehen weg.']);
@@ -261,7 +261,7 @@ $unread = unread_thread_ids(current_user());
 ok(in_array($group, $unread, true) && !array_intersect([$withOther, $direct], $unread), 'and so does the unread count');
 ok(!may_write_thread(current_user(), thread_record($group)), 'nowhere is offered to write');
 foreach ([['message_send', ['thread_id'=>(string)$group, 'body'=>'Hallo']], ['message_send', ['to'=>(string)$admin, 'body'=>'Hallo']],
-          ['contact_request', ['to'=>(string)$gruber]], ['contact_decide', ['id'=>'1', 'accept'=>'1']]] as [$action, $fields])
+          ['contact_decide', ['id'=>'1', 'accept'=>'1']]] as [$action, $fields])
     throws(fn() => act($action, $fields), $action.' is refused, in the sentence the chat shows for it', viewing_refusal());
 render_view('messages', ['id'=>(string)$group]);
 ok(in_array($group, unread_thread_ids(current_user()), true), 'opening the group does not mark it read for the child');
@@ -286,9 +286,11 @@ fixture('contact_requests', ['from_account_id'=>$neumann, 'to_account_id'=>$hofe
                              'message'=>'Wir sind neu im Dienstagskurs.', 'created_at'=>now()]);
 fixture('contact_requests', ['from_account_id'=>$wagner, 'to_account_id'=>$hofer, 'state'=>'accepted',
                              'message'=>'', 'created_at'=>now(), 'decided_at'=>now()]);
-// Berger is the agreed family with a chat ($direct), Wagner the one without, Stern
-// a family the child has not asked; Neumann's request waits, with its words.
-$theirs = ['Familie Neumann', 'Wir sind neu im Dienstagskurs.', 'Familie Berger', 'Familie Wagner', 'Familie Stern'];
+// Neumann's request waits, with its words. Berger is the agreed family with a
+// chat ($direct), Wagner the one without, Stern a family the child has not
+// asked: none of the three is offered any more (ADR 0022 §11.3).
+$theirs = ['Familie Neumann', 'Wir sind neu im Dienstagskurs.'];
+$families = ['Familie Berger', 'Familie Wagner', 'Familie Stern'];
 // A refusal is an answer too, so it is compared as one rather than ending the suite.
 $answer = function (array $query, string $draw = 'render_view'): string {
     try { return $draw('messages', $query); }
@@ -300,6 +302,8 @@ sign_in_as($hofer);
 $asChild = $answer(['new'=>'1']);
 foreach ($theirs as $said)
     ok(str_contains($conversationOf($asChild), e($said)), 'the child’s own picker shows „'.$said.'“, so the lines below prove something');
+foreach ($families as $family)
+    ok(!str_contains($conversationOf($asChild), e($family)), 'while no other family is offered to write to: not „'.$family.'“');
 $childList = $answer([]);
 ok(str_contains($childList, e('1 neue Anfrage')) && substr_count($childList, $writeLink) === 3,
    'their list has the chip for the request, and „Neue Nachricht" above the list and in the empty conversation');
@@ -311,7 +315,7 @@ $pickerViewed = $answer(['new'=>'1']);
 ok(str_contains($conversationOf($pickerViewed), '<h2>'.e('Neue Nachricht').'</h2>')
    && str_contains($conversationOf($pickerViewed), e(viewing_refusal())),
    'viewed by the trainer, „Neue Nachricht" says that only the child can write');
-foreach ($theirs as $said) ok(!str_contains($pickerViewed, e($said)), 'and nothing on the page shows „'.$said.'“');
+foreach ([...$theirs, ...$families] as $said) ok(!str_contains($pickerViewed, e($said)), 'and nothing on the page shows „'.$said.'“');
 ok(!str_contains($pickerViewed, 'contact_decide') && !str_contains($pickerViewed, 'contact_request') && !str_contains($pickerViewed, e('Jemand anderen fragen')),
    'nothing to agree to, and nobody to ask');
 ok(!str_contains($pickerViewed, 'neue Anfrage'), 'no chip counting the child’s requests');

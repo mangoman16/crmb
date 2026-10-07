@@ -19,13 +19,13 @@ function dispatch_config(string $action): array {
     case 'class_save':
         require_staff(); $id=(int)post('id');
         if($id && !one('SELECT id FROM classes WHERE id=?',[$id])) throw new NotFound(t('Kurs nicht gefunden.','Course not found.'));
-        $capacity=(int)post('capacity','0');
-        if($capacity<0 || $capacity>500) throw new UserError(t('Plätze: 0 bis 500 (0 = unbegrenzt).','Places: 0 to 500 (0 = unlimited).'));
+        // An empty box is no limit, as a 0 is.
+        $capacity=whole_number_value(post('capacity')?:'0',0,500,t('Plätze: 0 bis 500 (0 = unbegrenzt).','Places: 0 to 500 (0 = unlimited).'));
         $days=class_days_from_post();
         $args=[required_text('name',120),text_limit('description',500),text_limit('location',160),
                reference_or_null('accounts','trainer_id',"role IN ('admin','trainer','manager')"),
                reference_or_null('payment_profiles','payment_profile_id'),
-               $capacity,(int)post('sort_order','0'),post('archived')?1:0];
+               $capacity,list_position_value(post('sort_order')),post('archived')?1:0];
         $id=transactional(function() use ($id,$args,$days): int {
             if($id) run('UPDATE classes SET name=?,description=?,location=?,trainer_id=?,payment_profile_id=?,capacity=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
             else {
@@ -109,14 +109,13 @@ function dispatch_config(string $action): array {
         require_staff(); $c=training_class((int)post('class_id')); $s=student((int)post('student_id'));
         $current=enrolment((int)$c['id'],(int)$s['id']);
         if(!$current) throw new UserError(t('Dieses Kind ist nicht in diesem Kurs.','This child is not in this course.'));
-        $dueDay=(int)post('due_day','0');
-        if($dueDay<0 || $dueDay>28) throw new UserError(t('Zahltag: 1 bis 28, oder 0 für „wie im Tarif“.','Payment day: 1 to 28, or 0 for “as the tariff says”.'));
+        $dueDay=whole_number_value(post('due_day')?:'0',0,28,t('Zahltag: 1 bis 28, oder 0 für „wie im Tarif“.','Payment day: 1 to 28, or 0 for “as the tariff says”.'));
         $joined=date_value(post('joined_on')); $left=date_value(post('left_on')); date_range($joined,$left);
         $tariffId=posted_enrolment_tariff($current);
         // 0 is "whatever this tariff's usual interval is", which is what most
         // enrolments say. Anything else has to be a price that is written down,
         // or the child would be billed at an amount nobody could point at.
-        $interval=(int)post('interval_months','0');
+        $interval=whole_number_value(post('interval_months')?:'0',0,12,t('Bitte einen gültigen Abrechnungszeitraum wählen.','Please choose a valid billing interval.'));
         if($interval!==0) {
             billing_valid_interval($interval);
             if(!isset(tariff_rates((int)$tariffId)[$interval]))
@@ -216,7 +215,7 @@ function dispatch_config(string $action): array {
         // to start, and the form that offers the choice with nothing to offer.
         if($archived && $id && (int)scalar('SELECT COUNT(*) FROM levels WHERE archived=0 AND id<>?',[$id])===0)
             throw new UserError(t('Es muss mindestens eine Gruppe übrig bleiben.','At least one level has to remain.'));
-        $args=[required_text('name',80),text_limit('description',300),(int)post('sort_order','0'),$archived];
+        $args=[required_text('name',80),text_limit('description',300),list_position_value(post('sort_order')),$archived];
         $id=transactional(function() use ($id,$args,$isDefault): int {
             if($id) run('UPDATE levels SET name=?,description=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
             else { run('INSERT INTO levels (name,description,sort_order,archived,created_at) VALUES (?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
@@ -233,12 +232,12 @@ function dispatch_config(string $action): array {
     case 'age_group_save':
         require_staff(); $id=(int)post('id');
         if($id && !one('SELECT id FROM age_groups WHERE id=?',[$id])) throw new UserError(t('Diese Altersgruppe gibt es nicht.','No such age group.'));
-        $min=(int)post('min_age','0');
+        $age=fn(string $value): int => whole_number_value($value,0,120,t('Bitte ein Alter zwischen 0 und 120 angeben.','Please give an age between 0 and 120.'));
+        $min=$age(post('min_age')?:'0');
         // Empty means "and upwards", which is what the oldest band always is.
-        $max=post('max_age')===''?null:(int)post('max_age');
-        if($min<0 || $min>120 || ($max!==null && ($max<0 || $max>120))) throw new UserError(t('Bitte ein Alter zwischen 0 und 120 angeben.','Please give an age between 0 and 120.'));
+        $max=post('max_age')===''?null:$age(post('max_age'));
         if($max!==null && $max<$min) throw new UserError(t('Das Höchstalter liegt unter dem Mindestalter.','The upper age is below the lower one.'));
-        $args=[required_text('name',80),$min,$max,(int)post('sort_order','0'),post('archived')?1:0];
+        $args=[required_text('name',80),$min,$max,list_position_value(post('sort_order')),post('archived')?1:0];
         if($id) run('UPDATE age_groups SET name=?,min_age=?,max_age=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
         else { run('INSERT INTO age_groups (name,min_age,max_age,sort_order,archived,created_at) VALUES (?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
         audit('age_group.saved','age_group',$id); flash(t('Altersgruppe gespeichert.','Age group saved.'));
@@ -366,7 +365,8 @@ function dispatch_config(string $action): array {
         require_staff(); $s=student((int)post('student_id'));
         $ids=$_POST['charge_ids']??[];
         if(!is_array($ids)) throw new UserError(t('Ungültige Auswahl.','Invalid selection.'));
-        $id=create_invoice((int)$s['id'],array_map('intval',$ids),post('issued_on'),post('terms')!==''?(int)post('terms'):-1);
+        $terms=post('terms')!==''?whole_number_value(post('terms'),0,180,t('Zahlungsziel: 0 bis 180 Tage.','Payment term: 0 to 180 days.')):-1;
+        $id=create_invoice((int)$s['id'],array_map('intval',$ids),post('issued_on'),$terms);
         $created=invoice($id);
         if($created['account_id'])
             notify((int)$created['account_id'],'payment',t('Neue Rechnung: ','New invoice: ').$created['number'],
@@ -490,10 +490,10 @@ function dispatch_config(string $action): array {
         flash(t('Danke! Die Meldung ist angekommen.','Thank you. Your report has arrived.'));
         // Back to the page the report was sent from, record and tab included:
         // the page name alone opened ?page=student with no id, which is „Kein
-        // Zugriff“. form_origin() is what the report itself recorded; the router
-        // refuses a page it does not know, so nothing is trusted beyond that.
-        $on=form_origin();
-        return [$on['page']!==''?$on['page']:'dashboard',array_filter(['id'=>$on['id']?:null,'tab'=>$on['tab']!==''?$on['tab']:null],fn($v)=>$v!==null)];
+        // Zugriff“. Read by form_return(), as the way back after a refusal is,
+        // so it is held to the pages there are: a forged page name leads to the
+        // overview, not to a page the router does not know.
+        return form_return('dashboard');
 
     case 'feedback_state':
         require_admin(); $state=choose(post('state'),['new','seen','done']);

@@ -26,7 +26,11 @@ declare(strict_types=1);
 ini_set('display_errors', '0');
 require_once __DIR__ . '/../app/install.php';
 
-install_locale((string)($_GET['lang'] ?? ($_POST['lang'] ?? 'de')));
+// Read by the installer's one rule for a submitted value: an address or a form
+// that sends a list, ?lang[]=, is no language and leaves the page in German.
+// This page does not go through public/index.php, which drops every list from
+// the address before anything reads it, so it guards its own reads.
+install_locale(form_text($_GET['lang'] ?? $_POST['lang'] ?? 'de'));
 
 $post = $_SERVER['REQUEST_METHOD'] === 'POST';
 $configPath = config_path();

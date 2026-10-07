@@ -13,6 +13,17 @@ class UserError extends RuntimeException {}
  * deleted; anything else confirms the record exists.
  */
 class NotFound extends UserError {}
+/**
+ * Nobody is signed in where somebody has to be (require_user()): the router
+ * sends the request to the sign-in page.
+ *
+ * Thrown rather than redirecting on the spot, so a post that needs somebody
+ * unwinds the transaction handle_post() opened around it the ordinary way. A
+ * redirect from inside one is logged as a bug (tx_abandon_open()), and this one
+ * is expected: every bot that posts to the portal signed out would otherwise
+ * write a line into the host's error log.
+ */
+class SignInRequired extends RuntimeException {}
 function config(string $key): mixed { global $config; return $config[$key] ?? null; }
 function connect(): PDO {
     $c = config('db');
@@ -106,6 +117,34 @@ function csrf(): string { return $_SESSION['csrf'] ??= bin2hex(random_bytes(32))
  * than each reaching for the global with its own fallback.
  */
 function current_page(): string { return (string)($GLOBALS['page'] ?? 'dashboard'); }
+
+/**
+ * The pages public/index.php opens, while it answers a request: its own list,
+ * $allowed, read where it is written rather than copied. null where no router
+ * runs - the console, a suite calling an action directly - and a way back is
+ * then held to the shape of a page name only (form_return()).
+ */
+function allowed_pages(): ?array { return is_array($GLOBALS['allowed'] ?? null) ? $GLOBALS['allowed'] : null; }
+
+/**
+ * Which page of a list the address asks for: ?p=, from 1 to PAGE_NUMBER_MAX.
+ *
+ * Every pager reads it here. A value that is not a page number is the first
+ * page, and one past PAGE_NUMBER_MAX is that page - which is empty, or the last
+ * page there is where a pager holds it to its own count. Twenty nines in ?p=
+ * once made one page's slicing a float and another's OFFSET a number the
+ * database refused (ADR 0026 §5).
+ */
+function page_number(): int {
+    $value = $_GET['p'] ?? '';
+    return is_string($value) && ctype_digit(trim($value)) ? page_in_range((int)trim($value)) : 1;
+}
+
+/** A list's page held from 1 to PAGE_NUMBER_MAX, so the offset worked out from it is always a small integer. */
+function page_in_range(int $page): int { return max(1, min(PAGE_NUMBER_MAX, $page)); }
+
+/** Far more pages than any list of a club's will have, and an offset of fifty to a page that fits any integer. */
+const PAGE_NUMBER_MAX = 100000;
 
 /**
  * Which form is being written out right now: its action, and the record it
@@ -209,8 +248,22 @@ function remember_input(string $action): void {
     if (!$fields) return;
     // 'id' is the page's record, from return_id; 'record' is the form's own -
     // one contact of several on a student's page, say.
-    $_SESSION['form_input']=['action'=>$action,'page'=>post('return_page'),'id'=>(string)(int)post('return_id'),
-                             'tab'=>post('return_tab'),'record'=>form_record_id($_POST['id'] ?? null),'fields'=>$fields];
+    $_SESSION['form_input']=['action'=>$action,'page'=>form_bookkeeping('return_page'),'id'=>(string)(int)form_bookkeeping('return_id'),
+                             'tab'=>form_bookkeeping('return_tab'),'record'=>form_record_id($_POST['id'] ?? null),'fields'=>$fields];
+}
+
+/**
+ * One of FORM_BOOKKEEPING_FIELDS as text, or '' when it is not text.
+ *
+ * Read on the way back after a refusal - remember_input(), form_return(), the
+ * router's catch - where post()'s own refusal of a list would end the request
+ * in „Kein Zugriff" instead of the page the form came from. Nobody types these
+ * fields, so one that is not text is treated as one that is not there: the way
+ * back falls back to its default page.
+ */
+function form_bookkeeping(string $key): string {
+    if (!in_array($key, FORM_BOOKKEEPING_FIELDS, true)) throw new LogicException('Not one of FORM_BOOKKEEPING_FIELDS: '.$key);
+    return form_text($_POST[$key] ?? '') ?? '';
 }
 
 /** Take the held submission out of the session. Called once, before a page renders. */
@@ -265,23 +318,27 @@ function held_input(string $name, mixed $fallback): mixed {
  * "page=student" with no student, which is a "Nicht gefunden".
  *
  * Never an open redirect: go() builds the address from url(), so the most a
- * forged value can do is name a page of this portal that does not exist, and a
- * name that is not even shaped like one falls back to $fallback. The router
- * passes its list of pages as $pages, so after a refusal - when the page a
- * person lands on is the one thing they see - it is always one that exists.
+ * forged value can do is name a page of this portal, and a name that is not
+ * shaped like one falls back to $fallback. Held to the router's own list of
+ * pages - $pages, or allowed_pages() while the router runs - so the page a
+ * person lands on, after a refusal or after a report sent from it, is always
+ * one that exists. Read without a refusal of its own (form_bookkeeping()): it
+ * runs inside the router's catch.
  */
 function form_return(string $fallback='dashboard', ?array $pages=null): array {
-    $page=post('return_page',$fallback);
+    $pages??=allowed_pages();
+    $page=form_bookkeeping('return_page');
     if(!preg_match('/^[a-z_]{1,40}$/D',$page) || ($pages!==null && !in_array($page,$pages,true))) $page=$fallback;
     $params=[];
-    if((int)post('return_id')>0) $params['id']=(int)post('return_id');
-    if(post('return_tab')!=='') $params['tab']=post('return_tab');
+    $id=(int)form_bookkeeping('return_id');
+    if($id>0) $params['id']=$id;
+    if(($tab=form_bookkeeping('return_tab'))!=='') $params['tab']=$tab;
     // The wizard's draft key (ADR 0023 §5), so a refused step 2 comes back to
     // step 2 with the draft whole - and stays there when the phone reloads the
     // tab. Only something shaped like a key; never the details.
     // student_draft_key() is in app/domain.php, loaded after this file: safe,
     // because a form is only ever returned from while a request runs.
-    if(student_draft_key(post('return_draft'))) $params['draft']=post('return_draft');
+    if(student_draft_key($draft=form_bookkeeping('return_draft'))) $params['draft']=$draft;
     return [$page,$params];
 }
 // form_text() is in app/install.php, so the installer reads its form by the same rule.
@@ -294,11 +351,36 @@ function post(string $key, string $default=''): string { $v=form_text($_POST[$ke
 const TEXT_LINE_MAX = 160;
 function required_text(string $key, int $max=TEXT_LINE_MAX): string { $v=post($key); if($v==='' || mb_strlen($v)>$max) throw new UserError(t('Bitte alle Pflichtfelder korrekt ausfüllen.','Please complete all required fields correctly.')); return $v; }
 function text_limit(string $key, int $max=255): string { $v=post($key); if(mb_strlen($v)>$max) throw new UserError(t('Die Eingabe ist zu lang.','Input is too long.')); return $v; }
+/**
+ * A calendar date from a form, YYYY-MM-DD, or null when it was left empty and
+ * may be. Only from 1900 to 2100 (DATE_YEAR_MIN, DATE_YEAR_MAX): a year outside
+ * them is a slip on a phone's date wheel, not a training or a payment, and the
+ * year 9999 would overflow every date worked out from it - an invoice's due
+ * date, a period's end - where the database stores it (ADR 0026 §5).
+ */
 function date_value(string $value, bool $required=false): ?string {
     if($value==='' && !$required) return null;
     $d=DateTimeImmutable::createFromFormat('!Y-m-d',$value);
     if(!$d || $d->format('Y-m-d')!==$value) throw new UserError(t('Bitte ein gültiges Datum eingeben.','Please enter a valid date.'));
+    $year=(int)substr($value,0,4);
+    if($year<DATE_YEAR_MIN || $year>DATE_YEAR_MAX)
+        throw new UserError(strtr(t('Bitte ein Datum zwischen {from} und {to} eingeben.','Please enter a date between {from} and {to}.'),
+                                  ['{from}'=>DATE_YEAR_MIN,'{to}'=>DATE_YEAR_MAX]));
     return $value;
+}
+const DATE_YEAR_MIN = 1900;
+const DATE_YEAR_MAX = 2100;
+
+/**
+ * A calendar date the address names, or null: date_value()'s rule, for a value
+ * nobody typed into a form. A link from the portal holds a good one; anything
+ * else - an old bookmark, an address typed by hand, a list - reads as no date,
+ * and the page uses its own, never a refusal over a day (ADR 0026 §5).
+ */
+function query_date(string $key): ?string {
+    $value=$_GET[$key]??'';
+    if(!is_string($value)) return null;
+    try { return date_value(trim($value)); } catch(UserError) { return null; }
 }
 /**
  * A date of birth, or a refusal in one sentence: a real date, not in the

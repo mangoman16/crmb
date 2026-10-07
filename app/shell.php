@@ -422,9 +422,8 @@ function recent_steps(): array {
  * requesting it, so the last step in the trail is not always it.
  */
 function form_origin(): array {
-    $read = fn(string $key): string => is_scalar($_POST[$key] ?? null) ? trim((string)$_POST[$key]) : '';
-    return ['page' => report_text($read('return_page'), 60), 'id' => (int)$read('return_id'),
-            'tab' => report_text($read('return_tab'), 60)];
+    return ['page' => report_text(form_bookkeeping('return_page'), 60), 'id' => (int)form_bookkeeping('return_id'),
+            'tab' => report_text(form_bookkeeping('return_tab'), 60)];
 }
 
 /** Text as a report may keep it: valid UTF-8, and at most $max characters. */

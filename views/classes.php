@@ -186,8 +186,10 @@ elseif($id && !$edit && $tab==='dates'):
     $from=(new DateTimeImmutable(today()))->modify('-14 days')->format('Y-m-d');
     $to=(new DateTimeImmutable(today()))->modify('+70 days')->format('Y-m-d');
     $calendar=class_calendar($from,$to,$id);
-    $chosen=$_GET['on']??'';
-    $current=$chosen!==''?class_session($id,$chosen):null;
+    // The day being changed: one the list below links to, or today - for an
+    // address with no day, or with anything that is not a date (ADR 0026 §5).
+    $chosen=query_date('on')??today();
+    $current=class_session($id,$chosen);
 ?>
 <div class="settings-grid">
     <section class="card">
@@ -205,7 +207,7 @@ elseif($id && !$edit && $tab==='dates'):
         <h2><?=e(t('Einen Tag ändern','Change one day'))?></h2>
         <?php start_form('class_session_save',['class_id'=>$id]); ?>
         <div class="grid two"><?php
-        input('session_on',t('Datum','Date'),$chosen?:today(),'date',true);
+        input('session_on',t('Datum','Date'),$chosen,'date',true);
         select_field('status',t('Was ist damit','What about it'),session_statuses(),$current['status']??'planned',true);
         time_field('starts_at',t('Beginn (nur wenn anders)','Starts (only if different)'),(string)($current['starts_at']??''));
         time_field('ends_at',t('Ende (nur wenn anders)','Ends (only if different)'),(string)($current['ends_at']??''));

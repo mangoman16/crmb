@@ -147,7 +147,7 @@ is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['gruber.f
 case_('Without mail, an invitation says what to do instead, and writes nothing');
 mail_ready(false);
 throws(fn() => act('student_invite', ['student_id'=>(string)$paul]),
-       'the invitation is refused, and says what is missing', 'Eine Einladung lässt sich noch nicht verschicken. E-Mail-Versand zuerst testen');
+       'the invitation is refused, and says what is missing, and who sets it up', 'Eine Einladung lässt sich noch nicht verschicken. Eine Administratorin muss zuerst den E-Mail-Versand einrichten und testen und die Datenschutzerklärung freigeben.');
 throws(fn() => act('student_invite', ['student_id'=>(string)$paul]), 'without offering a password instead (ADR 0020, §5)', 'freigeben.');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['paul@beispiel.test']), 'and no login was left waiting without a link');
 
@@ -159,9 +159,13 @@ mail_ready(true);
 set_setting('smtp_last_test', []);
 is_same(false, account_mail_ready(), 'a saved server with no passing test is not ready');
 throws(fn() => act('student_invite', ['student_id'=>(string)$paul]),
-       'the invitation is refused', 'E-Mail-Versand zuerst testen');
-ok(str_contains(account_mail_missing(), '„Einstellungen → SMTP“') && !str_contains(account_mail_missing(), 'Datenschutz'),
-   'the sentence points at the SMTP tab, and only at what is actually missing');
+       'the invitation is refused', 'Eine Administratorin muss zuerst den E-Mail-Versand einrichten und testen.');
+ok(!str_contains(account_mail_missing(), 'Einstellungen') && !str_contains(account_mail_missing(), 'Datenschutz'),
+   'a trainer is told who sets mail up, not sent to a page she cannot open, and only what is actually missing');
+sign_in_as($admin);
+is_same('E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP“ die Verbindung prüfen.', account_mail_missing(),
+        'an administrator is sent to the SMTP tab');
+sign_in_as($trainer);
 is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['paul@beispiel.test']), 'and nothing was written');
 set_setting('smtp_last_test', ['ok'=>false, 'summary'=>'', 'transcript'=>'', 'sent_to'=>'', 'at'=>now()]);
 is_same(false, account_mail_ready(), 'nor is one whose last test failed');
@@ -506,7 +510,7 @@ $counts = fn() => [(int)scalar('SELECT COUNT(*) FROM students'), (int)scalar('SE
                    (int)scalar('SELECT COUNT(*) FROM auth_tokens'), (int)scalar('SELECT COUNT(*) FROM mail_jobs')];
 $nothing = $counts();
 mail_ready(false);
-throws(fn() => $create(), 'without mail it is refused, saying what is missing', 'Eine Einladung lässt sich noch nicht verschicken. E-Mail-Versand zuerst testen');
+throws(fn() => $create(), 'without mail it is refused, saying what is missing', 'Eine Einladung lässt sich noch nicht verschicken. Eine Administratorin muss zuerst den E-Mail-Versand');
 is_same($nothing, $counts(), 'and nothing at all was created');
 mail_ready(true);
 throws(fn() => $create(['email'=>'']), 'an empty address is refused', 'Ungültige E-Mail-Adresse');
@@ -706,7 +710,7 @@ foreach ($refusals as $what => [$posted, $said]) {
 mail_ready(false);
 $before = $counts();
 throws(fn() => act('email_invite', ['email' => 'spaeter@beispiel.test', 'locale' => 'de']), 'without mail it says what is missing',
-       'Eine Einladung lässt sich noch nicht verschicken. E-Mail-Versand zuerst testen');
+       'Eine Einladung lässt sich noch nicht verschicken. Eine Administratorin muss zuerst den E-Mail-Versand');
 is_same($before, $counts(), 'and leaves no login waiting without a link');
 mail_ready(true);
 

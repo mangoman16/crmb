@@ -61,6 +61,11 @@ throws(fn() => $save('kurz', $long, true), 'a version that is too short is named
 throws(fn() => $save($long, 'short', true), 'and so is the other one', 'English');
 throws(fn() => $save($long.'[Name des Betreibers]', $long, true), 'a leftover placeholder is quoted back', '[Name des Betreibers]');
 throws(fn() => $save($long, $long.'[operator name]', true), 'in either version', '[operator name]');
+$longPlaceholder = '['.str_repeat('Name und Anschrift des Betreibers ', 4).']';
+$said = '';
+try { $save($long.$longPlaceholder, $long, true); } catch (UserError $e) { $said = $e->getMessage(); }
+ok(str_contains($said, mb_substr($longPlaceholder, 0, 40)) && !str_contains($said, mb_substr($longPlaceholder, 0, 61)),
+   'a long one by its start, never more than 60 characters of what was typed (ADR 0026 §5): '.$said);
 does_not_throw(fn() => $save($long, $long, true), 'two complete versions are accepted');
 is_same(true, (bool)setting('privacy_ready'), 'and the notice is released');
 // Saving a draft must work even while it is incomplete, or there is nowhere to
