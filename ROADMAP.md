@@ -30,8 +30,11 @@ In this order.
    - **round 1, done:** custom fields with their data (032); copying records; saved views and
      message templates (033); writing to many; the queue button „Warteschlange senden"; the
      printed sheets; and Verwaltung's „Tarife" tab;
-   - round 2, the chat's extras: the online dots, the chosen status, the status emoji and the
-     online history, profile pictures, contact requests and voice notes;
+   - **round 2, done:** the online dots, the chosen status, the status emoji and the online
+     history (034, 035), profile pictures and their files (035, 036), contact requests with
+     their rows (037), and new voice notes and files — a message is text and photos, a
+     family's from the camera; old voice notes and files stay, old chats between two
+     students are readable and closed;
    - round 3: levels and configured age groups — children are sorted and filtered by age
      from the birth date (docs/design/2026-10-07-ios-design-language-and-goal-screens.md,
      Part 1) — and the example data, cut to one course, four children and two family logins
@@ -208,6 +211,10 @@ For the owner to do:
   size, the bars around the notch, the home-screen app's status bar, pressed states, the
   sheet, the switches, the back button. It has only been seen in Chromium. Say what feels
   wrong; it is cheap to change before the screens are built on it.
+- **Round 2 on your iPhone and an Android phone, if you have one** (TESTING.md R.9–R.17): as
+  a family, the „+" in a chat opens the camera — this has never been measured, and the portal
+  sends `Permissions-Policy: camera=()`, which may stop it; as the trainer, a PNG from the
+  gallery; an old voice note still plays. Test data only.
 
 ## Before real families use it
 

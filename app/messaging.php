@@ -13,8 +13,10 @@ declare(strict_types=1);
  *   staff_direct  a student and one member of staff. The two write; the club's
  *                 administrators can read it too, because no adult has a
  *                 channel to a child that the club cannot see.
- *   direct        any other two - two families, after one agreed to the other.
- *                 Nobody else reads it.
+ *   direct        any other two: two members of staff, who write, or two
+ *                 students from before their chats closed (ADR 0022 §11.3),
+ *                 which the two still read and nobody writes in. Nobody else
+ *                 reads it.
  *   staff         the shared desk from before ADR 0022: a family and every
  *                 member of staff. Kept to read, closed to new messages.
  *
@@ -23,11 +25,22 @@ declare(strict_types=1);
  * rule is how a private conversation ends up in somebody's unread count.
  */
 
-/** What may be attached, and how the interface has to treat it. */
-function attachment_kind(string $mime): string {
-    if (str_starts_with($mime, 'image/')) return 'image';
-    if (str_starts_with($mime, 'audio/')) return 'voice';
-    return 'file';
+/**
+ * The photos $user may send in a chat (ADR 0022 §11.4), as media type =>
+ * extension: what store_upload() checks the bytes against and what the
+ * composer offers, so the form never offers what the server refuses.
+ *
+ * Staff send JPEG, PNG or WebP, from the camera or the gallery. A student sends
+ * a JPEG, the one thing a phone's camera hands over - the composer asks for the
+ * camera - which keeps out screenshots, animations and documents; nobody signed
+ * in gets no more than a student. No GIF for anybody: no camera writes one, and
+ * it is the one picture kept uncleaned. Voice notes and files sent before stay,
+ * and are shown as they are; nobody adds a new one.
+ */
+function message_upload_types(?array $user): array {
+    return $user !== null && is_staff($user)
+        ? ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp']
+        : ['image/jpeg' => 'jpg'];
 }
 
 /**
@@ -94,16 +107,21 @@ function thread_record(int $id): array {
 
 /**
  * Whether $user may write in a conversation thread_record() gave them: the group
- * of a running course, or a chat they are in. Nobody writes into a desk thread
- * any more, an administrator reading somebody else's chat only reads, and
- * nobody writes while viewing the portal as somebody else.
+ * of a running course, or a chat they are in - unless it is one between two
+ * students, which is closed. Nobody writes into a desk thread any more, an
+ * administrator reading somebody else's chat only reads, and nobody writes
+ * while viewing the portal as somebody else.
  */
 function may_write_thread(array $user, array $thread): bool {
     // Nobody writes under somebody else's name while looking through their eyes.
     if (impersonator()) return false;
     return match ((string)($thread['kind'] ?? '')) {
         'course' => (int)($thread['class_archived'] ?? 1) === 0,
-        'direct', 'staff_direct' => is_participant((int)$thread['id'], (int)$user['id']),
+        'staff_direct' => is_participant((int)$thread['id'], (int)$user['id']),
+        // Between two members of staff, the two write. One between two
+        // students is from before their chats closed (ADR 0022 §11.3): the
+        // two still read it, and nobody writes in it any more.
+        'direct' => is_staff($user) && is_participant((int)$thread['id'], (int)$user['id']),
         default => false,
     };
 }
@@ -113,11 +131,11 @@ function is_participant(int $threadId, int $accountId): bool {
 }
 
 /**
- * What the chat shows of a person: who, their picture, their role, their emoji,
- * and what their dot is drawn from. One list, so the header, the member sheet,
- * the contacts and the chat list cannot draw one person from different facts.
+ * What the chat shows of a person: who, their role and whether their login is
+ * in use. One list, so the header, the member sheet, the contacts and the chat
+ * list cannot draw one person from different facts.
  */
-const CHAT_PERSON_COLUMNS = ['id', 'name', 'avatar_name', 'role', 'status_emoji', 'last_seen_at', 'presence', 'state'];
+const CHAT_PERSON_COLUMNS = ['id', 'name', 'role', 'state'];
 
 /**
  * Those columns as a select list over the accounts table under $alias. With a
@@ -138,7 +156,7 @@ function chat_person_in(array $row, string $prefix): array {
     return $person;
 }
 
-/** Everyone in a chat, for its header: who, their dot and their emoji. */
+/** Everyone in a chat, for its header. */
 function thread_people(int $threadId): array {
     return rows('SELECT ' . chat_person_columns('a')
         .' FROM thread_participants p JOIN accounts a ON a.id=p.account_id WHERE p.thread_id=? ORDER BY a.name', [$threadId]);
@@ -347,32 +365,18 @@ function join_thread(int $threadId, int $accountId): void {
 }
 
 // ---------------------------------------------------------------------------
-// Permission to write to another family
+// Who may start a chat with whom
 // ---------------------------------------------------------------------------
 
-/** Whether these two may write to one another. */
+/**
+ * Whether these two may start a chat: anybody with staff, and staff with
+ * anybody. Never two students: chats between students have closed (ADR 0022
+ * §11.3), and the ones from before stay to read, closed (may_write_thread()).
+ */
 function may_message(array $from, int $toId): bool {
     if ((int)$from['id'] === $toId) return false;
     $to = one("SELECT * FROM accounts WHERE id=? AND state='active'", [$toId]);
-    if (!$to) return false;
-    // Anybody may write to staff, and staff may write to anybody.
-    if (is_staff($to) || is_staff($from)) return true;
-    return (bool)one("SELECT 1 FROM contact_requests WHERE state='accepted'"
-        .' AND ((from_account_id=? AND to_account_id=?) OR (from_account_id=? AND to_account_id=?))',
-        [(int)$from['id'], $toId, $toId, (int)$from['id']]);
-}
-
-/** Requests waiting for this account to answer. */
-function contact_requests_for(int $accountId): array {
-    // The sender's role travels with the request because whether their picture
-    // may be shown depends on it (may_see_account_picture()).
-    return rows("SELECT r.*, a.name AS from_name, a.role AS from_role, a.avatar_name FROM contact_requests r"
-        .' JOIN accounts a ON a.id=r.from_account_id'
-        ." WHERE r.to_account_id=? AND r.state='pending' ORDER BY r.id DESC", [$accountId]);
-}
-
-function pending_contact_count(int $accountId): int {
-    return (int)scalar("SELECT COUNT(*) FROM contact_requests WHERE to_account_id=? AND state='pending'", [$accountId]);
+    return $to !== null && (is_staff($to) || is_staff($from));
 }
 
 /**
@@ -391,21 +395,6 @@ function contacts_for(array $user): array {
     if (!is_staff($user)) return $staff;
     return array_merge($staff, rows("SELECT $cols FROM accounts a WHERE a.role='student'"
         ." AND a.state='active' ORDER BY a.name"));
-}
-
-/** Answer one. Only the person who was asked may. */
-function decide_contact(int $requestId, bool $accept): array {
-    $u = require_user();
-    return transactional(function () use ($requestId, $accept, $u): array {
-        $r = one('SELECT * FROM contact_requests WHERE id=? FOR UPDATE', [$requestId]);
-        if (!$r || (int)$r['to_account_id'] !== (int)$u['id'])
-            throw new UserError(t('Diese Anfrage gibt es nicht.', 'No such request.'));
-        if ($r['state'] !== 'pending') throw new UserError(t('Darüber wurde schon entschieden.', 'That has already been decided.'));
-        run('UPDATE contact_requests SET state=?, decided_at=? WHERE id=?',
-            [$accept ? 'accepted' : 'declined', now(), $requestId]);
-        audit('contact.' . ($accept ? 'accepted' : 'declined'), 'account', (int)$r['from_account_id']);
-        return $r;
-    });
 }
 
 /**
@@ -441,7 +430,8 @@ function pair_kind(array $one, array $other): string {
  */
 function direct_thread(array $from, int $toId): int {
     if (!may_message($from, $toId))
-        throw new UserError(t('Diese Person hat dem Schreiben noch nicht zugestimmt.', 'That person has not agreed to being written to yet.'));
+        throw new UserError(t('Mit dieser Person lässt sich hier kein Chat beginnen. Schreib dem Trainerteam oder in deine Kursgruppe.',
+                              'You cannot start a chat with this person here. Write to the coaching team or in your course group.'));
     return transactional(function () use ($from, $toId): int {
         $pair = array_column(rows('SELECT id, role FROM accounts WHERE id IN (?,?) ORDER BY id FOR UPDATE',
             [(int)$from['id'], $toId]), null, 'id');
@@ -480,12 +470,12 @@ function files_by_message(array $messageIds): array {
  */
 function attach_to_message(int $messageId, string $field = 'attachment'): bool {
     if (!isset($_FILES[$field]) || (int)($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return false;
+    // Only a photo arrives here: store_upload() refuses anything
+    // message_upload_types() does not name.
     $stored = store_upload($field, 'message');
-    $seconds = (int)(is_scalar($_POST['attachment_seconds'] ?? null) ? $_POST['attachment_seconds'] : 0);
     run('INSERT INTO message_files (message_id,kind,stored_name,original_name,mime,bytes,seconds,created_at)'
         .' VALUES (?,?,?,?,?,?,?,?)',
-        [$messageId, attachment_kind($stored['mime']), $stored['stored_name'], $stored['original_name'],
-         $stored['mime'], $stored['bytes'], max(0, min(3600, $seconds)), now()]);
+        [$messageId, 'image', $stored['stored_name'], $stored['original_name'], $stored['mime'], $stored['bytes'], 0, now()]);
     return true;
 }
 

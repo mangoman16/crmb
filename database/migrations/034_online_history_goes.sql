@@ -1,0 +1,17 @@
+-- When each login was online goes, with the online dots and the chosen status
+-- (docs/decisions/0026-who-the-portal-is-for-the-beta-and-what-it-no-longer-carries.md,
+-- §8, §10 and §11; the owner's answer of 2026-10-07, "Remove all"). This
+-- supersedes ADR 0015, which 020 built.
+--
+-- Every row goes with the table. Each was a stretch of time somebody was in the
+-- portal, kept for thirty days so staff could see when a child had been online;
+-- nothing reads them any more, and the privacy notice stops promising to keep
+-- them. The copy the update takes beforehand, in storage/backups, holds them as
+-- they were, and is pruned like every copy.
+--
+-- online_periods was never in schema_guarded_tables(): the nightly prune emptied
+-- it by design (020). Nothing points at it, and its one key, to accounts, goes
+-- with it (read from information_schema on MariaDB 10.11.14), so no other table
+-- loses a row or a key. It can run twice: an update that stopped after it
+-- starts the file again, which then does nothing.
+DROP TABLE IF EXISTS online_periods;

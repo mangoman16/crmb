@@ -9,15 +9,13 @@ one thing done before the upload — two, if anything in its custom fields is
 worth keeping — and changes in several ways the first time it is opened;
 [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) has them in full.
 
-**First, while the old version is still running, add four paragraphs to the
-privacy notice** under **Einstellungen → Datenschutz**: one saying that the
-portal now records when each account was online, and who can see it; one
-replacing the old newsletter paragraph, because club news by email now starts
-switched on and is no longer described as voluntary consent; one about the
-course groups, the online dot everybody sees, and the administrators reading
-chats between a child and a trainer; and one about usernames and one-time
-sign-in links. UPDATING.md has the first two to copy and says where in the
-drafts the other two are. The drafts shipped with this version only fill in the
+**First, while the old version is still running, add three paragraphs to the
+privacy notice** under **Einstellungen → Datenschutz**: one replacing the old
+newsletter paragraph, because club news by email now starts switched on and is
+no longer described as voluntary consent; one about the course groups, what a
+message holds, and the administrators reading chats between a child and a
+trainer; and one about usernames and one-time sign-in links. UPDATING.md has
+the first to copy and says where in the drafts the other two are. The drafts shipped with this version only fill in the
 notice of a new portal; an existing one keeps the text it had. Where the legal
 basis goes there is a note in square brackets, which is the operator's to
 decide and have checked, and a released notice is not saved until the notes are
@@ -27,24 +25,27 @@ replaced.
 down.** This version deletes the custom fields, with every value in them. After
 the update, take them out of the privacy notice too.
 
-Migrations 019 to 033 then run by themselves. 019 takes every child but the
+Migrations 019 to 037 then run by themselves. 019 takes every child but the
 first off a login they shared; nothing is deleted, and each change is written
-under **Änderungen**. 020 gives every account a status that starts on
-„Automatisch" and an empty list of times online; nothing is filled in from
-before. 021 switches news by email on for accounts created from now on; every
-existing account keeps its choice. 022 to 024 give usernames and take them away
-again; 028 brings them back, for students only, and lets a login have no
-address. 025 to 027 give every course its group chat, let staff take a group
-message down, and add the status emoji; the old shared conversations stay
-readable and closed. 029 and 030 make a student's login impossible to delete:
-it is replaced instead. 031 prepares keeping a child taken out of a course;
-nothing uses it yet. 032 deletes the custom fields with their values, and 033
-the saved views of the **Schüler** list and the e-mail templates; the custom
-fields' values are no longer among the tables counted before and after an
-update, so their going does not refuse it. After the files, every student
-without a login — the children 019 took off a shared one among them — is given
-a placeholder that nobody signs in with until staff give it an address or a
-username.
+under **Änderungen**. 020 gives every account a status and an empty list of
+times online, which 034 and 035 take away again. 021 switches news by email on
+for accounts created from now on; every existing account keeps its choice. 022
+to 024 give usernames and take them away again; 028 brings them back, for
+students only, and lets a login have no address. 025 to 027 give every course
+its group chat, let staff take a group message down, and add the status emoji,
+which 035 takes away again; the old shared conversations stay readable and
+closed. 029 and 030 make a student's login impossible to delete: it is replaced
+instead. 031 prepares keeping a child taken out of a course; nothing uses it
+yet. 032 deletes the custom fields with their values, and 033 the saved views of
+the **Schüler** list and the e-mail templates; the custom fields' values are no
+longer among the tables counted before and after an update, so their going does
+not refuse it. 034 to 037 delete the times online, each login's status, emoji
+and picture, each child's picture, and every request one family made to write to
+another. After the files, the stored profile pictures are deleted, **for good**:
+the copy the update takes first is of the database, and brings back their names
+but not the pictures. Also after the files, every student without a login — the
+children 019 took off a shared one among them — is given a placeholder that
+nobody signs in with until staff give it an address or a username.
 
 Invitations and „Passwort vergessen?“ links wait until **„Nur Verbindung
 prüfen“** under **Einstellungen → SMTP** has passed once. Everybody is signed
@@ -81,6 +82,21 @@ What the portal carries has been cut to what the trainer and the families need
 - **Verwaltung's „Tarife" tab**, which only pointed to the courses. A course's
   tariffs are on its own „Tarife" tab, which also names any tariff that belongs
   to no course.
+- **The online dots, the chosen status and when somebody was online**: the dot
+  on everybody's picture, „Automatisch", „Abwesend" and „Als offline anzeigen",
+  „Wann online? Letzte 30 Tage" under **Konten** and on a child's page, and
+  their four settings. The update deletes the times it had kept, and the
+  privacy notice no longer has to mention them.
+- **The status emoji.**
+- **Profile pictures**, of the team and of the children. Everybody appears by
+  their initials. Once the update has passed, the stored pictures are deleted
+  from the server; the copy of the database taken before the update holds only
+  their names, so they cannot be brought back.
+- **Asking to write to another family**, with every request asked or answered,
+  which the update deletes. A chat between two children that such a request led
+  to stays, for the two of them to read, and takes no new messages.
+- **Voice notes and files in new messages.** A message is text and photos.
+  Voice notes and files sent before stay, and open as they did.
 
 ### The portal looks and behaves like an iPhone app
 
@@ -95,6 +111,12 @@ This is the first phase of the design language in
 - **Staff's bar reads Übersicht · Schüler · Anwesend · Chats · Mehr.** „Post" is
   „Chats" now. The numbers on the bar and on the bell are red with a white
   figure, in light and in dark, where they were in the portal's colour.
+- **„Mehr" is a page**, no longer a menu sliding in from the side (ADR 0028):
+  Kurse, Geld and Einstellungen — Verwaltung for a trainer, and „Einrichtung"
+  above them while the checklist is unfinished — each with its number when
+  something waits, then
+  Mein Konto, „Datenschutz und Hilfe" and „Abmelden". On a computer the menu on
+  the left is unchanged.
 - **The language is set under Mein Konto**, „Sprache", once signed in; the EN/DE
   switch is no longer in the bar at the top. The sign-in pages keep it.
 - **The phone's own font**, and the reader's own text size: the page no longer
@@ -111,8 +133,9 @@ This is the first phase of the design language in
 - **A back button with the name of the page above**, such as „‹ Schüler" on a
   child's page, and — where the browser supports it — the page's title in the
   bar once its large title has scrolled away. In the app on the home screen
-  there was no way back at all before. Kurse, Geld and Einstellungen, reached
-  through „Mehr", have none yet.
+  there was no way back at all before. Everything opened from „Mehr" — Kurse,
+  Geld, Rechnungen, Einstellungen, a trainer's Verwaltung and staff's Mein
+  Konto — shows „‹ Mehr", and „Mehr" stays lit in the bar.
 - **Pages fade into each other** where the browser can; nothing moves for
   anybody who has asked their phone for less motion.
 - **The bar at the very top of the browser** takes the page's background — the
@@ -123,9 +146,9 @@ This is the first phase of the design language in
 - Without JavaScript the folds open in place, as before, and everything works.
 
 Not in this phase: a child's page and a course's page as lists to tap through,
-„Mehr" as a page of its own, and the screens for the owner's goals. **Seen in
-Chromium only**, at 320 and 390 pixels, as each role, light and dark; not yet on
-a real iPhone, which TESTING.md I.1–I.11 walk.
+and the screens for the owner's goals. **Seen in Chromium only**, at 320 and 390
+pixels, as each role, light and dark; not yet on a real iPhone, which TESTING.md
+I.1–I.11 walk.
 
 ### An update that lost records stays closed until they are back
 
@@ -285,11 +308,15 @@ a real iPhone, which TESTING.md I.1–I.11 walk.
 - **Chats with one person.** A child writes to a trainer or an administrator by
   name, and staff to any child. The administrators can read chats between a
   child and a trainer; a second trainer cannot. A family writes to the
-  coaching team only and can no longer ask to write to another family; a chat
-  two families agreed to earlier stays private to the two of them.
-- **Everybody has an online dot**, a child's always automatic, and may pick one
-  of sixteen emojis to show beside their name. When somebody was last here
-  stays with the trainers and administrators.
+  coaching team only and can no longer ask to write to another family. A chat
+  between two children from before stays for the two of them to read, says
+  that chats between children have closed, and takes no new messages.
+- **A message is text and photos.** A child's „+" asks the phone to open its
+  camera and takes only a JPEG, which keeps out screenshots, animations and
+  documents; staff can also send a PNG or a WebP from the phone's photos. No
+  GIF, for anybody. There is no microphone and no other file any more; voice
+  notes and files sent before stay in their chats and open as they did, and
+  the portal tells every browser it never uses the microphone.
 - **A photo keeps only the picture**, because a picture in a group reaches
   every child in the course. Where it was taken, its camera and its time are
   removed before it is stored, and so is whatever a phone puts after the
@@ -298,8 +325,8 @@ a real iPhone, which TESTING.md I.1–I.11 walk.
   goes too, because after cropping it can still show the whole photo from
   before. It stays the right way up. An HDR photo shows at normal
   brightness, because what makes it brighter is one of those second pictures. A
-  GIF is stored as it came. So is a picture whose file the portal cannot make
-  sense of, and whether to refuse that instead is still hers to decide.
+  picture whose file the portal cannot make sense of is stored as it came, and
+  whether to refuse that instead is still hers to decide.
 - In a group's „Wer ist in der Gruppe?", a child sees the classmates who read
   it; one whose family has no login yet is only counted. Staff see everybody.
 - While a trainer or an administrator views the portal as somebody else, she
@@ -394,53 +421,18 @@ a real iPhone, which TESTING.md I.1–I.11 walk.
 - Two tests that broke when the calendar moved on — one on 2 October, one due
   on 1 January — now take their dates from the clock.
 
-### The top bar: a steady bell, and a menu behind your picture
+### The top bar: a steady bell, and a menu behind your initials
 
 - **Opening the bell no longer moves anything.** On a phone the whole bar used
   to jump and the panel ran off the left edge of the screen. The panel now
   stays on the screen, the number of unread notices is a red badge, like the
   one on **Chats**, and Escape, a tap anywhere else or opening the other menu
   closes it.
-- **Tapping your picture opens „Mein Konto" and „Abmelden".** Trainers and
-  administrators also get a status there: „Automatisch", „Abwesend" or „Als
-  offline anzeigen". The menu works without JavaScript. Families have the menu,
-  but no status (ADR 0016).
+- **Tapping your initials opens a menu** with your name, „Mein Konto" and
+  „Abmelden", the same for everybody. It works without JavaScript (ADR 0016).
 - On the attendance list, the text on the marks for present and absent is
   readable in dark mode again; it now comes from the same colour as the text on
   every button.
-
-### Who was online, for trainers and administrators
-
-- **A coloured dot on each picture**: green online, blue recently, yellow
-  away, grey offline. „Abwesend" shows as yellow while you are in the portal;
-  „Als offline anzeigen" shows as offline to the other trainers, while
-  administrators still see the true times, marked „(als offline angezeigt)".
-- **„Wann online? Letzte 30 Tage"**, under **Konten** and on each child's page,
-  lists the days and the times from when to when each account was in the
-  portal. Only the date and time are kept: no IP address and no pages viewed.
-  Periods older than 30 days are the first thing the nightly cleanup removes;
-  under **Einstellungen → System → Erweitert** the 30 days can be shortened,
-  never lengthened (ADR 0015, migration 020).
-- **Families see none of it**, neither their own times nor anybody else's: the
-  owner's decision. When a trainer views the portal as a family, the trainer's
-  visit is recorded, not the family's, so a child does not show as online at
-  23:00 because somebody checked what the child sees.
-
-### Profile pictures load once, and a family sees only its own
-
-- The picture in the top bar was fetched again on every page. It is now kept
-  by the browser, privately, for up to seven days, at an address that changes
-  when the picture does, so a new picture shows at once. Invoices, attachments
-  and payment proofs are still never kept. Signing out asks the browser to
-  clear what it kept; Safari may ignore that, which is why the seven days are
-  the real limit (ADR 0017).
-- **This closed a real hole.** Any signed-in family could fetch every other
-  child's photo, and every account's, by counting through the numbers in the
-  address. Now staff see every picture, and everybody else sees their own and
-  those of the trainers and administrators. Anything else is refused, and the
-  page draws initials instead, in **Nachrichten** too.
-- The list of contact requests could show a stranger's face beside a request;
-  it now shows the sender's own picture.
 
 ### Club news by email starts switched on
 
@@ -542,9 +534,9 @@ a real iPhone, which TESTING.md I.1–I.11 walk.
   as cards at the top of Einstellungen. The entry a page belongs to stays
   marked while it is open.
 - **The phone bar** got the order and the names it has now in „The portal
-  looks and behaves like an iPhone app“, above. „Mehr“ opens the menu without
-  JavaScript. A family's way to the privacy notice and the version is at the
-  end of **Mein Konto**, under „Datenschutz und Hilfe“.
+  looks and behaves like an iPhone app“, above, where „Mehr“ is a page. A
+  family's way to the privacy notice and the version is at the end of **Mein
+  Konto**, under „Datenschutz und Hilfe“.
 - **The price box on a child's page is gone.** Its tariff and agreed price
   billed nobody: what bills is the price of the course the child is in. The
   stored values are kept and a save no longer changes them. „Dabei seit“ and
@@ -885,8 +877,8 @@ from the paper form to a printed invoice. Five things came out of that.
 - **„Etwas funktioniert hier nicht" was under the last card**, which meant it
   was only ever found by somebody who scrolled to the bottom of a page they had
   already given up on. On a desktop screen it is a button in the bottom right
-  corner now. On a phone it stays at the end of the page and the **Mehr** menu
-  carries a link down to it: the bottom of a phone screen already holds the menu
+  corner now. On a phone it stays at the end of the page, and **Mehr** and
+  **Mein Konto** carry a link down to it: the bottom of a phone screen already holds the menu
   bar and the sticky **Speichern** button, and a third thing floating over those
   is how a Save button becomes unreachable.
 - **„Wem gehört der Kontakt?"** asked about ownership when it wanted a name —
@@ -1063,9 +1055,8 @@ open it.
   reason beside their name, as a note rather than a mark. The start page grew a
   timeline of what was, what is on today and what is next.
 - **A shell that stays where you put it.** The top bar is pinned, and carries
-  the language switch, a notification pane, and who you are — once, instead of
-  once at the top and once at the bottom. Profile pictures for accounts and
-  children. A default colour set by the administrator that each person can
+  a notification pane and who you are — once, instead of once at the top and
+  once at the bottom. A default colour set by the administrator that each person can
   override for themselves. Any page can report that something is wrong on it,
   with a screenshot, and the report arrives with the page, the device, the
   address and the version attached. An administrator or trainer can view the
@@ -1073,11 +1064,11 @@ open it.
   back that works from inside the borrowed session; nothing can be changed in
   that view.
 - **Messages in the shape people already know one.** Conversations down one
-  side, bubbles down the other, one box with a paper clip and a microphone.
-  Pictures, PDFs and voice notes, within a size limit that is never higher than
-  what PHP itself accepts. Writing to the trainer needs nobody's permission.
-  **A conversation two families agreed to is private: neither the trainer nor
-  the administrator can read it**, which the screen says in words.
+  side, bubbles down the other, one box with a „+" for a photo. Text and
+  photos, within a size limit that is never higher than what PHP itself
+  accepts. Writing to the trainer needs nobody's permission. **A chat between
+  two children from before is private to the two: neither the trainer nor the
+  administrator can read it.**
 - **The change log informs.** It says what changed, field by field, in the words
   she uses, storing only what actually differed. The undo is gone: a page that
   can put a record back is a page that can put a record back by accident, and
@@ -1108,7 +1099,10 @@ Since then, on the same engine and PHP, in exported copies: at `bfeb592`, where 
 update that lost records stays closed, 6835 passed, 0 failed, with all
 thirty-three migrations; at `aa5b1b7`, with the robustness suite, 7608 passed,
 0 failed; at `f5d3c28`, with the new look, 7665 passed, 0 failed, and the browser
-walk 377 checks, 0 failed, in Chromium. Since `1ad0488` the suite can make a
+walk 377 checks, 0 failed, in Chromium; at `883be4d`, with „Mehr" as a page, 7915
+passed, 0 failed, and the walk 381 checks, 0 failed; and with round two of the
+removals, on the working tree before it was committed, 7762 passed, 0 failed,
+with all thirty-seven migrations, and the walk 381 checks, 0 failed. Since `1ad0488` the suite can make a
 file the portal cannot delete even as root, which the earlier runs could not; in
 the run at `f5d3c28` both refusals for such a file ran and passed. The refused
 update with its restore in phpMyAdmin (TESTING.md G.1–G.9) has not been walked,

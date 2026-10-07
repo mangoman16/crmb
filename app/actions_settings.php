@@ -152,31 +152,6 @@ function dispatch_settings_or_messages(string $action): array {
         if((bool)$u['newsletter']!==$newsletter)record_consent((int)$u['id'],'newsletter',$newsletter);
         if((bool)$u['notifications']!==$notifications)record_consent((int)$u['id'],'notifications',$notifications);
         $_SESSION['locale']=post('locale');flash(t('Einstellungen gespeichert.','Preferences saved.'));return ['profile',[]];
-    case 'presence_save':
-        // Staff only: the owner decided a family has no status to choose (ADR 0015).
-        $u=require_user();
-        if(!is_staff($u))throw new UserError(t('Einen Status wählen nur Trainerinnen und Administratoren.','Only trainers and administrators choose a status.'));
-        $choice=choose(post('presence'),array_keys(presence_choices()));
-        run('UPDATE accounts SET presence=? WHERE id=?',[$choice,$u['id']]);
-        // So the very next page view writes, and opens a period with the new
-        // hidden flag, instead of extending the old one for up to a minute.
-        $_SESSION['seen_written']=0;
-        // Neither tracked() nor audited: one tap puts it back, and it is the
-        // person's own business (ADR 0016).
-        flash(match($choice){
-            'away'   => t('Dein Status ist jetzt „Abwesend“.','Your status is now “Away”.'),
-            'hidden' => t('Du wirst jetzt als offline angezeigt.','You now appear offline.'),
-            default  => t('Dein Status richtet sich wieder nach deiner Aktivität.','Your status follows your activity again.'),
-        });
-        return form_return();
-    case 'status_emoji_save':
-        // Anybody's own, from the account menu (ADR 0022).
-        $u=require_user();
-        // A key from the fixed list, or '' for none: never what was typed.
-        run('UPDATE accounts SET status_emoji=? WHERE id=?',[choose(post('status_emoji'),['',...array_keys(status_emojis())]),$u['id']]);
-        // Neither tracked() nor audited, for the same reason as the status.
-        flash(t('Status-Emoji gespeichert.','Status emoji saved.'));
-        return form_return();
     case 'email_change':
         /* The holder moves their own address, confirmed by a link to the new
            one. Whether the address is already another login's is asked only

@@ -169,16 +169,15 @@ function entity_snapshot(string $entity, int $id): ?array {
  * Columns of a table that the change log never holds, whatever the operation.
  *
  * A password hash is a secret, and a copy in record_versions would outlive every
- * change of password; auth_version and last_seen_at change without anybody
- * editing anything and say nothing she could act on. Stripped from both sides
- * of an insert, an update and a delete alike (ADR 0019, S6 and R5): stripping
- * them on update only would still write the hash with every new or deleted
- * login, and a future tracked('accounts', …) around a password write would
- * put it in the log.
+ * change of password; auth_version changes without anybody editing anything
+ * and says nothing she could act on. Stripped from both sides of an insert, an
+ * update and a delete alike (ADR 0019, S6 and R5): stripping them on update
+ * only would still write the hash with every new or deleted login, and a future
+ * tracked('accounts', …) around a password write would put it in the log.
  */
 function history_never_recorded(string $entity): array {
     return match ($entity) {
-        'accounts' => ['password_hash', 'auth_version', 'last_seen_at'],
+        'accounts' => ['password_hash', 'auth_version'],
         default => [],
     };
 }

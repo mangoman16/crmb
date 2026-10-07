@@ -127,24 +127,6 @@ select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),arra
 <?php else:?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Dabei seit','Member since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div></dl></section><?php endif ?>
 <?php if($staff):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>
 <div class="form-footer"><?php submit_button($staff?t('Schüler speichern','Save student'):t('Angaben speichern','Save the details'));?></div></form>
-<?php /* The picture, after the details rather than before them: at 320px it was
-         a whole screen a family scrolled past to reach „Persönliche Daten"
-         (ADR 0020, §10e). Outside the form above - a form inside a form is
-         markup the browser throws away, so the picture would have been saved by
-         whichever button was pressed last. */ ?>
-<section class="card">
-    <h2><?=e(t('Bild','Picture'))?></h2>
-    <div class="avatar-editor">
-        <?=avatar($s,'large','student')?>
-        <div>
-            <p class="muted"><?=e(t('Freiwillig. Ohne Bild zeigt das Portal die Anfangsbuchstaben.','Optional. Without one the portal shows the initials.'))?></p>
-            <?php start_form('avatar_save',['kind'=>'student','id'=>$id],'form',true);
-            file_field('avatar',t('Bild auswählen','Choose a picture'),'avatar');
-            submit_button(t('Bild speichern','Save the picture'),'secondary');?></form>
-            <?php if(($s['avatar_name']??'')!==''){start_form('avatar_save',['kind'=>'student','id'=>$id,'remove'=>1],'inline-form');submit_button(t('Bild entfernen','Remove the picture'),'subtle danger-text');echo '</form>';} ?>
-        </div>
-    </div>
-</section>
 <?php if(!$staff): /* Mein Konto, for a family: the login rather than the
          child, reached from here since their bar has four places and no
          „Konto" (owner, 2026-10-07). */ ?>
@@ -229,14 +211,6 @@ $lastLink=$login?(signin_links_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[
     <?php endif;
     $signinLogin=$login; $signinFirstName=$firstName; $signinStudentId=$id;
     require __DIR__.'/_signin_link.php';
-    /* When the login was last used, as this viewer may know it: through
-       presence_line(), never last_seen_at itself, which for somebody who
-       appears offline is a time a trainer is not to see (ADR 0015). A login
-       not yet set up has not been used, so there is nothing to show. */
-    if(presence_shown_for($user,$login)): ?>
-    <p class="access-presence"><?=presence_line($user,$login)?></p>
-    <?php presence_history_details($user,presence_history($user,[(int)$login['id']])[(int)$login['id']]??[],presence_recorded_since());
-    endif;
     /* Whether a mailed link set the password lately - „vergessen", or the
        button below (ADR 0019, I1; 0020, §8): the same thing the holder sees on
        Mein Konto. */

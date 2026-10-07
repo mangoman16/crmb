@@ -48,6 +48,23 @@ course_groups_fill();
 // files, never in one of them: nothing in SQL ties a new login to its student.
 give_every_student_a_login();
 
+// Profile pictures went with 035 and 036 (ADR 0026 §8), and a child's photo must
+// not stay on the server once nothing shows it. They were stored beside the
+// problem reports' screenshots, and since 035 and 036 no column names them: to
+// prune_uploads() they are files no row points at, like any other upload left
+// behind, so they go now rather than at the nightly prune, which needs the
+// background work to run - and with them whatever else no row names, a receipt
+// or a chat photo whose row went, as that night's prune would take it. Its rule
+// is the one rule for every kind: only in the kind's own folder, only an
+// ordinary file with a name store_upload() gives, and never one younger than
+// the grace - ten minutes here, for a screenshot whose report another request
+// may still be saving. Every later update runs this again, as the nightly
+// prune does, and finds little or nothing to delete.
+// ponytail: a picture saved in the ten minutes before the update stays until
+// the next nightly prune. Naming the pictures before 035 drops their column
+// would need a step between two migrations, which the runner does not have.
+prune_uploads(600);
+
 if(setting('defaults_initialized',false))return;
 db()->beginTransaction();
 try{

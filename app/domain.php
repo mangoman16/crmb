@@ -178,11 +178,11 @@ function student_login_counts(): array {
 
 /**
  * One page of the Schüler card: every student with their login, sorted by last
- * name, as the login's columns - for login_state_badge(), presence_line() and
- * the sign-in name - plus the student's id and names, and link_expires_at: when
- * the newest invitation or sign-in link still waiting runs out, or null when
- * there is none (lapsed links are pruned every night). An unknown filter is
- * 'all'. The link's date only, never its hash.
+ * name, as the login's columns - for login_state_badge() and the sign-in name -
+ * plus the student's id and names, and link_expires_at: when the newest
+ * invitation or sign-in link still waiting runs out, or null when there is none
+ * (lapsed links are pruned every night). An unknown filter is 'all'. The link's
+ * date only, never its hash.
  *
  * The page is held as every pager holds it (page_in_range()): a page number
  * of twenty nines would otherwise multiply out past the largest integer into a
@@ -444,7 +444,7 @@ function family_next_steps(int $studentId): array {
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'birth-date'];
     // postal_address_missing() is in app/invoices.php, which is loaded after
     // this file: safe, because this runs only while a request runs, never while
-    // files load - the same arrangement as avatar() calling upload_version().
+    // files load.
     if (postal_address_missing($student))
         $steps[] = ['what' => t('Anschrift eintragen', 'Add the postal address'),
                     'why'  => t('Sie steht auf deinen Rechnungen.', 'It goes on your invoices.'),

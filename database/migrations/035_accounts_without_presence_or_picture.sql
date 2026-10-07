@@ -1,0 +1,29 @@
+-- A login no longer carries when it was last seen, the status its person chose,
+-- an emoji or a profile picture
+-- (docs/decisions/0026-who-the-portal-is-for-the-beta-and-what-it-no-longer-carries.md,
+-- §8 and §11).
+--
+-- last_seen_at drew the online dot (004), presence was „Abwesend“ or „Als
+-- offline anzeigen“ (020), status_emoji a key from a fixed list (027), and
+-- avatar_name the stored name of a picture (011). The dot, the status and the
+-- emoji go on the owner's word of 2026-10-07 ("Remove all"); the pictures
+-- because the club does not need photos of children, and everybody is shown by
+-- their initials. What each login held in these four columns goes. Every other
+-- value of every login stays, and no login is lost, so the update's guard,
+-- which counts the rows of accounts, has nothing to refuse. The pictures' files
+-- are deleted by the update's step after the files (database/defaults.php),
+-- once no column names them. Lines in the change log that mention a picture
+-- or a status keep them as written.
+--
+-- account_seen, the index on last_seen_at (004), is dropped by name, so that it
+-- goes with its column the same way on any engine. No key, check, view, trigger
+-- or other index uses any of the four columns (information_schema, MariaDB
+-- 10.11.14).
+--
+-- One statement, because it cannot run twice: MySQL 8.0 has no DROP COLUMN IF
+-- EXISTS. Split up, an update that stopped between two of the drops would leave
+-- a file that can no longer start again from its first statement. Run a second
+-- time after it finished, as the next page view would if the update stopped
+-- before the ledger recorded it, the engine refuses it and nothing changes, as
+-- with 024.
+ALTER TABLE accounts DROP INDEX account_seen, DROP COLUMN last_seen_at, DROP COLUMN presence, DROP COLUMN status_emoji, DROP COLUMN avatar_name;

@@ -23,21 +23,13 @@ select_field('role',t('Rolle','Role'),$roles,'trainer',true);
 <?php endif ?></details>
 <?php endif ?>
 <?php
-/* One row of either list: who, what, whether and when they were last here, and
-   where the login stands. An invitation nobody has taken up has no presence to
-   show, so it gets none rather than a grey „Offline". The history for the whole
-   page is one query (ADR 0015). */
-$seenHere=array_values(array_filter(array_merge($team,$orphans),fn($a)=>presence_shown_for($user,$a)));
-$history=presence_history($user,array_column($seenHere,'id'));
-$recordedSince=presence_recorded_since();
-$identity=function(array $a) use ($user,$history,$recordedSince): void {
-    $present=presence_shown_for($user,$a);
+/* One row of either list: who, what, and where the login stands. */
+$identity=function(array $a): void {
     // A login nobody has set up yet may have no name, and then the address is
     // its name (login_holder_name()); said once, not twice.
     $holder=login_holder_name($a); ?>
-<div class="record-row"><div class="account-identity"><?=avatar($a)?><div><h3><?=e($holder)?></h3><?php if($holder!==(string)$a['email']):?><p><?=e($a['email'])?></p><?php endif ?><small><?=e(role_label($a['role']))?><?php if($present):?> · <?=presence_line($user,$a)?><?php endif ?></small></div></div><div><?php login_state_badge($a);?></div></div>
-<?php if($present) presence_history_details($user,$history[(int)$a['id']]??[],$recordedSince);
-};
+<div class="record-row"><div class="account-identity"><?=avatar($a)?><div><h3><?=e($holder)?></h3><?php if($holder!==(string)$a['email']):?><p><?=e($a['email'])?></p><?php endif ?><small><?=e(role_label($a['role']))?></small></div></div><div><?php login_state_badge($a);?></div></div>
+<?php };
 $deleteText=t('Löscht die Anmeldung, die privaten Unterhaltungen und die E-Mails, die für sie noch warten. Schüler, Beiträge und Rechnungen bleiben.','Deletes the login, the private conversations and any emails still waiting for it. Students, charges and invoices stay.');
 ?>
 <div class="card">

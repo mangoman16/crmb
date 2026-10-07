@@ -186,17 +186,18 @@ is_same(3, count(history_recent()), 'while „Alle“ has all three, the change 
 is_same(['admin', 'admin', 'student'], array_column(history_for('students', $theirs), 'actor_role'), 'and a record’s own history carries the role too');
 
 // ---------------------------------------------------------------------------
-case_('The change log never holds a password hash, a session counter or a last visit [R5, S6]');
-/* Moved from the usernames suite when usernames went (ADR 0021). */
+case_('The change log never holds a password hash or a session counter [R5, S6]');
+/* Moved from the usernames suite when usernames went (ADR 0021). The last visit
+   was the third, until it went with the rest of the presence (ADR 0026). */
 sign_in_as($admin);
 run("DELETE FROM record_versions");
 $recorded = fn() => array_merge(...array_map(fn($v) => array_keys((array)json_decode((string)$v['before_json'], true) + (array)json_decode((string)$v['after_json'], true)),
     rows("SELECT before_json, after_json FROM record_versions WHERE entity='accounts'")));
-$logged = tracked_insert('accounts', 'Neu', fn() => make_account(['last_seen_at' => now()]));
-tracked('accounts', $logged, 'Neu', fn() => run("UPDATE accounts SET password_hash='x', auth_version=auth_version+1, last_seen_at=? WHERE id=?", [now(), $logged]));
+$logged = tracked_insert('accounts', 'Neu', fn() => make_account());
+tracked('accounts', $logged, 'Neu', fn() => run("UPDATE accounts SET password_hash='x', auth_version=auth_version+1 WHERE id=?", [$logged]));
 tracked('accounts', $logged, 'Neu', fn() => run('DELETE FROM accounts WHERE id=?', [$logged]), 'delete');
 is_same(3, (int)scalar("SELECT COUNT(*) FROM record_versions WHERE entity='accounts'"), 'an insert, an update and a delete were recorded');
-is_same([], array_values(array_intersect($recorded(), ['password_hash', 'auth_version', 'last_seen_at'])), 'and none of them holds any of the three');
+is_same([], array_values(array_intersect($recorded(), ['password_hash', 'auth_version'])), 'and none of them holds either');
 ok(in_array('email', $recorded(), true), 'while the rest of the row is there');
 
 case_('A creation is put down to who is signed in, unless its caller names the one person who is not yet');

@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * The things around the edges of every page.
  *
- * Notifications, accent colours, profile pictures, looking through somebody
+ * Notifications, accent colours, people's initials, looking through somebody
  * else's eyes, and the button that says this is broken. Grouped together
  * because they are all properties of the shell rather than of any one screen,
  * and separated from the pages so that adding a page does not mean remembering
@@ -161,10 +161,10 @@ function accent_for(?array $user): string {
 }
 
 // ---------------------------------------------------------------------------
-// Profile pictures
+// A person's initials
 // ---------------------------------------------------------------------------
 
-/** The initials shown when there is no picture. Two letters, never more. */
+/** The initials that stand for a person. Two letters, never more. */
 function initials(string $name): string {
     $parts = preg_split('/\s+/', trim($name)) ?: [];
     $parts = array_values(array_filter($parts, fn($p) => $p !== ''));
@@ -173,36 +173,17 @@ function initials(string $name): string {
 }
 
 /**
- * An avatar: the picture if there is one, the initials if not.
+ * An avatar: a person's initials. There are no pictures of people any more
+ * (ADR 0026 §8): the club does not need photos of children, and initials stand
+ * in everywhere.
  *
  * $size is a class rather than a pixel count, so every avatar in the portal is
  * one of three sizes and a new one cannot be almost-but-not-quite the same as
  * the others.
- *
- * The address carries the picture's version, so the browser keeps it while it
- * is the picture in use (avatar_cache_control()) and asks again the moment a
- * new one is uploaded.
- *
- * An account's picture is drawn only for somebody the download route would
- * send it to (may_see_account_picture()); anyone else gets the initials rather
- * than a broken image. A child's is drawn as given: every page that lists
- * children has already scoped them with student() or its list equivalent.
  */
-function avatar(array $who, string $size = '', string $kind = 'account'): string {
+function avatar(array $who, string $size = ''): string {
     $name = (string)($who['name'] ?? trim(($who['first_name'] ?? '') . ' ' . ($who['last_name'] ?? '')));
-    $class = 'avatar' . ($size !== '' ? ' ' . $size : '');
-    $stored = (string)($who['avatar_name'] ?? '');
-    $viewer = current_user();
-    $visible = $kind === 'student' || ($viewer !== null && may_see_account_picture($viewer, $who));
-    if ($stored !== '' && $visible)
-        return '<span class="' . e($class) . ' has-photo"><img src="'
-            . e(url('download', ['what' => 'avatar', 'kind' => $kind, 'id' => (int)($who['id'] ?? 0),
-                                 'v' => upload_version($stored)]))
-            // The tiny one is the top bar's, in view on every page the moment
-            // it opens; lazy would only hold its request back until layout.
-            // Lists of people further down stay lazy.
-            . '" alt=""' . ($size === 'tiny' ? '' : ' loading="lazy"') . '></span>';
-    return '<span class="' . e($class) . '">' . e(initials($name)) . '</span>';
+    return '<span class="' . e('avatar' . ($size !== '' ? ' ' . $size : '')) . '">' . e(initials($name)) . '</span>';
 }
 
 // ---------------------------------------------------------------------------

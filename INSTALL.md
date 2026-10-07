@@ -278,8 +278,8 @@ Panel eine Zeile für jede:
 ```
 
 Die erste verschickt die E-Mails. Die zweite räumt einmal in der Nacht auf; ohne
-sie bleiben unter anderem die Zeiten, wann jemand online war, länger als die 30
-Tage gespeichert, die die Datenschutzerklärung zusagt. Die dritte legt am
+sie bleiben unter anderem erledigte Problemmeldungen samt Bildschirmfoto länger
+als die 30 Tage gespeichert, die die Datenschutzerklärung zusagt. Die dritte legt am
 Monatsersten die Beiträge an – nur eintragen, wenn das Portal die Monatsbeiträge
 automatisch anlegen soll, denn sie tut es auch, wenn das auf der Seite
 **Beiträge** ausgeschaltet ist.

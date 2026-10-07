@@ -2,8 +2,8 @@
 declare(strict_types=1);
 
 /**
- * Files people send: payment proofs, message attachments, profile pictures,
- * and the portal's own icon and logo.
+ * Files people send: payment proofs, photos in a chat, problem reports'
+ * screenshots, and the portal's own icon and logo.
  *
  * Three rules hold for all of them.
  *
@@ -85,12 +85,17 @@ function upload_limit_capped(): bool {
     return max(1, (int)setting('upload_max_kb')) * 1024 > upload_limit();
 }
 
-/** What each kind of upload is allowed to be, as media type => extension. */
+/** What each kind of upload is allowed to be, as media type => extension. Every kind is named. */
 function upload_types(string $kind): array {
     $images = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
     return match ($kind) {
+        // The problem reports' screenshots. The folder keeps the name it had while
+        // it held profile pictures as well (ADR 0026 §8), so every screenshot
+        // stored before is found where it is.
         'avatar' => $images,
         'proof'  => $images + ['application/pdf' => 'pdf'],
+        // A photo in a chat, and which photos depend on who sends it (ADR 0022 §11.4).
+        'message' => message_upload_types(current_user()),
         // PNG and nothing else: an iPhone takes its home-screen icon only as a
         // PNG, and one format for the tab, iOS and Android means no guessing
         // which browser takes what. check_portal_icon() then reads its size.
@@ -98,12 +103,9 @@ function upload_types(string $kind): array {
         // The logo may be wide and may be a photograph, so JPEG and WebP too;
         // not GIF, which animates, and never SVG, which can carry script (ADR 0014).
         'logo'   => ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'],
-        // A message may carry a picture, a document or a voice note. webm and
-        // mp4 are what a browser's own recorder produces; the rest are what
-        // somebody's phone hands over when they pick an existing file.
-        default  => $images + ['application/pdf' => 'pdf', 'audio/webm' => 'webm', 'audio/mp4' => 'm4a',
-                               'audio/mpeg' => 'mp3', 'audio/ogg' => 'ogg', 'audio/wav' => 'wav',
-                               'video/webm' => 'webm', 'text/plain' => 'txt'],
+        // A kind nobody named takes nothing. A list that fell open here once
+        // gave any new kind every type there was, PDFs and audio included.
+        default  => throw new LogicException('No upload kind named „' . $kind . '“ in upload_types().'),
     };
 }
 
@@ -387,9 +389,12 @@ function webp_without_metadata(string $b): string {
     return 'RIFF' . pack('V', 4 + strlen($chunks)) . 'WEBP' . $chunks;
 }
 
+/** The shape of every name store_upload() gives a file: nothing a person typed. */
+const STORED_UPLOAD_NAME = '/^[a-f0-9]{32}\.[a-z0-9]{2,5}$/D';
+
 /** Remove a stored file. Missing is not an error; the row is going either way. */
 function delete_upload(string $kind, string $storedName): void {
-    if (!preg_match('/^[a-f0-9]{32}\.[a-z0-9]{2,5}$/D', $storedName)) return;
+    if (!preg_match(STORED_UPLOAD_NAME, $storedName)) return;
     @unlink(upload_dir($kind) . '/' . $storedName);
 }
 
@@ -403,11 +408,10 @@ function delete_upload(string $kind, string $storedName): void {
  */
 function upload_references(): array {
     return [
-        // Screenshots from a problem report are stored beside the pictures,
-        // because they are pictures and the same types are allowed.
-        'avatar'  => ["SELECT avatar_name AS name FROM accounts WHERE avatar_name<>''",
-                      "SELECT avatar_name AS name FROM students WHERE avatar_name<>''",
-                      "SELECT screenshot_name AS name FROM feedback WHERE screenshot_name<>''"],
+        // The problem reports' screenshots, alone in the folder since the
+        // profile pictures went (ADR 0026 §8): a stored file there that no
+        // report names is a picture left behind, and goes.
+        'avatar'  => ["SELECT screenshot_name AS name FROM feedback WHERE screenshot_name<>''"],
         'proof'   => ['SELECT stored_name AS name FROM payment_proofs'],
         'message' => ['SELECT stored_name AS name FROM message_files'],
         // A setting is stored as JSON, so the name sits inside quotes. Compared
@@ -421,15 +425,19 @@ function upload_references(): array {
 /**
  * Remove uploaded files that no record points at any more.
  *
- * A deleted account takes its conversations with it, a deleted child takes
- * their photo, and a database row can go without anything touching the disk -
- * so without this, a family who asked to be forgotten leaves their voice notes
- * and photographs behind in storage, and the folder only ever grows.
+ * A deleted account takes its conversations with it, a removed message its
+ * photo, and a database row can go without anything touching the disk - so
+ * without this, a family who asked to be forgotten leaves their photographs
+ * behind in storage, and the folder only ever grows. The nightly prune runs it,
+ * and so does every update's step after the files (database/defaults.php),
+ * which is how the profile pictures left the disk with their columns.
  *
  * Deliberately conservative: a file younger than the grace period is left
  * alone, because it may belong to a row being written in another request right
  * now, and deleting somebody's photograph a second after they uploaded it is a
- * worse failure than keeping one too long.
+ * worse failure than keeping one too long. Only in each kind's own folder, only
+ * an ordinary file, never a link or a folder, and only a name store_upload()
+ * gives (STORED_UPLOAD_NAME): whatever else somebody put there is theirs.
  */
 function prune_uploads(int $graceSeconds = 3600): int {
     $removed = 0;
@@ -441,7 +449,8 @@ function prune_uploads(int $graceSeconds = 3600): int {
         foreach ($queries as $sql)
             foreach (rows($sql) as $row) $kept[(string)$row['name']] = true;
         foreach ($files as $path) {
-            if (!is_file($path) || isset($kept[basename($path)])) continue;
+            $name = basename($path);
+            if (isset($kept[$name]) || is_link($path) || !is_file($path) || !preg_match(STORED_UPLOAD_NAME, $name)) continue;
             if ((int)@filemtime($path) > $cutoff) continue;
             if (@unlink($path)) $removed++;
         }
@@ -452,8 +461,9 @@ function prune_uploads(int $graceSeconds = 3600): int {
 /**
  * How a download is cached unless its caller knows better: not at all.
  *
- * An invoice, a payment proof or a message attachment is one family's
- * business, and a phone shared in the family keeps what its browser keeps.
+ * An invoice, a payment proof, a message attachment or a problem report's
+ * screenshot is one family's business, and a phone shared in the family keeps
+ * what its browser keeps. Only the club's own icon and logo say otherwise.
  */
 const DOWNLOAD_CACHE_CONTROL = 'private, no-store';
 
@@ -464,10 +474,9 @@ const DOWNLOAD_CACHE_CONTROL = 'private, no-store';
  * is the one recorded at upload rather than guessed again, so a file cannot be
  * served as something it is not.
  */
-function send_upload(string $kind, string $storedName, string $mime, string $downloadName = '',
-                     string $cacheControl = DOWNLOAD_CACHE_CONTROL): never {
+function send_upload(string $kind, string $storedName, string $mime, string $downloadName = ''): never {
     $path = upload_dir($kind) . '/' . $storedName;
-    if (!preg_match('/^[a-f0-9]{32}\.[a-z0-9]{2,5}$/D', $storedName) || !is_file($path)) {
+    if (!preg_match(STORED_UPLOAD_NAME, $storedName) || !is_file($path)) {
         http_response_code(404);
         header('Content-Type: text/plain; charset=utf-8');
         exit(t('Diese Datei gibt es nicht mehr.', 'That file is no longer here.') . "\n");
@@ -477,7 +486,7 @@ function send_upload(string $kind, string $storedName, string $mime, string $dow
     // request is holding should not be what decides whether a file can be
     // downloaded at all.
     send_download_headers($mime, $downloadName !== '' ? $downloadName : $storedName,
-                          !str_starts_with($mime, 'image/'), (int)filesize($path), $cacheControl);
+                          !str_starts_with($mime, 'image/'), (int)filesize($path));
     readfile($path);
     exit;
 }
@@ -556,48 +565,6 @@ function upload_version_current(string $storedName, mixed $requestedVersion): bo
 }
 
 /**
- * How long a browser may keep the profile picture it is being sent.
- *
- * Profile pictures sit in the top bar of every page, and without this each
- * page change fetched the same picture again. At the address of the picture in
- * use it is kept: a new picture gets a new address and a removed one falls back
- * to initials, so nothing stale is shown from the cache. An old address is
- * never kept, so it cannot be remembered as the new picture.
- *
- * Always private - a child's photograph is never for a shared cache. Seven
- * days rather than a year, and not immutable: after signing out, the picture
- * stays in that browser's own cache (logout asks the browser to clear it, but
- * not every browser does), and on a borrowed phone that copy should run out on
- * its own within a week. A week is still far longer than a visit, which is all
- * it takes to stop the reload on every page. The route still asks who is
- * signed in, and whether they may see this picture, before it reads a byte.
- */
-function avatar_cache_control(string $storedName, mixed $requestedVersion): string {
-    return upload_version_current($storedName, $requestedVersion)
-        ? 'private, max-age=604800'
-        : DOWNLOAD_CACHE_CONTROL;
-}
-
-/**
- * The stored picture the signed-in person asked for, having checked they may
- * see it: '' when there is none, NotFound when there is nobody they may see.
- *
- * A child's picture goes through student(), which is how every page finds a
- * child, so a family reaches their own children's and staff reach all. An
- * account's goes through may_see_account_picture(), the rule avatar() draws by.
- * Somebody who is not there and somebody who may not be seen are the same 404,
- * so the address cannot be used to find out which ids exist.
- */
-function avatar_for_download(string $kind, int $id): string {
-    $viewer = require_user();
-    if ($kind === 'student') return (string)student($id)['avatar_name'];
-    $account = one('SELECT id, role, avatar_name FROM accounts WHERE id=?', [$id]);
-    if (!$account || !may_see_account_picture($viewer, $account))
-        throw new NotFound(t('Dieses Bild gibt es nicht.', 'There is no such picture.'));
-    return (string)$account['avatar_name'];
-}
-
-/**
  * Serve whatever ?page=download was asked for.
  *
  * Every branch decides who may have the file before it reads a byte, using the
@@ -612,20 +579,6 @@ function serve_download(): void {
     if ($what === 'invoice') {
         $invoice = invoice($id);
         send_bytes(invoice_pdf($invoice), 'application/pdf', invoice_filename($invoice));
-    }
-    if ($what === 'avatar') {
-        // Who may have which picture is avatar_for_download()'s to decide;
-        // anybody else gets its 404.
-        $name = avatar_for_download(($_GET['kind'] ?? '') === 'student' ? 'student' : 'account', $id);
-        // The type comes back from the same table the extension was chosen
-        // from, so a file is never announced as something it is not.
-        $mime = array_search(pathinfo($name, PATHINFO_EXTENSION), upload_types('avatar'), true);
-        // An address with an older version is still answered, uncached, rather
-        // than refused: a page drawn a moment before the picture was replaced -
-        // or a lazy picture fetched when scrolled to much later - would
-        // otherwise show a broken image instead of the new picture.
-        if ($name !== '' && $mime !== false)
-            send_upload('avatar', $name, (string)$mime, '', avatar_cache_control($name, $_GET['v'] ?? null));
     }
     if ($what === 'shot') {
         require_admin();

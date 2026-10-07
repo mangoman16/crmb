@@ -38,7 +38,6 @@ $open=$id || $with || $picking;
 // to keep its help button off the box's Send button.
 $writable=false;
 $chats=chat_list($user,$allDirect);
-$waiting=($staff || $viewing)?0:pending_contact_count($me);
 
 /** What one row of the list says under the name. */
 $preview=function(array $c) use ($me): string {
@@ -71,9 +70,9 @@ $row=function(array $c) use ($user,$id,$preview,$when): void {
     $unread=(int)$c['unread']; $group=$c['kind']==='course'; $other=chat_person_in($c,'other_'); ?>
     <a class="thread-item<?=$id===(int)$c['id']?' selected':''?><?=$unread?' unread':''?>" href="<?=e(url('messages',['id'=>$c['id'],'#'=>'chat-end']))?>">
         <?php if($group): ?><span class="hue hue-<?=e(chat_hue((int)$c['class_id']))?>"><?=avatar(['name'=>$c['class_name']])?></span>
-        <?php else: ?><span class="avatar-presence"><?=avatar($other)?><?=$c['other_id']!==null && (int)$c['me_in']?presence_dot($user,$other):''?></span><?php endif ?>
+        <?php else: ?><?=avatar($other)?><?php endif ?>
         <span class="thread-item-text">
-            <span class="thread-item-top"><strong><span class="thread-item-name"><?=e(thread_title($c,$user))?></span><?=!$group && (int)$c['me_in']?status_emoji_mark($other):''?></strong><time><?=e($when($c['last_at']??$c['updated_at']))?></time></span>
+            <span class="thread-item-top"><strong><span class="thread-item-name"><?=e(thread_title($c,$user))?></span></strong><time><?=e($when($c['last_at']??$c['updated_at']))?></time></span>
             <span class="thread-item-bottom"><span class="thread-item-preview"><?=e($preview($c))?></span><?php if($unread):?><span class="count"><?=e($unread)?><span class="visually-hidden"><?=e(' '.t('ungelesen','unread'))?></span></span><?php endif ?></span>
         </span>
     </a>
@@ -89,8 +88,6 @@ if($staff): ?>
     <a class="chip" href="<?=e(url('outbox'))?>"><?=e(t('Postausgang','Outbox'))?></a>
     <?php if(is_admin($user)): ?><a class="chip" href="<?=e(url('messages',$allDirect?[]:['all'=>1]))?>"><?=e($allDirect?t('Meine Chats','My chats'):t('Alle Direktchats','All direct chats'))?></a><?php endif ?>
 </nav>
-<?php elseif($waiting): ?>
-<nav class="page-links" aria-label="<?=e(t('Anfragen','Requests'))?>"><a class="chip" href="<?=e(url('messages',['new'=>1]))?>"><?=e(plural($waiting,'neue Anfrage','neue Anfragen','new request','new requests'))?></a></nav>
 <?php endif ?>
 <div class="messages-grid">
 <aside class="card thread-list">
@@ -100,8 +97,13 @@ if($staff): ?>
     <?php foreach($chats as $c) $row($c); ?>
 <?php else:
     $groups=array_filter($chats,fn($c)=>$c['kind']==='course');
-    $direct=array_filter($chats,fn($c)=>in_array($c['kind'],['direct','staff_direct'],true));
-    $desk=array_filter($chats,fn($c)=>$c['kind']==='staff'); ?>
+    /* A child's chat with another child is from before those chats closed
+       (ADR 0022 §11.3): it stays to read, under „Frühere Unterhaltungen" beside
+       the closed desk threads. A 'direct' chat staff are in is between two of
+       them, and open. */
+    $closed=fn(array $c): bool => $c['kind']==='staff' || ($c['kind']==='direct' && !$staff);
+    $direct=array_filter($chats,fn($c)=>in_array($c['kind'],['direct','staff_direct'],true) && !$closed($c));
+    $desk=array_filter($chats,$closed); ?>
     <h2 class="chat-section"><?=e(t('Kursgruppen','Course groups'))?></h2>
     <?php if(!$groups): ?>
     <p class="chat-empty"><?=e($staff?t('Noch keine Kurse. Jeder Kurs bekommt hier automatisch seine Gruppe.','No courses yet. Every course gets its group here by itself.')
@@ -134,7 +136,7 @@ if($picking): ?>
     $match=fn(array $p): bool => $q==='' || mb_stripos((string)$p['name'],$q)!==false;
     $person=function(array $p, string $small='') use ($user): void { ?>
     <a class="member-row" href="<?=e(url('messages',['with'=>$p['id'],'#'=>'chat-end']))?>">
-        <span class="avatar-presence"><?=avatar($p)?><?=presence_dot($user,$p)?></span>
+        <?=avatar($p)?>
         <span class="member-row-text"><strong><?=chat_name($p)?></strong><?php if($small!==''):?><small><?=e($small)?></small><?php endif ?></span><?=icon('chevron')?>
     </a>
 <?php };
@@ -159,25 +161,7 @@ if($picking): ?>
     if(!$groups && !$team && !$others): ?><p class="chat-empty"><?=e(t('Niemand mit diesem Namen.','Nobody by that name.'))?></p><?php endif ?>
     <?php else:
     /* A family writes to the coaching team (ADR 0022 §11.3): chats between
-       students have closed, so no other family is listed and nobody can be
-       asked. A request made before that still waits here to be answered,
-       until the requests go with the rest of the chat's extras. */
-    $requests=contact_requests_for($me);
-    if($requests): ?>
-    <h2 class="chat-section"><?=e(t('Möchte dir schreiben','Would like to write to you'))?></h2>
-    <?php foreach($requests as $r): ?>
-    <div class="record-row">
-        <?php /* The row is the request, so its id is the request's, not the sender's:
-                 the picture has to be asked for by the sender's account id, and
-                 whether it may be shown at all depends on the sender's role. */ ?>
-        <div class="account-identity"><?=avatar(['id'=>(int)$r['from_account_id'],'role'=>$r['from_role'],'name'=>$r['from_name'],'avatar_name'=>$r['avatar_name']])?>
-            <div><strong><?=e($r['from_name'])?></strong><?php if($r['message']):?><p><?=e($r['message'])?></p><?php endif ?></div></div>
-        <div class="row-actions">
-            <?php start_form('contact_decide',['id'=>$r['id'],'decision'=>'accept'],'inline-form');submit_button(t('Zustimmen','Agree'),'secondary');?></form>
-            <?php start_form('contact_decide',['id'=>$r['id'],'decision'=>'decline'],'inline-form');submit_button(t('Ablehnen','Decline'),'subtle danger-text');?></form>
-        </div>
-    </div>
-    <?php endforeach; endif ?>
+       students have closed, so no other family is listed. */ ?>
     <h2 class="chat-section"><?=e(t('Trainerteam','Coaching team'))?></h2>
     <?php foreach($team as $p) $person($p,role_label((string)$p['role']));
     endif; endif ?>
@@ -199,7 +183,7 @@ elseif($showMembers): $thread=thread_record($id);
         $canWrite=!$viewing && $p['id']!==null && (int)$p['id']!==$me && ($staff || is_staff($p));
         $tag=$canWrite?'a':'div'; ?>
     <<?=e($tag)?> class="member-row"<?php if($canWrite):?> href="<?=e(url('messages',['with'=>$p['id'],'#'=>'chat-end']))?>"<?php endif ?>>
-        <span class="avatar-presence"><?=avatar($p)?><?=$p['id']!==null?presence_dot($user,$p):''?></span>
+        <?=avatar($p)?>
         <span class="member-row-text"><strong><?=chat_name($p)?></strong><?php if($small!==''):?><small><?=e($small)?></small><?php endif ?></span><?=$canWrite?icon('chevron'):''?>
     </<?=e($tag)?>>
     <?php }; ?>
@@ -247,9 +231,9 @@ elseif($id || $with):
         <a class="chat-members" href="<?=e(url('messages',['id'=>$id,'members'=>1]))?>"><?=icon('users')?><span class="visually-hidden"><?=e(t('Wer ist in der Gruppe?','Who is in the group?'))?></span></a>
         <?php else: ?>
         <div class="chat-head-who">
-            <?php if($other): ?><span class="avatar-presence"><?=avatar($other,'small')?><?=presence_dot($user,$other)?></span><?php endif ?>
+            <?php if($other) echo avatar($other,'small'); ?>
             <span class="chat-head-text"><h2><?=$other?chat_name($other):e(thread_title($thread,$user))?></h2>
-                <?php if($other): ?><small><?=e(($staff || is_staff($other)?role_label((string)$other['role']).' · ':'').presence_state_label(presence_state($other)))?></small><?php endif ?></span>
+                <?php if($other && ($staff || is_staff($other))): ?><small><?=e(role_label((string)$other['role']))?></small><?php endif ?></span>
         </div>
         <?php endif ?>
     </header>
@@ -259,7 +243,10 @@ elseif($id || $with):
     $note=match($thread['kind']){
         'course'=>t('Alle aus diesem Kurs und das Trainerteam lesen hier mit.','Everyone in this course and the coaching team can read this.'),
         'staff_direct'=>t('Die Administratoren des Vereins können diesen Chat lesen.','The club’s administrators can read this chat.'),
-        'direct'=>t('Diese Unterhaltung ist privat. Auch die Trainerin und der Administrator lesen sie nicht mit.','This conversation is private. Neither the trainer nor the administrator can read it.'),
+        // Between two members of staff, theirs; between two children, from
+        // before those chats closed (ADR 0022 §11.3).
+        'direct'=>$staff?t('Diese Unterhaltung ist privat. Auch die Trainerin und der Administrator lesen sie nicht mit.','This conversation is private. Neither the trainer nor the administrator can read it.')
+                        :t('Chats zwischen Schülern sind geschlossen. Was hier steht, bleibt lesbar. Schreib dem Trainerteam oder in deine Kursgruppe.','Chats between students have closed. What is here can still be read. Write to the coaching team or in your course group.'),
         default=>t('Diese frühere Unterhaltung ist geschlossen. Schreib in den Chat mit der Person.','This earlier conversation is closed. Write in the chat with the person.'),
     }; ?>
     <p class="chat-note"><?=e($note)?></p>
@@ -306,26 +293,21 @@ elseif($id || $with):
     </div>
 
     <?php if($writable):
-    /* One box, a paper clip and a microphone. The clip is an ordinary file
-       input and works with no JavaScript at all; the microphone appears only
-       when the browser can record, and puts what it records into that same
-       input, so there is one way in and not two. */
+    /* One box, and a paper clip for a photo (ADR 0022 §11.4). The clip is an
+       ordinary file input and works with no JavaScript at all. It offers what
+       message_upload_types() lets this person send: a child's photo from the
+       camera, as a JPEG; staff's from the camera or the gallery. */
     start_form('message_send',$id?['thread_id'=>$id]:['to'=>$with],'composer',true); ?>
     <div class="composer-row">
-        <label class="composer-clip" title="<?=e(t('Datei anhängen','Attach a file'))?>">
-            <?=icon('plus')?><span class="visually-hidden"><?=e(t('Datei anhängen','Attach a file'))?></span>
-            <input type="file" name="attachment" accept="<?=e(implode(',',array_keys(upload_types('message'))))?>">
+        <label class="composer-clip" title="<?=e(t('Foto anhängen','Attach a photo'))?>">
+            <?=icon('plus')?><span class="visually-hidden"><?=e(t('Foto anhängen','Attach a photo'))?></span>
+            <input type="file" name="attachment" accept="<?=e(implode(',',array_keys(message_upload_types($user))))?>"<?=$staff?'':' capture="environment"'?>>
         </label>
         <label class="visually-hidden" for="composer-body"><?=e(t('Nachricht','Message'))?></label>
         <textarea id="composer-body" name="body" rows="1" placeholder="<?=e(t('Nachricht schreiben …','Write a message …'))?>"></textarea>
-        <button type="button" class="composer-mic" data-record hidden>
-            <?=icon('mic')?><span class="visually-hidden"><?=e(t('Sprachnachricht aufnehmen','Record a voice message'))?></span>
-        </button>
         <button class="button primary composer-send" type="submit"><?=icon('arrow')?><span class="visually-hidden"><?=e(t('Senden','Send'))?></span></button>
     </div>
-    <input type="hidden" name="attachment_seconds" value="0" data-record-seconds>
-    <p class="composer-note" data-record-status hidden></p>
-    <small class="muted"><?=e(t('Anhänge bis ','Attachments up to ').upload_limit_label().t('. Bilder, PDF und Sprachnachrichten.','. Pictures, PDFs and voice messages.'))?></small>
+    <small class="muted"><?=e(t('Fotos bis ','Photos up to ').upload_limit_label().'.')?></small>
     </form>
     <?php endif ?>
 

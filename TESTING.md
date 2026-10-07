@@ -56,8 +56,8 @@ nothing to read first. Only 1.4 changes anything, and you put it back.
   card headed **Anmelden** below it, in the portal's colours — not black text on
   a white page, and not a blank page.
 - [ ] **1.2** Sign in. The page says **Hallo** and your first name, with
-  **Aktive Schüler** and three more figures under it, your picture or initials
-  at the top right, and no red box anywhere. Scroll down: the bar at the top
+  **Aktive Schüler** and three more figures under it, your initials at the top
+  right, and no red box anywhere. Scroll down: the bar at the top
   stays where it is.
 - [ ] **1.3** Tap **Schüler** in the bar at the bottom, then any child. Their
   page opens with their name as the heading and the boxes under **Persönliche
@@ -90,16 +90,14 @@ release and emptied again for the next.
 - A problem report says how she got there; errors report themselves: U.13–U.19, U.40–U.44
 - The portal's own icon: U.2–U.8 · the sign-in line: U.1 · rows that line up: U.9–U.12
 - The privacy notice in English is optional: U.35, U.56
-- A profile picture is kept by the browser instead of fetched on every page, and another family's is never shown: U.58–U.62
 - News by email starts switched on for a new login, and can be switched off when accepting the invitation: [15.2, 15.7](#news-email-and-the-queue), in News and email
 - The bell no longer jumps when opened, its panel stays on a phone's screen, its number is a red badge like the one on **Chats**, and a tap elsewhere or Escape closes it: [5.3a–5.3g](#the-shell-the-bar-notifications-feedback-impersonation), in The shell
-- A status to choose — „Automatisch", „Abwesend", „Als offline anzeigen" — for trainers and administrators, a coloured dot, and when each account was online over the last 30 days: [P.1–P.10](#online-status-and-when-somebody-was-online)
-- Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
+- Your initials at the top right open a menu — your name, „Mein Konto", „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [5.3i, 5.3j](#the-shell-the-bar-notifications-feedback-impersonation) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
 - After an update the browser fetches the new stylesheet and script by itself: the account menu is styled and the bell stays still without clearing the cache: A.0
 - Everybody signs in with their own e-mail address — a student may have a username instead (L.11–L.16). A person is added either by inviting an address — they fill in their own details and choose a course — or through the wizard „Schüler anlegen"; nobody sets another person's password (ADR 0021, amended by ADR 0023): A.1–A.13
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.18, A.20–A.22, A.25, A.27
-- The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a stored photo keeps only the picture (ADR 0022): C.1–C.6, C.8–C.15, C.17–C.20
+- The chat works like a messenger: a group for every course, chats with one person; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a stored photo keeps only the picture (ADR 0022): C.1–C.6, C.10–C.15, C.17–C.20
 - Billing and invoices after the review of October 2026: an archived tariff stays on a child, a cancelled charge can be charged again, „Als bezahlt eintragen" confirms rather than doubles, a charge on an invoice cannot be cancelled, an invoice is not e-mailed to a family who said no, the invoices page counts every invoice, a membership ending mid-month is charged to that day, a child coming back starts afresh, the age filter finds the right children, background charges are German and nobody's, and the „Zahlungsziel" setting that did nothing is gone: [B.1–B.14](#billing-and-invoices-after-the-review-of-october-2026)
 - Every student has a login — „Ohne Anmeldung" until somebody gives it an address or a username; a wizard „Schüler anlegen" is the one way to add a child; a username signs in in the same box as an address; a one-time „Anmeldelink" with a QR code for a child without an e-mail address; deleting a child's login gives them a fresh, empty one (ADR 0023): [L.1–L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
 - A form sent twice — a double tap, or the same form sent again after Back — lands where the first one went, with the first one's message, and makes nothing twice: [L.10b, L.10c](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023) in the wizard
@@ -107,9 +105,10 @@ release and emptied again for the next.
 - What the reviews of ADR 0023 found: two people cannot both take a course's last place, a child without sign-in collects no bell notices, a sign-in link dies with its child and waits for the privacy notice, a browser shared between people forgets a half-opened link, a team member's login left on a child's record lets go of the child and stays hers, and a page opened with a list in its address draws without a warning: [L.10a, L.18a, L.20a–L.20c, L.21a, L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023), [7.23](#students-contacts-levels-and-age-groups)
 - A view through somebody's eyes ends with the viewer's own login — deleted, suspended or given a new password, the browser looking is signed out on its next tap; a sign-in link's page asks what the link may still do before it shows anything of the login; a trainer is told an administrator releases the privacy notice; a stale „Einladung senden" says the child has a login: [5.11c](#the-shell-the-bar-notifications-feedback-impersonation), [L.20a, L.20d, L.21b](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
 - What ADR 0026 takes out, round one: custom fields with what was typed into them, copying, saved views, writing to many with its templates, „Warteschlange senden", the printed form and data sheet, and Verwaltung's „Tarife" tab: [R.1–R.8](#what-adr-0026-removes-round-one)
+- What ADR 0026 takes out, round two: the online dots, the status and when somebody was online; the status emoji; profile pictures, whose files the update deletes for good; asking to write to another family; voice notes and files in new messages, which are text and photos, a family's from the camera: [R.9–R.17](#what-adr-0026-removes-round-two), and 5.3i, 5.3j, 14.1–14.7, 20.4, 21.7
 - An update that lost records keeps the portal closed, for everybody, on every page view, until the rows are back; the way back is the previous version's files, then the copy from before, in phpMyAdmin (ADR 0027): [G.1–G.9](#an-update-that-lost-records-stays-closed-adr-0027)
 - Any value from anyone is answered with one sentence on the same page: numbers, dates and pages held to their range, a family writes only to the trainer team, and nothing reaches the error log: [V.1–V.11](#any-value-from-anyone-adr-0026-5), 14.5, 14.7
-- The portal looks and behaves like an iPhone app: the phone's own font, grouped lists, a tab bar (Übersicht · Schüler · Anwesend · Chats · Mehr for staff, Übersicht · Beiträge · Chats · Profil for a family), red counts, switches, sheets, a back button, pages that fade; Mein Konto for a family through Profil, the language in Mein Konto — on a real iPhone: [I.1–I.11](#the-portal-as-an-iphone-app-design-language-phase-1), and 1.6, 5.3c, 6.10, U.46, U.48, U.52, U.56
+- The portal looks and behaves like an iPhone app: the phone's own font, grouped lists, a tab bar (Übersicht · Schüler · Anwesend · Chats · Mehr for staff, Übersicht · Beiträge · Chats · Profil for a family), red counts, switches, sheets, a back button, pages that fade; „Mehr" as a page; Mein Konto for a family through Profil, the language in Mein Konto — on a real iPhone: [I.1–I.11](#the-portal-as-an-iphone-app-design-language-phase-1), and 1.6, 5.0a, 5.1b, 5.3c, 6.10, U.46, U.47, U.48, U.52, U.56
 
 ---
 
@@ -176,13 +175,12 @@ measurement.
 | `messaging` | Who may read a conversation and who may write to whom |
 | `migrations` | An update carries the data with it: prices, discounts, addresses |
 | `performance` | Query counts, so a page does not issue one query per row |
-| `presence` | The dot, the status staff choose, when somebody was online, and who may see it |
-| `presence_pages` | The same on the pages, and the account menu in the top bar |
 | `reports` | A problem report's trail of steps, and nothing in it that must never be kept |
+| `robustness` | Every form sent every kind of nonsense by every kind of person: one sentence back, never an error page, a warning or a write to somebody else's rows |
 | `security` | Authorisation boundaries, credentials, what must not leak |
 | `selfservice` | Families completing their own details, and every change in the change log |
 | `settings` | Every setting has a type and a usable default |
-| `shell` | Notifications, impersonation, avatars, themes, feedback |
+| `shell` | Notifications, impersonation, initials, themes, feedback, the menus, the bar at the bottom, „Mehr" and the back button |
 | `start` | The start checklist: each tick read from the data, example data never counting, the way on and back |
 | `structure` | That no file has been silently destroyed, every value is escaped, every page classified |
 | `transactions` | A failed write leaves nothing behind |
@@ -491,14 +489,18 @@ Skip on an ordinary code change; do all of it before a release.
   the bottom right corner of every page. It opens upwards, stays inside the
   window, and closing it leaves the page where it was.
 - [ ] **5.0a** On a phone it is *not* floating: it is at the end of the page,
-  reached from „Etwas funktioniert nicht" in the **Mehr** menu. Check on a form
-  page that nothing covers the sticky **Speichern** bar.
+  reached from „Etwas funktioniert nicht" on the **Mehr** page or on **Mein
+  Konto**. Check on a form page that nothing covers the sticky **Speichern** bar.
 - [ ] **5.1** Scroll a long page. The top bar stays where it is.
 - [ ] **5.1a** As the administrator, on a laptop at **110% and 125% zoom**, the
   menu on the left has no scrollbar of its own and its last entry is above the
   fold. With a course request waiting, its number stands beside **Kurse**.
-- [ ] **5.1b** On a phone the menu is the drawer behind **Mehr**, and every row
-  in it is 44pt.
+- [ ] **5.1b** On a phone, **Mehr** opens a page of its own, not a menu sliding
+  in from the side: **Kurse**, **Geld** and **Einstellungen** (**Verwaltung** for
+  a trainer, and **Einrichtung** above them while the checklist is unfinished),
+  each with its number if something waits there, then **Mein Konto**,
+  „Datenschutz und Hilfe" and a red „Abmelden". Every row is at least 44pt. With
+  JavaScript switched off it works the same.
 - [ ] **5.2** Your name and role appear **once**, in the top bar — not again at
   the bottom of the menu.
 - [ ] **5.3** The bell shows a number when something is waiting. Opening it
@@ -533,15 +535,25 @@ Skip on an ordinary code change; do all of it before a release.
   to the bell), then **Escape**: the panel closes and the outline stays where it
   was — it does not jump back to the bell.
 - [ ] **5.3f** Opening one menu in the top bar closes the other. Open the bell,
-  then tap your picture: the bell's panel closes as the account menu opens. Then
+  then tap your initials: the bell's panel closes as the account menu opens. Then
   the other way round — only one is ever open. The same with the keyboard: Tab
-  to the picture and press Enter while the bell is open.
+  to the initials and press Enter while the bell is open.
 - [ ] **5.3g** In Chrome on a laptop, switch JavaScript off (developer tools,
   then ⌘/Ctrl+Shift+P, type „Disable JavaScript", Enter; it stays off while
   the developer tools are open) and reload a page. The bell still opens
   when clicked and closes when clicked again. A click elsewhere leaving it open
   is expected without JavaScript and passes. Close the developer tools to
   switch JavaScript back on.
+- [ ] **5.3h** With the bell open on a child's page, „Alle gelesen" leaves you on
+  that same child, not on „Nicht gefunden".
+- [ ] **5.3i** Tap your initials at the top right: the menu shows your name and
+  role, „Mein Konto" and „Abmelden" — no status, no emoji and no coloured dot,
+  as staff and as a family. „Mein Konto" opens your account. With JavaScript off
+  as in 5.3g, the menu opens and closes the same way, and „Abmelden" signs you
+  out.
+- [ ] **5.3j** On an iPhone 320 pixels wide (an iPhone SE of the first
+  generation), tap your initials: „Abmelden" is above the bar at the bottom and
+  can be tapped. No such iPhone to hand? Write down that this was not checked.
 - [ ] **5.4** A family sends a message. Both the trainer *and* the
   administrator get a notification — not only one of them.
 - [ ] **5.5** Clicking a notification lands on the thing it is about.
@@ -580,8 +592,7 @@ Skip on an ordinary code change; do all of it before a release.
   Start the view in the first tab. Then, in the other two and without reloading
   them, „Alle gelesen" in the bell and a message sent in the group are each
   refused with the same sentence. After „Ansicht beenden" the bell still shows
-  its number and the group has no new message. A status chosen in such a tab's
-  account menu is refused the same way.
+  its number and the group has no new message.
 - [ ] **5.11c** A view ends with the viewer's own login, and signs the browser
   out. Two browsers. In the first, as the trainer, „Portal als … ansehen" on a
   child whose login is in use, and open the child's **Nachrichten**. In the
@@ -606,12 +617,6 @@ Skip on an ordinary code change; do all of it before a release.
   their choice.
 - [ ] **6.3** Dark mode follows the device. Switch the phone to dark and check
   no text has disappeared into its background.
-- [ ] **6.4** **Mein Konto**: upload a profile picture. It appears in the top
-  bar, in conversations and in the account list. „Bild entfernen" puts the
-  initials back.
-- [ ] **6.5** A child's picture on their page shows in the student list.
-- [ ] **6.6** Upload something that is not a picture. Refused in words, and the
-  form still holds everything else you had typed.
 
 ### The club's colours and logo (Einstellungen → Portal)
 
@@ -700,84 +705,6 @@ and height swapped. Reading that note needs PHP's exif extension, which shared
 hosting does not promise. The way round is to save the logo from an image
 editor or as a screenshot, which stores it the right way up. A logo from a
 designer is not affected.
-
----
-
-## Online status and when somebody was online
-
-You need two phones or browsers: one signed in as an **administrator**, one as a
-**trainer**, and a family's login you can view through (**Portal als diese
-Person ansehen**). The dot and the status block are in the account menu — tap
-your picture at the top right.
-
-- [ ] **P.1** As the trainer, open the account menu. Under **Status** the three
-  rows read „Automatisch", „Abwesend", „Als offline anzeigen", and the one you
-  have now is marked, not a button. Tap „Abwesend": the page you were on comes
-  back — try it on a child's page with a tab open, and the same child and tab
-  are still showing — with „Dein Status ist jetzt „Abwesend"." Your dot is
-  yellow.
-- [ ] **P.2** Tap „Automatisch": „Dein Status richtet sich wieder nach deiner
-  Aktivität." and the dot is green again. Nothing new appears under
-  **Einstellungen → Änderungen**: a status is not a change worth recording.
-- [ ] **P.3** Sign in as a family. The account menu has „Mein Konto",
-  „Status-Emoji" and „Abmelden", and no status to choose; their own picture
-  carries its dot, which follows what they do (C.8).
-- [ ] **P.4** As the trainer, view the portal as that family. The account menu
-  has no status block. Stop viewing, then open the family's page: their „zuletzt
-  online" has **not** moved to just now — it was you in the portal, not them.
-- [ ] **P.5** As the trainer, choose „Als offline anzeigen": „Du wirst jetzt als
-  offline angezeigt." Keep using the portal for a few minutes. On the
-  administrator's phone, under **Konten**, the trainer shows the true time and
-  „(als offline angezeigt)". Have a second trainer look instead (or view the
-  portal as one): the dot is grey and „zuletzt" stays at the moment you hid.
-- [ ] **P.6** As the administrator, open a child's page whose family has signed
-  in this month: **„Wann online? Letzte 30 Tage"** opens to the days they were
-  in, newest first, with times in your own time zone. A visit that ran past
-  midnight is listed once, under the evening it began. A period while
-  somebody appeared offline is marked „(als offline angezeigt)"; a trainer
-  looking at the same account does not see it at all.
-- [ ] **P.7** In the first month after this update the history also says
-  „Aufgezeichnet wird seit dem …" with the day of the update. Nothing before
-  that day is shown as „nicht online".
-- [ ] **P.8** **Einstellungen → Portal**: the online field reads „Grün –
-  „online": aktiv innerhalb von (Minuten)". Under **Erweitert**, blue in
-  minutes and yellow in hours. **Einstellungen → System → Erweitert**: „Wann
-  jemand online war, aufbewahren (Tage)" refuses 31 and accepts 30 or less.
-- [ ] **P.9** With the bell open on a child's page, „Alle gelesen" leaves you on
-  that same child, not on „Nicht gefunden".
-- [ ] **P.10** **(release)** In the database, set one `online_periods` row's
-  `last_seen_at` to 31 days ago and let the nightly cleanup run (or
-  `php bin/console.php maintenance`): that row is gone and one from 29 days ago is
-  still there.
-- [ ] **P.11** On a real iPhone, in Safari, as the trainer — once in light mode
-  and once in dark: tap your picture at the top right. Under **Status** the one
-  you have now is marked with a tick, not a button. Tap „Abwesend": the page
-  comes back with „Dein Status ist jetzt „Abwesend"." at the top, and the dot on
-  your picture has turned from green to yellow. „Als offline anzeigen" turns it
-  grey. Put it back to „Automatisch".
-- [ ] **P.12** On the iPhone, signed in as a family, tap the picture: the menu
-  holds „Mein Konto", „Status-Emoji" and „Abmelden" — P.3, on the phone.
-- [ ] **P.13** As the administrator, on a child whose login is in use, **„Portal
-  als … ansehen"**, then tap the picture: no **Status**, no „Status-Emoji" and no
-  dot — they are the reader's own. (P.4 is the same for the trainer.) „Ansicht
-  beenden" afterwards.
-- [ ] **P.14** On an iPhone 320 pixels wide (an iPhone SE of the first
-  generation), as the trainer, tap your picture: „Abmelden" is above the bar at
-  the bottom, or can be reached by scrolling inside the menu — never hidden
-  behind the bar. Safari's own bars leave a small iPhone less height than a
-  desktop browser set to 320 has, so only the phone can pass this; a menu that
-  scrolls passes as long as „Abmelden" can be tapped. Tap it: you are signed
-  out. No such iPhone to hand? Write down that this was not checked.
-- [ ] **P.15** **Konten**, and a child's page whose family has a login: open
-  **„Wann online? Letzte 30 Tage"** on your own row. The days and times match
-  when you really used the portal this week. Then the trainer who chose „Als
-  offline anzeigen" in P.5: as the administrator, those times are listed and
-  marked „(als offline angezeigt)"; through a second trainer's eyes they are not
-  listed at all.
-- [ ] **P.16** With JavaScript switched off, as in 5.3g: tap your picture — the
-  menu opens, and tapping the picture again closes it. Choose „Abwesend": the
-  message appears and the dot is yellow; put it back to „Automatisch". Then
-  „Abmelden": you are signed out.
 
 ---
 
@@ -1064,24 +991,24 @@ your picture at the top right.
 
 ## Messages
 
-- [ ] **14.1** **Nachrichten** as a family: one box, a paper clip, a microphone,
-  a send arrow. Write to the trainer without asking anybody's permission.
-- [ ] **14.2** Attach a photo — it shows as a picture in the bubble. Attach a
-  PDF — it shows as a file to open.
-- [ ] **14.3** Record a voice message with the microphone and send it. It plays
-  back in the bubble with its length beside it. (Needs a browser that can
-  record; where it cannot, the microphone is simply not there and the paper clip
-  still works.)
-- [ ] **14.4** With JavaScript switched off, the paper clip is an ordinary file
-  field and the message still sends.
+- [ ] **14.1** **Nachrichten** as a family: one box, a „+" to attach a photo
+  („Foto anhängen"), a send arrow, and no microphone. Under the box: „Fotos bis
+  …" with the size. Write to the trainer without asking anybody's permission.
+- [ ] **14.2** Attach a photo — it shows as a picture in the bubble. As a family,
+  a PDF, a PNG screenshot or a GIF is refused in a sentence; as the trainer, a
+  PNG and a WebP are taken, a PDF is refused. (R.12 and R.13 walk the same on an
+  iPhone.)
+- [ ] **14.4** With JavaScript switched off, the „+" is an ordinary file field
+  and the message still sends.
 - [ ] **14.5** As a family, „Neue Nachricht" lists the **Trainerteam** and
   nobody else: no „Kinder", no „Jemand anderen fragen". A family can no longer
   ask to write to another family.
 - [ ] **14.7** **(release)** **The private one, and check it from every side:**
-  on a copy that has a conversation two families agreed to before families
-  could no longer ask, open it. The trainer cannot see it in her list, in her unread count,
-  or by opening its address. Neither can the administrator. Nor can either of
-  them open its attachments.
+  on a copy that has a chat between two children from before such chats
+  closed, open it as one of the two: it reads, and has no writing box (R.15).
+  The trainer cannot see it in her list, in her unread count, or by opening its
+  address. Neither can the administrator. Nor can either of them open its
+  attachments.
 - [ ] **14.8** A chat with the trainer is read by the trainer and the child, and
   by the administrators — not by a second trainer (ADR 0022). The old shared
   conversations from before stay readable under „Frühere Unterhaltungen" and take
@@ -1097,9 +1024,9 @@ your picture at the top right.
 - [ ] **15.1** Publish a news item. Families see it on their **Übersicht**, in
   the group **Neuigkeiten**, whose „Alle ansehen" opens the full list.
 - [ ] **15.2** Save a news item with **„Diese Fassung auch an alle senden, die
-  Neuigkeiten per E-Mail erhalten"** switched on. **Postausgang** holds one email for
-  each family whose **„Neuigkeiten per E-Mail erhalten"** is on under **Mein
-  Konto**, and none for a family who switched it off.
+  Neuigkeiten per E-Mail erhalten"** switched on. **Postausgang** holds one
+  email for each family whose **„Neuigkeiten per E-Mail erhalten"** is on under
+  **Mein Konto**, and none for a family who switched it off.
 - [ ] **15.3** **Einstellungen → SMTP → Verbindung testen**: with a target
   address filled in, the page comes back with the outcome on it, not with a
   message in a list to go and find. It arrives, or the summary says which step
@@ -1119,9 +1046,9 @@ your picture at the top right.
 - [ ] **15.6** Changing the SMTP password and saving does not print it back to
   the page.
 - [ ] **15.7** News by email starts switched on, and saying no sticks. You need
-  two email addresses of your own that have no login yet. On a child,
-  **„Zugang zum Portal" → „Einladung senden"** to the first; open the invitation
-  and its link. **„Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit
+  two email addresses of your own that have no login yet. On a child, **„Zugang
+  zum Portal" → „Einladung senden"** to the first; open the invitation and its
+  link. **„Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit
   abbestellbar."** is **already switched on**. Switch it off, tick „Ich habe die
   Datenschutzhinweise gelesen.", choose a password and tap **„Konto
   aktivieren"**. Signed in as that family, **Mein Konto** shows **„Neuigkeiten
@@ -1180,12 +1107,12 @@ your picture at the top right.
   it. Nobody is asked to acknowledge it again: the number is recorded when a
   family accepts an invitation, and never compared afterwards.
 - [ ] **20.3** The notice is readable signed out.
-- [ ] **20.4** The released notice says what this version stores and sends: when
-  each account was online (last visit, 30 days of periods, seen only by trainers
-  and administrators), club news by email being on for new accounts, the course
-  groups and the online dot, and usernames and sign-in links. A portal that was
-  updated keeps the text saved before, so these arrive only if they were pasted
-  in (UPDATING.md). No „[…]" note is left in the released text.
+- [ ] **20.4** The released notice says what this version stores and sends: club
+  news by email being on for new accounts, the course groups and what a message
+  holds, and usernames and sign-in links. It says nothing about when somebody
+  was online, an online dot, a status emoji or a profile picture. A portal that
+  was updated keeps the text saved before, so these arrive only if they were
+  pasted in (UPDATING.md). No „[…]" note is left in the released text.
 
 ---
 
@@ -1207,9 +1134,10 @@ your picture at the top right.
 - [ ] **21.3** An update that could not back up first refuses to run.
 - [ ] **21.4** After any update, **Einstellungen → System** shows the same
   version for the files and for the database.
-- [ ] **21.7** After deleting an account or a child that had a picture, an
-  attachment or a proof, the file goes too — the nightly maintenance sweeps
-  anything no record points at. `storage/uploads` should not grow for ever.
+- [ ] **21.7** After deleting an account whose chats had photos, or a child
+  with a payment proof, the file goes too — the nightly maintenance, and every
+  update, sweep any upload no record points at. `storage/uploads` should not
+  grow for ever.
 
 ---
 
@@ -1229,8 +1157,8 @@ Do this last, on a real phone, not a resized desktop window.
 - [ ] **22.4** **Mein Konto → Farbe**: the eight dots show eight colours. If they
   are grey, a style has been written inline again and the browser is refusing
   it.
-- [ ] **22.5** The pinned bar shows your picture or initials on a phone, not an
-  empty square.
+- [ ] **22.5** The pinned bar shows your initials on a phone, not an empty
+  square.
 - [ ] **22.6** Add the portal to the home screen. It opens without browser
   chrome and with its own icon.
 - [ ] **22.7** In dark mode, every screen you touched above is still readable.
@@ -1315,9 +1243,9 @@ Rückmeldungen**, „Technische Einzelheiten"
   one you went back to — and the steps say it was shown without a new request.
 - [ ] **U.15** **(release)** Open an unsubscribe link from a newsletter, then report: the
   step shows `signature=***`, never the signature itself.
-- [ ] **U.16** Upload a picture (a profile picture will do), then report: the
-  step shows the file's size and type, never its name.
-  *Also walked by `tests/e2e.sh` with a payment proof instead of a picture: size and type, no name. Passed at 91520db.*
+- [ ] **U.16** Upload a file — a payment proof as a family, or a photo in a
+  chat — then report: the step shows the file's size and type, never its name.
+  *Also walked by `tests/e2e.sh` with a payment proof: size and type, no name. Passed at 91520db.*
 - [ ] **U.17** Mark a report **„Erledigt"**. Every typed value in its steps now
   reads `(gelöscht)`; the addresses stay. **„Wieder offen"** does not bring the
   values back.
@@ -1460,10 +1388,13 @@ Rückmeldungen**, „Technische Einzelheiten"
   folds open or shut. Open **Rechnungen** or a single child: **Geld** or
   **Schüler** stays marked, so you always see where you are.
 - [ ] **U.46** On your phone, the bar at the bottom reads **Übersicht, Schüler,
-  Anwesend, Chats, Mehr**. **Mehr** opens the same seven.
-  *`tests/e2e.sh` reads the bar at 390px in Chromium, passed at f5d3c28. „Mehr“ opening the seven is still by hand.*
+  Anwesend, Chats, Mehr**. **Mehr** holds the rest of the seven — Kurse, Geld,
+  Einstellungen — so that every entry of the menu is on the bar or on **Mehr**
+  (5.1b).
+  *`tests/e2e.sh` reads the bar at 390px in Chromium, passed at 883be4d; the `shell` suite checks what „Mehr“ holds and that every entry is on the bar or on it. Opening it on a phone is still by hand.*
 - [ ] **U.47** **(release)** As a trainer, the seventh entry is **Verwaltung**, not
-  Einstellungen, and the phone bar is the same as yours.
+  Einstellungen, the phone bar is the same as yours, and **Mehr** holds Kurse,
+  Geld and Verwaltung.
 - [ ] **U.48** On a child that has a login, **„Portal als … ansehen"**, on your
   phone: the family's bar reads **Übersicht, Beiträge, Chats, Profil**, with no
   **Mehr**. **Profil** has a row **„Anmeldung und Darstellung"**, which opens
@@ -1512,31 +1443,6 @@ Rückmeldungen**, „Technische Einzelheiten"
   verschicken. E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP" die
   Verbindung prüfen." After **„Nur Verbindung prüfen"** succeeds, the invitation
   goes out. Change the server and save: refused again until the next passing test.
-
-**A profile picture is kept by the browser, and shown only to who may see it**
-
-- [ ] **U.58** With a profile picture of your own, move between four or five
-  pages on the phone: the picture in the top bar is there the moment each page
-  appears, not blank for a moment and then filled in.
-- [ ] **U.59** **Mein Konto**: upload a different picture. The top bar shows the
-  new one on the very next page — never the old one — and so does a child's
-  page after changing the child's picture. „Bild entfernen" puts the initials
-  back on the next page.
-- [ ] **U.60** **(release)** In a desktop browser's developer tools
-  (**Netzwerk** / **Network**), open a page: the picture's request answers with
-  `Cache-Control: private, max-age=604800` and no `Pragma` or `Expires`. Go to
-  another page: it comes „from memory cache" / „from disk cache". An invoice PDF
-  or a message attachment still answers `private, no-store`. Sign out: the
-  logout's response carries `Clear-Site-Data: "cache"`. (Safari may ignore that
-  header; the picture's copy then runs out on its own within a week.)
-- [ ] **U.61** **(release)** On the copy, signed in as family A, open
-  `?page=download&what=avatar&kind=student&id=` with the id of a child of
-  another family who has a picture: „Nicht gefunden", no picture. The same with
-  `kind=account` and another family's account id. Your own child's, your own
-  and the trainer's still show.
-- [ ] **U.62** As a family, **Nachrichten → Neue Nachricht**: other families in
-  the list show their initials, never their photograph; the trainer shows her
-  picture. As the trainer, every family shows its picture.
 
 **After an update** — on the phone and on the computer, without clearing anything
 
@@ -1676,8 +1582,8 @@ where it says so
   group: one thing on the screen at a time, the arrow at the top goes back, and
   the writing box sits above the menu bar, not under it, and opens at the newest
   message.
-- [ ] **C.3** In a group, as the child, send a text, a photo and a voice note.
-  The trainer and another child of the course see all three; a child of another
+- [ ] **C.3** In a group, as the child, send a text and a photo. The trainer and
+  another child of the course see both; a child of another
   course cannot open the group at all (the address typed by hand says
   „Unterhaltung nicht gefunden"). No e-mail and no bell entry is made for a group
   message.
@@ -1692,13 +1598,6 @@ where it says so
   administrator, it is not in your list and not in your badge, but under „Alle
   Direktchats"; you can read it and cannot write in it. A second trainer cannot
   open it.
-- [ ] **C.8** The account menu, as a child: their dot on their picture, no
-  status choice, and „Status-Emoji". Pick 🦊 with JavaScript off: it saves with
-  one tap and stands beside their name in the menu and in a group. „Keins"
-  removes it. As the trainer, the three status choices are there without the
-  sentence that used to explain them.
-- [ ] **C.9** A child sees other children's dots and emojis in the group, never
-  when anybody was last online, and never anybody's online history.
 - [ ] **C.10** On a Mac, pick a photo whose Preview → Werkzeuge → Informationen
   has a GPS tab, and send it into a group. Save it back from the chat and open
   it in Preview: no GPS tab, no camera, and it stands the same way up. On the
@@ -1758,8 +1657,8 @@ where it says so
   the camera data, which was removed before. Write down which of the two your
   file had, or that there was no exiftool to ask.
 - [ ] **C.20** On the example data, not on a course with real families: the
-  switch below sends every family in the course an e-mail. Sign in as a child who
-  has a login and, if the bell shows a number, tap „Alle gelesen"; sign out.
+  switch below sends every family in the course an e-mail. Sign in as a child
+  who has a login and, if the bell shows a number, tap „Alle gelesen"; sign out.
   As the trainer, write to that child in your chat with them. Then **Kurse** →
   the child's course → „Termine" → a coming date → „Was ist damit": „Entfällt",
   switch on „Alle Kursteilnehmer per E-Mail informieren", „Speichern". Now
@@ -1800,10 +1699,10 @@ cancel, mark paid or e-mail.
   invoice; now the charge can be cancelled. (Once the page is updated, the
   button is not offered while the invoice stands, and the charge says which
   invoice holds it.)
-- [ ] **B.6** As a family, **Mein Konto**: switch off „Erinnerung, wenn ein Beitrag
-  offen ist" and save. As the trainer, on that child's invoice „Per E-Mail
-  schicken": refused in a sentence that says the family switched these e-mails
-  off. The invoice does **not** say „per E-Mail geschickt am", and
+- [ ] **B.6** As a family, **Mein Konto**: switch off „Erinnerung, wenn ein
+  Beitrag offen ist" and save. As the trainer, on that child's invoice „Per
+  E-Mail schicken": refused in a sentence that says the family switched these
+  e-mails off. The invoice does **not** say „per E-Mail geschickt am", and
   **Postausgang** holds nothing new. Switch it on again as the family: the
   invoice goes, and only then says so.
 - [ ] **B.7** A family whose language is English (**Mein Konto → Sprache**):
@@ -2035,11 +1934,11 @@ the checks are about what happens, and hold for both.
   angemeldet".
 - [ ] **L.24** A child „Ohne Anmeldung" can be put into a course on its
   **Kurse** tab as before; billing runs for them as for anybody.
-- [ ] **L.25** In a course with a child „Ohne Anmeldung" and a child whose
-  login is in use, change a date with „Alle Kursteilnehmer per E-Mail
-  informieren" switched on. Signed in as the child in use, the bell shows the change.
-  Then invite the first child and accept the invitation: their bell does not
-  list the change from before they had a login.
+- [ ] **L.25** In a course with a child „Ohne Anmeldung" and a child whose login
+  is in use, change a date with „Alle Kursteilnehmer per E-Mail informieren"
+  switched on. Signed in as the child in use, the bell shows the change. Then
+  invite the first child and accept the invitation: their bell does not list the
+  change from before they had a login.
 - [ ] **L.25a** On a child „Ohne Anmeldung" who has a charge, **Rechnungen →
   Rechnung erstellen**. Then invite the child and accept the invitation, as in
   L.25: their bell has no „Neue Rechnung: …". A login nobody signs in with
@@ -2087,6 +1986,61 @@ On the example data or a copy.
   course is named on every course's „Tarife" tab, as not billed until it has
   one.
 
+### What ADR 0026 removes, round two
+
+The dots, the status, the emoji, the pictures, the requests to write to another
+family, and voice notes and files in new messages. R.9, R.14, R.15 and R.16 need
+a copy of a portal from before this release that has profile pictures, a voice
+note and a file in a chat, and a chat between two children; never the portal
+the families use.
+
+- [ ] **R.9** **(release)** On that copy, wait ten minutes after the last
+  picture was saved, then note how many files `storage/uploads/avatar` holds in
+  the file manager and how many problem reports with a screenshot **Einstellungen
+  → Rückmeldungen** lists. Upload this version and open any page: the update
+  runs and the portal opens, refusing nothing. Afterwards `storage/uploads/avatar`
+  holds only the problem reports' screenshots — one file for each report with a
+  screenshot, each of which still opens from its report — and no picture.
+  **Einstellungen → System** lists the copy written just before the update. A
+  picture saved less than ten minutes before the update may stay until the next
+  nightly cleanup; write it down if one did.
+- [ ] **R.10** Nobody has a picture: **Mein Konto** and a child's page have no
+  card „Bild", and everybody appears by their initials — at the top right, in
+  the **Schüler** list, in **Konten** and in every chat.
+- [ ] **R.11** Nobody has a dot, a status or an emoji: the account menu is as
+  in 5.3i; **Konten** and the card „Zugang zum Portal" on a child's page have no
+  line about when somebody was last here and no „Wann online? Letzte 30 Tage";
+  nobody in a group has a dot or an emoji beside their name.
+  **Einstellungen → Portal** has no „Grün – „online": aktiv innerhalb von
+  (Minuten)", and its „Erweitert" no blue or yellow; **Einstellungen → System →
+  Erweitert** has no „Wann jemand online war, aufbewahren (Tage)".
+- [ ] **R.12** On an iPhone, signed in as a family, open the chat with the
+  trainer and tap „+" („Foto anhängen"). Write down what opens: the camera, or
+  the photo library, or a choice between them. Take or choose a photo and send
+  it: it shows in the bubble, for the family and for the trainer. A screenshot,
+  which an iPhone stores as a PNG, is refused in a sentence. Whether the camera
+  opens here has not been measured on any phone yet: the portal asks for it
+  with `capture="environment"`, and also tells the browser
+  `Permissions-Policy: camera=()`.
+- [ ] **R.13** As the trainer, in a chat, tap „+": choose a PNG screenshot from
+  the phone's photos, send it, then a WebP if you have one. Both show in the
+  bubble. A PDF is refused in a sentence.
+- [ ] **R.14** **(release)** On the copy, open the chat that had a voice note
+  and a file before the update: the voice note plays, and the file opens or
+  downloads as before. The writing box has a „+" and no microphone.
+- [ ] **R.15** **(release)** On the copy, sign in as one of the two children who
+  had a chat with each other. It is under „Frühere Unterhaltungen", and opened
+  it reads as before, with „Chats zwischen Schülern sind geschlossen. Was hier
+  steht, bleibt lesbar. Schreib dem Trainerteam oder in deine Kursgruppe." at
+  the top and no writing box. „Neue Nachricht" lists the coaching team only
+  (14.5).
+- [ ] **R.16** **(release)** On the copy, as a family who had a request to write
+  to them waiting before the update: **Nachrichten** has no „Möchte dir
+  schreiben" and nothing to agree to.
+- [ ] **R.17** **(release)** In a desktop browser's developer tools
+  (**Netzwerk** / **Network**), open any page: its response carries
+  `Permissions-Policy: camera=(), microphone=(), geolocation=()`.
+
 ### The portal as an iPhone app (design language, phase 1)
 
 The new look has been measured in Chromium only. These are the checks only a real
@@ -2119,10 +2073,13 @@ down what could not be checked rather than ticking it.
 - [ ] **I.7** The back button, in the app from the home screen (I.3), where Safari
   gives no Back of its own: a child's page shows „‹ Schüler" at the top left and
   it leads to **Schüler**; a chat „‹ Chats"; a course „‹ Kurse"; a family's Mein
-  Konto „‹ Profil". Kurse, Geld and Einstellungen themselves have none yet:
-  „Mehr" is not a page. Scroll a long page: the page's title appears small in the
-  bar once the large one has gone — or nothing does, where Safari cannot do it
-  yet; write down which.
+  Konto „‹ Profil". Everything opened from **Mehr** — Kurse, Geld, Rechnungen,
+  Einstellungen, a trainer's Verwaltung, and your own Mein Konto — shows
+  „‹ Mehr", and **Mehr** is lit in the bar while you are there. Verwaltung,
+  Konten and Änderungen, opened from Einstellungen, show „‹ Zurück", because
+  „Einstellungen" is too long for the bar. Scroll a long page: the page's title
+  appears small in the bar once the large one has gone — or nothing does, where
+  Safari cannot do it yet; write down which.
 - [ ] **I.8** A sheet: on a child whose login is in use, open „Anmeldung löschen"
   in „Zugang zum Portal" — do not confirm it. It rises from the bottom, with its
   title on top and „Abbrechen" under it. „Abbrechen" closes it and nothing is

@@ -82,7 +82,7 @@ function invite_login(string $name, string $email, string $role, string $locale,
  * login is deleted: on Konten, by withdrawing an invitation by address, with a
  * student whose login was never set up, and as the second half of replacing a
  * student's login with a placeholder (replace_login_with_placeholder()).
- * Conversations, notifications and presence go by their foreign keys. The
+ * Conversations and notifications go by their foreign keys. The
  * caller refuses whatever else it refuses first.
  *
  * A login a student still points to is refused here, in words she can read:
@@ -543,15 +543,6 @@ function dispatch_action(string $action): array {
         return landing_after_sign_in($a);
     case 'logout':
         $_SESSION=[]; session_regenerate_id(true); current_user(true);
-        // Profile pictures are kept by the browser for up to a week
-        // (avatar_cache_control()), so ask it to forget them along with
-        // everything else it cached here. Best effort only: Safari has not
-        // always honoured Clear-Site-Data, and no browser has to. What
-        // actually bounds a copy left on a borrowed phone is the week.
-        // headers_sent() is only ever true where output began before the
-        // action ran - the test runner, which prints as it goes; a real
-        // request prints nothing before its redirect.
-        if(!headers_sent()) header('Clear-Site-Data: "cache"');
         return ['login',[]];
     case 'forgot':
         /* „Passwort vergessen", by address or username (ADR 0023 §7). The

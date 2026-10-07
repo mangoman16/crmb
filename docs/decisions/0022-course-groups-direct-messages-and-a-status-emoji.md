@@ -5,6 +5,29 @@ date: 2026-10-02
 
 # 0022. Course groups, direct messages, and a status emoji
 
+> **Amended on 2026-10-07, under ADR 0026: the contact requests go, with their table.** The project
+> manager decided that day that the old requests are deleted rather than kept unused: no real family
+> has used the portal, so they are test data (0026 §2), and since §11.3's removal, which lands in the
+> same commit, nothing reads them. This answers the question the end of Consequences left to the
+> owner, which 0026's "For the owner" 4 repeated. The answer is the project manager's, not the
+> owner's. `037_contact_requests_go.sql` is one `DROP TABLE IF EXISTS contact_requests;`, which can
+> run twice. These parts no longer hold:
+>
+> - in §11.3, "not the `contact_requests` rows", and "the table is still there for it";
+> - §11.6, for the requests: one migration is needed after all. Who reads and who writes stay rules in
+>   code, and every chat keeps its kind;
+> - in Rejected, "Deleting … the contact requests". Its "the guard widened" was never so for them:
+>   `contact_requests` was never in `schema_guarded_tables()`, and 037 changes nothing there;
+> - in Consequences, "Schema: none" and the two sentences after it;
+> - in "In plain words", "nothing is deleted": the requests are.
+>
+> What §11.3 keeps stays: the chats between students, closed, with their messages, and the audit
+> log's entries about each answer. Closing those chats can still be undone, as the owner was told
+> (§11), but it now takes a migration as well as code, and the requests start again from none.
+> **§11.4 stands:** voice notes and files sent before stay, their rows and their files, and only new
+> ones are refused. Deleting them would lower the rows of `message_files`, which is guarded, and
+> remove what somebody sent. Everything else stands.
+
 > **Superseded in part by ADR 0026 (2026-10-07).** Copying a course, „An mehrere schreiben" and
 > profile pictures are gone. These parts no longer hold:
 >

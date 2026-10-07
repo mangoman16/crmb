@@ -27,7 +27,6 @@ function icon(string $name): string {
         'bell'=>'<path d="M18 9a6 6 0 1 0-12 0c0 6-3 7-3 7h18s-3-1-3-7"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/>',
         'camera'=>'<path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.5"/>',
         'eye'=>'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
-        'mic'=>'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
         'help'=>'<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.2-2.8 4"/><path d="M12 17.3v.01"/>',
         // The end of a row that leads somewhere, and turned round, „Zurück".
         'chevron'=>'<path d="m9 5 7 7-7 7"/>',
@@ -289,7 +288,7 @@ function badge(string $text,string $style=''): void {echo '<span class="badge '.
 function student_card(array $s): void {
     $due=array_key_exists('due_cents',$s)?(int)$s['due_cents']:balance((int)$s['id'],true);
     $price=array_key_exists('course_price',$s)?(string)$s['course_price']:course_price_label(student_enrolments((int)$s['id']));
-    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s,'','student').'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$s['level_name']??'',age_group_name($s),$price]))).'</p></div><div class="student-card-status">';
+    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s).'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$s['level_name']??'',age_group_name($s),$price]))).'</p></div><div class="student-card-status">';
     badge(status_label($s['status']),$s['status']==='active'?'green':'');
     if($due)echo '<span class="due">'.e(money($due)).' '.e(t('überfällig','overdue')).'</span>';
     echo '</div>'.icon('chevron').'</a>';
@@ -899,8 +898,8 @@ function login_facts(array $account,string $addressNote=''): void {
 
 /**
  * A calendar date the way a person says it: „Heute", „Gestern", „Mo 29.09.",
- * and with the year once it is another year's. One rule for the online history
- * and the chat's day separators.
+ * and with the year once it is another year's. One rule for the chat's day
+ * separators and its list.
  */
 function day_label(string $date, ?string $today = null): string {
     $today ??= today();
@@ -912,16 +911,10 @@ function day_label(string $date, ?string $today = null): string {
     return locale() === 'de' ? mb_substr(weekdays()[(int)$d->format('N')], 0, 2).' '.$d->format('d.m.') : $d->format('D j M');
 }
 
-/** The emoji $account shows beside their name, or ''. Decoration: a screen reader would otherwise say „Lena Fuchs". */
-function status_emoji_mark(array $account): string {
-    $emoji = status_emoji($account);
-    return $emoji ? '<span class="status-emoji" aria-hidden="true">'.e($emoji[0]).'</span>' : '';
-}
-
-/** A name as the chat prints it, escaped, with the person's emoji after it. */
+/** A name as the chat prints it, escaped, or what a deleted login is called. */
 function chat_name(?array $account): string {
     $name = (string)($account['name'] ?? '');
-    return e($name !== '' ? $name : t('Gelöschtes Konto', 'Deleted account')).status_emoji_mark($account ?? []);
+    return e($name !== '' ? $name : t('Gelöschtes Konto', 'Deleted account'));
 }
 
 /**
@@ -931,97 +924,6 @@ function chat_name(?array $account): string {
  */
 function chat_hue(int $id): string {
     return ['blue', 'violet', 'pink', 'red', 'orange', 'green'][$id % 6];
-}
-
-/*
- * Presence, as the pages show it (ADR 0015, 0022). Who may see what is decided
- * in app/presence.php and asked here before anything is drawn: everybody gets
- * the dot, and only staff the lines and history that say when somebody was here.
- */
-
-/** The dot itself, for a state; its label for a screen reader unless the text beside it already says it. */
-function presence_dot_for(string $state, bool $labelled=true): string {
-    $state = in_array($state, ['online','recent','away','offline'], true) ? $state : 'offline';
-    return '<span class="presence-dot is-'.$state.'"'.($labelled ? '' : ' aria-hidden="true"').'>'
-        .($labelled ? '<span class="visually-hidden">'.e(presence_state_label($state)).'</span>' : '').'</span>';
-}
-
-/**
- * Whether a page shows $viewer when $account was here - the line and the
- * history on staff's pages. An invitation nobody has taken up has never been
- * used, so it has nothing to show rather than a grey „Offline".
- */
-function presence_shown_for(array $viewer, ?array $account): bool {
-    return $account !== null && ($account['state'] ?? '') !== 'invited' && presence_details_visible_to($viewer);
-}
-
-/** $subject's dot as $viewer may see it, or '' for nobody signed in. */
-function presence_dot(array $viewer, array $subject): string {
-    return presence_visible_to($viewer, $subject) ? presence_dot_for(presence_state($subject)) : '';
-}
-
-/**
- * $subject's dot and, in words, what it means: „Online“, or the state and when
- * they were last here, as $viewer may know it. '' for anybody but staff. An
- * administrator looking at somebody who appears offline is told so, because the
- * time shown is then one a trainer does not see.
- */
-function presence_line(array $viewer, array $subject): string {
-    if (!presence_details_visible_to($viewer)) return '';
-    $state = presence_state($subject);
-    $text = presence_state_label($state);
-    if ($state !== 'online' && ($seen = presence_last_seen_for($viewer, $subject)) !== null)
-        $text .= ' · '.t('zuletzt ', 'last seen ').fmt_datetime($seen);
-    if (is_admin($viewer) && presence_choice($subject) === 'hidden')
-        $text .= t(' (als offline angezeigt)', ' (appearing offline)');
-    return '<span class="presence-line">'.presence_dot_for($state, false).'<span>'.e($text).'</span></span>';
-}
-
-/**
- * When somebody was online over the days kept, folded away: how many days, a
- * strip of them, and the times, newest first. $periods is this account's entry
- * from presence_history(), which has already left out what $viewer may not see
- * - a trainer gets no hidden periods but her own - so whatever hidden period
- * arrives here is marked rather than dropped. $recordedSince is
- * presence_recorded_since(), which the page asks once for all its people.
- */
-function presence_history_details(array $viewer, array $periods, ?string $recordedSince): void {
-    if (!is_staff($viewer)) return;
-    $n = presence_history_days();
-    $days = presence_days($periods);
-    $today = $days[count($days) - 1]['date'];
-    $active = array_values(array_filter(array_reverse($days), fn($d) => $d['state'] !== 'none'));
-    $label = fn(string $date): string => day_label($date, $today);
-    echo '<details class="presence-history"><summary>'
-        .e(t('Wann online? Letzte ', 'When online? Last ').plural($n, 'Tag', 'Tage', 'day', 'days')).'</summary>';
-    echo '<p>'.e($active
-        ? t('An ', 'Online on ').count($active).t(' von ', ' of the last ').plural($n, 'Tag', 'Tagen', 'day', 'days').t(' online.', '.')
-        : t('In den letzten ', 'Not online in the last ').plural($n, 'Tag', 'Tagen', 'day', 'days').t(' nicht online.', '.')).'</p>';
-    // For the first weeks after the update the record is shorter than the
-    // window, and "not online in 30 days" would be untrue of somebody who was
-    // simply not recorded yet. presence_recorded_since(), asked once by the
-    // page rather than once per person on a list.
-    if ($recordedSince !== null)
-        echo '<p class="muted">'.e(t('Aufgezeichnet wird seit dem ', 'Recorded since ').fmt_date($recordedSince).'.').'</p>';
-    // The strip repeats the list below at a glance, so it is hidden from a
-    // screen reader, which would otherwise read thirty empty cells.
-    echo '<div class="presence-strip" aria-hidden="true">';
-    foreach ($days as $day) echo '<span class="is-'.($day['state'] === 'on' ? 'on' : ($day['state'] === 'hidden' ? 'hidden' : 'none')).'"></span>';
-    echo '</div><div class="presence-strip-scale" aria-hidden="true">'
-        // The oldest cell is N-1 days back: today is a cell of its own.
-        .($n > 1 ? '<span>'.e(t('vor ', '').plural($n - 1, 'Tag', 'Tagen', 'day', 'days').t('', ' ago')).'</span>' : '<span></span>')
-        .'<span>'.e(t('heute', 'today')).'</span></div>';
-    if ($active) {
-        echo '<dl class="presence-days">';
-        foreach ($active as $day) {
-            // Within a day in the order they happened, as one reads a timetable.
-            $times = array_map(fn($p) => ($p['from'] === $p['to'] ? $p['from'] : $p['from'].'–'.$p['to'])
-                .($p['hidden'] ? t(' (als offline angezeigt)', ' (appearing offline)') : ''), $day['periods']);
-            echo '<div><dt>'.e($label($day['date'])).'</dt><dd>'.e(implode(', ', $times)).'</dd></div>';
-        }
-        echo '</dl>';
-    }
-    echo '</details>';
 }
 
 /**

@@ -5,6 +5,49 @@ date: 2026-10-07
 
 # 0026. Who the portal is for, the beta, and what it no longer carries
 
+> **Round 2 of the removals, 2026-10-07: the contact requests, the pictures' files, and the numbers
+> of round 3's migrations.** Written with round 2's code (`ROADMAP.md`, "Now and next" 3), which
+> removes presence (the dots, the chosen status and the online history), the status emoji, profile
+> pictures, the contact requests, and new voice notes and files, with migrations 034 to 037.
+>
+> 1. **The old contact requests are deleted, with their table.** The project manager decided it on
+>    2026-10-07, under §2: in the beta they are test data, and since 0022 §11.3's removal, which lands
+>    in the same commit, nothing reads them. This answers "For the owner" 4, which had said nothing
+>    would change until the owner said so. The answer is the project manager's, not the owner's.
+>    `037_contact_requests_go.sql` is one `DROP TABLE IF EXISTS contact_requests;`, which can run
+>    twice. The table was never in `schema_guarded_tables()`, so "No guarded table loses rows but
+>    `field_values`" (Consequences) still holds. These parts no longer hold: in the note below, "and,
+>    from 0022, the old contact requests (4)"; in §8's row for contact requests, "Nothing more to
+>    remove" and "nothing more", since their table goes; in §11, "`contact_requests` stays, as 0022
+>    left it to the owner"; in Rejected, "or `contact_requests`"; and "For the owner" 4. ADR 0022
+>    carries a note of its own.
+> 2. **Voice notes and files sent before stay**, their rows and their files, as 0022 §11.4 says. Only
+>    new ones are refused. Deleting them would lower the rows of `message_files`, which is guarded,
+>    and remove what somebody sent.
+> 3. **The pictures' files go with the pictures.** §8's row names the columns, not the files. After a
+>    run that has passed the guard, the runner's PHP step (`database/defaults.php`) deletes the
+>    stored pictures, which no column names any more. The problem reports' screenshots, kept in the
+>    same folder, stay. The copy the update takes first is of the database: it holds the pictures'
+>    names, not the pictures, so once the step has run the portal cannot bring one back. That is the
+>    intent: a photo of a child does not stay on the server once nothing shows it.
+> 4. **Round 3's migrations are 038 and 039.** 037 took the number planned for levels. So
+>    `037_students_without_level_or_age_group.sql` becomes
+>    `038_students_without_level_or_age_group.sql`, and `038_levels_and_age_groups_go.sql` becomes
+>    `039_levels_and_age_groups_go.sql`, each with the same statements. Wherever this record says 037
+>    or 038 for levels and age groups (the note below, §8's row, and §11's table and bullets), read
+>    038 and 039. §11 already says that the order is what matters.
+>
+> Rejected with them:
+>
+> - asking the owner before deleting the requests, as "For the owner" 4 had promised: §2 gives schema
+>   changes in the beta to the project manager, and the rows are test data;
+> - keeping `contact_requests` unused, as 0022 did: a table nothing reads is one more thing to carry,
+>   for a reversal nobody has asked for, and opening chats between students again needs code anyway;
+> - deleting the voice notes and files sent before, for the reasons in 2;
+> - leaving the pictures to the nightly prune, which runs only when the background work does;
+> - naming the pictures before 035 drops their column, which needs a step between two migrations: a
+>   second path the runner does not have.
+
 > **The owner's answers, 2026-10-07.** Asked about the three removals marked † ("For the owner", 1),
 > the owner answered:
 >

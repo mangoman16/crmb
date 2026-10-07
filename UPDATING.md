@@ -17,34 +17,16 @@ drafts. A portal that already has families in it needs one thing done
 **before** the upload — two, if anything in its custom fields is worth keeping —
 and then changes in the ways below the moment the new files are opened.
 
-**Before you upload: add four paragraphs to your privacy notice.** This version
-records when each account was in the portal, it switches club news by email
-on for new accounts, it gives every course a group chat, and a student can sign
-in with a username and a one-time sign-in link. Your privacy notice has to say
-all four. The drafts in
-the download only fill in the notice of a brand-new portal; yours keeps the
-text you saved, so the paragraphs have to be added by hand. Do it while the old
-version is still running, so that no family uses the new one under a notice
-that does not mention it. Open **Einstellungen → Datenschutz**, and in the
-German text:
+**Before you upload: add three paragraphs to your privacy notice.** This
+version switches club news by email on for new accounts, it gives every course
+a group chat, and a student can sign in with a username and a one-time sign-in
+link. Your privacy notice has to say all three. The drafts in the download only
+fill in the notice of a brand-new portal; yours keeps the text you saved, so the
+paragraphs have to be added by hand. Do it while the old version is still
+running, so that no family uses the new one under a notice that does not
+mention it. Open **Einstellungen → Datenschutz**, and in the German text:
 
-1. At the end of the section that lists what is processed (in the draft, „3.
-   Welche Angaben verarbeitet werden"), add:
-
-   > Das Portal speichert für jedes Konto, wann es zuletzt geöffnet wurde, und
-   > für höchstens die letzten 30 Tage, von wann bis wann es geöffnet war – nur
-   > Datum und Uhrzeit, keine IP-Adresse und keine aufgerufenen Seiten. Sehen
-   > können das nur Trainerinnen und Administratoren; Schülerkonten sehen weder
-   > eigene noch fremde Zeiten. Diese Zeiträume werden automatisch gelöscht,
-   > sobald sie älter als 30 Tage sind, oder früher, wenn das Portal auf eine
-   > kürzere Frist eingestellt ist; das Portal räumt dafür einmal am Tag auf.
-   > Der Zeitpunkt des letzten Besuchs bleibt gespeichert, solange das Konto
-   > besteht, und wird mit ihm gelöscht. Wer als Trainerin „Als offline
-   > anzeigen“ wählt, erscheint für andere Trainerinnen offline;
-   > Administratoren sehen die Zeiten weiterhin.
-   > [Zweck und Rechtsgrundlage ergänzen]
-
-2. In „4. Rechtsgrundlagen", replace the paragraph that begins „Der Newsletter
+1. In „4. Rechtsgrundlagen", replace the paragraph that begins „Der Newsletter
    wird nur an Konten mit aktiviertem Newsletter-Abonnement gesendet" with:
 
    > Neuigkeiten des Vereins werden als Vereinsinformation per E-Mail
@@ -58,15 +40,18 @@ German text:
    > Sicherheitsmails wie Einladungen und Passwortlinks dienen der
    > Bereitstellung des Zugangs.
 
-3. After the paragraph from step 1, add the one about the chat and the
-   online dot — it is in `docs/privacy-draft-de.txt` in the download, beginning
-   „Ob jemand gerade online ist" and „Nachrichten: Jeder Kurs hat einen
-   Gruppenchat". It says that everybody signed in now sees who is online,
-   that a course's children and the coaching team read its group, and that
-   the administrators can read chats between a child and a trainer, and
-   that an uploaded photo is stored without where it was taken.
+2. At the end of the section that lists what is processed (in the draft, „3.
+   Welche Angaben verarbeitet werden"), add the paragraph about the chat, with
+   the note „[Zweck und Rechtsgrundlage ergänzen]" after it. It is in
+   `docs/privacy-draft-de.txt` in the download, beginning „Nachrichten: Jeder
+   Kurs hat einen Gruppenchat". It says that a course's children and the
+   coaching team read its group, that the administrators can read chats
+   between a child and a trainer, that a message is text and photos, that the
+   chats between two children from before stay for the two of them to read and
+   take no new messages, and that an uploaded photo is stored without where it
+   was taken.
 
-4. After the sentence „SMTP-Passwörter und versandbereite E-Mail-Inhalte sind
+3. After the sentence „SMTP-Passwörter und versandbereite E-Mail-Inhalte sind
    in der Anwendungsdatenbank verschlüsselt.", add the paragraph from
    `docs/privacy-draft-de.txt` beginning „Angemeldet wird mit der
    E-Mail-Adresse". It says that a student can sign in with a username, that a
@@ -75,7 +60,7 @@ German text:
    höchstens ein eigenes Konto, …" with the draft's, which begins „Jeder
    Schüler hat ein eigenes Konto".
 
-5. Replace each line in square brackets with your own words, then save.
+4. Replace each line in square brackets with your own words, then save.
 
 The old paragraph called club news voluntary and based on consent. That is no
 longer true: you decided that club news is information every member needs,
@@ -94,28 +79,24 @@ shows them afterwards. The copy of the database the update writes first, in
 `storage/backups`, still holds them until five newer copies have pushed it out.
 
 **Migrations 020 and 021 run by themselves** on the first page view, like every
-migration before them. 020 gives every account a status, which starts on
-„Automatisch" and so shows exactly what it showed before, and adds an empty list
-of times online. Nothing from before the update is filled in, so for the first
-30 days the history says „Aufgezeichnet wird seit dem …" with the day of the
-update. That list is not among the tables whose rows are counted before and
-after, because the nightly cleanup deletes from it on purpose. 021 switches
-„Neuigkeiten per E-Mail" on for accounts created **from now on**. Every
-existing account keeps what it has: a family who had it off still has it off,
-and nobody is signed up behind their back.
+migration before them. 020 gives every account a status and adds an empty list
+of times online; 034 and 035 below take both away again in the same update, so
+neither is ever seen. 021 switches „Neuigkeiten per E-Mail" on for accounts
+created **from now on**. Every existing account keeps what it has: a family who
+had it off still has it off, and nobody is signed up behind their back.
 
 **Migrations 022 to 027 run by themselves** as well. 022 and 023 gave every
 login a username, and 024 takes the usernames away again, as you asked: every
 login keeps its address, password and settings, and signs in with its address
-exactly as before. 025 gives every course a group chat — an archived course
-too, which stays readable for staff — and turns each existing chat between a
-child and a trainer or administrator into one the administrators can read. The
-shared conversations from before, where a family wrote to every member of
-staff at once, are kept to read under „Frühere Unterhaltungen" and take no new
-messages. 026 lets staff take a message in a group down and put it back; 027
-gives every account a status emoji, which starts as „Keins". No row is
-removed, so the check that counts the guarded tables before and after passes;
-only the chats grow, by one group per course.
+exactly as before. 025 gives every course a group chat — an archived course too,
+which stays readable for staff — and turns each existing chat between a child
+and a trainer or administrator into one the administrators can read. The shared
+conversations from before, where a family wrote to every member of staff at
+once, are kept to read under „Frühere Unterhaltungen" and take no new messages.
+026 lets staff take a message in a group down and put it back; 027 adds a status
+emoji, which 035 takes away again. No row is removed, so the check that counts
+the guarded tables before and after passes; only the chats grow, by one group
+per course.
 
 **Migrations 028 to 031 follow.** 028 lets a login have a username instead of an
 address; every existing login keeps its address and gets no username. 029 and
@@ -135,6 +116,25 @@ values used to be among those counted before and after an update; it leaves
 that list with 032, so its loss does not refuse this update (step 6 below).
 Lines under **Änderungen** written before about a custom field stay, the field
 named „Früheres eigenes Feld".
+
+**Migrations 034 to 037 delete the rest of what goes.** 034 deletes the list of
+times each account was in the portal. 035 takes from every login when it was
+last seen, its chosen status, its status emoji and the name of its profile
+picture; 036 takes the name of each child's picture. 037 deletes every request
+one family made to write to another, whatever became of it. No login and no
+child is lost, so the check that counts the guarded tables before and after
+passes; the list of times and the requests were never among them. Chats between
+two children stay, to be read by the two of them, and take no new messages.
+Voice notes and files sent before stay where they are and open as before; a new
+message is text and photos.
+
+**The profile pictures are deleted for good.** Once the update has passed, the
+portal deletes the stored pictures from `storage/uploads/avatar`. The problem
+reports' screenshots, kept in the same folder, stay. The copy the update writes
+first is of the database only: it holds the pictures' names, not the pictures.
+Importing it, or any older copy, brings the names back without the files, and
+no picture comes back. If one matters to somebody, save it from the portal
+before you upload.
 
 **Brothers and sisters on one login are separated.** From this version one
 login belongs to one student, and migration 019 makes the database hold to
@@ -192,10 +192,6 @@ here so that nothing surprises you.
   customers, so the first page view after the upload asks you and every family
   to sign in again. Nothing is lost. If `storage/` cannot be written, sign-ins
   stay where they were and the hosting error log says so.
-- **Profile pictures load once**, not again on every page, and a family sees
-  only their own child's picture and those of the trainers and administrators.
-  Anybody else appears as initials, in **Nachrichten** too. A new picture shows at once; an
-  old one can stay in a phone's memory for up to seven days.
 - **The bell stays where it is** when you open it, its panel fits on the
   phone's screen, and the number of unread notices is a small red badge.
   Tapping anywhere else, or Escape, closes it.
@@ -205,20 +201,23 @@ here so that nothing surprises you.
   families what moved in their bar at the bottom, which now reads Übersicht ·
   Beiträge · Chats · Profil: their **Mein Konto** is the row „Anmeldung und
   Darstellung" on **Profil**, and the news is on the overview. Yours reads
-  Übersicht · Schüler · Anwesend · Chats · Mehr; „Post" is „Chats". The language
+  Übersicht · Schüler · Anwesend · Chats · Mehr; „Post" is „Chats", and „Mehr"
+  is a page with Kurse, Geld, Einstellungen and your Mein Konto. The language
   is chosen under **Mein Konto → Sprache**; the EN/DE switch is only on the
   sign-in pages now.
-- **Your picture at the top right opens a menu**: „Mein Konto",
-  „Status-Emoji" and „Abmelden", and a coloured dot on the picture: green
-  online, blue recently, yellow away, grey offline. For you and the other
-  trainers it also holds a status — „Automatisch", „Abwesend", „Als offline
-  anzeigen". A family's dot is always automatic, and they choose no status.
+- **Everybody appears by their initials**, and your initials at the top right
+  open a menu with „Mein Konto" and „Abmelden".
 - **Nachrichten works like a messenger**: a group for every course, whose
   children are whoever is enrolled now, then the chats with one person. A child
-  writes to a trainer or an administrator by name; you write to any child, or
-  to a course's group. Group messages send no e-mail. Everybody signed in sees
-  who is online right now; when somebody was last here stays with trainers and
-  administrators.
+  writes to a trainer or an administrator by name; you write to any child, or to
+  a course's group. Group messages send no e-mail. A message is text and photos:
+  a family's „+" asks the phone to open its camera and takes only a JPEG, and
+  you can also choose a PNG or WebP from the phone's photos. Voice notes and
+  files sent before this update stay in their chats and open as they did; the
+  portal now tells every browser that it never uses the microphone
+  (`Permissions-Policy: microphone=()`), as it already did for the camera. A
+  chat between two children from before reads as it did, says that chats between
+  children have closed, and takes no new messages.
 - **Signing in is by address, or for a student by username.** „Schüler
   anlegen" is a wizard in two steps: who is joining and into which course, then
   how they sign in — an invitation by e-mail, a username with a sign-in link
@@ -227,11 +226,6 @@ here so that nothing surprises you.
   of those is done. „Per E-Mail einladen" on the **Schüler** page still invites
   somebody by their address alone: they fill in their own details and then
   choose a course.
-- **When somebody was online**: under **Konten** and on each child's page, a
-  line says when the account was last in the portal, and „Wann online? Letzte
-  30 Tage" opens the days and times. Only trainers and administrators see it.
-  When you view the portal as a family, it is your visit that is recorded, not
-  theirs.
 - **Club news by email starts switched on** for a new family: the switch on
   the invitation page is already on, and they can switch it off there, or later
   under **Mein Konto**.
@@ -244,8 +238,10 @@ here so that nothing surprises you.
   that.
 - **No longer in the portal**: custom fields, copying, saved views of the
   **Schüler** list, „An mehrere schreiben" with its e-mail templates,
-  „Warteschlange senden", the printed form and data sheet, and Verwaltung's
-  „Tarife" tab. Mail goes out by itself just after a page has been served, as
+  „Warteschlange senden", the printed form and data sheet, Verwaltung's „Tarife"
+  tab, the online dots with the status and „Wann online?", the status emoji,
+  profile pictures, asking to write to another family, and voice notes and files
+  in new messages. Mail goes out by itself just after a page has been served, as
   before; [CHANGELOG.md](CHANGELOG.md) says what takes the place of the rest.
 
 Everything else in this version is either new or moved to another place in the
@@ -292,8 +288,14 @@ left to do. Then, inside that lock and **before the database is touched at all**
    empty. A count that fell stops the update. Counts do not prove an update was
    correct, but a count that fell proves it was not.
 7. What the portal cannot work without is filled in where it is missing — the
-   lists it needs, a group chat for every course, a login for every student —
-   the file from step 4 is deleted, and the page is served.
+   lists it needs, a group chat for every course, a login for every student.
+   Every stored upload that no record names any more and that is more than ten
+   minutes old is deleted, as the nightly cleanup does with an hour's grace: in
+   this version, the profile pictures (see
+   [Updating an existing portal to 0.6.0](#updating-an-existing-portal-to-060)),
+   and any receipt or chat photo
+   whose record went before the nightly cleanup found it. Then the file from
+   step 4 is deleted, and the page is served.
 
 If any step fails the portal answers 503 and stays closed. The page tells a
 family there is nothing for them to do, and tells whoever looks after the portal,

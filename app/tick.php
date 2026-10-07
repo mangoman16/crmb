@@ -34,14 +34,11 @@ const PRUNE_INTERVAL = 86400;
  *
  * Deliberately narrow: nothing here removes a student, a payment or a message.
  * The files it does remove are the ones whose record has already gone - a photo
- * belonging to a deleted account, an attachment from a conversation that was
- * deleted with it, the screenshot of a report - which would otherwise stay in
- * storage for ever. That is why prune_uploads() comes last.
+ * from a conversation deleted with an account, the screenshot of a report -
+ * which would otherwise stay in storage for ever. That is why prune_uploads()
+ * comes last.
  */
 function prune_expired(): void {
-    // First, so nothing that fails below can keep presence data past the month
-    // the privacy notice promises (ADR 0015). The rest only tidies.
-    presence_prune(presence_history_days());
     run('DELETE FROM auth_tokens WHERE expires_at<?', [now()]);
     run('DELETE FROM rate_limits WHERE window_start<?', [time() - 86400]);
     run('DELETE FROM form_requests WHERE created_at<?', [gmdate('Y-m-d H:i:s', time() - 604800)]);

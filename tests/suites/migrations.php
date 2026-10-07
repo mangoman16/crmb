@@ -11,10 +11,12 @@
  * a trainer is trusting with her families' money.
  *
  * tests/migration-data.php builds a portal as it stood before 015, 019, 020, 022,
- * 024, 025, 028 and 032, applies the rest, and prints what it finds; then it runs
- * this release's update through the application's own runner, and the mistakes
- * ADR 0027 keeps the portal closed for, page view after page view, with the
- * imports that reopen it. This reads that and holds it to the promise.
+ * 024, 025, 028, 032 and 034, applies the rest, and prints what it finds; then it
+ * runs this release's update through the application's own runner, with the
+ * files the pictures left on disk, the mistakes ADR 0027 keeps the portal closed
+ * for, page view after page view, with the imports that reopen it, and the update
+ * stopped between two of its files and started again. This reads that and holds
+ * it to the promise.
  *
  * What it does not yet hold to it: 017 backfills covered_from and covered_to on
  * every charge that carries a period, and no case below looks at a charge. The
@@ -36,14 +38,22 @@
 // tests/existing-database.sh on a hosting provider's server included - and
 // only the run with data in between, after it, can be left to the footer.
 
-case_('On this run’s own engine, a new login has news on and status auto, and its history goes with it');
+case_('On this run’s own engine, a new login has news by email on');
 run("INSERT INTO accounts (name, email, role, created_at) VALUES ('Neu', 'neu@example.test', 'student', ?)", [now()]);
-$fresh = one("SELECT id, newsletter, presence FROM accounts WHERE email = 'neu@example.test'");
-is_same([1, 'auto'], [(int)$fresh['newsletter'], $fresh['presence']], 'news by email on, status auto');
-run('INSERT INTO online_periods (account_id, started_at, last_seen_at, hidden) VALUES (?, ?, ?, 0)', [$fresh['id'], now(), now()]);
-run('DELETE FROM accounts WHERE id = ?', [$fresh['id']]);
-is_same(0, (int)scalar('SELECT COUNT(*) FROM online_periods WHERE account_id = ?', [$fresh['id']]),
-        'deleting a login deletes when it was online, rather than leaving periods nobody can be named for');
+is_same(1, (int)scalar("SELECT newsletter FROM accounts WHERE email = 'neu@example.test'"), 'news by email is on');
+
+case_('On this run’s own engine, the online history, the contact requests, a login’s status, emoji and picture and a child’s picture are gone [ADR 0026 §8, §11]');
+foreach (['online_periods', 'contact_requests'] as $table)
+    ok(!test_has_table($table), $table . ' is not in the database the migrations make');
+$columnsOf = fn(string $table): array => array_column(rows('SELECT column_name AS name FROM information_schema.columns'
+    . ' WHERE table_schema = DATABASE() AND table_name = ?', [$table]), 'name');
+is_same([], array_values(array_intersect(['last_seen_at', 'presence', 'status_emoji', 'avatar_name'], $columnsOf('accounts'))),
+        'accounts has none of last_seen_at, presence, status_emoji and avatar_name');
+ok(!in_array('avatar_name', $columnsOf('students'), true), 'students has no avatar_name');
+is_same(0, (int)scalar("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE()"
+    . " AND table_name = 'accounts' AND index_name = 'account_seen'"), 'and the index on last_seen_at went with its column');
+is_same([], array_values(array_intersect(['online_periods', 'contact_requests'], schema_guarded_tables())),
+        'neither dropped table is on the update’s guard, so dropping them needed no change to it');
 
 case_('On this run’s own engine, no two logins share an address');
 // On the run's own database, so a run on MariaDB proves this on MariaDB.
@@ -259,6 +269,31 @@ run("DELETE FROM settings WHERE setting_key = 'defaults_initialized'");
 setting_cache_clear();
 does_not_throw($runnerStep, 'the seed a first install runs goes through on that schema, with no template left to write');
 
+case_('On this run’s own engine, the runner’s step deletes the pictures left behind, and the screenshots stay [ADR 0026 §8]');
+// No column names a picture since 035 and 036, so a stored file in the pictures'
+// folder that no problem report names is one left behind. migration-data.php
+// holds the step to the pictures the columns named, beside every other kind of
+// file; this runs wherever the suite does, a host without exec included.
+$pictures = upload_dir('avatar');
+if (!is_dir($pictures)) mkdir($pictures, 0700, true);
+[$leftBehind, $screenshot, $justSaved] = [str_repeat('a', 32) . '.jpg', str_repeat('d', 32) . '.png', str_repeat('9', 32) . '.jpg'];
+foreach ([$leftBehind => time() - 86400, $screenshot => time() - 86400, $justSaved => time()] as $name => $when) {
+    file_put_contents($pictures . '/' . $name, 'x');
+    touch($pictures . '/' . $name, $when);
+}
+run("INSERT INTO feedback (account_id, page, message, context_json, screenshot_name, created_at) VALUES (NULL, 'dashboard', 'Kaputt', '{}', ?, ?)",
+    [$screenshot, now()]);
+$runnerStep();
+clearstatcache();
+ok(!is_file($pictures . '/' . $leftBehind), 'a picture a day old that no report names is deleted');
+ok(is_file($pictures . '/' . $screenshot), 'a screenshot a problem report names stays, though it is as old');
+ok(is_file($pictures . '/' . $justSaved), 'and so does a picture saved a moment ago, which may be a screenshot whose report is being saved');
+$runnerStep();
+clearstatcache();
+ok(is_file($pictures . '/' . $screenshot) && is_file($pictures . '/' . $justSaved), 'run again, as every later update runs it, it deletes nothing more');
+run('DELETE FROM feedback WHERE screenshot_name = ?', [$screenshot]);
+foreach ([$screenshot, $justSaved] as $name) @unlink($pictures . '/' . $name);
+
 case_('The functions 019 calls behave on this engine as 019 needs them to');
 // 019 builds its change-log lines and compares addresses with these. A CONCAT
 // that gave '' for a NULL part, or a JSON_OBJECT that lost the null, would write
@@ -299,14 +334,14 @@ if (!function_exists('exec')) {
     // Shared hosting often lists exec in disable_functions. The run says what it
     // could not do rather than stopping on an undefined function.
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 033, and the update refusing a migration that drops a guarded table'
+        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 037, and the update refusing a migration that drops a guarded table'
          . ' (this PHP disables exec, which the run with data in between needs)']));
     return;
 }
 $target = (string)getenv('CRM_MIGRATION_CONFIG');
 if ($target === '') {
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 033, and the update refusing a migration that drops a'
+        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 037, and the update refusing a migration that drops a'
          . ' guarded table (set CRM_MIGRATION_CONFIG to the config of a'
          . ' second, empty *_test database; tests/mariadb-local.sh does)']));
     return;
@@ -997,27 +1032,173 @@ foreach (['032' => $custom, '033' => $views] as $number => $gone) {
 }
 
 // ---------------------------------------------------------------------------
+// 034 to 037: when each login was online, a login's time last seen, status, emoji
+// and picture, a child's picture, and the requests families sent one another go
+// (ADR 0026 §8, §11; 0022 §11.3). Each only drops, so each is held to taking its
+// own and nothing else: every other table to the engine's checksum of every row,
+// every key, and of accounts and students every other value of every row.
+$go = $after['going'];
+$presence = ['last_seen_at', 'presence', 'status_emoji', 'avatar_name'];
+$less = fn(array $rows, array $columns): array => array_map(fn(array $row): array => array_diff_key($row, array_flip($columns)), $rows);
+$listed = fn(array $list, array $gone): array => array_values(array_diff($list, $gone));
+$keysOf = fn(array $keys, string $table): array => array_values(array_filter($keys, fn($k) => $k['on_table'] === $table));
+$filled = fn(array $rows, string $column, $empty): int => count(array_filter($rows, fn(array $row): bool => $row[$column] !== $empty));
+
+case_('Before 034 the portal has an online history, statuses, emoji, pictures and contact requests to lose, beside rows that must stay');
+is_same(['contact_requests' => 3, 'online_periods' => 3], array_intersect_key($go['before']['rows'], array_flip(['online_periods', 'contact_requests'])),
+        'three stretches of time online, and three requests between families');
+is_same([4, 2, 3, 2, 2], [$filled($go['before']['accounts'], 'last_seen_at', null), $filled($go['before']['accounts'], 'presence', 'auto'),
+                          $filled($go['before']['accounts'], 'status_emoji', ''), $filled($go['before']['accounts'], 'avatar_name', ''),
+                          $filled($go['before']['students'], 'avatar_name', '')],
+        'logins with a time last seen, a chosen status, an emoji and a picture, and children with a picture');
+ok(count($go['before']['accounts']) > 4 && count($go['before']['students']) > 2, 'beside logins and children with none of them');
+ok(($go['before']['rows']['message_files'] ?? 0) === 3 && ($go['before']['rows']['feedback'] ?? 0) === 1,
+   'and a chat’s photo, voice note and file, and a problem report with its screenshot, which have to stay');
+is_same([['contact_requests', 'accounts', 'CASCADE'], ['contact_requests', 'accounts', 'CASCADE'], ['online_periods', 'accounts', 'CASCADE']],
+        array_map(fn($k) => [$k['on_table'], $k['refers_to'], $k['on_delete']], array_values(array_filter($go['before']['keys'],
+            fn($k) => in_array($k['on_table'], ['online_periods', 'contact_requests'], true) || in_array($k['refers_to'], ['online_periods', 'contact_requests'], true)))),
+        'the only keys that touch the two tables are their own, to accounts: nothing points at either');
+
+case_('034 drops the online history, and nothing else');
+is_same($listed($go['before']['tables'], ['online_periods']), $go['034']['tables'], 'online_periods is gone, and every other table is there');
+is_same($except($go['before']['sums'], ['online_periods']), $go['034']['sums'], 'every other table has every row it had, to the engine’s checksum');
+is_same($except($go['before']['rows'], ['online_periods']), $go['034']['rows'], 'and as many rows');
+is_same(array_values(array_filter($go['before']['keys'], fn($k) => $k['on_table'] !== 'online_periods')), $go['034']['keys'],
+        'the key gone is online_periods’ own, and every other key is as it was');
+is_same([$go['before']['columns'], $go['before']['indexes']], [$go['034']['columns'], $go['034']['indexes']], 'accounts and students have their columns and indexes');
+
+case_('035 takes the time last seen, the status, the emoji and the picture from every login, and nothing else');
+is_same($listed($go['034']['columns']['accounts'], $presence), $go['035']['columns']['accounts'], 'accounts loses the four columns, and keeps every other in its order');
+is_same($except($go['034']['indexes']['accounts'], ['account_seen']), $go['035']['indexes']['accounts'], 'and the index on last_seen_at, and keeps every other index');
+is_same($less($go['034']['accounts'], $presence), $go['035']['accounts'], 'every login has every other value it had, and none is lost');
+is_same($except($go['034']['sums'], ['accounts']), $except($go['035']['sums'], ['accounts']), 'every other table has every row it had, to the engine’s checksum');
+is_same([$go['034']['tables'], $go['034']['rows'], $go['034']['keys']], [$go['035']['tables'], $go['035']['rows'], $go['035']['keys']],
+        'the same tables, as many rows in each, and every key, those to accounts included');
+
+case_('036 takes the picture from every child, and nothing else');
+is_same($listed($go['035']['columns']['students'], ['avatar_name']), $go['036']['columns']['students'], 'students loses avatar_name, and keeps every other column in its order');
+is_same($go['035']['indexes']['students'], $go['036']['indexes']['students'], 'and every index');
+is_same($less($go['035']['students'], ['avatar_name']), $go['036']['students'], 'every child has every other value they had, and none is lost');
+is_same($except($go['035']['sums'], ['students']), $except($go['036']['sums'], ['students']), 'every other table has every row it had, to the engine’s checksum');
+is_same([$go['035']['tables'], $go['035']['rows'], $go['035']['keys']], [$go['036']['tables'], $go['036']['rows'], $go['036']['keys']],
+        'the same tables, as many rows in each, and every key');
+
+case_('037 drops the contact requests, and nothing else');
+is_same($listed($go['036']['tables'], ['contact_requests']), $go['037']['tables'], 'contact_requests is gone, and every other table is there');
+is_same($except($go['036']['sums'], ['contact_requests']), $go['037']['sums'], 'every other table has every row it had, to the engine’s checksum');
+is_same($except($go['036']['rows'], ['contact_requests']), $go['037']['rows'], 'and as many rows');
+is_same(array_values(array_filter($go['036']['keys'], fn($k) => $k['on_table'] !== 'contact_requests')), $go['037']['keys'],
+        'the keys gone are contact_requests’ own two, and every other key is as it was');
+is_same([], $keysOf($go['037']['keys'], 'contact_requests'), 'none of them is left');
+
+case_('034 to 037 keep the chat’s photo, voice note and file, the screenshot’s report, and the change log’s lines about pictures and emoji [ADR 0022 §11.4]');
+foreach (['threads', 'messages', 'message_files', 'feedback', 'record_versions', 'audit_log'] as $table)
+    is_same($go['before']['sums'][$table] ?? 'missing', $go['037']['sums'][$table] ?? 'gone', $table . ' is as it was, to the engine’s checksum');
+
+case_('034 to 037 lower no guarded count, so the update’s guard stays as it is');
+foreach (['034', '035', '036', '037'] as $number)
+    is_same($go['before']['counts'], $go[$number]['counts'], $number . ' leaves every table in schema_guarded_tables() with as many rows as before');
+foreach (['accounts', 'students', 'message_files'] as $table)
+    ok(in_array($table, schema_guarded_tables(), true) && ($go['before']['counts'][$table] ?? 0) > 0, $table . ' is guarded and had rows to lose');
+
+case_('034 to 037 are one statement each, so none can stop inside itself');
+is_same(['034' => 1, '035' => 1, '036' => 1, '037' => 1], $go['statements'], 'one statement in each file');
+
+case_('Run a second time, 034 and 037 do nothing, and 035 and 036 are refused by the engine and change nothing');
+// An update that applied a file but stopped before the ledger recorded it starts
+// the file again on the next page view. A DROP TABLE IF EXISTS runs twice; MySQL
+// 8.0 has no DROP COLUMN IF EXISTS, so 035 and 036 cannot, and what matters is
+// that the second run stops there, with the portal closed and the copy in place,
+// and loses nothing - as 024's does.
+is_same(['034' => null, '035' => '42000', '036' => '42000', '037' => null], $go['refused'] ?? [],
+        'each runs again on a connection of its own; the engine refuses only the two that drop columns, with SQLSTATE 42000');
+foreach (['034', '035', '036', '037'] as $number)
+    is_same($go[$number], $go[$number . '_again'], $number . ' run again changes nothing: the same tables, rows, checksums, keys, columns and indexes');
+
+// ---------------------------------------------------------------------------
 // The update this release brings, then one with a mistake in it, through the
 // application's own runner, schema_apply(), on a portal the previous version
-// left: 001 to 031 in its ledger, rows in every table 032 and 033 drop.
+// left: 001 to 031 in its ledger, rows in everything 032 to 037 drop, and the
+// files the pictures were stored in on disk.
 $u = $after['runner'];
 $ledgerOf = fn(array $state): array => array_column($state['ledger'], 'checksum', 'version');
+// What this release drops, and the tables whose rows it changes: the settings and
+// the ledger record the update, and accounts and students lose columns.
+$droppedTables = array_merge($custom, $views, ['online_periods', 'contact_requests']);
+$changedTables = ['settings', 'schema_migrations', 'accounts', 'students'];
 
-case_('This release’s update passes the guard on a portal with custom-field values, and drops exactly what 032 and 033 drop');
+case_('This release’s update passes the guard on a portal with custom-field values, and drops exactly what 032 to 037 drop');
 is_same('', $u['previous_step_error'], 'the portal was where the previous version’s update leaves it, its step after the files run');
 ok(($u['before']['rows']['field_values'] ?? 0) > 0, 'with custom-field values for the guard to see: ' . ($u['before']['rows']['field_values'] ?? 0));
+ok(($u['before']['rows']['online_periods'] ?? 0) > 0 && ($u['before']['rows']['contact_requests'] ?? 0) > 0,
+   'and an online history and contact requests to drop');
 is_same(null, $u['release']['refused'], 'schema_apply() goes through: field_values is off the guard, so 032 emptying it does not refuse the update');
 is_same(true, $u['release']['current'], 'and files and database agree afterwards, so the portal opens');
 is_same(1, $u['release']['backups'], 'with the copy taken before the files ran');
+is_same(['032', '033', '034', '035', '036', '037'], array_map(fn(string $version): string => substr($version, 0, 3), array_keys($u['shipped'])),
+        'this release’s files are 032 to 037');
 is_same($u['shipped'], array_diff_key($ledgerOf($u['release']['state']), $ledgerOf($u['before'])),
-        'the ledger gained 032 and 033, each with the checksum of the file shipped, and nothing else');
-is_same(array_values(array_diff($u['before']['tables'], array_merge($custom, $views))), $u['release']['state']['tables'],
-        'the four tables are gone, and every other table is there');
-is_same($except($u['before']['sums'], array_merge($custom, $views, ['settings', 'schema_migrations'])),
-        $except($u['release']['state']['sums'], ['settings', 'schema_migrations']),
-        'every table but the settings and the ledger, which record the update, has every row it had: the backup, the files and the step after them changed nothing else');
+        'the ledger gained each of them, with the checksum of the file shipped, and nothing else');
+is_same(array_values(array_diff($u['before']['tables'], $droppedTables)), $u['release']['state']['tables'],
+        'the six tables are gone, and every other table is there');
+is_same($except($u['before']['sums'], array_merge($droppedTables, $changedTables)), $except($u['release']['state']['sums'], $changedTables),
+        'every table but the settings, the ledger, accounts and students has every row it had: the backup, the files and the step after them changed nothing else');
+is_same($less($u['before']['accounts'], $presence), $u['release']['state']['accounts'], 'every login has every value it had but the four 035 takes');
+is_same($less($u['before']['students'], ['avatar_name']), $u['release']['state']['students'], 'and every child every value but the picture');
 is_same($u['before']['counts'], $u['release']['state']['counts'], 'every guarded table has as many rows as before');
 is_same(null, $u['release']['record'], 'and it leaves no record of an unfinished update behind: the run that passes deletes it [ADR 0027 §1]');
+
+case_('This release’s update deletes the pictures’ files from disk, and nothing beside them [ADR 0026 §8]');
+// The step after the files (database/defaults.php): in the pictures' folder, a
+// stored file no problem report names is a picture left behind.
+$files = $u['files'];
+$onDiskBefore = $u['before']['files']['uploads'];
+$onDiskAfter = $u['release']['state']['files']['uploads'];
+$deleted = array_map(fn(string $name): string => 'avatar/' . $name, [...$files['account_pictures'], $files['child_picture']]);
+is_same(array_fill(0, 3, 'file'), array_map(fn(string $path): ?string => $onDiskBefore[$path] ?? null, $deleted),
+        'two logins’ pictures and a child’s, which the columns named, were on disk before the update');
+is_same($except($onDiskBefore, $deleted), $onDiskAfter, 'afterwards those three are gone, and every other file, folder and link under the uploads is there');
+is_same('file', $onDiskAfter['avatar/' . $files['screenshot']] ?? null, 'the screenshot a problem report names stays, in the same folder and as old');
+is_same('file', $onDiskAfter['avatar/' . $files['child_picture_just_saved']] ?? null,
+        'a child’s picture saved a moment before the update stays, for the nightly prune: the step leaves the last ten minutes alone');
+is_same(array_fill(0, 3, 'file'), array_map(fn(string $name): ?string => $onDiskAfter['message/' . $name] ?? null, $files['chat']),
+        'the chat’s photo, voice note and file stay, as ADR 0022 §11.4 keeps what was sent');
+is_same(['file', 'folder', 'link'], [$onDiskAfter['avatar/kein-upload.txt'] ?? null, $onDiskAfter['avatar/' . str_repeat('e', 32) . '.jpg'] ?? null,
+                                     $onDiskAfter['avatar/' . str_repeat('f', 32) . '.jpg'] ?? null],
+        'in the pictures’ folder a file not named the way an upload is, a folder and a link stay');
+is_same(true, $u['release']['state']['files']['outside'], 'and the file the link points to, outside the uploads, is still there');
+is_same('', $u['release']['again']['error'], 'the step runs again, as every later update runs it, without an error');
+is_same($u['release']['state']['files'], $u['release']['again']['files'], 'and deletes nothing more');
+
+case_('This release’s update stopped between two of its files and started again by the next page view ends as the update that ran through');
+// 034 to 037 are one statement each, so an update can stop only between them: a
+// file that stops is put after each in turn, and the next page view runs without it.
+$restarts = $u['restarted'] ?? [];
+is_same(['033', '034', '035', '036'], array_map('strval', array_keys($restarts)), 'stopped after 033, 034, 035 and 036 in turn');
+foreach ($restarts as $stop => $round) {
+    $when = 'stopped after ' . $stop . ': ';
+    $stopped = $round['stopped'];
+    is_same('SchemaError', $stopped['said']['class'] ?? null, $when . 'the update stops at the file put there');
+    is_same(array_values(array_filter(array_keys($u['shipped']), fn(string $version): bool => strcmp($version, $stop . '_zz') < 0)),
+            array_values(array_diff(array_column($stopped['ledger'] ?? [], 'version'), array_column($u['before']['ledger'], 'version'))),
+            $when . 'the ledger has this release’s files up to it, and none after');
+    ok(is_array($stopped['record']['data']['counts'] ?? null), $when . 'the record of the unfinished update is kept, with the counts from before');
+    is_same($round['before']['files'], $stopped['files'], $when . 'no file is deleted from disk: the step after the files runs only in a run that passes');
+    $again = $round['restarted'];
+    is_same(null, $again['said'], $when . 'the next page view, without that file, passes');
+    is_same(null, $again['record'], $when . 'and deletes the record');
+    is_same($u['release']['state']['ledger'], $again['ledger'], $when . 'the ledger ends as after the update that ran through: each file once, with its checksum');
+    is_same([$u['release']['state']['tables'], $u['release']['state']['keys'], $u['release']['state']['columns'], $u['release']['state']['indexes']],
+            [$again['portal']['tables'], $again['portal']['keys'], $again['portal']['columns'], $again['portal']['indexes']],
+            $when . 'the same tables, keys, columns and indexes');
+    is_same($except($u['release']['state']['rows'], ['settings']), $except($again['portal']['rows'], ['settings']), $when . 'as many rows in every table');
+    is_same($round['before']['counts'], $again['counts'], $when . 'every guarded table has as many rows as before');
+    is_same($except($round['before']['sums'], array_merge($droppedTables, $changedTables)), $except($again['portal']['sums'], $changedTables),
+            $when . 'every other table has every row it had, to the engine’s checksum');
+    is_same($less($round['before']['accounts'], $presence), $again['portal']['accounts'], $when . 'every login every value but the four 035 takes');
+    is_same($less($round['before']['students'], ['avatar_name']), $again['portal']['students'], $when . 'and every child every value but the picture');
+    is_same($u['release']['state']['files'], $again['files'], $when . 'and the files on disk end as after the update that ran through');
+}
 
 // ---------------------------------------------------------------------------
 // A refused update stays refused (ADR 0027). Each mistake is one more file in

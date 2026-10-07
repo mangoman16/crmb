@@ -28,17 +28,15 @@ does_not_throw(fn() => student($kidB), 'trainer sees B');
 does_not_throw(fn() => student($orphan), 'trainer sees the unlinked one');
 is_same(3, count(filtered_students([])), 'the unscoped list has all three');
 
-case_('A child’s or a family’s picture reaches only who may see them');
+case_('The pictures’ folder holds the problem reports’ screenshots, and the route hands one to an administrator only [ADR 0026 §8]');
 /* serve_download() is the route itself. A refusal throws before a byte is read,
-   which the front controller turns into a 404; what is allowed is asked of
-   avatar_for_download(), the lookup the route serves from, because serving
-   would end the test run with exit. */
-$picture = fn(string $fill) => str_repeat($fill, 32).'.jpg';
-run('UPDATE students SET avatar_name=? WHERE id=?', [$picture('a'), $kidA]);
-run('UPDATE students SET avatar_name=? WHERE id=?', [$picture('b'), $kidB]);
-run('UPDATE accounts SET avatar_name=? WHERE id=?', [$picture('c'), $parentA]);
-run('UPDATE accounts SET avatar_name=? WHERE id=?', [$picture('d'), $parentB]);
-run('UPDATE accounts SET avatar_name=? WHERE id=?', [$picture('e'), $trainerId]);
+   which the front controller turns into a 403 or a 404. The profile pictures
+   went; a screenshot can show a family's page, and is for the administrators
+   who read the reports. */
+$shot = fixture('feedback', ['account_id'=>$parentA, 'page'=>'dashboard', 'message'=>'Kaputt', 'context_json'=>'{}',
+                             'screenshot_name'=>str_repeat('a', 32).'.png', 'created_at'=>now()]);
+@mkdir(upload_dir('avatar'), 0775, true);
+file_put_contents(upload_dir('avatar').'/'.str_repeat('a', 32).'.png', 'a screenshot');
 /* Serving a file ends the request with exit, and exit here would end the whole
    run quietly with status 0. So while the route is being asked, an exit is
    caught on the way out and reported as the failure it is. */
@@ -56,22 +54,13 @@ $download = function (string $what, int $id, string $kind = '') use ($routeCall)
 $refused = function (callable $fn, string $what) {
     try { $fn(); ok(false, $what); } catch (Throwable $e) { ok($e instanceof NotFound, $what.' (a 404, not '.get_class($e).')'); }
 };
+foreach ([$parentA => 'the family who sent it', $trainerId => 'a trainer'] as $who => $whom) {
+    sign_in_as($who);
+    throws(fn() => $download('shot', $shot), $whom.' asking for the screenshot gets nothing', 'Nur für Administratoren');
+}
 sign_in_as($parentA);
-$refused(fn() => $download('avatar', $kidB, 'student'), 'family A asking for family B’s child’s photo gets nothing');
-$refused(fn() => $download('avatar', $orphan, 'student'), 'nor a child linked to no account');
-$refused(fn() => $download('avatar', $parentB, 'account'), 'nor another family’s own photo');
-$refused(fn() => $download('avatar', 999999, 'account'), 'and an id that does not exist is the same answer');
-is_same($picture('a'), avatar_for_download('student', $kidA), 'their own child’s photo is served');
-is_same($picture('c'), avatar_for_download('account', $parentA), 'and their own');
-is_same($picture('e'), avatar_for_download('account', $trainerId), 'and the trainer’s, whom they write to');
-does_not_throw(fn() => $download('avatar', $adminId, 'account'), 'the route lets them ask for an administrator’s, who has no picture');
-sign_in_as($trainerId);
-is_same($picture('b'), avatar_for_download('student', $kidB), 'the trainer sees every child’s');
-is_same($picture('d'), avatar_for_download('account', $parentB), 'and every family’s');
-sign_in_as($adminId);
-is_same($picture('b'), avatar_for_download('student', $kidB), 'and so does an administrator');
-ok(!may_see_account_picture(['id'=>$parentA, 'role'=>'student'], ['id'=>$trainerId, 'avatar_name'=>$picture('e')]),
-   'an account row that does not say it is staff is not taken for staff');
+foreach (['student' => $kidA, 'account' => $parentA] as $kind => $id)
+    does_not_throw(fn() => $download('avatar', $id, $kind), 'a picture asked for by its old address, of the '.$kind.', is served from nowhere');
 
 case_('A file in a chat reaches only who may read the chat, and a removed one nobody');
 /* The same route and the same catch as above: a refusal is a 404 before a byte
@@ -94,14 +83,6 @@ $refused(fn() => $download('attachment', $inGroup), 'nor for one in a course gro
 sign_in_as($trainerId);
 moderate_message((int)scalar('SELECT message_id FROM message_files WHERE id=?', [$inGroup]), true);
 does_not_throw(fn() => $download('attachment', $inGroup), 'a photo taken down from the group is served to nobody, the trainer included');
-
-case_('Signing out asks the browser to forget the pictures it kept');
-/* Headers cannot be read back on the command line, so this pins the line in the
-   logout action; TESTING.md has the check in a real browser. */
-$actions = (string)file_get_contents(APP_ROOT.'/app/actions.php');
-// The whole logout case, up to the next one, however long its comment grows.
-$logout = (string)strstr((string)strstr($actions, "case 'logout':"), "case 'forgot':", true);
-ok(str_contains($logout, "header('Clear-Site-Data: \"cache\"')"), 'Clear-Site-Data: "cache" goes out with the logout');
 
 case_('Role helpers agree with each other');
 sign_in_as($adminId);

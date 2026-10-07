@@ -30,16 +30,6 @@ declare(strict_types=1);
  * gathers those under one „Erweitert“ heading instead of leaving them among the
  * ones a new portal has to answer (ADR 0011).
  */
-/**
- * The longest that when somebody was online is kept and shown, in days.
- *
- * A ceiling, not a setting: longer would be a new decision about families'
- * data, which the privacy notice would have to say (ADR 0015). The setting
- * presence_history_days may shorten it. Declared here, before the settings
- * that use it, and read by app/presence.php, which loads later.
- */
-const PRESENCE_HISTORY_MAX_DAYS = 30;
-
 function setting_schema(): array {
     static $schema;
     return $schema ??= [
@@ -298,38 +288,11 @@ function setting_schema(): array {
             'hint'  => ['Ältere Einträge im Änderungsprotokoll werden beim nächtlichen Aufräumen entfernt. Das Prüfprotokoll ist davon nicht betroffen.',
                         'Older entries in the change log are removed during the nightly cleanup. The audit log is not affected.'],
         ],
-        // The whole month by default, and never more: see
-        // PRESENCE_HISTORY_MAX_DAYS. presence_history_days() clamps it again on read.
-        'presence_history_days' => [
-            'kind' => 'int', 'default' => PRESENCE_HISTORY_MAX_DAYS, 'min' => 1, 'max' => PRESENCE_HISTORY_MAX_DAYS, 'group' => 'system', 'advanced' => true,
-            'label' => ['Wann jemand online war, aufbewahren (Tage)', 'Keep when somebody was online for (days)'],
-            'hint'  => ['Höchstens 30. Sichtbar nur für Trainerinnen und Administratoren. Ältere Einträge löscht das nächtliche Aufräumen.',
-                        'At most 30. Visible to trainers and administrators only. The nightly cleanup removes older entries.'],
-        ],
         'upload_max_kb' => [
             'kind' => 'int', 'default' => 4096, 'min' => 64, 'max' => 51200, 'group' => 'portal',
             'label' => ['Größte erlaubte Datei (kB)', 'Largest allowed file (kB)'],
-            'hint'  => ['Gilt für Zahlungsbelege, Anhänge und Profilbilder. Der Server begrenzt zusätzlich; es gilt der kleinere Wert.',
-                        'Applies to payment proofs, attachments and profile pictures. The server has its own limit; the smaller one wins.'],
-        ],
-        // The four colours of the dot on an avatar (ADR 0015). Each band is
-        // measured from the last activity, and presence_state() tests them in
-        // order, so a band saved shorter than the one before it is skipped -
-        // never shown out of order. Nothing needs to reorder them.
-        'online_window_minutes' => [
-            'kind' => 'int', 'default' => 5, 'min' => 1, 'max' => 120, 'group' => 'portal',
-            'label' => ['Grün – „online“: aktiv innerhalb von (Minuten)', 'Green – “online”: active within (minutes)'],
-            'hint'  => ['Danach blau – „vor Kurzem online“, dann gelb – „abwesend“, dann grau – „offline“. Einstellbar unter „Erweitert“.',
-                        'After that blue – “recently online”, then yellow – “away”, then grey – “offline”. Adjustable under “Advanced”.'],
-        ],
-        'presence_recent_minutes' => [
-            'kind' => 'int', 'default' => 60, 'min' => 5, 'max' => 1440, 'group' => 'portal', 'advanced' => true,
-            'label' => ['Blau – „vor Kurzem online“: bis (Minuten nach der letzten Aktivität)', 'Blue – “recently online”: up to (minutes after the last activity)'],
-        ],
-        'presence_away_hours' => [
-            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 720, 'group' => 'portal', 'advanced' => true,
-            'label' => ['Gelb – „abwesend“: bis (Stunden nach der letzten Aktivität)', 'Yellow – “away”: up to (hours after the last activity)'],
-            'hint'  => ['Danach grau – „offline“.', 'After that grey – “offline”.'],
+            'hint'  => ['Gilt für Zahlungsbelege, Fotos im Chat und Bildschirmfotos zu Problemmeldungen. Der Server begrenzt zusätzlich; es gilt der kleinere Wert.',
+                        'Applies to payment proofs, photos in the chat and screenshots in problem reports. The server has its own limit; the smaller one wins.'],
         ],
         'privacy_ready' => [
             'kind' => 'bool', 'default' => false, 'group' => 'privacy', 'internal' => true,

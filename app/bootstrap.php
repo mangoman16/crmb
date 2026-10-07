@@ -41,15 +41,8 @@ require __DIR__ . '/groups.php';
 require __DIR__ . '/attendance.php';
 require __DIR__ . '/billing.php';
 require __DIR__ . '/shell.php';
-// Needs run_counter() and rows() from core.php, setting() from defaults.php,
-// is_staff() and is_admin() from auth.php and impersonator() from shell.php
-// above. Nothing loaded earlier calls it: only the router, the actions,
-// app/ui.php, the views and prune_expired() in tick.php below do, at request
-// time (ADR 0015).
-require __DIR__ . '/presence.php';
-// avatar() in shell.php above calls upload_version() from here, at request time
-// only - never while loading - so this order is safe as it stands. Do not
-// "tidy" it by moving either file without checking that call.
+// upload_types() calls message_upload_types() in messaging.php, loaded below, at
+// request time only - never while loading - so this order is safe as it stands.
 require __DIR__ . '/uploads.php';
 // The club's colours and logo. Needs setting() and setting_colour_refusal()
 // from defaults.php, colour.php, is_staff() from auth.php and uploads.php's
@@ -241,10 +234,12 @@ function boot_http(): void {
     header('X-Frame-Options: DENY');
     header('Referrer-Policy: no-referrer');
     header('Cache-Control: no-store');
-    // The microphone is allowed for this origin only, and only because a voice
-    // note is recorded in the browser. Camera and location stay off: nothing
-    // here asks for either, and a policy is worth more than an intention.
-    header('Permissions-Policy: camera=(), microphone=(self), geolocation=()');
+    // Camera, microphone and location stay off: no page asks a browser for any
+    // of them, and a policy is worth more than an intention. A student's photo
+    // comes through the file input with capture="environment" (ADR 0022 §11.4);
+    // whether camera=() keeps a phone from opening its camera there is to be
+    // measured on an iPhone and an Android phone, not assumed.
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
     header('Cross-Origin-Opener-Policy: same-origin');
     header('Cross-Origin-Resource-Policy: same-origin');
     header('X-Permitted-Cross-Domain-Policies: none');

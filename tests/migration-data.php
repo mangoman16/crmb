@@ -47,16 +47,23 @@ declare(strict_types=1);
  * a portal 028 to 031 were applied to, custom fields with values, saved views,
  * templates and the change-log lines that name them, which 032 and 033 must drop
  * and touch nothing else; each file is run twice, and stopped after its first
- * statement and started again. Then the update this release brings, through the
- * application's own runner on a release of this run's own, and the mistakes ADR
- * 0027 is about, one file at a time, one page view after another: a file that
- * drops a guarded table, refused on every page view; the stamp and the settings
- * forged as a pass would write them; a newer upload on top; the copy imported
- * with the new files still in place, then broken off at contacts, then whole; a
- * release that takes the table off the list; a file that empties the table, one
- * that loses a row and stops, one that stops every time, one that stops in an
- * update run with skip-backup; and the record of the unfinished update
- * unwritable, then unreadable.
+ * statement and started again. Before 034, on a portal 032 and 033 were applied
+ * to, when logins were online, the status, emoji and picture each chose,
+ * children's pictures and the requests families sent one another, beside a
+ * screenshot and a chat's photo, voice note and file, which 034 to 037 must drop
+ * and touch nothing else of; each file is run twice. Then the update this release
+ * brings, through the application's own runner on a release of this run's own,
+ * with the pictures' files on disk, which its step after the files must delete
+ * and nothing beside them; and the mistakes ADR 0027 is about, one file at a
+ * time, one page view after another: a file that drops a guarded table, refused
+ * on every page view; the stamp and the settings forged as a pass would write
+ * them; a newer upload on top; the copy imported with the new files still in
+ * place, then broken off at contacts, then whole; a release that takes the table
+ * off the list; a file that empties the table, one that loses a row and stops,
+ * one that stops every time, one that stops in an update run with skip-backup;
+ * and the record of the unfinished update unwritable, then unreadable. Last, this
+ * release's update stopped after 033, 034, 035 and 036 in turn and started again
+ * by the next page view, which must end as the update that ran through.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -88,6 +95,9 @@ require_once APP_ROOT . '/app/defaults.php';
 require_once APP_ROOT . '/app/auth.php';
 // ... and course_groups_fill(), which gives courses from before 025 their group.
 require_once APP_ROOT . '/app/messaging.php';
+// ... and upload_dir() and delete_upload(), with which it deletes the pictures
+// 035 and 036 leave behind on disk.
+require_once APP_ROOT . '/app/uploads.php';
 
 $target = (string)($argv[1] ?? '');
 if ($target === '' || !is_file($target)) {
@@ -416,11 +426,16 @@ function every_login(PDO $pdo): array {
  * still guarded by the index 001 made, which the engine called email after its
  * column.
  */
-function login_indexes(PDO $pdo): array {
+function login_indexes(PDO $pdo): array { return table_indexes($pdo, 'accounts'); }
+
+/** The same for any table. */
+function table_indexes(PDO $pdo, string $table): array {
     $indexes = [];
-    foreach ($pdo->query("SELECT index_name AS name, non_unique AS non_unique, column_name AS col FROM information_schema.statistics"
-        . " WHERE table_schema = DATABASE() AND table_name = 'accounts' AND index_name <> 'PRIMARY'"
-        . ' ORDER BY index_name, seq_in_index')->fetchAll() as $row) {
+    $query = $pdo->prepare("SELECT index_name AS name, non_unique AS non_unique, column_name AS col FROM information_schema.statistics"
+        . " WHERE table_schema = DATABASE() AND table_name = ? AND index_name <> 'PRIMARY'"
+        . ' ORDER BY index_name, seq_in_index');
+    $query->execute([$table]);
+    foreach ($query->fetchAll() as $row) {
         $indexes[$row['name']]['unique'] = (int)$row['non_unique'] === 0;
         $indexes[$row['name']]['columns'][] = $row['col'];
     }
@@ -760,6 +775,92 @@ function lines_about_what_goes(PDO $pdo): array {
         . " OR before_json LIKE '%\"field:%' OR after_json LIKE '%\"field:%' ORDER BY id")->fetchAll();
 }
 
+/**
+ * What the version before 034 to 037 keeps in what they drop (ADR 0026 §8, §11;
+ * 0022 §11.3), written into a portal 001 to 031 or 033 were applied to.
+ *
+ * When two logins were online, one stretch of it hidden; a time last seen, a
+ * chosen status, an emoji and a picture on logins of both roles, so a value lost
+ * from a column that stays would show; pictures on two children, one of them
+ * saved a moment ago; and requests from one family to another, one waiting, one
+ * agreed to and one declined. Beside them what has to stay: a problem report with
+ * its screenshot, stored in the pictures' folder; a chat between a child and the
+ * trainer with a photo, a voice note and a file in it, which ADR 0022 §11.4 keeps;
+ * a receipt and the portal's icon, each named by its row, as every other kind of
+ * upload is; and change-log lines that mention a picture and an emoji.
+ *
+ * Returns the stored names the files on disk are given, by what each is.
+ */
+function add_presence_pictures_and_requests(PDO $pdo): array {
+    $at = '2026-10-02 08:00:00';
+    $login = function (string $email) use ($pdo): int {
+        $query = $pdo->prepare('SELECT id FROM accounts WHERE email = ?');
+        $query->execute([$email]);
+        return (int)$query->fetchColumn();
+    };
+    [$trainer, $lena, $hans, $lenaM] = [$login('trainerin@beispiel.test'), $login('mueller@beispiel.test'),
+                                        $login('gross@beispiel.test'), $login('lena.m@beispiel.test')];
+    $stored = fn(string $character, string $extension): string => str_repeat($character, 32) . '.' . $extension;
+    $files = ['account_pictures' => [$stored('a', 'jpg'), $stored('b', 'png')], 'child_picture' => $stored('c', 'jpg'),
+              'child_picture_just_saved' => $stored('9', 'jpg'), 'screenshot' => $stored('d', 'png'),
+              'chat' => [$stored('1', 'jpg'), $stored('2', 'webm'), $stored('3', 'pdf')],
+              'receipt' => $stored('4', 'pdf'), 'icon' => $stored('5', 'png')];
+
+    $set = $pdo->prepare('UPDATE accounts SET last_seen_at = ?, presence = ?, status_emoji = ?, avatar_name = ? WHERE id = ?');
+    $set->execute(['2026-10-01 17:45:00', 'away', 'badminton', '', $trainer]);
+    $set->execute(['2026-10-01 18:10:00', 'hidden', 'star', $files['account_pictures'][0], $lena]);
+    $set->execute(['2026-09-30 16:00:00', 'auto', '', $files['account_pictures'][1], $hans]);
+    $set->execute(['2026-09-29 15:30:00', 'auto', 'happy', '', $lenaM]);
+    // Paul and Lisa, from the portal before 019.
+    $pdo->prepare('UPDATE students SET avatar_name = ? WHERE id = ?')->execute([$files['child_picture'], 20]);
+    $pdo->prepare('UPDATE students SET avatar_name = ? WHERE id = ?')->execute([$files['child_picture_just_saved'], 51]);
+
+    foreach ([[$lena, '2026-10-01 17:00:00', '2026-10-01 17:20:00', 0], [$lena, '2026-10-01 18:00:00', '2026-10-01 18:10:00', 1],
+              [$trainer, '2026-10-01 17:30:00', '2026-10-01 17:45:00', 0]] as [$account, $from, $to, $hidden])
+        insert_row($pdo, 'online_periods', ['account_id' => $account, 'started_at' => $from, 'last_seen_at' => $to, 'hidden' => $hidden]);
+    foreach ([[$lenaM, $hans, 'pending', 'Darf ich dir schreiben?', null], [$lena, $lenaM, 'accepted', '', $at],
+              [$hans, $lena, 'declined', 'Hallo!', $at]] as [$from, $to, $state, $message, $decided])
+        insert_row($pdo, 'contact_requests', ['from_account_id' => $from, 'to_account_id' => $to, 'state' => $state,
+            'message' => $message, 'decided_at' => $decided, 'created_at' => $at]);
+
+    insert_row($pdo, 'feedback', ['account_id' => $lena, 'page' => 'messages', 'message' => 'Das Bild lädt nicht.', 'context_json' => '{}',
+        'screenshot_name' => $files['screenshot'], 'state' => 'new', 'created_at' => $at]);
+    $chat = insert_row($pdo, 'threads', ['account_id' => $lena, 'kind' => 'staff_direct', 'subject' => '', 'updated_at' => $at]);
+    foreach ([$lena, $trainer] as $person)
+        insert_row($pdo, 'thread_participants', ['thread_id' => $chat, 'account_id' => $person, 'joined_at' => $at]);
+    foreach ([['image', $files['chat'][0], 'image/jpeg', 0], ['voice', $files['chat'][1], 'audio/webm', 12],
+              ['file', $files['chat'][2], 'application/pdf', 0]] as [$kind, $name, $mime, $seconds]) {
+        $message = insert_row($pdo, 'messages', ['thread_id' => $chat, 'sender_id' => $lena, 'body' => '', 'created_at' => $at]);
+        insert_row($pdo, 'message_files', ['message_id' => $message, 'kind' => $kind, 'stored_name' => $name, 'original_name' => 'von-lena.' . substr($name, 33),
+            'mime' => $mime, 'bytes' => 2048, 'seconds' => $seconds, 'created_at' => $at]);
+    }
+
+    insert_row($pdo, 'payment_proofs', ['student_id' => 20, 'stored_name' => $files['receipt'], 'original_name' => 'beleg.pdf',
+        'mime' => 'application/pdf', 'bytes' => 2048, 'uploaded_by' => $lena, 'created_at' => $at]);
+    insert_row($pdo, 'settings', ['setting_key' => 'portal_icon', 'setting_value' => json_encode($files['icon']), 'updated_at' => $at]);
+
+    $line = fn(string $entity, int $id, string $label, array $before, array $after) => insert_row($pdo, 'record_versions', [
+        'entity' => $entity, 'entity_id' => $id, 'operation' => 'update', 'label' => $label,
+        'before_json' => json_encode($before), 'after_json' => json_encode($after), 'actor_id' => $lena, 'created_at' => $at]);
+    $line('accounts', $lena, 'Familie Müller', ['status_emoji' => '', 'avatar_name' => ''],
+          ['status_emoji' => 'star', 'avatar_name' => $files['account_pictures'][0]]);
+    $line('students', 20, 'Paul Gruber', ['avatar_name' => ''], ['avatar_name' => $files['child_picture']]);
+    return $files;
+}
+
+/**
+ * What 034 to 037 are held to, read back: every table with its rows and their
+ * checksum and every key, and of the two tables that lose columns, every row,
+ * every column and every index.
+ */
+function presence_and_pictures_state(PDO $pdo): array {
+    return every_table($pdo) + [
+        'accounts' => every_login($pdo), 'students' => $pdo->query('SELECT * FROM students ORDER BY id')->fetchAll(),
+        'columns' => ['accounts' => table_columns($pdo, 'accounts'), 'students' => table_columns($pdo, 'students')],
+        'indexes' => ['accounts' => table_indexes($pdo, 'accounts'), 'students' => table_indexes($pdo, 'students')],
+        'counts' => guarded_counts($pdo)];
+}
+
 $nineteen = migration_path('019');
 $statements = migration_statements($nineteen);
 
@@ -783,11 +884,14 @@ $again = portal_state($pdo);
 // only ever checked against zeros.
 add_subscribed_login($pdo);
 $twentyBefore = ['accounts' => login_choices($pdo), 'counts' => guarded_counts($pdo)];
-apply_migrations($pdo, '020', '999');
+// Read after 033, the last file before 034 and 035 drop the history and the
+// status again: what 020 and 021 did to these logins is what is held to here.
+apply_migrations($pdo, '020', '033');
 $twentyAfter = ['accounts' => login_choices($pdo), 'counts' => guarded_counts($pdo),
                 'online_periods' => table_columns($pdo, 'online_periods'),
                 'online_period_rows' => (int)$pdo->query('SELECT COUNT(*) FROM online_periods')->fetchColumn(),
                 'indexes' => online_period_indexes($pdo), 'new_login' => new_login($pdo, 'neu@beispiel.test')];
+apply_migrations($pdo, '034', '999');
 
 $fetch = fn(string $sql) => $pdo->query($sql)->fetchAll();
 $result = [
@@ -1098,6 +1202,30 @@ foreach ($dropping as $number => $path) {
 }
 $result['dropping'] = $drops;
 
+// --- 034 to 037 on the online history, the pictures and the contact requests --------
+// 034 drops when each login was online, 035 a login's time last seen, status,
+// emoji and picture, 036 a child's picture, and 037 the requests families sent one
+// another (ADR 0026 §8, §11; 0022 §11.3). On the portal 032 and 033 were applied
+// to, with rows in everything they take and in what has to stay, one file at a
+// time: each is held to taking its own and nothing else, then run a second time
+// on a connection of its own, as the next page view does after an update that
+// applied it but stopped before the ledger recorded it. Each is one statement, so
+// none can stop inside itself; an update stopped between them is started again
+// through the runner, below.
+$going = [];
+foreach (['034', '035', '036', '037'] as $number) $going[$number] = migration_path($number);
+[$pdo] = build_portal_before_032();
+apply_migrations($pdo, '032', '033');
+$gone = ['files' => add_presence_pictures_and_requests($pdo), 'before' => presence_and_pictures_state($pdo),
+         'statements' => array_map(fn(string $path): int => count(migration_statements($path)), $going)];
+foreach ($going as $number => $path) {
+    run_statements($pdo, $path, migration_statements($path));
+    $gone[$number] = presence_and_pictures_state($pdo);
+    $gone['refused'][$number] = run_again($path);
+    $gone[$number . '_again'] = presence_and_pictures_state($pdo);
+}
+$result['going'] = $gone;
+
 // --- this release's update, then one with a mistake in it, through the runner -------
 // schema_apply() itself, the one copy the installer, the console and the first
 // request after an upload all use, on a portal as the previous version leaves it:
@@ -1126,18 +1254,76 @@ require_once APP_ROOT . '/app/backup.php';
 require_once APP_ROOT . '/app/version.php';
 $GLOBALS['config']['maintenance_file'] = test_run_dir() . '/maintenance.flag';
 
-[$pdo, $written] = build_portal_before_032();
-$runner = ['written' => $written,
-           'shipped' => array_combine(array_map('basename', $dropping), array_map(fn(string $path): string => hash_file('sha256', $path), $dropping))];
-// The ledger as schema_apply() makes it, filled as the previous version's update
-// left it, and that update's step after the files run.
-$pdo->exec('CREATE TABLE schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
-$record = $pdo->prepare('INSERT INTO schema_migrations (version, checksum, applied_at) VALUES (?, ?, ?)');
-foreach (migration_files() as $file)
-    if (strcmp(basename($file), '032') < 0) $record->execute([basename($file), hash_file('sha256', $file), '2026-10-01 08:00:00']);
-$pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
-setting_cache_clear();
-$runner['previous_step_error'] = $runnerStep();
+// The files the pictures were stored in, and what has to stay beside them (ADR
+// 0026 §8). In the pictures' folder: every picture a column names, one of them
+// saved a moment ago; a problem report's screenshot; a file not named the way an
+// upload is; and a folder and a link named the way one is. Elsewhere: the chat's
+// photo, voice note and file, a receipt, the portal's icon, a file in the uploads
+// folder itself, and the file the link points to, outside the uploads. A day old,
+// all of them, but the picture saved a moment ago. Planted afresh each time, so
+// what the step deleted the time before is there again.
+$uploads = dirname(maintenance_file()) . '/uploads';
+$outside = test_run_dir() . '/outside-the-uploads.jpg';
+$plant = function (array $files) use ($uploads, $outside): void {
+    if (is_dir($uploads))
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($uploads, FilesystemIterator::SKIP_DOTS),
+                                               RecursiveIteratorIterator::CHILD_FIRST) as $entry)
+            $entry->isDir() && !$entry->isLink() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+    $old = time() - 86400;
+    $stored = fn(string $character, string $extension): string => str_repeat($character, 32) . '.' . $extension;
+    $put = function (string $relative, int $when) use ($uploads): void {
+        if (!is_dir(dirname($uploads . '/' . $relative))) mkdir(dirname($uploads . '/' . $relative), 0700, true);
+        file_put_contents($uploads . '/' . $relative, 'x');
+        touch($uploads . '/' . $relative, $when);
+    };
+    foreach ([...$files['account_pictures'], $files['child_picture'], $files['screenshot'], 'kein-upload.txt'] as $name) $put('avatar/' . $name, $old);
+    $put('avatar/' . $files['child_picture_just_saved'], time());
+    foreach ($files['chat'] as $name) $put('message/' . $name, $old);
+    $put('proof/' . $files['receipt'], $old);
+    $put('icon/' . $files['icon'], $old);
+    $put($stored('6', 'jpg'), $old);
+    mkdir($uploads . '/avatar/' . $stored('e', 'jpg'));
+    touch($uploads . '/avatar/' . $stored('e', 'jpg'), $old);
+    file_put_contents($outside, 'x');
+    touch($outside, $old);
+    symlink($outside, $uploads . '/avatar/' . $stored('f', 'jpg'));
+};
+// Everything under the uploads, each as a file, a folder or a link, and whether
+// the file the link points to is still there.
+$onDisk = function () use ($uploads, $outside): array {
+    clearstatcache();
+    $listing = [];
+    if (is_dir($uploads))
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($uploads, FilesystemIterator::SKIP_DOTS),
+                                               RecursiveIteratorIterator::SELF_FIRST) as $entry)
+            $listing[substr($entry->getPathname(), strlen($uploads) + 1)] = $entry->isLink() ? 'link' : ($entry->isDir() ? 'folder' : 'file');
+    ksort($listing);
+    return ['uploads' => $listing, 'outside' => is_file($outside)];
+};
+
+// A portal as the previous version leaves it: 001 to 031 in the ledger as
+// schema_apply() makes it, that update's step after the files run, rows in
+// everything 032 to 037 drop, and the files on disk, planted after that step.
+$previousVersion = function () use ($runnerStep, $plant): array {
+    [$pdo, $written] = build_portal_before_032();
+    $files = add_presence_pictures_and_requests($pdo);
+    $pdo->exec('CREATE TABLE schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    $record = $pdo->prepare('INSERT INTO schema_migrations (version, checksum, applied_at) VALUES (?, ?, ?)');
+    foreach (migration_files() as $file)
+        if (strcmp(basename($file), '032') < 0) $record->execute([basename($file), hash_file('sha256', $file), '2026-10-01 08:00:00']);
+    $pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
+    setting_cache_clear();
+    $error = $runnerStep();
+    $plant($files);
+    return [$pdo, $written, $files, $error];
+};
+
+[$pdo, $written, $files, $previousStepError] = $previousVersion();
+// This release's files: every one from 032 on.
+$thisRelease = array_values(array_filter(glob(APP_ROOT . '/database/migrations/*.sql') ?: [],
+                                         fn(string $path): bool => strcmp(basename($path), '032') >= 0));
+$runner = ['written' => $written, 'files' => $files, 'previous_step_error' => $previousStepError,
+           'shipped' => array_combine(array_map('basename', $thisRelease), array_map(fn(string $path): string => hash_file('sha256', $path), $thisRelease))];
 // What the update said, rather than this process stopping on it.
 $update = static function (): ?array {
     try { schema_apply(); return null; }
@@ -1152,9 +1338,12 @@ $ledger = function () use ($pdo): ?array {
     try { return $pdo->query('SELECT version, checksum FROM schema_migrations ORDER BY version')->fetchAll(); }
     catch (PDOException) { return null; }
 };
-$runner['before'] = every_table($pdo) + ['counts' => guarded_counts($pdo), 'ledger' => $ledger()];
+$runner['before'] = presence_and_pictures_state($pdo) + ['ledger' => $ledger(), 'files' => $onDisk()];
 $runner['release'] = ['refused' => $update(), 'current' => schema_is_current(), 'backups' => count(backups())];
-$runner['release']['state'] = every_table($pdo) + ['counts' => guarded_counts($pdo), 'ledger' => $ledger()];
+$runner['release']['state'] = presence_and_pictures_state($pdo) + ['ledger' => $ledger(), 'files' => $onDisk()];
+// The step after the files once more, as every later update runs it.
+setting_cache_clear();
+$runner['release']['again'] = ['error' => $runnerStep(), 'files' => $onDisk()];
 
 // --- a refused update stays refused (ADR 0027) ----------------------------------------
 // One schema_apply() is one page view, with the caches a request starts without;
@@ -1335,7 +1524,29 @@ $take('999_f_a_release_makes_a_table.sql');
 $unreadable['after'] = $request();
 foreach ($written($unwritable['before'], $unreadable['after']) as $name) @unlink(backup_dir() . '/' . $name);
 
+// --- this release's update stopped between two of its files, then started again --------
+// 034 to 037 are one statement each and cannot stop inside themselves, so what is
+// left is an update stopping between two files: after 033, 034, 035 or 036, which
+// a file that stops, put after each in turn, does to it. The next page view,
+// without that file, starts again at the first file the ledger does not have.
+// Each round on a portal of its own as the previous version left it, its files on
+// disk planted afresh.
+$restarted = [];
+foreach (['033', '034', '035', '036'] as $stop) {
+    $clean();
+    [$pdo] = $previousVersion();
+    $round = ['before' => presence_and_pictures_state($pdo) + ['files' => $onDisk(), 'copies' => $state()['copies']]];
+    $stopper = $stop . '_zz_the_update_stops_here.sql';
+    $add($stopper, "INSERT INTO no_such_table VALUES (1);\n");
+    $round['stopped'] = $request() + ['files' => $onDisk()];
+    $take($stopper);
+    $round['restarted'] = $request() + ['portal' => presence_and_pictures_state($pdo), 'files' => $onDisk()];
+    foreach ($written($round['before'], $round['restarted']) as $name) @unlink(backup_dir() . '/' . $name);
+    $restarted[$stop] = $round;
+}
+
 $result['runner'] = $runner + ['mistake' => $mistake, 'off_list' => $offList, 'emptied' => $emptied, 'halfway' => $halfway,
-                               'stopping' => $stopping, 'uncopied' => $uncopied, 'unwritable' => $unwritable, 'unreadable' => $unreadable];
+                               'stopping' => $stopping, 'uncopied' => $uncopied, 'unwritable' => $unwritable, 'unreadable' => $unreadable,
+                               'restarted' => $restarted];
 
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

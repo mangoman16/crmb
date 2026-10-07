@@ -62,10 +62,6 @@ try {
     }
     $public=in_array($page,['login','forgot','activate','unsubscribe','privacy','not_found','icon','manifest','brand','logo'],true);
     $user=$public?current_user():require_user();
-    // Not for the icon, the manifest and the brand stylesheet and logo: a browser
-    // fetches those on its own, from a tab left open or a home-screen icon, and
-    // counting them would show somebody as online who is not looking (ADR 0015).
-    if($user && !in_array($page,['icon','manifest','brand','logo'],true))presence_touch($user);
     if(in_array($page,['accounts','payments','outbox','classes','manage','invoices','attendance','student_new','more'],true))require_staff();
     // A family's list is their own student; an old bookmark to the students list
     // opens that page instead. Not a change of who may open it.

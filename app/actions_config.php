@@ -419,7 +419,7 @@ function dispatch_config(string $action): array {
         audit('proof.deleted','student',(int)$p['student_id']);
         return ['student',['id'=>$p['student_id'],'tab'=>'payments']];
 
-    // ---- the shell: notifications, pictures, colours, impersonation ------
+    // ---- the shell: notifications, colours, impersonation ----------------
 
     case 'notifications_read':
         $u=require_user();
@@ -427,28 +427,6 @@ function dispatch_config(string $action): array {
         else run('UPDATE notifications SET read_at=? WHERE account_id=? AND read_at IS NULL',[now(),$u['id']]);
         // The pane is on every page, so back to that page with its record and tab.
         return form_return();
-
-    case 'avatar_save':
-        $u=require_user();
-        $kind=choose(post('kind','account'),['account','student']);
-        $table=$kind==='student'?'students':'accounts';
-        // A family may change their own picture and their own children's; staff
-        // may change anybody's, which is how a wrong photo gets fixed.
-        if($kind==='student') { $s=student((int)post('id')); $id=(int)$s['id']; }
-        else { $id=(int)post('id'); if($id!==(int)$u['id'] && !is_staff($u)) throw new UserError(t('Kein Zugriff.','Access denied.')); }
-        $old=(string)(scalar('SELECT avatar_name FROM '.$table.' WHERE id=?',[$id])?:'');
-        if(post('remove')) {
-            run('UPDATE '.$table.' SET avatar_name=? WHERE id=?',['',$id]);
-            if($old!=='') delete_upload('avatar',$old);
-            flash(t('Bild entfernt.','Picture removed.'));
-        } else {
-            $stored=store_upload('avatar','avatar');
-            run('UPDATE '.$table.' SET avatar_name=? WHERE id=?',[$stored['stored_name'],$id]);
-            if($old!=='') delete_upload('avatar',$old);
-            flash(t('Bild gespeichert.','Picture saved.'));
-        }
-        audit('avatar.saved',$kind,$id);
-        return $kind==='student'?['student',['id'=>$id]]:['profile',[]];
 
     case 'impersonate':
         // Stopping is checked against who is really signed in, not against the

@@ -6,6 +6,55 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
+## 0.6.0, unreleased — round two of ADR 0026's removals, on the working tree at `883be4d`
+
+Recorded 2026-10-07 by docs-writer, before round two was committed: the code of
+backend-dev and database-engineer as it stood in the checkout, migrations 034 to 037
+included. Both runs on MariaDB 10.11.14 (`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP
+8.4.26, on port 3431 with a work folder of their own. MySQL 8.0 was not run, and neither
+was Safari. The commit that holds this code should be named here once it exists.
+
+- **The whole suite: 7762 passed, 0 failed**, in 245 seconds, on a copy of the working
+  tree (every file git tracks or would track, `vendor/` copied in, no `.git/`). All
+  thirty-seven migrations apply, `migrations` with 698 passed. The `presence` and
+  `presence_pages` suites are gone with what they tested. After the run, the code in the
+  checkout was compared with the copy and was the same. The run listed as not covered the
+  three robustness gaps, now with six actions no page draws a form for and 23 actions and
+  roles where the form as drawn is refused.
+- **The browser walk, `tests/e2e.sh` on the working tree**: `RESULT: PASS`, 381 checks, 0
+  failed, in 125 seconds, under `php -S`, in Chromium at 390px with a 320px pass over every
+  page each role opened (39, 6 and 3). No PHP warning, notice or deprecation; no
+  JavaScript error, failed request or unexpected 4xx/5xx; no overflow and no tap target
+  under 44px; four 503s, all provoked on purpose; four mails captured.
+- **What neither run can see.** The `migrations` suite checks, in a test folder, that the
+  update's step deletes a day-old picture no report names and keeps a problem report's
+  screenshot and a file saved a moment before, and that running it again deletes nothing
+  more. A hosting account's folder is another matter. The same on a copy of a real portal (TESTING.md R.9), an old voice note
+  playing in a browser (R.14), and whether a family's „+" opens an iPhone's camera under
+  `Permissions-Policy: camera=()` (R.12) are by hand, and none has been walked.
+
+## 0.6.0, unreleased — at `883be4d`: „Mehr" is a page
+
+Recorded 2026-10-07 by docs-writer. Both runs on MariaDB 10.11.14
+(`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP 8.4.26, on port 3431 with a work folder of
+their own. MySQL 8.0 was not run, and neither was Safari.
+
+- **The whole suite: 7915 passed, 0 failed**, in 250 seconds, on a copy exported with
+  `git archive 883be4d` and `vendor/` copied in; the commit reports 7916 from a checkout,
+  which is the one check for `.git/`. All thirty-three migrations apply. The run listed as
+  not covered the same three robustness gaps as at `f5d3c28`, and nothing else.
+- **The browser walk, `tests/e2e.sh` with `CRM_E2E_REF=883be4d`**: `RESULT: PASS`, 381
+  checks, 0 failed, in 126 seconds, under `php -S`, in Chromium at 390px with a 320px pass
+  over every page each role opened (39, 6 and 3). No PHP warning, notice or deprecation;
+  no JavaScript error, failed request or unexpected 4xx/5xx; no overflow and no tap target
+  under 44px; four 503s, all provoked on purpose; four mails captured. The walk reads the
+  bar but does not open „Mehr"; what „Mehr" holds and where each „‹ Mehr" leads are checked
+  in the `shell` suite.
+
+Reported and **not** reproduced here, from the commit message: each new check broken once
+and watched to fail (26 sabotages), and the „Mehr" page and every „‹ Mehr" measured at 320
+and 390px, both staff roles, light and dark, with JavaScript off.
+
 ## 0.6.0, unreleased — at `f5d3c28`: the look of an iPhone app, and a refused update that costs no backup
 
 Recorded 2026-10-07 by docs-writer. `f5d3c28` holds `1ad0488` before it. Both runs on

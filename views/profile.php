@@ -35,19 +35,6 @@ $resets=password_resets_for((int)$user['id'],PASSWORD_RESET_SHOWN_DAYS); ?>
     input('password_confirm',t('Passwort wiederholen','Repeat password'),'','password',true);
     submit_button();?></form></details>
 </section>
-<section class="card">
-    <h2><?=e(t('Bild','Picture'))?></h2>
-    <div class="avatar-editor">
-        <?=avatar($user,'large')?>
-        <div>
-            <p class="muted"><?=e(t('Ein Bild ist freiwillig. Ohne eines zeigt das Portal deine Anfangsbuchstaben.','A picture is optional. Without one the portal shows your initials.'))?></p>
-            <?php start_form('avatar_save',['kind'=>'account','id'=>$user['id']],'form',true);
-            file_field('avatar',t('Bild auswählen','Choose a picture'),'avatar');
-            submit_button(t('Bild speichern','Save the picture'),'secondary');?></form>
-            <?php if(($user['avatar_name']??'')!==''){start_form('avatar_save',['kind'=>'account','id'=>$user['id'],'remove'=>1],'inline-form');submit_button(t('Bild entfernen','Remove the picture'),'subtle danger-text');echo '</form>';} ?>
-        </div>
-    </div>
-</section>
 <section class="card"><h2><?=e(t('Name und Darstellung','Name and appearance'))?></h2><?php start_form('preferences_save');?><div class="grid two"><?php
 input('name',t('Name','Name'),$user['name'],'text',true);
 select_field('locale',t('Sprache','Language'),['de'=>'Deutsch','en'=>'English'],$user['locale'],true);

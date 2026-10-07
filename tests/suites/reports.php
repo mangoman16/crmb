@@ -176,16 +176,16 @@ is_same('***', report_input([str_repeat('x', 80).'password' => 'geheim'])[mb_sub
 
 case_('An attached file is its size, its type and how it arrived - never its name');
 send('feedback_send', ['message'=>'Mit Bild', 'page'=>'dashboard'] + on_page('dashboard'));   // not recorded, as above
-send('avatar_save', ['kind'=>'account', 'id'=>(string)$family] + on_page('profile'),
-     ['avatar' => ['name'=>'Urlaub-Lena-Hofer.png', 'type'=>'image/png', 'tmp_name'=>'/tmp/phpA1B2C3', 'error'=>UPLOAD_ERR_OK, 'size'=>48213],
+send('proof_upload', ['student_id'=>'0'] + on_page('profile'),
+     ['proof' => ['name'=>'Beleg-Lena-Hofer.png', 'type'=>'image/png', 'tmp_name'=>'/tmp/phpA1B2C3', 'error'=>UPLOAD_ERR_OK, 'size'=>48213],
       'extra'  => ['name'=>['a.pdf', 'b.pdf'], 'type'=>['application/pdf', 'application/pdf'], 'tmp_name'=>['/tmp/x', '/tmp/y'],
                    'error'=>[UPLOAD_ERR_OK, UPLOAD_ERR_INI_SIZE], 'size'=>[100, 0]]]);
 $step = last_step();
-is_same('avatar_save', $step['action'], 'the step is the upload');
-is_same(['bytes'=>48213, 'type'=>'image/png', 'error'=>UPLOAD_ERR_OK], $step['files']['avatar'] ?? null, 'size, declared type and error');
+is_same('proof_upload', $step['action'], 'the step is the upload');
+is_same(['bytes'=>48213, 'type'=>'image/png', 'error'=>UPLOAD_ERR_OK], $step['files']['proof'] ?? null, 'size, declared type and error');
 is_same(UPLOAD_ERR_INI_SIZE, $step['files']['extra'][1]['error'] ?? null, 'a list of files is kept per file, with the one the server refused');
 $trail = serialize($_SESSION['steps']);
-ok(!str_contains($trail, 'Urlaub-Lena-Hofer'), 'the name somebody gave the file is not kept');
+ok(!str_contains($trail, 'Beleg-Lena-Hofer'), 'the name somebody gave the file is not kept');
 ok(!str_contains($trail, 'phpA1B2C3'), 'nor where the server put it');
 
 // ---------------------------------------------------------------------------

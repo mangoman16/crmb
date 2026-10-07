@@ -20,7 +20,7 @@ case_('Writing to the trainer needs nobody’s permission');
 sign_in_as($hofer);
 is_same(true, may_message(current_user(), $trainer), 'the trainer');
 is_same(true, may_message(current_user(), $admin), 'and the administrator');
-is_same(false, may_message(current_user(), $berger), 'another family does not, not yet');
+is_same(false, may_message(current_user(), $berger), 'another family not: chats between students have closed [ADR 0022 §11.3]');
 is_same(false, may_message(current_user(), (int)$hofer), 'and nobody writes to themselves');
 
 case_('A family writing to the trainer gets a chat with her, which administrators can read too');
@@ -50,45 +50,37 @@ throws(fn() => chat_list(current_user(), true), 'nor list everybody’s', 'Nur f
 sign_in_as($berger);
 throws(fn() => thread_record((int)$thread['id']), 'nor can another family', 'nicht gefunden');
 
-case_('Another family cannot be asked any more, and a request from before waits to be answered');
-/* Chats between students have closed (ADR 0022 §11.3): asking another family
-   went, and a request made before still waits until the requests go with the
-   rest of the chat's extras. */
+case_('No new chat between two families, and one from before stays to read, closed [ADR 0022 §11.3]');
+/* Chats between students have closed: nobody starts one, by asking or by
+   writing, and the requests to write went with the rest of the chat's extras.
+   One from before stays for the two to read, and nobody writes in it. */
 sign_in_as($hofer);
-throws(fn() => direct_thread(current_user(), $berger), 'not before they agree', 'noch nicht zugestimmt');
-throws(fn() => act('contact_request', ['to'=>(string)$berger, 'message'=>'Hallo']), 'asking another family is refused', 'Unbekannte Aktion');
-is_same(0, (int)scalar('SELECT COUNT(*) FROM contact_requests'), 'and nothing is written');
-fixture('contact_requests', ['from_account_id'=>$hofer, 'to_account_id'=>$berger, 'state'=>'pending',
-                             'message'=>'Hallo, wir sind im Montagstraining.', 'created_at'=>now()]);
-is_same(1, pending_contact_count($berger), 'a request from before is waiting');
-is_same(false, may_message(current_user(), $berger), 'and still nothing may be written');
+throws(fn() => direct_thread(current_user(), $berger), 'a chat with another family is not started', 'kein Chat beginnen');
+throws(fn() => act('message_send', ['to'=>(string)$berger, 'body'=>'Hallo']), 'nor by writing to them', 'kein Chat beginnen');
+foreach ([['contact_request', ['to'=>(string)$berger, 'message'=>'Hallo']], ['contact_decide', ['id'=>'1', 'accept'=>'1']]] as [$action, $fields])
+    throws(fn() => act($action, $fields), $action.', asking or answering, is no action any more', 'Unbekannte Aktion');
+is_same(0, (int)scalar("SELECT COUNT(*) FROM threads WHERE kind='direct'"), 'and nothing is written');
+$direct = make_thread([$hofer, $berger], ['kind'=>'direct', 'subject'=>'']);
+fixture('messages', ['thread_id'=>$direct, 'sender_id'=>$hofer, 'body'=>'Fährst du am Samstag hin?', 'created_at'=>now()]);
+foreach ([[$hofer, $berger], [$berger, $hofer]] as [$either, $other]) {
+    sign_in_as($either);
+    $name = current_user()['name'];
+    ok(!may_write_thread(current_user(), thread_record($direct)), $name.' reads their chat from before, and may not write in it');
+    throws(fn() => act('message_send', ['thread_id'=>(string)$direct, 'body'=>'Noch da?']), 'a message into it is refused', 'nicht mehr geschrieben');
+    $byName = render_view('messages', ['with'=>(string)$other]);
+    ok(str_contains($byName, e('Fährst du am Samstag hin?')) && !str_contains($byName, 'value="message_send"')
+       && str_contains($byName, e('Chats zwischen Schülern sind geschlossen.')),
+       'asked for by who it is with, it opens that chat, to read, and says why there is no writing box');
+}
+is_same(1, (int)scalar('SELECT COUNT(*) FROM messages WHERE thread_id=?', [$direct]), 'nothing was added to it');
+sign_in_as($trainer);
+$staffChat = direct_thread(current_user(), $trainer2);
+ok(may_write_thread(current_user(), thread_record($staffChat)), 'between two members of staff a direct chat is open, to both');
+sign_in_as($trainer2);
+ok(may_write_thread(current_user(), thread_record($staffChat)), 'either of them');
 
-case_('Once they agree, both directions open');
-sign_in_as($berger);
-decide_contact((int)contact_requests_for($berger)[0]['id'], true);
-is_same(true, may_message(current_user(), $hofer), 'the one who agreed may write');
+case_('A chat between two families from before is private, from both sides');
 sign_in_as($hofer);
-is_same(true, may_message(current_user(), $berger), 'and so may the one who asked');
-is_same(0, pending_contact_count($berger), 'nothing is waiting any more');
-
-case_('Declining keeps it shut');
-$declined = fixture('contact_requests', ['from_account_id'=>$hofer, 'to_account_id'=>$gruber, 'state'=>'pending',
-                                         'message'=>'Hallo', 'created_at'=>now()]);
-sign_in_as($gruber);
-decide_contact($declined, false);
-sign_in_as($hofer);
-is_same(false, may_message(current_user(), $gruber), 'still shut');
-
-case_('Only the person who was asked may answer');
-run("UPDATE contact_requests SET state='pending', decided_at=NULL WHERE id=?", [$declined]);
-sign_in_as($berger);
-throws(fn() => decide_contact($declined, true), 'somebody else’s request is not theirs to accept', 'gibt es nicht');
-run("UPDATE contact_requests SET state='declined', decided_at=? WHERE id=?", [now(), $declined]);
-
-case_('A direct conversation is private, from both sides');
-sign_in_as($hofer);
-$direct = direct_thread(current_user(), $berger);
-act('message_send', ['thread_id'=>(string)$direct, 'body'=>'Fährst du am Samstag hin?']);
 does_not_throw(fn() => thread_record($direct), 'the one who wrote it');
 sign_in_as($berger);
 does_not_throw(fn() => thread_record($direct), 'and the one it went to');
@@ -104,32 +96,45 @@ sign_in_as($trainer);
 is_same(0, count(array_filter(chat_list(current_user()), fn($t) => (int)$t['id'] === $direct)), 'not in the list');
 is_same(false, in_array($direct, unread_thread_ids(current_user()), true), 'and not in the unread count');
 sign_in_as($berger);
+run('DELETE FROM thread_reads WHERE thread_id=?', [$direct]);   // as before the two opened it above
 is_same(true, in_array($direct, unread_thread_ids(current_user()), true), 'while the person it was sent to does see it');
 
 case_('One conversation per pair, not one per message');
 sign_in_as($hofer);
-is_same($direct, direct_thread(current_user(), $berger), 'writing again reuses it');
-act('message_send', ['thread_id'=>(string)$direct, 'body'=>'Noch eine']);
-is_same(1, (int)scalar("SELECT COUNT(*) FROM threads WHERE kind='direct'"), 'still one thread');
+is_same((int)$thread['id'], direct_thread(current_user(), $trainer), 'writing to the trainer again reuses their chat');
+act('message_send', ['to'=>(string)$trainer, 'body'=>'Noch eine Frage']);
+is_same(1, (int)scalar("SELECT COUNT(*) FROM threads WHERE kind='staff_direct' AND account_id=?", [$hofer]), 'still one chat');
 
 case_('A message needs to be something');
-throws(fn() => act('message_send', ['thread_id'=>(string)$direct, 'body'=>'']),
+throws(fn() => act('message_send', ['thread_id'=>(string)$thread['id'], 'body'=>'']),
        'an empty bubble is refused', 'etwas schreiben');
 
-case_('An attachment is described by what it is, not by what it is called');
-is_same('image', attachment_kind('image/jpeg'), 'a photo');
-is_same('voice', attachment_kind('audio/webm'), 'a recording');
-is_same('file',  attachment_kind('application/pdf'), 'and everything else');
+case_('A voice note from before says how long it is');
+// Nobody sends one any more (ADR 0022 §11.4); the ones sent before are shown as they are.
 is_same('0:42', duration_label(42), 'a short recording');
 is_same('2:05', duration_label(125), 'and a longer one');
 is_same('', duration_label(0), 'nothing to say about no length');
 
-case_('The kinds a message may carry are the kinds a browser can record or pick');
-$allowed = upload_types('message');
-foreach (['image/jpeg','image/png','application/pdf','audio/webm','audio/mp4','audio/mpeg'] as $mime)
-    ok(isset($allowed[$mime]), $mime.' is allowed');
-foreach (['text/html','application/x-php','application/octet-stream'] as $mime)
-    ok(!isset($allowed[$mime]), $mime.' is not');
+case_('A message carries a photo: a child’s a JPEG from the camera, staff’s from the gallery too [ADR 0022 §11.4]');
+$as = fn(int $id): array => one('SELECT * FROM accounts WHERE id=?', [$id]);
+is_same(['image/jpeg'=>'jpg'], message_upload_types($as($hofer)), 'a child sends a JPEG, what a phone’s camera hands over');
+is_same(['image/jpeg'=>'jpg', 'image/png'=>'png', 'image/webp'=>'webp'], message_upload_types($as($trainer)),
+        'a trainer a JPEG, a PNG or a WebP');
+is_same(message_upload_types($as($trainer)), message_upload_types($as($admin)), 'and so does an administrator');
+is_same(['image/jpeg'=>'jpg'], message_upload_types(null), 'nobody signed in is allowed no more than a child');
+foreach ([$hofer => 'the child', $trainer => 'the trainer'] as $who => $whom) {
+    sign_in_as($who);
+    is_same(message_upload_types(current_user()), upload_types('message'), 'store_upload() checks '.$whom.'’s upload against that list');
+    foreach (['audio/webm','audio/mp4','audio/mpeg','application/pdf','image/gif','image/svg+xml','text/html','application/x-php','application/octet-stream'] as $mime)
+        ok(!isset(upload_types('message')[$mime]), $mime.' is not sent by '.$whom);
+}
+sign_in_as($hofer);
+$composer = (string)strstr(render_view('messages', ['id'=>(string)$thread['id']]), 'class="composer"');
+ok(str_contains($composer, 'accept="image/jpeg" capture="environment"'), 'the child’s writing box asks the camera for a JPEG');
+ok(!str_contains($composer, 'audio') && !str_contains($composer, 'attachment_seconds'), 'and offers no voice note');
+sign_in_as($trainer);
+$composer = (string)strstr(render_view('messages', ['id'=>(string)$thread['id']]), 'class="composer"');
+ok(str_contains($composer, 'accept="image/jpeg,image/png,image/webp">'), 'the trainer’s offers her pictures, without asking for the camera');
 
 case_('An attachment is reachable only by somebody who may read its conversation');
 $messageId = (int)scalar('SELECT id FROM messages WHERE thread_id=? ORDER BY id DESC LIMIT 1', [$direct]);
@@ -146,15 +151,14 @@ case_('A staff member may write to a family without being asked');
 sign_in_as($trainer);
 is_same(true, may_message(current_user(), $hofer), 'she may');
 
-case_('Deleting an account takes their side of a private conversation with it');
-// threads.account_id cascades, so the conversation goes when the family who
-// started it does. That is the right answer for a family asking to be forgotten,
-// and it is worth being explicit about: the other side loses the thread too.
+case_('Deleting a family’s account takes their chats with it');
+// threads.account_id cascades, and a chat with staff is the student's
+// (direct_thread()), so it goes when the family does. That is the right answer
+// for a family asking to be forgotten, and it is worth being explicit about:
+// the trainer loses the thread too.
 $leaving = make_account(['role'=>'student', 'name'=>'Familie Zieht Weg']);
-fixture('contact_requests', ['from_account_id'=>$leaving, 'to_account_id'=>$gruber, 'state'=>'accepted',
-                             'message'=>'Hallo', 'created_at'=>now(), 'decided_at'=>now()]);
 sign_in_as($leaving);
-$goodbye = direct_thread(current_user(), $gruber);
+$goodbye = direct_thread(current_user(), $trainer2);
 act('message_send', ['thread_id'=>(string)$goodbye, 'body'=>'Wir ziehen weg.']);
 is_same(1, (int)scalar('SELECT COUNT(*) FROM threads WHERE id=?', [$goodbye]), 'the conversation exists');
 run('DELETE FROM accounts WHERE id=?', [$leaving]);
@@ -260,8 +264,7 @@ ok(in_array($group, $listed, true) && !array_intersect([$withOther, $direct], $l
 $unread = unread_thread_ids(current_user());
 ok(in_array($group, $unread, true) && !array_intersect([$withOther, $direct], $unread), 'and so does the unread count');
 ok(!may_write_thread(current_user(), thread_record($group)), 'nowhere is offered to write');
-foreach ([['message_send', ['thread_id'=>(string)$group, 'body'=>'Hallo']], ['message_send', ['to'=>(string)$admin, 'body'=>'Hallo']],
-          ['contact_decide', ['id'=>'1', 'accept'=>'1']]] as [$action, $fields])
+foreach ([['message_send', ['thread_id'=>(string)$group, 'body'=>'Hallo']], ['message_send', ['to'=>(string)$admin, 'body'=>'Hallo']]] as [$action, $fields])
     throws(fn() => act($action, $fields), $action.' is refused, in the sentence the chat shows for it', viewing_refusal());
 render_view('messages', ['id'=>(string)$group]);
 ok(in_array($group, unread_thread_ids(current_user()), true), 'opening the group does not mark it read for the child');
@@ -279,17 +282,10 @@ case_('Looking through a child’s eyes, whom to write to is one answer, whoever
    had none - so typing addresses told the trainer whom the child writes to
    (security review S3, ADR 0022 §9). Nothing is written in that view, so every
    way in to writing gives the same page. */
-$neumann = make_account(['role'=>'student', 'name'=>'Familie Neumann']);
 $wagner  = make_account(['role'=>'student', 'name'=>'Familie Wagner']);
 $stern   = make_account(['role'=>'student', 'name'=>'Familie Stern']);
-fixture('contact_requests', ['from_account_id'=>$neumann, 'to_account_id'=>$hofer, 'state'=>'pending',
-                             'message'=>'Wir sind neu im Dienstagskurs.', 'created_at'=>now()]);
-fixture('contact_requests', ['from_account_id'=>$wagner, 'to_account_id'=>$hofer, 'state'=>'accepted',
-                             'message'=>'', 'created_at'=>now(), 'decided_at'=>now()]);
-// Neumann's request waits, with its words. Berger is the agreed family with a
-// chat ($direct), Wagner the one without, Stern a family the child has not
-// asked: none of the three is offered any more (ADR 0022 §11.3).
-$theirs = ['Familie Neumann', 'Wir sind neu im Dienstagskurs.'];
+// Berger is the family with a chat from before ($direct), Wagner and Stern
+// families without one: none of the three is offered (ADR 0022 §11.3).
 $families = ['Familie Berger', 'Familie Wagner', 'Familie Stern'];
 // A refusal is an answer too, so it is compared as one rather than ending the suite.
 $answer = function (array $query, string $draw = 'render_view'): string {
@@ -300,14 +296,13 @@ $conversationOf = fn(string $html): string => (string)strstr($html, '<section cl
 $writeLink = e(url('messages', ['new'=>1]));
 sign_in_as($hofer);
 $asChild = $answer(['new'=>'1']);
-foreach ($theirs as $said)
-    ok(str_contains($conversationOf($asChild), e($said)), 'the child’s own picker shows „'.$said.'“, so the lines below prove something');
+ok(str_contains($conversationOf($asChild), e('Zweite Trainerin')), 'the child’s own picker offers the trainers, so the lines below prove something');
 foreach ($families as $family)
     ok(!str_contains($conversationOf($asChild), e($family)), 'while no other family is offered to write to: not „'.$family.'“');
 $childList = $answer([]);
-ok(str_contains($childList, e('1 neue Anfrage')) && substr_count($childList, $writeLink) === 3,
-   'their list has the chip for the request, and „Neue Nachricht" above the list and in the empty conversation');
-ok(str_contains($answer(['with'=>(string)$wagner]), 'value="message_send"'), 'a chat with the agreed family not started yet opens empty, to write in');
+is_same(2, substr_count($childList, $writeLink), 'their list has „Neue Nachricht" above the list and in the empty conversation');
+ok(str_contains($answer(['with'=>(string)$trainer2]), 'value="message_send"'), 'a chat with a trainer not started yet opens empty, to write in');
+ok(str_contains($answer(['with'=>(string)$wagner]), 'NotFound: '), 'one with a family they have none with is not there to start');
 ok(str_contains($answer(['id'=>(string)$group, 'members'=>'1']), 'with='), 'and in the group’s member list the trainers lead to a chat');
 
 view_as($trainer, $hofer);
@@ -315,14 +310,11 @@ $pickerViewed = $answer(['new'=>'1']);
 ok(str_contains($conversationOf($pickerViewed), '<h2>'.e('Neue Nachricht').'</h2>')
    && str_contains($conversationOf($pickerViewed), e(viewing_refusal())),
    'viewed by the trainer, „Neue Nachricht" says that only the child can write');
-foreach ([...$theirs, ...$families] as $said) ok(!str_contains($pickerViewed, e($said)), 'and nothing on the page shows „'.$said.'“');
-ok(!str_contains($pickerViewed, 'contact_decide') && !str_contains($pickerViewed, 'contact_request') && !str_contains($pickerViewed, e('Jemand anderen fragen')),
-   'nothing to agree to, and nobody to ask');
-ok(!str_contains($pickerViewed, 'neue Anfrage'), 'no chip counting the child’s requests');
+foreach ([...$families, 'Zweite Trainerin'] as $said) ok(!str_contains($pickerViewed, e($said)), 'and nothing on the page shows „'.$said.'“');
 foreach (['new'=>['new'=>'1'], 'contacts, as older notifications link'=>['contacts'=>'1'],
           'with the family they have a chat with'=>['with'=>(string)$berger],
           'with the family they have none with'=>['with'=>(string)$wagner],
-          'with a family they have not asked'=>['with'=>(string)$stern],
+          'with another family they have none with'=>['with'=>(string)$stern],
           'with the trainer, whose chat with them she reads'=>['with'=>(string)$trainer],
           'with nobody at all'=>['with'=>'999999']] as $what => $query)
     ok($answer($query) === $pickerViewed, '?'.http_build_query($query).', '.$what.': the same page, byte for byte');
@@ -395,15 +387,15 @@ is_same('feedback is-pinned', $helpUnlessWriting(['with'=>(string)$trainer]),
 unset($_SESSION['impersonator_id']);
 
 case_('Looking through a child’s eyes, the bell quotes no chat, and nothing is marked read');
-/* A chat notice quotes the message, and a request to write is one too: the bell
-   handed the trainer the words of the child's chat with another family that
-   thread_record() refuses her (security review S1, ADR 0022 §9) - and „Alle
+/* A chat notice quotes the message: the bell handed the trainer the words of a
+   chat of the child's that thread_record() refuses her - with another family
+   then, with another trainer now (security review S1, ADR 0022 §9) - and „Alle
    gelesen" marked every notice read before the child had seen it (S5). The bell
    shows the kinds on a list of its own then, so a kind nobody has asked about
    yet stays hidden too; and a problem report only to an administrator looking,
    whoever's bell it is in - a login that was an administrator once keeps them. */
-sign_in_as($berger);
-act('message_send', ['thread_id'=>(string)$direct, 'body'=>'Ja, ich fahre mit dem Zug.']);
+sign_in_as($trainer2);
+act('message_send', ['thread_id'=>(string)$withOther, 'body'=>'Ja, ich fahre mit dem Zug.']);
 notify($hofer, 'schedule', 'Training fällt aus', 'Am Montag ist die Halle zu.', 'dashboard');
 notify($hofer, 'erinnerung', 'Bald Geburtstag', 'Lena aus dem Montagskurs wird morgen zehn.', 'dashboard');
 notify($hofer, 'problem', 'Jemand meldet ein Problem', 'Beim Hochladen des Fotos kommt ein Fehler.', 'settings', ['tab'=>'feedback']);
@@ -414,7 +406,7 @@ $unread = (int)scalar('SELECT COUNT(*) FROM notifications WHERE account_id=? AND
 $chatNotes = (int)scalar("SELECT COUNT(*) FROM notifications WHERE account_id=? AND read_at IS NULL AND kind='message'", [$hofer]);
 $ownBell = $bell(render_page('dashboard'));
 ok($quotes(notifications_for($hofer), 'Ja, ich fahre mit dem Zug.') && str_contains($ownBell, 'Ja, ich fahre mit dem Zug.'),
-   'the child’s own bell quotes the other family’s message, so the lines below prove something');
+   'the child’s own bell quotes the other trainer’s message, so the lines below prove something');
 ok(str_contains($ownBell, 'value="notifications_read"'), 'and offers „Alle gelesen"');
 ok($chatNotes >= 2 && $unread === $chatNotes + 3, 'and holds chat notices and the three of other kinds, all unread ('.$chatNotes.' of '.$unread.')');
 view_as($trainer, $hofer);
@@ -483,24 +475,11 @@ $sheet = render_view('messages', ['id'=>(string)$group, 'members'=>'1']);
 ok(str_contains($sheet, 'Mia Ohnezugang') && str_contains($sheet, 'Noch kein Zugang'), 'staff see every child enrolled, and who has no login yet');
 ok(!str_contains($sheet, 'ohne Zugang zum Portal'), 'with nobody left over to count');
 
-case_('Everybody may show an emoji from the list, and only from the list');
-sign_in_as($hofer);
-act('status_emoji_save', ['status_emoji'=>'fox', 'return_page'=>'dashboard']);
-is_same('fox', scalar('SELECT status_emoji FROM accounts WHERE id=?', [$hofer]), 'a key from the list is saved');
-is_same(['🦊', 'Fuchs'], status_emoji(one('SELECT * FROM accounts WHERE id=?', [$hofer])), 'and read back as the emoji');
-throws(fn() => act('status_emoji_save', ['status_emoji'=>'🍆']), 'anything not on the list is refused', 'Ungültige Auswahl');
-act('status_emoji_save', ['status_emoji'=>'']);
-is_same('', scalar('SELECT status_emoji FROM accounts WHERE id=?', [$hofer]), '„Keins" clears it');
-is_same(null, status_emoji(['status_emoji'=>'gibts-nicht']), 'a stored key that is not on the list shows nothing');
-view_as($admin, $hofer);
-throws(fn() => act('status_emoji_save', ['status_emoji'=>'cat']), 'nobody changes it while looking through somebody else’s eyes', 'Ansicht');
-unset($_SESSION['impersonator_id']);
-
 case_('Which kind of chat a pair makes is decided in one place');
 $as = fn(int $id): array => one('SELECT * FROM accounts WHERE id=?', [$id]);
 is_same('staff_direct', pair_kind($as($hofer), $as($trainer)), 'a student and a trainer: the administrators can read it');
 is_same('staff_direct', pair_kind($as($admin), $as($berger)), 'a student and an administrator, either way round');
-is_same('direct', pair_kind($as($hofer), $as($berger)), 'two students: nobody else reads it');
+is_same('direct', pair_kind($as($hofer), $as($berger)), 'two students, as their chats from before are: nobody else reads it');
 is_same('direct', pair_kind($as($trainer), $as($admin)), 'two members of staff: nor that');
 is_same(pair_kind($as($hofer), $as($trainer)), (string)scalar('SELECT kind FROM threads WHERE id=?', [(int)$thread['id']]),
         'and it is the kind direct_thread() gave their chat');
@@ -517,15 +496,10 @@ $bubble = array_values(array_filter(thread_messages((int)$thread['id'])['message
 ok($writer !== [] && $bubble !== [], 'the child wrote in that chat, so the next line proves something');
 is_same($writer, chat_person_in($bubble, 'author_'), 'and a message carries who wrote it the same way, value for value');
 /* The group's page drew the name over a run from a copy of those columns made
-   for it alone; it reads the author the message carries. The emoji is what a
-   copy would leave out, so the trainer has one while this is looked at. */
-$emojiBefore = scalar('SELECT status_emoji FROM accounts WHERE id=?', [$trainer]);
-run("UPDATE accounts SET status_emoji='rocket' WHERE id=?", [$trainer]);
+   for it alone; it reads the author the message carries. */
 $author = one('SELECT '.chat_person_columns('a').' FROM accounts a WHERE a.id=?', [$trainer]);
-ok(str_contains(chat_name($author), '🚀'), 'the trainer has an emoji, so the next line proves something');
 ok(str_contains(render_view('messages', ['id'=>(string)$group]), '<span class="bubble-sender hue-'.chat_hue($trainer).'">'.chat_name($author).'</span>'),
-   'and the group names her over her message as the chat draws her everywhere else, emoji and all, in her colour');
-run('UPDATE accounts SET status_emoji=? WHERE id=?', [$emojiBefore, $trainer]);
+   'and the group names her over her message as the chat draws her everywhere else, in her colour');
 throws(fn() => chat_person_columns('a; DROP TABLE accounts'), 'an alias is a name, never a piece of SQL', 'Refusing');
 
 case_('A chat not started yet looks as it will once the first message makes it');
@@ -534,29 +508,29 @@ case_('A chat not started yet looks as it will once the first message makes it')
    chat is made, so its header and what it says about who reads it are what the
    chat keeps once it exists - and the chat list draws the person from the same
    facts as the header. */
-sign_in_as($hofer);
-run("UPDATE accounts SET status_emoji='rocket', last_seen_at=? WHERE id=?", [now(), $admin]);
-run("UPDATE accounts SET status_emoji='cat', last_seen_at=? WHERE id=?", [now(), $wagner]);
 $headOf = fn(string $html): string => (string)strstr((string)strstr($html, '<header class="chat-head">'), '</header>', true);
 $notesOf = function (string $html): array { preg_match_all('~<p class="chat-note">(.*?)</p>~', $html, $m); return $m[1]; };
-foreach ([[$admin, '🚀', 'Die Administratoren des Vereins können diesen Chat lesen.'],
-          [$wagner, '🐱', 'Diese Unterhaltung ist privat. Auch die Trainerin und der Administrator lesen sie nicht mit.']] as [$person, $emoji, $note]) {
+$admin3 = make_account(['role'=>'admin', 'name'=>'Dritte Admin']);
+foreach ([[$hofer, $admin, 'Die Administratoren des Vereins können diesen Chat lesen.'],
+          [$trainer, $admin3, 'Diese Unterhaltung ist privat. Auch die Trainerin und der Administrator lesen sie nicht mit.']] as [$writer, $person, $note]) {
+    sign_in_as($writer);
     $name = (string)scalar('SELECT name FROM accounts WHERE id=?', [$person]);
-    is_same(0, pair_thread($hofer, $person), 'the child has no chat with '.$name.' yet');
+    is_same(0, pair_thread($writer, $person), current_user()['name'].' has no chat with '.$name.' yet');
     $unstarted = render_view('messages', ['with'=>(string)$person]);
-    ok(str_contains($headOf($unstarted), $emoji) && str_contains($headOf($unstarted), 'is-online'),
-       'the empty chat’s header shows '.$name.' with their emoji and their dot, so the comparison below has something to compare');
+    ok(str_contains($headOf($unstarted), '<h2>'.e($name).'</h2>') && str_contains($headOf($unstarted), e('Administrator')),
+       'the empty chat’s header shows '.$name.' with their role, so the comparison below has something to compare');
     ok(in_array(e($note), $notesOf($unstarted), true), 'and says: „'.$note.'“');
     $opened = render_view('messages', ['id'=>(string)direct_thread(current_user(), $person)]);
     is_same($headOf($unstarted), $headOf($opened), 'once the chat exists, its header is that one');
     is_same($notesOf($unstarted), $notesOf($opened), 'and so is what it says about who reads it');
 }
+sign_in_as($hofer);
 $rowOf = fn(string $html, int $chat): string
     => (string)strstr((string)strstr($html, 'href="'.e(url('messages', ['id'=>$chat, '#'=>'chat-end'])).'"'), '</a>', true);
-$adminRow = one('SELECT * FROM accounts WHERE id=?', [$admin]);
+$adminRow = one('SELECT '.chat_person_columns('a').' FROM accounts a WHERE a.id=?', [$admin]);
 $listed = $rowOf(render_view('messages'), pair_thread($hofer, $admin));
-ok(str_contains($listed, presence_dot(current_user(), $adminRow)) && str_contains($listed, status_emoji_mark($adminRow)),
-   'the chat list draws the administrator with the dot and the emoji the header shows');
+ok(str_contains($listed, avatar($adminRow)) && str_contains($headOf(render_view('messages', ['with'=>(string)$admin])), avatar($adminRow, 'small')),
+   'the chat list draws the administrator with the initials the header shows');
 // link_button() takes the place on the page as url() does, so there is one way to say it.
 ok(str_contains(render_view('messages', ['id'=>(string)$group, 'members'=>'1']),
                 '<a class="button secondary" href="'.e(url('messages', ['id'=>$group, '#'=>'chat-end'])).'">'.e('Zurück zur Gruppe').'</a>'),

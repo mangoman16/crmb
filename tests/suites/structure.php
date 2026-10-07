@@ -19,7 +19,7 @@ $expected = [
     'app/validate.php' => 40, 'public/index.php' => 30, 'bin/console.php' => 60,
     'app/install.php' => 150, 'app/schema.php' => 150, 'app/tick.php' => 80,
     'app/portal_icon.php' => 60, 'app/start.php' => 100,
-    'app/backup.php' => 100, 'public/setup.php' => 180, 'app/presence.php' => 120,
+    'app/backup.php' => 100, 'public/setup.php' => 180,
 ];
 foreach ($expected as $file => $minLines) {
     $path = APP_ROOT.'/'.$file;
@@ -367,8 +367,7 @@ function printable_parts(string $expr): array {
 $escaping = ['e',                                                   // escapes
              'icon','link_button','qr_svg','progress_chart','avatar', // build their own markup and escape inside
              'sidebar_nav','nav_link','time_cells','select_options', // build their own markup and escape inside
-             'presence_dot','presence_dot_for','presence_line',     // build their own markup and escape inside
-             'chat_name','status_emoji_mark',                       // build their own markup and escape inside
+             'chat_name',                                           // builds its own markup and escapes inside
              'money','number_format','count','ceil','floor','round','array_sum','plural',  // numbers
              'fmt_date','fmt_datetime',                             // formatted dates
              'role_label','entity_label'];                          // fixed sets in code
@@ -1104,31 +1103,6 @@ function action_calls_in(string $php): array {
     return $calls;
 }
 
-case_('Presence is written on the counter connection only, and never from the asset routes');
-/* ADR 0015. The online helpers moved to app/presence.php; a copy left in
-   auth.php would be the one somebody fixes next. A period written on the main
-   connection vanishes with any action that rolls back, and a touch from the
-   icon or the manifest - which a browser fetches on its own, from a tab left
-   open - would show somebody online who is not there. */
-$authFunctions = defined_functions_in(APP_ROOT.'/app/auth.php');
-ok(!isset($authFunctions['touch_last_seen']) && !isset($authFunctions['is_online']), 'touch_last_seen() and is_online() are gone from auth.php');
-$oldCalls = [];
-foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $file)
-    if (preg_match('/(?<![a-z_>])(touch_last_seen|is_online)\s*\(/', (string)file_get_contents($file))) $oldCalls[] = basename($file);
-is_same([], $oldCalls, 'and nothing calls them any more');
-$touch = defined_functions_in(APP_ROOT.'/app/presence.php')['presence_touch'] ?? '';
-is_same(4, substr_count($touch, 'run_counter ('), 'presence_touch() reads and writes the account and the period on the counter connection');
-ok($touch !== '' && preg_match('/(?<![a-z_])(run|one|rows|scalar) \(/', $touch) === 0, 'and writes nothing on the main connection');
-$routerText = (string)file_get_contents(APP_ROOT.'/public/index.php');
-is_same(1, substr_count($routerText, 'presence_touch('), 'the router touches in one place');
-preg_match('/if\(\$user && !in_array\(\$page,\[([^\]]*)\],true\)\)presence_touch\(\$user\);/', $routerText, $skip);
-$skipped = isset($skip[1]) ? array_map(fn($p) => trim($p, " '"), explode(',', $skip[1])) : [];
-foreach (['icon', 'manifest', 'brand', 'logo'] as $asset)
-    ok(in_array($asset, $skipped, true), 'and not for the '.$asset.' route');
-$prune = defined_functions_in(APP_ROOT.'/app/tick.php')['prune_expired'] ?? '';
-ok(preg_match('/^\{ presence_prune \(/', $prune) === 1,
-   'the nightly prune forgets presence first, so nothing failing after it can keep it past the month');
-
 /** name => body, for every named function in one file, by matching its braces. */
 function defined_functions_in(string $path): array {
     $tokens = array_values(array_filter(token_get_all((string)file_get_contents($path)),
@@ -1224,8 +1198,8 @@ do {
    while the entries that matter drop out of it. */
 foreach (['audit' => 'writes the change log', 'set_setting' => 'writes the settings table',
           'notify' => 'writes a notification row', 'record_consent' => 'writes the consent log',
-          'send_account_token' => 'writes an auth token', 'decide_contact' => 'answers a contact request',
-          'direct_thread' => 'creates the conversation', 'notify_payment' => 'queues mail',
+          'send_account_token' => 'writes an auth token', 'direct_thread' => 'creates the conversation',
+          'notify_payment' => 'queues mail',
           'queue_mail' => 'writes the outbox'] as $name => $what)
     ok(isset($writers[$name]), $name.'() is recognised as writing on the main connection, because it '.$what);
 foreach (['run' => 'hands over whatever statement its caller gave it',

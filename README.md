@@ -22,8 +22,9 @@ with MariaDB; MySQL is meant to work but has never been run.
   hidden.
 - **A menu of seven**: Übersicht, Schüler, Kurse, Anwesenheit, Geld, Nachrichten, and
   Einstellungen for an administrator or Verwaltung for a trainer. On a phone a bar at the
-  bottom holds Übersicht · Schüler · Anwesend · Chats · Mehr for staff, „Mehr" opening the
-  rest without JavaScript, and Übersicht · Beiträge · Chats · Profil for a family.
+  bottom holds Übersicht · Schüler · Anwesend · Chats · Mehr for staff, „Mehr" being a page
+  with the rest of the menu, Mein Konto, the privacy notice and „Abmelden", and Übersicht ·
+  Beiträge · Chats · Profil for a family.
 - **Courses** with a timetable of several days a week, each with its own time and place, and
   their own tariffs and bank account. A child can be in several courses, and can ask to join,
   leave or change tariff; staff accept or decline.
@@ -42,18 +43,16 @@ with MariaDB; MySQL is meant to work but has never been run.
   login.
 - **A chat**: a group for every course, whose children are whoever is enrolled now, and a
   chat between a child and one member of staff, which the administrators can read too. A
-  family writes to the coaching team only; a chat two families agreed to earlier stays
-  private to the two. Text, pictures, PDFs and voice notes; a photo is stored without where,
-  when and with what it was taken. Everybody has an online dot and may choose a status emoji.
+  family writes to the coaching team only; a chat two children had earlier stays, for the
+  two of them to read, and takes no new messages. A message is text and photos; voice notes
+  and files sent earlier stay. A photo is stored without where, when and with what it was
+  taken. Everybody appears by name and initials.
 - **News**, and club news by e-mail, which starts switched on and can be switched off in
   **Mein Konto** or from every such mail.
 - **Mail** through SMTP, with the password stored encrypted, a queue that retries, and an
   outbox to look at.
 - **Privacy drafts** in German and English, filled in from the club's details. Only the German
   notice must be released.
-- **For staff**: when each account was online over the last 30 days, date and time only, and
-  a status („Automatisch", „Abwesend", „Als offline anzeigen"). Families see the dot, never
-  the times.
 - **The look of an iPhone app**: the phone's own font at the reader's text size, white grouped
   lists on a grey ground, capsule buttons that show a tap and a spinner while sending,
   switches, sheets for anything that deletes, a back button with the parent page's name, and

@@ -42,15 +42,17 @@ set_setting('upload_max_kb', 8);
 is_same('8 kB', upload_limit_label(PORTAL_LOGO_MAX_BYTES), 'and a general limit below the cap still wins');
 
 case_('Each kind allows what it is for, and nothing else');
-ok(!isset(upload_types('avatar')['application/pdf']), 'a profile picture is a picture');
+ok(!isset(upload_types('avatar')['application/pdf']), 'a problem report’s screenshot is a picture');
 ok(isset(upload_types('proof')['application/pdf']), 'a proof may be a PDF');
-ok(isset(upload_types('message')['audio/webm']), 'a message may be a voice note');
+is_same(['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'], upload_types('message'),
+        'a message from staff carries a photo and nothing else: no voice note, no file (ADR 0022 §11.4; the messaging suite has a child’s)');
 is_same(['image/png' => 'png'], upload_types('icon'), 'the portal icon is a PNG and nothing else, not even an SVG');
 is_same(['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'], upload_types('logo'),
         'the logo may be a PNG, a JPEG or a WebP - no GIF, which animates, and no SVG');
 foreach (['avatar','proof','message','icon','logo'] as $kind)
     foreach (['text/html','application/x-php','application/octet-stream','image/svg+xml'] as $mime)
         ok(!isset(upload_types($kind)[$mime]), $mime.' is allowed nowhere');
+throws(fn() => upload_types('gibt-es-nicht'), 'a kind nobody declared is a mistake in the code, never a list of nothing', 'No upload kind');
 
 case_('A file is stored under a name of the portal’s own choosing');
 foreach (upload_types('message') as $extension)
@@ -73,7 +75,8 @@ foreach (['avatar'=>'jpg', 'proof'=>'pdf', 'message'=>'webm'] as $kind => $exten
     }
 }
 // One row pointing at each "kept" file, one per kind, the way the real tables do.
-run('UPDATE accounts SET avatar_name=? WHERE id=?', [$made['avatar']['kept'], $admin]);
+fixture('feedback', ['account_id'=>$admin, 'page'=>'dashboard', 'message'=>'Kaputt', 'context_json'=>'{}',
+                     'screenshot_name'=>$made['avatar']['kept'], 'created_at'=>now()]);
 $student = make_student();
 fixture('payment_proofs', ['charge_id'=>null, 'invoice_id'=>null, 'student_id'=>$student,
     'stored_name'=>$made['proof']['kept'], 'original_name'=>'beleg.pdf', 'mime'=>'application/pdf',
@@ -81,6 +84,7 @@ fixture('payment_proofs', ['charge_id'=>null, 'invoice_id'=>null, 'student_id'=>
 $thread = make_thread([$admin]);
 run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)', [$thread, $admin, 'Hallo', now()]);
 $messageId = (int)db()->lastInsertId();
+// A voice note sent before they went, which stays (ADR 0022 §11.4).
 fixture('message_files', ['message_id'=>$messageId, 'kind'=>'voice', 'stored_name'=>$made['message']['kept'],
     'original_name'=>'note.webm', 'mime'=>'audio/webm', 'bytes'=>1, 'seconds'=>3, 'created_at'=>now()]);
 
@@ -90,6 +94,48 @@ foreach ($made as $kind => $names) {
     ok(!is_file(upload_dir($kind) . '/' . $names['orphan']), $kind.': the one nothing points at goes');
 }
 is_same(0, prune_uploads(), 'running it again removes nothing');
+
+case_('The sweep deletes only an upload: never a link, a folder, a pipe or a file named otherwise, in any kind’s folder');
+/* Every update runs it too since the profile pictures went (database/defaults.php),
+   on whatever a host has put in those folders. A link is not followed - the file
+   it points at may be anywhere - a folder is not a file, and a name
+   store_upload() never gives is not one of the portal's. */
+$outside = test_run_dir().'/outside-the-uploads.jpg';
+file_put_contents($outside, 'x');
+touch($outside, $old);
+$planted = [];
+// Names no other suite gives a file, so nothing a suite before this one left
+// in the run's folders is taken for one of these.
+[$folder, $link, $pipe, $orphan] = array_map(fn(string $pair): string => str_repeat($pair, 16).'.jpg', ['0f', '09', '07', '08']);
+foreach (array_keys(upload_references()) as $kind) {
+    @mkdir(upload_dir($kind), 0775, true);
+    $at = fn(string $name): string => upload_dir($kind).'/'.$name;
+    foreach (['kein-upload.txt', str_repeat('A', 32).'.jpg', str_repeat('e', 32).'.jpg.php', '.htaccess', $orphan] as $name) {
+        file_put_contents($at($name), 'x');
+        touch($at($name), $old);
+        if ($name !== $orphan) $planted[] = $at($name);
+    }
+    mkdir($at($folder));
+    touch($at($folder), $old);
+    symlink($outside, $at($link));
+    array_push($planted, $at($folder), $at($link));
+    // Neither a file nor a folder, which unlink() would take; where PHP can make one.
+    if (function_exists('posix_mkfifo') && posix_mkfifo($at($pipe), 0600)) {
+        touch($at($pipe), $old);
+        $planted[] = $at($pipe);
+    }
+}
+is_same(count(upload_references()), prune_uploads(), 'one stored file left behind in each kind’s folder goes');
+clearstatcache();
+is_same([], array_values(array_filter($planted, fn(string $path): bool => !file_exists($path) && !is_link($path))),
+        'and every other file, folder and link in them stays');
+ok(is_file($outside), 'as does the file a link points at, outside the uploads');
+foreach (array_keys(upload_references()) as $kind) {
+    foreach (glob(upload_dir($kind).'/*', GLOB_NOSORT) ?: [] as $path)
+        if (in_array($path, $planted, true)) is_dir($path) && !is_link($path) ? rmdir($path) : unlink($path);
+    @unlink(upload_dir($kind).'/.htaccess');
+}
+@unlink($outside);
 
 case_('A file uploaded moments ago is left alone');
 // Its row may be being written in another request right now, and deleting
@@ -111,26 +157,11 @@ case_('The nightly maintenance is what runs it');
 ok(str_contains((string)file_get_contents(APP_ROOT.'/app/tick.php'), 'prune_uploads()'),
    'so nobody has to remember to sweep by hand');
 
-case_('A profile picture is kept by the browser, and only at the address of the picture in use');
-/* Without this every page change fetched the top bar's picture again. A week,
-   not a year: a copy left on a borrowed phone runs out on its own. */
-$picture = str_repeat('e', 32).'.jpg';
-is_same('private, max-age=604800', avatar_cache_control($picture, 'eeeeeeeeeeee'),
-        'the current address is kept for a week, by this browser alone - never a shared cache');
-is_same('private, no-store', avatar_cache_control($picture, 'aaaaaaaaaaaa'),
-        'an address from before a new upload is never kept, so it cannot be remembered as the new picture');
-is_same('private, no-store', avatar_cache_control($picture, null), 'nor is one with no version');
-is_same('private, no-store', avatar_cache_control($picture, ['x']), 'or with a version that is not text');
-is_same('private, no-store', avatar_cache_control('', ''), 'and a removed picture matches nothing');
-/* The route ends with exit and its headers cannot be read on the command line,
-   so which rule it hands to send_upload() is pinned here by its text. */
-ok(str_contains((string)file_get_contents(APP_ROOT.'/app/uploads.php'), "avatar_cache_control(\$name, \$_GET['v'] ?? null)"),
-   'the download route asks that question of the version it was given');
-
-case_('Everything else that is downloaded is still never kept');
-foreach (['send_download_headers' => 4, 'send_upload' => 4] as $function => $position)
-    is_same('private, no-store', (new ReflectionFunction($function))->getParameters()[$position]->getDefaultValue(),
-            $function.'() keeps invoices, proofs, attachments and screenshots out of every cache unless told otherwise');
+case_('A family’s download is never kept by the browser');
+is_same('private, no-store', (new ReflectionFunction('send_download_headers'))->getParameters()[4]->getDefaultValue(),
+        'send_download_headers() keeps a download out of every cache unless told otherwise, as only the icon and the logo are');
+is_same(4, (new ReflectionFunction('send_upload'))->getNumberOfParameters(),
+        'and send_upload() cannot be told otherwise: an invoice, a receipt, a chat’s photo or a screenshot is never kept');
 
 // ---------------------------------------------------------------------------
 // The portal's own icon (ADR 0008)

@@ -15,11 +15,11 @@ function dispatch_messages(string $action): array {
             throw new UserError($thread['kind']==='course'
                 ?t('Dieser Kurs ist archiviert. In seiner Gruppe wird nicht mehr geschrieben.','This course is archived. Its group takes no more messages.')
                 :t('In dieser Unterhaltung wird nicht mehr geschrieben.','This conversation takes no more messages.'));
-        // A voice note or a photo is a message on its own; only a bubble with
-        // neither text nor a file is nothing to send.
+        // A photo is a message on its own; only a bubble with neither text nor
+        // a photo is nothing to send.
         $body=text_limit('body',20000);
         $hasFile=isset($_FILES['attachment']) && (int)($_FILES['attachment']['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE;
-        if($body==='' && !$hasFile) throw new UserError(t('Bitte etwas schreiben oder etwas anhängen.','Write something, or attach something.'));
+        if($body==='' && !$hasFile) throw new UserError(t('Bitte etwas schreiben oder ein Foto anhängen.','Write something, or attach a photo.'));
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',[$id,$u['id'],$body,now()]);
         $messageId=(int)db()->lastInsertId();
         attach_to_message($messageId);
@@ -28,7 +28,7 @@ function dispatch_messages(string $action): array {
         // bell either way. A group tells nobody: fifteen children would each
         // get a mail for every message (ADR 0022); the unread count says it.
         if($thread['kind']!=='course') {
-            $summary=$body!==''?mb_substr($body,0,120):t('Anhang','An attachment');
+            $summary=$body!==''?mb_substr($body,0,120):t('Ein Foto','A photo');
             foreach(thread_people($id) as $person) {
                 if((int)$person['id']===(int)$u['id']) continue;
                 $account=one('SELECT * FROM accounts WHERE id=?',[(int)$person['id']]);
@@ -47,16 +47,6 @@ function dispatch_messages(string $action): array {
         flash($restore?t('Nachricht wiederhergestellt.','Message restored.')
                       :t('Nachricht entfernt. Du kannst sie an derselben Stelle wiederherstellen.','Message removed. You can restore it in the same place.'));
         return ['messages',['id'=>$threadId,'#'=>'m'.$messageId]];
-
-    case 'contact_decide':
-        $u=require_user();
-        $accept=post('decision')==='accept';
-        $r=decide_contact((int)post('id'),$accept);
-        notify((int)$r['from_account_id'],'message',
-            $accept?t('Deine Anfrage wurde angenommen','Your request was accepted'):t('Deine Anfrage wurde abgelehnt','Your request was declined'),
-            $u['name'],'messages',[]);
-        flash($accept?t('Ihr könnt euch jetzt schreiben.','You can write to each other now.'):t('Abgelehnt.','Declined.'));
-        return ['messages',['contacts'=>1]];
 
     case 'news_save':
         require_staff();$id=(int)post('id');$title=required_text('title',180);$body=required_text('body',20000);$published=post('published')?1:0;

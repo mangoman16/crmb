@@ -270,7 +270,7 @@ function test_reset(): void {
         db()->exec('SET FOREIGN_KEY_CHECKS=1');
     }
     // A running portal always has the migrations ledger: schema_apply() creates
-    // it before anything else, and pages read it (presence_recorded_since()).
+    // it before anything else, and a page reads it (version_applied_count()).
     // The harness applies the migration files directly, and the install suite
     // drops the ledger on purpose, so it is put back - empty - for every suite.
     run('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
@@ -403,7 +403,6 @@ function make_thread(array $accountIds, array $over=[]): int {
     return $id;
 }
 
-/** A student in a course, on a tariff. Returns the course id for chaining. */
 /**
  * Make a student the way staff do (ADR 0023 §5): step 1 posts student_draft,
  * step 2 posts student_create with $method - 'none', 'email' or 'username' -
