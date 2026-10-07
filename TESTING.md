@@ -97,11 +97,14 @@ release and emptied again for the next.
 - Your picture at the top right opens a menu — „Mein Konto", your status, „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [P.11–P.16](#online-status-and-when-somebody-was-online) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
 - After an update the browser fetches the new stylesheet and script by itself: the account menu is styled and the bell stays still without clearing the cache: A.0
-- Everybody signs in with their own e-mail address — a student may have a username instead (L.x). A person is added either by inviting an address — they fill in their own details and choose a course — or through the wizard „Schüler anlegen"; nobody sets another person's password (ADR 0021, amended by ADR 0023): A.1–A.13
+- Everybody signs in with their own e-mail address — a student may have a username instead (L.11–L.16). A person is added either by inviting an address — they fill in their own details and choose a course — or through the wizard „Schüler anlegen"; nobody sets another person's password (ADR 0021, amended by ADR 0023): A.1–A.13
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.22, A.25, A.27
 - The chat works like a messenger: a group for every course, chats with one person, a dot for everybody and a status emoji; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a copied course has its group; a stored photo keeps only the picture (ADR 0022): C.1–C.20
 - Billing and invoices after the review of October 2026: an archived tariff stays on a child, a cancelled charge can be charged again, „Als bezahlt eintragen" confirms rather than doubles, a charge on an invoice cannot be cancelled, an invoice is not e-mailed to a family who said no, the invoices page counts every invoice, a membership ending mid-month is charged to that day, a child coming back starts afresh, the age filter finds the right children, background charges are German and nobody's, and the „Zahlungsziel" setting that did nothing is gone: [B.1–B.14](#billing-and-invoices-after-the-review-of-october-2026)
-- Every student has a login — „Ohne Anmeldung" until somebody gives it an address or a username; a wizard „Schüler anlegen" is the one way to add a child; a username signs in in the same box as an address; a one-time „Anmeldelink" with a QR code for a child without an e-mail address; deleting a child's login gives them a fresh, empty one (ADR 0023): [L.1–L.25](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
+- Every student has a login — „Ohne Anmeldung" until somebody gives it an address or a username; a wizard „Schüler anlegen" is the one way to add a child; a username signs in in the same box as an address; a one-time „Anmeldelink" with a QR code for a child without an e-mail address; deleting a child's login gives them a fresh, empty one (ADR 0023): [L.1–L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
+- A form sent twice — a double tap, or the same form sent again after Back — lands where the first one went, with the first one's message, and makes nothing twice: [L.10b, L.10c](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023) in the wizard, [15.4a](#news-email-and-the-queue) for „Warteschlange senden"
+- Viewing the portal as somebody else is looking only: everything except „Ansicht beenden" and „Abmelden" is refused, with one sentence: [5.11–5.11b](#the-shell-the-bar-notifications-feedback-impersonation), C.15, C.18
+- What the reviews of ADR 0023 found: two people cannot both take a course's last place, a child without sign-in collects no bell notices, a sign-in link dies with its child and waits for the privacy notice, a browser shared between people forgets a half-opened link, a child with a username is never recorded as saying no to e-mail, a team member's login left on a child's record can be replaced, and a child's page opened with a list in its address draws without a warning: [L.10a, L.13a, L.18a, L.20a–L.20c, L.21a, L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023), [7.23](#students-contacts-levels-and-age-groups)
 
 ---
 
@@ -553,8 +556,32 @@ Skip on an ordinary code change; do all of it before a release.
   across the top saying so.
 - [ ] **5.10** „Ansicht beenden" gives you your own account back. (This is the
   check that once failed: the way out must work from inside a borrowed session.)
-- [ ] **5.11** While impersonating, change something. **Änderungen** records
-  *you* as the person who did it, not the person you were viewing as.
+- [ ] **5.11** Viewing is looking only. As the administrator, **Konten** →
+  „Portal als diese Person ansehen" beside a trainer. While viewing, try each of
+  these: on **Mein Konto**, change the name under „Name und Darstellung" and
+  save; „Etwas funktioniert hier nicht", a sentence, „Absenden"; on a child's
+  page, change a detail and save; on a child whose login is in use, „Portal als
+  … ansehen". Each is refused with „Beim Ansehen als jemand anderes lässt sich
+  nichts schreiben oder ändern. Beende zuerst die Ansicht." In **Nachrichten** a
+  chat opens without a writing box. „Ansicht beenden" gives you yourself back,
+  and nothing you tried happened: **Konten** shows the trainer's name as before,
+  the child's detail is unchanged, and **Einstellungen → Rückmeldungen** has no
+  new report.
+- [ ] **5.11a** The same as the trainer, viewing a family as in 5.9: a change on
+  their child's „Profil" tab, on their **Mein Konto**, and through „Etwas
+  funktioniert hier nicht" is each refused with the same sentence. On
+  **Übersicht**, „Nachricht schreiben" opens „Neue Nachricht", which shows that
+  sentence and lists nobody (C.18). Then, still viewing, „Abmelden" in the
+  account menu: you are signed out, and signed in again you are yourself, with
+  no bar about viewing anybody.
+- [ ] **5.11b** What a view does not draw is refused all the same. As the
+  administrator, before starting a view, open two more tabs of your own: one
+  where the bell shows a number, one on a course's group with its writing box.
+  Start the view in the first tab. Then, in the other two and without reloading
+  them, „Alle gelesen" in the bell and a message sent in the group are each
+  refused with the same sentence. After „Ansicht beenden" the bell still shows
+  its number and the group has no new message. A status chosen in such a tab's
+  account menu is refused the same way.
 - [ ] **5.12** A family cannot impersonate anybody.
 
 ---
@@ -834,6 +861,10 @@ your picture at the top right.
 - [ ] **7.22** Open a link to a child or a course that has been deleted. The page
   says **„Nicht gefunden"** — not „Kein Zugriff", which would say she is not
   allowed to see her own course.
+- [ ] **7.23** **(release)** Open a child's page with `&tab[]=x` added to its
+  address, once as the trainer and once as the family: the page draws, on its
+  first tab, and the server's PHP error log gains no „Array to string
+  conversion" line.
 
 ---
 
@@ -1106,6 +1137,13 @@ your picture at the top right.
   usually blocked or wrong, in one sentence, rather than a mail-library error.
 - [ ] **15.4** **Postausgang** shows queued, sent and failed. A failure retries
   with a growing delay rather than hammering.
+- [ ] **15.4a** As the administrator, on the example data: switch off
+  „Wartende Aufgaben beim Seitenaufruf erledigen" under **Einstellungen →
+  System → Erweitert**, so that nothing goes out by itself, and send an
+  invitation. On **Postausgang**, double-tap „Warteschlange senden": the page
+  shows the first run's count — „1 gesendet, 0 fehlgeschlagen.", or more if
+  more was waiting — not „0 gesendet, 0 fehlgeschlagen." over it, and the
+  invitation arrives once. Switch the setting back on.
 - [ ] **15.5** An unsubscribe link at the bottom of a newsletter works without
   signing in, and only unsubscribes that one person.
 - [ ] **15.6** Changing the SMTP password and saving does not print it back to
@@ -1621,9 +1659,8 @@ where it says so
   each field before and after — the custom fields by their names, a date as
   „27.01.2019", a ticked box as „ja".
 - [ ] **A.16** **Änderungen → „Von Familien"** lists that line and none of the
-  trainer's own. Change something while viewing the portal as that family
-  („Portal als … ansehen"): it is listed under your name, not under „Von
-  Familien".
+  trainer's own. (Viewing the portal as that family changes nothing at all —
+  5.11a — so nothing done that way can be listed there.)
 - [ ] **A.17** As the family, add, change and remove an emergency contact. Each
   is one line in **Änderungen**, named „Kind · Kontakt", and the removal's line
   keeps the whole contact so it can be typed in again. A contact's line does
@@ -1663,11 +1700,12 @@ where it says so
 **After the reviews of the first build**
 
 - [ ] **A.25** On the phone, as the trainer, „Portal als {Familie} ansehen", then
-  leave the phone until the session times out (or set „Abmelden nach (Minuten)"
-  low on a copy). Open the portal again: the sign-in page, and **no** „Ansicht
-  beenden" anywhere. Sign in as somebody else on that phone: they are
-  themselves, with no bar about viewing anybody, and nothing they tap makes them
-  the trainer. The same after opening an invitation link on that phone.
+  leave the phone until the session times out — two hours without opening a
+  page, as setup writes it — or, on a copy, set `session_idle_minutes` in
+  `config/config.php` low; no page in the portal sets it. Open the portal
+  again: the sign-in page, and **no** „Ansicht beenden" anywhere. Sign in as
+  somebody else on that phone: they are themselves, with no bar about viewing
+  anybody, and nothing they tap makes them the trainer. The same after opening an invitation link on that phone.
 - [ ] **A.26** As the administrator, **Änderungen**: a child who set themselves
   up from an invitation is listed as having made their own record, not as
   „automatisch". A „Passwort vergessen" asked on a phone where a view had timed
@@ -1745,12 +1783,13 @@ where it says so
 - [ ] **C.15** As the administrator, **Einstellungen → Konten**, „Portal als
   diese Person ansehen" beside a trainer. **Nachrichten → An mehrere
   schreiben**: tick two children, fill in „Betreff" and „Nachricht", then
-  „Empfänger und Nachricht prüfen" — refused with „Schreiben kann nur die Person
-  selbst. Beende zuerst die Ansicht." **Nachrichten → Neuigkeiten → + Neuigkeit**,
-  a title and some text, „Speichern": refused with the same sentence. Open a
-  course's group: no writing box, and no „⋯" on any message. „Ansicht beenden":
-  nothing new is in the children's chats, every group message is still there,
-  and no news item was added.
+  „Empfänger und Nachricht prüfen" — refused with „Beim Ansehen als jemand
+  anderes lässt sich nichts schreiben oder ändern. Beende zuerst die Ansicht."
+  **Nachrichten → Neuigkeiten → + Neuigkeit**, a title and some text,
+  „Speichern": refused with the same sentence. Open a course's group: no
+  writing box, and no „⋯" on any message. „Ansicht beenden": nothing new is in
+  the children's chats, every group message is still there, and no news item
+  was added.
 - [ ] **C.16** **Kurse** → a course whose group has messages → „Kurs
   bearbeiten" → „Kurs kopieren". Open **Nachrichten** straight away: under
   „Kursgruppen" the copy, „… (Kopie)", has a group of its own, empty, and the
@@ -1768,12 +1807,12 @@ where it says so
   another child still waiting (C.14's first step, without „Zustimmen") →
   „Portal als … ansehen" on the card „Zugang zum Portal". The view opens on
   **Übersicht**: tap „Nachricht schreiben". The page „Neue Nachricht" says
-  „Schreiben kann nur die Person selbst. Beende zuerst die Ansicht." and lists
-  nobody — no „Trainerteam", no „Kinder", no „Möchte dir schreiben" with the
-  request's text, no „Jemand anderen fragen". **Nachrichten** has no „Neue
-  Nachricht" button and no „1 neue Anfrage" at the top. In the child's group,
-  the people symbol in the top bar lists the members, and tapping a trainer
-  there opens nothing.
+  „Beim Ansehen als jemand anderes lässt sich nichts schreiben oder ändern.
+  Beende zuerst die Ansicht." and lists nobody — no „Trainerteam", no
+  „Kinder", no „Möchte dir schreiben" with the request's text, no „Jemand
+  anderen fragen". **Nachrichten** has no „Neue Nachricht" button and no „1 neue
+  Anfrage" at the top. In the child's group, the people symbol in the top bar
+  lists the members, and tapping a trainer there opens nothing.
 - [ ] **C.19** A photo can carry a small preview of itself inside the file,
   and after cropping, an editor can leave that preview showing the whole photo
   from before. Crop a photo in an editor, save it as a JPEG with the option
@@ -1924,6 +1963,22 @@ the checks are about what happens, and hold for both.
   place on another child (**Kurse**), then tap a card on step 2: „Dieser Kurs ist
   inzwischen voll …"; nothing created. **Ändern**, „Noch keinen Kurs", and it
   works.
+- [ ] **L.10a** Two phones, both signed in as staff, each at step 2 with a
+  different child for the same course, which has one place left. Tap „Ohne
+  Anmeldung anlegen" on both, as nearly together as you can: one child is made
+  and is in the course; the other phone says „Dieser Kurs ist inzwischen voll.
+  Bitte einen anderen wählen – oder „Noch keinen Kurs“." and is still at step 2
+  for its child. The course has as many members as places, not one more.
+- [ ] **L.10b** On the phone, on a slow connection if you can, double-tap „Ohne
+  Anmeldung anlegen" on step 2: **Schüler** lists the child once, and the done
+  page shows the green „{Vorname Nachname} ist angelegt." No red „Diese Eingabe
+  wurde bereits verarbeitet." appears.
+- [ ] **L.10c** From that done page, go Back — and reload, if the browser still
+  shows the cards: „{Vorname Nachname} ist schon angelegt.", with „Weiter",
+  which opens the done page, and „Noch einen Schüler anlegen", and no card to
+  tap. Reload: the same. Go Back once more, to step 1, and if it still shows
+  the child's details, „Weiter": the same sentence. **Schüler** still lists the
+  child once.
 
 **Usernames and the „Anmeldelink"**
 
@@ -1945,6 +2000,11 @@ the checks are about what happens, and hold for both.
   on the child's own page, told „Du meldest dich ab jetzt mit lena.hofer an.
   Willkommen, Lena! …". **(iPhone)** iCloud Keychain offers to save the password
   under `lena.hofer`.
+- [ ] **L.13a** Afterwards, as the trainer, **Datenblatt drucken** on that
+  child: under „Einverständnis", „Bitte keine Neuigkeiten des Vereins per
+  E-Mail schicken." and „Bitte keine E-Mail bei neuen Nachrichten schicken."
+  are both empty boxes. Nobody asked a child without an address about e-mail,
+  so the sheet does not show a no they never gave.
 - [ ] **L.14** Open the same link again: „Link nicht mehr gültig", with the
   sentence that a link from the trainer works only once.
 - [ ] **L.15** Sign out and sign in with `Lena.Hofer` in the box „E-Mail oder
@@ -1962,12 +2022,46 @@ the checks are about what happens, and hold for both.
 - [ ] **L.18** Make a link, then „Link zurückziehen": the link no longer works.
   Make one and „Zugang sperren": the link no longer works; „Zugang entsperren"
   makes no new one.
+- [ ] **L.18a** As an administrator, on a child whose login is in use and who
+  has no charges, „Anmeldelink erstellen" (or „Neuen Link erstellen") → „Link
+  erstellen", and keep the link. Delete the child at the bottom of their page,
+  typing the full name. Open the link: „Link nicht mehr gültig". The login is
+  still on **Konten**, under „Zugänge ohne Schüler".
 - [ ] **L.19** A link made by one member of staff is not shown to another, nor
   to the same person after signing out and in again; it can then only be made
   anew.
 - [ ] **L.20** A child invited by e-mail and not set up yet: no
   „Anmeldelink erstellen" for anybody. A trainer's or an administrator's login
   never has one either.
+- [ ] **L.20a** On the example data, never on a portal families use — while
+  this is unticked nobody can be invited either: **Einstellungen →
+  Datenschutz**, untick „Die Datenschutzerklärung ist vollständig und zur
+  Verwendung freigegeben." and save. On a child „Ohne Anmeldung",
+  „Anmeldelink erstellen" with a username, „Link erstellen": refused with „Ein
+  Anmeldelink geht erst, wenn die Datenschutzerklärung freigegeben ist – sie
+  wird bei der ersten Anmeldung bestätigt. Die Datenschutzerklärung unter
+  „Einstellungen → Datenschutz“ freigeben.", and the child is still „Ohne
+  Anmeldung". The same refusal on a child with a username still waiting for
+  the first sign-in (made as in L.11 before unticking). In the wizard, the card
+  „Ohne E-Mail, mit Benutzername" shows „Die Datenschutzerklärung unter
+  „Einstellungen → Datenschutz“ freigeben." instead of its form. Tick the box
+  again and save.
+- [ ] **L.20b** A browser several people use, such as a tablet at the hall.
+  Open a child's sign-in link there and leave its page without saving. Sign in
+  on that browser as somebody else — the trainer, say — then go Back to the
+  link's page, or open the portal's address with `?page=activate` at the end:
+  „Link nicht mehr gültig". Whoever signs in next does not land in the
+  family's half-finished set-up; the link itself, opened again, still shows
+  its page.
+- [ ] **L.20c** **(release)** The same with the trainer signed in first. On a
+  copy, set `session_idle_minutes` in `config/config.php` to 2 (setup writes
+  120: two hours). Sign in as the trainer, then in the same browser open a
+  child's sign-in link and fill in its page, but tap save only after three
+  minutes without opening any other page: „Dieser Link ist ungültig oder
+  abgelaufen. Bitte eine neue Einladung bzw. einen neuen Link anfordern." above
+  „Link nicht mehr gültig". This is by design and fails safe: the trainer's
+  session ran out and took the half-opened link with it. Open the link again:
+  it works, and the child is signed in. Put `session_idle_minutes` back.
 
 **Replacing a login, and enrolment**
 
@@ -1976,6 +2070,15 @@ the checks are about what happens, and hold for both.
   The child stays, „Ohne Anmeldung", with courses, charges and invoices; the
   child's chat with you is gone from **Nachrichten**. The address is still on
   the record, so „Einladung senden" is offered again.
+- [ ] **L.21a** **(release)** A team member's login left on a child's record,
+  as a portal from before ADR 0010 can have. On a copy, in the database, point
+  one child's `students.account_id` at a trainer's login that no other child
+  has. As a trainer, „Anmeldung löschen" on that child is refused. As an
+  administrator, „Anmeldung löschen" with the trainer's address typed: the
+  message names the child — „Die Anmeldung {Adresse} ist gelöscht, mit ihren
+  privaten Unterhaltungen. {Vorname Nachname} ist jetzt ohne Anmeldung; …" —
+  and the child has a fresh, empty login, „Ohne Anmeldung". The trainer's
+  login is gone from **Konten** with it, which is why this is for a copy.
 - [ ] **L.22** On a child waiting for a first sign-in with a username,
   „Benutzernamen zurückziehen": „Ohne Anmeldung" again, and the same username
   can be given to them again.
@@ -1989,6 +2092,11 @@ the checks are about what happens, and hold for both.
   informieren" ticked. Signed in as the child in use, the bell shows the change.
   Then invite the first child and accept the invitation: their bell does not
   list the change from before they had a login.
+- [ ] **L.25a** On a child „Ohne Anmeldung" who has a charge, **Rechnungen →
+  Rechnung erstellen**. Then invite the child and accept the invitation, as in
+  L.25: their bell has no „Neue Rechnung: …". A login nobody signs in with
+  collects no bell notices, so there is nothing old waiting when somebody
+  first does.
 
 ---
 

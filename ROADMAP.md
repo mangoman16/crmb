@@ -13,17 +13,19 @@ The suite runs on MariaDB only; MySQL 8.0 has never been run.
 In this order.
 
 1. **Accounts, server side (ADR 0023).** Built: work-in-progress commit `e9aff6e`, finished
-   by `d095ca4`; backend-dev is fixing what the code and security reviews of 2026-10-07
-   found. A student's login may sign in with a username instead of an address; every
+   by `d095ca4`; the reviews' findings fixed in `2788c4f` (a form sent twice lands where the
+   first went; viewing is look-only; the last place in a course is held). The security
+   re-review passed; the code re-review's two remaining items, and a view that outlives a
+   deleted viewer, are being fixed now. A student's login may sign in with a username instead of an address; every
    student has a login, a placeholder until it gets an address or a username; „Schüler
    anlegen" is a two-step wizard; staff make sign-in links that work once, within 48 hours;
    a student's login is replaced, never deleted (migrations 028–031). The screens are still
    the minimum the server side needed: their design pass is item 4. The whole suite and the
-   browser walk pass at `d095ca4` on MariaDB 10.11.14 with PHP 8.4.26 (VALIDATION.md); the
-   sweep at phone width has not been run on it.
+   browser walk pass at `2788c4f` on MariaDB 10.11.14 with PHP 8.4.26; the sweep at phone
+   width has not been run on it.
 2. **ADR 0026.** Accepted (`4314eef`): who the portal is for, the beta rules, the goals as the
    scope test with eight gaps (G1–G8), the robustness rule, and what goes. The architect is
-   adding the owner's answers of 2026-10-07 to it.
+   recorded the owner's answers of 2026-10-07 in it (`b5d92e1`).
 3. **Removals (ADR 0026 §7–§12).** Not started; waits for item 1's review fixes, so nothing
    collides. In separate commits, each with its migration:
    - custom fields, with their data;
@@ -56,7 +58,8 @@ In this order.
 5. **Security batch.** Not started.
    - Viewing the portal as somebody else outlives the staff login: store the viewer's
      `auth_version` when the view starts and check it again on every request
-     (`impersonator()`, `app/shell.php`).
+     (`impersonator()`, `app/shell.php`); a view whose viewer was deleted must end the whole
+     session, not carry on unrestricted. Being fixed now, with item 1.
    - The example trainer login: a high-entropy password, and an expiry.
    - A throttle on `proof_upload`.
    - Unsubscribe links never expire (`valid_unsubscribe()`, `app/auth.php`), and their
@@ -66,9 +69,6 @@ In this order.
      only staff may open; they should lead to the dashboard (`class_session_save` in
      `app/actions_config.php`, near line 77; `notify_class_change()` in `app/mail.php`, near
      line 192).
-   - `preferences_save` changing a consent, and a problem report carrying the wrong name,
-     while staff view the portal as somebody else: both go with the review fixes of item 1,
-     which make viewing look-only.
    - A logo photo stored sideways (EXIF orientation) is measured unrotated and can be refused.
    - Targets below the minimum on a desktop screen: the help button's summary (36 px),
      „Alle ansehen" (21 px).
