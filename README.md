@@ -39,11 +39,11 @@ with MariaDB; MySQL is meant to work but has never been run.
   birth.
 - **Contacts** are the people to ring about a child. The portal writes to the child's own
   login.
-- **A chat**: a group for every course, whose children are whoever is enrolled now; a chat
-  between a child and one member of staff, which the administrators can read too; and a chat
-  between two families once one has agreed, which only the two read. Text, pictures, PDFs and
-  voice notes; a photo is stored without where, when and with what it was taken. Everybody has
-  an online dot and may choose a status emoji.
+- **A chat**: a group for every course, whose children are whoever is enrolled now, and a
+  chat between a child and one member of staff, which the administrators can read too. A
+  family writes to the coaching team only; a chat two families agreed to earlier stays
+  private to the two. Text, pictures, PDFs and voice notes; a photo is stored without where,
+  when and with what it was taken. Everybody has an online dot and may choose a status emoji.
 - **News**, and club news by e-mail, which starts switched on and can be switched off in
   **Mein Konto** or from every such mail.
 - **Mail** through SMTP, with the password stored encrypted, a queue that retries, and an
@@ -68,9 +68,9 @@ with MariaDB; MySQL is meant to work but has never been run.
 - **Example data** at the press of a button, and out again.
 - **Installing from a browser** on hosting without a shell, migrations that apply themselves
   after an upload, and an update that refuses rather than guesses: older files than the
-  database, an incomplete upload or a database it could not back up first each keep the
-  portal closed. Fewer rows afterwards refuse the update too, but for now only the page view
-  that ran it: the next one opens the portal (ROADMAP.md, item 7; ADR 0027).
+  database, an incomplete upload, a database it could not back up first, or fewer rows
+  afterwards each keep the portal closed. After a loss it stays closed on every page view,
+  for everybody, until the rows are back (ADR 0027).
 - **Background work** — queued mail, the nightly cleanup and, when switched on, the monthly
   charges on the first page view of a month — runs just after a page has been served, with
   no cron job needed.

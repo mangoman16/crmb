@@ -82,6 +82,63 @@ What the portal carries has been cut to what the trainer and the families need
   tariffs are on its own „Tarife" tab, which also names any tariff that belongs
   to no course.
 
+### An update that lost records stays closed until they are back
+
+- **Before, the portal closed for one page view and then opened as if nothing
+  had happened.** An update whose migration lost rows from a guarded table was
+  refused only for the page view that ran it; the next one found nothing left to
+  do, counted after the loss and served the portal with the rows missing.
+- **Now the numbers from before an update are kept** in
+  `storage/update-unfinished.json` from its first migration until a run passes.
+  Every page view counts again first, and while a guarded table has fewer rows
+  than before, nothing more runs — not a newer upload, not a retry — and every
+  page answers the closed page (ADR 0027).
+- **The closed page speaks to both.** A family reads „Du musst nichts tun.
+  Bitte versuche es später noch einmal." Whoever looks after the portal reads
+  which table lost what, the copy to import, and the order: first the files of
+  the version before, then that copy, as INSTALL.md's „Wiederherstellen" now
+  says. The portal counts again and opens by itself once nothing is missing.
+  Keep the ZIP of the version you are running until the next update has opened
+  the portal.
+- **While it is closed nobody gets in**, administrators included, maintenance
+  mode or not, and no mail, charge or cleanup runs: anything added meanwhile
+  could hide what is missing. The console runs only `check`, `status`,
+  `migrate`, `update`, `maintenance:on` and `maintenance:off`, and says why for
+  anything else.
+- **One copy per update.** No further copy is written while an update is
+  unfinished, so the copy from before is never pruned away.
+- A `skip-backup` file the portal cannot delete now refuses the update, instead
+  of skipping the copy before every later one too. A migration that keeps
+  failing reports how far the update got, not where the last retry stopped.
+- UPDATING.md's new „A refused update" says what to do, including the last way
+  out and what it costs.
+
+### Any value from anyone is answered in one sentence
+
+- **A new test suite, `robustness`, sends every form nonsense as every kind of
+  person** — lists where a word belongs, 100,000 characters, broken characters,
+  huge and negative numbers, impossible dates, another family's ids, a form sent
+  twice — and fails on any error page, PHP warning or write to somebody else's
+  rows. What it found is fixed where the value enters, in the one place every
+  form reads it from.
+- **What you may notice:** a number outside its range is refused with a
+  sentence naming the range — places 0 to 500, a payment day 1 to 28, a payment
+  term 0 to 180 days, a discount as a whole per cent, a list position, the SMTP
+  port. Dates are held to 1900 to 2100 everywhere, the month for charges too. A
+  huge page number in an address shows an empty or the last page, not an error.
+  Text that is not valid UTF-8 is refused, and a refusal quotes at most sixty
+  characters of what was sent.
+- **A family can no longer ask to write to another family.** „Neue Nachricht"
+  lists the trainer team only (ADR 0022 §11). A request sent before can still
+  be answered.
+- „Änderungen" names lines about something that has gone as what it was —
+  „Frühere E-Mail-Vorlage", „Früheres eigenes Feld" — rather than by a table's
+  name.
+- A trainer told that mail is not set up yet is told that an administrator does
+  it, rather than sent to a settings page she cannot open.
+- A form sent after signing out lands on the sign-in page without a line in the
+  server's error log, and `setup.php` reads its language safely.
+
 ### Signing in, adding a student, and sign-in links
 
 - **Every student has a login from the moment they exist** (ADR 0023). Until it
@@ -178,8 +235,9 @@ What the portal carries has been cut to what the trainer and the families need
   the same place.
 - **Chats with one person.** A child writes to a trainer or an administrator by
   name, and staff to any child. The administrators can read chats between a
-  child and a trainer; a second trainer cannot. Children's chats with each
-  other, once one has agreed, stay private to the two of them.
+  child and a trainer; a second trainer cannot. A family writes to the
+  coaching team only and can no longer ask to write to another family; a chat
+  two families agreed to earlier stays private to the two of them.
 - **Everybody has an online dot**, a child's always automatic, and may pick one
   of sixteen emojis to show beside their name. When somebody was last here
   stays with the trainers and administrators.
@@ -859,8 +917,8 @@ update path was exercised against a real MariaDB rather than reasoned about.
 - **The row-count guard covered ten tables** and the portal has grown: it now
   also holds enrolments, attendance, invoices, invoice lines, payment proofs,
   message files and consent records. Proven with a migration that deletes
-  attendance: before, it passed; now the update is refused, and the copy taken
-  moments earlier brings the rows back.
+  attendance: before, it passed; now the portal stays closed, and the copy
+  taken moments earlier brings the rows back.
 - **A charge could be created already overdue.** A child joining in the second
   month of a quarter got one dated to the start of the quarter, with the
   automatic reminder to match. The due date never precedes the month the charge
@@ -968,10 +1026,9 @@ open it.
 - **Messages in the shape people already know one.** Conversations down one
   side, bubbles down the other, one box with a paper clip and a microphone.
   Pictures, PDFs and voice notes, within a size limit that is never higher than
-  what PHP itself accepts. Writing to the trainer needs nobody's permission;
-  writing to another family needs theirs, asked for and agreed to. **A
-  conversation between two families is private: neither the trainer nor the
-  administrator can read it**, which the screen says in words.
+  what PHP itself accepts. Writing to the trainer needs nobody's permission.
+  **A conversation two families agreed to is private: neither the trainer nor
+  the administrator can read it**, which the screen says in words.
 - **The change log informs.** It says what changed, field by field, in the words
   she uses, storing only what actually differed. The undo is gone: a page that
   can put a record back is a page that can put a record back by accident, and
@@ -997,6 +1054,14 @@ passes, 372 checks, with no PHP warning, no browser error and no layout failure.
 provider, a PDF reader rather than a parser, or a real hosting account, and the
 sweep at phone width was last run before the wizard and the sign-in screens
 existed. VALIDATION.md has the details, and says which runs were whose.
+
+Since then, on the same engine and PHP, in exported copies: at `bfeb592`, where an
+update that lost records stays closed, 6835 passed, 0 failed, with all
+thirty-three migrations; at `21f02c8`, with the robustness suite, 7608 passed,
+0 failed. Neither run could make a file the portal cannot delete, because it ran
+as root, so the two refusals for such a file were read in the code, not watched,
+and the refused update with its restore in phpMyAdmin (TESTING.md G.1–G.9) has not
+been walked.
 
 ## 0.5.0 — unreleased
 

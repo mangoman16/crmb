@@ -132,7 +132,7 @@ the custom fields, with every value typed into them. 033 deletes the saved views
 of the **Schüler** list and the e-mail templates, including the two examples a
 new portal started with. No other table loses a row. The table of custom-field
 values used to be among those counted before and after an update; it leaves
-that list with 032, so its loss does not refuse this update (step 5 below).
+that list with 032, so its loss does not refuse this update (step 6 below).
 Lines under **Änderungen** written before about a custom field stay, the field
 named „Früheres eigenes Feld".
 
@@ -264,42 +264,98 @@ left to do. Then, inside that lock and **before the database is touched at all**
 3. **Can a backup be written?** A full SQL dump goes to `storage/backups` before
    anything is migrated. If it cannot be written, nothing is migrated. See
    [Backups](#backups) for the way past this when you have taken your own.
-4. Each unrecorded migration is then applied in name order and recorded with the
+4. **The numbers from before are written down.** The rows of the eighteen tables
+   in `schema_guarded_tables()` are counted — `accounts`, `students`,
+   `contacts`, `absences`, `charges`, `payments`, `threads`, `messages`,
+   `message_files`, `news`, `class_students`, `attendance`, `invoices`,
+   `invoice_charges`, `payment_proofs`, `consent_log`, `tariff_rates` and
+   `tariff_discounts` — and kept in `storage/update-unfinished.json`, with both
+   version numbers and which copy step 3 wrote, until the update has passed. If
+   that file cannot be written, nothing is migrated.
+5. Each unrecorded migration is then applied in name order and recorded with the
    checksum of the file it came from. A migration that was edited after being
    applied is refused **by name**, because the checksum no longer matches.
-5. **Is everything still there?** Rows in eighteen tables are counted before
-   and after: `accounts`, `students`, `contacts`, `absences`, `charges`,
-   `payments`, `threads`, `messages`, `message_files`, `news`,
-   `class_students`, `attendance`, `invoices`, `invoice_charges`,
-   `payment_proofs`, `consent_log`, `tariff_rates` and `tariff_discounts` — the
-   list in `schema_guarded_tables()`. A table that was counted before and is
-   gone afterwards counts as emptied. A count that fell refuses the update.
-   Counts do not prove an update was correct, but a count that fell proves it
-   was not — and this catches it while the backup is still the newest thing
-   that happened.
-
-   **What this refusal does not do yet** (ROADMAP.md, item 7; ADR 0027): it
-   does not keep the portal closed. The page view that ran the update answers
-   503 and says „Das Portal bleibt geschlossen", but the migrations it applied
-   are already recorded by then. The next page view finds nothing to apply,
-   counts what is left, and opens the portal with the rows missing. If you see that page, open
-   the portal yourself straight away, press **„Wartungsmodus starten"** under
-   **Einstellungen → System** so that nobody else works on it, and restore the
-   copy written before the update, as [INSTALL.md](INSTALL.md#wiederherstellen)
-   describes, together with the files of the version you came from.
-6. What the portal cannot work without is filled in where it is missing — the
+6. **Is everything still there?** Every table still on the list is counted again
+   and compared with the numbers from step 4; a table that is gone counts as
+   empty. A count that fell stops the update. Counts do not prove an update was
+   correct, but a count that fell proves it was not.
+7. What the portal cannot work without is filled in where it is missing — the
    lists it needs, a group chat for every course, a login for every student —
-   and the page is served.
+   the file from step 4 is deleted, and the page is served.
 
-If step 1, 2 or 3 fails, or a migration fails in step 4, the page view answers
-503, saying in German and English what went wrong and what to do, and so does
-every page view after it until the cause is fixed: nothing was recorded, so
-each one tries again and is refused again. Step 5 is the exception described
-above. The page never prints SQL: that address is public and a parent may be
-the one looking at it. The full database error goes to the hosting error log.
+If any step fails the portal answers 503 and stays closed. The page tells a
+family there is nothing for them to do, and tells whoever looks after the portal,
+in German and English, what went wrong and what to do. It never prints SQL: that
+address is public and a parent may be the one looking at it. The full database
+error goes to the hosting error log.
+
+Steps 1 to 4 change nothing in the database, so when one of them refuses, the
+next page view starts again once the cause is put right: the newest files,
+uploaded completely, and a `storage/` folder the portal can write to. From step 4
+on, the update is **unfinished** until step 7 has run, and every page view starts
+by counting again and comparing with the numbers in the file:
+
+- While a table still on the list has fewer rows than before, nothing more runs
+  and the portal stays closed — on every page view, not only the first. See
+  [A refused update](#a-refused-update).
+- Otherwise the update carries on where it stopped. A migration that stopped
+  partway is tried again from its first statement, against the same numbers, and
+  no second copy is written: the one from step 3 stays the newest.
 
 While maintenance mode is on all of this is skipped, so an operator applying a
-migration by hand from a shell cannot race the web request.
+migration by hand from a shell cannot race the web request. While an update is
+unfinished, maintenance mode lets nobody in, administrators included: only the
+update may change the rows the numbers describe. Deleting the maintenance flag,
+`storage/maintenance.flag`, lets the next page view count again.
+
+## A refused update
+
+When an update finds fewer rows in a guarded table than before, the portal stays
+closed until one of two things is true. It counts again on every page view and
+opens by itself once one of them is; there is nothing to press. Keep the ZIP of
+the version you are running until the next update has opened the portal: the
+first way back needs it.
+
+**The rows come back.** The way when the loss was a mistake, and the safe way
+whenever you are not sure which it was:
+
+1. Upload the files of the version the closed page names — the one you came
+   from — over the new ones. The portal stays closed meanwhile.
+2. Import the copy the closed page names, from `storage/backups`, as
+   [INSTALL.md](INSTALL.md#wiederherstellen) describes.
+3. Open the portal. It counts every guarded table again and opens once none has
+   fewer rows than before the update. If one still has, the page says which: the
+   import stopped partway, or it was a different file.
+
+In this order, because the newer files, left in place, apply their migrations
+again on the next page view and take the same rows again. If that happens anyway,
+nothing more is lost: no copy is written while an update is unfinished, so the
+one the page names is still there. Upload the files and import it again.
+
+**A release says the rows may go.** If a migration removed rows on purpose and
+its table was not taken off `schema_guarded_tables()` in the same commit, the
+release has a bug. The release that fixes it takes the table off the list, with
+the reason beside it, and uploading it opens the portal without importing
+anything: the tables still on the list are compared, and they have their rows.
+Whether a loss is intended is decided in the code, by whoever makes the
+releases — never by the portal.
+
+**While it is closed** nobody gets in: families, trainers and administrators
+alike, and maintenance mode does not change that. The console runs only `check`,
+`status`, `migrate`, `update`, `maintenance:on` and `maintenance:off`; mail,
+billing, the nightly cleanup and `backup` wait. Any other command stops with one
+sentence saying that an update is unfinished, and exits with 1; a cron job set
+up in the panel fails the same way each time it runs. Anything else that added
+rows could make up a count that fell and hide what is missing.
+
+**The last way out.** `storage/update-unfinished.json` holds the numbers from
+before. Deleting it tells the portal to accept the database as it is: the next
+page view counts afresh and opens, and whatever is missing stays missing. Do it
+only when the missing rows are meant to be gone or are back some other way — for
+instance after importing a copy you exported yourself before the update (with
+`skip-backup`), which can be older than the numbers in the file, so that the
+portal cannot tell it from a loss. Deleting the whole `storage/` folder does the
+same, and takes the copies with it.
 
 ## Backups
 
@@ -313,6 +369,9 @@ because that is what the import screen in every hosting panel accepts.
   failed to deny it still could not be walked.
 - **How many:** the last five. Older ones are removed as new ones arrive, because
   a portal nobody prunes eventually fills the disk quota, which is its own outage.
+- **One per update.** While an update is unfinished no further copy is written,
+  by a page view or by `php bin/console.php backup`, so pruning never removes the
+  copy taken before it.
 - **On demand:** `php bin/console.php backup [reason]`, or look at
   **Einstellungen → System**, which lists every copy with its date and size.
 - **Restoring** is deliberately not automated. Putting several megabytes of a
@@ -322,7 +381,9 @@ because that is what the import screen in every hosting panel accepts.
 - **When it cannot be written** the update stops. If you have exported the
   database from the panel yourself, create an empty file named `skip-backup` in
   the `storage` folder; the next update proceeds without one and consumes the
-  file, so it cannot quietly disable the safeguard for every future update.
+  file, so it cannot quietly disable the safeguard for every future update. A
+  `skip-backup` the portal cannot delete refuses the update instead, saying so:
+  left in place, it would skip the copy before every later update too.
 
 A first install writes no backup: an empty database has nothing worth copying.
 
@@ -371,7 +432,10 @@ been applied.
 
 An administrator can still sign in while maintenance mode is on, and a banner
 at the top of every page offers to switch it off. That is deliberate: switching
-it on from **Einstellungen → System** must not be able to lock you out.
+it on from **Einstellungen → System** must not be able to lock you out. The one
+exception is an unfinished update ([A refused update](#a-refused-update)): then
+nobody is let in, and deleting `storage/maintenance.flag` in the file manager, or
+`php bin/console.php maintenance:off`, switches maintenance mode off.
 
 ### What re-running is guaranteed to do
 
@@ -381,23 +445,30 @@ is safe to run repeatedly. Verified behaviour:
 | Situation | What happens |
 |---|---|
 | Opening the portal with nothing new uploaded | One file read, no database work |
-| Running `update` again with nothing new | Applies nothing, reopens the portal |
+| Running `update` again with nothing new | Applies nothing and reopens the portal — unless an update is unfinished and a guarded table still has fewer rows than before it |
 | Uploading an older package over a newer one | Refused by name; the database is not touched |
 | An extract that stopped halfway | Refused, naming the files that do not match |
 | `storage/` not writable when a migration is pending | Refused; no backup, no migration |
-| A migration that removes rows from a guarded table | Refused after the fact, for that page view only; the next one opens the portal (ROADMAP.md, item 7) |
+| A migration that removes rows from a guarded table | Refused after the fact; the portal stays closed on every page view until the rows are back or a release takes the table off the list |
+| A page view, or a newer upload, after that refusal | Counts again; runs nothing and stays closed while a guarded table has fewer rows than before the update |
+| The previous version's files and the copy from before, after that refusal | Counts again and opens |
 | A migration that drops a guarded table | Counted as emptied, and refused the same way |
 | A new migration added in a later version | Applies only that one |
 | A column added later to an existing table | Existing rows get the column's default, never NULL |
 | A migration file edited after being applied | Refused by name, with the reason |
-| A migration failing partway | Stops at that statement, does **not** record the migration, names the statement number |
+| A migration failing partway | Stops at that statement, does **not** record the migration, names the statement number; each page view tries it again from its first statement, against the numbers from before the update, without writing another copy |
 
-The last row is the case that needs you. MySQL cannot roll back DDL, so a
-migration that fails at statement 5 of 12 leaves the first four applied and the
-migration unrecorded — re-running would start it from the beginning and fail
-again on the work already done. The error says exactly which statement stopped
-and what to do: restore your backup, or finish that migration by hand and add
-its row to `schema_migrations` yourself.
+A migration failing partway is the case that needs you. MySQL cannot roll back
+DDL, so a migration that fails at statement 5 of 12 leaves the first four applied
+and the migration unrecorded — trying it again starts it from the beginning, and
+fails again on the work already done unless each of its statements can run
+twice. The error names the file and says how far the update got — „(5/12)" on
+the closed page — counting the furthest statement any attempt reached, even when
+a later attempt stopped earlier, on what the first one had already done. The way
+back is the one for [a refused update](#a-refused-update): the
+previous version's files, then the copy from before. Finishing the migration by
+hand in phpMyAdmin and adding its row to `schema_migrations` works too; the next
+page view then compares and opens.
 
 ## Adding a feature after going live
 
@@ -412,15 +483,15 @@ Schema changes do need a migration. Add a new numbered file in
 leave a NULL the new code has to guess about.
 
 A migration must not reduce the row count of any table in
-`schema_guarded_tables()`, nor drop one. The update refuses one that does, on
-purpose: a count going down means something went wrong rather than something
-being cleaned up. 019 takes children off a shared login but deletes none of
-them. Only one migration so far has removed rows from a table that was guarded:
-032, which deletes the custom fields with everything typed into them, as the
-owner asked (ADR 0026). `field_values` left the list in the same commit, with
-the reason written beside it. Any other release that genuinely has to remove
-rows — merging duplicates, say — needs the guard changed the same way,
-deliberately, in the same commit.
+`schema_guarded_tables()`. The update refuses one that does, on purpose, and the
+portal stays closed until the rows are back: a count going down means something
+went wrong rather than something being cleaned up. A release that genuinely has
+to remove rows — merging duplicates, say — takes the table off that list in the
+same commit, with the reason written beside it. A release that forgot to is fixed
+by the release that does: uploading it reopens the portal its predecessor closed
+([A refused update](#a-refused-update)). So far one has: 032, which deletes the
+custom fields with everything typed into them (ADR 0026), took `field_values` off
+the list.
 
 ## With release directories: before the maintenance window
 

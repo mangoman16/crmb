@@ -37,9 +37,6 @@ In this order.
      Part 1) — and the example data, cut to one course, four children and two family logins
      (§9).
 
-   The robustness suite (item 8) is built, on a copy of the code; it lands after round 1
-   with the fixes it forces.
-
    A document describing a removed feature changes in the commit that removes it, never
    before, so the documents never describe code that is not there.
 4. **The iOS design language (owner, 2026-10-07: "Make sure it is as intuitive and easy to use
@@ -76,15 +73,13 @@ In this order.
    - A logo photo stored sideways (EXIF orientation) is measured unrotated and can be refused.
    - Targets below the minimum on a desktop screen: the help button's summary (36 px),
      „Alle ansehen" (21 px).
-7. **A refused update stays refused (ADR 0027, accepted).** The update guard kept the portal
-   closed only for the request that found the loss. From now the counts from before an update
-   are kept in `storage/update-unfinished.json` until a run passes; while it exists no page is
-   served and nothing writes, and the portal reopens by itself once every guarded table has
-   its rows back — after the previous version's files and the backup are put back — or when a
-   release takes the table off the guard. database-engineer builds `app/schema.php` and its
-   tests, backend-dev the bootstrap and console lines, in one change after the removals.
-8. **Robustness suite.** Unexpected values into every action, as every role (ADR 0026). Not
-   started.
+7. **A refused update stays refused (ADR 0027): done** (`bfeb592`, `1ad0488`). The counts from
+   before an update stay in `storage/update-unfinished.json` until a run passes; until then
+   no page is served and nothing writes, and the portal reopens by itself once the rows are
+   back. The restore walk in TESTING.md (G.1–G.9) has not been walked in a real phpMyAdmin.
+8. **Robustness suite: done** (`aa5b1b7`). `tests/suites/robustness.php` sends unexpected values
+   to every action as every role and draws every page with them; 751 checks, about 45 s.
+   What it cannot reach — uploads, actions no page draws a form for — it lists after a run.
 9. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
    started.
 10. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.

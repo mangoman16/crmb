@@ -169,14 +169,23 @@ Match them; do not introduce a second style alongside one that works.
 - **An update refuses rather than guesses.** Older files than the database, an
   incomplete upload, a database it could not back up first, or a result with
   fewer rows in `schema_guarded_tables()` than it started with: each one keeps
-  the portal closed. A migration that genuinely has to remove rows needs that
-  guard widened in the same commit, with the reason written down.
+  the portal closed. The counts from before an update stay in
+  `storage/update-unfinished.json` from its first migration until a run
+  passes, so a loss keeps the portal closed on every request, not just the
+  first. While that file exists nothing changes the database but the update:
+  no migration runs on top of a loss, nobody gets in, administrators included,
+  and the console runs nothing that writes (ADR 0027). The portal reopens by
+  itself once every table still on the list has its rows back, or a release
+  takes the table off the list. A migration that genuinely has to remove rows
+  takes its table off that list in the same commit, with the reason written
+  down.
 
 ## Before you say something works
 
 ```bash
-tests/mariadb-local.sh                 # the whole suite on a throwaway MariaDB, about three minutes
+tests/mariadb-local.sh                 # the whole suite on a throwaway MariaDB, about four minutes
 tests/mariadb-local.sh billing views   # one or more suites
+tests/mariadb-local.sh robustness      # every action, every role, unexpected values
 tests/e2e.sh                           # the first evening, end to end, in a real browser
 php -l <file>                          # after any edit that a test might not reach
 ```
@@ -227,7 +236,10 @@ claim.
   belongs, a huge string, a negative number, an impossible date, somebody else's
   id, a double tap, the Back button. Every input is checked where it enters; a
   refusal is one plain sentence on the same page; never a 500, a blank page or a
-  PHP warning.
+  PHP warning. The `robustness` suite sends such values to every action as every
+  role and draws every page with them in the address; it reads the actions, the
+  fields and the pages from the code, so a new one is covered without being
+  listed.
 - **Another club could run it too.** Nothing specific to one club is hard-coded:
   it is a setting declared in `app/defaults.php`, and the settings stay
   comprehensive. No fields defined by users: a new field is a real column.

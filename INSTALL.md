@@ -225,7 +225,7 @@ anfasst, und eines danach.
 | Sind die Dateien neuer als die Datenbank? | Bei älteren Dateien (falsches Paket) bleibt das Portal geschlossen. Sonst würde alter Code die vorhandenen Daten falsch lesen. |
 | Ist der Upload vollständig? | Bei abgebrochenem Entpacken oder FTP im Textmodus bleibt das Portal geschlossen und nennt die betroffenen Dateien. |
 | Lässt sich eine Sicherung anlegen? | Ohne Sicherung wird nichts geändert. |
-| Sind danach noch alle Datensätze da? | Fehlen Schüler, Beiträge, Zahlungen oder Nachrichten, zeigt der Aufruf, der die Aktualisierung ausgeführt hat, eine Fehlerseite. **Geschlossen bleibt das Portal danach noch nicht:** schon der nächste Aufruf öffnet es wieder, mit den fehlenden Datensätzen ([ROADMAP.md](ROADMAP.md), Punkt 7). Wer diese Seite sieht, öffnet das Portal sofort selbst, tippt unter **Einstellungen → System** auf **„Wartungsmodus starten"** und spielt die Sicherung von vorher zurück, wie unter [Wiederherstellen](#wiederherstellen) beschrieben. |
+| Sind danach noch alle Datensätze da? | Fehlen Schüler, Beiträge, Zahlungen oder Nachrichten, bleibt das Portal geschlossen – bei jedem Aufruf, bis sie wieder da sind (siehe „Wiederherstellen“). |
 
 Die Sicherung ist eine vollständige SQL-Kopie der Datenbank und landet in
 `storage/backups`. Die letzten fünf werden behalten, ältere selbst gelöscht. Der
@@ -242,14 +242,21 @@ zeigt, welche Migration wo stehen geblieben ist, statt halb aktualisiert zu
 
 ### Wiederherstellen
 
-Im Hosting-Panel **phpMyAdmin** öffnen, die Datenbank auswählen, unter
+Zuerst die Programmdateien hochladen, die zur Sicherung gehören: eine Sicherung
+von vor einer Aktualisierung gehört zur vorherigen Version, also deren ZIP. Das
+Portal bleibt dabei geschlossen. Erst die Dateien, dann die Datenbank:
+andersherum würden die neueren Dateien ihre Datenbankänderungen beim nächsten
+Aufruf noch einmal anwenden.
+
+Dann im Hosting-Panel **phpMyAdmin** öffnen, die Datenbank auswählen, unter
 **Exportieren** zur Sicherheit den aktuellen Stand herunterladen, dann alle
 Tabellen löschen und unter **Importieren** die gewünschte Datei aus
 `storage/backups` einspielen. Die Datei bringt ihre eigenen Tabellen mit und
 lässt sich auch zweimal einspielen.
 
-Danach die passenden Programmdateien wiederherstellen: eine Sicherung von vor
-dem Update gehört zur vorherigen Version, also auch deren ZIP wieder hochladen.
+Danach das Portal öffnen. Wurde eine Aktualisierung abgelehnt, weil Datensätze
+fehlten, zählt das Portal nach: sind alle wieder da, öffnet es sich von selbst;
+sonst nennt die Seite, was noch fehlt.
 
 ## Optional: Cronjob statt Seitenaufruf
 
@@ -311,6 +318,8 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 | Beim Aufruf erscheint eine Dateiliste statt des Portals | Die `.htaccess`-Dateien wurden nicht mit entpackt. Der Dateimanager zeigt versteckte Dateien oft erst auf Wunsch an. |
 | Alles wirkt unformatiert | `mod_rewrite` fehlt. `https://deine-domain.at/public/` aufrufen – das funktioniert auch. |
 | „Das Portal wird gerade aktualisiert“ bleibt stehen | `storage/maintenance.flag` im Dateimanager löschen. |
+| „Das Portal ist vorübergehend geschlossen.“ mit „… fehlen Datensätze: …“ | Die Aktualisierung hat Datensätze verloren, und das Portal bleibt zu, bis sie zurück sind. Zuerst die Dateien der Version hochladen, die die Seite nennt, dann die Sicherung einspielen, die sie nennt – siehe [Wiederherstellen](#wiederherstellen) und in [UPDATING.md](UPDATING.md#a-refused-update) „A refused update“. |
+| „Im Ordner storage liegt eine Datei skip-backup, die das Portal nicht löschen kann“ | Dem Ordner `storage` Schreibrechte geben (`755`) und neu laden. Die Datei gilt nur für eine Aktualisierung; eine, die liegen bliebe, würde jede spätere Sicherung auslassen. |
 | „Vor der Aktualisierung konnte keine Sicherung angelegt werden“ | Rechte für `storage` auf `755` setzen. Oder im Panel selbst eine Sicherung anlegen und danach im Ordner `storage` eine leere Datei `skip-backup` erstellen; sie gilt für genau ein Update. |
 | „Die hochgeladenen Dateien sind älter als die Datenbank“ | Das falsche Paket hochgeladen. Die neueste Version holen und noch einmal entpacken. |
 | „Die hochgeladenen Dateien sind unvollständig“ | Das Entpacken ist abgebrochen, oder der Upload lief über FTP im Textmodus. Noch einmal hochladen, FTP auf Binärmodus stellen. |

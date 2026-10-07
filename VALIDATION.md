@@ -6,6 +6,41 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
+## 0.6.0, unreleased — at `bfeb592` and `21f02c8`: a refused update stays refused, and any value from anyone
+
+Recorded 2026-10-07 by docs-writer. Both runs on MariaDB 10.11.14
+(`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP 8.4.26, started by `tests/mariadb-local.sh`
+with a work folder of its own on port 3431, each on a copy exported with `git archive` and
+`vendor/` copied in, so the `structure` suite counts one check fewer than in a checkout.
+MySQL 8.0 was not run.
+
+- **At `bfeb592`, ADR 0027 built: 6835 passed, 0 failed**, in 208 seconds. The commit
+  reports 6836 from its own run in a checkout, which is the one check for `.git/`. The run
+  listed one thing as not covered: *a skip-backup and a record the portal cannot delete
+  (this run is root, whom a read-only folder does not stop)*. So the two refusals for a
+  file the portal cannot delete — a `skip-backup` left in `storage`, and
+  `update-unfinished.json` after a run that passed — have not run here; they were read in
+  `app/schema.php`, not watched.
+- **What it fixes was watched before the fix.** On a copy of `c77348b`, a migration that
+  deleted every `news` row was refused on the first `schema_apply()`, and the second, with
+  nothing left pending, opened the portal with the rows still missing (a scratch check of
+  ten assertions; with the deletion taken out, five of them failed).
+- **At `21f02c8`, the robustness batch: 7608 passed, 0 failed**, in 250 seconds, the
+  `robustness` suite among them with 751 passed; on its own it passed 751 in 41 seconds.
+  The commit message reports 7452 passed for its run; the difference is not explained
+  here. The run listed as not covered: the same file the portal cannot delete; actions no
+  page draws a form for (`login`, `activate`, `unsubscribe`, `student_invite`,
+  `attendance_clear`, `contact_decide`, `setup_visibility`), which get every value but no
+  form sent twice; a form sent twice where the form as drawn is refused (28 actions and
+  roles, `avatar_save` as a family first); and what an action does with an uploaded file,
+  because only a real upload passes `is_uploaded_file()`.
+
+Reported and **not** reproduced here: `tests/e2e.sh` passed for each commit; each of ADR
+0027's thirteen tests and each new robustness guard was broken once and watched to fail.
+Not walked by anybody yet: TESTING.md G.1–G.9, the refused update and its restore with
+phpMyAdmin on a test install, which is the only check of the import as a hosting panel
+does it — the suite drops every table and replays the copy statement by statement.
+
 ## 0.6.0, unreleased — at `d095ca4`: every student has a login, a wizard, sign-in links
 
 Recorded 2026-10-07 by docs-writer.

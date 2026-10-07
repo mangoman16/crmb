@@ -107,6 +107,8 @@ release and emptied again for the next.
 - What the reviews of ADR 0023 found: two people cannot both take a course's last place, a child without sign-in collects no bell notices, a sign-in link dies with its child and waits for the privacy notice, a browser shared between people forgets a half-opened link, a team member's login left on a child's record lets go of the child and stays hers, and a page opened with a list in its address draws without a warning: [L.10a, L.18a, L.20a–L.20c, L.21a, L.25a](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023), [7.23](#students-contacts-levels-and-age-groups)
 - A view through somebody's eyes ends with the viewer's own login — deleted, suspended or given a new password, the browser looking is signed out on its next tap; a sign-in link's page asks what the link may still do before it shows anything of the login; a trainer is told an administrator releases the privacy notice; a stale „Einladung senden" says the child has a login: [5.11c](#the-shell-the-bar-notifications-feedback-impersonation), [L.20a, L.20d, L.21b](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
 - What ADR 0026 takes out, round one: custom fields with what was typed into them, copying, saved views, writing to many with its templates, „Warteschlange senden", the printed form and data sheet, and Verwaltung's „Tarife" tab: [R.1–R.8](#what-adr-0026-removes-round-one)
+- An update that lost records keeps the portal closed, for everybody, on every page view, until the rows are back; the way back is the previous version's files, then the copy from before, in phpMyAdmin (ADR 0027): [G.1–G.9](#an-update-that-lost-records-stays-closed-adr-0027)
+- Any value from anyone is answered with one sentence on the same page: numbers, dates and pages held to their range, a family writes only to the trainer team, and nothing reaches the error log: [V.1–V.11](#any-value-from-anyone-adr-0026-5), 14.5, 14.7
 
 ---
 
@@ -117,7 +119,7 @@ tests/mariadb-local.sh            # the whole suite against a throwaway MariaDB 
 tests/existing-database.sh        # the same suite against an empty _test database you made
 ```
 
-The run must end in **`0 failed`**. It takes about three minutes.
+The run must end in **`0 failed`**. It takes about four minutes.
 Anything else and the manual sweep is a waste of time — stop and report that
 first.
 
@@ -1070,13 +1072,14 @@ your picture at the top right.
   still works.)
 - [ ] **14.4** With JavaScript switched off, the paper clip is an ordinary file
   field and the message still sends.
-- [ ] **14.5** One family asks another to be in touch. Nothing can be written
-  until that other family agrees.
-- [ ] **14.6** Once they agree, both directions work. Declining keeps it shut.
-- [ ] **14.7** **The private one, and check it from every side:** open a
-  conversation between two families. The trainer cannot see it in her list, in
-  her unread count, or by opening its address. Neither can the administrator.
-  Nor can either of them open its attachments.
+- [ ] **14.5** As a family, „Neue Nachricht" lists the **Trainerteam** and
+  nobody else: no „Kinder", no „Jemand anderen fragen". A family can no longer
+  ask to write to another family.
+- [ ] **14.7** **(release)** **The private one, and check it from every side:**
+  on a copy that has a conversation two families agreed to before families
+  could no longer ask, open it. The trainer cannot see it in her list, in her unread count,
+  or by opening its address. Neither can the administrator. Nor can either of
+  them open its attachments.
 - [ ] **14.8** A chat with the trainer is read by the trainer and the child, and
   by the administrators — not by a second trainer (ADR 0022). The old shared
   conversations from before stay readable under „Frühere Unterhaltungen" and take
@@ -1705,16 +1708,12 @@ where it says so
 - [ ] **C.13** **(release)** On a copy of a real portal, upload this version:
   every existing course has its group, every chat between a child and a trainer
   is still there, and the update refuses nothing.
-- [ ] **C.14** First, two children who may write to each other: as the second
-  child, „Neue Nachricht" → „Jemand anderen fragen" → „Anfragen" beside the
-  first; as the first, „Neue Nachricht" → „Zustimmen" under „Möchte dir
-  schreiben". Then, as the trainer, write to the first child in your chat with
-  them, and as the second child, write to them too. As the trainer, **Schüler**
-  → the first child → „Portal als … ansehen" on the card „Zugang zum Portal":
-  the bell shows neither message — no „Neue Nachricht von …" line — its number
-  counts only the other notices, and there is no „Alle gelesen" in it.
-  „Ansicht beenden", then sign in as the first child: both notices are there,
-  and unread.
+- [ ] **C.14** As the trainer, write to a child in your chat with them; as the
+  administrator, write to the same child too. As the trainer, **Schüler** → that
+  child → „Portal als … ansehen" on the card „Zugang zum Portal": the bell shows
+  neither message — no „Neue Nachricht von …" line — its number counts only the
+  other notices, and there is no „Alle gelesen" in it. „Ansicht beenden", then
+  sign in as the child: both notices are there, and unread.
 - [ ] **C.15** As the administrator, **Einstellungen → Konten**, „Portal als
   diese Person ansehen" beside a trainer. **Nachrichten → Neuigkeiten →
   + Neuigkeit**, a title and some text, „Speichern": refused with „Beim Ansehen
@@ -1731,16 +1730,14 @@ where it says so
   original: the brightness map is a second picture in the file, and it goes
   with the rest. Then send a screenshot (PNG) and a WebP saved from a browser:
   both open and look as they did.
-- [ ] **C.18** As the trainer, **Schüler** → a child who has a request from
-  another child still waiting (C.14's first step, without „Zustimmen") →
+- [ ] **C.18** As the trainer, **Schüler** → a child whose login is in use →
   „Portal als … ansehen" on the card „Zugang zum Portal". The view opens on
   **Übersicht**: tap „Nachricht schreiben". The page „Neue Nachricht" says
   „Beim Ansehen als jemand anderer lässt sich nichts schreiben oder ändern.
-  Beende zuerst die Ansicht." and lists nobody — no „Trainerteam", no
-  „Kinder", no „Möchte dir schreiben" with the request's text, no „Jemand
-  anderen fragen". **Nachrichten** has no „Neue Nachricht" button and no „1 neue
-  Anfrage" at the top. In the child's group, the people symbol in the top bar
-  lists the members, and tapping a trainer there opens nothing.
+  Beende zuerst die Ansicht." and lists nobody — not even the „Trainerteam".
+  **Nachrichten** has no „Neue Nachricht" button. In the child's group, the
+  people symbol in the top bar lists the members, and tapping a trainer there
+  opens nothing.
 - [ ] **C.19** A photo can carry a small preview of itself inside the file,
   and after cropping, an editor can leave that preview showing the whole photo
   from before. Crop a photo in an editor, save it as a JPEG with the option
@@ -2083,6 +2080,85 @@ On the example data or a copy.
   Mitgliedschaft, Geld & Zahlungen — no „Tarife". A tariff that belongs to no
   course is named on every course's „Tarife" tab, as not billed until it has
   one.
+
+### An update that lost records stays closed (ADR 0027)
+
+**On a test install only**, never on a portal anybody uses: these break the
+database on purpose and put it back with phpMyAdmin. You need the hosting
+panel's file manager and phpMyAdmin.
+
+- [ ] **G.1** **(release)** In phpMyAdmin, note how many rows the `contacts`
+  table has.
+- [ ] **G.2** **(release)** In the file manager, add a file
+  `database/migrations/999_test_drops_contacts.sql` holding one line,
+  `DROP TABLE contacts;`, and open the portal. It shows „Das Portal ist
+  vorübergehend geschlossen.", „Du musst nichts tun. Bitte versuche es später
+  noch einmal." and „Für die Person, die das Portal betreut: Nach der
+  Aktualisierung auf Version … fehlen Datensätze: contacts (vorher N, jetzt 0)
+  …", with N the number from G.1, and names the copy to import as
+  „JJJJ-MM-TT-HHMMSS-vor-update-…". The same in English underneath.
+- [ ] **G.3** **(release)** `storage/update-unfinished.json` is there. Opened in
+  the file manager it holds both version numbers, the counts of the guarded
+  tables and the name of that copy without its random part.
+- [ ] **G.4** **(release)** Reload twice: the same page, word for word, and no
+  new file in `storage/backups`.
+- [ ] **G.5** **(release)** Create an empty file `storage/maintenance.flag`.
+  You get „Das Portal wird gerade aktualisiert" as everybody else does, signed
+  in as the administrator or not. Delete the flag again.
+- [ ] **G.6** **(release)** Delete the 999 file — these files are now the
+  version from before it — and reload: still closed, still naming contacts.
+- [ ] **G.7** **(release)** In phpMyAdmin: **Exportieren** the database as it
+  is now, select every table and drop them, then **Importieren** the copy from
+  `storage/backups` that the page named.
+- [ ] **G.8** **(release)** Open the portal: it opens. `update-unfinished.json`
+  is gone from `storage`, the contacts are back, and **Einstellungen → System**
+  shows the same version as before G.2.
+- [ ] **G.9** **(release)** Optional: G.2 to G.6 once more, then import a copy of
+  the named file cut off before `contacts` — everything from the line
+  ``DROP TABLE IF EXISTS `contacts`;`` on deleted; the tables are in
+  alphabetical order. The portal stays closed, naming contacts and the guarded
+  tables after it. Import the whole file and it opens.
+
+### Any value from anyone (ADR 0026 §5)
+
+What a slip of the thumb or an odd link does: one sentence on the same page,
+never an error page and never a line in the server's error log. The `robustness`
+suite posts such values to every form; these are the ones worth seeing by hand.
+
+- [ ] **V.1** **Kurse** → a course → „Kurs bearbeiten": **Plätze** „abc", then
+  „1,5": each refused with „Plätze: 0 bis 500 (0 = unbegrenzt)." **Plätze**
+  left empty saves as unlimited. **Reihenfolge** 99999999 is refused with
+  „Reihenfolge: bitte eine ganze Zahl von -99999 bis 99999 eingeben, die
+  kleinste steht zuerst."
+- [ ] **V.2** On a course's „Tarife" tab, a tariff: **Zahltag im Monat** 31 is
+  refused with „Zahltag: 1 bis 28. Der 29. bis 31. existiert nicht in jedem
+  Monat."; **Tage bis „überfällig"** 400 with „Frist bis „überfällig“: 0 bis
+  365 Tage."; a discount template with a duration and 12,5 per cent with
+  „Rabatt: eine ganze Zahl von 0 bis 100 Prozent."
+- [ ] **V.3** On a child, **Rechnungen**: **Rechnungsdatum** 31.12.9999 is
+  refused with „Bitte ein Datum zwischen 1900 und 2100 eingeben.";
+  **Zahlungsziel in Tagen** 200 with „Zahlungsziel: 0 bis 180 Tage."
+- [ ] **V.4** **Beiträge**: **Monat** 9999-12, „Monat wechseln", then the button
+  that creates the charges: refused, and nothing is created.
+- [ ] **V.5** In the address: `?page=students&p=99999999999999999999`, and the
+  same `&p=` on `?page=outbox` and `?page=invoices`, show a page — empty, or
+  the last one — and no error. A course's `&tab=dates&on=0` opens its
+  „Termine" with today chosen.
+- [ ] **V.6** As a family, „Neue Nachricht" shows only the **Trainerteam** (14.5).
+- [ ] **V.7** With mail not tested yet: as a trainer, **Schüler → „Per E-Mail
+  einladen"** says „Eine Administratorin muss zuerst den E-Mail-Versand
+  einrichten und testen."; as the administrator it says „E-Mail-Versand zuerst
+  testen: unter „Einstellungen → SMTP“ die Verbindung prüfen."
+- [ ] **V.8** **(release)** On a fresh install, `setup.php?lang[]=x` shows the
+  setup page in German, and the server's error log gains no line.
+- [ ] **V.9** **(release)** Sign out in one tab, then send a form still open in
+  another: you land on the sign-in page, and the error log gains no „CRM:
+  leaving with an open transaction".
+- [ ] **V.10** **(release)** On a copy from before ADR 0026's first round where
+  an e-mail template had been saved, **Änderungen** lists those lines as
+  „Geändert: Frühere E-Mail-Vorlage · …", not by a table's name.
+- [ ] **V.11** An old bookmark to the students filtered by tariff,
+  `?page=students&tariff=3`, shows all children.
 
 ---
 

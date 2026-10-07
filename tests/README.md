@@ -3,6 +3,7 @@
 ```bash
 tests/mariadb-local.sh            # the whole suite, on a throwaway MariaDB
 tests/mariadb-local.sh billing    # one suite
+tests/mariadb-local.sh robustness # every action, every role, unexpected values
 ```
 
 The suite runs on MariaDB, the engine the portal's server runs. It builds the schema from
@@ -116,7 +117,7 @@ what those functions get wrong.
 ## The suites
 
 Most cover a part of the domain — `billing`, `attendance`, `settings`,
-`security`, `dates`, `history`, `transactions`. Three are different in kind:
+`security`, `dates`, `history`, `transactions`. Four are different in kind:
 
 - `views` renders the real pages and reads what came out.
 - `performance` counts queries, so a page that grows a query per row fails.
@@ -125,6 +126,17 @@ Most cover a part of the domain — `billing`, `attendance`, `settings`,
   unescaped, and no file has been truncated. That last one exists because a bad
   edit once reduced a dispatch file to 36 bytes while every other test stayed
   green — nothing else was reading it.
+- `robustness` sends unexpected values to every action, as every role — signed
+  out, a family, the trainer, an administrator, and an administrator viewing the
+  family — and draws every page with them in the address: lists where a word
+  belongs, 100,000 characters, text that is not UTF-8, huge and negative
+  numbers, impossible dates, another family's ids, a form sent twice. It fails
+  on a 500, a blank page, a PHP warning, SQL text on the page, a transaction
+  left open, or a write to somebody else's rows (ADR 0026 §5). It reads the
+  actions, their fields and the pages from the code, so an action added later is
+  covered without being listed here. On its own it takes about 45 seconds, and
+  what it could not reach — a form no page draws, an upload, which only a real
+  request can carry — it lists at the end of the run.
 
 `shell` also runs `topbar-menus.mjs` with `node`, which loads the real
 `public/assets/app.js` into a page of stand-in elements and taps, swipes and
