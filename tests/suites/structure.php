@@ -132,8 +132,8 @@ foreach (array_merge(glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php
     $body = (string)file_get_contents($file);
     ok(!preg_match('/\sstyle\s*=\s*["\']/', $body), basename($file).' sets no style attribute');
 }
-ok(str_contains((string)file_get_contents(APP_ROOT.'/app/bootstrap.php'), "style-src 'self'"),
-   'and the policy that makes that true is still in place');
+ok(str_contains(implode("\n", security_headers()), "style-src 'self'"),
+   'and the policy that makes that true is still in place, on the list every page is sent with');
 
 case_('Every page the router allows is classified: public, everyone, staff or admin');
 // The guard lives in the router rather than in the view, so adding a page to
@@ -965,11 +965,14 @@ case_('Every page switches the camera, the microphone and the location off [ADR 
 /* Nothing asks a browser for any of them: a child's photo comes through the
    file input, which hands the camera to the phone. The microphone was on while
    voice notes were recorded in the page, and a policy left open outlives the
-   reason for it. One header, sent by boot_http() for every page. */
+   reason for it. One header, on the list every page is sent with
+   (security_headers()): boot_http() sends it for the portal, setup.php for itself. */
+is_same(['Permissions-Policy: camera=(), microphone=(), geolocation=()'],
+        array_values(array_filter(security_headers(), fn(string $line): bool => stripos($line, 'Permissions-Policy:') === 0)),
+        'the list holds Permissions-Policy: camera=(), microphone=(), geolocation=(), once');
 $boot = defined_functions_in(APP_ROOT.'/app/bootstrap.php')['boot_http'] ?? '';
-is_same(1, substr_count($boot, "header ( 'Permissions-Policy: camera=(), microphone=(), geolocation=()' )"),
-        'boot_http() sends Permissions-Policy: camera=(), microphone=(), geolocation=()');
-is_same(1, substr_count($boot, 'Permissions-Policy'), 'and no second policy after it');
+ok(str_contains($boot, 'security_headers ( )'), 'boot_http() sends that list');
+is_same(0, substr_count($boot, 'Permissions-Policy'), 'and sets no second policy of its own');
 
 case_('The address reaches every page as text: public/index.php drops every list from it first');
 /* ?tab[]=x is something anybody can type. Read as text it warned „Array to
@@ -1331,8 +1334,14 @@ foreach (['actions', 'actions_settings', 'actions_messages', 'actions_config'] a
            .($write ? ': '.$write['name'].'()' : ''));
         if ($write === null) continue;
         ok($write['name'] !== 'throttle', $where.': the write found is not the throttle itself');
-        is_same(true, $throttles[0]['index'] < $write['index'],
-                $where.': throttle() is counted before '.$write['name'].'()'
+        /* Every throttle of a case, not only its first: message_send counts a
+           photo as well. handle_post() makes the sign-in comparison hash
+           between its own, before it opens the action's transaction - nothing
+           holds a lock there for the counter connection to wait on - so there
+           its first is the one that matters. */
+        $last = $name === 'handle_post' ? $throttles[0] : $throttles[count($throttles) - 1];
+        is_same(true, $last['index'] < $write['index'],
+                $where.': every throttle() is counted before '.$write['name'].'()'
                 .' — '.($throttled[$where] ?? 'not a handler this rule knows'));
     }
 }

@@ -32,13 +32,21 @@ $sepa="BCD\n002\n1\nSCT\n{bic}\n{recipient}\n{iban}\n{currency}{amount}\n\n{refe
         ?></div>
         <?php input('note',t('Hinweis für Eltern','Note shown to parents'),$profile['note']??'');
         input('qr_template',t('Inhalt des QR-Codes','QR code contents'),$profile['qr_template']??$sepa,'textarea',false,
-            t('Platzhalter: {recipient} {iban} {bic} {currency} {amount} {reference}. Die Vorgabe ist das SEPA-Format, das Bank-Apps lesen.','Placeholders: {recipient} {iban} {bic} {currency} {amount} {reference}. The default is the SEPA format banking apps read.'));
+            t('Das SEPA-Format, das Bank-Apps lesen: „BCD“ in der ersten Zeile, {recipient} in der sechsten und {iban} in der siebten. Weitere Platzhalter: {bic} {currency} {amount} {reference}.',
+              'The SEPA format banking apps read: “BCD” on the first line, {recipient} on the sixth and {iban} on the seventh. Other placeholders: {bic} {currency} {amount} {reference}.'));
         check_field('archived',t('Archivieren','Archive'),(bool)($profile['archived']??false),'',false,true);
         submit_button();?></form>
         <?php if($profile && $profile['iban']!==''): $demo=qr_payload($profile,4500,t('Beispiel','Example'));?>
         <h3><?=e(t('Vorschau','Preview'))?></h3>
         <p class="muted"><?=e(t('So sieht der Code für 45,00 € aus.','This is the code for 45.00.'))?></p>
         <div class="qr-plate"><?=$demo!==''?qr_svg($demo,170):''?></div>
+        <?php /* A template saved before profile_save refused one: qr_payload()
+                 draws no code from it, on this preview and on every family's
+                 „Beiträge", and the form says why rather than leaving it blank. */
+        if($demo==='' && trim((string)$profile['qr_template'])!==''): ?>
+        <div class="notice warn"><?=e(t('Dieser Inhalt ergibt keinen QR-Code: Er muss mit „BCD“ beginnen und in der sechsten Zeile {recipient}, in der siebten {iban} haben.',
+                                        'This content makes no QR code: it has to begin with “BCD” and have {recipient} on the sixth line and {iban} on the seventh.'))?></div>
+        <?php endif ?>
         <?php endif ?>
     </section>
 </div>

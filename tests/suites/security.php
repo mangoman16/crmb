@@ -697,3 +697,111 @@ fixture('audit_log', ['actor_id' => $holder, 'action' => 'account.password_reset
     'entity_id' => $holder, 'created_at' => gmdate('Y-m-d H:i:s', time() - 15 * 86400)]);
 is_same(1, count(password_resets_for($holder, PASSWORD_RESET_SHOWN_DAYS)), 'the one from today is listed, not the one from fifteen days ago');
 sign_out();
+
+// ---------------------------------------------------------------------------
+case_('A child is called in the chat what the club calls them: Mein Konto renames no student’s login, renaming the child does [security review 2026-10-08]');
+/* preferences_save wrote accounts.name for every role, and the course group
+   prints it over every bubble: a child named themselves „Trainerin Anna" and
+   wrote to the group under the trainer's name. Renaming the child never renamed
+   the login, so the chat went on showing the old name. */
+$chatLogin = make_account(['role'=>'student', 'name'=>'Lena Hofer', 'email'=>'lena.chat@beispiel.test']);
+$chatKid = make_student(['account_id'=>$chatLogin, 'first_name'=>'Lena', 'last_name'=>'Hofer']);
+$preferences = ['locale'=>'de', 'theme'=>'dark', 'accent'=>'', 'text_scale'=>'normal', 'notifications'=>'1'];
+sign_in_as($chatLogin);
+act('preferences_save', ['name'=>'Trainerin Anna'] + $preferences);
+is_same(['Lena Hofer', 'dark'], array_values(one('SELECT name,theme FROM accounts WHERE id=?', [$chatLogin])),
+        'a child calling themselves „Trainerin Anna“ under Mein Konto keeps their name, and the rest of the card is saved');
+does_not_throw(fn() => act('preferences_save', $preferences), 'and the card saves without a name, as Mein Konto now sends it');
+$childsCard = render_view('profile');
+ok(!str_contains($childsCard, 'name="name"'), 'Mein Konto offers a child no box for a name');
+ok(str_contains($childsCard, '<h2>Darstellung</h2>') && !str_contains($childsCard, 'Name und Darstellung'), 'and its card is called „Darstellung“, promising no name');
+sign_in_as($trainerId);
+act('preferences_save', ['name'=>'Tina Trainerin'] + $preferences);
+is_same('Tina Trainerin', (string)scalar('SELECT name FROM accounts WHERE id=?', [$trainerId]), 'staff still give themselves a name');
+ok(str_contains(render_view('profile'), 'name="name"') && str_contains(render_view('profile'), '<h2>Name und Darstellung</h2>'), 'with the box on their Mein Konto, under „Name und Darstellung“');
+throws(fn() => act('preferences_save', ['name'=>''] + $preferences), 'and must give one', 'Pflichtfelder');
+
+$saveChild = function (int $id, array $changes) {
+    $s = one('SELECT * FROM students WHERE id=?', [$id]);
+    $fields = $changes + ['id'=>(string)$id, 'revision'=>(string)$s['revision'], 'first_name'=>$s['first_name'], 'last_name'=>$s['last_name'],
+        'birth_date'=>(string)($s['birth_date'] ?? ''), 'address'=>(string)$s['address'], 'phone'=>(string)$s['phone']];
+    return act('student_save', $fields + (is_staff() ? ['email'=>'', 'joined_on'=>(string)$s['joined_on'], 'ended_on'=>'',
+        'status'=>$s['status'], 'internal_notes'=>''] : []));
+};
+$loginName = fn(int $id): string => (string)scalar('SELECT name FROM accounts WHERE id=?', [$id]);
+run('DELETE FROM record_versions');
+$saveChild($chatKid, ['first_name'=>'Lena-Marie']);
+is_same('Lena-Marie Hofer', $loginName($chatLogin), 'the trainer renaming the child renames their login, the name the chat shows');
+$lines = history_for('accounts', $chatLogin);
+is_same([1, $trainerId, ['name'=>['from'=>'Lena Hofer', 'to'=>'Lena-Marie Hofer']]],
+        [count($lines), (int)($lines[0]['actor_id'] ?? 0), version_changes($lines[0] ?? ['before_json'=>null, 'after_json'=>null])],
+        'one line in the change log on the login, by the trainer, with the old name and the new');
+$saveChild($chatKid, ['address'=>'Hauptstraße 5, 4020 Linz']);
+is_same(1, count(history_for('accounts', $chatLogin)), 'a save that renames nobody adds no line about the login');
+sign_in_as($chatLogin);
+$saveChild($chatKid, ['first_name'=>'Lena']);
+is_same('Lena Hofer', $loginName($chatLogin), 'the family renaming their own child renames the login too');
+sign_in_as($trainerId);
+$teamLogin = make_account(['role'=>'trainer', 'name'=>'Trainerin von früher', 'email'=>'frueher@beispiel.test']);
+$filedUnder = make_student(['account_id'=>$teamLogin, 'first_name'=>'Kind', 'last_name'=>'Von Früher']);
+$saveChild($filedUnder, ['first_name'=>'Umbenannt']);
+is_same('Trainerin von früher', $loginName($teamLogin), 'a team member’s login a child is still filed under keeps her own name');
+
+// ---------------------------------------------------------------------------
+case_('A new address is told to the old one, a new password to the address it signs in with, by a notice without a link [security review 2026-10-08]');
+/* change_account_email() signed out every session and killed every link, and
+   told nobody: whoever moved a login they had taken over did it unseen. Neither
+   did a changed password. The notice is a security mail - no switch stops it,
+   nothing tries it again by itself, its words go once it is sent - and it has
+   no link, so the sender lets it go as a notice, while any other security mail
+   without a link is still never sent [S1]. */
+$moving = make_account(['role'=>'student', 'name'=>'Mila Umzug', 'email'=>'mila.alt@beispiel.test',
+                        'password_hash'=>password_hash($password, PASSWORD_DEFAULT)]);
+make_student(['account_id'=>$moving, 'first_name'=>'Mila', 'last_name'=>'Umzug', 'email'=>'mila.alt@beispiel.test']);
+run('DELETE FROM mail_jobs');
+sign_in_as($moving);
+$_SESSION['activation_hash'] = hash('sha256', make_token($moving, 'email', 'mila.neu@beispiel.test'));
+act('activate', []);
+is_same('mila.neu@beispiel.test', (string)scalar('SELECT email FROM accounts WHERE id=?', [$moving]), 'the confirmed address is the login’s');
+$noticeJob = one("SELECT * FROM mail_jobs WHERE account_id=? AND status='queued'", [$moving]) ?? [];
+is_same(['mila.alt@beispiel.test', 'security', 'Deine Anmeldeadresse wurde geändert'],
+        [$noticeJob['recipient'] ?? null, $noticeJob['category'] ?? null, $noticeJob['subject'] ?? null],
+        'the old address is told, by a security mail');
+$said = $noticeJob ? mail_payload(unseal((string)$noticeJob['payload'])) : ['body'=>'', 'attach'=>[], 'notice'=>false];
+is_same("Hallo Mila,\n\ndie Adresse, mit der du dich anmeldest, wurde auf m***@b***.test geändert.\n\nWarst du das nicht? Melde dich beim Verein.",
+        $said['body'], 'greeting Mila, with the new address masked, and what to do if it was not her');
+is_same([true, false], [$said['notice'], (bool)preg_match('/token=|https?:/', $said['body'])], 'a notice, with no link in it');
+
+queue_mail($moving, 'mila.neu@beispiel.test', 'Kein Hinweis', 'Hallo, ganz ohne Link', 'security');
+$plain = (int)scalar("SELECT MAX(id) FROM mail_jobs WHERE subject='Kein Hinweis'");
+set_setting('smtp', ['host'=>'127.0.0.1', 'port'=>1, 'encryption'=>'tls', 'from_email'=>'portal@example.test', 'from_name'=>'B']);   // nothing listens there
+process_mail();
+is_same(['failed', 1], [(string)scalar('SELECT status FROM mail_jobs WHERE id=?', [(int)($noticeJob['id'] ?? 0)]), (int)scalar('SELECT attempts FROM mail_jobs WHERE id=?', [(int)($noticeJob['id'] ?? 0)])],
+        'the sender tries to send the notice, link or none - here to a server that is not there');
+is_same('cancelled', (string)scalar('SELECT status FROM mail_jobs WHERE id=?', [$plain]), 'while a security mail without a link that is no notice is still never sent');
+set_setting('smtp', []);
+
+run('DELETE FROM mail_jobs');
+sign_in_as($moving);
+act('password_change', ['current_password'=>$password, 'password'=>'Federball-Halle-2026!', 'password_confirm'=>'Federball-Halle-2026!']);
+$noticeJob = one('SELECT * FROM mail_jobs WHERE account_id=?', [$moving]) ?? [];
+is_same(['mila.neu@beispiel.test', 'security', 'Dein Passwort wurde geändert'],
+        [$noticeJob['recipient'] ?? null, $noticeJob['category'] ?? null, $noticeJob['subject'] ?? null],
+        'a new password is told to the address the login signs in with');
+$said = $noticeJob ? mail_payload(unseal((string)$noticeJob['payload'])) : ['body'=>'', 'attach'=>[], 'notice'=>false];
+ok($said['notice'] && str_contains($said['body'], 'das Passwort, mit dem du dich anmeldest, wurde geändert.'), 'as a notice, in the holder’s words');
+run("UPDATE accounts SET locale='en' WHERE id=?", [$moving]);
+sign_in_as($moving);
+act('password_change', ['current_password'=>'Federball-Halle-2026!', 'password'=>'Federball-Halle-2027!', 'password_confirm'=>'Federball-Halle-2027!']);
+is_same('Your password was changed', (string)scalar('SELECT subject FROM mail_jobs WHERE account_id=? ORDER BY id DESC LIMIT 1', [$moving]),
+        'in English for a login that reads English');
+
+run('DELETE FROM mail_jobs');
+sign_in_as($trainerId);
+$typo = make_account(['role'=>'student', 'email'=>'tippfehler@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+make_student(['account_id'=>$typo, 'first_name'=>'Tim', 'last_name'=>'Tipp', 'email'=>'tippfehler@beispiel.test']);
+transactional(fn() => change_account_email($typo, 'tim.richtig@beispiel.test'));
+is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE recipient=?', ['tippfehler@beispiel.test']),
+        'an invitation’s address that staff correct is told nothing: nobody signs in with it, and it may be a stranger’s');
+is_same('t***@b***.test', masked_address('tim.richtig@beispiel.test'), 'an address is masked to its first letters and its ending');
+sign_out();

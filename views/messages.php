@@ -38,13 +38,14 @@ $open=$id || $with || $picking;
 $writable=false;
 $chats=chat_list($user,$allDirect);
 
-/** What one row of the list says under the name. */
-$preview=function(array $c) use ($me): string {
+/** What one row of the list says under the name: who wrote last, where the list
+    names them - somebody else, in a course group - and what. */
+$preview=function(array $c) use ($me): array {
     if($c['last_id']===null)
-        return $c['kind']==='course'
+        return [null,$c['kind']==='course'
             ? plural((int)$c['members'],'Person im Kurs','Personen im Kurs','person in the course','people in the course').' · '.t('noch keine Nachrichten','no messages yet')
-            : t('Noch keine Nachrichten','No messages yet');
-    if($c['last_removed_at']!==null) return t('Nachricht entfernt','Message removed');
+            : t('Noch keine Nachrichten','No messages yet')];
+    if($c['last_removed_at']!==null) return [null,t('Nachricht entfernt','Message removed')];
     $text=trim((string)$c['last_body']);
     if($text==='' && $c['last_file']!==null) {
         [$kind,$seconds,$name]=explode('|',(string)$c['last_file'],3)+['','',''];
@@ -55,9 +56,8 @@ $preview=function(array $c) use ($me): string {
         };
     }
     $text=mb_substr(preg_replace('/\s+/u',' ',$text),0,90);
-    if((int)$c['last_sender_id']===$me) return t('Du: ','You: ').$text;
-    if($c['kind']==='course') return strtok((string)($c['last_sender_name']??t('Gelöscht','Deleted')),' ').': '.$text;
-    return $text;
+    if((int)$c['last_sender_id']===$me) return [null,t('Du: ','You: ').$text];
+    return [$c['kind']==='course'?chat_person_in($c,'last_sender_'):null,$text];
 };
 /** When, the way a messenger says it: the time today, the day otherwise. */
 $when=function(?string $utc): string {
@@ -66,13 +66,13 @@ $when=function(?string $utc): string {
     return $at->format('Y-m-d')===today() ? $at->format('H:i') : day_label($at->format('Y-m-d'));
 };
 $row=function(array $c) use ($user,$id,$preview,$when): void {
-    $unread=(int)$c['unread']; $group=$c['kind']==='course'; $other=chat_person_in($c,'other_'); ?>
+    $unread=(int)$c['unread']; $group=$c['kind']==='course'; $other=chat_person_in($c,'other_'); [$sender,$says]=$preview($c); ?>
     <a class="thread-item<?=$id===(int)$c['id']?' selected':''?><?=$unread?' unread':''?>" href="<?=e(url('messages',['id'=>$c['id'],'#'=>'chat-end']))?>">
         <?php if($group): ?><span class="hue hue-<?=e(chat_hue((int)$c['class_id']))?>"><?=avatar(['name'=>$c['class_name']])?></span>
         <?php else: ?><?=avatar($other)?><?php endif ?>
         <span class="thread-item-text">
             <span class="thread-item-top"><strong><span class="thread-item-name"><?=e(thread_title($c,$user))?></span></strong><time><?=e($when($c['last_at']??$c['updated_at']))?></time></span>
-            <span class="thread-item-bottom"><span class="thread-item-preview"><?=e($preview($c))?></span><?php if($unread):?><span class="count"><?=e($unread)?><span class="visually-hidden"><?=e(' '.t('ungelesen','unread'))?></span></span><?php endif ?></span>
+            <span class="thread-item-bottom"><span class="thread-item-preview"><?php if($sender) chat_sender($sender,true); ?><span class="thread-item-says"><?=e(($sender?': ':'').$says)?></span></span><?php if($unread):?><span class="count"><?=e($unread)?><span class="visually-hidden"><?=e(' '.t('ungelesen','unread'))?></span></span><?php endif ?></span>
         </span>
     </a>
 <?php };
@@ -280,12 +280,15 @@ elseif($id || $with):
     <div class="message-row<?=$mine?' mine':''?><?=$runStart?' run-start':''?>" id="m<?=e($m['id'])?>">
         <?php if($group && !$mine) echo $runStart?avatar($sender,'tiny'):'<span class="avatar-slot"></span>'; ?>
         <article class="message-bubble<?=$mine?' mine':''?><?=$m['removed']?' removed':''?>">
-            <?php if($group && !$mine && $runStart): ?><span class="bubble-sender hue-<?=e(chat_hue((int)$m['sender_id']))?>"><?=chat_name($sender)?></span><?php endif ?>
+            <?php /* Who wrote, over the first bubble of a run, the way the chat list
+                     names them too (chat_sender()): staff with their role in a pill
+                     no typed name can make. */
+            if($group && !$mine && $runStart): ?><span class="bubble-sender"><?php chat_sender($sender); ?></span><?php endif ?>
             <?php if($m['removed']): ?><div class="prewrap"><?=e(t('Nachricht entfernt','Message removed'))?></div>
             <?php elseif(($m['body']??'')!==''): ?><div class="prewrap"><?=e($m['body'])?></div><?php endif ?>
             <?php foreach($m['files'] as $file): $href=url('download',['what'=>'attachment','id'=>$file['id']]); ?>
                 <?php if($file['kind']==='image'): ?>
-                <a class="bubble-image" href="<?=e($href)?>"><img src="<?=e($href)?>" alt="<?=e($file['original_name'])?>" loading="lazy"></a>
+                <a class="bubble-image" href="<?=e($href)?>"><img src="<?=e($href)?>" alt="<?=e($file['original_name']?:t('Foto','Photo'))?>" loading="lazy"></a>
                 <?php elseif($file['kind']==='voice'): ?>
                 <div class="bubble-voice"><audio controls preload="none" src="<?=e($href)?>"></audio>
                     <small><?=e(t('Sprachnachricht','Voice message').((int)$file['seconds']?' · '.duration_label((int)$file['seconds']):''))?></small></div>

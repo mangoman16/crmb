@@ -34,12 +34,14 @@ Datenschutz**, and in the German text:
    > verschickt, etwa wenn sich eine Trainingszeit ändert oder die Halle
    > geschlossen ist. Bei neuen Konten ist das eingeschaltet. Abschalten lässt
    > es sich schon beim Aktivieren des Kontos, jederzeit später in „Mein Konto“
-   > und über den Link in jeder dieser E-Mails; im Portal bleiben die
-   > Neuigkeiten lesbar.
+   > und über den Link in jeder dieser E-Mails, der 90 Tage ab dem Versand gilt;
+   > im Portal bleiben die Neuigkeiten lesbar.
    > [Rechtsgrundlage ergänzen – z. B. berechtigtes Interesse]
    > E-Mail-Hinweise auf neue Nachrichten, geänderte Trainingstermine und
    > Antworten auf Anfragen haben eine eigene Einstellung. Sicherheitsmails wie
-   > Einladungen und Passwortlinks dienen der Bereitstellung des Zugangs.
+   > Einladungen, Passwortlinks und der Hinweis, dass die Anmeldeadresse oder
+   > das Passwort geändert wurde, dienen der Bereitstellung und dem Schutz des
+   > Zugangs.
 
 2. At the end of the section that lists what is processed (in the draft, „3.
    Welche Angaben verarbeitet werden"), add the paragraph about the chat, with
@@ -50,7 +52,8 @@ Datenschutz**, and in the German text:
    and write only in their own, that nothing records their reading, that a
    message is text and photos, that the chats between two children from before
    stay to read and take no new messages, and that an uploaded photo is stored
-   without where it was taken.
+   without where it was taken — kept as it came only where the portal cannot
+   read it through — and a chat photo without the name the phone gave it.
 
 3. After the sentence „SMTP-Passwörter und versandbereite E-Mail-Inhalte sind
    in der Anwendungsdatenbank verschlüsselt.", add the paragraph from
@@ -84,6 +87,16 @@ note in square brackets is still in it, and the message names the note. The
 same paragraphs in English are in `docs/privacy-draft-en.txt` in the
 download, for the English version if you keep one. Saving changes the
 **Fassung** number under the notice; nobody is asked to acknowledge it again.
+
+**If your notice was written from an earlier package of this version**, some of
+its sentences have changed since. Replace them with the drafts' and save with
+„… zur Verwendung freigegeben" still ticked, so it is released again: in „3.",
+the end of the chat paragraph, on photos; in „4.", the end of the paragraph on
+club news, which now says that the link in each such mail works for 90 days
+from sending, and the sentence on security mails, which now include the mail
+saying that a sign-in address or a password was changed; and in „7.", the
+sentence on cookies, which now names the second one, „badminton_https", set
+when the portal sends a browser on to its encrypted address.
 
 **Before you upload, if anything in the custom fields matters, write it down.**
 This version deletes the custom fields — „Weitere Angaben" on a child's page —
@@ -321,6 +334,38 @@ here so that nothing surprises you.
   gets. „Beispieldaten entfernen" and „Beispieldaten anlegen" give three fresh
   sign-ins and a new password; what a fill makes is now one course and four
   children.
+- **A family's login is called what the child is.** **Mein Konto** has no box
+  for a family's name any more, and renaming a child on the child's page renames
+  the login, with a line under **Änderungen**; so a child can no longer write in
+  a course's group under another name. A name a family gave itself before stays
+  until the child's record is next saved. Staff still choose their own name; in
+  a course's group, and in the list on **Nachrichten**, their name now has a
+  grey pill beside it, „Trainerin" or „Administrator", which no typed name can
+  make and a child's never has.
+- **A chat sends one e-mail until it is read**, not one for every message. A
+  family's login can send twenty photos an hour into the chats — staff are not
+  counted — and a chat photo is stored without the name the phone gave it.
+- **Every administrator is told in the bell when payment details change**: a
+  recipient's IBAN, the name on the account or the QR code's contents, a new
+  recipient, a course paying into another recipient, or another
+  „Standard-Zahlungsempfänger" — who made the change, with a link to it.
+- **The QR code is a SEPA transfer into the recipient's own account.** „Inhalt
+  des QR-Codes" under **Verwaltung → Zahlungsempfänger** must keep „BCD" on its
+  first line, `{recipient}` on its sixth and `{iban}` on its seventh, as the
+  template a new portal starts with does; anything else is refused. A recipient
+  whose template was changed to something else shows no QR code after the
+  update until the template is put right; its form says so under the preview,
+  „Dieser Inhalt ergibt keinen QR-Code: …".
+- **A changed sign-in address or password is told by mail**, for a login that
+  was set up: the old address hears of a new one, shown only in part, and the
+  login's address of a new password. Neither mail carries a link.
+- **Postausgang keeps what a sent mail said for 90 days.** After the first daily
+  cleanup, a mail sent longer ago still shows who it went to, its subject and
+  when, but opens without its text. A mail that could not be sent keeps its
+  text, so that it can be sent again.
+- **When no copy could be taken before an update**, the closed page no longer
+  says why: the reason, which could name the hosting account's folder or the
+  database, is in the hosting's error log (INSTALL.md).
 - **No longer in the portal**: custom fields, copying, saved views of the
   **Schüler** list, „An mehrere schreiben" with its e-mail templates,
   „Warteschlange senden", the printed form and data sheet, Verwaltung's „Tarife"

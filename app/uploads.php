@@ -224,10 +224,12 @@ function store_upload(string $field, string $kind): array {
  * camera or a phone writes a photo as. So is anything that is not a picture.
  *
  * A file that cannot be read the way its format says, before its picture data,
- * comes back as it came, metadata and all. Whether such a picture should be
- * refused instead is a decision the owner has not made yet; until she does, it
- * is kept as it always was. A JPEG cut off in the middle of its picture data
- * keeps what was cleaned before it, and the picture data as it is.
+ * comes back as it came, metadata and all, and is kept so: the cleaner tries,
+ * and a picture it cannot read through is not refused. The owner decided so on
+ * 2026-10-05 (ADR 0022 §11.5) and confirmed it on 2026-10-08, after the
+ * security review asked: "try to clear it, but otherwise ignore. dont refuse".
+ * A JPEG cut off in the middle of its picture data keeps what was cleaned
+ * before it, and the picture data as it is.
  */
 function image_without_metadata(string $bytes, string $mime): string {
     return match ($mime) {

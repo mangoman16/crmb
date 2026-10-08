@@ -35,6 +35,10 @@ function staff_role_posted(): string {
  * Refuses, too, to move anybody else's staff or administrator login. Only a
  * student's login is ever re-addressed on somebody's behalf; a staff login
  * moves only when its holder confirms the link from the new mailbox.
+ *
+ * The old address is told, last, after the mail waiting for it was stopped
+ * (notify_sign_in_changed()): whoever moved a login they took over would
+ * otherwise do it unseen.
  */
 function change_account_email(int $accountId, string $email): void {
     $email=email_value($email);
@@ -47,6 +51,7 @@ function change_account_email(int $accountId, string $email): void {
         run('UPDATE students SET email=?,updated_at=?,revision=revision+1 WHERE account_id=?',[$email,now(),$accountId]);
         run('DELETE FROM auth_tokens WHERE account_id=?',[$accountId]);
         cancel_account_mail($accountId);
+        notify_sign_in_changed($account,(string)$account['email'],$email);
     });
 }
 
@@ -332,6 +337,25 @@ function create_own_student(int $accountId, string $email, array $details): int 
     run('UPDATE accounts SET name=? WHERE id=?',[login_name_for($details['first_name'],$details['last_name']),$accountId]);
     audit('student.saved','student',$id,$accountId);
     return $id;
+}
+
+/**
+ * Call a student's login what the student is now called (login_name_for()):
+ * the name the chat and the bell show for it, which its holder cannot change
+ * (preferences_save). After every student_save, by staff or by the family, so a
+ * renamed child is not shown in the chat under the old name. Tracked on the
+ * login, and only when the name differs, so a save that renames nobody adds no
+ * line.
+ *
+ * A staff login a student's record still points to, from before ADR 0010,
+ * keeps its own name: it is a team member's (refuse_unless_student_login()).
+ */
+function name_login_after_student(int $accountId, string $first, string $last): void {
+    $login=$accountId?one('SELECT id,name,role FROM accounts WHERE id=?',[$accountId]):null;
+    if(!$login || $login['role']!=='student') return;
+    $name=login_name_for($first,$last);
+    if($name===(string)$login['name']) return;
+    tracked('accounts',$accountId,$name,fn()=>run('UPDATE accounts SET name=? WHERE id=?',[$name,$accountId]));
 }
 
 /**
@@ -843,6 +867,7 @@ function dispatch_action(string $action): array {
                 if(!$updated->rowCount()) throw $stale();
             });
         }
+        name_login_after_student((int)$existing['account_id'],$first,$last);
         audit('student.saved','student',$id);
         flash((is_staff($u)?t('Schüler gespeichert.','Student saved.'):t('Deine Angaben sind gespeichert.','Your details are saved.'))
             .($readdress?' '.t('Die Einladung ist an die neue Adresse unterwegs; der Link an die alte gilt nicht mehr.','The invitation is on its way to the new address; the link sent to the old one no longer works.'):''));

@@ -774,6 +774,17 @@ is_same($huge, image_without_metadata($huge, 'image/png'), 'a PNG whose chunk sa
 $hugeWebp = 'RIFF' . pack('V', 0xFFFFFFF0) . 'WEBP' . substr($webpIn, 12);
 is_same($hugeWebp, image_without_metadata($hugeWebp, 'image/webp'), 'and so is a WebP whose RIFF header says as much');
 
+case_('A chat photo keeps no name the phone gave it [security review 2026-10-08]');
+/* „IMG_2041.jpg", or whatever a family called the file, was the whole group's
+   to read: as the picture's text, and as the name it downloads under.
+   attach_to_message() needs a real upload, which a test cannot send, so this
+   pins the line that writes the row; TESTING.md has the check with a phone. */
+$attach = (string)strstr((string)strstr((string)file_get_contents(APP_ROOT.'/app/messaging.php'), 'function attach_to_message('), 'function duration_label(', true);
+ok(str_contains($attach, "[\$messageId, 'image', \$stored['stored_name'], '', \$stored['mime']"), 'the photo’s row is written with no name');
+ok(!str_contains($attach, "\$stored['original_name']"), 'the name it arrived with is used nowhere');
+$storedName = str_repeat('3f', 16) . '.jpg';
+is_same($storedName, upload_download_name($storedName, ''), 'so it downloads under the name the portal gave it');
+
 // ---------------------------------------------------------------------------
 case_('With nobody in the database nothing is swept: those files are not its rows’ to judge [security review]');
 /* INSTALL.md restores a backup by deleting every table and importing the copy.

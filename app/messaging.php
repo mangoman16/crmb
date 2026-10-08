@@ -244,7 +244,8 @@ function thread_title(array $thread, array $user): string {
 /**
  * $user's chat list, in one query however long it is: the groups, then the
  * chats, then the closed desk threads, each newest first - every row with the
- * other person, the last message, its first file, the number in the course,
+ * other person, the last message and its writer (both people as
+ * CHAT_PERSON_COLUMNS has them), its first file, the number in the course,
  * whether a member of staff is in it (two_person_chat_open()) and how many
  * messages are unread.
  *
@@ -276,9 +277,8 @@ function chat_list(array $user, bool $allDirect = false): array {
         ." (SELECT GROUP_CONCAT(pa.name ORDER BY pa.name SEPARATOR ' · ') FROM thread_participants pp"
         .'   JOIN accounts pa ON pa.id=pp.account_id WHERE pp.thread_id=t.id) AS people_names,'
         .' '.THREAD_HAS_STAFF_SQL.' AS has_staff,'
-        .' m.id AS last_id, CASE WHEN m.removed_at IS NULL THEN m.body END AS last_body, m.sender_id AS last_sender_id,'
-        .' m.created_at AS last_at,'
-        .' m.removed_at AS last_removed_at, ms.name AS last_sender_name,'
+        .' m.id AS last_id, CASE WHEN m.removed_at IS NULL THEN m.body END AS last_body,'
+        .' m.created_at AS last_at, m.removed_at AS last_removed_at, '.chat_person_columns('ms', 'last_sender_').','
         ." (SELECT CONCAT(f.kind,'|',f.seconds,'|',f.original_name) FROM message_files f WHERE f.message_id=m.id"
         .'   AND m.removed_at IS NULL ORDER BY f.id LIMIT 1) AS last_file,'
         .' (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=t.class_id AND '.current_enrolment_sql('cs').') AS members,'
@@ -349,6 +349,18 @@ function unread_thread_ids(array $user): array {
 }
 
 function unread_count(array $user): int { return count(unread_thread_ids($user)); }
+
+/**
+ * Whether $accountId has read every message of a conversation from before
+ * message $messageId, except their own - how message_send decides whether a
+ * new message is worth a mail to them: one unread from before was mailed about
+ * already. `<=>` for a message whose sender's login was deleted, as above.
+ */
+function has_read_before(int $threadId, int $accountId, int $messageId): bool {
+    return !scalar('SELECT 1 FROM messages m WHERE m.thread_id=? AND m.id<? AND NOT (m.sender_id <=> ?)'
+        .' AND m.id>COALESCE((SELECT r.last_read_message_id FROM thread_reads r WHERE r.thread_id=m.thread_id AND r.account_id=?),0) LIMIT 1',
+        [$threadId, $messageId, $accountId, $accountId]);
+}
 
 /**
  * One conversation's messages, oldest first: the newest $limit, or the $limit
@@ -562,9 +574,13 @@ function attach_to_message(int $messageId, string $field = 'attachment'): bool {
     // Only a photo arrives here: store_upload() refuses anything
     // message_upload_types() does not name.
     $stored = store_upload($field, 'message');
+    // Without the name the phone gave it: „IMG_2041.jpg", or a family's own
+    // words, would be the whole group's to read, as the picture's text and the
+    // name it downloads under. It downloads under its stored name instead
+    // (upload_download_name()) (security review, 2026-10-08).
     run('INSERT INTO message_files (message_id,kind,stored_name,original_name,mime,bytes,seconds,created_at)'
         .' VALUES (?,?,?,?,?,?,?,?)',
-        [$messageId, 'image', $stored['stored_name'], $stored['original_name'], $stored['mime'], $stored['bytes'], 0, now()]);
+        [$messageId, 'image', $stored['stored_name'], '', $stored['mime'], $stored['bytes'], 0, now()]);
     return true;
 }
 

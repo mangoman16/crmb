@@ -188,6 +188,106 @@ foreach (['currency', 'qr_template', 'note'] as $column)
 run('UPDATE payment_profiles SET iban=? WHERE id=?', ['AT055100080513176900', $profileId]);
 payment_cache_clear();
 
+case_('A change to where the money goes is told to every administrator, by whom and which [ADR 0025, amended 2026-10-08]');
+/* Whoever holds the trainer's login may change the IBAN, the name it is paid to
+   and what the QR code says (ADR 0025), make a new recipient, and point a
+   course at it - and nobody heard of any of it. */
+$owner = make_account(['role'=>'admin', 'name'=>'Chefin']);
+$deputy = make_account(['role'=>'admin', 'name'=>'Zweite Chefin']);
+$told = fn(int $admin): array => rows("SELECT title,body,link_page,link_params FROM notifications WHERE account_id=? AND kind='bank' ORDER BY id", [$admin]);
+$saved = fn(): array => one('SELECT * FROM payment_profiles WHERE id=?', [$profileId]);
+$houseName = (string)$saved()['name'];
+act('profile_save', ['id'=>(string)$profileId, 'iban'=>'AT61 1904 3002 3457 3201', 'recipient'=>'Tina Privat'] + $asPosted($saved()));
+$note = $told($owner)[0] ?? [];
+is_same([1, 'Kontoverbindung geändert: '.$houseName], [count($told($owner)), $note['title'] ?? null], 'the administrator is told once that its bank details changed');
+ok(str_contains((string)($note['body'] ?? ''), '(Trainerin): ') && str_contains((string)($note['body'] ?? ''), 'IBAN, Empfänger')
+   && !str_contains((string)($note['body'] ?? ''), 'QR'), 'by the trainer, naming the IBAN and the recipient, and not the QR code she left alone');
+is_same(['history', http_build_query(['entity'=>'payment_profiles', 'record'=>$profileId])], [$note['link_page'] ?? null, $note['link_params'] ?? null],
+        'and it opens what „Änderungen“ says about it');
+is_same(1, count($told($deputy)), 'every administrator is told');
+act('profile_save', ['id'=>(string)$profileId, 'note'=>'Bitte mit Verwendungszweck'] + $asPosted($saved()));
+act('profile_save', ['id'=>(string)$profileId, 'qr_template'=>str_replace("\n", "\r\n", (string)$saved()['qr_template'])] + $asPosted($saved()));
+is_same(1, count($told($owner)), 'a note changes nothing worth telling, and nor does the same QR text with a browser’s line ends');
+sign_in_as($owner);
+act('profile_save', ['id'=>(string)$profileId, 'iban'=>'AT055100080513176900', 'recipient'=>(string)$asSaved['recipient']] + $asPosted($saved()));
+is_same([2, 2], [count($told($owner)), count($told($deputy))], 'an administrator’s own change is told to every administrator, her too');
+sign_in_as($trainer);
+act('profile_save', ['name'=>'Tinas Konto', 'recipient'=>'Tina', 'iban'=>'AT022050302101023600', 'bic'=>'',
+                     'currency'=>'EUR', 'qr_template'=>'', 'note'=>'']);
+$tinas = (int)scalar("SELECT id FROM payment_profiles WHERE name='Tinas Konto'");
+is_same(['Neuer Zahlungsempfänger: Tinas Konto', 3], [(string)(array_slice($told($owner), -1)[0]['title'] ?? ''), count($told($deputy))],
+        'a new recipient counts as a change: it brings an account of its own');
+
+/* A course's charges are paid into its own profile, or the default one. */
+$course = (int)act('class_save', ['name'=>'Kurs auf Vereinskonto', 'capacity'=>'0', 'sort_order'=>'0', 'payment_profile_id'=>(string)$profileId])[1]['id'];
+act('class_save', ['id'=>(string)$course, 'name'=>'Kurs auf Vereinskonto', 'capacity'=>'0', 'sort_order'=>'0', 'payment_profile_id'=>'']);
+is_same(3, count($told($owner)), 'a course made on the default account, or put back on it from there, is no change of account');
+act('class_save', ['id'=>(string)$course, 'name'=>'Kurs auf Vereinskonto', 'capacity'=>'0', 'sort_order'=>'0', 'payment_profile_id'=>(string)$tinas]);
+$note = array_slice($told($owner), -1)[0] ?? [];
+is_same([4, 4, 'Kurs zahlt auf ein anderes Konto: Kurs auf Vereinskonto'], [count($told($owner)), count($told($deputy)), $note['title'] ?? null],
+        'a course pointed at another recipient is told to every administrator');
+ok(str_contains((string)($note['body'] ?? ''), '„Tinas Konto“ statt auf „'.$houseName.'“') && str_contains((string)($note['body'] ?? ''), '(Trainerin)'),
+   'by whom, and from which account to which');
+is_same(['classes', http_build_query(['id'=>$course, 'edit'=>1])], [$note['link_page'] ?? null, $note['link_params'] ?? null], 'and it opens the course');
+act('class_save', ['name'=>'Neuer Kurs auf Tinas Konto', 'capacity'=>'0', 'sort_order'=>'0', 'payment_profile_id'=>(string)$tinas]);
+is_same(5, count($told($owner)), 'and so is a new course made on another account than the default one');
+/* The default recipient is every such course's: the trainer may change it on
+   Verwaltung's „Geld & Zahlungen" card, as she may move a course. */
+$card = [];
+foreach (settings_in_group('payments') as $key => $spec)
+    $card['set_'.$key] = $spec['kind'] === 'list' ? implode("\n", (array)setting($key)) : (is_bool(setting($key)) ? (setting($key) ? '1' : '') : (string)setting($key));
+act('defaults_registry_save', ['group'=>'payments'] + $card);
+is_same(5, count($told($owner)), 'saving the card without changing the default recipient tells nobody');
+act('defaults_registry_save', ['group'=>'payments', 'set_default_payment_profile'=>(string)$tinas] + $card);
+$note = array_slice($told($owner), -1)[0] ?? [];
+is_same([6, 6, 'Standard-Zahlungsempfänger geändert: „Tinas Konto“'], [count($told($owner)), count($told($deputy)), $note['title'] ?? null],
+        'the default recipient changed is told to every administrator');
+ok(str_contains((string)($note['body'] ?? ''), '(Trainerin): ') && str_contains((string)($note['body'] ?? ''), '„Tinas Konto“ statt auf „'.$houseName.'“'),
+   'by whom, and from which account to which');
+is_same(['manage', http_build_query(['tab'=>'payments'])], [$note['link_page'] ?? null, $note['link_params'] ?? null], 'and it opens where the default is chosen');
+act('defaults_registry_save', ['group'=>'payments', 'set_default_payment_profile'=>(string)$profileId] + $card);
+is_same([$profileId, 7], [(int)setting('default_payment_profile'), count($told($owner))], 'and so is putting it back');
+run("UPDATE classes SET archived=1 WHERE id=? OR name='Neuer Kurs auf Tinas Konto'", [$course]);
+run("UPDATE payment_profiles SET archived=1 WHERE id=?", [$tinas]);
+
+case_('The QR code is a transfer into the recipient’s own account, or no code at all [ADR 0025, amended 2026-10-08]');
+/* What it says is a template of up to 2000 characters: made a link, every
+   family's „Beiträge" would carry a code that opens a web page; with an IBAN
+   of its own on the seventh line, the code would pay an account that
+   valid_iban() never saw and no notice named. EPC069-12, the SEPA transfer the
+   banking apps read, begins with the line BCD and has the recipient's name on
+   its sixth line and the IBAN on its seventh. */
+$sepa = (string)$saved()['qr_template'];
+ok(str_starts_with(qr_payload($saved(), 4500, 'Beitrag'), "BCD\n002\n1\nSCT\n"), 'the template the portal starts with makes a SEPA transfer');
+$ownIban = str_replace('{iban}', 'AT022050302101023600', $sepa);
+foreach (['https://zahlen.example.test/?betrag={amount}' => 'a link',
+          'BCD https://zahlen.example.test/' => 'a line that only starts with BCD',
+          "Zahlung\n".$sepa => 'the transfer with a line of its own before it',
+          $ownIban => 'a transfer with an IBAN of its own on the seventh line',
+          str_replace(['{recipient}', '{iban}'], ['{iban}', '{recipient}'], $sepa) => 'the IBAN and the name swapped'] as $template => $what)
+    throws(fn() => act('profile_save', ['id'=>(string)$profileId, 'qr_template'=>$template] + $asPosted($saved())),
+           $what.' is refused in words', 'muss eine SEPA-Überweisung bleiben');
+is_same($sepa, (string)$saved()['qr_template'], 'and the template stays what it was');
+act('profile_save', ['id'=>(string)$profileId, 'qr_template'=>str_replace("\n", "\r\n", $sepa)] + $asPosted($saved()));
+is_same($sepa, (string)$saved()['qr_template'], 'the transfer as a browser sends it is saved, its lines ended the way it is read');
+does_not_throw(fn() => act('profile_save', ['id'=>(string)$profileId, 'qr_template'=>''] + $asPosted($saved())), 'and no template, which is no code, is allowed');
+foreach (['https://zahlen.example.test/?betrag={amount}' => 'a link', $ownIban => 'an IBAN of its own'] as $template => $what) {
+    run('UPDATE payment_profiles SET qr_template=? WHERE id=?', [$template, $profileId]);
+    is_same('', qr_payload($saved(), 4500, 'Beitrag'), 'a template with '.$what.' saved before this rule makes no code at all');
+}
+$form = render_view('manage', ['tab'=>'payments', 'edit'=>(string)$profileId]);
+ok(str_contains($form, e('Dieser Inhalt ergibt keinen QR-Code: Er muss mit „BCD“ beginnen und in der sechsten Zeile {recipient}, in der siebten {iban} haben.')),
+   'and the form says so under its preview, with the rule');
+ok(str_contains($form, e('„BCD“ in der ersten Zeile, {recipient} in der sechsten und {iban} in der siebten')), 'the box’s own hint states the rule the save holds it to');
+run('UPDATE payment_profiles SET qr_template=? WHERE id=?', [$sepa, $profileId]);
+ok(!str_contains(render_view('manage', ['tab'=>'payments', 'edit'=>(string)$profileId]), e('Dieser Inhalt ergibt keinen QR-Code')),
+   'a template that makes a transfer gets its code and no such sentence');
+run('UPDATE payment_profiles SET qr_template=?, recipient=? WHERE id=?', [$sepa, "TSV Beispiel\nAT02 2050 3021 0102 3600", $profileId]);
+is_same([(string)$saved()['iban'], 'TSV Beispiel AT02 2050 3021 0102 3600'], array_reverse(array_slice(explode("\n", qr_payload($saved(), 4500, 'Beitrag')), 5, 2)),
+        'a line break in the recipient’s name moves no line of its own into the IBAN’s place');
+run('UPDATE payment_profiles SET recipient=? WHERE id=?', [(string)$asSaved['recipient'], $profileId]);
+payment_cache_clear();
+
 case_('Above 400 € the recipient’s address has to be on it');
 /* § 11 Abs 1 Z 3 lit b UStG wants the recipient's name and address; Abs 6 lets
    a Kleinbetragsrechnung up to 400 € gross leave both out, which is most of a

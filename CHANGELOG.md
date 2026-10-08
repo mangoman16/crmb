@@ -194,6 +194,52 @@ whether Safari still flashes white.
   **Postausgang** as failed for staff to send again, because its link may have
   lapsed by then.
 
+### What the security review of 8 October found
+
+- **A family's login is called what the child is.** Mein Konto has no box for a
+  family's name any more, and renaming a child renames its login, recorded under
+  **Änderungen**: a child could call itself „Trainerin Anna" and write in a
+  course's group under that name. A name a family gave itself before stays until
+  the child's record is next saved. Staff choose their own name as before. In a
+  course's group, and in the list on **Nachrichten** where it names who wrote
+  last there, a staff member's name has a small grey pill beside it, „Trainerin"
+  or „Administrator", which no name typed into a box can make; a child's never
+  has one, whatever the child is called.
+- **A chat sends one e-mail until it is read.** Forty messages were forty mails;
+  now a message is mailed about only when everything before it was read. The
+  bell still lists each one.
+- **Twenty chat photos an hour from a family's login**, as for receipts, so
+  that one login cannot fill the server's disk; staff are not counted. A chat
+  photo is stored without the name the phone gave it — „IMG_2041.jpg", or a
+  family's own words — and downloads under its stored name.
+- **Every administrator hears of a change to where the families' money goes**:
+  a recipient's IBAN, the name on the account or the QR code's contents, a new
+  recipient, a course paying into another recipient, and another
+  „Standard-Zahlungsempfänger", each with who made it and a link to
+  **Änderungen**, the course or **Geld & Zahlungen**. Trainers still change the
+  IBAN (ADR 0025, amended).
+- **The QR code pays the recipient's own account, by SEPA transfer.** „Inhalt
+  des QR-Codes" must keep „BCD" on its first line, `{recipient}` on its sixth
+  and `{iban}` on its seventh; anything else is refused when saved, and a
+  template saved before that is not one draws no code, while the recipient's
+  form says why under its preview: „Dieser Inhalt ergibt keinen QR-Code: …".
+  The box's own hint states the rule. A line break in the recipient's name can
+  no longer move the IBAN.
+- **A changed sign-in address or password is told by mail**: the old address
+  hears of the new one, shown only in part, and the login's address of a new
+  password, so a change made by somebody else does not go unseen. Neither mail
+  has a link, the queue does not try it again, and its text is not kept.
+- **What a sent mail said goes from Postausgang after 90 days**; who it went to,
+  its subject and when stay. A mail that could not be sent keeps its text, so
+  that it can be sent again. A security mail's text goes as it is sent, as
+  before.
+- **The closed page names no folder and no database error** when no copy could
+  be taken before an update. Both could name the hosting account; the hosting's
+  error log has the reason.
+- **The setup page is sent with the portal's security headers**: no framing, no
+  scripts or styles from elsewhere, no referrer. It answers before there is a
+  configuration and so had none of them.
+
 ### An update that lost records stays closed until they are back
 
 - **Before, the portal closed for one page view and then opened as if nothing

@@ -4,7 +4,16 @@ declare(strict_types=1);
 function dispatch_messages(string $action): array {
     switch($action) {
     case 'message_send':
-        $u=require_user();throttle('message',(string)$u['id'],40,300);$id=(int)post('thread_id');
+        $u=require_user();throttle('message',(string)$u['id'],40,300);
+        // A photo is a file on the disk for as long as its chat lasts: twenty an
+        // hour per family's login, as for a receipt (proof_upload), so one login
+        // cannot fill the disk (security review, 2026-10-08). Staff are not
+        // counted: a trainer posting a tournament's photos is not told to wait
+        // (the owner: „no need to be over sensitive"). Counted before anything
+        // is written, like every throttle.
+        $hasFile=isset($_FILES['attachment']) && (int)($_FILES['attachment']['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE;
+        if($hasFile && !is_staff($u)) throttle('message-photo',(string)$u['id'],20,3600);
+        $id=(int)post('thread_id');
         // Into a conversation they may write in, or the first message to
         // somebody, which makes the chat with them. There is no third way: the
         // shared desk thread is closed (ADR 0022).
@@ -21,7 +30,6 @@ function dispatch_messages(string $action): array {
         // A photo is a message on its own; only a bubble with neither text nor
         // a photo is nothing to send.
         $body=text_limit('body',20000);
-        $hasFile=isset($_FILES['attachment']) && (int)($_FILES['attachment']['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE;
         if($body==='' && !$hasFile) throw new UserError(t('Bitte etwas schreiben oder ein Foto anhängen.','Write something, or attach a photo.'));
         run('INSERT INTO messages (thread_id,sender_id,body,created_at) VALUES (?,?,?,?)',[$id,$u['id'],$body,now()]);
         $messageId=(int)db()->lastInsertId();
@@ -30,12 +38,15 @@ function dispatch_messages(string $action): array {
         // A chat tells the other person, by email if they want one and in the
         // bell either way. A group tells nobody: fifteen children would each
         // get a mail for every message (ADR 0022); the unread count says it.
+        // The mail goes once until they look: somebody with a message here
+        // they have not read was told then, and forty messages were forty
+        // mails (security review, 2026-10-08).
         if($thread['kind']!=='course') {
             $summary=$body!==''?mb_substr($body,0,120):t('Ein Foto','A photo');
             foreach(thread_people($id) as $person) {
                 if((int)$person['id']===(int)$u['id']) continue;
                 $account=one('SELECT * FROM accounts WHERE id=?',[(int)$person['id']]);
-                notify_thread($account,$id,thread_title($thread,$account));
+                if(has_read_before($id,(int)$person['id'],$messageId)) notify_thread($account,$id,thread_title($thread,$account));
                 notify((int)$person['id'],'message',t('Neue Nachricht von ','New message from ').$u['name'],$summary,'messages',['id'=>$id]);
             }
         }

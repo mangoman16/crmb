@@ -77,6 +77,35 @@ function install_submission(array $post, array $form): array {
 function config_path(): string { return getenv('CRM_CONFIG') ?: ROOT . '/config/config.php'; }
 
 /**
+ * The headers every HTML page is sent with: nothing loaded, posted or framed
+ * from anywhere but here, no sniffing, no referrer, no cache.
+ *
+ * One list for the portal (boot_http()) and the setup page, which answers before
+ * there is a configuration to boot from and so was once sent with none of them.
+ * Here rather than in app/bootstrap.php for the same reason as asset_path().
+ * Strict-Transport-Security is not on it: it follows from the portal's address,
+ * and boot_http() adds it from the configuration.
+ */
+function security_headers(): array {
+    return [
+        "Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        'X-Content-Type-Options: nosniff',
+        'X-Frame-Options: DENY',
+        'Referrer-Policy: no-referrer',
+        'Cache-Control: no-store',
+        // Camera, microphone and location stay off: no page asks a browser for
+        // any of them, and a policy is worth more than an intention. A student's
+        // photo comes through the file input with capture="environment" (ADR
+        // 0022 §11.4); whether camera=() keeps a phone from opening its camera
+        // there is to be measured on an iPhone and an Android phone, not assumed.
+        'Permissions-Policy: camera=(), microphone=(), geolocation=()',
+        'Cross-Origin-Opener-Policy: same-origin',
+        'Cross-Origin-Resource-Policy: same-origin',
+        'X-Permitted-Cross-Domain-Policies: none',
+    ];
+}
+
+/**
  * Where a file that ships in public/assets/ is, seen from public/, with a hash
  * of its bytes in the address: "assets/app.css?v=3f9c0a1b2c4d".
  *

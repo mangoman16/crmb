@@ -35,8 +35,11 @@ $resets=password_resets_for((int)$user['id'],PASSWORD_RESET_SHOWN_DAYS); ?>
     input('password_confirm',t('Passwort wiederholen','Repeat password'),'','password',true);
     submit_button();?></form></details>
 </section>
-<section class="card"><h2><?=e(t('Name und Darstellung','Name and appearance'))?></h2><?php start_form('preferences_save');?><div class="grid two"><?php
-input('name',t('Name','Name'),$user['name'],'text',true);
+<?php /* Staff name themselves; a student's login is called what the student is
+         (preferences_save), so a family's card has no name, and says so. */
+$ownName=is_staff($user); ?>
+<section class="card"><h2><?=e($ownName?t('Name und Darstellung','Name and appearance'):t('Darstellung','Appearance'))?></h2><?php start_form('preferences_save');?><div class="grid two"><?php
+if($ownName) input('name',t('Name','Name'),$user['name'],'text',true);
 select_field('locale',t('Sprache','Language'),['de'=>'Deutsch','en'=>'English'],$user['locale'],true);
 select_field('theme',t('Erscheinungsbild','Appearance'),['auto'=>t('Wie am Gerät eingestellt','Match my device'),'light'=>t('Immer hell','Always light'),'dark'=>t('Immer dunkel','Always dark')],$user['theme']??'auto',true);
 select_field('text_scale',t('Schriftgröße','Text size'),['normal'=>t('Normal','Normal'),'large'=>t('Größer','Larger'),'larger'=>t('Noch größer','Even larger'),'largest'=>t('Am größten','Largest')],$user['text_scale']??'normal',true);

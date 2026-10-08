@@ -17,15 +17,16 @@ function dispatch_config(string $action): array {
     // ---- classes -------------------------------------------------------
 
     case 'class_save':
-        require_staff(); $id=(int)post('id');
-        if($id && !one('SELECT id FROM classes WHERE id=?',[$id])) throw new NotFound(t('Kurs nicht gefunden.','Course not found.'));
+        $u=require_staff(); $id=(int)post('id');
+        $was=$id?one('SELECT id,payment_profile_id FROM classes WHERE id=?',[$id]):null;
+        if($id && !$was) throw new NotFound(t('Kurs nicht gefunden.','Course not found.'));
         // An empty box is no limit, as a 0 is.
         $capacity=whole_number_value(post('capacity')?:'0',0,500,t('Plätze: 0 bis 500 (0 = unbegrenzt).','Places: 0 to 500 (0 = unlimited).'));
         $days=class_days_from_post();
-        $args=[required_text('name',120),text_limit('description',500),text_limit('location',160),
-               reference_or_null('accounts','trainer_id',"role IN ('admin','trainer','manager')"),
-               reference_or_null('payment_profiles','payment_profile_id'),
-               $capacity,list_position_value(post('sort_order')),post('archived')?1:0];
+        $name=required_text('name',120); $description=text_limit('description',500); $location=text_limit('location',160);
+        $trainerId=reference_or_null('accounts','trainer_id',"role IN ('admin','trainer','manager')");
+        $profileId=reference_or_null('payment_profiles','payment_profile_id');
+        $args=[$name,$description,$location,$trainerId,$profileId,$capacity,list_position_value(post('sort_order')),post('archived')?1:0];
         $id=transactional(function() use ($id,$args,$days): int {
             if($id) run('UPDATE classes SET name=?,description=?,location=?,trainer_id=?,payment_profile_id=?,capacity=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
             else {
@@ -42,6 +43,18 @@ function dispatch_config(string $action): array {
                     [$id,$day['weekday'],$day['starts_at'],$day['ends_at'],$day['location'],$order*10]);
             return $id;
         });
+        // A course pointed at another payment profile sends its families'
+        // money to another account, so every administrator hears of it, like a
+        // changed IBAN (ADR 0025, amended 2026-10-08). Compared as charges find
+        // their account (charge_payment_profile()): no profile of its own is the
+        // default one, and a new course would have had that.
+        $house=(int)setting('default_payment_profile');
+        $from=(int)($was['payment_profile_id']??0)?:$house; $to=(int)($profileId??0)?:$house;
+        if($from!==$to)
+            notify_admins_of_bank_change($u,t('Kurs zahlt auf ein anderes Konto: ','Course pays into another account: ').$name,
+                strtr(t('Die Beiträge gehen jetzt auf {to} statt auf {from}.','Charges are now paid into {to} instead of {from}.'),
+                      ['{to}'=>payment_profile_name($to),'{from}'=>payment_profile_name($from)]),
+                'classes',['id'=>$id,'edit'=>1]);
         audit('class.saved','class',$id); flash(t('Kurs gespeichert.','Course saved.'));
         return ['classes',['id'=>$id]];
 
@@ -187,15 +200,26 @@ function dispatch_config(string $action): array {
     // ---- payment profiles ----------------------------------------------
 
     case 'profile_save':
-        require_staff(); $id=(int)post('id');
-        if($id && !one('SELECT id FROM payment_profiles WHERE id=?',[$id])) throw new UserError(t('Zahlungsempfänger nicht gefunden.','Payment profile not found.'));
+        $u=require_staff(); $id=(int)post('id');
+        $before=$id?one('SELECT * FROM payment_profiles WHERE id=?',[$id]):null;
+        if($id && !$before) throw new UserError(t('Zahlungsempfänger nicht gefunden.','Payment profile not found.'));
         $iban=strtoupper(preg_replace('/\s+/','',post('iban')) ?? '');
         if($iban!=='' && !valid_iban($iban)) throw new UserError(t('Diese IBAN ist nicht gültig. Bitte Ziffern und Prüfsumme kontrollieren.','This IBAN is not valid. Please check the digits and the checksum.'));
         $bic=strtoupper(preg_replace('/\s+/','',post('bic')) ?? '');
         if($bic!=='' && !preg_match('/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/D',$bic)) throw new UserError(t('Diese BIC ist nicht gültig.','This BIC is not valid.'));
         $currency=strtoupper(post('currency','EUR'));
         if(!preg_match('/^[A-Z]{3}$/D',$currency)) throw new UserError(t('Währung als dreistelliger Code, z. B. EUR.','Currency as a three-letter code, e.g. EUR.'));
-        $args=[required_text('name',120),text_limit('recipient',140),$iban,$bic,$currency,text_limit('qr_template',2000),text_limit('note',255),post('archived')?1:0];
+        // Stored with LF, as qr_payload() reads it: a browser posts a textarea
+        // with CRLF, and the same text saved again was a change every time.
+        $posted=['name'=>required_text('name',120),'recipient'=>text_limit('recipient',140),'iban'=>$iban,'bic'=>$bic,'currency'=>$currency,
+                 'qr_template'=>qr_template_lines(text_limit('qr_template',2000)),'note'=>text_limit('note',255),'archived'=>post('archived')?1:0];
+        // A transfer into this profile's account or no code at all
+        // (qr_template_pays_profile()): anything else is refused here, where it
+        // can still be corrected.
+        if(trim($posted['qr_template'])!=='' && !qr_template_pays_profile($posted['qr_template']))
+            throw new UserError(t('Der Inhalt des QR-Codes muss eine SEPA-Überweisung bleiben: „BCD“ in der ersten Zeile, {recipient} in der sechsten und {iban} in der siebten.',
+                                  'The QR code contents must stay a SEPA transfer: “BCD” on the first line, {recipient} on the sixth and {iban} on the seventh.'));
+        $args=array_values($posted);
         // Every change is kept in „Änderungen", with what it was before and who
         // changed it (ADR 0025): an IBAN decides where the families' money goes,
         // and a trainer may change it, so its old value is the one most worth
@@ -205,6 +229,18 @@ function dispatch_config(string $action): array {
             run('INSERT INTO payment_profiles (name,recipient,iban,bic,currency,qr_template,note,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]);
             return (int)db()->lastInsertId();
         });
+        // Where the money goes and what the banking apps are told: every
+        // administrator hears of a change to it in the bell, who and which, and
+        // finds what it was before under „Änderungen" (ADR 0025, amended
+        // 2026-10-08). A new profile counts: it brings an account of its own. A
+        // template saved before with CRLF is the same text as the one posted now.
+        if($before) $before['qr_template']=qr_template_lines((string)$before['qr_template']);
+        $changed=array_values(array_filter(['iban','recipient','qr_template'],
+            fn(string $column): bool => (string)($before[$column]??'')!==(string)$posted[$column]));
+        if($changed)
+            notify_admins_of_bank_change($u,($before?t('Kontoverbindung geändert: ','Bank details changed: '):t('Neuer Zahlungsempfänger: ','New payment profile: ')).$posted['name'],
+                implode(', ',array_map('history_field_label',$changed)).t('. Die Einzelheiten stehen unter „Änderungen“.','. The details are under “Changes”.'),
+                'history',['entity'=>'payment_profiles','record'=>$id]);
         audit('profile.saved','payment_profile',$id); flash(t('Zahlungsempfänger gespeichert.','Payment profile saved.'));
         return ['manage',['tab'=>'payments','edit'=>$id]];
 
@@ -347,7 +383,7 @@ function dispatch_config(string $action): array {
         // Who may change what, rather than one rule for the whole registry:
         // membership statuses and payment methods are the trainer's words for
         // her own work; the portal's name, its look and the background jobs are not.
-        if(in_array($group,['students','payments'],true)) require_staff(); else require_admin();
+        $u=in_array($group,['students','payments'],true)?require_staff():require_admin();
         // Every value is checked before any is written, so a refusal - an
         // unreadable background, a colour that is not one - leaves the whole
         // card as it was, and says so, rather than half of it saved.
@@ -360,6 +396,15 @@ function dispatch_config(string $action): array {
             $values[$key]=setting_validate($key,$spec,$raw);
         }
         foreach($values as $key=>$value) set_setting($key,$value);
+        // Every course without a profile of its own pays into the default one:
+        // changing it moves their families' money as moving a course does
+        // (class_save), so every administrator hears of it (ADR 0025, amended
+        // 2026-10-08).
+        if(array_key_exists('default_payment_profile',$values) && (int)$before['default_payment_profile']!==(int)$values['default_payment_profile'])
+            notify_admins_of_bank_change($u,t('Standard-Zahlungsempfänger geändert: ','Default payment recipient changed: ').payment_profile_name((int)$values['default_payment_profile']),
+                strtr(t('Kurse ohne eigenen Zahlungsempfänger zahlen jetzt auf {to} statt auf {from}.','Courses without a payment recipient of their own now pay into {to} instead of {from}.'),
+                      ['{to}'=>payment_profile_name((int)$values['default_payment_profile']),'{from}'=>payment_profile_name((int)$before['default_payment_profile'])]),
+                'manage',['tab'=>'payments']);
         audit('settings.saved','settings');
         // The colours are not tracked(), so the message is the way back: it
         // names what they were, to be typed in again (ADR 0013).

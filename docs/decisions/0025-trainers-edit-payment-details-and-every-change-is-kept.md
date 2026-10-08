@@ -24,6 +24,11 @@ date: 2026-10-06
 >
 > These parts no longer hold: in the Decision, "No other change"; in Rejected, "A notice to
 > administrators" (a second person's approval stays rejected). Everything else stands.
+>
+> *Added 2026-10-08, from today's reviews (the project manager):* every administrator is also told
+> when a course is moved to another payment profile (`class_save`), and when the default payment
+> profile changes (`default_payment_profile`). Each changes where a family's money goes without
+> touching a profile.
 
 > **Superseded in part by ADR 0026 (2026-10-07).** Copying records („Kopieren", `record_duplicate`,
 > `duplicate_record()`) is gone. These parts no longer hold: "Copying a profile stays administrators

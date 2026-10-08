@@ -148,7 +148,13 @@ function dispatch_settings_or_messages(string $action): array {
         // An empty accent means "whatever the administrator chose", which is a
         // real answer and has to stay distinguishable from a colour.
         $accent=post('accent')===''?'':choose(post('accent'),array_keys(accents()));
-        run('UPDATE accounts SET name=?,locale=?,theme=?,accent=?,text_scale=?,newsletter=?,notifications=?,payment_notices=? WHERE id=?',[required_text('name'),choose(post('locale'),['de','en']),choose(post('theme','auto'),['auto','light','dark']),$accent,choose(post('text_scale','normal'),['normal','large','larger','largest']),$newsletter?1:0,$notifications?1:0,$payments?1:0,$u['id']]);
+        // The name the chat and the bell show. Staff choose their own; a
+        // student's login is called what the student is, and only renaming the
+        // student renames it (name_login_after_student()). Left to a child, it
+        // let them post in the course group as „Trainerin Anna" (security
+        // review, 2026-10-08). NULL keeps the name as it is.
+        $name=is_staff($u)?required_text('name'):null;
+        run('UPDATE accounts SET name=COALESCE(?,name),locale=?,theme=?,accent=?,text_scale=?,newsletter=?,notifications=?,payment_notices=? WHERE id=?',[$name,choose(post('locale'),['de','en']),choose(post('theme','auto'),['auto','light','dark']),$accent,choose(post('text_scale','normal'),['normal','large','larger','largest']),$newsletter?1:0,$notifications?1:0,$payments?1:0,$u['id']]);
         if((bool)($u['payment_notices']??1)!==$payments)record_consent((int)$u['id'],'payment_notices',$payments);
         if((bool)$u['newsletter']!==$newsletter)record_consent((int)$u['id'],'newsletter',$newsletter);
         if((bool)$u['notifications']!==$notifications)record_consent((int)$u['id'],'notifications',$notifications);
@@ -170,6 +176,9 @@ function dispatch_settings_or_messages(string $action): array {
         $u=require_user();if(!password_verify(post('current_password'),$u['password_hash']))throw new UserError(t('Passwort nicht korrekt.','Incorrect password.'));
         $p=strong_password(post('password'));if($p!==post('password_confirm'))throw new UserError(t('Die Passwörter stimmen nicht überein.','Passwords do not match.'));
         run('UPDATE accounts SET password_hash=?,auth_version=auth_version+1 WHERE id=?',[password_hash($p,PASSWORD_DEFAULT),$u['id']]);run('DELETE FROM auth_tokens WHERE account_id=?',[$u['id']]);sign_in(one('SELECT * FROM accounts WHERE id=?',[$u['id']]));
+        // Told by mail, so a password changed by whoever had the old one does
+        // not go unseen (security review, 2026-10-08).
+        notify_sign_in_changed($u,(string)$u['email']);
         audit('password.changed','account',(int)$u['id']);flash(t('Passwort geändert. Andere Sitzungen wurden abgemeldet.','Password changed. Other sessions were signed out.'));return ['profile',[]];
     }
     return dispatch_messages($action);

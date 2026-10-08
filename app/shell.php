@@ -46,7 +46,8 @@ function notify_staff(string $kind, string $title, string $body = '', string $pa
 
 /**
  * Tell every active administrator. Used for what only they can deal with: a
- * problem somebody reported, and an error nobody had to (ADR 0012).
+ * problem somebody reported, an error nobody had to (ADR 0012), and a change to
+ * where the families' money goes (ADR 0025).
  */
 function notify_admins(string $kind, string $title, string $body = '', string $page = '', array $params = []): int {
     $sent = 0;
@@ -55,6 +56,16 @@ function notify_admins(string $kind, string $title, string $body = '', string $p
         $sent++;
     }
     return $sent;
+}
+
+/**
+ * Tell every administrator that where the families' money goes has changed -
+ * a payment profile's account, a new profile, a course pointed at another one
+ * (ADR 0025, amended 2026-10-08) - with who did it, $by, ahead of $what. The
+ * trainer may make these changes, and so may whoever holds her login.
+ */
+function notify_admins_of_bank_change(array $by, string $title, string $what, string $page, array $params): int {
+    return notify_admins('bank', $title, t('Von ', 'By ') . login_holder_name($by) . ' (' . role_label((string)$by['role']) . '): ' . $what, $page, $params);
 }
 
 /**
@@ -111,7 +122,7 @@ function notification_link(array $notification): string {
 
 function notification_icon(string $kind): string {
     return match ($kind) {
-        'payment' => 'wallet', 'message' => 'chat', 'request' => 'users',
+        'payment', 'bank' => 'wallet', 'message' => 'chat', 'request' => 'users',
         'schedule' => 'calendar', 'problem' => 'lock', default => 'news',
     };
 }

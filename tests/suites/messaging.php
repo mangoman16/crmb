@@ -498,6 +498,12 @@ $row = array_values(array_filter(chat_list(current_user()), fn($c) => (int)$c['i
 $header = array_values(array_filter(thread_people((int)$thread['id']), fn($p) => (int)$p['id'] === $trainer))[0] ?? [];
 is_same(CHAT_PERSON_COLUMNS, array_keys($header), 'the header reads the one list of what the chat shows of a person');
 is_same($header, chat_person_in($row, 'other_'), 'and the list’s row carries the same person, value for value');
+/* The list named a group's last writer from a column of its own, without the
+   role that tells staff apart (security review, 2026-10-08). */
+$lastWriter = one('SELECT '.chat_person_columns('a').' FROM accounts a'
+    .' WHERE a.id=(SELECT sender_id FROM messages WHERE thread_id=? ORDER BY id DESC LIMIT 1)', [$thread['id']]) ?: [];
+ok($lastWriter !== [], 'somebody wrote last in that chat, so the next line proves something');
+is_same($lastWriter, chat_person_in($row, 'last_sender_'), 'and the last message’s writer the same way, role included');
 /* A bubble drew its author from a column list of its own (code review). */
 $writer = array_values(array_filter(thread_people((int)$thread['id']), fn($p) => (int)$p['id'] === $hofer))[0] ?? [];
 $bubble = array_values(array_filter(thread_messages((int)$thread['id'])['messages'], fn($m) => (int)$m['sender_id'] === $hofer))[0] ?? [];
@@ -506,7 +512,7 @@ is_same($writer, chat_person_in($bubble, 'author_'), 'and a message carries who 
 /* The group's page drew the name over a run from a copy of those columns made
    for it alone; it reads the author the message carries. */
 $author = one('SELECT '.chat_person_columns('a').' FROM accounts a WHERE a.id=?', [$trainer]);
-ok(str_contains(render_view('messages', ['id'=>(string)$group]), '<span class="bubble-sender hue-'.chat_hue($trainer).'">'.chat_name($author).'</span>'),
+ok(str_contains(render_view('messages', ['id'=>(string)$group]), '<span class="sender-name hue-'.chat_hue($trainer).'">'.chat_name($author).'</span>'),
    'and the group names her over her message as the chat draws her everywhere else, in her colour');
 throws(fn() => chat_person_columns('a; DROP TABLE accounts'), 'an alias is a name, never a piece of SQL', 'Refusing');
 
@@ -697,3 +703,138 @@ for ($i = 0; $i < 45; $i++) make_class();
 course_groups_fill();
 is_same(1, query_count(fn() => chat_list(current_user())), 'and with fifty');
 is_same(1, query_count(fn() => unread_count(current_user())), 'the badge on every page is one query too');
+
+case_('A chat mails the other person once until they look, and a family’s login sends twenty photos an hour at most [security review 2026-10-08]');
+/* Forty messages in five minutes were forty mails in the trainer's inbox, and
+   each could carry a photo of four megabytes, kept on the disk for as long as
+   the chat. The bell still has every message; the mail says once that there
+   is something to read. */
+$flood = make_account(['role'=>'student', 'name'=>'Familie Flut']);
+$mailsToTrainer = fn(): int => (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE account_id=? AND category='notifications'", [$trainer2]);
+$before = $mailsToTrainer();
+sign_in_as($flood);
+act('message_send', ['to'=>(string)$trainer2, 'body'=>'Erste Frage']);
+$floodChat = pair_thread($flood, $trainer2);
+act('message_send', ['thread_id'=>(string)$floodChat, 'body'=>'Zweite Frage']);
+act('message_send', ['thread_id'=>(string)$floodChat, 'body'=>'Dritte Frage']);
+is_same(1, $mailsToTrainer() - $before, 'three messages before she looks are one mail');
+is_same(3, (int)scalar("SELECT COUNT(*) FROM notifications WHERE account_id=? AND kind='message' AND link_params=?", [$trainer2, http_build_query(['id'=>$floodChat])]),
+        'while her bell has each of them');
+sign_in_as($trainer2);
+mark_thread_read($floodChat, current_user());
+act('message_send', ['thread_id'=>(string)$floodChat, 'body'=>'Ich schaue es mir an.']);
+sign_in_as($flood);
+act('message_send', ['thread_id'=>(string)$floodChat, 'body'=>'Vierte Frage']);
+is_same(2, $mailsToTrainer() - $before, 'once she has read them, the next one is mailed again - her own answer in between counts as read');
+is_same(1, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE account_id=? AND category='notifications'", [$flood]),
+        'and her answer was mailed to the family, who had read everything before it');
+
+$_FILES = ['attachment' => ['name'=>'foto.jpg', 'type'=>'image/jpeg', 'tmp_name'=>'/nicht/hochgeladen.jpg', 'error'=>UPLOAD_ERR_OK, 'size'=>2048]];
+$answers = [];
+for ($i = 0; $i < 21; $i++) {
+    try { act('message_send', ['thread_id'=>(string)$floodChat, 'body'=>'Foto '.$i]); $answers[] = 'stored'; }
+    catch (UserError $e) { $answers[] = $e->getMessage(); }
+}
+$_FILES = [];
+is_same(array_fill(0, 20, 'Diese Datei kam nicht über das Formular.'), array_slice($answers, 0, 20), 'twenty photos within an hour are each looked at');
+ok(str_starts_with((string)($answers[20] ?? ''), 'Zu viele Versuche'), 'the twenty-first is told to wait');
+does_not_throw(fn() => act('message_send', ['thread_id'=>(string)$floodChat, 'body'=>'Ohne Foto']), 'and a message without a photo still goes');
+throttle_clear('message-photo', (string)$flood);
+throttle_clear('message', (string)$flood);
+/* Staff are not counted: a trainer posting a tournament's photos is not told to
+   wait (the owner: „no need to be over sensitive"). */
+sign_in_as($trainer2);
+$_FILES = ['attachment' => ['name'=>'turnier.jpg', 'type'=>'image/jpeg', 'tmp_name'=>'/nicht/hochgeladen.jpg', 'error'=>UPLOAD_ERR_OK, 'size'=>2048]];
+$answers = [];
+for ($i = 0; $i < 21; $i++) {
+    try { act('message_send', ['thread_id'=>(string)$floodChat, 'body'=>'Turnierfoto '.$i]); $answers[] = 'stored'; }
+    catch (UserError $e) { $answers[] = $e->getMessage(); }
+}
+$_FILES = [];
+is_same(array_fill(0, 21, 'Diese Datei kam nicht über das Formular.'), $answers, 'the trainer’s twenty-first photo within the hour is looked at like the first');
+throttle_clear('message', (string)$trainer2);
+
+case_('A chat photo with no name of its own is called „Foto“ for whoever cannot see it');
+/* Since a photo keeps no name the phone gave it, its text for a screen reader
+   would be empty and its link would say nothing - as a file's does without a
+   name, it falls back to a word. */
+$named = (int)scalar('SELECT MAX(id) FROM messages WHERE thread_id=?', [$floodChat]);
+fixture('message_files', ['message_id'=>$named, 'kind'=>'image', 'stored_name'=>str_repeat('5e', 16).'.jpg', 'original_name'=>'',
+    'mime'=>'image/jpeg', 'bytes'=>2048, 'seconds'=>0, 'created_at'=>now()]);
+sign_in_as($flood);
+ok(str_contains(render_view('messages', ['id'=>(string)$floodChat]), 'alt="Foto"'), 'its picture’s text is „Foto“');
+
+case_('In a course group, staff are named with their role, so no typed name passes for theirs [security review 2026-10-08]');
+/* A child could call themselves „Trainerin Anna" under Mein Konto, or - a family
+   renames its child (ADR 0020 §7) - give the child the last name „· Trainerin",
+   and write to the group under that name: with the role written as words after
+   the name, „Anna · Trainerin" read exactly like the trainer's line. The role is
+   a pill the page draws beside the name, which no typed name can make.
+   The chat list's line for the group was the sibling: it named the last writer
+   by the first word alone, with no mark - „Trainerin: …" for a child of that
+   name - and cut at a plain space only, so a name typed with non-breaking spaces
+   kept „Anna · Trainerin" whole. Both now draw the writer with chat_sender(). */
+$roleCourse = make_class(['name'=>'Rollenkurs']);
+$posing = make_account(['role'=>'student', 'name'=>'Trainerin Anna']);
+make_enrolment($roleCourse, make_student(['account_id'=>$posing, 'first_name'=>'Trainerin', 'last_name'=>'Anna']));
+$typed = make_account(['role'=>'student', 'name'=>'Anna · Trainerin']);
+make_enrolment($roleCourse, make_student(['account_id'=>$typed, 'first_name'=>'Anna', 'last_name'=>'· Trainerin']));
+$nbsp = "\u{00A0}";
+$spaced = make_account(['role'=>'student', 'name'=>"Anna{$nbsp}·{$nbsp}Trainerin Huber"]);
+make_enrolment($roleCourse, make_student(['account_id'=>$spaced, 'first_name'=>"Anna{$nbsp}·{$nbsp}Trainerin", 'last_name'=>'Huber']));
+$classmate = make_account(['role'=>'student', 'name'=>'Mia Klein']);
+make_enrolment($roleCourse, make_student(['account_id'=>$classmate, 'first_name'=>'Mia', 'last_name'=>'Klein']));
+$roleGroup = course_group_thread($roleCourse);
+/** A rendered page, for XPath to read. */
+$parsed = function (string $html): DOMXPath {
+    $dom = new DOMDocument();
+    $quiet = libxml_use_internal_errors(true);
+    $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
+    libxml_clear_errors(); libxml_use_internal_errors($quiet);
+    return new DOMXPath($dom);
+};
+$has = fn(string $class) => 'contains(concat(" ", normalize-space(@class), " "), " '.$class.' ")';
+/** Whom a piece of the page names as the writer: [the name, its pill or null]. */
+$writer = fn(DOMXPath $x, DOMNode $in): array => [
+    trim((string)$x->query('./span['.$has('sender-name').']', $in)->item(0)?->textContent),
+    ($pill = $x->query('./span['.$has('badge').']', $in)->item(0)) ? trim($pill->textContent) : null,
+];
+/** The group's line in the classmate's chat list: [the name, its pill or null, the line as it reads]. */
+$listLine = function () use ($parsed, $has, $writer, $classmate): array {
+    sign_in_as($classmate);
+    $x = $parsed(render_view('messages'));
+    $line = $x->query('//a['.$has('thread-item').'][.//span['.$has('thread-item-name').']="Rollenkurs"]//span['.$has('thread-item-preview').']')->item(0);
+    return $line ? [...$writer($x, $line), trim(preg_replace('/\s+/u', ' ', $line->textContent))] : [];
+};
+$lines = [];
+// The last is a writer whose login is gone, as a deleted login leaves its messages.
+foreach ([[$trainer2, 'Das Training fällt heute aus.'], [$posing, 'Doch nicht, kommt alle!'],
+          [$typed, 'Doch, es fällt aus.'], [$spaced, 'Wirklich!'], [null, 'Von früher.']] as [$who, $body]) {
+    fixture('messages', ['thread_id'=>$roleGroup, 'sender_id'=>$who, 'body'=>$body, 'created_at'=>now()]);
+    $lines[] = $listLine();
+}
+is_same([['Zweite', 'Trainerin', 'Zweite Trainerin: Das Training fällt heute aus.'],
+         ['Trainerin', null, 'Trainerin: Doch nicht, kommt alle!'],
+         ['Anna', null, 'Anna: Doch, es fällt aus.'],
+         ['Anna', null, 'Anna: Wirklich!'],
+         ['Gelöschtes Konto', null, 'Gelöschtes Konto: Von früher.']],
+        $lines,
+        'in the chat list, the group’s line names the trainer with her role in the pill; a child called „Trainerin“, or „Anna · Trainerin“ with non-breaking spaces, by the first word and never the pill');
+/* On a phone that line is short. Drawn as one run of text, its ellipsis took the
+   administrator's pill at 320 px and left „Sabine …"; now the message gives way
+   first, then the name, and the pill never (measured in a browser at 320 and
+   390). This keeps the rule that does it from going quietly. */
+$keepsWhole = array_filter(css_matching(css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css')), '/^\.thread-item-preview \.badge$/'),
+    fn(array $row) => ($row['property'] === 'flex' && trim($row['value']) === 'none') || ($row['property'] === 'flex-shrink' && trim($row['value']) === '0'));
+ok($keepsWhole !== [], 'and on a narrow phone the pill keeps its width while the message and the name give way');
+sign_in_as($admin);
+$x = $parsed(render_view('messages', ['id'=>(string)$roleGroup]));
+// Each line over the bubbles as [the name, its pill or null, whether the colour is the name's alone].
+$bubbles = array_map(fn(DOMElement $line) => [
+    ...$writer($x, $line),
+    !str_contains($line->getAttribute('class'), 'hue-') && $x->query('./span['.$has('sender-name').' and contains(@class, "hue-")]', $line)->length === 1,
+], iterator_to_array($x->query('//span['.$has('bubble-sender').']')));
+is_same([['Zweite Trainerin', 'Trainerin', true], ['Trainerin Anna', null, true], ['Anna · Trainerin', null, true],
+         ["Anna{$nbsp}·{$nbsp}Trainerin Huber", null, true], ['Gelöschtes Konto', null, true]],
+        $bubbles,
+        'over the bubbles, the trainer’s line carries her role in a pill; a child called „Trainerin Anna“, or „Anna · Trainerin“ either way, the same words at most and never the pill');

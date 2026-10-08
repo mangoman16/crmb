@@ -450,6 +450,42 @@ $failed = schema_blocked_html(new PDOException("SQLSTATE[HY000] [1045] Access de
 ok(!str_contains($failed, 'SQLSTATE') && !str_contains($failed, 'crm_live'), 'a database error is not quoted at all');
 ok(str_contains($failed, 'Fehlerprotokoll') && str_contains($failed, 'error log'), 'the page points at the hosting error log instead');
 
+case_('A copy that could not be taken is reported on the closed page without the path or the database error its BackupError carries [security finding 5]');
+// backup_database()'s message names the folder of copies, whose path on shared
+// hosting holds the hosting account's name, or carries the database's own
+// error; the page is public, so the message goes to the log alone.
+$refusal = schema_backup_failed(new BackupError('Cannot create /secret/path'));
+$page = schema_blocked_html($refusal);
+ok(!str_contains($page, '/secret/path'), 'the path the BackupError names is not on the page');
+ok(str_contains($page, 'skip-backup') && str_contains($page, 'Fehlerprotokoll') && str_contains($page, 'error log'),
+   'what to do is, in both languages, and where the reason is');
+ok(str_contains($refusal->getMessage(), 'Cannot create /secret/path'), 'and the log line keeps the reason');
+// The runner's own refusal, from a folder of copies that cannot be made because
+// a file has its name: the path is on the log line and nowhere on the page. The
+// ledger and the logins are put back as they were.
+$keptFlag = $GLOBALS['config']['maintenance_file'];
+$elsewhere = test_run_dir() . '/no-copies-' . bin2hex(random_bytes(4));
+mkdir($elsewhere, 0700);
+file_put_contents($elsewhere . '/backups', 'a file where the folder of copies belongs');
+$ledger = test_has_table('schema_migrations') ? rows('SELECT version, checksum, applied_at FROM schema_migrations') : null;
+$someone = make_account();   // a portal with something in it, so a copy is due (ADR 0029 §3)
+$said = null;
+try {
+    $GLOBALS['config']['maintenance_file'] = $elsewhere . '/maintenance.flag';
+    db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
+    db()->exec('DELETE FROM schema_migrations');   // every migration pending
+    try { schema_refuse_unsafe(fn(string $l) => null); } catch (Throwable $e) { $said = $e; }
+} finally {
+    $GLOBALS['config']['maintenance_file'] = $keptFlag;
+    db()->exec('DELETE FROM schema_migrations');
+    if ($ledger === null) db()->exec('DROP TABLE schema_migrations');
+    else foreach ($ledger as $row) run('INSERT INTO schema_migrations (version, checksum, applied_at) VALUES (?, ?, ?)', [$row['version'], $row['checksum'], $row['applied_at']]);
+    run('DELETE FROM accounts WHERE id = ?', [$someone]);
+}
+ok($said instanceof UpdateBlocked && str_contains($said->getMessage(), $elsewhere . '/backups'),
+   'the runner refuses the update, and its log line names the folder it could not make' . ($said && !$said instanceof UpdateBlocked ? ': ' . $said->getMessage() : ''));
+ok(!str_contains(schema_blocked_html($said ?? new RuntimeException('none')), $elsewhere), 'while the closed page names no part of that path');
+
 case_('A migration statement that returns rows does not poison the rest of the run');
 // PDO::exec() leaves an open result set behind for anything that returns rows -
 // a SELECT that checks something before altering it, a SHOW - and every query
@@ -1016,6 +1052,67 @@ if (!function_exists('exec')) {
     is_same(503, $tried['status'], 'a form sent to it anyway is refused the same way');
     ok(!str_contains($tried['body'], 'SQLSTATE') && !str_contains($tried['body'], 'crm_setup_probe'),
        'without a connection error that names the database or its user');
+}
+
+case_('The setup page is sent with the same security headers as the portal [security audit]');
+/* setup.php answers before there is a configuration to boot from, so it never
+   ran boot_http() and was sent without a Content-Security-Policy, a refusal to
+   be framed, a Referrer-Policy or nosniff. Both now send security_headers().
+   Asked of a real web server, because the command line keeps no headers:
+   setup.php over a configuration with an administrator, which answers 403 -
+   what anybody finds there after the install - and the portal's sign-in page
+   from the same server, so that neither caller can drop the list unnoticed. */
+$listed = [];
+foreach (security_headers() as $line) $listed[strtolower((string)strstr($line, ':', true))] = $line;
+foreach (['content-security-policy', 'x-frame-options', 'referrer-policy', 'x-content-type-options'] as $needed)
+    ok(isset($listed[$needed]), 'the list has '.$needed);
+ok(str_contains($listed['content-security-policy'] ?? '', "frame-ancestors 'none'"), 'and its policy refuses every frame');
+if (!function_exists('proc_open')) {
+    test_unsupported(array_merge(test_unsupported(), ['the security headers of the setup page, asked of a real web server (this PHP disables proc_open)']));
+} else {
+    $web = test_run_dir().'/headers-'.bin2hex(random_bytes(4));
+    mkdir($web.'/sessions', 0700, true);
+    write_run_config($web.'/config.php', $ownDb, $web);
+    // The run's schema is made from the migration files: the portal is told it is current.
+    file_put_contents($web.'/schema.stamp', schema_state());
+    // The server's folder is the run's own; the two pages are reached through
+    // this one line, as the robustness suite reaches the portal.
+    file_put_contents($web.'/router.php', '<?php require parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH) === "/setup.php" ? '
+        .var_export(realpath(APP_ROOT.'/public/setup.php'), true).' : '.var_export(realpath(APP_ROOT.'/public/index.php'), true).";\n");
+    $headersAdmin = make_account(['role' => 'admin', 'email' => 'kopfzeilen@example.test']);
+    $server = null; $port = 0;
+    for ($try = 0; $try < 5 && $server === null; $try++) {
+        $port = random_int(20000, 60999);
+        $started = proc_open([PHP_BINARY, '-d', 'display_errors=0', '-d', 'log_errors=1', '-d', 'error_log=', '-S', '127.0.0.1:'.$port, $web.'/router.php'],
+                             [0 => ['file', '/dev/null', 'r'], 1 => ['file', $web.'/server.log', 'a'], 2 => ['file', $web.'/server.log', 'a']],
+                             $pipes, $web, ['CRM_CONFIG' => $web.'/config.php'] + getenv());
+        if (!is_resource($started)) continue;
+        for ($wait = 0; $wait < 60; $wait++) {
+            if ($socket = @fsockopen('127.0.0.1', $port, $errno, $error, 0.1)) { fclose($socket); $server = $started; break; }
+            if (!proc_get_status($started)['running']) break;
+            usleep(50000);
+        }
+        if ($server === null) proc_terminate($started);
+    }
+    if ($server === null) {
+        ok(false, 'php -S answers for the setup page: '.trim(substr((string)@file_get_contents($web.'/server.log'), -300)));
+    } else {
+        try {
+            foreach (['/setup.php' => ['the setup page', 403], '/index.php?page=login' => ['the portal\'s sign-in page', 200]] as $path => [$what, $status]) {
+                $body = @file_get_contents('http://127.0.0.1:'.$port.$path, false,
+                                           stream_context_create(['http' => ['ignore_errors' => true, 'follow_location' => 0, 'timeout' => 30]]));
+                $answer = $http_response_header ?? [];
+                preg_match('~^HTTP/\S+ (\d{3})~', $answer[0] ?? '', $m);
+                is_same($status, (int)($m[1] ?? 0), $what.' answers '.$status);
+                is_same([], array_values(array_diff(security_headers(), array_map('trim', array_slice($answer, 1)))),
+                        $what.' is sent with every security header on the list');
+            }
+        } finally {
+            proc_terminate($server);
+            proc_close($server);
+        }
+    }
+    run('DELETE FROM accounts WHERE id=?', [$headersAdmin]);
 }
 
 case_('A portal is not installed over plain HTTP, except on the computer it runs on');

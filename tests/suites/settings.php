@@ -271,6 +271,25 @@ is_same(['failed', 1], [$jobOf($resetFor)['status'] ?? null, (int)($jobOf($reset
 run('DELETE FROM mail_jobs');
 set_setting('smtp', []);
 
+case_('The outbox keeps what a sent mail said for 90 days, then only that it went [security review 2026-10-08]');
+/* Every member of staff reads the outbox, and it kept the words of every
+   invoice, reminder and chat notice for ever. Driven through prune_expired(),
+   which the background work and the console's nightly job both call. */
+$kept = make_account(['email'=>'leserin.alt@beispiel.test']);
+$mailed = fn(string $status, ?int $sentDaysAgo) => fixture('mail_jobs', ['account_id'=>$kept, 'recipient'=>'leserin.alt@beispiel.test',
+    'subject'=>'Offener Beitrag', 'payload'=>seal('Bitte 45,00 € an den Verein überweisen.'), 'category'=>'payments', 'status'=>$status,
+    'attempts'=>1, 'created_at'=>gmdate('Y-m-d H:i:s', time() - 120 * 86400),
+    'sent_at'=>$sentDaysAgo === null ? null : gmdate('Y-m-d H:i:s', time() - $sentDaysAgo * 86400)]);
+$long = $mailed('sent', 91); $lately = $mailed('sent', 89); $waiting = $mailed('queued', null); $stuck = $mailed('failed', null);
+prune_expired();
+$row = fn(int $id): array => one('SELECT recipient,subject,status,payload FROM mail_jobs WHERE id=?', [$id]) ?? [];
+is_same(['leserin.alt@beispiel.test', 'Offener Beitrag', 'sent', ''], array_values($row($long)),
+        'a mail sent 91 days ago keeps to whom, about what and that it went, and nothing of what it said');
+is_same('Bitte 45,00 € an den Verein überweisen.', unseal((string)($row($lately)['payload'] ?? '')), 'one sent 89 days ago keeps its words');
+ok(($row($waiting)['payload'] ?? '') !== '' && ($row($stuck)['payload'] ?? '') !== '', 'and a mail not sent yet keeps what it is to say');
+is_same(90, MAIL_BODY_KEEP_DAYS, 'the 90 days are the one rule the privacy notice can name');
+run('DELETE FROM mail_jobs');
+
 case_('Nothing in a transcript is a password');
 /* The transcript is shown on a screen, stored in the settings table and copied
    into support emails. AUTH LOGIN sends the user name and the password as two

@@ -192,6 +192,15 @@ function payment_profile(int $id): ?array {
     return $cache['profile'][$id];
 }
 
+/**
+ * A payment profile's name in quotes, archived or not, or plainly that there is
+ * none: what the notices about where the families' money goes name (ADR 0025).
+ */
+function payment_profile_name(int $id): string {
+    $name = (string)(scalar('SELECT name FROM payment_profiles WHERE id=?', [$id]) ?: '');
+    return $name !== '' ? t('„', '“') . $name . t('“', '”') : t('keinen Zahlungsempfänger', 'no payment recipient');
+}
+
 /** Which profile a class collects into, remembered for the rest of the request. */
 function class_payment_profile_id(int $classId): int {
     if ($classId <= 0) return 0;

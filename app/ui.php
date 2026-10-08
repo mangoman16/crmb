@@ -948,6 +948,27 @@ function chat_hue(int $id): string {
 }
 
 /**
+ * Who wrote, wherever the chat says so: the name as its holder typed it and,
+ * for staff, their role in a pill beside it. A name is only ever text somebody
+ * typed - a child can call itself „Trainerin" or „Anna · Trainerin" - so the
+ * name cannot be what tells the trainer apart; the pill can, because the page
+ * draws it and no name makes it (security review, 2026-10-08). The bubbles of
+ * a course group and the chat list both draw the sender here, so neither can
+ * show staff without the pill or a child with one.
+ *
+ * Over a bubble, the whole name in the sender's colour. $short is the chat
+ * list's one line: the first word in the line's own grey. It cuts at any space,
+ * a non-breaking one too; the cut only saves room, the pill is what tells, so a
+ * name that keeps more than its first word is longer and never mistaken.
+ */
+function chat_sender(array $person, bool $short = false): void {
+    $name = (string)($person['name'] ?? '');
+    if ($short && preg_match('/[^\s\p{Z}]+/u', $name, $word)) $name = $word[0];
+    echo '<span class="sender-name', $short ? '' : ' hue-'.e(chat_hue((int)($person['id'] ?? 0))), '">', chat_name(['name' => $name]), '</span>';
+    if (is_staff($person)) { echo ' '; badge(role_label((string)$person['role'])); }
+}
+
+/**
  * Deleting a login, folded away, with its address typed to confirm.
  *
  * Its own form and a <details> of its own, so it can sit in a row of buttons

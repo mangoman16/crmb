@@ -1034,7 +1034,15 @@ details.account-row[open]>summary{margin-bottom:0}
 .thread-item-top strong{display:flex;flex:1;min-width:0}
 .thread-item-name{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .thread-item-top time{flex-shrink:0;font-size:var(--t-foot);color:var(--muted)}
-.thread-item-preview{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:var(--t-sub);color:var(--muted)}
+/* One line: who wrote, if the list names them (chat_sender()), then what. The
+   message gives way first, down to nothing; then the name, with its ellipsis;
+   the pill never, so staff do not lose it to a long line. The pill is 22px in a
+   20px line: its margin gives the 2px back, so a row with a pill is the height
+   of one without. */
+.thread-item-preview{flex:1;min-width:0;display:flex;align-items:center;white-space:nowrap;font-size:var(--t-sub);color:var(--muted)}
+.thread-item-preview .sender-name,.thread-item-says{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.thread-item-preview .badge{flex:none;margin:-1px 0 -1px 6px}
+.thread-item-says{flex:1 1 0}
 .thread-item.unread .thread-item-preview{color:var(--ink-2);font-weight:600}
 .thread-item.unread time{color:var(--teal-ink);font-weight:600}
 .chat-empty{margin:0;padding:10px 0 14px;font-size:var(--t-sub);color:var(--muted)}
@@ -1059,7 +1067,11 @@ details.account-row[open]>summary{margin-bottom:0}
 .message-bubble.mine{background:var(--teal-soft)}
 .message-row.run-start:not(.mine) .message-bubble{border-top-left-radius:6px}
 .message-row.run-start.mine .message-bubble{border-top-right-radius:6px}
-.bubble-sender{display:flex;margin-bottom:2px;font-size:var(--t-foot);font-weight:600;color:var(--teal-ink)}
+/* Who wrote (chat_sender()), over the first bubble of a run: the name in the
+   sender's colour, and for staff their role in a pill beside it, which no typed
+   name can make. In the chat list the same name keeps the row's grey. */
+.bubble-sender{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;margin-bottom:2px;font-size:var(--t-foot);font-weight:600}
+.bubble-sender .sender-name{min-width:0;color:var(--teal-ink)}
 .bubble-foot{display:flex;justify-content:flex-end;align-items:center;gap:4px;margin-top:2px;font-size:var(--t-cap);color:var(--muted)}
 .message-bubble.mine .bubble-foot{color:var(--ink-2)}
 .message-bubble.removed{background:transparent;border:1px dashed var(--field-border)}

@@ -229,20 +229,8 @@ function boot_http(): void {
     session_name('badminton_session');
     session_set_cookie_params(['lifetime'=>0, 'path'=>portal_cookie_path(), 'secure'=>(bool)$config['secure_cookies'], 'httponly'=>true, 'samesite'=>'Lax']);
     if(!session_start())throw new RuntimeException('PHP session storage is unavailable.');
-    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-    header('X-Content-Type-Options: nosniff');
-    header('X-Frame-Options: DENY');
-    header('Referrer-Policy: no-referrer');
-    header('Cache-Control: no-store');
-    // Camera, microphone and location stay off: no page asks a browser for any
-    // of them, and a policy is worth more than an intention. A student's photo
-    // comes through the file input with capture="environment" (ADR 0022 §11.4);
-    // whether camera=() keeps a phone from opening its camera there is to be
-    // measured on an iPhone and an Android phone, not assumed.
-    header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
-    header('Cross-Origin-Opener-Policy: same-origin');
-    header('Cross-Origin-Resource-Policy: same-origin');
-    header('X-Permitted-Cross-Domain-Policies: none');
+    // After session_start(), whose own Cache-Control the list's replaces.
+    foreach (security_headers() as $header) header($header);
     if ($hsts = strict_transport_security($config)) header($hsts);
     if (isset($_GET['lang']) && in_array($_GET['lang'], ['de','en'], true)) { $_SESSION['locale'] = $_GET['lang']; }
     // Newly uploaded files may bring migrations the database has not seen. This

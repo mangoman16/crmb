@@ -83,6 +83,12 @@ In this order.
    - The example trainer login: done with round 3 (eight syllables, 14 days).
    - Targets below the minimum on a desktop screen: the help button's summary (36 px),
      „Alle ansehen" (21 px).
+   - **The whole-portal audit of 2026-10-08: built.** A family's login takes the child's name;
+     a chat mails once until read; twenty chat photos an hour from a family; administrators
+     hear of every change to payment details; the QR code is a SEPA transfer into the
+     recipient's account; a changed address or password is told by mail; a sent mail's text
+     goes after 90 days; the closed page names no path; the setup page has the security
+     headers. Not walked by hand yet: TESTING.md S.7–S.14.
 7. **A refused update stays refused (ADR 0027): done** (`bfeb592`, `1ad0488`). The counts from
    before an update stay in `storage/update-unfinished.json` until a run passes; until then
    no page is served and nothing writes, and the portal reopens by itself once the rows are
@@ -312,8 +318,6 @@ For the owner to decide:
 
 - How long the portal keeps what it holds: chats, sick notes, attendance, mail, logs. ADR 0032
   proposes a period for each, with accounting records kept seven years (BAO § 132).
-- Whether a photo whose hidden data cannot be read through is refused instead of kept as it
-  came, as decided on 2026-10-05 (ADR 0022 §11.5; the security audit recommends refusing).
 
 For the owner to do:
 
@@ -379,13 +383,17 @@ For the owner to do:
 - The portal on a real iPhone in Safari, at 320 px and in dark mode. Every walk so far has
   been Chromium.
 - A real hosting account: the `.htaccess` rules, the https redirect behind a host's proxy,
-  nginx, and LiteSpeed's path for finishing a response have never run on one.
+  nginx, and LiteSpeed's path for finishing a response have never run on one. The limits on
+  signing in, „Passwort vergessen?" and opening an invitation or reset link count per
+  address, by `REMOTE_ADDR`: behind a proxy that hands PHP its own address, every visitor
+  would share one count.
 - `composer audit`, where there is network access. It last reported no advisories during the
   0.2.0 install.
 - MySQL 8.0, if a club's host runs it. INSTALL.md names it as intended; it has never been
   run.
 - No independent security review or penetration test has been done. security-reviewer read
-  the whole code on 2026-10-08: no High finding; the fixes are being built.
+  the whole code on 2026-10-08: no High finding; the security batch from it is built and not
+  walked by hand yet (TESTING.md S.7–S.14).
 - The legal reading behind pictures checked (ADR 0031): legitimate interest (Art. 6 Abs. 1
   lit. f DSGVO) for staff seeing a child's picture; a parent's yes in words for a child under
   14 (§ 4 Abs. 4 DSG, Art. 8 DSGVO's "reasonable efforts"); whether consent records must

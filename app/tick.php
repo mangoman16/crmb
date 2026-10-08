@@ -32,7 +32,8 @@ const PRUNE_INTERVAL = 86400;
 /**
  * Remove expired tokens, old rate-limit counters, spent form identifiers,
  * problem reports long since dealt with, errors nothing has repeated for a
- * month, and uploaded files nothing points at any more.
+ * month, what mails sent long ago said, and uploaded files nothing points at
+ * any more.
  *
  * Deliberately narrow: nothing here removes a student, a payment or a message.
  * The files it does remove are the ones whose record has already gone - a photo
@@ -54,6 +55,8 @@ function prune_expired(): void {
     refresh_sign_in_dummy_hash();
     prune_done_feedback();
     prune_quiet_errors();
+    // The row stays for the outbox; what the mail said goes (MAIL_BODY_KEEP_DAYS).
+    run("UPDATE mail_jobs SET payload='' WHERE status='sent' AND payload<>'' AND COALESCE(sent_at,created_at)<?", [gmdate('Y-m-d H:i:s', time() - MAIL_BODY_KEEP_DAYS * 86400)]);
     prune_uploads();
 }
 

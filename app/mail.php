@@ -29,23 +29,29 @@ const MAIL_STRUCTURED = "\x01crm-mail\n";
  * (ADR 0030), and a placeholder takes no mail (account_takes_mail()), so what
  * reaches this is a login edited by hand in the database - an active one
  * without an address.
+ *
+ * $notice marks a security mail that carries no link: a notice that how
+ * somebody signs in has changed (notify_sign_in_changed()). The sender lets
+ * only such a one go without a link; any other security mail goes only with a
+ * live link in it (security_mail_links_live()).
  */
-function queue_mail(?int $accountId,?string $recipient,string $subject,string $body,string $category,array $attach=[]): void {
+function queue_mail(?int $accountId,?string $recipient,string $subject,string $body,string $category,array $attach=[],bool $notice=false): void {
     if($recipient===null) return;
     if(!email_deliverable(email_normalised($recipient))) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.'));
     if(preg_match('/[\r\n]/',$subject) || mb_strlen($subject)>255) throw new UserError(t('Ungültiger Betreff.','Invalid subject.'));
-    $payload=$attach
-        ? MAIL_STRUCTURED.json_encode(['body'=>$body,'attach'=>$attach],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)
+    $payload=$attach || $notice
+        ? MAIL_STRUCTURED.json_encode(['body'=>$body,'attach'=>$attach]+($notice?['notice'=>true]:[]),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)
         : $body;
     run('INSERT INTO mail_jobs (account_id,recipient,subject,payload,category,created_at) VALUES (?,?,?,?,?,?)',[$accountId,$recipient,$subject,seal($payload),$category,now()]);
 }
 
-/** A stored payload, as message text and the files to build. */
+/** A stored payload, as message text, the files to build and whether it is a notice (queue_mail()). */
 function mail_payload(string $stored): array {
-    if(!str_starts_with($stored,MAIL_STRUCTURED)) return ['body'=>$stored,'attach'=>[]];
+    if(!str_starts_with($stored,MAIL_STRUCTURED)) return ['body'=>$stored,'attach'=>[],'notice'=>false];
     $decoded=json_decode(substr($stored,strlen(MAIL_STRUCTURED)),true);
-    if(!is_array($decoded)) return ['body'=>$stored,'attach'=>[]];
-    return ['body'=>(string)($decoded['body']??''),'attach'=>is_array($decoded['attach']??null)?$decoded['attach']:[]];
+    if(!is_array($decoded)) return ['body'=>$stored,'attach'=>[],'notice'=>false];
+    return ['body'=>(string)($decoded['body']??''),'attach'=>is_array($decoded['attach']??null)?$decoded['attach']:[],
+            'notice'=>($decoded['notice']??false)===true];
 }
 
 /**
@@ -70,14 +76,25 @@ function mail_attachment(array $described): ?array {
 function same_address(string $a, string $b): bool { return email_normalised($a)===email_normalised($b); }
 
 /**
+ * An address as a mail to another mailbox may show it: the first letter of the
+ * name and of the domain, and its ending - „l***@b***.test". Enough for its
+ * holder to know it, too little for whoever reads the other mailbox to write to.
+ */
+function masked_address(string $email): string {
+    [$local,$domain]=explode('@',$email,2)+['',''];
+    $dot=strrpos($domain,'.');
+    return mb_substr($local,0,1).'***@'.mb_substr($domain,0,1).'***'.($dot===false?'':substr($domain,$dot));
+}
+
+/**
  * Whether every sign-in link in a security mail may still go to $recipient.
  *
  * Asked by the sender at the moment of sending, because a lot can happen while a
  * mail waits: a link replaced, a login suspended, an address moved. Every mail
  * send_account_token() writes carries one link today; every link found is still
  * checked, not the first, so a body that ever carries more cannot let a stale
- * one through [S1]. A mail with no link in it is not a security mail and is not
- * sent.
+ * one through [S1]. A mail with no link in it fails here, and is not sent unless
+ * it was queued as a notice (queue_mail()'s $notice).
  * Each link must still open what it was made for - link_usable(), the rule the
  * page and the action ask, so a mail never carries a link that would only say
  * „Link nicht mehr gültig" - and belong to this recipient: the login's own
@@ -117,6 +134,44 @@ function notify_thread(array $account,int $threadId,string $subject): void {
     $en=$account['locale']==='en';
     queue_mail((int)$account['id'],$account['email'],$en?'New message in your badminton portal':'Neue Nachricht im Badminton-Portal',($en?'A new message is waiting for you. Open your conversation:':'Du hast eine neue Nachricht. Öffne deine Unterhaltung:')."\n".url('messages',['id'=>$threadId]),'notifications');
 }
+/**
+ * Tell a login's holder that how they sign in has changed, so a change made by
+ * somebody else - in a session left open, or with the password - does not go
+ * unnoticed (security review, 2026-10-08): a new address to the old one, with
+ * the new one masked (masked_address()), a new password to the address the
+ * login has. $account is the login as it was before the change.
+ *
+ * Only for a login that was set up: nobody signs in yet with an invitation's
+ * address, which staff correct when it was mistyped - a stranger's mailbox.
+ * A security mail, so no switch stops it, the queue never tries it again by
+ * itself and its body is cleared once it is sent; it is a notice, with no link
+ * (queue_mail()). Nothing without a deliverable address: a notice is never the
+ * reason a change fails.
+ */
+function notify_sign_in_changed(array $account, string $to, ?string $newAddress = null): void {
+    if(empty($account['verified_at']) || !email_deliverable(email_normalised($to))) return;
+    if($newAddress!==null && same_address($to,$newAddress)) return;
+    $en=($account['locale']??'')==='en';
+    $what=$newAddress!==null
+        ? strtr($en?'the address you sign in with has been changed to {address}.':'die Adresse, mit der du dich anmeldest, wurde auf {address} geändert.',
+                ['{address}'=>masked_address($newAddress)])
+        : ($en?'the password you sign in with has been changed.':'das Passwort, mit dem du dich anmeldest, wurde geändert.');
+    queue_mail((int)$account['id'],$to,
+        $newAddress!==null ? ($en?'Your sign-in address was changed':'Deine Anmeldeadresse wurde geändert')
+                           : ($en?'Your password was changed':'Dein Passwort wurde geändert'),
+        mail_greeting($account).$what."\n\n".($en?'Wasn’t that you? Get in touch with the club.':'Warst du das nicht? Melde dich beim Verein.'),
+        'security',notice:true);
+}
+/**
+ * How long the outbox keeps what a sent mail said: 90 days from sending, then
+ * only that it went - to whom, about what, when (prune_expired()). Every member
+ * of staff reads the outbox, and an invoice's or a reminder's words are a
+ * family's business. The project manager's decision of 2026-10-08, and the
+ * privacy notice can name it, so it is a fixed rule rather than a setting, for
+ * the reason FEEDBACK_DONE_KEEP_DAYS gives. A security mail's body is cleared
+ * as it is sent.
+ */
+const MAIL_BODY_KEEP_DAYS = 90;
 const MAIL_MAX_ATTEMPTS = 5;
 // Backoff per attempt number, in seconds: ~1min, 5min, 15min, 1h.
 const MAIL_BACKOFF = [60, 300, 900, 3600];
@@ -518,9 +573,11 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                 // Hold the account lock during send: suspension/deletion cannot race this check.
                 $a=$job['account_id']?one('SELECT * FROM accounts WHERE id=? FOR UPDATE',[$job['account_id']]):null;
                 $eligible=$a && $a['state']!=='suspended';
-                $stored=$job['payload']!==''?mail_payload(unseal($job['payload'])):['body'=>'','attach'=>[]];
+                $stored=$job['payload']!==''?mail_payload(unseal($job['payload'])):['body'=>'','attach'=>[],'notice'=>false];
                 $plainBody=$stored['body'];
-                if($eligible && $job['category']==='security') $eligible=security_mail_links_live($plainBody,(string)$job['recipient']);
+                // A notice has no link to check, and goes to the address it
+                // names, which for a moved login is the old one (notify_sign_in_changed()).
+                if($eligible && $job['category']==='security') $eligible=$stored['notice'] || security_mail_links_live($plainBody,(string)$job['recipient']);
                 if($eligible && $job['category']!=='security') $eligible=account_takes_mail($a,(string)$job['category']) && same_address((string)$a['email'],(string)$job['recipient']);
                 if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='',retry_after=NULL WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}
                 $m=smtp_mailer($s);

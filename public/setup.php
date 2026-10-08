@@ -208,7 +208,9 @@ $other = install_locale() === 'en' ? 'de' : 'en';
 // Set before a single byte of the page goes out; after that it is too late.
 if ($state === 'installed' && !$done) http_response_code(403);
 if ($state === 'unreachable' && !$done) { http_response_code(503); header('Retry-After: 300'); }
-header('Cache-Control: no-store');
+// The headers every page of the portal is sent with, Cache-Control: no-store
+// among them. This page never runs boot_http(), so it sends them itself.
+foreach (security_headers() as $header) header($header);
 header('X-Robots-Tag: noindex');
 ?>
 <!doctype html>

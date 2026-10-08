@@ -152,6 +152,20 @@ function schema_unwritable(): UpdateBlocked {
 }
 
 /**
+ * The refusal for an update whose copy beforehand could not be taken. What went
+ * wrong is for the log only: a BackupError names the folder of copies, whose
+ * path on shared hosting holds the hosting account's name, or carries the
+ * database's own error, which can name the database user and a table; the two
+ * texts are on the closed page, which anybody can open (security finding 5).
+ */
+function schema_backup_failed(BackupError $e): UpdateBlocked {
+    return new UpdateBlocked(
+        'Vor der Aktualisierung konnte keine Sicherung angelegt werden. Der Grund steht im Fehlerprotokoll des Hostings. Bitte im Hosting-Panel selbst eine Sicherung der Datenbank anlegen und danach im Ordner storage eine leere Datei namens skip-backup erstellen.',
+        'No backup could be taken before updating. The reason is in the hosting error log. Please export the database from the hosting panel yourself, then create an empty file named skip-backup in the storage folder.',
+        'Pre-update backup failed: ' . $e->getMessage());
+}
+
+/**
  * Put the record in place: written beside it, flushed to disk and renamed in, so
  * it is never half there and a power cut cannot leave an empty file that the
  * next run would have to refuse.
@@ -639,12 +653,7 @@ function schema_refuse_unsafe(callable $log, bool $unfinished = false): ?string 
         $log('No backup: ' . $e->getMessage());
         return null;
     } catch (BackupError $e) {
-        throw new UpdateBlocked(
-            'Vor der Aktualisierung konnte keine Sicherung angelegt werden: ' . $e->getMessage()
-            . ' Bitte im Hosting-Panel selbst eine Sicherung der Datenbank anlegen und danach im Ordner storage eine leere Datei namens skip-backup erstellen.',
-            'No backup could be taken before updating: ' . $e->getMessage()
-            . ' Please export the database from the hosting panel yourself, then create an empty file named skip-backup in the storage folder.',
-            'Pre-update backup failed: ' . $e->getMessage());
+        throw schema_backup_failed($e);
     }
 }
 

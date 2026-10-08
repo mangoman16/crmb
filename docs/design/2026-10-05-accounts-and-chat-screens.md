@@ -167,12 +167,12 @@ Four states, one card, every action its own form; folds that remove something op
 - Persönliche Daten's `#email` block keeps its three states (read-only in use, editable with the re-send hint while invited, editable for a placeholder).
 
 ### §4 (new) Mein Konto (`views/profile.php`)
-The card „Anmeldung", then „Name und Darstellung", the privacy group and „Abmelden", as built. In the card:
+The card „Anmeldung", then „Name und Darstellung", the privacy group and „Abmelden", as built. *2026-10-08, from the security review:* for a family the second card is „Darstellung", with no box for a name: a family's login is called what the child is, renamed with the child's record, and Mein Konto no longer renames it; staff keep „Name und Darstellung" with „Name". In the card:
 - `login_facts($user, t('bestätigt','verified'))`: the address, one row;
 - the one sentence `t('Mit dieser Adresse meldest du dich an.','You sign in with this address.')`;
 - **the resets of the last 14 days** (`password_resets_for()` only): `.notice.warn` with `<strong>` `t('Dein Passwort wurde per E-Mail-Link neu festgelegt','Your password was set anew through an email link')`, one line per reset with `fmt_datetime()`, then the built „Warst du das nicht? …" sentence (family / staff);
 - the fold „E-Mail-Adresse ändern", always this label, with the one hint (the current-address one); „Passwort ändern";
-- in „Name und Darstellung": the three switches (`check_field(…, switch: true)`) **always**; the hidden-field branch and „E-Mails vom Verein … sobald du oben eine E-Mail-Adresse hinzufügst" go.
+- in „Name und Darstellung", a family's „Darstellung": the three switches (`check_field(…, switch: true)`) **always**; the hidden-field branch and „E-Mails vom Verein … sobald du oben eine E-Mail-Adresse hinzufügst" go.
 
 ### §5 Sign-in, „vergessen", the link page
 - **`views/login.php`**: `input('email', t('E-Mail-Adresse','Email address'), '', 'email', true, '', '', sign_in_address_attributes())`. `type="email"` again (the „@" keyboard, the format checked before posting); no `inputmode`. The box's `name` is backend-dev's (`email` as at 0021, or `login` as the batch posts it; `tests/e2e.mjs` fills it by name). `autocomplete="username"` stays (ADR 0030 §7).

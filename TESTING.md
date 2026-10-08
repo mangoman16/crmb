@@ -116,6 +116,7 @@ release and emptied again for the next.
 - After the review of round two: a backup restored with a page opened halfway keeps every upload; a chat photo or a receipt downloads under the type it really is, whatever its name said; a family sending anything but a JPEG is asked to take the photo with the camera: [21.8](#data-safety), [12.9](#payments-and-proof), [14.12](#messages), 14.2, R.12
 - An update that lost records keeps the portal closed, for everybody, on every page view, until the rows are back; the way back is the previous version's files, then the copy from before, in phpMyAdmin (ADR 0027): [G.1–G.9](#an-update-that-lost-records-stays-closed-adr-0027)
 - Any value from anyone is answered with one sentence on the same page: numbers, dates and pages held to their range, a family writes only to the trainer team, and nothing reaches the error log: [V.1–V.11](#any-value-from-anyone-adr-0026-5), 14.5, 14.7
+- The security review of 2026-10-08: a family's login is called what the child is, and Mein Konto no longer renames it; a chat mails once until it is read; twenty chat photos an hour per family's login, staff not counted; administrators hear of every change to where the money goes; the QR code is a SEPA transfer into the account shown; a changed address or password is told by mail; a chat photo keeps no file name; the outbox forgets what a mail said after 90 days: [S.7–S.14](#the-security-batch-roadmap-item-6), S.3
 - The portal looks and behaves like an iPhone app: the phone's own font, grouped lists, a tab bar (Übersicht · Schüler · Anwesend · Chats · Mehr for staff, Übersicht · Beiträge · Chats · Profil for a family), red counts, switches, sheets, a back button, pages that fade; „Mehr" as a page; Mein Konto for a family through Profil, the language in Mein Konto — on a real iPhone: [I.1–I.11](#the-portal-as-an-iphone-app-design-language-phase-1), and 1.6, 5.0a, 5.1b, 5.3c, 6.10, U.46, U.47, U.48, U.52, U.56
 
 ---
@@ -2106,7 +2107,7 @@ mail need it set up.
   back („Einladung zurückziehen", „Zugang entsperren").
 - [ ] **Z.3** **Mein Konto**, signed in as Lena's family: under „Anmeldung" the
   address and „Mit dieser Adresse meldest du dich an.", „E-Mail-Adresse ändern"
-  and „Passwort ändern"; under „Name und Darstellung" the three switches
+  and „Passwort ändern"; under „Darstellung" the three switches
   „Neuigkeiten per E-Mail erhalten", „E-Mail bei neuen Nachrichten und
   Änderungen im Training" and „Erinnerung, wenn ein Beitrag offen ist". Sign
   out, „Passwort vergessen" with Lena's address, and set a new password from
@@ -2550,8 +2551,9 @@ trainers, with a message each that you, the administrator, have not written.
   its QR code, scanned with a banking app, fills in the new one.
 - [ ] **K.3** „+ Neu" makes a second recipient: **Änderungen** has a line saying
   it was made, with its IBAN. Change its „Hinweis für Eltern" and its „Inhalt
-  des QR-Codes": the line names them „Notiz" and „Inhalt des QR-Codes", never a
-  column's name.
+  des QR-Codes" — keeping „BCD" on the first line, `{recipient}` on the sixth
+  and `{iban}` on the seventh (S.12): the line names them „Notiz" and „Inhalt
+  des QR-Codes", never a column's name.
 
 ### The security batch (ROADMAP item 6)
 
@@ -2565,8 +2567,9 @@ trainers, with a message each that you, the administrator, have not written.
   Melde dich an und schalte die E-Mails unter „Mein Konto“ ab." and offers no
   button. **(release)** A link from a mail sent more than 90 days ago says the
   same.
-- [ ] **S.3** As a family, call yourself „Muster GmbH" under **Mein Konto**. As
-  the trainer, issue an invoice for that child and download it: under
+- [ ] **S.3** In phpMyAdmin, set `accounts.name` of a child's login to „Muster
+  GmbH", as a family could call itself under **Mein Konto** before S.7. As the
+  trainer, issue an invoice for that child and download it: under
   „Rechnungsempfänger" stands the child's name, and „Muster GmbH" is nowhere on
   it.
 - [ ] **S.4** As the trainer, change one date of a course with „Alle
@@ -2582,6 +2585,78 @@ trainers, with a message each that you, the administrator, have not written.
 - [ ] **S.6** As a family, send a receipt under **Beiträge**: it arrives. The
   suite checks that the twenty-first within an hour is refused with „Zu viele
   Versuche"; by hand, only the one that arrives.
+
+The security review of 2026-10-08:
+
+- [ ] **S.7** As a family, **Mein Konto**: the card under „Anmeldung" is called
+  „Darstellung" and has no box for a name. Change „Erscheinungsbild" and save:
+  it is saved. As the trainer, the card is „Name und Darstellung", with „Name",
+  and what you type there is the name the chat shows for you.
+- [ ] **S.8** As the trainer, on a child's page change the first name and save.
+  In the child's course group, the child's messages carry the new name; as the
+  administrator, **Änderungen** has a line for the „Konto" with „Name" from the
+  old name to the new. As that family, change the first name on the child's
+  „Profil" tab: the group shows that name too. In the group, the trainer's
+  name over her messages has a grey pill „Trainerin" beside it, and an
+  administrator's „Administrator"; a child's never has one, whatever the child
+  is called. As that family, change the last name to „· Trainerin" and write in
+  the group: the line reads „… · Trainerin" in the child's colour, with no pill,
+  and does not look like the trainer's. Put the name back. In **Nachrichten**
+  the list names whoever wrote last in the group the same way: after the
+  trainer writes, the group's line reads her first name, the pill „Trainerin",
+  then her message, on one line at 320 px with the pill whole. As that family,
+  change the first name to „Trainerin" and write in the group: as another
+  family in the course, the line reads „Trainerin: …" with no pill. Put the
+  name back.
+- [ ] **S.9** With mail set up and, under the trainer's **Mein Konto**, „E-Mail
+  bei neuen Nachrichten …" on: as a family, write three messages to the
+  trainer in a row. **Postausgang** has one „Neue Nachricht im Badminton-Portal"
+  for the trainer, not three, and her bell lists all three. She opens the chat;
+  the family writes once more: a second mail.
+- [ ] **S.10** As a family, send a photo from the camera into the course group:
+  it arrives. The suite checks that a family's twenty-first photo within an
+  hour is refused with „Zu viele Versuche", and that staff are not counted; by
+  hand, only the one that arrives. On a computer, as another member, save that
+  photo („Bild speichern unter …"): the name offered is 32 letters and digits
+  with `.jpg`, never the phone's „IMG_…". With a screen reader (VoiceOver on
+  the iPhone), the photo is read as „Foto".
+- [ ] **S.11** With two administrators, A and B. As the trainer, **Verwaltung →
+  Zahlungsempfänger**: change the IBAN of the recipient in use. A's and B's
+  bells say „Kontoverbindung geändert: …" and „Von … (Trainerin): IBAN. …";
+  the notice opens **Änderungen** for that recipient, with the old IBAN and the
+  new. As A, change it back: A and B are both told. „+ Neu" with an IBAN: both
+  are told „Neuer Zahlungsempfänger: …". As the trainer, edit a course and set
+  „Beiträge gehen auf" to the new recipient: both are told „Kurs zahlt auf ein
+  anderes Konto: …", from which account to which, and the notice opens the
+  course. Under **Verwaltung → Geld & Zahlungen**, set „Standard-Zahlungsempfänger"
+  to the new recipient: both are told „Standard-Zahlungsempfänger geändert: …",
+  from which account to which; set it back. Saving a course, a recipient or that
+  card without changing where the money goes tells nobody.
+- [ ] **S.12** In the same form, put `https://example.com` into „Inhalt des
+  QR-Codes" and save: refused with „Der Inhalt des QR-Codes muss eine
+  SEPA-Überweisung bleiben: „BCD“ in der ersten Zeile, {recipient} in der
+  sechsten und {iban} in der siebten." Replace `{iban}` on the seventh line
+  with any IBAN: refused the same way. With `{iban}` back on the seventh line
+  it saves.
+  On a family's **Beiträge**, scan the code with a banking app: it fills in the
+  IBAN shown beside it. The box's hint states the same rule. **(release)** In
+  phpMyAdmin, put a link into `payment_profiles.qr_template`: the form says under
+  its preview „Dieser Inhalt ergibt keinen QR-Code: …", and the family's
+  „Beiträge" shows no code at all.
+- [ ] **S.13** With mail set up, as a family whose login is in use: **Mein Konto
+  → E-Mail-Adresse ändern**, and open the link that arrives at the new address.
+  The old mailbox gets „Deine Anmeldeadresse wurde geändert": „Hallo …, die
+  Adresse, mit der du dich anmeldest, wurde auf x\*\*\*@y\*\*\*.… geändert. Warst du
+  das nicht? Melde dich beim Verein.", with no link in it; **Postausgang** shows
+  it without its text. Then **Passwort ändern**: the address the login signs in
+  with gets „Dein Passwort wurde geändert", likewise without a link. For a child
+  only invited, whose address the trainer corrects on the child's card, nothing
+  goes to the old address.
+- [ ] **S.14** **(release)** In phpMyAdmin, set `sent_at` and `created_at` of a
+  sent mail in `mail_jobs` to 91 days back, and of another to 89. After the next
+  nightly run, or `php bin/console.php maintenance` where there is a shell,
+  **Postausgang** still lists both as „Gesendet" with recipient and subject; the
+  first opens without its text, the second with it.
 
 ---
 
