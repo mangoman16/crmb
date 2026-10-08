@@ -80,12 +80,19 @@ In this order.
    before an update stay in `storage/update-unfinished.json` until a run passes; until then
    no page is served and nothing writes, and the portal reopens by itself once the rows are
    back. The restore walk in TESTING.md (G.1–G.9) has not been walked in a real phpMyAdmin.
-8. **Robustness suite: done** (`aa5b1b7`). `tests/suites/robustness.php` sends unexpected values
+8. **A restore keeps the portal closed until its import is done (ADR 0029): decided, to be
+   built** after the round-2 follow-ups. Today, during INSTALL.md's restore, a page opened
+   between deleting the tables and importing installs afresh and copies the empty database
+   over the copies kept (the round-2 follow-ups stop it sweeping the uploads). With 0029, every
+   copy the portal writes says when its import is done; until then nothing changes the
+   database, sweeps or copies, and the portal opens by itself afterwards. database-engineer builds `app/schema.php` and `app/backup.php`,
+   devops-engineer setup, the console and the sweep's gate. Needed before real families.
+9. **Robustness suite: done** (`aa5b1b7`). `tests/suites/robustness.php` sends unexpected values
    to every action as every role and draws every page with them; 751 checks, about 45 s.
    What it cannot reach — uploads, actions no page draws a form for — it lists after a run.
-9. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
+10. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
    started.
-10. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
+11. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
 
 ## The owner's goals
 
