@@ -651,7 +651,6 @@ function dispatch_action(string $action): array {
         // and sent her to the student's page, which sent her back here.
         $studentId=login_student_id($id);
         $back=$studentId?['student',['id'=>$studentId]]:(is_open_invitation($id)?['students',['invitations'=>1]]:['accounts',[]]);
-        $said=t('Konto aktualisiert.','Account updated.');
         // A staff login on a student's record, left from before ADR 0010, only
         // lets go of the child when its sign-in is deleted or withdrawn there:
         // the child gets a fresh placeholder, and the team member keeps her
@@ -698,7 +697,10 @@ function dispatch_action(string $action): array {
                 $said=strtr(t('Die Anmeldung {login} ist gelöscht, mit ihren privaten Unterhaltungen. {name} ist jetzt ohne Anmeldung; Kurse, Beiträge und Rechnungen bleiben. Eine neue Einladung schickst du hier.',
                               'The login {login} has been deleted, with its private conversations. {name} is now without sign-in; courses, charges and invoices stay. You send a new invitation here.'),
                             ['{login}'=>(string)$a['email'],'{name}'=>$student['first_name'].' '.$student['last_name']]);
-            } else delete_login($id);
+            } else {
+                delete_login($id);
+                $said=t('Zugang gelöscht.','Access deleted.');
+            }
         } elseif($mode==='withdraw') {
             // Nothing is lost that inviting again would not bring back, so
             // nothing is typed to confirm it - but only for a login never set up.
@@ -721,6 +723,8 @@ function dispatch_action(string $action): array {
             if($mode==='restore' && $a['state']!=='suspended') throw new UserError(t('Dieser Zugang ist nicht gesperrt.','This login is not suspended.'));
             run('DELETE FROM auth_tokens WHERE account_id=?',[$id]);cancel_account_mail($id);
             run('UPDATE accounts SET state=?,auth_version=auth_version+1 WHERE id=?',[$mode==='suspend'?'suspended':($a['verified_at']?'active':'invited'),$id]);
+            // In the button's own words, as every other mode says what it did.
+            $said=$mode==='suspend' ? t('Zugang gesperrt.','Access suspended.') : t('Zugang entsperrt.','Access restored.');
         }
         // Said, and written down, as what happened: the team member's login let
         // go of the child, and was neither deleted nor withdrawn - it is still

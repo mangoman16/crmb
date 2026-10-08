@@ -439,7 +439,10 @@ I.1–I.12 walk. Chromium cannot show whether Safari still flashes white.
   others — „Einladung erneut senden", „Einladung zurückziehen", „Link zum
   Zurücksetzen senden", „Zugang sperren", „Zugang entsperren" and „Anmeldung
   löschen" — land at the top of the child's page, where the message says what
-  happened, such as how long a reset link works.
+  happened, such as how long a reset link works. Suspending and restoring a
+  login say it in the button's own words, „Zugang gesperrt." and „Zugang
+  entsperrt.", and deleting a team member's login on **Zugänge** says „Zugang
+  gelöscht."; all three said „Konto aktualisiert." before.
 - **Mein Konto** shows the address you sign in with, each time a mailed link set
   the password in the last 14 days, „E-Mail-Adresse ändern", and the three mail
   switches, for everybody. The one for notices is called after what it sends,

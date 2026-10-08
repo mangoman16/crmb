@@ -401,8 +401,10 @@ case_('A student’s login is managed from the student’s page, and returns the
 sign_in_as($admin);
 is_same(['student', ['id'=>$paul]], act('account_state', ['id'=>(string)$paulLogin['id'], 'mode'=>'suspend']),
         'suspending lands on the student it belongs to');
+is_same('Zugang gesperrt.', $_SESSION['flash']['message'] ?? null, 'and says what happened, in the button’s words');
 is_same(['student', ['id'=>$paul]], act('account_state', ['id'=>(string)$paulLogin['id'], 'mode'=>'restore']),
         'and so does restoring');
+is_same('Zugang entsperrt.', $_SESSION['flash']['message'] ?? null, 'and says so too');
 is_same(['student', ['id'=>$mia]], act('account_state', ['id'=>(string)$miaLogin['id'], 'mode'=>'reinvite']),
         'and resending the invitation');
 throws(fn() => act('account_state', ['id'=>(string)$paulLogin['id'], 'mode'=>'delete', 'confirmation'=>'Paul Mayr']),

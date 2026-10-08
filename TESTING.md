@@ -1409,8 +1409,12 @@ Rückmeldungen**, „Technische Einzelheiten"
 - [ ] **U.24** **(release)** From the child's page: **„Zugang sperren"**, then
   **„Zugang entsperren"**, **„Einladung erneut senden"** on an invited one, and
   **„Anmeldung löschen"**. Each one lands back on the same child's page, at its
-  top, with a message there saying what happened — not on Zugänge, and not at
-  the card, which only „Einladung senden" and a refusal come back to.
+  top — not on Zugänge, and not at the card, which only „Einladung senden" and
+  a refusal come back to — with a message saying what happened: „Zugang
+  gesperrt.", „Zugang entsperrt.", „Die Einladung ist noch einmal an …
+  unterwegs. Der alte Link gilt nicht mehr." and „Die Anmeldung … ist gelöscht,
+  …". On **Zugänge**, „Zugang löschen" on a team member's row says „Zugang
+  gelöscht."
 - [ ] **U.25** **(release)** As the trainer, **Zugänge** lists the team and
   offers no invitation at all: not for a team member (4.8a), and not for a
   family. No team row opens for her; the students' rows still lead to each

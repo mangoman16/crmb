@@ -384,7 +384,8 @@ ok(str_contains($said, 'Rita Kreis hat jetzt eine neue, leere Anmeldung') && str
    'the sentence names the child and says the team member’s login stays: '.$said);
 is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.let_go' AND entity_id=?", [$oldTrainer]),
         'and the audit says it was let go of, not deleted');
-is_same(['accounts', []], $deleteOnTheCard(), 'no circle: deleted again - on Konten - it is a team login like any other');
+is_same(['accounts', []], $deleteOnTheCard(), 'no circle: deleted again - on Zugänge - it is a team login like any other');
+is_same('Zugang gelöscht.', $_SESSION['flash']['message'] ?? null, 'and the banner says it is deleted, in the button’s words');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE id=?', [$oldTrainer]), 'and is gone');
 
 case_('No student is in a course without a login, and the access card speaks of a placeholder as one');
@@ -595,10 +596,10 @@ ok(str_contains($card, '<div class="notice warn" role="status"><p>'.e('Diese E-M
 $GLOBALS['crm_held_input'] = null;
 $card = $cardOf($karla);
 ok($card !== '' && !str_contains($card, 'role="status"'), 'and only after a refusal of the card’s own form');
-$_SESSION['flash'] = ['message'=>'Konto aktualisiert.', 'kind'=>'success'];
+$_SESSION['flash'] = ['message'=>'Zugang gesperrt.', 'kind'=>'success'];
 $GLOBALS['crm_held_input'] = ['action'=>'student_invite', 'page'=>'student', 'id'=>(string)$karla, 'tab'=>'', 'record'=>null, 'fields'=>['student_id'=>(string)$karla]];
 $card = $cardOf($karla);
-ok($card !== '' && !str_contains($card, 'Konto aktualisiert.'), 'never a success, which the banner says on its own');
+ok($card !== '' && !str_contains($card, 'Zugang gesperrt.'), 'never a success, which the banner says on its own');
 $GLOBALS['crm_held_input'] = null;
 unset($_SESSION['flash']);
 mail_ready(false);
