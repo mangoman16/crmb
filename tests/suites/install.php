@@ -945,6 +945,11 @@ if (!function_exists('exec')) {
     ok(!str_contains($page['body'], (string)$ownDb['database']), 'but not the name of the database, which a visitor has no business knowing');
     ok(!preg_match('~<dt>[^<]*Server[^<]*</dt>~', $page['body']), 'nor the server it is on');
     ok(str_contains($page['body'], 'name="setup_code"'), 'and it asks for the setup code');
+    $head = (string)strstr($page['body'], '</head>', true);
+    is_same(1, substr_count($head, 'name="color-scheme"'), 'its head says once how it may be drawn');
+    ok(str_contains($head, '<meta name="color-scheme" content="light dark">')
+       && strpos($head, 'name="color-scheme"') < (int)strpos($head, '<link rel="stylesheet"'),
+       'light and dark alike, before the stylesheet, so a phone in dark mode does not draw it white first');
     ok(str_contains($page['body'], 'storage/setup-code.txt') || str_contains($page['body'], 'setup-code.txt'),
        'saying which file the code is in');
     ok($codeIn() !== '', 'which it has written beside the maintenance flag, where only somebody with the files can read it');

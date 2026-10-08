@@ -216,6 +216,9 @@ header('X-Robots-Tag: noindex');
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<?php /* Before the stylesheet, so a phone in dark mode does not draw the page
+         white first. Nobody has chosen an appearance here, so it is both. */ ?>
+<meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex, nofollow">
 <title><?=install_e(install_t('Einrichtung', 'Setup'))?> – Badminton</title>
 <link rel="stylesheet" href="<?=install_e(asset_path('app.css'))?>">

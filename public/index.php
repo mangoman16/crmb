@@ -115,5 +115,7 @@ try {
     // no family's data in the message - but a database error's is never logged.
     if(function_exists('capture_error'))capture_error($ex);else error_log('CRM: '.get_class($ex).($ex instanceof PDOException?'':': '.$ex->getMessage()));
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Badminton</title><p>Die Anwendung ist vorübergehend nicht verfügbar. Bitte Installation und Serverprotokoll prüfen.</p><p>The application is temporarily unavailable. Please check installation and server logs.</p></html>';
+    // Drawn for light and dark alike, so it is not a white page on a phone in
+    // dark mode while it shows; nobody's choice of appearance is known here.
+    echo '<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Badminton</title><p>Die Anwendung ist vorübergehend nicht verfügbar. Bitte Installation und Serverprotokoll prüfen.</p><p>The application is temporarily unavailable. Please check installation and server logs.</p></html>';
 }

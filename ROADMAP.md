@@ -95,10 +95,11 @@ In this order.
    own version and maintenance mode on (INSTALL.md). The restore walk (TESTING.md G.1–G.9,
    H.1–H.5, 21.8) has not been walked in a real phpMyAdmin.
 9. **Pictures and a calmer start (owner, 2026-10-08).**
-   - **No white flash in dark mode**, and a short waiting screen with a badminton element,
-     shown only when a page is slow; a badminton mark and icons where a club has uploaded
-     none. frontend-dev fixes the flash's cause; ui-ux-designer specifies the waiting screen
-     and the mark.
+   - **No white flash in dark mode: built.** Every page, the installer and the error page say
+     light or dark before their stylesheet; not yet seen on an iPhone (TESTING.md I.12).
+   - A short waiting screen with a badminton element, shown only when a page is slow; a
+     badminton mark and icons where a club has uploaded none. ui-ux-designer specifies the
+     waiting screen and the mark.
    - **Profile pictures come back** (ADR 0031, decided): faces for the trainer on
      Anwesenheit, the lists and the child's page, and for the children to make their profile
      their own; visible to the course with each family's consent; the family and the trainer
@@ -273,6 +274,11 @@ For the owner to do:
 
 ## For the owner to test or deploy
 
+- **No white flash in dark mode, on your iPhone** (TESTING.md I.12, test data only): in dark
+  mode, and once with „Immer dunkel" under Mein Konto on a phone in light mode, open the
+  home-screen app, tap through several pages, go Back, reload, open a link from Mail, and
+  open the installer in dark mode. Write down any white frame. Chromium cannot show what
+  Safari does, so only an iPhone can say.
 - **Signing in by address only** (ADR 0030, test data only): after the update, a test login
   that signed in with a username is „Ohne Anmeldung"; enter its address on the child's card
   and send the invitation. Old sign-in links stop working. On your iPhone, walk TESTING.md

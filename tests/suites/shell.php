@@ -995,3 +995,25 @@ foreach ($sources as $source) {
 }
 ok(count($sources) > 60, count($sources).' PHP files read');
 is_same([], $byHand, 'no address of a shipped file is built anywhere but asset_path()');
+
+case_('A page says light or dark in its head, before its stylesheet has arrived');
+/* app.css sets the colour scheme too, but only once it applies. Whatever a
+   browser draws of a page before that, or without it when it fails to load,
+   is in the browser's own colours, white unless the head says otherwise (the
+   owner, 2026-10-08: "pages flash into eyes although dark mode is active").
+   A browser reads the tag in <head> only, and the first one only. So what
+   counts is what stands in <head> before the first stylesheet, where the
+   layout says it is. */
+$declared = function (string $html): array {
+    $beforeCss = preg_split('~<link\b[^>]*\brel="stylesheet"~', explode('</head>', $html, 2)[0], 2)[0];
+    preg_match_all('~<meta name="color-scheme" content="([^"]*)">~', $beforeCss, $tags);
+    return $tags[1];
+};
+foreach (['auto' => 'light dark', 'dark' => 'dark', 'light' => 'light'] as $theme => $scheme) {
+    run('UPDATE accounts SET theme=? WHERE id=?', [$theme, $family]);
+    sign_in_as($family);
+    is_same([$scheme], $declared(render_page('dashboard')), 'with „'.$theme.'" chosen, the head says '.$scheme.', once, before its first stylesheet');
+}
+run('UPDATE accounts SET theme=? WHERE id=?', ['auto', $family]);
+sign_out();
+is_same(['light dark'], $declared(render_page('login')), 'signed out, the sign-in page follows the device');

@@ -149,6 +149,12 @@ This is the first phase of the design language in
   anybody who has asked their phone for less motion.
 - **The bar at the very top of the browser** takes the page's background — the
   light grey, or the club's „Hintergrund" — instead of the menu colour.
+- **No white flash in dark mode.** Every page now says in its first lines
+  whether it is drawn light or dark — as chosen under Mein Konto, „Immer hell"
+  or „Immer dunkel", and otherwise as the phone is set — so the browser can
+  paint it dark from the first moment instead of white until the colours
+  arrive. The installer and the page saying the portal is not available do the
+  same.
 - The portal's built-in teal is a shade darker, so that it reads on the grey
   ground. Every text is at least 4.5:1 against what is behind it in both
   themes, as frontend-dev measured it in Chromium.
@@ -157,7 +163,7 @@ This is the first phase of the design language in
 Not in this phase: a child's page and a course's page as lists to tap through,
 and the screens for the owner's goals. **Seen in Chromium only**, at 320 and 390
 pixels, as each role, light and dark; not yet on a real iPhone, which TESTING.md
-I.1–I.11 walk.
+I.1–I.12 walk. Chromium cannot show whether Safari still flashes white.
 
 ### An update that lost records stays closed until they are back
 

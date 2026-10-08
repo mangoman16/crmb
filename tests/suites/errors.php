@@ -80,6 +80,11 @@ is_same($admins, $told(), 'and every administrator is told, once');
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
 ok(preg_match('/\} catch\(Throwable \$ex\) \{.*?http_response_code\(503\);.*?if\(function_exists\(\'capture_error\'\)\)capture_error\(\$ex\);.*?echo \'<!doctype html>.*?vorübergehend nicht verfügbar/s', $router) === 1,
    'the router captures in its last catch and still sends the friendly page after it');
+/* The page itself is reached by the browser walk, which takes a table away from
+   under a signed-in family (tests/e2e.sh, „an unexpected error"); here it is
+   read where it is written. */
+ok(preg_match('/http_response_code\(503\);.*?echo \'<!doctype html>[^\']*<meta name="color-scheme" content="light dark">[^\']*<title>/s', $router) === 1,
+   'and that page is drawn for light and dark alike, before its title, so it is not white on a phone in dark mode');
 
 case_('A second error in the same request is not written down');
 // Nearly always the first one's consequence, and the first is the one to read.

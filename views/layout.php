@@ -13,6 +13,10 @@ $viewed=$realUser?($user??current_user()):null;
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <?php /* Light or dark, said before any stylesheet: whatever a browser draws of
+             the page before app.css applies - or without it, when it fails to
+             load - is in its own colours, white unless told otherwise. */ ?>
+    <meta name="color-scheme" content="<?=e($theme==='auto'?'light dark':$theme)?>">
     <?php /* Matching the bar to the surface keeps the notch area from banding in standalone mode. */ ?>
     <meta name="theme-color" content="<?=e(brand_theme_colour($theme==='dark'?'dark':'light'))?>"<?=$theme==='auto'?' media="(prefers-color-scheme: light)"':''?>>
     <?php if($theme==='auto'): ?><meta name="theme-color" content="<?=e(brand_theme_colour('dark'))?>" media="(prefers-color-scheme: dark)"><?php endif ?>

@@ -109,6 +109,7 @@ release and emptied again for the next.
 - What ADR 0026 takes out, round one: custom fields with what was typed into them, copying, saved views, writing to many with its templates, „Warteschlange senden", the printed form and data sheet, and Verwaltung's „Tarife" tab: [R.1–R.8](#what-adr-0026-removes-round-one)
 - What ADR 0026 takes out, round two: the online dots, the status and when somebody was online; the status emoji; profile pictures, whose files the update deletes for good; asking to write to another family; voice notes and files in new messages, which are text and photos, a family's from the camera: [R.9–R.17](#what-adr-0026-removes-round-two), and 5.3i, 5.3j, 14.1–14.7, 20.4, 21.7
 - Age groups from the birth date alone — nothing to pin, one rule everywhere, bands that overlap still agree — and the example data cut to one course, four children and three sign-ins that work for 14 days: [N.1–N.7](#age-groups-from-the-birth-date-alone-and-the-small-example-data-round-three), 2.1, 3.4a, 3.4c, 7.2, 7.3
+- No white flash in dark mode: every page says light or dark before its stylesheet arrives, the installer and the page saying the portal is not available too — on the iPhone: I.12
 - The students list for a phone: a search of its own that keeps the selection, „Alle | Überfällig | Krank", the other filters folded under „Filter", „A–Z | Nach Alter" with a card per age group and its count, rows without a price and „Ohne Kurs" for a child in no course, and „Per E-Mail einladen" reached from the wizard's first step: [17.1–17.8](#the-students-list), A.7, N.4, R.4
 - A restore keeps the portal closed until its import is done: every copy makes `import_unfinished` first and drops it last, nothing is run, copied or swept meanwhile, the closed page reloads itself, an import that stopped is imported again: [H.1–H.5](#a-restore-keeps-the-portal-closed-until-its-import-is-done-adr-0029), 21.8, G.7, G.9
 - After the review of round two: a backup restored with a page opened halfway keeps every upload; a chat photo or a receipt downloads under the type it really is, whatever its name said; a family sending anything but a JPEG is asked to take the photo with the camera: [21.8](#data-safety), [12.9](#payments-and-proof), [14.12](#messages), 14.2, R.12
@@ -2315,6 +2316,15 @@ down what could not be checked rather than ticking it.
   anlegen**, a line of two capsules under the title shows the step you are on.
 - [ ] **I.11** The numbers on the bell and on **Chats** are red with a white
   figure, readable in light and in dark.
+- [ ] **I.12** No white flash in dark mode. With the iPhone in dark mode — and
+  once more with the phone in light mode and **Mein Konto → Erscheinungsbild
+  „Immer dunkel"** — open the app from the home screen, tap through several
+  pages (Übersicht, Schüler, a child, Chats, Mehr), go Back, reload, and open a
+  link to the portal from a mail in Mail. On a test install, open `setup.php`
+  in dark mode as well; an installed portal answers „Schon eingerichtet". Write
+  down every white frame you see, however short, and where; the result to
+  expect is none. The plain screen iOS shows before the home-screen app's very
+  first page is iOS's own start, not this check.
 
 ### An update that lost records stays closed (ADR 0027)
 
