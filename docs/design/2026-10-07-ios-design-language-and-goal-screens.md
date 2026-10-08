@@ -13,7 +13,7 @@
 
 **How to read it.**
 - Part 0 is the reference the whole portal is restyled from.
-- Parts 1–10 specify the age list and G1–G8 in Part 0's terms.
+- Parts 1–10 specify the age list and G1–G8 in Part 0's terms; Part 1 is revised by „Part 1, revised 2026-10-08".
 - Part 11 ranks the gaps and groups the builds.
 - Where something somebody asked for would go, it is marked (owner).
 
@@ -477,6 +477,8 @@ Phase 1 is CSS plus the helper changes named below, with no change to the views'
 
 ## Part 1. Age on the students list
 
+> **Revised 2026-10-08.** The owner keeps levels and the age bands; a child's band comes from the birth date only. „Part 1, revised 2026-10-08", after this part, replaces what it names here.
+
 **What the trainer is trying to do.**
 - „Wer sind meine Neun- bis Zwölfjährigen?" She asks it planning at home, or in the hall when she splits the group.
 - She is on her phone, with one hand.
@@ -586,6 +588,184 @@ Phase 1 is CSS plus the helper changes named below, with no change to the views'
 - First child: 576 px (0.80 screens) with today's styles and the filter folded, against 1,188 (1.66) today.
 - In Part 0's layout and stylesheet: 599 (0.84) at 320 and 541 at 390.
 - The filter unfolded, in this order: 406 px, against 642 today.
+
+---
+
+## Part 1, revised 2026-10-08
+
+**What changed.**
+- The owner, 2026-10-07 at 19:03 UTC: "Skill levels were good to have / age levels will also be needed, but it would be enough if the app can dynamically output in which age group one falls in".
+- What stays: the levels, and the age bands the trainer edits under Verwaltung › Altersgruppen.
+- What changes: a child's band is worked out from the birth date alone. The pin goes. „Alter von – bis" is not built, because the bands do that job.
+- Ages count as today, in whole years: the owner chose age over Jahrgang, so Part 1's open question and its table are closed.
+- Everything in Part 1 not named below stands: the search field, „Alle | Überfällig | Krank", the „A–Z | Nach Alter" control, pagination, the empty states.
+
+**What the trainer is trying to do.**
+- „Wer ist bei mir in der Jugend, und wer in Unter 12?"
+- She answers it in her own bands, which she named under Verwaltung, and sees each child's level beside it.
+- Today the list sorts by last name only, and a pinned child can show a band their age left long ago: Sophie Reiter (14) reads „Erwachsene".
+
+**The filter disclosure** (replaces Part 1's item 5).
+- **Summary row:** „Filter" on the left.
+  - When something is chosen, the chosen values on the right in the fields' order, joined by „ · ", on one line cut with an ellipsis: „Kindertraining · Anfänger · Unter 12".
+  - Nothing chosen: only „Filter".
+  - The search and the segmented choice are not repeated there, because both are visible on their own.
+- **Form rows, in this order:**
+  1. Kurs;
+  2. Mitgliedschaft;
+  3. Leistungsgruppe: the levels in Verwaltung's order;
+  4. Altersgruppe: the bands in Verwaltung's order, archived ones left out, then „Ohne Altersgruppe";
+  5. „Anwenden", a full-width tinted button that keeps the search and the sort.
+- **The line under the controls** (replaces item 7), only when a band is chosen and children without a birth date would otherwise match: „2 Kinder ohne Geburtsdatum sind nicht dabei." plus „Zeigen", which goes to `age_group=none&sort=age#no-birth-date`.
+
+**„Nach Alter"** (replaces item 8's age sections).
+- **One section per band**, in Verwaltung's order (`age_groups()`: `sort_order`, `min_age`, `id`). A band with nobody in the selection gets no section.
+- **Section header**, using the built `.section-heading`:
+  - the band's name in Headline, not Title 3 (see Measured);
+  - under it, the band's span from `age_group_range()`: „bis 11", „12 bis 17", „18 und älter";
+  - on the right, the count as a grey `badge()`.
+- **Inside a section**, rows come in Part 1's sort: youngest first, then by name.
+- **A child appears once**, under the first band in Verwaltung's order that covers their age, so overlapping bands do not repeat anybody. Verwaltung's counts and the child's page say the same band. Archived bands place nobody.
+- **After the bands, „Ohne Altersgruppe"**: children whose age no band covers, when the trainer's bands leave a gap (`age_group_warnings()` names the gap under Verwaltung).
+  - Rows show the age.
+  - Footer: „Keine deiner Altersgruppen passt." plus a plain link „Altersgruppen ansehen", which goes to `manage&tab=ages`.
+- **Last, „Ohne Geburtsdatum"** (`id="no-birth-date"`): header and count, no footer.
+- **No bands at all** (every band archived or deleted): a notice above the list, „Es gibt noch keine Altersgruppen." with „Altersgruppen anlegen". Every child with a birth date is then under „Ohne Altersgruppe", youngest first. The seeds create three bands, so this is rare.
+
+**Each row** (replaces the row in item 8). The status line stays as it is: the status badge and an overdue amount.
+
+| List | Subtitle |
+| --- | --- |
+| A–Z (also the overview's Schüler group) | the band, then the level: „Unter 12 · Anfänger". Age with no band: „18 Jahre · Fortgeschritten". No birth date: „Geburtsdatum fehlt · Könner". |
+| Nach Alter | the age, then the level: „9 Jahre · Anfänger"; the band is the header. No birth date: „Geburtsdatum fehlt · Könner". |
+
+- **No level** (only if every level was archived): the subtitle ends without one.
+- **The price leaves the row.** With the age, band and level beside it, it wrapped every row at 320 to 3–5 lines (measured).
+  - The one thing it signalled that matters on a list, a child in no current course, becomes an amber badge „Ohne Kurs" in the status line.
+  - Prices stay on the child's page (Kurse, Beiträge) and on Geld.
+  - *Decided by the project manager, 2026-10-08:* the price leaves the rows. The owner sees it in the screenshots before the build ships, and it is cheap to put back.
+
+**Text** (only the strings that differ from Part 1).
+- Filter fields:
+  - `t('Leistungsgruppe','Level')`, `t('Altersgruppe','Age group')`;
+  - the option `t('Ohne Altersgruppe','No age group')`;
+  - `t('Anwenden','Apply')`, as in Part 1.
+- Sections:
+  - the band's name and `age_group_range()`;
+  - `t('Ohne Altersgruppe','No age group')`, `t('Ohne Geburtsdatum','No date of birth')`;
+  - the footer `t('Keine deiner Altersgruppen passt.','None of your age groups fits.')` with `t('Altersgruppen ansehen','View the age groups')`;
+  - with no bands, `t('Es gibt noch keine Altersgruppen.','There are no age groups yet.')` and `t('Altersgruppen anlegen','Create age groups')`.
+- Rows:
+  - the band's name; `plural($age,'Jahr','Jahre','year','years')`; `t('Geburtsdatum fehlt','No date of birth yet')`;
+  - the level's name;
+  - `badge(t('Ohne Kurs','No course'),'amber')`.
+- The line under the controls keeps Part 1's `plural(…'Kinder ohne Geburtsdatum sind nicht dabei.'…)` and `t('Zeigen','Show')`.
+- **Gone with the range:** `t('Alter von','Age from')`, `t('Alter bis','Age to')`, and the strings `{from}–{to} Jahre`, `ab {from} Jahren`, `bis {to} Jahre`.
+
+**Empty and error states** (changes only).
+- A band id that is unknown or archived in the address is ignored, as is any value other than a band id or `none`.
+- The rule that swapped „von" and „bis" goes, with the range.
+
+**The child's page.**
+- **„Einteilung"** (staff):
+  - Mitgliedschaft, Dabei seit, Mitgliedschaft bis and Leistungsgruppe stay as they are, with the level's hint „Du wählst sie. Neue Kinder starten in {default}.".
+  - The select „Altersgruppe festlegen" goes, with both of its hints.
+  - The paragraph above the fields („Drei verschiedene Dinge, die leicht durcheinandergehen: …") goes too. It was there to tell a chosen grouping from a worked-out one, and Part 0 puts no paragraph above a group.
+  - No read-only band row replaces the select: the band shows once, under the birth date it comes from.
+- **The age line** (the birth date's hint, both roles):
+
+| Case | Staff see | A family sees |
+| --- | --- | --- |
+| A band covers the age | `plural($age,'Jahr alt','Jahre alt','year old','years old').' · '.t('Altersgruppe: ','Age group: ').{band}` — today's wording; it now never names a pinned band (Sophie Reiter: „14 Jahre alt · Altersgruppe: Jugend") | the same |
+| No band covers the age | the same, then `' · '.t('keine Altersgruppe passt','no age group fits')` | only `plural($age,'Jahr alt','Jahre alt',…)`; the gap is the trainer's to close |
+| No birth date | today's `t('Fehlt noch. Danach richtet sich die Altersgruppe.','Still missing. It decides the age group.')` | the same |
+
+**What a family sees** (replaces Part 1's).
+- No list.
+- None of Part 1's text changes is made, so every sentence it replaced stays as it is today:
+  - „Persönliche Daten" keeps „· Altersgruppe: {band}" on the age line; Part 1 dropped it.
+  - „Fehlt noch. Danach richtet sich die Altersgruppe." stays, for families and staff; Part 1 replaced it with „Deine Trainerin teilt die Gruppen nach dem Alter ein."
+  - `family_next_steps()`' „Danach richtet sich die Altersgruppe." and the activation page's hint stay.
+  - `student_new`'s „Bestimmt die Altersgruppe. Kann auch später ergänzt werden." (staff) stays.
+- New for families: nothing. They never read „keine Altersgruppe passt".
+
+**Reuses.**
+- `age_groups()`, `age_group_for_age()`, `age_group_range()`, `student_age()`, `levels()`.
+- `age_group_warnings()`, under Verwaltung, unchanged.
+- `filters_from()`, `filtered_students()`, `render_filters()`, `student_card()`.
+- `tabs()`, `badge()`, `plural()`, `empty_state()`.
+- The built `.section-heading`, `details > summary`, `.tabs.is-segmented` and `.student-card`.
+
+**Takes away** (replaces Part 1's).
+- The pin: the select „Altersgruppe festlegen" and `students.age_group_id`.
+- „Einteilung"'s paragraph.
+- The price from the list's rows.
+- Part 1's „Alter von – bis" and all that came with it.
+- As Part 1 said: „Tarif und eigene Felder" and saved views (gone in round 2); „Nach Nachnamen sortiert"; the always-open filter card. Proposed: the „Aktuell abwesend" select and the „Nur überfällige" tick.
+- **Not taken away any more:** the filter's level and age-group selects, and Verwaltung's „Leistungsgruppen" and „Altersgruppen".
+
+**Schema.** Migration 038 (`038_age_group_from_the_birth_date_only.sql`) drops `students.age_group_id` with its key `student_age_group`. `levels`, `students.level_id` and `age_groups` stay.
+
+**For backend-dev.**
+- **The sort clause stays** as Part 1 has it.
+- **One rule for a child's band, everywhere:** `age_group_for_age(student_age($birthDate), $bands)`, the first match in Verwaltung's order, archived bands left out.
+  - `student_age_group()` loses its pinned branch.
+  - The list's sections, the filter, the rows, the age line and Verwaltung's counts (`group_usage()`) all ask this rule.
+- **The band filter returns exactly the children the band view shows under that band.**
+  - Today's SQL bounds may stay as a first cut, with the pin clause gone.
+  - But where bands overlap, a child can be inside a later band's bounds and belong to an earlier one, so the final decision is the rule above, in PHP. The list is read whole and paged with `array_slice()` already.
+  - `none` means the rule places them in no band: no birth date, or no band covers the age.
+- **One function beside `filtered_students()`** turns the sorted rows into sections:
+  - each band in order, with its rows;
+  - then „Ohne Altersgruppe", then „Ohne Geburtsdatum";
+  - each keeping the SQL order;
+  - with the bands read once per page.
+- **`filters_from()`:** `age_group` is a band id (not archived) or `none`; `sort` is `age` or absent; anything else is ignored (ADR 0026 §5).
+- **The „nicht dabei" count:** with a band chosen, the children without a birth date the rest of the selection would include.
+- **The summary value** needs the chosen names: course, status label, level, band or „Ohne Altersgruppe". `filter_summary()` went in round 2, so it is one small helper beside `render_filters()` (frontend-dev).
+- **`student_card()`** learns which subtitle to print (an argument, for example `bool $underBand`) and shows „Ohne Kurs" when the child is in no current course.
+- **The pin's code goes in the same commit as 038.** Otherwise the first request after the update fails, or `demo:fill` does:
+  - `student_save` stops writing `age_group_id`;
+  - the select goes;
+  - `filtered_students()` loses the pin clause;
+  - `group_usage()` stops selecting `age_group_id`;
+  - `app/demo.php`'s insert stops writing it (it pins Sophie Reiter today).
+  - The change log keeps the label „Altersgruppe" for `age_group_id`, so older lines still read.
+
+**Consequences elsewhere in this spec.**
+- **Part 0, C8.** Verwaltung keeps four entries (Leistungsgruppen, Altersgruppen, Mitgliedschaft, Geld & Zahlungen), so it gets no segmented control.
+  - It scrolls, as `tabs()` draws four today, until Verwaltung becomes a list that leads to each part, as the child's page will.
+  - The shorter „Bankkonto" still stands.
+- **Verwaltung's „Wer gehört wohin?"** The age group's sentence drops „Nur im Ausnahmefall festlegen." and becomes „Ergibt sich aus dem Geburtsdatum und ändert sich mit jedem Geburtstag."
+- **Part 13, `tests/mobile.mjs`.**
+  - Add `students&sort=age`, `students&age_group={a band}` and `students&age_group=none`.
+  - `manage&tab=ages` and `manage&tab=levels` stay in its list; ADR 0026 §4 had them leave.
+  - The example data's bands leave no gap and every child has a birth date, so neither end section is ever measured. The stripped-down example data keeps one child without a birth date. A gap is a TESTING.md step: change a band by hand.
+
+**Measured.**
+- **Conditions.**
+  - Commit `bdb2412`, with the restyle built; exported with `git archive` and installed with the example data.
+  - MariaDB 10.11.14, PHP 8.4.26, Chromium 141.
+  - Two changes to the throwaway data only: „Erwachsene" from 21 instead of 18, a gap at 18–20, so Marie Winkler (18) falls into no band; Mia Gruber's birth date removed.
+  - Prototype = the built page edited in the browser, checked with `tests/mobile.mjs`'s own rules (loaded from the file) and a text-under-button check, at 320 and 390, light and dark.
+  - The test font is DejaVu Sans, wider than San Francisco, so the wraps are upper bounds.
+- **Today on `bdb2412`:** the first child at 987 px (1.35 screens) at 320 and 914 at 390, under a 482 px filter card; row subtitles 2–3 lines at 320.
+- **Revised, at 320:**
+  - the first child at 516 px (0.72 screens) in A–Z and 590 (0.82) in „Nach Alter";
+  - the filter unfolded is 379 px (the first child then at 896);
+  - five sections: Unter 12, Jugend, Erwachsene, Ohne Altersgruppe, Ohne Geburtsdatum.
+- **Row subtitles, 15 children:**
+
+| Subtitle | 320 | 390 |
+| --- | --- | --- |
+| age · band · level · price | every row 3–5 lines, rows 131–172 px | 2–3 lines |
+| age · band · level | every row 2–3 lines, 111–137 px | 6 of 15 wrap |
+| band · level (A–Z) | 7 of 15 wrap, 91–137 px | none wrap, 91 px |
+| age · level („Nach Alter") | 6 of 15 wrap | none wrap |
+
+- **Section titles.** At Title 3, „Ohne Altersgruppe" and „Ohne Geburtsdatum" push their count to a second line at 320. At Headline, none do, at either width in either theme. The check reported the Title 3 wraps, so it can fail.
+- **„Einteilung":** 842 → 567 px at 320, 749 → 514 at 390.
+- **Every variant:** 0 problems, no overlaps, both widths, both themes. Chromium only; no iPhone.
 
 ---
 
