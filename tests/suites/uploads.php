@@ -359,6 +359,10 @@ is_same('TSV Beispiel', $manifest['short_name'], 'on the home screen too');
 is_same(url('dashboard'), $manifest['start_url'], 'an install opens at the overview');
 is_same(rtrim((string)config('app_url'), '/').'/', $manifest['scope'], 'and stays within the portal');
 is_same(4, count($manifest['icons']), 'with no icon of her own, the built-in set');
+$byPurpose = [];
+foreach ($manifest['icons'] as $entry) if (isset($entry['purpose'])) $byPurpose[$entry['purpose']][] = basename(explode('?', $entry['src'])[0]);
+is_same(['any' => ['icon-192.png', 'icon-512.png'], 'maskable' => ['icon-maskable.png']], $byPurpose,
+        'the maskable one is a picture of its own, not the rounded one whose corners Android would cut off (C16a)');
 foreach ($manifest['icons'] as $entry) {
     // The file is what comes before the ?v= that carries a hash of its bytes (asset_path()).
     $file = APP_ROOT.'/public'.substr(explode('?', $entry['src'])[0], strlen(rtrim((string)config('app_url'), '/')));
@@ -551,7 +555,7 @@ case_('Removing the logo deletes the file and says what shows instead');
 set_setting('portal_icon', '');
 act('portal_logo_save', ['remove'=>'1']);
 is_same('', portal_logo(), 'no logo');
-is_same('Logo entfernt. Oben links steht wieder das „B“.', $_SESSION['flash']['message'] ?? null, 'with no icon either, the „B" is back');
+is_same('Logo entfernt. Oben links steht wieder der Federball.', $_SESSION['flash']['message'] ?? null, 'with no icon either, the shuttlecock is back');
 ok(!is_file(upload_dir('logo').'/'.$liveLogo), 'and the file is gone, so the way back is to upload it again');
 is_same('portal_logo.removed', (string)scalar('SELECT action FROM audit_log ORDER BY id DESC LIMIT 1'), 'the log says who did it');
 $iconBack = icon_file(png_header(512, 512));

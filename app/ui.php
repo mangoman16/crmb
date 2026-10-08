@@ -36,6 +36,11 @@ function icon(string $name): string {
         'person'=>'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
         // A banner that says something went wrong; 'check' says it went right.
         'alert'=>'<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/>',
+        // A shuttlecock flying up to the right, cork first: the club's mark when it
+        // has none of its own, and what flies while a page is slow (Part 0.4a).
+        // Filled, unlike the rest of the set: drawn small, an outline of it blurs.
+        // public/assets/favicon.svg is the same drawing.
+        'shuttle'=>'<g fill="currentColor" stroke="none"><path d="M12.75 6.87L13.99 8.12L4.78 15.49Q3.44 13.75 2.42 11.68ZM14.42 8.54L15.46 9.58L8.03 18.84Q6.45 17.55 5.16 15.97ZM15.88 10.01L17.13 11.25L12.32 21.58Q10.25 20.56 8.51 19.22Z"/><circle cx="17.98" cy="6.02" r="3.6"/></g>',
     ];
     $drawn=isset($paths[$name])?$name:'arrow';
     return '<svg class="glyph-'.$drawn.'" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'.$paths[$drawn].'</svg>';
@@ -990,8 +995,8 @@ function invitation_withdraw_details(array $account,string $summary,string $expl
 
 /**
  * The club's name and mark, top left (ADR 0014): its logo on a white plate,
- * else its icon, else the „B". brand_header() decides which and whether the
- * name and the line under it are shown; this only draws it.
+ * else its icon, else the shuttlecock. brand_header() decides which and
+ * whether the name and the line under it are shown; this only draws it.
  *
  *   $where  'sidebar'  the menu, with the „Verwaltung“ / „Mein Portal“ line
  *           'public'   the sign-in page's header, without that line
@@ -1019,7 +1024,7 @@ function brand_block(?array $user, string $where, ?string $href): void {
     elseif ($kind === 'icon')
         echo '<span class="brand-mark brand-icon"><img src="'.e($b['icon']).'" alt="" width="44" height="44"></span>';
     elseif ($kind === 'mark')
-        echo '<span class="brand-mark">B<span></span></span>';
+        echo '<span class="brand-mark">'.icon('shuttle').'</span>';
     if ($bar) {
         // The name only where it is the whole of it; beside a picture it is for
         // a screen reader. Two lines at most, so a long name cannot push the

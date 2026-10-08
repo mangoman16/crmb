@@ -906,23 +906,24 @@ foreach (['html:not([data-theme=light])' => 'dark by the device', 'html[data-the
     is_same([], array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'), fn($r) => $r['property'] === '--badge-ink'), 'value'),
             'and not set again for '.$mode.', where a second value would part the two');
 
-case_('A tap elsewhere, a swipe and Escape do what they should to an open menu');
+case_('A tap elsewhere, a swipe and Escape do what they should to an open menu, and a slow page shows it is coming');
 /* The behaviour itself, run against the real app.js in tests/topbar-menus.mjs:
    the stylesheet can keep the bell still, but only the script closes it. The
-   same stand-in page sends a form twice and comes back to it with Back. */
+   same stand-in page sends a form twice and comes back to it with Back, and
+   taps links of every kind while the next page is slow to come (Part 0.4a). */
 $appJs = (string)file_get_contents(APP_ROOT.'/public/assets/app.js');
 ok(preg_match('/querySelectorAll\(\s*([\'"])\.topbar-menu\1\s*\)/', $appJs) === 1,
    'app.js finds the top bar\'s menus by the class the layout gives them');
 $node = function_exists('exec') ? trim((string)exec('command -v node 2>/dev/null')) : '';
 if ($node === '') {
     test_unsupported(array_merge(test_unsupported(),
-        ['what a tap, a swipe and Escape do to a top-bar menu, and a form sent twice (tests/topbar-menus.mjs needs node)']));
+        ['what a tap, a swipe and Escape do to a top-bar menu, a form sent twice and a slow page (tests/topbar-menus.mjs needs node)']));
 } else {
     $output = [];
     exec(escapeshellarg($node).' '.escapeshellarg(TEST_ROOT.'/topbar-menus.mjs').' 2>&1', $output, $status);
     $results = json_decode(implode("\n", $output), true);
     ok($status === 0 && is_array($results), 'tests/topbar-menus.mjs ran'.($status === 0 && is_array($results) ? '' : ': '.implode("\n", $output)));
-    ok(is_array($results) && count($results) >= 26, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
+    ok(is_array($results) && count($results) >= 46, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
     foreach (is_array($results) ? $results : [] as $result)
         ok($result['pass'] === true, $result['what'].($result['pass'] ? '' : ' — '.$result['detail']));
 }
@@ -1017,3 +1018,49 @@ foreach (['auto' => 'light dark', 'dark' => 'dark', 'light' => 'light'] as $them
 run('UPDATE accounts SET theme=? WHERE id=?', ['auto', $family]);
 sign_out();
 is_same(['light dark'], $declared(render_page('login')), 'signed out, the sign-in page follows the device');
+
+case_('A slow page keeps the tap pressed and shows a shuttle on the bar, never in the way');
+/* Part 0.4a. What app.js does with it is checked against the stand-in page
+   above (tests/topbar-menus.mjs); here, what it reaches for in the layout and
+   what the stylesheet draws. The template is inert, so without JavaScript
+   nothing of it is drawn; the status line is beside the lane, not in it, so a
+   screen reader has it before it has anything to say. */
+$waitTemplate = function (string $html): array {
+    $dom = new DOMDocument();
+    $quiet = libxml_use_internal_errors(true);
+    $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
+    libxml_clear_errors(); libxml_use_internal_errors($quiet);
+    $x = new DOMXPath($dom);
+    $templates = $x->query('//body/template[@id="page-wait"]');
+    $template = $templates->item(0);
+    $said = $template ? $x->query('./span[@role="status"]', $template)->item(0) : null;
+    return ['count' => $templates->length,
+            'shuttle' => $template ? $x->query('./div[@class="page-wait"]/span[@class="page-wait-flight"]/*[local-name()="svg" and @class="glyph-shuttle"]', $template)->length : 0,
+            'said' => $said ? [$said->getAttribute('class'), $said->getAttribute('data-text'), trim($said->textContent)] : null];
+};
+sign_in_as($family);
+$expected = ['count' => 1, 'shuttle' => 1, 'said' => ['visually-hidden', 'Wird geladen …', '']];
+is_same($expected, $waitTemplate(render_page('dashboard')), 'a signed-in page carries the shuttle and its status line once, as a template');
+sign_out();
+is_same($expected, $waitTemplate(render_page('login')), 'and so does the sign-in page');
+
+$css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
+/* Every pressed look has a twin that holds it until the next page is there,
+   in the same rule, so the two cannot part. */
+$pressed = array_filter($css, fn($r) => str_ends_with($r['selector'], ':active'));
+$untwinned = [];
+foreach ($pressed as $row) {
+    $twin = substr($row['selector'], 0, -strlen(':active')).'.is-pending';
+    if (!array_filter($css, fn($r) => $r['selector'] === $twin && $r['property'] === $row['property'] && $r['value'] === $row['value']
+                                     && $r['media'] === $row['media'] && $r['order'] === $row['order']))
+        $untwinned[] = $row['selector'].' { '.$row['property'].' }';
+}
+ok(count($pressed) >= 19, 'the pressed looks are read ('.count($pressed).')');
+is_same([], $untwinned, 'and each is held by .is-pending in the same rule');
+$at = fn(string $selector, string $property, string $media = '') => array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'),
+    fn($r) => $r['property'] === $property && $r['media'] === $media), 'value');
+is_same(['none'], $at('.page-wait', 'display'), 'the lane is not drawn until the script turns it on');
+is_same(['block'], $at('.page-wait.is-on', 'display'), 'and is drawn once it is');
+is_same(['none'], $at('.page-wait', 'pointer-events'), 'nothing under it is ever kept from a tap');
+is_same(['none'], $at('.page-wait-flight', 'animation', '@media(prefers-reduced-motion:reduce)'), 'with reduced motion the shuttle does not fly');
+is_same(['none'], $at('.page-wait', 'display', '@media print'), 'and it is never printed');

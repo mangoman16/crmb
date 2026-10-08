@@ -95,12 +95,13 @@ function dispatch_settings_or_messages(string $action): array {
         set_setting('portal_logo',$new);
         audit($new!==''?'portal_logo.saved':'portal_logo.removed','settings');
         // Last, as for the icon: should the request's commit fail after this,
-        // portal_logo() finds no file and the icon, or the „B", shows instead.
+        // portal_logo() finds no file and the icon, or the shuttlecock, shows
+        // instead.
         if($old!=='' && $old!==$new) delete_upload('logo',$old);
         flash($new!==''?t('Logo gespeichert.','Logo saved.')
             :(portal_icon()!==''
                 ?t('Logo entfernt. Oben links steht wieder das Symbol des Portals.','Logo removed. The portal icon is shown top left again.')
-                :t('Logo entfernt. Oben links steht wieder das „B“.','Logo removed. The “B” is shown top left again.')));
+                :t('Logo entfernt. Oben links steht wieder der Federball.','Logo removed. The shuttlecock is shown top left again.')));
         return ['settings',['tab'=>'portal']];
     case 'privacy_save':
         require_admin();$de=text_limit('privacy_de',30000);$en=text_limit('privacy_en',30000);

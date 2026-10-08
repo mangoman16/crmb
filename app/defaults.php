@@ -249,8 +249,8 @@ function setting_schema(): array {
         'brand_highlight' => [
             'kind' => 'colour', 'default' => '', 'builtin' => '#23cbbb', 'group' => 'branding',
             'label' => ['Hervorhebung', 'Highlight'],
-            'hint'  => ['Der Punkt am „B“ und die Markierung beim Menüpunkt der Seite, auf der man gerade ist.',
-                        'The dot on the “B” and the marker on the menu entry of the current page.'],
+            'hint'  => ['Die Markierung beim Menüpunkt der Seite, auf der man gerade ist.',
+                        'The marker on the menu entry of the current page.'],
         ],
         'brand_background' => [
             'kind' => 'colour', 'default' => '', 'builtin' => '#f2f2f7', 'text_on' => '#636366', 'group' => 'branding',

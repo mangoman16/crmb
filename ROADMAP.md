@@ -97,9 +97,10 @@ In this order.
 9. **Pictures and a calmer start (owner, 2026-10-08).**
    - **No white flash in dark mode: built.** Every page, the installer and the error page say
      light or dark before their stylesheet; not yet seen on an iPhone (TESTING.md I.12).
-   - A short waiting screen with a badminton element, shown only when a page is slow; a
-     badminton mark and icons where a club has uploaded none. ui-ux-designer specifies the
-     waiting screen and the mark.
+   - **Waiting for a page, and the shuttlecock mark: built.** A slow page keeps the tapped
+     link pressed, and after 0.7 s a shuttlecock flies along the bar; the shuttlecock is the
+     mark and the home-screen icon where a club has uploaded none (design document, „Part 0,
+     continued"). Not yet seen on an iPhone or an Android phone (TESTING.md W.1–W.5).
    - **Profile pictures come back** (ADR 0031, decided): faces for the trainer on
      Anwesenheit, the lists and the child's page, and for the children to make their profile
      their own; visible to the course with each family's consent; the family and the trainer
@@ -160,6 +161,12 @@ In their words.
 
 ## Decided
 
+- **2026-10-08** — the project manager, on the owner's "a short waiting page": the waiting
+  is shown on the page being left — the tapped link stays pressed, and a shuttlecock flies
+  along the bar after 0.7 s — not as a separate waiting page, which would itself flash
+  between two pages. A full-screen variant is a few lines more if the owner wants it; the
+  owner is being asked. Files open in the same tab, not a new one: in the iPhone
+  home-screen app a new tab likely opens without the app's sign-in (security's point).
 - **2026-10-08** — the project manager, on ADR 0031: pictures are for children only. The
   architect proposed pictures for staff too; nobody asked for them, so they wait under Later.
   Whether the children of a course see each other's pictures is a club's choice, so it is a
@@ -274,6 +281,11 @@ For the owner to do:
 
 ## For the owner to test or deploy
 
+- **Two minutes on your iPhone: the first start in dark mode** (design document, 0.5a). Turn
+  dark mode on, close the app in the app switcher, open it from the home screen, and note the
+  colour shown before the first page appears. Dark launch images are built only if it is
+  white. Then walk TESTING.md W.1–W.3 on the iPhone, and W.4 on an Android phone if you have
+  one.
 - **No white flash in dark mode, on your iPhone** (TESTING.md I.12, test data only): in dark
   mode, and once with „Immer dunkel" under Mein Konto on a phone in light mode, open the
   home-screen app, tap through several pages, go Back, reload, open a link from Mail, and
@@ -336,6 +348,10 @@ For the owner to do:
 
 ## Later, not scheduled
 
+- A club icon that is near-black on a see-through ground barely shows in light mode: the
+  sidebar, the sign-in page and their previews put the dark menu colour behind it, about
+  1.2:1 (mobile-tester, 2026-10-08; as before the shuttlecock mark). Backing it with the tint
+  in light mode too is ui-ux-designer's call.
 - Pictures for trainers and administrators, if somebody asks: one column and one case in the
   rule of who sees a picture (ADR 0031, Rejected).
 - A tap within about 0.2 s of a page appearing is lost on every page, to the cross-fade

@@ -381,8 +381,9 @@ function portal_logo_types(): array {
  * The stored name of the logo in use, or '' for none.
  *
  * '' as well when the file is missing, so a database restored without
- * storage/ falls back to the icon, or the „B", rather than a broken picture,
- * and for a name store_upload() could not have given a logo (is_stored_upload()).
+ * storage/ falls back to the icon, or the shuttlecock, rather than a broken
+ * picture, and for a name store_upload() could not have given a logo
+ * (is_stored_upload()).
  */
 function portal_logo(): string {
     $name = setting('portal_logo');
@@ -549,7 +550,8 @@ function serve_portal_logo(): never {
  *                  the name is read once, not twice
  *   subtitle       „Verwaltung" or „Mein Portal", for the person looking
  *   show_name      false only when she hid it and a logo or icon is there to
- *                  take its place: with only the „B", the name always shows
+ *                  take its place: with only the shuttlecock, the name always
+ *                  shows
  *   show_subtitle  false when she hid the line
  */
 function brand_header(?array $user): array {

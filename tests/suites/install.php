@@ -973,6 +973,12 @@ if (!function_exists('exec')) {
     ok(str_contains($head, '<meta name="color-scheme" content="light dark">')
        && strpos($head, 'name="color-scheme"') < (int)strpos($head, '<link rel="stylesheet"'),
        'light and dark alike, before the stylesheet, so a phone in dark mode does not draw it white first');
+    /* The first page the owner sees wears the portal's mark too (C16a): the
+       shuttlecock, as the file the browser tab shows, because setup.php has no
+       icon() - and no letter, which app.css no longer draws. */
+    $setupMark = preg_match('~<header class="public-header">.*?<span class="brand-mark[^"]*">(.*?)</span>~s', $page['body'], $drawn) ? $drawn[1] : null;
+    ok($setupMark !== null && trim(strip_tags($setupMark)) === '' && preg_match('~^<img src="assets/favicon\.svg\?v=[0-9a-f]+" alt=""~', $setupMark) === 1,
+       'its header shows the shuttlecock, with no letter in the mark');
     ok(str_contains($page['body'], 'storage/setup-code.txt') || str_contains($page['body'], 'setup-code.txt'),
        'saying which file the code is in');
     ok($codeIn() !== '', 'which it has written beside the maintenance flag, where only somebody with the files can read it');

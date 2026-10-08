@@ -61,7 +61,7 @@
     --navy:#131d27;--nav-bg:#131d27;--nav-active:#26384a;--nav-ink:#b4c4d2;--nav-ink-2:#93a5b4;--nav-hover:#ffffff12;--brand-ink:var(--ink);
     --avatar-bg:#26374a;--avatar-ink:#b6cbe2;--avatar-warm-bg:#3b3024;--avatar-warm-ink:#e0c391;
     --shadow-thumb:none;--shadow-float:none;--float-edge:#38383a}
-  html:not([data-theme=light]) .brand-mark{background:var(--teal);color:var(--on-accent)}
+  html:not([data-theme=light]) .brand-icon{background:var(--teal)}
 }
 html[data-theme=dark]{color-scheme:dark;
   --bg:#000;--surface:#1c1c1e;--surface-2:#2c2c2e;--surface-3:#3a3a3c;--pressed:#3a3a3c;--fill:rgba(120,120,128,.36);--fill-2:rgba(120,120,128,.24);--thumb:#636366;
@@ -72,7 +72,7 @@ html[data-theme=dark]{color-scheme:dark;
   --navy:#131d27;--nav-bg:#131d27;--nav-active:#26384a;--nav-ink:#b4c4d2;--nav-ink-2:#93a5b4;--nav-hover:#ffffff12;--brand-ink:var(--ink);
   --avatar-bg:#26374a;--avatar-ink:#b6cbe2;--avatar-warm-bg:#3b3024;--avatar-warm-ink:#e0c391;
   --shadow-thumb:none;--shadow-float:none;--float-edge:#38383a}
-html[data-theme=dark] .brand-mark{background:var(--teal);color:var(--on-accent)}
+html[data-theme=dark] .brand-icon{background:var(--teal)}
 
 /* The accent is one token. Every component reads --teal, so choosing a colour
    is one declaration rather than a second stylesheet, and a colour that was
@@ -151,13 +151,16 @@ svg{flex-shrink:0;vertical-align:middle}
    button, a link and a segment dim. iOS shows :active only while a touch
    listener exists, which app.js adds, along with the class "js" - and only
    then is the system's grey flash switched off, because only then is :active
-   there to replace it. Hover is for a pointer that hovers; on a phone it sticks
+   there to replace it. A tap that leaves for another page keeps its pressed
+   look until that page is there (.is-pending, app.js), as an iPhone keeps a
+   tapped row lit. Hover is for a pointer that hovers; on a phone it sticks
    after the tap. */
 html.js{-webkit-tap-highlight-color:transparent}
 .button,.chip,.text-link,.tabs a,.nav-back,.section-heading>a{transition:opacity .1s}
-.button:active,.chip:active,.text-link:active,.tabs a:active,.nav-back:active,.section-heading>a:active,.segmented label:active{opacity:.7}
+/* Every :active has an .is-pending twin, also the two app.js never sets: a segment's label and the account menu's sending button. */
+.button:active,.chip:active,.text-link:active,.tabs a:active,.nav-back:active,.section-heading>a:active,.segmented label:active,.button.is-pending,.chip.is-pending,.text-link.is-pending,.tabs a.is-pending,.nav-back.is-pending,.section-heading>a.is-pending,.segmented label.is-pending{opacity:.7}
 a.student-card,a.payment-row,a.class-row,a.editor-list-item,a.member-row,a.news-summary,a.thread-item,a.notification,.link-list a,.account-menu-row,.mobile-nav a{transition:background-color .1s}
-a.student-card:active,a.payment-row:active,a.class-row:active,a.editor-list-item:active,a.member-row:active,a.news-summary:active,a.thread-item:active,a.notification:active,.link-list a:active,button.account-menu-row:active,a.account-menu-row:active,.mobile-nav a:active{background:var(--pressed)}
+a.student-card:active,a.payment-row:active,a.class-row:active,a.editor-list-item:active,a.member-row:active,a.news-summary:active,a.thread-item:active,a.notification:active,.link-list a:active,button.account-menu-row:active,a.account-menu-row:active,.mobile-nav a:active,a.student-card.is-pending,a.payment-row.is-pending,a.class-row.is-pending,a.editor-list-item.is-pending,a.member-row.is-pending,a.news-summary.is-pending,a.thread-item.is-pending,a.notification.is-pending,.link-list a.is-pending,button.account-menu-row.is-pending,a.account-menu-row.is-pending,.mobile-nav a.is-pending{background:var(--pressed)}
 @media(hover:hover){
   a:hover{text-decoration:underline}
   .button:hover{filter:brightness(.95)}
@@ -174,8 +177,10 @@ a.student-card:active,a.payment-row:active,a.class-row:active,a.editor-list-item
 .sidebar{width:248px;position:fixed;inset:0 auto 0 0;z-index:40;display:flex;flex-direction:column;padding:24px 20px 14px;overflow-y:auto;background:var(--navy);color:var(--on-nav)}
 .brand{display:flex;gap:12px;align-items:center;color:inherit;font-size:1.25rem;font-weight:700;line-height:1.2;word-break:break-word}
 .brand small{display:block;margin-top:6px;font-size:var(--t-foot);font-weight:500;color:var(--nav-ink-2)}
-.brand-mark{position:relative;flex-shrink:0;width:44px;height:44px;display:grid;place-items:center;border-radius:12px;background:var(--on-nav);color:var(--navy);font-size:31px;line-height:1}
-.brand-mark span{position:absolute;right:-2px;top:-2px;width:10px;height:10px;border-radius:50%;background:var(--teal-bright);border:2px solid var(--navy)}
+/* The portal's own mark (C16a): the shuttlecock on the tint, in every
+   appearance and on every ground, as the home-screen icon draws it. */
+.brand-mark{flex-shrink:0;width:44px;height:44px;display:grid;place-items:center;border-radius:12px;background:var(--teal);color:var(--on-accent)}
+.brand-mark>svg{width:68%;height:68%}
 .sidebar nav{display:grid;gap:4px;margin-top:24px}
 .sidebar nav a{position:relative;display:flex;gap:13px;align-items:center;min-height:44px;padding:10px 14px;border-radius:var(--radius);color:var(--nav-ink);font-size:var(--t-sub)}
 .sidebar nav a[aria-current]{background:var(--nav-active);color:var(--on-nav)}
@@ -201,7 +206,7 @@ a.student-card:active,a.payment-row:active,a.class-row:active,a.editor-list-item
    switch, which a family that reads no German must find before signing in. */
 .public-header{max-width:1080px;margin:auto;padding:24px 30px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .public-header .brand{flex:1;min-width:0;margin-right:12px;color:var(--brand-ink)}
-.public-header .brand-mark{background:var(--navy);color:var(--on-nav)}
+.public-header .brand-icon{background:var(--navy)}
 .public-main{max-width:920px;padding:24px;margin:auto}
 .language{display:grid;place-items:center;min-width:44px;min-height:44px;padding:0 12px;border-radius:999px;background:var(--fill-2);color:var(--ink);font-size:var(--t-sub);font-weight:600}
 /* The pages before signing in, in a narrow card: an address or „Datenschutzerklärung“
@@ -921,6 +926,11 @@ details.account-row[open]>summary{margin-bottom:0}
 .brand-plate{display:inline-flex;align-items:center;max-width:100%;min-width:0;padding:8px;border-radius:12px;background:#fff}
 .brand-logo{display:block;height:48px;width:auto;max-width:100%;object-fit:contain;object-position:left center}
 .brand.brand-is-logo{flex-direction:column;align-items:flex-start;gap:10px}
+/* The club's own icon. Through its see-through parts shows the ground it sits
+   on, except on the sign-in page and its preview, which put the menu colour
+   behind it, and in the dark, which puts the tint behind it: a dark icon would
+   vanish on black. The shuttlecock mark has colours of its own and needs none
+   of this. */
 .brand-icon{overflow:hidden;background:transparent}
 .brand-icon img{display:block;width:100%;height:100%;object-fit:cover}
 .brand-name{min-width:0}
@@ -960,7 +970,7 @@ details.account-row[open]>summary{margin-bottom:0}
 .brand-preview-public{background:var(--bg);outline:.5px solid var(--border)}
 .brand-preview-public figcaption,.brand-preview-muted{color:var(--muted);font-size:var(--t-sub)}
 .brand-preview-public .brand{color:var(--brand-ink);font-size:1.1rem}
-.brand-preview-public .brand-mark{background:var(--navy);color:var(--on-nav)}
+.brand-preview-public .brand-icon{background:var(--navy)}
 .brand-preview-caption{margin-bottom:16px;font-size:var(--t-sub)}
 /* Each colour field: the box, the picker app.js adds beside it, and the
    colour in use on a swatch. The swatches are the built-in colours; the
@@ -1147,7 +1157,7 @@ details.account-row[open]>summary{margin-bottom:0}
   .sidebar{padding:16px 16px 10px}
   .brand{font-size:1.1rem}
   .brand small{display:none}
-  .brand-mark{width:38px;height:38px;font-size:26px}
+  .brand-mark{width:38px;height:38px}
   .sidebar .brand-logo{height:40px}
   .sidebar nav{margin-top:14px;gap:3px}
   .sidebar nav a{min-height:36px;padding:7px 12px;font-size:var(--t-foot)}
@@ -1336,17 +1346,35 @@ details.account-row[open]>summary{margin-bottom:0}
   @media(max-width:760px){.nav-title{animation:nav-title-in linear both;animation-timeline:scroll(root);animation-range:40px 80px}}
 }
 @keyframes nav-title-in{from{opacity:0}to{opacity:1}}
+
+/* --- Waiting for a page (Part 0.4a) ---------------------------------------------
+   A page slow to come gets a shuttle flying along the bottom edge of the bar:
+   half in the bar, half over the page's top margin, so it covers nothing.
+   Without the bar it flies along the top of the screen. */
+.page-wait{display:none;position:fixed;inset:env(safe-area-inset-top) 0 auto;z-index:31;height:12px;overflow:hidden;pointer-events:none}
+.topbar>.page-wait{position:absolute;inset:auto 0 -6px}
+.page-wait.is-on{display:block;animation:wait-in .2s ease-out}
+.page-wait-flight{position:absolute;inset:0;animation:rally 2.4s infinite}
+.page-wait-flight svg{position:absolute;top:-4px;right:0;width:20px;height:20px;color:var(--teal);transform:rotate(45deg);animation:turn 2.4s step-end infinite}
+@keyframes wait-in{from{opacity:0}}
+/* Off the racket fast and slowing, as a shuttle does; hit back at each end. */
+@keyframes rally{0%,100%{transform:translateX(calc(20px - 100%));animation-timing-function:cubic-bezier(.15,.7,.35,1)}50%{transform:translateX(0);animation-timing-function:cubic-bezier(.15,.7,.35,1)}}
+@keyframes turn{0%{transform:rotate(45deg)}50%{transform:scaleX(-1) rotate(45deg)}}
+@keyframes wait-pulse{from{opacity:.35}}
 @media(prefers-reduced-motion:reduce){
   @view-transition{navigation:none}
   html{scroll-behavior:auto}
   *{transition:none!important}
   .sheet-dialog[open]{animation:none}
   .button[aria-busy=true]::after{animation-duration:2s}
+  /* The shuttle stays in the middle of the lane and only brightens and fades. */
+  .page-wait-flight{animation:none;transform:translateX(calc(10px - 50%))}
+  .page-wait-flight svg{animation:wait-pulse 1s ease-in-out infinite alternate}
 }
 
 /* --- Paper -------------------------------------------------------------------------- */
 @media print{
-  .sidebar,.topbar,.mobile-nav,.form-footer,.button,.saved-filters,.filters,.skip-link,.tabs,.feedback,.impersonation-bar,.flash{display:none!important}
+  .sidebar,.topbar,.mobile-nav,.form-footer,.button,.saved-filters,.filters,.skip-link,.tabs,.feedback,.impersonation-bar,.flash,.page-wait{display:none!important}
   .app-shell{margin:0}
   .main-content{padding:0}
   body{background:#fff}

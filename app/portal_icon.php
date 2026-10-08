@@ -129,7 +129,10 @@ function web_manifest(): array {
         $icons = [
             ['src' => asset_url('icon-192.png'), 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any'],
             ['src' => asset_url('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any'],
-            ['src' => asset_url('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
+            // Its own picture, square and opaque, the shuttlecock well inside
+            // the middle: Android cuts a maskable icon into its own shape, and
+            // the rounded one above would lose its corners to the cut (C16a).
+            ['src' => asset_url('icon-maskable.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
             ['src' => asset_url('favicon.svg'), 'sizes' => 'any', 'type' => 'image/svg+xml'],
         ];
     }

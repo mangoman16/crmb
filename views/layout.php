@@ -54,6 +54,10 @@ $viewed=$realUser?($user??current_user()):null;
 </head>
 <?php /* data-sheet-cancel: the word under a sheet (app.js), in the page's language. */ ?>
 <body class="<?=$public?'public-page':'app-page'?>" data-sheet-cancel="<?=e(t('Abbrechen','Cancel'))?>">
+<?php /* What flies along the bar while the next page is slow to come (Part 0.4a).
+         A template: without JavaScript nothing of it is drawn. The status line is
+         beside the lane, not in it, so it is always there to be heard. */ ?>
+<template id="page-wait"><div class="page-wait"><span class="page-wait-flight"><?=icon('shuttle')?></span></div><span class="visually-hidden" role="status" data-text="<?=e(t('Wird geladen …','Loading …'))?>"></span></template>
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
 <?php if(!$public):
 $unreadNotes=unread_notifications((int)$user['id']);

@@ -225,7 +225,7 @@ header('X-Robots-Tag: noindex');
 </head>
 <body class="public-page">
 <header class="public-header">
-    <span class="brand"><span class="brand-mark">B<span></span></span>Badminton</span>
+    <span class="brand"><span class="brand-mark brand-icon"><img src="<?=install_e(asset_path('favicon.svg'))?>" alt="" width="44" height="44"></span>Badminton</span>
     <a class="language" href="?lang=<?=install_e($other)?>"><?=install_e(strtoupper($other))?></a>
 </header>
 <main class="public-main">

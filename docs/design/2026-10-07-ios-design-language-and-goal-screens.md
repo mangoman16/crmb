@@ -1,6 +1,6 @@
 # UI spec: the portal's design language (Part 0), age on the students list, and the gaps G1–G8 (ui-ux-designer, 2026-10-07)
 
-**Status.** This is a specification only; nothing in it is built.
+**Status.** Built so far: Part 0's restyle, its phase 1 (`f5d3c28`, with the review's fixes in `883be4d`); the students list, Part 1 as revised (`b4e457e`); and 0.4a and C16a, the waiting shuttle and the mark, in the commit that adds them to this document. 0.5a waits for a two-minute test on an iPhone (ROADMAP.md). Everything else is still specification.
 
 **What was measured.**
 - Measured on commit `1b32834`, the HEAD when this work started, exported with `git archive` into the scratchpad.
@@ -12,7 +12,7 @@
 - The system font stack resolved to DejaVu Sans on the test machine. DejaVu is about 15 % wider than Liberation Sans, which has Arial metrics close to San Francisco. So every width and wrap below is an upper bound for an iPhone.
 
 **How to read it.**
-- Part 0 is the reference the whole portal is restyled from.
+- Part 0 is the reference the whole portal is restyled from. It continues after 0.7 with 0.4a, 0.5a and C16a (2026-10-08): waiting for a page, the first start of the home-screen app, and the shuttlecock mark.
 - Parts 1–10 specify the age list and G1–G8 in Part 0's terms; Part 1 is revised by „Part 1, revised 2026-10-08".
 - Part 11 ranks the gaps and groups the builds.
 - Where something somebody asked for would go, it is marked (owner).
@@ -372,7 +372,8 @@ Phase 1 is CSS plus the helper changes named below, with no change to the views'
   - Bottom: as today.
 - **Standalone has no browser chrome.**
   - There is no Back, so every non-root screen has its own back button (C1).
-  - Files open with `target="_blank"` (invoice and confirmation PDFs, receipt photos), so they appear in Safari's sheet with „Fertig" instead of stranding the app on a file with no way back.
+  - Files (invoice and confirmation PDFs, receipt photos) open in the same tab.
+    - **Changed on 2026-10-08.** This said files open with `target="_blank"`, so that they appear in Safari's sheet with „Fertig" instead of stranding the app on a file with no way back. They stay in the same tab instead: inside the iPhone home-screen app a new tab likely opens without the app's sign-in. Security's point; the project manager decided it. A structure check holds the code to it, and the waiting shuttle (0.4a) starts nothing for the download page. Whether one gets back from a file in the app is walked on an iPhone (TESTING.md W.2).
   - There is no pull-to-refresh, so every action ends on a fresh page (it does: post, redirect, get) and the bell counts on every view.
 
 ### 0.6 Accessibility
@@ -472,6 +473,215 @@ Phase 1 is CSS plus the helper changes named below, with no change to the views'
 | Family: Profil | the form under 6 tabs | the drill-down root above |
 | Mein Konto | 4 cards, 15 shadows | groups; the mail ticks as switches; „Abmelden" as a destructive action row |
 | Sign-in and the link pages | auth card | one group on the ground; the large title in place of the eyebrow |
+
+---
+
+## Part 0, continued (2026-10-08): waiting for a page, the first start, and the mark
+
+Owner, 2026-10-08: "implement a custom loading screen, should not be too slow, but now sometimes pages flash into eyes although dark mode is active and that is annoying. a short waiting page. for logo and waiting use badminton elements." frontend-dev is fixing the white flash itself separately. This addendum covers three things:
+- what people see while they wait;
+- the first start of the home-screen app;
+- the badminton mark.
+
+It adds to Part 0's sections 0.4, 0.5 and C16.
+
+**Who, where, in their words.**
+- The trainer in the hall, on weak 4G, taps a child: „Hat es das jetzt genommen?" In the home-screen app there is no browser bar to say a page is coming, so she taps again.
+- A parent opens the app at night in dark mode: „Warum blitzt das so hell?"
+
+### 0.4a Waiting for the next page
+
+**After a tap, with JavaScript:**
+
+| When | What shows |
+| --- | --- |
+| at once | The tapped link keeps its pressed look until the new page is there: a row stays `--pressed`; a button, tab, segment, chip, text link or „‹ Zurück" stays at `opacity:.7`. An iPhone keeps a tapped row lit the same way until the next screen is in. |
+| after 0.7 s without the new page | A shuttle (`icon('shuttle')`, 20 px, `--teal`) flies along the bottom edge of the navigation bar, cork first, back and forth like a rally. Each crossing takes 1.2 s: fast off the racket, then slowing (`cubic-bezier(.15,.7,.35,1)`), and it turns at each end. It fades in over 0.2 s. A screen reader hears „Wird geladen …" once. |
+| the new page arrives | The shuttle goes with the old page. Where view transitions run, it fades out with the old bar in 0.2 s. |
+
+**Why 0.7 s.**
+- The tap has already answered at 0 s, with the pressed look.
+- The shuttle answers a later question, „kommt da noch was?", which people start asking near one second. It is fully visible at 0.9 s.
+- A page that arrives within 0.7 s shows only the pressed look; one that arrives between 0.7 and 0.9 s shows a faint shuttle at most.
+- Nothing waits for the shuttle: no `preventDefault()`, no minimum time on screen. So no page gets slower.
+
+**Where, at 320.**
+- **Signed in:** a 12 px lane the full width of the bar, centred on its bottom edge. 6 px of it are inside the bar, below the back label, the bell and the avatar, which sit higher. The other 6 px lie over the page's 8 px top margin.
+- **Pages without the bar** (sign-in, „Passwort vergessen", the link pages): the top 12 px of the screen, under the status bar.
+- The lane has `pointer-events:none`, so nothing can be tapped there and nothing is blocked.
+- It never covers a refusal or a message. Those arrive on the new page, and on the old page the lane lies over margin (measured: nothing under it).
+
+**Not a full waiting page, although the owner said "a short waiting page".**
+- A screen between two pages is one more change of the whole screen. A page arriving at 0.8 s would put up a waiting screen for a tenth of a second, which is exactly the flash the owner wants gone. It would also hide the page being read.
+- Keeping the old page until the new one paints, with the shuttle on its bar, is what iOS itself does (Safari's progress line, a native app's lit row).
+- If the owner still wants a full screen, it is the same shuttle centred on `--bg` over `<main>`, a few lines more. I advise against it (open issue 1).
+
+**The button spinner and the shuttle never show for the same tap:**
+
+| Tapped | At once | After 0.7 s |
+| --- | --- | --- |
+| a link: row, tab, „‹ Zurück", chip, segment, text link, an entry under the bell | pressed look | the shuttle |
+| a form that only looks something up (GET: the search, „Anwenden" in the filter) | its button's pressed look | the shuttle |
+| a form that sends (POST) | its button's spinner (already built) | nothing more |
+| a link tapped while a form is still sending | that link's pressed look | the shuttle beside the spinner; the second tap has replaced the first request |
+
+**When nothing starts:**
+- A link that leaves the page standing:
+  - `target` other than `_self`;
+  - a `download` attribute;
+  - `mailto:` or `tel:`;
+  - a modifier key or a middle click;
+  - a `#place` on the same page.
+- A submit that the browser or app.js stopped: a required field left empty, or a second tap.
+- **A link to a file**: the portal's own download page (`?page=download`), which answers with the file and no page. A PDF that downloads leaves the page standing, so a shuttle started for it would fly on and on. The file links stay in the same tab:
+  - `views/student.php` (an invoice PDF, a receipt);
+  - `views/invoices.php` (an invoice PDF);
+  - `views/messages.php` (a photo);
+  - `views/_feedback.php` (a screenshot).
+
+  **Changed on 2026-10-08.** This bullet said the file links must open in a new tab, with `target="_blank"`, in the same build. They stay in the same tab: inside the iPhone home-screen app a new tab likely opens without the app's sign-in. Security's point; the project manager decided it. `app.js` leaves links to the download page alone instead (see 0.5).
+- **Back to a page the browser kept** (bfcache): the existing `pageshow` handler also clears the pressed look and the shuttle.
+
+**Reduced motion.** The shuttle does not fly. It sits in the middle of the lane and fades between 35 % and 100 % every second: a change of brightness, no movement. This follows the button spinner, which slows down under reduced motion rather than stopping.
+
+**Light, dark and the club's colour.** `--teal` on the bar's material:
+- default tint: 5.43:1 in light, 9.53 in dark;
+- the seven built-in accents: 4.98–7.21 in light, 7.72–9.72 in dark.
+
+A graphic needs 3:1. A club's own colour already passes 4.5 against the page background (`app/brand.php`).
+
+**Without JavaScript.** Nothing changes. The `<template>` stays inert, and a tap shows the system's own grey flash, as today.
+
+**Text.** `t('Wird geladen …','Loading …')`, for screen readers only. Nothing is written on the screen.
+
+**What a family sees.** The same as the trainer: the pressed row or tab, and on a slow page the shuttle.
+
+**Built (2026-10-08)**, and kept in one place each, so this document holds no second copy of the code:
+- `views/layout.php`: the `<template id="page-wait">` right after `<body>`, the lane with the shuttle and, beside it, the status line a screen reader hears.
+- `public/assets/app.js`: after the form handler, the block that keeps a tapped link or button pressed and starts the shuttle after 0.7 s. It starts nothing for a link that leaves the page standing, or for the portal's download page. The `pageshow` handler clears both on the way Back.
+- `public/assets/app.css`: the `.is-pending` twins of the two `:active` lists, the `.page-wait` rules and their keyframes, the shuttle held in place under reduced motion, and `.page-wait` in the print list.
+
+### 0.5a The first start of the home-screen app
+
+**What an iPhone shows before the first page: not measured, because there is no iPhone here.**
+- Without launch images, iOS starts a home-screen web app on a plain screen until the first page paints. From the reports I know, that screen is white, in dark mode too.
+- `theme-color` does not paint it; it colours Safari's bars.
+- The manifest's `background_color` is used by Android's start screen, not by iOS.
+- **Test before building anything** (two minutes on the trainer's iPhone):
+  1. Turn dark mode on.
+  2. Close the app in the app switcher.
+  3. Open it from the home screen.
+  4. Note the colour shown before the overview appears.
+
+**Options:**
+
+| Option | What it is | Cost | Verdict |
+| --- | --- | --- | --- |
+| Launch images, plain page colour | One `<link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="…/launch-1179x2556-dark.png">` per iPhone screen size. iOS uses an image only if its pixels match the screen exactly. | <ul><li>About 12 sizes today, taken from Apple's device table at build time.</li><li>Plain `#000` images: about 95 KB in the package, at most 11 KB each.</li><li>Each phone fetches its one image once, when the app is added to the home screen.</li><li>12 lines in every page's head.</li><li>Every new iPhone size needs a line; a missing size starts as it does today (a `ponytail:` comment naming that limit).</li><li>Apps already on a home screen get the images only when added again.</li></ul> | **Dark only, and only if the test shows white.** It removes the brightest flash a dark-mode user sees, at every cold start, which is the owner's complaint. In light mode, white then the light grey page is barely a change. |
+| A logo splash | the mark centred on the page colour | as above, plus the mark | **No.** <ul><li>Apple's guidance: a launch screen looks like the app's first screen without its content, not a logo screen.</li><li>A logo makes every start feel slower.</li><li>Fixed images would show the built-in shuttle even to a club with its own icon. Drawing them per club needs GD, which shared hosting does not promise (`app/portal_icon.php`).</li></ul> |
+| Nothing | iOS's own start | none | if the test shows no white |
+
+**Android.** Chrome draws its own start screen from the manifest: the new icon and the club name on `background_color`, the light page colour. So a phone in dark mode starts on light grey for a moment. The manifest is one reply for everybody (cached for a day, shared), so it cannot follow one person's dark or light choice. I would leave it.
+
+### C16a The mark: a shuttlecock
+
+**The drawing**, one copy, on the icon grid:
+- Upright first: a cork of radius 3.6 centred at (12, 6), and a skirt from y 10.3 (6.2 wide) to y 21 (14 wide). Its open end bulges out by 1.2, and two 0.6-wide cuts radiating from the cork split it into three feathers.
+- Then turned 45° clockwise and centred, so the shuttle flies up to the right, cork first.
+- Generator: `scratchpad/ux-shuttle/geometry.py`.
+
+The drawing is built in two places, the same path and circle in both: `icon('shuttle')` in `app/ui.php`, for the page, and `public/assets/favicon.svg`, for the browser tab and the PNG icons below. A structure check keeps the two the same.
+
+**The PNG icons.** Each is drawn once from the SVG by whoever builds the release (for example `rsvg-convert`, or Chromium as I did), never at install.
+
+| File | Size | Drawn from | Corners |
+| --- | --- | --- | --- |
+| `apple-touch-icon.png` | 180 | `<rect width="64" height="64" fill="#06736C"/>` and the shuttle at `translate(9.2 9.2) scale(1.9)` | Square and opaque; iOS rounds it. Today's icon has see-through corners, which an iPhone shows black (`views/_portal_icon.php` says so). |
+| `icon-192.png`, `icon-512.png` | 192, 512 | `favicon.svg` | rounded (rx 14 of 64), see-through outside, as today (`purpose: any`) |
+| `icon-maskable.png` (new) | 512 | the same square and the shuttle at `translate(12.8 12.8) scale(1.6)` | Square and opaque; the shuttle stays within 30 % of the side from the centre, inside Android's 40 % safe zone. `web_manifest()`'s maskable entry names this file. Today it names the rounded `icon-512.png`. |
+
+**On the page.**
+- `brand_block()` draws `'<span class="brand-mark">'.icon('shuttle').'</span>'` in place of `B<span></span>`.
+- **CSS.**
+  - `.brand-mark` gets `background:var(--teal);color:var(--on-accent)` and `.brand-mark>svg{width:68%;height:68%}`.
+  - Five rules go: the dot (`.brand-mark span`), the two dark-mode rules, `.public-header .brand-mark` and `.brand-preview-public .brand-mark`.
+  - The letter sizes go: `font-size:31px` and the short window's `26px`.
+  - **As built (2026-10-08):** the two dark-mode rules and the two that put the menu colour behind the sign-in header and its preview stay, for an uploaded icon (`.brand-icon` in `public/assets/app.css`), so a club's icon keeps the ground it had.
+- **Contrast.**
+  - Light: a white shuttle on the tint, 5.71:1.
+  - Dark: a dark shuttle on the light tint, 9.85:1.
+  - The tile against the page background: 5.12 light, 10.97 dark.
+  - Against a computer's menu: 2.74 light, 8.90 dark. The tile is decoration beside the club's name, which is the text.
+
+**Where the mark appears:**
+- the browser tab;
+- the home screen, on iPhone and Android;
+- the sidebar on a computer (44 px, 38 px in short windows);
+- the header of the sign-in page (44 px);
+- the header of the installer, `setup.php` (added 2026-10-08);
+- the previews in Einstellungen.
+
+The phone's top bar keeps showing the club's name, as today: `brand_block()` draws no mark there. So "44 px in the bar" means the sidebar and the sign-in header.
+
+**An uploaded logo or icon still wins everywhere.** That code is unchanged: `brand_header()`, `portal_icon_url()`, the layout's icon links and `web_manifest()`.
+
+**Light and dark.**
+- The mark on the page follows the tint in both appearances.
+- The files cannot follow the appearance: a home-screen icon is one picture. Teal with a white shuttle was checked on a light and on a black background.
+
+**Texts that name the „B" change:**
+- `views/_portal_logo.php`: „… Ohne Logo steht dort das Symbol des Portals, ohne Symbol ein Federball." / "… without an icon a shuttlecock."
+- `app/actions_settings.php:103`: `t('Logo entfernt. Oben links steht wieder der Federball.','Logo removed. The shuttlecock is shown top left again.')`
+- `app/defaults.php`, the hint for `brand_highlight` (the dot it coloured is gone): `['Die Markierung beim Menüpunkt der Seite, auf der man gerade ist.','The marker on the menu entry of the current page.']`
+- Code comments: `app/brand.php:384` and `:552`, `app/ui.php` (`brand_block()`), `app/actions_settings.php:98`.
+
+**Reuses:**
+- `icon()`, `t()`, `e()`, `.visually-hidden`;
+- the `pageshow` handler, the two `:active` lists and the button spinner;
+- `--teal` and `--on-accent`, the reduced-motion block, view transitions;
+- `brand_block()` and `web_manifest()`.
+
+**Takes away:**
+- the „B" with its dot, and seven CSS rules and declarations;
+- the three texts that name the „B";
+- the see-through corners of the home-screen icon;
+- a maskable icon that was rounded.
+
+### Measured
+
+**Conditions.**
+- Commit `7b98be7` (git archive), the HEAD when this started, on a throwaway portal with the example data.
+- `b4e457e` was committed meanwhile. Its diff touches none of what the prototypes relied on: the bar, the brand mark, the `:active` lists, view transitions, reduced motion, main's padding. `icon()` only gained `'search'`.
+- MariaDB 10.11.14, PHP 8.4.26, Chromium 141 (Playwright 1.56.1). No iPhone.
+
+**The waiting shuttle** (the spec's CSS and JS injected into the real pages):
+- **Cases:** 320 and 390, light and dark, motion and reduced motion. Trainer: Übersicht → Schüler. Family: Übersicht → Chats. Signed out: Anmelden → „Passwort vergessen".
+- **Checks:** 0 problems under `tests/mobile.mjs`'s own rules while the shuttle shows. Nothing under the lane, checked against every text and image in `<main>`, the bar and the public header.
+- **Positions:** the bar spans 0–45 px and the lane 38–50 (signed in); signed out, the lane spans 0–12.
+- **Timing, with a real navigation held 2.5 s:**
+  - at 0.3 s, only the tapped link shows pressed;
+  - at 1.0 s, the shuttle is on and the status line reads „Wird geladen …".
+- **A sending form** (Mein Konto, „Speichern"): at 0.3 s and at 1.0 s the button spins and the shuttle stays off.
+- **Frames:** the cork leads both ways and the shuttle turns at each end.
+- **Method note for qa-tester:** while a navigation is pending, Chromium answers no `evaluate` and no CDP call on the old page. So the old page writes what it shows into `sessionStorage`, and the next page reads it.
+
+**The mark:**
+- 44 px in the sign-in header at 320 and 390 and in the sidebar at 1280, light and dark: 0 problems; contrasts as above.
+- Blown up from 16 px: it reads as a cone with a ball. The feather cuts blur at that size; the outline holds.
+- Under a circle mask and a squircle mask nothing is cut.
+- File sizes: PNGs 4.3 KB (180), 6.2 KB (192), 17.7 KB (512) and 11.1 KB (maskable).
+
+**Launch images:** not measured. The 95 KB is a calculation, not a test.
+
+**Not measured at all:**
+- the shuttle on a computer (same rule as on a phone);
+- VoiceOver hearing „Wird geladen …".
+
+**Files in `/tmp/claude-0/-home-user-crmb/8858533c-add6-5b5d-86fd-9a8a9c5649af/scratchpad/`:**
+- `ux-shuttle/`: `geometry.py`, `geometry.json`, `final-favicon.svg`, `final-*.png` (reference renders), `sheet-light.png`, `sheet-dark.png`, `fav-blowup.png`, `final-masks.png`;
+- `ux-wait/`: `proto-wait.mjs`, `proto-mark.mjs`, `frames.mjs`, `wait-*.png`, `mark-*.png`, `frames.png`.
+
+The throwaway servers are stopped.
 
 ---
 
@@ -1021,7 +1231,7 @@ Four gaps land on the overviews (G2, G4, G6, G7) and one in the bell (G5). Speci
 2. **Group „Bezahlt".** The six newest rows:
    - the label, with the amount as the value;
    - the subtitle „bezahlt am 05.08." (the latest confirmed payment's `paid_on`);
-   - a trailing plain link to the document, `target="_blank"`:
+   - a trailing plain link to the document, opening in the same tab (changed on 2026-10-08 from `target="_blank"`: inside the iPhone home-screen app a new tab likely opens without the app's sign-in. Security's point; the project manager decided it; see 0.5):
      - if a live invoice holds the charge, „Rechnung {number}";
      - otherwise „Bestätigung" (part B);
    - a footer row „Alle bezahlten" ›.
@@ -1179,7 +1389,7 @@ Four gaps land on the overviews (G2, G4, G6, G7) and one in the bell (G5). Speci
   - the child's name;
   - the subtitle „Beitrag Oktober · 37,00 €";
   - a second subtitle „Beleg vom 07.10." plus the family's note;
-  - a tap on the row opens the receipt (`target="_blank"`);
+  - a tap on the row opens the receipt, in the same tab (changed on 2026-10-08 from `target="_blank"`: inside the iPhone home-screen app a new tab likely opens without the app's sign-in. Security's point; the project manager decided it; see 0.5);
   - trailing: a filled capsule „Bezahlt" (`check`, at least 44 px).
 - **What „Bezahlt" records**, in a new small action (backend; the server works out the remainder when the tap arrives, so a list opened an hour ago cannot pay twice): a confirmed payment of the charge's open remainder,
   - dated the day the receipt arrived;

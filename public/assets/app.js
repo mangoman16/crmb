@@ -64,10 +64,55 @@ document.querySelectorAll('form[method="post"]').forEach(form => {
     }, 0);
   });
 });
+// A page that is slow to come (Part 0.4a): the link that was tapped stays
+// pressed, as an iPhone keeps a tapped row lit until the next screen is in, and
+// if the page has not come after 0.7 s a shuttle flies along the bottom of the
+// bar - in the home-screen app no browser bar says a page is loading. Nothing
+// waits for it, so no page is slower. A form that sends has its button's
+// spinner instead (above): the two never show for one tap.
+const waitParts = document.getElementById('page-wait')?.content.cloneNode(true);
+const wait = waitParts?.querySelector('.page-wait');
+const waitSaid = waitParts?.querySelector('[role="status"]');
+if (wait) { (document.querySelector('.topbar') || document.body).append(wait); document.body.append(waitSaid); }
+let waitTimer = 0;
+const leaving = pressed => {
+  document.querySelectorAll('.is-pending').forEach(el => el.classList.remove('is-pending'));
+  pressed?.classList.add('is-pending');
+  window.clearTimeout(waitTimer);
+  waitTimer = window.setTimeout(() => {
+    if (!wait) return;
+    wait.classList.add('is-on');
+    waitSaid.textContent = waitSaid.dataset.text;
+  }, 700);
+};
+document.addEventListener('click', event => {
+  const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+  if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  // Somewhere that leaves this page standing: another tab, a file, mail or the
+  // phone, or a place further down this page. The portal's own download page is
+  // a file as well: it answers with the file and no page. It still opens here,
+  // not in a new tab, which in the home-screen app would have Safari's cookies.
+  if ((link.target && link.target !== '_self') || link.hasAttribute('download') || !/^https?:$/.test(link.protocol)
+      || new URLSearchParams(link.search).get('page') === 'download') return;
+  if (link.hash && link.href.split('#')[0] === location.href.split('#')[0]) return;
+  leaving(link);
+});
+document.addEventListener('submit', event => {
+  const form = event.target;
+  if (event.defaultPrevented || (form.target && form.target !== '_self')) return;
+  // Marked by the form's own listener above, which runs first: it is sending.
+  if (event.submitter?.getAttribute('aria-busy') === 'true') return;
+  leaving(event.submitter);
+});
 // Back to a page the browser kept as it was left - a form sent, its buttons off,
-// a sheet open: it is a page to use again, not one still sending.
+// a sheet open, a link still pressed: it is a page to use again, not one still
+// sending or leaving.
 window.addEventListener('pageshow', event => {
   if (!event.persisted) return;
+  window.clearTimeout(waitTimer);
+  wait?.classList.remove('is-on');
+  if (waitSaid) waitSaid.textContent = '';
+  document.querySelectorAll('.is-pending').forEach(el => el.classList.remove('is-pending'));
   document.querySelectorAll('form[data-submitted]').forEach(form => {
     delete form.dataset.submitted;
     form.querySelectorAll('[data-sending-off]').forEach(button => { button.disabled = false; delete button.dataset.sendingOff; });

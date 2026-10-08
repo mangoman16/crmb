@@ -155,6 +155,21 @@ This is the first phase of the design language in
   paint it dark from the first moment instead of white until the colours
   arrive. The installer and the page saying the portal is not available do the
   same.
+- **A page that is slow to come says so.** The row, button or tab tapped keeps
+  its pressed look until the next page is there, and if it has not come after
+  0.7 s a small shuttlecock flies back and forth along the bottom of the top
+  bar — the app on the home screen has no browser bar to show that a page is
+  loading. A form that sends shows its button's spinner instead, never both.
+  With less motion asked for, the shuttlecock stays in place and only pulses,
+  and a screen reader hears „Wird geladen …" once. Nothing waits for it, so no
+  page is slower; without JavaScript nothing changes.
+- **The portal's own mark is a shuttlecock**, where the club has set no logo
+  or icon of its own: top left, in the installer, in the browser tab and on
+  the home screen. An iPhone's home-screen icon is square now, without the
+  see-through corners an iPhone showed black, and Android gets an icon of its
+  own for its launcher's shape, with the whole shuttlecock inside it. An
+  iPhone keeps an icon already on its home screen until the portal is removed
+  and added again.
 - The portal's built-in teal is a shade darker, so that it reads on the grey
   ground. Every text is at least 4.5:1 against what is behind it in both
   themes, as frontend-dev measured it in Chromium.
@@ -163,7 +178,8 @@ This is the first phase of the design language in
 Not in this phase: a child's page and a course's page as lists to tap through,
 and the screens for the owner's goals. **Seen in Chromium only**, at 320 and 390
 pixels, as each role, light and dark; not yet on a real iPhone, which TESTING.md
-I.1–I.12 walk. Chromium cannot show whether Safari still flashes white.
+I.1–I.12 and W.1–W.3 walk, with W.4 on an Android phone. Chromium cannot show
+whether Safari still flashes white.
 
 ### A slow or silent mail server no longer holds up the next page
 
@@ -764,12 +780,13 @@ I.1–I.12 walk. Chromium cannot show whether Safari still flashes white.
   verwendet: …" beside her choice. A save that changes a colour names the
   colours it replaced, so the change can be typed back. A colour picker sits beside each box; without
   JavaScript she types the colour. (ADR 0013.)
-- **„Logo"** replaces the „B" top left, in the menu, on the sign-in page and in
+- **„Logo"** replaces the mark top left, in the menu, on the sign-in page and in
   the phone's top bar: a PNG, JPEG or WebP of at most 1 MB, at least 88 pixels
   tall, at most 2048 on either side, and no more than five times as wide as it
   is tall or twice as tall as it is wide. Two switches on
   „Aussehen" hide the portal's name and the „Verwaltung" line beside it.
-  Removing the logo brings back the portal icon, or else the „B". (ADR 0014.)
+  Removing the logo brings back the portal icon, or else the shuttlecock. (ADR
+  0014.)
 - A portal with no colours set loads nothing extra. A logo photographed on a
   phone held upright is measured the way it is shown (see „What the security
   review of the beta found", above).

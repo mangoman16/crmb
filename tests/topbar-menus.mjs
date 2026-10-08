@@ -13,17 +13,21 @@
  * „toggle" after the change rather than during it, so toggles wait in a queue
  * until settle().
  *
- * The page also holds one form sent by POST, with two buttons. A timer the
- * script sets runs when runTimers() says so, and the window's listeners
- * (pageshow) are kept to be sent like the document's.
+ * The page also holds one form sent by POST, with two buttons, one that only
+ * looks something up (GET), and links of every kind a tap can leave by. A timer
+ * the script sets runs when runTimers() says so, and is kept with its delay
+ * until then; the window's listeners (pageshow) are kept to be sent like the
+ * document's. A click or a submit reaches the element's own listeners first and
+ * the document's after, as it bubbles.
  *
  * What the stand-in page does not do: document.querySelectorAll() answers only
  * the selectors in `answered` (anything else finds nothing, so the rest of
  * app.js stays out of the way - and so would a script that looked for its menus
- * or forms another way); getElementById() and querySelector() find nothing. On
- * the stand-in elements, closest(), matches() and querySelector() understand a
- * tag, classes and attributes - [open], [name] and [name="value"] - and throw on
- * any other selector rather than guess.
+ * or forms another way); getElementById() finds only the template of the
+ * waiting shuttle (Part 0.4a), and querySelector() only the top bar. On the
+ * stand-in elements, closest(), matches() and querySelector() understand a tag,
+ * classes and attributes - [open], [name] and [name="value"] - and throw on any
+ * other selector rather than guess.
  */
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -51,7 +55,19 @@ class FakeElement {
   addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? null; }
+  hasAttribute(name) { return name in this.attributes; }
   removeAttribute(name) { delete this.attributes[name]; }
+  get classList() {
+    const classes = this.classes;
+    return { add: name => { classes.add(name); }, remove: name => { classes.delete(name); }, contains: name => classes.has(name) };
+  }
+  append(...nodes) {
+    for (const node of nodes) {
+      if (node.parent) node.parent.children.splice(node.parent.children.indexOf(node), 1);
+      node.parent = this;
+      this.children.push(node);
+    }
+  }
   // data-* attributes, as element.dataset reads and writes them.
   get dataset() {
     const name = key => 'data-' + String(key).replace(/[A-Z]/g, c => '-' + c.toLowerCase());
@@ -107,19 +123,49 @@ form.setAttribute('method', 'post');
 const pressed = new FakeElement('button', [], form);
 const beside = new FakeElement('button', [], form);
 for (const button of [pressed, beside]) { button.setAttribute('type', 'submit'); button.disabled = false; }
-const answered = new Set(['.topbar-menu', 'form[method="post"]', 'form[data-submitted]', 'dialog.sheet-dialog[open]']);
+// A form that only looks something up: sent by GET, so app.js leaves it alone
+// until it is sent.
+const lookup = new FakeElement('form', [], main);
+const lookupButton = new FakeElement('button', ['button'], lookup);
+lookupButton.setAttribute('type', 'submit');
+// A link as the page draws it, with what a browser works out from its address.
+const pageAddress = 'https://portal.test/index.php?page=dashboard';
+const link = (href, classes = [], attributes = {}) => {
+  const a = new FakeElement('a', classes, main);
+  a.setAttribute('href', href);
+  for (const [name, value] of Object.entries(attributes)) a.setAttribute(name, value);
+  const address = new URL(href, pageAddress);
+  return Object.assign(a, { href: address.href, protocol: address.protocol, hash: address.hash, search: address.search, target: attributes.target ?? '' });
+};
+// The template of the waiting shuttle, as views/layout.php draws it.
+const waitTemplate = {
+  content: {
+    cloneNode() {
+      const parts = new FakeElement('template-content');
+      const lane = new FakeElement('div', ['page-wait'], parts);
+      new FakeElement('span', ['page-wait-flight'], lane);
+      const said = new FakeElement('span', ['visually-hidden'], parts);
+      said.setAttribute('role', 'status');
+      said.setAttribute('data-text', 'Wird geladen …');
+      return parts;
+    },
+  },
+};
+const answered = new Set(['.topbar-menu', 'form[method="post"]', 'form[data-submitted]', 'dialog.sheet-dialog[open]', '.is-pending']);
 
 const documentListeners = {};
 const windowListeners = {};
-const timers = [];
-const runTimers = () => { while (timers.length) timers.shift()(); };
+const timers = new Map();
+let timerCount = 0;
+const runTimers = () => { for (const [id, timer] of [...timers]) { timers.delete(id); timer.fn(); } };
+const waiting = delay => [...timers.values()].some(timer => timer.ms === delay);
 const page = {
   activeElement: body,
-  body: Object.assign(body, { classList: { remove() {}, toggle() { return false; } } }),
+  body,
   // app.js marks the page as scripted ("js" on <html>), which is all it asks of it.
   documentElement: { classList: { add() {} } },
-  getElementById: () => null,
-  querySelector: () => null,
+  getElementById: id => (id === 'page-wait' ? waitTemplate : null),
+  querySelector: selector => (selector === '.topbar' ? topbar : null),
   // Only the menus and the form are on this page: every other feature of app.js
   // finds nothing to attach to and stays out of the way.
   querySelectorAll: selector => (answered.has(selector) ? body.querySelectorAll(selector) : []),
@@ -130,12 +176,14 @@ const page = {
 const context = vm.createContext({
   document: page,
   Element: FakeElement,
-  location: { hash: '', pathname: '/index.php', search: '' },
+  location: { hash: '', pathname: '/index.php', search: '?page=dashboard', href: pageAddress },
   history: { replaceState() {} },
   navigator: {},
+  URLSearchParams,
   console,
   addEventListener: (type, fn) => { (windowListeners[type] ??= []).push(fn); },
-  setTimeout: fn => { timers.push(fn); return timers.length; },
+  setTimeout: (fn, ms = 0) => { timers.set(++timerCount, { fn, ms }); return timerCount; },
+  clearTimeout: id => { timers.delete(id); },
 });
 context.window = context;
 vm.runInContext(readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8'), context,
@@ -260,6 +308,83 @@ try {
   check('and the form is no longer marked sent', form.dataset.submitted === undefined
         && pressed.dataset.sendingOff === undefined && beside.dataset.sendingOff === undefined, formState());
   check('so it can be sent again', !submit().defaultPrevented, formState());
+
+  // Waiting for the next page (Part 0.4a): the tapped link stays pressed, and a
+  // shuttle flies only if the page has not come after 0.7 s.
+  const lane = topbar.children.find(el => el.classes.has('page-wait'));
+  const said = body.children.find(el => el.getAttribute('role') === 'status');
+  const pending = () => body.querySelectorAll('.is-pending');
+  const waitState = () => JSON.stringify({ lane: lane && [...lane.classes], said: said?.textContent ?? null,
+    pending: pending().map(el => el.tagName + '.' + [...el.classes].join('.')), timers: [...timers.values()].map(t => t.ms) });
+  const back = () => { for (const fn of windowListeners.pageshow ?? []) fn({ persisted: true }); };
+  const click = (target, extra = {}) => {
+    const event = { target, button: 0, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra };
+    send('click', event);
+    return event;
+  };
+  // A form is sent the way it bubbles: its own listeners, then the document's.
+  const sendForm = (sent, submitter) => {
+    const event = { target: sent, submitter, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    for (const fn of sent.listeners.submit ?? []) fn(event);
+    send('submit', event);
+    return event;
+  };
+  check('the shuttle\'s lane goes into the top bar, and the line a screen reader hears into the page',
+        Boolean(lane) && Boolean(said) && said.parent === body, waitState());
+  back(); timers.clear();
+  check('and nothing shows before anything is tapped', lane && !lane.classes.has('is-on') && !said?.textContent && pending().length === 0, waitState());
+
+  const row = link('index.php?page=student&id=7', ['student-card']);
+  const rowText = new FakeElement('span', [], row);
+  click(rowText);
+  check('a tap on a row keeps it pressed at once', row.classes.has('is-pending'), waitState());
+  check('and the shuttle waits 0.7 s', !lane.classes.has('is-on') && waiting(700), waitState());
+  runTimers();
+  check('then flies, and the page says it is loading', lane.classes.has('is-on') && said.textContent === 'Wird geladen …', waitState());
+  const tab = link('index.php?page=student&id=7&tab=payments', ['chip']);
+  click(tab);
+  check('a second tap moves the pressed look to what was tapped last', tab.classes.has('is-pending') && pending().length === 1, waitState());
+  back();
+  check('back to the page as it was left, nothing is pressed and nothing flies',
+        pending().length === 0 && !lane.classes.has('is-on') && said.textContent === '' && !waiting(700), waitState());
+
+  // Taps that leave the page standing start nothing.
+  const standing = [
+    // Each with an address only its own rule leaves alone.
+    ['a link that opens another tab', link('index.php?page=privacy', ['text-link'], { target: '_blank', rel: 'noopener' }), {}],
+    ['a link that downloads', link('beleg.pdf', [], { download: '' }), {}],
+    // In this tab, as the portal draws it: the file comes, and no page.
+    ['a link to a file', link('index.php?page=download&what=invoice&id=1', ['button']), {}],
+    ['a mail address', link('mailto:trainerin@example.test'), {}],
+    ['a telephone number', link('tel:+43123456'), {}],
+    ['a place further down this page', link('index.php?page=dashboard#feedback', ['text-link']), {}],
+    ['a tap with a modifier key', link('index.php?page=classes', ['text-link']), { metaKey: true }],
+    ['a middle click', link('index.php?page=classes', ['text-link']), { button: 1 }],
+  ];
+  for (const [what, target, extra] of standing) {
+    back(); timers.clear();
+    click(target, extra);
+    check(what + ' starts nothing', pending().length === 0 && !waiting(700), waitState());
+  }
+  back(); timers.clear();
+  const stopped = link('index.php?page=classes', ['text-link']);
+  click(stopped, { defaultPrevented: true });
+  check('nor does a tap something else has already handled', pending().length === 0 && !waiting(700), waitState());
+
+  // A form that sends has its button's spinner, never the shuttle as well.
+  back(); timers.clear();
+  sendForm(form, pressed);
+  runTimers();
+  check('a form that sends shows its spinner and no shuttle', pressed.getAttribute('aria-busy') === 'true'
+        && !lane.classes.has('is-on') && pending().length === 0, waitState());
+  check('and its second send starts nothing either', sendForm(form, pressed).defaultPrevented && !waiting(700), waitState());
+  // A form that only looks something up is a tap that leaves, like a link.
+  back(); timers.clear();
+  sendForm(lookup, lookupButton);
+  check('a form that looks something up keeps its button pressed', lookupButton.classes.has('is-pending') && waiting(700), waitState());
+  runTimers();
+  check('and the shuttle flies if its page is slow', lane.classes.has('is-on'), waitState());
+  back();
 } catch (error) {
   check('the menu code ran against the stand-in page', false, String(error && error.stack || error));
 }

@@ -2211,3 +2211,60 @@ ok(call_index_in(defined_functions_in(APP_ROOT.'/app/shell.php')['impersonator']
    (code review). sign_in() at its end forgets the rest. */
 ok(call_index_in(named_blocks_of(APP_ROOT.'/app/actions.php')['activate'] ?? '', 'forget_session_leftovers') === null,
    'activate leaves what the session holds to sign_in(), so a failed write keeps the link being opened');
+
+case_('A file opens in the tab it was tapped in, and the waiting code leaves its link alone [Part 0.4a]');
+/* serve_download() answers with the file and no page. In the iPhone's
+   home-screen app a link that opens a new tab opens a browser view with
+   Safari's cookies, not the app's: a family tapping a PDF, a receipt or a
+   chat photo would land on the sign-in page there, and might sign in a second
+   time on a shared phone (security review, 2026-10-08). So a file opens where
+   it is tapped, as it always did, and app.js knows the router's download page
+   by its name: for a page that never comes it neither holds the link pressed
+   nor starts the shuttle. Read from where links are drawn: an <a> whose address
+   is that page, written in place or through a variable that holds it. */
+$download = preg_match('~if\(\$page===\'(\w+)\'\)serve_download\(\);~', (string)file_get_contents(APP_ROOT.'/public/index.php'), $served) ? $served[1] : '';
+ok($download !== '', 'the router answers one page with a file ('.$download.')');
+$fileLinks = 0; $newTab = [];
+$route = 'url\(\s*[\'"]'.preg_quote($download, '~').'[\'"]';
+foreach (array_merge(glob(APP_ROOT.'/views/*.php'), [APP_ROOT.'/app/ui.php']) as $file) {
+    $source = (string)file_get_contents($file);
+    preg_match_all('~\$(\w+)\s*=\s*'.$route.'~', $source, $holders);
+    $address = $route.($holders[1] ? '|\$(?:'.implode('|', array_unique($holders[1])).')\)' : '');
+    // An <a ...> up to the end of its attributes, the PHP printed into it included.
+    preg_match_all('~<a\s(?:[^<>]|<\?=.*?\?>)*>~s', $source, $tags, PREG_OFFSET_CAPTURE);
+    foreach ($tags[0] as [$tag, $offset]) {
+        if (!preg_match('~href="<\?=e\((?:'.$address.')~', $tag)) continue;
+        $fileLinks++;
+        if (preg_match('~\starget="(?!_self")~', $tag))
+            $newTab[] = substr($file, strlen(APP_ROOT) + 1).':'.(substr_count($source, "\n", 0, $offset) + 1);
+    }
+}
+ok($fileLinks >= 6, $fileLinks.' links to a file found');
+is_same([], $newTab, 'each opens in the tab it was tapped in');
+ok(preg_match('~get\(\s*([\'"])page\1\s*\)\s*===\s*([\'"])'.preg_quote($download, '~').'\2~', (string)file_get_contents(APP_ROOT.'/public/assets/app.js')) === 1,
+   'and app.js leaves a link to that page alone, by the name the router gives it');
+
+case_('The shuttlecock is one drawing: the mark on the page and the icon in the browser tab [C16a]');
+test_load_actions();
+$drawing = fn(string $svg): array => [preg_match('~<path d="([^"]+)"~', $svg, $skirt) ? $skirt[1] : '',
+                                     preg_match('~<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"~', $svg, $cork) ? array_slice($cork, 1) : []];
+$onPage = $drawing(icon('shuttle'));
+ok($onPage[0] !== '' && $onPage[1] !== [], 'icon(\'shuttle\') draws a skirt and a cork');
+is_same($onPage, $drawing((string)file_get_contents(APP_ROOT.'/public/assets/favicon.svg')), 'and favicon.svg draws the same ones');
+
+case_('The home-screen icons have the sizes they are offered at, and only the square ones are opaque [C16a]');
+/* An iPhone rounds the icon itself and shows see-through corners black, and
+   Android cuts a maskable icon to its own shape, so those two are squares
+   without an alpha channel; the 192 and the 512 keep their rounded corners,
+   which only an alpha channel can make see-through. Read from each file's own
+   header, so no image library is needed. */
+$png = function (string $name): array {
+    $head = (string)@file_get_contents(APP_ROOT.'/public/assets/'.$name, false, null, 0, 26);
+    if (strlen($head) < 26 || substr($head, 0, 8) !== "\x89PNG\r\n\x1a\n" || substr($head, 12, 4) !== 'IHDR') return ['not a PNG'];
+    $ihdr = unpack('Nwidth/Nheight/Cdepth/Ctype', substr($head, 16, 10));
+    return [$ihdr['width'], $ihdr['height'], [2 => 'opaque', 6 => 'see-through where drawn so'][$ihdr['type']] ?? 'colour type '.$ihdr['type']];
+};
+is_same([180, 180, 'opaque'], $png('apple-touch-icon.png'), 'apple-touch-icon.png is 180 square and opaque');
+is_same([512, 512, 'opaque'], $png('icon-maskable.png'), 'icon-maskable.png is 512 square and opaque');
+is_same([192, 192, 'see-through where drawn so'], $png('icon-192.png'), 'icon-192.png is 192, with its corners see-through');
+is_same([512, 512, 'see-through where drawn so'], $png('icon-512.png'), 'icon-512.png is 512, with its corners see-through');

@@ -3,8 +3,8 @@
  * The club's look as the pages draw it (ADR 0013, 0014). tests/suites/colour.php
  * checks the colour rules and brand_header(); this checks that the layout and
  * the Portal tab use them: the club's stylesheet only when a colour is set, the
- * logo, icon or „B" top left with the switches applied, the Logo and Aussehen
- * cards in their place, and the sign-in page's name readable in the dark.
+ * logo, icon or shuttlecock top left with the switches applied, the Logo and
+ * Aussehen cards in their place, and the sign-in page's name readable in the dark.
  */
 require_once TEST_ROOT.'/css.php';
 
@@ -37,7 +37,11 @@ function brand_place(string $html, string $where): array {
     preg_match('/brand-is-(\w+)/', $a->getAttribute('class'), $kind);
     $hidden = fn(string $q) => array_map(fn($n) => trim($n->textContent), iterator_to_array($x->query($q, $a)));
     $img = $x->query('.//img', $a)->item(0);
+    // The portal's own mark is a drawing: the class icon() gives it names which.
+    $mark = $x->query('.//*['.brand_has_class('brand-mark').']', $a)->item(0);
+    $glyph = $mark ? $x->query('./*[local-name()="svg"]', $mark)->item(0) : null;
     return ['found' => true, 'kind' => $kind[1] ?? '', 'img' => $img ? $img->getAttribute('src') : '',
+            'glyph' => $glyph ? $glyph->getAttribute('class') : '', 'markText' => $mark ? trim($mark->textContent) : null,
             'alt' => $img ? $img->getAttribute('alt') : null, 'size' => $img ? [$img->getAttribute('width'), $img->getAttribute('height')] : [],
             'text' => trim(preg_replace('/\s+/', ' ', $a->textContent)),
             'visuallyHidden' => $hidden('.//*['.brand_has_class('visually-hidden').']')];
@@ -71,16 +75,20 @@ ok(str_contains(brand_page_html('login', [], true), 'href="'.e(brand_css_url()).
 $clearLook();
 
 // ---------------------------------------------------------------------------
-case_('Top left: the „B" with the name, and the switches cannot leave nothing');
+case_('Top left: the shuttlecock with the name, and the switches cannot leave nothing');
 sign_in_as($admin);
 $html = brand_page_html('dashboard');
 $side = brand_place($html, 'sidebar');
 ok($side['kind'] === 'mark' && str_contains($side['text'], 'TSV Beispiel') && str_contains($side['text'], 'Verwaltung') && $side['visuallyHidden'] === [],
-   'the menu shows the „B", the name and „Verwaltung"');
+   'the menu shows the mark, the name and „Verwaltung"');
+/* C16a: the mark is the shuttlecock drawn by icon('shuttle'), the same drawing
+   as the home-screen icon, and no letter is left in it to be read out. */
+is_same(['glyph-shuttle', ''], [$side['glyph'], $side['markText']], 'and the mark is the shuttlecock, with no letter in it');
+is_same('glyph-shuttle', brand_place(brand_page_html('login', [], true), 'public')['glyph'], 'on the sign-in page too');
 is_same(['none', 'TSV Beispiel'], [brand_place($html, 'bar')['kind'], brand_place($html, 'bar')['text']], 'the phone bar shows the name');
 set_setting('header_hide_name', true);
 $side = brand_place(brand_page_html('dashboard'), 'sidebar');
-is_same([], $side['visuallyHidden'], 'with only the „B", switching the name off still shows it');
+is_same([], $side['visuallyHidden'], 'with only the shuttlecock, switching the name off still shows it');
 set_setting('header_hide_subtitle', true);
 is_same(['Verwaltung'], brand_place(brand_page_html('dashboard'), 'sidebar')['visuallyHidden'], 'the line under it can be switched off, and stays for a screen reader');
 $clearLook();
@@ -127,6 +135,27 @@ is_same(['var(--brand-ink)'], $value('.public-header .brand', 'color'), 'the nam
 is_same(['var(--navy)'], $value(':root', '--brand-ink'), 'which is the menu colour in light');
 is_same(['var(--ink)'], $value('html:not([data-theme=light])', '--brand-ink'), 'the ink when the device is dark');
 is_same(['var(--ink)'], $value('html[data-theme=dark]', '--brand-ink'), 'and when dark is chosen');
+/* C16a: the mark is the tint with the shuttle in the colour made for text on
+   it, in light and dark and on the menu and the page alike. It was white on
+   the menu, the menu colour on the sign-in page and the tint in the dark, by
+   four rules more; any rule that colours it again parts it from the
+   home-screen icon. */
+$markColours = array_filter(css_matching($css, '/(^|[\s>+~])\.brand-mark$/'), fn($r) => in_array($r['property'], ['background', 'background-color', 'color'], true));
+is_same(['.brand-mark background: var(--teal)', '.brand-mark color: var(--on-accent)'],
+        array_map(fn($r) => trim($r['media'].' '.$r['selector']).' '.$r['property'].': '.$r['value'], array_values($markColours)),
+        'the mark is coloured once: the tint, and the shuttle in --on-accent');
+/* The club's own icon keeps what showed through it before the shuttlecock:
+   the menu colour on the sign-in page and in its preview, the tint in the
+   dark, and elsewhere the ground it sits on. A dark icon with see-through
+   parts would otherwise vanish on black. */
+$iconBacking = array_map(fn($r) => trim($r['media'].' '.$r['selector']).' '.$r['property'].': '.$r['value'],
+    array_values(array_filter(css_matching($css, '/(^|[\s>+~])\.brand-icon$/'), fn($r) => in_array($r['property'], ['background', 'background-color'], true))));
+sort($iconBacking);
+is_same(['.brand-icon background: transparent', '.brand-preview-public .brand-icon background: var(--navy)',
+         '.public-header .brand-icon background: var(--navy)',
+         '@media(prefers-color-scheme:dark) html:not([data-theme=light]) .brand-icon background: var(--teal)',
+         'html[data-theme=dark] .brand-icon background: var(--teal)'], $iconBacking,
+        'the club\'s own icon keeps its backing: the menu colour on the sign-in page, the tint in the dark');
 
 // ---------------------------------------------------------------------------
 case_('The Portal tab: its settings, then Logo, Aussehen and the icon, each its own form');

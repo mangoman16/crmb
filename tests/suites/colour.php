@@ -405,16 +405,16 @@ foreach (['brand_background', 'brand_background_dark'] as $key)
        $key.': the built-in background passes its own rule');
 
 // ---------------------------------------------------------------------------
-// The top left: logo, icon or „B"
+// The top left: logo, icon or the shuttlecock
 // ---------------------------------------------------------------------------
 
-case_('The top left falls back from logo to icon to „B", and the name never leaves nothing');
+case_('The top left falls back from logo to icon to the shuttlecock, and the name never leaves nothing');
 branding_clear();
 set_setting('portal_logo', ''); set_setting('portal_icon', ''); set_setting('club_name', 'TSV Beispiel');
 set_setting('header_hide_name', true); set_setting('header_hide_subtitle', true);
 $staff = brand_header(one('SELECT * FROM accounts WHERE id=?', [$admin]));
 is_same(['', '', 'TSV Beispiel', true, false], [$staff['logo'], $staff['icon'], $staff['name'], $staff['show_name'], $staff['show_subtitle']],
-        'with only the „B", the name shows even when hidden - otherwise nothing is left top left');
+        'with only the shuttlecock, the name shows even when hidden - otherwise nothing is left top left');
 is_same('Verwaltung', $staff['subtitle'], 'staff see „Verwaltung"');
 is_same('Mein Portal', brand_header(null)['subtitle'], 'everybody else „Mein Portal"');
 @mkdir(upload_dir('icon'), 0775, true);

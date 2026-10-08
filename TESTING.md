@@ -110,6 +110,7 @@ release and emptied again for the next.
 - What ADR 0026 takes out, round two: the online dots, the status and when somebody was online; the status emoji; profile pictures, whose files the update deletes for good; asking to write to another family; voice notes and files in new messages, which are text and photos, a family's from the camera: [R.9–R.17](#what-adr-0026-removes-round-two), and 5.3i, 5.3j, 14.1–14.7, 20.4, 21.7
 - Age groups from the birth date alone — nothing to pin, one rule everywhere, bands that overlap still agree — and the example data cut to one course, four children and three sign-ins that work for 14 days: [N.1–N.7](#age-groups-from-the-birth-date-alone-and-the-small-example-data-round-three), 2.1, 3.4a, 3.4c, 7.2, 7.3
 - No white flash in dark mode: every page says light or dark before its stylesheet arrives, the installer and the page saying the portal is not available too — on the iPhone: I.12
+- Waiting for a page: the tapped link stays pressed, and a shuttlecock flies along the bar if the page takes longer than 0.7 s; files open in the home-screen app without signing in again; the shuttlecock as the portal's mark and home-screen icon, and a club's see-through icon visible in dark mode: [W.1–W.5](#waiting-for-a-page-and-the-shuttlecock-design-language-04a-and-c16a), 6.8, 6.20
 - The students list for a phone: a search of its own that keeps the selection, „Alle | Überfällig | Krank", the other filters folded under „Filter", „A–Z | Nach Alter" with a card per age group and its count, rows without a price and „Ohne Kurs" for a child in no course, and „Per E-Mail einladen" reached from the wizard's first step: [17.1–17.8](#the-students-list), A.7, N.4, R.4
 - A restore keeps the portal closed until its import is done: every copy makes `import_unfinished` first and drops it last, nothing is run, copied or swept meanwhile, the closed page reloads itself, an import that stopped is imported again: [H.1–H.5](#a-restore-keeps-the-portal-closed-until-its-import-is-done-adr-0029), 21.8, G.7, G.9
 - After the review of round two: a backup restored with a page opened halfway keeps every upload; a chat photo or a receipt downloads under the type it really is, whatever its name said; a family sending anything but a JPEG is asked to take the photo with the camera: [21.8](#data-safety), [12.9](#payments-and-proof), [14.12](#messages), 14.2, R.12
@@ -663,9 +664,10 @@ sign-in page, and a family's login at hand. Before you start, note what the
 - [ ] **6.8** Set **Hauptfarbe** `#8a1538`, **Menüfarbe** `#0a1030`,
   **Hervorhebung** `#ffcc00`, **Hintergrund** `#fffaf0` and save. The message
   reads „Vorgaben gespeichert. Vorher: Hauptfarbe Standard, Menüfarbe Standard,
-  Hervorhebung Standard, Hintergrund Standard." Buttons, links, the menu, the dot
-  on the „B" and the page background all change — signed in, and on the sign-in
-  page in the other browser.
+  Hervorhebung Standard, Hintergrund Standard." Buttons, links, the menu, the
+  square behind the shuttlecock top left, the marker on the current menu entry
+  and the page background all change — signed in, and on the sign-in page in
+  the other browser.
 - [ ] **6.9** Switch the phone (or the computer) to dark mode, then choose
   **Dunkel** under **Mein Konto**. Both show the dark shades worked out from
   your colours; no text disappears into its background, and the text on a
@@ -726,8 +728,12 @@ sign-in page, and a family's login at hand. Before you start, note what the
   and „Zeile „Verwaltung“ / „Mein Portal“ … ausblenden". Check each with a logo,
   with only the portal icon, and with neither: with neither, the name still
   shows. Saving the **Logo** card leaves both switches as they were.
-- [ ] **6.20** „Logo entfernen": the portal icon comes back top left, and after
-  removing the icon too, the „B". The message says which.
+- [ ] **6.20** „Logo entfernen" while the portal has an icon of its own: the
+  icon comes back top left, and the message says „Logo entfernt. Oben links
+  steht wieder das Symbol des Portals." Upload the logo again, go back to the
+  built-in icon („Standard-Symbol verwenden"), and „Logo entfernen" once more:
+  the shuttlecock comes back, with „Logo entfernt. Oben links steht wieder der
+  Federball."
 
 **A photo taken on a phone held upright** is often stored sideways with a note
 saying "turn me" (EXIF orientation). The portal reads that note itself, without
@@ -2329,6 +2335,49 @@ down what could not be checked rather than ticking it.
   down every white frame you see, however short, and where; the result to
   expect is none. The plain screen iOS shows before the home-screen app's very
   first page is iOS's own start, not this check.
+
+### Waiting for a page, and the shuttlecock (design language, 0.4a and C16a)
+
+Measured in Chromium only, as „Part 0, continued" of
+`docs/design/2026-10-07-ios-design-language-and-goal-screens.md` records. Walk
+W.1 to W.3 on a real iPhone, in Safari and in the app from the home screen, in
+light mode and in dark, and write down what could not be checked rather than
+ticking it.
+
+- [ ] **W.1** **(iPhone)** On a slow connection — weak 4G in the hall, or a
+  computer whose browser's developer tools slow the network — tap a child in
+  **Schüler**: the row stays pressed until the child's page is there. If the
+  page has not come after about 0.7 s, a small shuttlecock flies back and forth
+  along the bottom edge of the top bar, and goes when the page arrives; on the
+  sign-in pages it flies along the top of the screen. A page that comes quickly
+  shows only the pressed row. A button that saves shows its spinner and no
+  shuttlecock. Once a page has come, go Back: on the page you return to nothing
+  is pressed and no shuttlecock flies. With Einstellungen → Bedienungshilfen →
+  Bewegung → „Bewegung reduzieren" on, the shuttlecock stays in the middle of
+  the bar's edge and only brightens and fades. With VoiceOver on, a slow page
+  is announced once: „Wird geladen …".
+- [ ] **W.2** **(iPhone)** In the app opened from the home screen, signed in:
+  open an invoice's PDF (a child's **Rechnungen** tab, „PDF herunterladen"), a
+  receipt on a child's **Beiträge** tab, and a photo in a chat. Each opens
+  without asking anybody to sign in, and no shuttlecock starts. Get back to the
+  portal from each — the photo too — and write down how: a swipe from the left
+  edge, a button, or not at all.
+- [ ] **W.3** **(iPhone)** On a portal with no icon of the club's own (no
+  „Symbol des Portals" under **Einstellungen → Portal**), add the portal to the
+  home screen: the icon is a white shuttlecock on the teal square, with the
+  iPhone's rounded corners and no black corners. An icon added before this
+  update may keep its old picture until it is removed and added again.
+- [ ] **W.4** On an Android phone in Chrome, on the same portal, „Zum
+  Startbildschirm hinzufügen" (or „App installieren"): the icon is the teal
+  square with the whole shuttlecock inside the launcher's shape, round or
+  rounded, and nothing of it cut off.
+- [ ] **W.5** Under **Einstellungen → Portal → „Symbol des Portals"**, upload a
+  club icon that is dark on a see-through ground, and switch to dark mode. Top
+  left in the menu on a computer, on the sign-in page, and in both previews
+  under **Aussehen**, it sits on the portal's colour, so nothing of it vanishes
+  on black. (In light mode all four put the menu colour behind it, where a dark
+  icon is hard to see; that is known and not what this step checks.)
+  „Standard-Symbol verwenden" afterwards.
 
 ### An update that lost records stays closed (ADR 0027)
 
