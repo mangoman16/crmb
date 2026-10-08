@@ -48,8 +48,9 @@ with MariaDB; MySQL is meant to work but has never been run.
   write only in their own; nothing records their reading. A family writes to the coaching
   team only; a chat two children had earlier stays to read and takes no new messages. A
   message is text and photos; voice notes
-  and files sent earlier stay. A photo is stored without where, when and with what it was
-  taken. Everybody appears by name and initials.
+  and files sent earlier stay. Messages are deleted a year after they were sent. A photo is
+  stored without where, when and with what it was taken. Everybody appears by name and
+  initials.
 - **News**, and club news by e-mail, which starts switched on and can be switched off in
   **Mein Konto** or from every such mail.
 - **Mail** through SMTP, with the password stored encrypted, a queue that retries, and an
@@ -73,6 +74,10 @@ with MariaDB; MySQL is meant to work but has never been run.
   new password meanwhile, the view ends and that browser is signed out.
 - **„Änderungen"**, a change log that says what changed, field by field, and who changed it.
   It informs; there is no undo.
+- **A period for each kind of data**: the daily cleanup deletes chat messages a year after
+  they were sent, absences three months after they ended, attendance and payment proofs
+  after two years, and the rest by a period of its own, each a setting under
+  Einstellungen → System (ADR 0032). Charges, payments and invoices are never deleted by it.
 - **Example data** at the press of a button, and out again: one course, four children and
   three sign-ins that work for 14 days.
 - **Installing from a browser** on hosting without a shell, migrations that apply themselves
@@ -80,7 +85,7 @@ with MariaDB; MySQL is meant to work but has never been run.
   database, an incomplete upload, a database it could not back up first, or fewer rows
   afterwards each keep the portal closed. After a loss it stays closed on every page view,
   for everybody, until the rows are back (ADR 0027).
-- **Background work** — queued mail, the nightly cleanup and, when switched on, the monthly
+- **Background work** — queued mail, the daily cleanup and, when switched on, the monthly
   charges on the first page view of a month — runs just after a page has been served, with
   no cron job needed.
 

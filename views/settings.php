@@ -21,7 +21,7 @@ if($tab===''):
           ['page'=>'accounts','params'=>[],'what'=>t('Zugänge','Logins'),'why'=>t('Wer sich anmelden kann: das Team und die Schüler.','Who can sign in: the team and the students.')],
           ['page'=>'history','params'=>[],'what'=>t('Änderungen','Changes'),'why'=>t('Was zuletzt geändert wurde, und von wem.','What was changed lately, and by whom.')],
           ['page'=>'start','params'=>[],'what'=>t('Einrichtung ansehen','Look at the setup'),'why'=>strtr(t('Die {total} Schritte zum Start. {done} von {total} erledigt.','The {total} steps to get started. {done} of {total} done.'),['{total}'=>$setupSteps['total'],'{done}'=>$setupSteps['done']]),'setup'=>true],
-          ['page'=>'settings','params'=>['tab'=>'system','open'=>'advanced'],'anchor'=>'advanced','what'=>t('Erweitert','Advanced'),'why'=>t('Selten gebraucht: Hintergrundaufgaben, wie lange Änderungen bleiben.','Rarely needed: background work, how long changes are kept.')]]; ?>
+          ['page'=>'settings','params'=>['tab'=>'system','open'=>'advanced'],'anchor'=>'advanced','what'=>t('Erweitert','Advanced'),'why'=>t('Selten gebraucht: Hintergrundaufgaben, wie lange Nachrichten, Änderungen und anderes aufbewahrt werden.','Rarely needed: background work, how long messages, changes and the rest are kept.')]]; ?>
 <section class="card settings-hub"><div class="grid two hub-grid">
 <?php foreach($hub as $item): ?>
     <div class="hub-item">

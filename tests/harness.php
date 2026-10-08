@@ -269,6 +269,11 @@ function test_reset(): void {
     } finally {
         db()->exec('SET FOREIGN_KEY_CHECKS=1');
     }
+    // The page path's stamp is only a cache of schema_fingerprint and
+    // schema_written_by, emptied above. Left in the folder every suite of a run
+    // shares, it told each later suite that the database was current, and one
+    // suite passed only on the state another had left (code review R-A).
+    @unlink(schema_stamp_file());
     test_ledger_recorded();
     // The counter connection is separate by design, so clear it through itself.
     run_counter('DELETE FROM rate_limits');
@@ -447,6 +452,19 @@ function mail_ready(bool $on): void {
     set_setting('smtp', $on ? ['host'=>'mail.example.test','port'=>587,'from_email'=>'portal@example.test','from_name'=>'B'] : []);
     set_setting('smtp_last_test', $on ? ['ok'=>true, 'summary'=>'', 'transcript'=>'', 'sent_to'=>'', 'at'=>now()] : []);
     set_setting('privacy_ready', $on);
+}
+
+/**
+ * The schema as a portal has it once an update has passed: what schema_apply()
+ * writes last, so schema_is_current() is true. The harness applies the
+ * migrations itself and writes neither, and prune_expired() deletes nothing on a
+ * database that is not current (ADR 0032, security review), so a suite that
+ * wants the cleanup to run asks for this first. Not in test_reset(): whether a
+ * database is fresh or current is what other suites test.
+ */
+function schema_made_current(): void {
+    set_setting('schema_fingerprint', schema_fingerprint());
+    set_setting('schema_written_by', app_version());
 }
 
 /**

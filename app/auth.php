@@ -248,7 +248,7 @@ function password_resets_for(int $accountId, int $days): array {
  * has today, so the time an answer takes does not say whether the login exists.
  *
  * Made and kept current by refresh_sign_in_dummy_hash(), from the migration
- * runner and the nightly prune - never by a sign-in, because hashing is slower
+ * runner and the daily prune - never by a sign-in, because hashing is slower
  * than verifying and a request that hashed would be the oracle this closes. The
  * one exception: a database restored without its settings has none, and then
  * the first request to need it makes it once, stores it and says so in the log.
@@ -266,7 +266,7 @@ function sign_in_dummy_hash(): string {
 
 /**
  * Make the sign-in comparison hash, or make it again when PHP's default cost has
- * moved on since. Returns whether it wrote. For the runner and the nightly prune.
+ * moved on since. Returns whether it wrote. For the runner and the daily prune.
  */
 function refresh_sign_in_dummy_hash(): bool {
     $hash=(string)setting('sign_in_dummy_hash');
@@ -436,7 +436,7 @@ function token_record(string $hash,bool $lock=false): ?array {
  * a login in use would be a reset that skips the reset's rule - and a reset or
  * a changed address with a login in use. Nothing opens a suspended login or a
  * placeholder. A row left in auth_tokens by a sign-in link from before ADR 0030
- * has no purpose here, so it opens nothing, and the nightly prune removes it as
+ * has no purpose here, so it opens nothing, and the daily prune removes it as
  * it lapses. The sender asks the same before a mail with a link goes out
  * (security_mail_links_live()).
  */
@@ -485,7 +485,7 @@ function reset_link_possible(array $account): bool {
  *
  * For the access card, so she can answer "the link doesn't work". Never the
  * token_hash: a view reads the dates through this and does not query
- * auth_tokens itself. Expired tokens are deleted every night (prune_expired()),
+ * auth_tokens itself. Expired tokens are deleted once a day (prune_expired()),
  * so an expired invitation usually has no row at all, and the card says so
  * without a date rather than guessing one from accounts.created_at, which a
  * later re-invitation would make wrong.

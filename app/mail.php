@@ -162,16 +162,6 @@ function notify_sign_in_changed(array $account, string $to, ?string $newAddress 
         mail_greeting($account).$what."\n\n".($en?'Wasn’t that you? Get in touch with the club.':'Warst du das nicht? Melde dich beim Verein.'),
         'security',notice:true);
 }
-/**
- * How long the outbox keeps what a sent mail said: 90 days from sending, then
- * only that it went - to whom, about what, when (prune_expired()). Every member
- * of staff reads the outbox, and an invoice's or a reminder's words are a
- * family's business. The project manager's decision of 2026-10-08, and the
- * privacy notice can name it, so it is a fixed rule rather than a setting, for
- * the reason FEEDBACK_DONE_KEEP_DAYS gives. A security mail's body is cleared
- * as it is sent.
- */
-const MAIL_BODY_KEEP_DAYS = 90;
 const MAIL_MAX_ATTEMPTS = 5;
 // Backoff per attempt number, in seconds: ~1min, 5min, 15min, 1h.
 const MAIL_BACKOFF = [60, 300, 900, 3600];

@@ -281,6 +281,7 @@ $mailed = fn(string $status, ?int $sentDaysAgo) => fixture('mail_jobs', ['accoun
     'attempts'=>1, 'created_at'=>gmdate('Y-m-d H:i:s', time() - 120 * 86400),
     'sent_at'=>$sentDaysAgo === null ? null : gmdate('Y-m-d H:i:s', time() - $sentDaysAgo * 86400)]);
 $long = $mailed('sent', 91); $lately = $mailed('sent', 89); $waiting = $mailed('queued', null); $stuck = $mailed('failed', null);
+schema_made_current();
 prune_expired();
 $row = fn(int $id): array => one('SELECT recipient,subject,status,payload FROM mail_jobs WHERE id=?', [$id]) ?? [];
 is_same(['leserin.alt@beispiel.test', 'Offener Beitrag', 'sent', ''], array_values($row($long)),

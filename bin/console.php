@@ -21,7 +21,7 @@ if($command==='help'){
         ."php bin/console.php mail:test [address]   Open the SMTP connection now and print every step\n"
         ."php bin/console.php billing:run [YYYY-MM]  Create the monthly charges (default: this month)\n"
         ."php bin/console.php billing:plan [YYYY-MM] Show what billing:run would do, changing nothing\n"
-        ."php bin/console.php maintenance       Prune expired tokens and temporary records\n"
+        ."php bin/console.php maintenance       Delete everything past its period, expired links and old records included\n"
         ."php bin/console.php maintenance:on\n"
         ."php bin/console.php maintenance:off\n"
         ."php bin/console.php check\n"
@@ -198,9 +198,9 @@ try{
         // that would otherwise run on through it (ADR 0029 §6).
         if(is_file(maintenance_file()))
             throw new RuntimeException('Maintenance mode is on ('.maintenance_file().'), so nothing is pruned. Switch it off first: php bin/console.php maintenance:off');
-        prune_expired();
+        if(!prune_expired()){echo "Nothing deleted: an update is running, or these files are newer than the database and wait for it. The next run tries again.\n";exit;}
         set_setting('prune_last_run',now());
-        echo "Expired tokens and temporary request records removed.\n";exit;
+        echo "Everything past its period deleted: expired links, temporary records, and what Einstellungen → System keeps for a set time.\n";exit;
     }
     throw new RuntimeException('Unknown command. Run: php bin/console.php help');
 }catch(Throwable $e){fwrite(STDERR,$e->getMessage().PHP_EOL);exit(1);}

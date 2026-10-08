@@ -10,6 +10,9 @@ date: 2026-10-08
 > `backend-dev` is building. Accepting it amends 0022 (§4, §11.3 and §11.4: messages, removed ones,
 > and the voice notes and files sent before, are kept for their periods, not for ever) and 0026 (the
 > round-2 note's point 2), each with a note; 0031's line on how long consents are kept points here.
+> Dated lines from the reviews of the same day add the guard's lock and lowering a period to §2
+> and Consequences. Lowering a period covers „Änderungen aufbewahren" too, so for the change log
+> §3's "This record changes none of them" no longer holds.
 
 > **Proposed on 2026-10-08; the owner decides.** Drafted by the architect at the project manager's
 > request, after the whole-portal security audit of the same day, from the working tree as read that
@@ -101,6 +104,12 @@ damages can be brought once the harm and who caused it are known (§ 1489 ABGB).
   not `prune_expired()`; the background work does not run while the portal is closed or a copy is
   being imported (0027, 0029); and the console then runs nothing that writes. Fewer rows between two
   updates is what deleting a student already causes.
+  *Changed 2026-10-08, after both reviews:* "never" was assumed, and it was not so: old code
+  finishing a page's background work while new files are uploaded, and the console's maintenance
+  job, could each prune inside an update. The prune takes the update's own lock
+  (`badminton_crm_migrate`) and does nothing while an update is unfinished or pending, or a copy
+  is being imported, so "never" is enforced rather than assumed. An update that arrives meanwhile
+  waits for the lock, up to 30 seconds, and otherwise asks for a reload, as when two updates meet.
 - **Nothing deletes accounting records by itself.** No line in `prune_expired()` touches `charges`,
   `payments`, `invoices` or `invoice_charges`. They go only with their student, by a person, and a
   student with charges cannot be deleted today (`ON DELETE RESTRICT`).
@@ -109,6 +118,18 @@ damages can be brought once the harm and who caused it are known (§ 1489 ABGB).
   months. The privacy notice says so.
 - **The first prune after the release** deletes everything already past its period, at most a day
   after the upload. `UPDATING.md` says so, and that the periods can be set right after the upload.
+- **Lowering a period.** *Decided 2026-10-08, by the project manager:* a lowered period deletes at
+  the next daily cleanup, not at once, and until then it can be set back. The setting's hint and the
+  message after saving name the old value.
+  *Added 2026-10-08, by the project manager, from the reviews:* a save that shortens a period
+  records when, in the internal setting `period_last_shortened`, and the cleanup after a page view
+  waits a day from it. Otherwise a cleanup that was due would delete in the save's own request,
+  before the message „… bis dahin lässt es sich zurückstellen" is read. The console's maintenance
+  does not wait: a cron line's run is the daily cleanup the wording means. Waiting moves neither
+  `prune_last_run` („Letztes Aufräumen") nor the time it waits from. „Änderungen aufbewahren"
+  (`history_months`, the change log's period from before this record, which the cleanup already
+  deletes by) gets the same hint, the same message naming the old value and the same wait:
+  „Änderungen" has no undo, so it needs this way back most of all.
 
 ### 3. Not in this record
 
@@ -121,6 +142,7 @@ damages can be brought once the harm and who caused it are known (§ 1489 ABGB).
   families (0031's note, 3).
 - **What is decided and built already** (Context): problem reports, error entries, the change log,
   links, counters, form identifiers, and the mail bodies. This record changes none of them.
+  *Added 2026-10-08:* but „Änderungen aufbewahren" gains §2's rule for lowering a period.
 
 ## Rejected
 
@@ -157,12 +179,17 @@ damages can be brought once the harm and who caused it are known (§ 1489 ABGB).
   - ADR 0022 §4 is amended: a removed message can be put back for 30 days, not for ever;
   - `ROADMAP.md`: "How long `audit_log` and `consent_log` are kept" leaves „Later, not scheduled".
   - *Owner, 2026-10-08:* chosen as proposed. 0022 and 0026 carry notes for it, and 0031 a line.
+  - *Changed 2026-10-08:* `qa-tester` adds that the prune does nothing while the update's lock is
+    held or an update is pending, and that a lowered period, „Änderungen aufbewahren" included,
+    deletes nothing before the next daily cleanup, not even in the save's own request.
 - **Load order:** unchanged. No new file, no dependency, no migration.
 - **Must stay true:**
   - a prune line deletes only by its own setting;
   - accounting records are never pruned;
   - a pruned row's files go the same night;
   - the prune never runs inside an update or while a copy is imported.
+  - *Added 2026-10-08:* a page view's cleanup deletes nothing within a day of a save that set a
+    period shorter, „Änderungen aufbewahren" included.
 
 ## In plain words, for the owner
 

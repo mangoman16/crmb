@@ -51,7 +51,7 @@ if($inviting): ?>
    unless she has just sent one or asked to invite. Each says until when its
    link works, because "the link doesn't work" is the call she gets; sending
    it again is the button that stands out once it has expired. An expired
-   link's row is usually gone by the next morning (prune_expired()), and then
+   link's row is usually gone within a day (prune_expired()), and then
    no date is guessed. */
 $invitations=open_invitations();
 if($invitations): $mailReady=account_mail_ready(); ?>

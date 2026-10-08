@@ -458,7 +458,7 @@ function schema_restore_refusal(): ?UpdateBlocked {
             "The database is empty, but a portal has run in this folder before. To restore: import the copy in phpMyAdmin, then reload this page. If a new, empty portal is meant to start here: delete the file storage/schema.stamp in the file manager and reload this page. Careful: the old portal's receipts and photos are deleted then; its copies in storage/backups stay.",
             'The database holds nothing and schema_migrations records no migration, but ' . schema_stamp_file() . ' exists: a run has passed on'
             . ' this folder. Restoring a copy: import it, and the next page view opens the portal. Starting a new, empty portal here: delete that'
-            . ' file and reload; the old portal\'s uploads are removed by the nightly sweep once an administrator exists, and its copies in'
+            . ' file and reload; the old portal\'s uploads are removed by the daily sweep once an administrator exists, and its copies in'
             . ' storage/backups stay.');
     return null;
 }

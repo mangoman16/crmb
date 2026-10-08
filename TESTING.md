@@ -116,7 +116,8 @@ release and emptied again for the next.
 - After the review of round two: a backup restored with a page opened halfway keeps every upload; a chat photo or a receipt downloads under the type it really is, whatever its name said; a family sending anything but a JPEG is asked to take the photo with the camera: [21.8](#data-safety), [12.9](#payments-and-proof), [14.12](#messages), 14.2, R.12
 - An update that lost records keeps the portal closed, for everybody, on every page view, until the rows are back; the way back is the previous version's files, then the copy from before, in phpMyAdmin (ADR 0027): [G.1–G.9](#an-update-that-lost-records-stays-closed-adr-0027)
 - Any value from anyone is answered with one sentence on the same page: numbers, dates and pages held to their range, a family writes only to the trainer team, and nothing reaches the error log: [V.1–V.11](#any-value-from-anyone-adr-0026-5), 14.5, 14.7
-- The security review of 2026-10-08: a family's login is called what the child is, and Mein Konto no longer renames it; a chat mails once until it is read; twenty chat photos an hour per family's login, staff not counted; administrators hear of every change to where the money goes; the QR code is a SEPA transfer into the account shown; a changed address or password is told by mail; a chat photo keeps no file name; the outbox forgets what a mail said after 90 days: [S.7–S.14](#the-security-batch-roadmap-item-6), S.3
+- How long the portal keeps what it holds: ten periods under **Einstellungen → System**, the daily cleanup deletes what is past them with their files, and never an invoice, a charge or a payment: [D.1–D.7](#how-long-the-portal-keeps-what-it-holds-adr-0032)
+- The security review of 2026-10-08: a family's login is called what the child is, and Mein Konto no longer renames it; a chat mails once until it is read; twenty chat photos an hour per family's login, staff not counted; administrators hear of every change to where the money goes; the QR code is a SEPA transfer into the account shown; a changed address or password is told by mail; a chat photo keeps no file name; the outbox forgets what a sent mail said after 90 days: [S.7–S.14](#the-security-batch-roadmap-item-6), S.3
 - The portal looks and behaves like an iPhone app: the phone's own font, grouped lists, a tab bar (Übersicht · Schüler · Anwesend · Chats · Mehr for staff, Übersicht · Beiträge · Chats · Profil for a family), red counts, switches, sheets, a back button, pages that fade; „Mehr" as a page; Mein Konto for a family through Profil, the language in Mein Konto — on a real iPhone: [I.1–I.11](#the-portal-as-an-iphone-app-design-language-phase-1), and 1.6, 5.0a, 5.1b, 5.3c, 6.10, U.46, U.47, U.48, U.52, U.56
 
 ---
@@ -185,6 +186,7 @@ measurement.
 | `migrations` | An update carries the data with it: prices, discounts, addresses |
 | `performance` | Query counts, so a page does not issue one query per row |
 | `reports` | A problem report's trail of steps, and nothing in it that must never be kept |
+| `retention` | Each period deletes what is past it and nothing short of it, files included; never an accounting record (ADR 0032) |
 | `robustness` | Every form sent every kind of nonsense by every kind of person: one sentence back, never an error page, a warning or a write to somebody else's rows |
 | `security` | Authorisation boundaries, credentials, what must not leak |
 | `selfservice` | Families completing their own details, and every change in the change log |
@@ -1222,10 +1224,12 @@ The `views` suite checks the same page's HTML; these checks are for the screen.
 - [ ] **20.4** The released notice says what this version stores and sends: club
   news by email being on for new accounts, the course groups and what a message
   holds, and that everybody signs in with their own address and a login without
-  one receives no e-mail. It says nothing about usernames, sign-in links, when
-  somebody was online, an online dot, a status emoji or a profile picture. A
-  portal that was updated keeps the text saved before, so these arrive only if
-  they were pasted in (UPDATING.md). No „[…]" note is left in the released text.
+  one receives no e-mail, and in „6." how long each kind of data is kept and
+  that charges, payments and invoices stay seven years. It says nothing about
+  usernames, sign-in links, when somebody was online, an online dot, a status
+  emoji or a profile picture. A portal that was updated keeps the text saved
+  before, so these arrive only if they were pasted in (UPDATING.md). No „[…]"
+  note is left in the released text.
 
 ---
 
@@ -1247,10 +1251,10 @@ The `views` suite checks the same page's HTML; these checks are for the screen.
 - [ ] **21.3** An update that could not back up first refuses to run.
 - [ ] **21.4** After any update, **Einstellungen → System** shows the same
   version for the files and for the database.
-- [ ] **21.7** After deleting an account whose chats had photos, or a child
-  with a payment proof, the file goes too — the nightly maintenance, and every
-  update, sweep any upload no record points at, though never while the database
-  has no login in it (21.8). `storage/uploads` should not grow for ever.
+- [ ] **21.7** After deleting an account whose chats had photos, or a child with
+  a payment proof, the file goes too — the daily cleanup, and every update,
+  sweep any upload no record points at, though never while the database has no
+  login in it (21.8). `storage/uploads` should not grow for ever.
 - [ ] **21.8** **(release)** A restore with a page opened halfway keeps every
   upload. On a test install, never the families' portal. It needs a receipt on a
   child's **Beiträge**, a photo in a chat, a problem report with a screenshot,
@@ -1741,7 +1745,7 @@ where it says so
   group's earlier messages.
 - [ ] **C.5** As the trainer, „⋯" on a child's group message → „Nachricht
   entfernen": everybody sees „Nachricht entfernt", its photo no longer opens. The
-  same „⋯" → „Wiederherstellen" brings it back.
+  same „⋯" → „Wiederherstellen" brings it back, for 30 days (D.2).
 - [ ] **C.6** As a child, „Neue Nachricht" → the trainer: the chat opens, the
   first message makes it, and it says „Hier schreibt ihr zu zweit. Die
   Administratoren des Vereins können mitlesen." As the administrator, it is not
@@ -2184,7 +2188,7 @@ the families use.
   screenshot, each of which still opens from its report — and no picture.
   **Einstellungen → System** lists the copy written just before the update. A
   picture saved less than ten minutes before the update may stay until the next
-  nightly cleanup; write it down if one did.
+  daily cleanup; write it down if one did.
 - [ ] **R.10** Nobody has a picture: **Mein Konto** and a child's page have no
   card „Bild", and everybody appears by their initials — at the top right, in
   the **Schüler** list, in **Zugänge** and in every chat.
@@ -2654,9 +2658,79 @@ The security review of 2026-10-08:
   goes to the old address.
 - [ ] **S.14** **(release)** In phpMyAdmin, set `sent_at` and `created_at` of a
   sent mail in `mail_jobs` to 91 days back, and of another to 89. After the next
-  nightly run, or `php bin/console.php maintenance` where there is a shell,
+  daily cleanup, or `php bin/console.php maintenance` where there is a shell,
   **Postausgang** still lists both as „Gesendet" with recipient and subject; the
   first opens without its text, the second with it.
+
+### How long the portal keeps what it holds (ADR 0032)
+
+Ten periods, each a setting; the cleanup, once a day after a page view or
+from the console's cron job, deletes what is past its period, files included.
+Set shorter, a period deletes nothing before the next cleanup, so until then it
+can be set back; after such a save the cleanup after a page view waits a day
+(D.7), the console's does not. Invoices, charges and payments are never deleted
+by it. Test data only.
+
+To have the cleanup at once, delete the rows `prune_last_run` and
+`period_last_shortened` from the table `settings` in phpMyAdmin, wait a minute,
+and open any page; the second is there only after a period was set shorter, as
+D.1, D.4 and D.5 do. Where there is a shell, `php bin/console.php maintenance`
+runs it at once, whatever the two rows say. A file uploaded less than an hour
+before the run waits for a later one, whatever its row's date says.
+
+- [ ] **D.1** As the administrator, **Einstellungen → System**, „Erweitert":
+  „Änderungen aufbewahren (Monate)" 24, „Nachrichten aufbewahren (Monate)" 12,
+  „Entfernte Nachrichten wiederherstellbar (Tage)" 30, „Abwesenheiten
+  aufbewahren (Monate)" 3, „Anwesenheit aufbewahren (Monate)" 24, „Hinweise
+  aufbewahren (Tage)" 90, „Postausgang aufbewahren (Monate)" 12,
+  „Zahlungsbelege aufbewahren (Monate)" 24, „Prüfprotokoll aufbewahren
+  (Monate)" 36 and „Ersetzte Einwilligungen aufbewahren (Monate)" 36, each
+  with a line saying what it counts from and ending „Kürzer gestellt,
+  löscht das tägliche Aufräumen, was älter ist; bis dahin lässt es sich
+  zurückstellen." Set „Nachrichten aufbewahren (Monate)" to 6 and save: „Vorgaben
+  gespeichert. Kürzer gestellt, vorher: Nachrichten aufbewahren (Monate) 12. Bis
+  zum nächsten täglichen Aufräumen lässt es sich so zurückstellen."; set it back
+  to 12. A 0 is refused. On **Einstellungen**, „Erweitert" says „Selten
+  gebraucht: Hintergrundaufgaben, wie lange Nachrichten, Änderungen und anderes
+  aufbewahrt werden." **Einstellungen → Änderungen** says above its list „…
+  werden beim täglichen Aufräumen entfernt; das Prüfprotokoll nach 36 Monaten."
+- [ ] **D.2** As the trainer, take a message in a course group down: „Nachricht
+  entfernt. 30 Tage lang kannst du sie an derselben Stelle wiederherstellen."
+- [ ] **D.3** **(release)** In phpMyAdmin: set `created_at` of a chat message
+  with a photo to 13 months back, `ends_on` of an absence to 4 months back,
+  `session_on` of an attendance row to 25 months back, and `created_at` of a
+  payment proof to 25 months back. After the next daily cleanup, or `php
+  bin/console.php maintenance` where there is a shell (it prints „Everything
+  past its period deleted: …"): the message is gone from the chat with its
+  photo, the absence from the child's page, the attendance row from the course's
+  „Anwesenheit" and the proof from the child's „Beiträge". The photo's and the
+  proof's files are gone from `storage/uploads/message` and
+  `storage/uploads/proof` if they were uploaded more than an hour before the
+  run: the cleanup keeps a younger file, which may belong to a row still being
+  written, and the next run takes it. A message sent last month, and its photo,
+  are still there.
+- [ ] **D.4** **(release)** Set „Abwesenheiten aufbewahren (Monate)" to 1 and
+  have the cleanup at once, as above: an absence that ended 40 days ago is gone.
+  Set it back to 3.
+- [ ] **D.5** **(release)** Set every period to 1 and have the cleanup at once,
+  as above: `prune_last_run` then holds the time of that run, in UTC, so it did
+  run. An invoice, its charge and its payment from years back (in phpMyAdmin,
+  `issued_on`, `due_on`, `paid_on` and `created_at` set back) are all still
+  there: on **Rechnungen**, on **Geld** and on the child's „Beiträge". Put the
+  periods back as in D.1.
+- [ ] **D.6** **(release)** In `consent_log`, a family's answer that has not
+  changed for years is still there after a cleanup as above; one that a later
+  answer of the same login to the same question replaced more than 36 months
+  before is gone.
+- [ ] **D.7** **(release)** A save that sets a period shorter deletes nothing in
+  its own page view. Without a cron job, in phpMyAdmin: delete the row
+  `prune_last_run` from `settings`, so the cleanup is due, and set `created_at`
+  of a row in `notifications` to 40 days back. Set „Hinweise aufbewahren (Tage)"
+  to 30 and save, then open a few pages over a few minutes: the row is still
+  there, and `settings` has `period_last_shortened` at the time of the save, in
+  UTC. Set it back to 90. Delete `period_last_shortened`, as if a day had
+  passed, wait a minute and open a page: `prune_last_run` is filled, and the row
+  is still there, inside its 90 days.
 
 ---
 

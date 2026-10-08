@@ -14,7 +14,7 @@ declare(strict_types=1);
  * kind drives both validation and the admin form control:
  *   text      single line
  *   longtext  textarea
- *   int       whole number, clamped to min/max
+ *   int       whole number, refused outside min/max
  *   bool      checkbox
  *   list      one value per line
  *   map       code => label pairs
@@ -29,6 +29,11 @@ declare(strict_types=1);
  * 'advanced' => true marks a setting most portals never need to touch. The form
  * gathers those under one „Erweitert“ heading instead of leaving them among the
  * ones a new portal has to answer (ADR 0011).
+ *
+ * 'retention' => true marks a period the daily cleanup deletes by (ADR 0032):
+ * its hint says that one set shorter can still be set back until the next
+ * cleanup (retention_hint()), and a save that shortens it names what it was
+ * (settings_shortened_periods()).
  */
 function setting_schema(): array {
     static $schema;
@@ -282,11 +287,71 @@ function setting_schema(): array {
             'hint'  => ['Leer = aus der hellen Farbe berechnet. Wirkt nur, solange oben die helle Farbe eingetragen ist. Muss dunkel genug sein, dass graue Schrift darauf gut lesbar bleibt.',
                         'Empty = worked out from the light colour. Only takes effect while the light colour is set above. It has to be dark enough for grey text on it to stay readable.'],
         ],
+        // A retention period like the nine below, though older than them:
+        // „Änderungen" has no undo, so shortening it needs their way back most.
         'history_months' => [
-            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 240, 'group' => 'system', 'advanced' => true,
+            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 240, 'group' => 'system', 'advanced' => true, 'retention' => true,
             'label' => ['Änderungen aufbewahren (Monate)', 'Keep changes for (months)'],
-            'hint'  => ['Ältere Einträge im Änderungsprotokoll werden beim nächtlichen Aufräumen entfernt. Das Prüfprotokoll ist davon nicht betroffen.',
-                        'Older entries in the change log are removed during the nightly cleanup. The audit log is not affected.'],
+            'hint'  => retention_hint('Einträge im Änderungsprotokoll, gezählt ab der Änderung. Das Prüfprotokoll ist davon nicht betroffen.',
+                        'Entries in the change log, counted from the change. The audit log is not affected.'),
+        ],
+        // How long each kind of record is kept (ADR 0032): what is older is
+        // deleted by the daily cleanup, prune_expired(), each by its own
+        // setting. The defaults are the periods the owner accepted. Accounting
+        // records have none: seven years is the law (BAO § 132), and nothing
+        // deletes them by itself.
+        'messages_months' => [
+            'kind' => 'int', 'default' => 12, 'min' => 1, 'max' => 120, 'group' => 'system', 'advanced' => true, 'retention' => true,
+            'label' => ['Nachrichten aufbewahren (Monate)', 'Keep messages for (months)'],
+            'hint'  => retention_hint('Gezählt ab dem Senden. Ältere Nachrichten im Chat werden mit ihren Fotos gelöscht.',
+                        'Counted from when they were sent. Older chat messages are deleted with their photos.'),
+        ],
+        'removed_messages_days' => [
+            'kind' => 'int', 'default' => 30, 'min' => 1, 'max' => 365, 'group' => 'system', 'advanced' => true, 'retention' => true,
+            'label' => ['Entfernte Nachrichten wiederherstellbar (Tage)', 'Removed messages can be restored for (days)'],
+            'hint'  => retention_hint('So lange lässt sich eine in einer Gruppe entfernte Nachricht wiederherstellen; danach wird sie gelöscht.',
+                        'For this long a message taken down in a group can be restored; then it is deleted.'),
+        ],
+        'absences_months' => [
+            'kind' => 'int', 'default' => 3, 'min' => 1, 'max' => 120, 'group' => 'system', 'advanced' => true, 'retention' => true,
+            'label' => ['Abwesenheiten aufbewahren (Monate)', 'Keep absences for (months)'],
+            'hint'  => retention_hint('Gezählt ab dem Ende der Abwesenheit, für jeden Grund gleich, Krankheit eingeschlossen.',
+                        'Counted from the end of the absence, the same for every reason, sickness included.'),
+        ],
+        'attendance_months' => [
+            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 240, 'group' => 'system', 'advanced' => true, 'retention' => true,
+            'label' => ['Anwesenheit aufbewahren (Monate)', 'Keep attendance for (months)'],
+            'hint'  => retention_hint('Gezählt ab dem Trainingstag.', 'Counted from the day of the training.'),
+        ],
+        'notices_days' => [
+            'kind' => 'int', 'default' => 90, 'min' => 1, 'max' => 3650, 'group' => 'system', 'advanced' => true, 'retention' => true,
+            'label' => ['Hinweise aufbewahren (Tage)', 'Keep notifications for (days)'],
+            'hint'  => retention_hint('Was in der Glocke steht, gelesen oder nicht, gezählt ab dem Tag, an dem es kam.',
+                        'What is in the bell, read or not, counted from the day it came.'),
+        ],
+        'mail_months' => [
+            'kind' => 'int', 'default' => 12, 'min' => 1, 'max' => 120, 'group' => 'system', 'advanced' => true, 'retention' => true,
+            'label' => ['Postausgang aufbewahren (Monate)', 'Keep the outbox for (months)'],
+            'hint'  => retention_hint('An wen und wann eine E-Mail ging, gezählt ab dem Tag, an dem sie wartete. Was in ihr stand, wird schon nach '.MAIL_BODY_KEEP_DAYS.' Tagen gelöscht.',
+                        'To whom and when an email went, counted from the day it was queued. What it said is deleted after '.MAIL_BODY_KEEP_DAYS.' days already.'),
+        ],
+        'proofs_months' => [
+            'kind' => 'int', 'default' => 24, 'min' => 1, 'max' => 240, 'group' => 'system', 'advanced' => true, 'retention' => true,
+            'label' => ['Zahlungsbelege aufbewahren (Monate)', 'Keep payment proofs for (months)'],
+            'hint'  => retention_hint('Von Familien hochgeladene Belege mit ihren Dateien, gezählt ab dem Hochladen. Zählt eure Buchhaltung sie als Belege, sind es 84 Monate.',
+                        'Proofs families uploaded, with their files, counted from the upload. If your accountant counts them as receipts, set 84 months.'),
+        ],
+        'audit_months' => [
+            'kind' => 'int', 'default' => 36, 'min' => 1, 'max' => 240, 'group' => 'system', 'advanced' => true, 'retention' => true,
+            'label' => ['Prüfprotokoll aufbewahren (Monate)', 'Keep the audit log for (months)'],
+            'hint'  => retention_hint('Wer wann was getan hat, ohne Inhalte. Beiträge, Zahlungen und Rechnungen selbst werden nie von allein gelöscht.',
+                        'Who did what and when, without content. Charges, payments and invoices themselves are never deleted automatically.'),
+        ],
+        'consent_months' => [
+            'kind' => 'int', 'default' => 36, 'min' => 1, 'max' => 240, 'group' => 'system', 'advanced' => true, 'retention' => true,
+            'label' => ['Ersetzte Einwilligungen aufbewahren (Monate)', 'Keep replaced consents for (months)'],
+            'hint'  => retention_hint('Die geltende Antwort bleibt, solange es den Zugang gibt; eine durch eine neuere ersetzte so lange danach.',
+                        'The answer that holds stays as long as its login does; one a newer answer replaced, this long after.'),
         ],
         'upload_max_kb' => [
             'kind' => 'int', 'default' => 4096, 'min' => 64, 'max' => 51200, 'group' => 'portal',
@@ -349,6 +414,12 @@ function setting_schema(): array {
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
             'label' => ['Letztes Aufräumen', 'Last cleanup'],
         ],
+        // Written by a save that sets a retention period shorter; the cleanup
+        // after a page view waits a day from it (tick_prune()).
+        'period_last_shortened' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Zuletzt eine Aufbewahrung verkürzt', 'A retention period last shortened'],
+        ],
         'billing_last_period' => [
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
             'label' => ['Zuletzt automatisch abgerechneter Monat', 'Last month billed automatically'],
@@ -380,6 +451,29 @@ function setting_schema(): array {
             'label' => ['Stand der Migrationen', 'Applied migration set'],
         ],
     ];
+}
+
+/**
+ * How long the outbox keeps what a sent mail said: 90 days from sending, then
+ * only that it went - to whom, about what, when (prune_expired()); how long that
+ * row stays is the setting mail_months. Every member of staff reads the outbox,
+ * and an invoice's or a reminder's words are a family's business. A fixed rule
+ * rather than a tenth period to set: the project manager's decision of
+ * 2026-10-08, so that no club keeps those words longer and the privacy notice
+ * can name one number for every portal. A security mail's body is cleared as
+ * it is sent.
+ */
+const MAIL_BODY_KEEP_DAYS = 90;
+
+/**
+ * A retention period's hint (ADR 0032): what the period counts from, and that a
+ * period set shorter deletes nothing before the next daily cleanup, so until
+ * then it can be set back - the project manager's decision of 2026-10-08, said
+ * once for every period the cleanup deletes by.
+ */
+function retention_hint(string $de, string $en): array {
+    return [$de . ' Kürzer gestellt, löscht das tägliche Aufräumen, was älter ist; bis dahin lässt es sich zurückstellen.',
+            $en . ' Set shorter, the daily cleanup deletes what is older; until then it can be set back.'];
 }
 
 /** The declared default for a key, used whenever no row exists. */
@@ -497,6 +591,25 @@ function settings_replaced_colours(array $specs, array $before, array $after): s
         $parts[] = $label.' '.($old === '' ? t('Standard', 'built-in') : $old);
     }
     return $parts ? t('Vorher: ', 'Before: ').implode(', ', $parts).'.' : '';
+}
+
+/**
+ * The sentence a save of the „System" card ends with when it shortened a
+ * retention period: what each was, as the colours' sentence names theirs
+ * (settings_replaced_colours(), ADR 0013). A shorter period deletes nothing
+ * until the next daily cleanup, so until then the old number can be typed back
+ * (the project manager, 2026-10-08). '' when no period got shorter.
+ */
+function settings_shortened_periods(array $specs, array $before, array $after): string {
+    $parts = [];
+    foreach ($specs as $key => $spec) {
+        if (empty($spec['retention']) || (int)($after[$key] ?? 0) >= (int)($before[$key] ?? 0)) continue;
+        $label = setting_label($spec);
+        if (locale() === 'en') $label = lcfirst($label);
+        $parts[] = $label.' '.(int)$before[$key];
+    }
+    return $parts ? t('Kürzer gestellt, vorher: ', 'Set shorter, before: ').implode(', ', $parts)
+        .t('. Bis zum nächsten täglichen Aufräumen lässt es sich so zurückstellen.', '. Until the next daily cleanup it can be set back to that.') : '';
 }
 
 /**

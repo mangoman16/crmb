@@ -286,14 +286,16 @@ $personGone = $filed('new', 40, null, ['page'=>'students', 'steps'=>[]]);   // a
 is_same(3, prune_quiet_errors(), 'three quiet errors are deleted');
 $left = array_map('intval', array_column(rows('SELECT id FROM feedback ORDER BY id'), 'id'));
 is_same([$recent, $person, $personGone], $left, 'new, seen and done alike, while one seen 29 days ago stays, and so does every report a person wrote');
-ok(preg_match('/function prune_expired\(\): void \{[^}]*prune_quiet_errors\(\);/s', (string)file_get_contents(APP_ROOT.'/app/tick.php')) === 1,
-   'and the nightly clean-up runs it');
+ok(preg_match('/function prune_expired\(\): bool \{[^}]*prune_quiet_errors\(\);/s', (string)file_get_contents(APP_ROOT.'/app/tick.php')) === 1,
+   'and the daily clean-up runs it');
 
 case_('The background work is captured as such, with no steps');
 run('DELETE FROM feedback');
 sign_in_as($admin);
 $request('dashboard');
 set_setting('prune_last_run', '');
+// As on a live portal: the cleanup runs only on a database as current as the files.
+schema_made_current();
 run('ALTER TABLE form_requests RENAME TO form_requests_away');
 try { tick_work(); } finally { run('ALTER TABLE form_requests_away RENAME TO form_requests'); }
 $entry = one('SELECT * FROM feedback WHERE account_id IS NULL');

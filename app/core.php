@@ -55,6 +55,14 @@ function sql_name(string $name, string $kind='identifier'): string {
 }
 function now(): string { return gmdate('Y-m-d H:i:s'); }
 function today(): string { return date('Y-m-d'); }
+/**
+ * The moment $months months before now, as a time is stored (UTC): where a
+ * period of months counted back from now begins - the change log's
+ * (history_prune()) and each retention period's (prune_expired()).
+ */
+function months_ago(int $months): string {
+    return (new DateTimeImmutable(now()))->modify('-' . max(1, $months) . ' months')->format('Y-m-d H:i:s');
+}
 /** The portal's own language: every page before somebody chooses, and everything the portal writes for everybody. */
 const PORTAL_LOCALE = 'de';
 

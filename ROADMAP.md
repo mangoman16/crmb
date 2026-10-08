@@ -89,6 +89,10 @@ In this order.
      recipient's account; a changed address or password is told by mail; a sent mail's text
      goes after 90 days; the closed page names no path; the setup page has the security
      headers. Not walked by hand yet: TESTING.md S.7–S.14.
+   - **How long the portal keeps what it holds (ADR 0032): built.** Ten periods, each a
+     setting under Einstellungen → System, the change log's „Änderungen aufbewahren" among
+     them; the daily cleanup deletes what is past them, and accounting records never. Not
+     walked by hand yet: TESTING.md D.1–D.7.
 7. **A refused update stays refused (ADR 0027): done** (`bfeb592`, `1ad0488`). The counts from
    before an update stay in `storage/update-unfinished.json` until a run passes; until then
    no page is served and nothing writes, and the portal reopens by itself once the rows are
@@ -316,18 +320,22 @@ For the project manager to decide:
 
 For the owner to decide:
 
-- How long the portal keeps what it holds: chats, sick notes, attendance, mail, logs. ADR 0032
-  proposes a period for each, with accounting records kept seven years (BAO § 132).
+Nothing at the moment.
 
 For the owner to do:
 
 - Write the privacy sentences only the operator can write — who runs the portal, the host and
-  the mail provider, how long things are kept, and the legal bases in the bracketed notes —
-  and release the German notice under **Einstellungen → Datenschutz**. Until it is released
-  no invitation goes out.
+  the mail provider, when a former member's details go, and the legal bases in the bracketed
+  notes — and release the German notice under **Einstellungen → Datenschutz**. Until it is
+  released no invitation goes out.
 
 ## For the owner to test or deploy
 
+- **The first cleanup after the update** (ADR 0032, test data only): within a day of the
+  upload, or with the first page if nobody opened the portal the day before, it deletes what
+  is past its period — chat messages older than a year, absences that ended more than three
+  months ago, and the rest UPDATING.md lists. To set other periods first, UPDATING.md says
+  what to switch off before the upload. Then walk TESTING.md D.1–D.7.
 - **Two minutes on your iPhone: the first start in dark mode** (design document, 0.5a). Turn
   dark mode on, close the app in the app switcher, open it from the home screen, and note the
   colour shown before the first page appears. Dark launch images are built only if it is

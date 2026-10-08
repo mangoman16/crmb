@@ -275,6 +275,7 @@ throws(fn() => $useLink($leftover, ['password'=>'Neues-Passwort-2026!', 'passwor
 is_same([$rowBefore, $before, null], [one('SELECT * FROM accounts WHERE id=?', [(int)$after['id']]), $written(), current_user()],
         'the login is as it was, nothing is written, and nobody is signed in');
 run('UPDATE auth_tokens SET expires_at=? WHERE token_hash=?', [gmdate('Y-m-d H:i:s', time() - 1), hash('sha256', $leftover)]);
+schema_made_current();
 prune_expired();
 is_same(0, (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE purpose='signin'"), 'lapsed, the prune removes it');
 sign_in_as($trainer);

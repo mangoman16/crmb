@@ -181,9 +181,12 @@ und führt mit einem Tippen jeweils dorthin, wo es erledigt wird:
 8. **Datenschutzerklärung** – unter **Einstellungen → Datenschutz** den
    deutschen Entwurf an den tatsächlichen Betreiber, das Hosting und den
    E-Mail-Anbieter anpassen und freigeben. Die Einordnung von Krankmeldungen und
-   Minderjährigen ist im Entwurf ausdrücklich als offener Punkt markiert. Eine
-   englische Fassung ist freiwillig; wer das Portal auf Englisch nutzt, sieht
-   sonst die deutsche mit einem Hinweis darauf.
+   Minderjährigen ist im Entwurf ausdrücklich als offener Punkt markiert. Unter
+   „6.“ stehen die Fristen, nach denen das Portal Daten löscht, so wie sie unter
+   **Einstellungen → System → Erweitert** eingestellt sind; wer dort eine Frist
+   ändert, ändert sie in der Erklärung mit. Eine englische Fassung ist
+   freiwillig; wer das Portal auf Englisch nutzt, sieht sonst die deutsche mit
+   einem Hinweis darauf.
 9. **Familien einladen** – geht erst, wenn 7 und 8 erledigt sind. Jedes Kind
    bekommt seinen Zugang auf seiner eigenen Seite: eine Einladung an seine
    eigene E-Mail-Adresse – Geschwister brauchen jeweils eine eigene; die
@@ -298,8 +301,9 @@ Sicherungen.
 ## Optional: Cronjob statt Seitenaufruf
 
 Ohne Cronjob erledigt das Portal wartende Aufgaben selbst, kurz nachdem eine
-Seite ausgeliefert wurde: E-Mails verschicken, abgelaufene Links entfernen und –
-wenn eingeschaltet – einmal im Monat die Monatsbeiträge anlegen. Höchstens einmal pro
+Seite ausgeliefert wurde: E-Mails verschicken, einmal am Tag aufräumen –
+abgelaufene Links und alles, dessen Aufbewahrungsfrist vorbei ist – und, wenn
+eingeschaltet, einmal im Monat die Monatsbeiträge anlegen. Höchstens einmal pro
 Minute, und nach dem Absenden der Seite, sodass niemand darauf wartet. Der Stand
 steht unter **Einstellungen → System**.
 
@@ -315,11 +319,16 @@ Panel eine Zeile für jede:
 ```
 
 Die erste verschickt die E-Mails. Die zweite räumt einmal in der Nacht auf; ohne
-sie bleiben unter anderem erledigte Problemmeldungen samt Bildschirmfoto länger
-als die 30 Tage gespeichert, die die Datenschutzerklärung zusagt. Die dritte legt am
-Monatsersten die Beiträge an – nur eintragen, wenn das Portal die Monatsbeiträge
-automatisch anlegen soll, denn sie tut es auch, wenn das auf der Seite
-**Beiträge** ausgeschaltet ist.
+sie bleibt gespeichert, was die Datenschutzerklärung unter „6.“ zu löschen
+zusagt – Nachrichten, Abwesenheiten und erledigte Problemmeldungen samt
+Bildschirmfoto unter anderem. Sie schreibt danach in einer Zeile, was sie
+gelöscht hat. Läuft gerade eine Aktualisierung, oder sind die Dateien neuer als
+die Datenbank, löscht sie nichts, schreibt das und versucht es beim nächsten
+Lauf wieder; solange eine Aktualisierung nicht abgeschlossen ist, eine Sicherung
+eingespielt wird oder der Wartungsmodus an ist, bricht sie mit einem Satz ab,
+wie in UPDATING.md beschrieben. Die dritte legt am Monatsersten die Beiträge an
+– nur eintragen, wenn das Portal die Monatsbeiträge automatisch anlegen soll,
+denn sie tut es auch, wenn das auf der Seite **Beiträge** ausgeschaltet ist.
 
 Cronjob und Seitenaufruf gleichzeitig sind nicht schädlich – ein
 Datenbankschloss verhindert, dass zwei Läufe dieselbe E-Mail verschicken.

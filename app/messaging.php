@@ -433,9 +433,10 @@ function course_groups_fill(): int {
 
 /**
  * Take a message in a course group down, or put it back (ADR 0022). Staff only,
- * and groups only: a family's chat is theirs. The words stay in the database, so
- * restoring from the same place is the way back; who did it is in the audit log.
- * Returns the conversation's id.
+ * and groups only: a family's chat is theirs. The words stay in the database for
+ * removed_messages_days, after which the daily cleanup deletes the message
+ * (ADR 0032), so restoring from the same place is the way back until then; who
+ * did it is in the audit log. Returns the conversation's id.
  */
 function moderate_message(int $messageId, bool $remove): int {
     require_staff();

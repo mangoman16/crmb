@@ -15,12 +15,13 @@ newsletter paragraph, because club news by email now starts switched on and is
 no longer described as voluntary consent; one about the course groups, what a
 message holds, and the administrators reading chats between a child and a
 trainer; and one saying that everybody signs in with their own address and that
-a login without one receives no e-mail. UPDATING.md has
-the first to copy and says where in the drafts the other two are. The drafts shipped with this version only fill in the
-notice of a new portal; an existing one keeps the text it had. Where the legal
-basis goes there is a note in square brackets, which is the operator's to
-decide and have checked, and a released notice is not saved until the notes are
-replaced.
+a login without one receives no e-mail. Replace its „6." too, with the draft's,
+because the portal now deletes data once its period is over. UPDATING.md has the
+first to copy and says where in the drafts the others are. The drafts shipped
+with this version only fill in the notice of a new portal; an existing one keeps
+the text it had. Where the legal basis goes there is a note in square brackets,
+which is the operator's to decide and have checked, and a released notice is not
+saved until the notes are replaced.
 
 **Second, if anything typed into the custom fields is worth keeping, write it
 down.** This version deletes the custom fields, with every value in them. After
@@ -55,6 +56,13 @@ the copy the update takes first is of the database, and brings back their names
 but not the pictures. Also after the files, every student without a login — the
 children 019 took off a shared one among them — is given a placeholder that
 nobody signs in with until staff enter its address and send the invitation.
+
+**The portal now deletes data past its period**, in a daily cleanup. Its first
+run comes within a day of the upload, or with the first page if nobody opened
+the portal the day before, and deletes at once whatever is already older: chat
+messages more than a year old, absences that ended more than three months ago,
+and the rest „Each kind of data is kept for a set time" lists below. To choose
+other periods before it runs, UPDATING.md says what to switch off first.
 
 Invitations and „Passwort vergessen?“ links wait until **„Nur Verbindung
 prüfen“** under **Einstellungen → SMTP** has passed once. Everybody is signed
@@ -193,6 +201,42 @@ whether Safari still flashes white.
   as a refused one is — except an invitation or a password link, which stays in
   **Postausgang** as failed for staff to send again, because its link may have
   lapsed by then.
+
+### Each kind of data is kept for a set time, then deleted
+
+- **The daily cleanup deletes what is past its period** (ADR 0032, the periods
+  the owner accepted): chat messages with their photos, voice notes and files
+  12 months after they were sent, and one taken down in a group 30 days after
+  it was taken down; absences, sickness included, 3 months after they ended;
+  attendance 24 months after the training; the bell's notices after 90 days;
+  the outbox's record of a mail 12 months after it was queued; payment proofs
+  24 months after the upload; the audit log after 36 months; and a consent a
+  newer answer replaced, 36 months after that — the answer in force stays as
+  long as its login. Their files go in the same cleanup, except one uploaded
+  less than an hour before it, which waits for the next.
+- **Each period is a setting**, under **Einstellungen → System**, in
+  „Erweitert", with a line under it saying what it keeps or counts from. A 0, or
+  a number past a setting's limit, is refused. A period set shorter deletes
+  nothing at once: the cleanup after a page view waits a day after the save, and
+  the save names what the period was — „Kürzer gestellt, vorher: …" — so it can
+  be set back meanwhile. Where a cron job runs the console's `maintenance`, its
+  next nightly run deletes. The change log's older period, „Änderungen
+  aufbewahren (Monate)", now has the same line and the same wait: „Änderungen"
+  has no undo, so this is its way back.
+- **Charges, payments and invoices are never deleted by it**: the law asks for
+  seven years from the end of the year they concern, and longer while a
+  proceeding needs them (§ 132 BAO).
+- **„Nachricht entfernt" says for how long it can be put back**: „30 Tage lang
+  kannst du sie an derselben Stelle wiederherstellen."
+- What it deletes from the database stays in the copies in `storage/backups`
+  until five newer ones have replaced them; the photos and files are gone. The
+  cleanup never runs while an update could be counting the records — inside an
+  update, before files newer than the database have been brought up to date — or
+  while a copy is imported; it leaves its work for the next run. Run from the
+  console, `php bin/console.php maintenance` says what it deleted, or that it
+  deleted nothing and why. Where other entries here say that something stays —
+  old chats, voice notes and files, or whom a sent mail went to — it stays until
+  its period is over.
 
 ### What the security review of 8 October found
 
@@ -338,7 +382,7 @@ whether Safari still flashes white.
 - **No copy is written of a database that holds nothing**, by an update or by
   `php bin/console.php backup`, which refuses it: it would have nothing to
   restore and would push out one that has. The background work — mail, charges,
-  the nightly cleanup — stays out by itself while a copy is being imported,
+  the daily cleanup — stays out by itself while a copy is being imported,
   with or without maintenance mode.
 - **`php bin/console.php maintenance` stops with exit 1 while
   `storage/maintenance.flag` exists**, as `mail:work` does, so a cron job set up
@@ -1345,7 +1389,7 @@ update path was exercised against a real MariaDB rather than reasoned about.
   account cannot fill the disk with reports.
 - **Uploaded files were never removed when their record went.** A deleted
   account took its conversation with it and left the voice notes on disk for
-  ever. The nightly maintenance sweeps files nothing points at, leaving anything
+  ever. The daily cleanup sweeps files nothing points at, leaving anything
   younger than an hour alone.
 - **A tariff could point at a course that no longer exists** - invisible on every
   course page and absent from the unattached list. A tariff now becomes

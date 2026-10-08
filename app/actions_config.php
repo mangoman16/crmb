@@ -409,7 +409,13 @@ function dispatch_config(string $action): array {
         // The colours are not tracked(), so the message is the way back: it
         // names what they were, to be typed in again (ADR 0013).
         $replaced=$group==='branding'?settings_replaced_colours($specs,$before,$values):'';
-        flash(t('Vorgaben gespeichert.','Defaults saved.').($replaced!==''?' '.$replaced:''));
+        // A period set shorter deletes at the next daily cleanup, and is the
+        // way back until then (ADR 0032): what it was is said, to be typed in
+        // again. The cleanup this request ends with would come before that is
+        // read, so the page views' cleanup waits a day from now (tick_prune()).
+        $shortened=settings_shortened_periods($specs,$before,$values);
+        if($shortened!=='') set_setting('period_last_shortened',now());
+        flash(t('Vorgaben gespeichert.','Defaults saved.').($replaced!==''?' '.$replaced:'').($shortened!==''?' '.$shortened:''));
         // The „Aussehen" card is on the Portal tab; it has no tab of its own.
         return [choose(post('to_page','settings'),['settings','manage']),['tab'=>post('to_tab')?:($group==='branding'?'portal':$group)]];
 

@@ -359,6 +359,5 @@ function history_login(int $accountId): string {
  * quiet record because a busy one filled the table.
  */
 function history_prune(int $months = 24): int {
-    $before = (new DateTimeImmutable(now()))->modify('-' . max(1, $months) . ' months')->format('Y-m-d H:i:s');
-    return run('DELETE FROM record_versions WHERE created_at < ?', [$before])->rowCount();
+    return run('DELETE FROM record_versions WHERE created_at < ?', [months_ago($months)])->rowCount();
 }

@@ -181,7 +181,7 @@ function student_login_counts(): array {
  * name, as the login's columns - for login_state_badge() and the address -
  * plus the student's id and names, and link_expires_at: when the newest
  * invitation still waiting runs out, or null when there is none (lapsed links
- * are pruned every night). An unknown filter is 'all'. The link's date only,
+ * are pruned once a day). An unknown filter is 'all'. The link's date only,
  * never its hash.
  *
  * The page is held as every pager holds it (page_in_range()): a page number

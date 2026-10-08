@@ -17,11 +17,12 @@ drafts. A portal that already has families in it needs one thing done
 **before** the upload — two, if anything in its custom fields is worth keeping —
 and then changes in the ways below the moment the new files are opened.
 
-**Before you upload: add three paragraphs to your privacy notice.** This version
-switches club news by email on for new accounts, it gives every course a group
-chat, and a child can be in the portal before anybody signs in for them, as a
-login without an address, which receives no e-mail. Your privacy notice has to
-say all three. The drafts in the download only fill in the notice of a brand-new
+**Before you upload: add three paragraphs to your privacy notice, and replace
+its „6.".** This version switches club news by email on for new accounts, it
+gives every course a group chat, a child can be in the portal before anybody
+signs in for them, as a login without an address, which receives no e-mail, and
+it deletes each kind of data once its period is over. Your privacy notice has to
+say all four. The drafts in the download only fill in the notice of a brand-new
 portal; yours keeps the text you saved, so the paragraphs have to be added by
 hand. Do it while the old version is still running, so that no family uses the
 new one under a notice that does not mention it. Open **Einstellungen →
@@ -63,7 +64,15 @@ Datenschutz**, and in the German text:
    sentence „Jeder Schüler hat höchstens ein eigenes Konto, …" with the
    draft's, which begins „Jeder Schüler hat ein eigenes Konto".
 
-4. Replace each line in square brackets with your own words, then save.
+4. In „6. Speicherung und Löschung", replace the note in square brackets, or
+   what you wrote in its place, with the draft's two paragraphs and its note,
+   beginning „Das Portal löscht beim täglichen Aufräumen von selbst". They say
+   how long the portal keeps each kind of data before its daily cleanup deletes
+   it, that charges, payments and invoices are kept seven years, and how long
+   deleted entries stay in the copies of the database. If you change a period
+   under **Einstellungen → System**, change the notice with it.
+
+5. Replace each line in square brackets with your own words, then save.
 
 **If your notice already has the chat paragraph**, from an earlier package of
 this version, what it told the families is no longer true: it said the
@@ -91,12 +100,14 @@ download, for the English version if you keep one. Saving changes the
 **If your notice was written from an earlier package of this version**, some of
 its sentences have changed since. Replace them with the drafts' and save with
 „… zur Verwendung freigegeben" still ticked, so it is released again: in „3.",
-the end of the chat paragraph, on photos; in „4.", the end of the paragraph on
-club news, which now says that the link in each such mail works for 90 days
-from sending, and the sentence on security mails, which now include the mail
-saying that a sign-in address or a password was changed; and in „7.", the
-sentence on cookies, which now names the second one, „badminton_https", set
-when the portal sends a browser on to its encrypted address.
+in the chat paragraph, the sentence on a message taken down in a group, which
+is now kept for 30 days, and the end, on photos; in „4.", the end of the
+paragraph on club news, which now says that the link in each such mail works
+for 90 days from sending, and the sentence on security mails, which now include
+the mail saying that a sign-in address or a password was changed; in „6.",
+what step 4 above says; and in „7.", the sentence on cookies, which now names
+the second one, „badminton_https", set when the portal sends a browser on to
+its encrypted address.
 
 **Before you upload, if anything in the custom fields matters, write it down.**
 This version deletes the custom fields — „Weitere Angaben" on a child's page —
@@ -152,8 +163,9 @@ one family made to write to another, whatever became of it. No login and no
 child is lost, so the check that counts the guarded tables before and after
 passes; the list of times and the requests were never among them. Chats between
 two children stay, to be read by the two of them, and take no new messages.
-Voice notes and files sent before stay where they are and open as before; a new
-message is text and photos.
+Voice notes and files sent before stay where they are and open as before, until
+their message is a year old (the first cleanup, below); a new message is text
+and photos.
 
 **Migration 038 takes the pin off the age groups.** A child's age group now
 comes from the date of birth alone: the first band, in the order **Verwaltung →
@@ -182,11 +194,12 @@ the check passes, and none of it shows under „Änderungen": an update writes n
 line there. Sign-in links made before this file stop working at once; the
 invitation and „Passwort vergessen" are the two ways in. What stays of the
 links is the audit log's lines on who made one and when it was used or
-withdrawn, which the portal shows nowhere and never deletes; a line under
-„Änderungen" that names a username stays until „Änderungen aufbewahren
-(Monate)" removes it. On a portal updated from 0.4.0 none of this happens:
-every login there has an address, because until 028 the database allowed
-nothing else, and usernames existed only in versions that were never released.
+withdrawn, which the portal shows nowhere and deletes after „Prüfprotokoll
+aufbewahren (Monate)", 36 by default; a line under „Änderungen" that names a
+username stays until „Änderungen aufbewahren (Monate)" removes it. On a portal
+updated from 0.4.0 none of this happens: every login there has an address,
+because until 028 the database allowed nothing else, and usernames existed only
+in versions that were never released.
 There is nothing for you to do.
 
 **The profile pictures are deleted for good.** Once the update has passed, the
@@ -210,6 +223,38 @@ placeholder login (see 028 to 031 above) and cannot sign in until staff enter,
 on the child's page, an address of the child's own and send the invitation. A
 shared login cannot be restored once the update has run, because the database
 now refuses it: the way back is the backup the update writes first.
+
+**The first cleanup after the update deletes what is past its period.** From
+this version the portal keeps each kind of record for a set time and deletes
+what is older in its daily cleanup (ADR 0032): chat messages, with their photos,
+voice notes and files, 12 months after they were sent, and one taken down in a
+group 30 days after it was taken down; absences 3 months after they ended;
+attendance 24 months after the training; the bell's notices after 90 days; the
+outbox's record of a mail 12 months after it was queued; payment proofs 24
+months after the upload; the audit log after 36 months; and a consent a newer
+answer replaced, 36 months after that. Charges, payments and invoices are never
+deleted by it. The cleanup runs after a page somebody opens, once a day has
+passed since the last one: within a day of the upload on a portal in use, and
+straight after the update on one nobody opened the day before. Its first run
+deletes at once everything already past its period, chat messages older than a
+year among it, in the chats under „Frühere Unterhaltungen" too. What it deletes
+from the database stays in the copy the update takes first, in
+`storage/backups`, until five newer copies have replaced it; the photos and
+files it deletes are gone for good. A file uploaded less than an hour before the
+run waits for the next one.
+
+Each period can be changed under **Einstellungen → System**, in „Erweitert", but
+the first cleanup may have run before you get there. A period set shorter,
+„Änderungen aufbewahren (Monate)" for the change log included, deletes nothing
+at once: the cleanup after a page view waits a day after the save, which says
+what the period was, so it can be set back meanwhile; where a cron job runs the
+console's `maintenance`, its next nightly run deletes. To set them before
+anything is deleted, switch off „Wartende Aufgaben beim Seitenaufruf erledigen"
+before you upload: under **Einstellungen → System**, inside „Erweitert" where
+the page has one. After the update, set the periods, then switch it on again.
+While it is off, mail waits in the queue. If a cron job runs the console's
+`maintenance` instead (INSTALL.md), take that line out of the panel until the
+periods are set.
 
 **After the update, press „Nur Verbindung prüfen“ once.** Invitations,
 password-reset links and address confirmations are now only sent when the last
@@ -273,7 +318,8 @@ here so that nothing surprises you.
   a course's group. Group messages send no e-mail. A message is text and photos:
   a family's „+" asks the phone to open its camera and takes only a JPEG, and
   you can also choose a PNG or WebP from the phone's photos. Voice notes and
-  files sent before this update stay in their chats and open as they did; the
+  files sent before this update stay in their chats and open as they did, until
+  their message is a year old; the
   portal now tells every browser that it never uses the microphone
   (`Permissions-Policy: microphone=()`), as it already did for the camera. A
   chat between two children from before reads as it did, says that chats between
@@ -360,9 +406,10 @@ here so that nothing surprises you.
   was set up: the old address hears of a new one, shown only in part, and the
   login's address of a new password. Neither mail carries a link.
 - **Postausgang keeps what a sent mail said for 90 days.** After the first daily
-  cleanup, a mail sent longer ago still shows who it went to, its subject and
-  when, but opens without its text. A mail that could not be sent keeps its
-  text, so that it can be sent again.
+  cleanup, a mail sent longer ago, but less than a year, still shows who it went
+  to, its subject and when, but opens without its text. A mail that could not be
+  sent keeps its text, so that it can be sent again, for as long as the outbox
+  keeps it.
 - **When no copy could be taken before an update**, the closed page no longer
   says why: the reason, which could name the hosting account's folder or the
   database, is in the hosting's error log (INSTALL.md).
@@ -426,10 +473,10 @@ still inside the lock and **before the database is touched at all**:
 7. What the portal cannot work without is filled in where it is missing — the
    lists it needs, a group chat for every course, a login for every student.
    Every stored upload that no record names any more and that is more than ten
-   minutes old is deleted, as the nightly cleanup does with an hour's grace: in
+   minutes old is deleted, as the daily cleanup does with an hour's grace: in
    this version, the profile pictures (see [Updating an existing portal to
    0.6.0](#updating-an-existing-portal-to-060)), and any receipt or chat photo
-   whose record went before the nightly cleanup found it. While the database has
+   whose record went before the daily cleanup found it. While the database has
    no login in it, neither sweep deletes anything: it is not yet the database
    those files belong to, as in a restore between deleting the tables and
    importing the copy ([INSTALL.md](INSTALL.md#wiederherstellen)). Then the file
@@ -495,7 +542,7 @@ releases — never by the portal.
 **While it is closed** nobody gets in: families, trainers and administrators
 alike, and maintenance mode does not change that. The console runs only `check`,
 `status`, `migrate`, `update`, `maintenance:on` and `maintenance:off`; mail,
-billing, the nightly cleanup and `backup` wait. Any other command stops with one
+billing, the daily cleanup and `backup` wait. Any other command stops with one
 sentence saying that an update is unfinished, and exits with 1; a cron job set
 up in the panel fails the same way each time it runs. The same list holds while
 a copy is being imported (below), with that as the sentence, and
@@ -516,7 +563,7 @@ in phpMyAdmin's words and reloads itself every five minutes, so a tab left open
 opens the portal by itself once the whole copy is in; a page view does the same.
 An import that stopped leaves the table there and the page the same: import the
 same file again, and each table is dropped before it is made, so nothing is
-doubled. The background work — mail, charges, the nightly cleanup — stays out
+doubled. The background work — mail, charges, the daily cleanup — stays out
 by itself meanwhile, with or without maintenance mode. A copy from before this
 version, or one exported in the hosting panel, has no such table and is judged
 by its ledger: while `schema_migrations` is missing and tables have rows, the

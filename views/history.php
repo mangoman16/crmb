@@ -32,7 +32,8 @@ if(!$versions): empty_state(t('Noch keine Änderungen','No changes yet'),
 else: ?>
 <p class="muted"><?=e(t('Zum Nachlesen, nicht zum Zurücknehmen. Einträge, die älter sind als ','To read, not to undo. Entries older than ')
     .plural((int)setting('history_months'),'Monat','Monate','month','months')
-    .t(', werden nachts entfernt; das Prüfprotokoll bleibt vollständig.',' are removed overnight; the audit log stays complete.'))?></p>
+    .t(', werden beim täglichen Aufräumen entfernt; das Prüfprotokoll nach ',' are removed by the daily cleanup; the audit log after ')
+    .plural((int)setting('audit_months'),'Monat','Monaten','month','months').'.')?></p>
 <div class="card">
 <?php foreach($versions as $v):
     $changes=version_changes($v);

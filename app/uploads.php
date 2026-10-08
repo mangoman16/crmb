@@ -479,10 +479,12 @@ function upload_references(): array {
  * receipts, and a database row can go without anything touching the disk - so
  * without this, a family who asked to be forgotten leaves their photographs
  * behind in storage, and the folder only ever grows. A message taken down keeps
- * its photo: its row stays, because putting the message back is the way back
- * (moderate_message()). The nightly prune runs it, and so does every update's
- * step after the files (database/defaults.php), which is how the profile
- * pictures left the disk with their columns.
+ * its photo while it can be put back (moderate_message()). The daily cleanup
+ * runs this last (prune_expired()), so the file of a row it deleted that day -
+ * a message or a proof past its period, a message taken down longer ago than
+ * removed_messages_days (ADR 0032) - goes the same day; and every update's
+ * step after the files runs it too (database/defaults.php), which is how the
+ * profile pictures left the disk with their columns.
  *
  * Nothing at all while the database has nobody in it. Then it is not the one
  * these files belong to: restoring a backup the way INSTALL.md says - every
@@ -502,7 +504,7 @@ function upload_references(): array {
  */
 function prune_uploads(int $graceSeconds = 3600): int {
     // Nothing is swept while a copy is being restored, whoever calls - the
-    // nightly work, the console, the update's step (ADR 0029 §3): the rows that
+    // daily cleanup, the console, the update's step (ADR 0029 §3): the rows that
     // name the files may not have arrived yet, and every file would look like
     // an orphan.
     if (schema_restore_refusal()) return 0;

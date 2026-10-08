@@ -206,7 +206,7 @@ if($loginState==='placeholder'):
         /* What she needs when a parent says "the link doesn't work" (ADR 0020,
            §10c): when it was sent and until when it works, and how long a new
            one lasts, as token_lifetime() makes it. An expired invitation's row
-           is usually gone by the next morning (prune_expired()), and then the
+           is usually gone within a day (prune_expired()), and then the
            line says so without a date rather than guessing one. */
         $sent=invitation_dates((int)$login['id']);
         $invitationLive=invitation_link_live($sent);

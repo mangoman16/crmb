@@ -336,6 +336,7 @@ act('feedback_state', ['id'=>(string)$doneTwice, 'state'=>'done']);
 $still = fn(int $id) => (int)scalar('SELECT COUNT(*) FROM feedback WHERE id=?', [$id]) === 1;
 ok($still($old) && is_file(upload_dir('avatar').'/'.$oldShot), 'before: the 31-day-old report and its screenshot are there');
 
+schema_made_current();
 prune_expired();
 ok(!$still($old), 'a report done 31 days ago is gone');
 ok(!is_file(upload_dir('avatar').'/'.$oldShot), 'and so is its screenshot');

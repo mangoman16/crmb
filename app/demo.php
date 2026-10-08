@@ -55,7 +55,7 @@ const DEMO_LOGIN_DAYS = 14;
 
 /**
  * Whether $account is an example login past its days (DEMO_LOGIN_DAYS). Asked
- * by sign_in(), where every way in ends, rather than by the nightly prune, so
+ * by sign_in(), where every way in ends, rather than by the daily prune, so
  * it holds on a portal whose background work never runs; a session still open
  * ends at the idle limit.
  */

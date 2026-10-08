@@ -425,6 +425,7 @@ throttle_clear('login', address_identity('niemand@beispiel.test'));
 
 case_('The nightly prune keeps the comparison hash at today’s cost, and leaves a current one alone');
 set_setting('sign_in_dummy_hash', password_hash('x', PASSWORD_BCRYPT, ['cost' => 4]));
+schema_made_current();
 prune_expired(); setting_cache_clear();
 $refreshed = (string)setting('sign_in_dummy_hash');
 ok(!password_needs_rehash($refreshed, PASSWORD_DEFAULT), 'a hash from a cheaper default is made again');

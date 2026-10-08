@@ -58,8 +58,11 @@ function dispatch_messages(string $action): array {
         $restore=post('restore')!=='';
         $messageId=(int)post('id');
         $threadId=moderate_message($messageId,!$restore);
+        // For as long as removed_messages_days, after which the daily cleanup
+        // deletes it (ADR 0032): the way back has a deadline, so it is said.
         flash($restore?t('Nachricht wiederhergestellt.','Message restored.')
-                      :t('Nachricht entfernt. Du kannst sie an derselben Stelle wiederherstellen.','Message removed. You can restore it in the same place.'));
+                      :strtr(t('Nachricht entfernt. {days} lang kannst du sie an derselben Stelle wiederherstellen.','Message removed. For {days} you can restore it in the same place.'),
+                             ['{days}'=>plural((int)setting('removed_messages_days'),'Tag','Tage','day','days')]));
         return ['messages',['id'=>$threadId,'#'=>'m'.$messageId]];
 
     case 'news_save':

@@ -787,6 +787,11 @@ case_('Waiting work happens without a cron job');
 // The cases above dropped the ledger on purpose; a tick runs only on a portal
 // whose ledger records its migrations (ADR 0029 §1 (b), tick_work()).
 test_ledger_recorded();
+// And the cleanup only on a database as current as the files (prune_expired()),
+// which the stamp a passed update leaves says. The stamp alone, not the settings
+// it caches: „The version is written into the database" below checks that
+// schema_apply() writes those, and would pass on them already written.
+schema_write_stamp();
 $expired = make_account();
 run('INSERT INTO auth_tokens (account_id,token_hash,purpose,expires_at,created_at) VALUES (?,?,?,?,?)',
     [$expired, str_repeat('a', 64), 'invite', gmdate('Y-m-d H:i:s', time() - 3600), now()]);
@@ -837,6 +842,9 @@ is_same('', (string)setting('tick_last_run'), 'the switch under Einstellungen �
 set_setting('auto_background', true);
 run('DELETE FROM auth_tokens');
 run('DELETE FROM accounts');
+// And the stamp written for the cleanup: the cases below start without one, as
+// they did before, so „and afterwards there is nothing waiting" can still fail.
+@unlink(schema_stamp_file());
 
 case_('The background work lets go of the browser’s session before it begins');
 /* The same phone's next request - the club's stylesheet, the next page - waits
