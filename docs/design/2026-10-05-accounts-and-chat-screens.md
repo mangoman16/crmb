@@ -1,5 +1,7 @@
 # UI spec: student wizard, sign-in links, accounts page, basic chat (ui-ux-designer, 2026-10-05)
 
+> **Addendum, 2026-10-08 (ADR 0030).** Usernames and one-time sign-in links go; the addendum at the end replaces §2–§6 where they differ. Read it first.
+
 Status 2026-10-07: what §0 assumes of the server is built as ADR 0023 settled it (commits e9aff6e and d095ca4), with a first, minimal form of the wizard (§2), the link card (§3), the page the link opens (§4) and the sign-in box (§5). The start page (§1), the accounts page (§6) and the chat (§7, ADR 0022 §11) are not built. Building this specification is ROADMAP.md item 5. Where this text and ADR 0023 disagree, ADR 0023 wins.
 
 Project manager's decisions on the designer's open issues (binding unless the owner overrules):
@@ -106,3 +108,112 @@ A student's „Neue Nachricht": only „Trainerteam". Gone: „Kinder", „Möch
 
 ## TESTING.md by hand (iPhone)
 Student's photo button opens the camera directly; a photo arrives as an upright JPEG; „Teilen" opens the share sheet; a second phone scans the QR off a 320px screen; a WhatsApp preview of the link does not use it up; iCloud Keychain saves the password under the username.
+
+---
+
+## Addendum, 2026-10-08: ADR 0030 — one person, one address (ui-ux-designer)
+
+ADR 0030 (accepted 2026-10-08): usernames and one-time sign-in links go, every login signs in by its own e-mail address, a student without an address is a placeholder, „Ohne Anmeldung", until invited by address. This addendum replaces §2–§6 where they differ from frontend-dev's batch for ADR 0023 (`scratchpad/review/frontend-0023.diff` at the time of writing) as ADR 0030 §8 trims it; what the batch has and this text does not name stands as built. §3 and §4 go whole. Written in Part 0's language (`docs/design/2026-10-07-ios-design-language-and-goal-screens.md`).
+
+*Decided by the project manager, 2026-10-08:* the fourth chip „Eingeladen" on Zugänge (open issue 1) is built.
+
+**Who, where, in their words.**
+- The trainer in the hall, one hand on the phone: „Ich leg das Kind schnell an – die Mail-Adresse hab ich noch nicht." Weeks later, with a parent's message open: „Jetzt hab ich die Adresse, die Einladung soll raus."
+- A parent on the sofa: „Womit melde ich mich an?" — the address, and nothing else, on every page that asks.
+
+### §2 The wizard
+
+**Step 1** is unchanged.
+
+**Step 2 stays a step with two cards, not an optional address box on step 1** (ADR 0030 §6 left this to the designer). Sending a family an e-mail is a decision of its own, taken by a tap, not a side effect of a box left empty; each card says its consequence before the tap; and ADR 0023 §5's rules (every refusal before the first write, one transaction, the draft in the session) do not move. One question per step: „Schritt 2 von 2: Wie meldet sich {name} an?"
+
+The screen at 320: large title, `wizard_progress(2,2)`, the summary line with „Ändern", then:
+
+- **Card (a) `#by-email`**, as built, tightened so that card (b) reaches the first screen (measured):
+  - h2 „Per E-Mail einladen" + `badge(t('Empfohlen','Recommended'),'green')`;
+  - one sentence: `strtr(t('{name} bekommt einen Link per E-Mail und richtet sich selbst ein.','{name} gets a link by email and sets themselves up.'),…)` (was three lines);
+  - while `!account_mail_ready()`: `mail_not_ready_notice($user)` instead of the form;
+  - the form: the address box as built, hint `strtr(t('Die eigene Adresse von {name} – die der Eltern gehört zu den Kontakten.','{name}’s own address – a parent’s belongs with the contacts.'),…)`; the language select; the filled button `t('Anlegen und einladen','Create and invite')` (was „Anlegen und Einladung senden", two lines at 320).
+- **Card (b) `#later`** (replaces the batch's „Ich schließe es selbst ab" and the username card):
+  - h2 `t('Ohne Anmeldung','Without sign-in')`, no badge — „Empfohlen" on (a) ranks them;
+  - one sentence: `strtr(t('Noch keine Adresse? Dann kann sich {name} vorerst nicht anmelden, und du trägst alles selbst ein. Die Einladung schickst du später von der Seite von {name}.','No address yet? Then {name} cannot sign in for now, and you enter everything yourself. You send the invitation later from {name}’s page.'),…)`;
+  - the tinted button `t('Ohne Anmeldung anlegen','Create without sign-in')`, posting `student_create` with `method=none`.
+- Under the cards, as built: „Abbrechen – es wird nichts gespeichert".
+
+**If the owner says no child without an address:** card (b) goes and nothing else moves; the step's description becomes `strtr(t('Schritt 2 von 2: Die E-Mail-Adresse von {name}','Step 2 of 2: {name}’s email address'),…)`; and while `!account_mail_ready()` step 1 shows `mail_not_ready_notice($user)` in place of its form, because the wizard could not finish — a form that can only be refused is not offered.
+
+**The done page** (`step=done` and `made`): `$path` has two values.
+- (a) `email`: description „Die Einladung ist unterwegs."; the card „Die Einladung geht an {email}. Der Link darin gilt bis {until}." and the muted line `strtr(t('Kommt keine E-Mail an? Auf der Seite von {name} prüfst du die Adresse und sendest die Einladung noch einmal.','No email arriving? On {name}’s page you check the address and send the invitation again.'),…)` — the „– oder ziehst sie zurück und vergibst einen Benutzernamen" goes.
+- (b) `none`: description „Ohne Anmeldung – du trägst alles selbst ein."; the card `strtr(t('{name} kann sich noch nicht anmelden. Sobald du die E-Mail-Adresse hast, trägst du sie auf der Seite von {name} ein und schickst die Einladung.','{name} cannot sign in yet. Once you have the email address, enter it on {name}’s page and send the invitation.'),…)` and the built tinted `link_button(t('Anmeldung einrichten','Set up sign-in'),'student',['id'=>…,'#'=>'access'],'secondary')`.
+- The `username` path, the link card and „Neuen Link erstellen" go. `next_steps_card()`, the two buttons and „Versehentlich angelegt? …" stay.
+
+### §3 and §4 go
+No link card (`views/_signin_link.php`), no „Teilen" / „Link kopieren", no QR on the done page or the access card, no page a sign-in link opens. Part 3's screen B (the design-language document) reads "the address, read only" where it said "the address or username".
+
+### §3 (new) The access card `#access` on the child's page
+Four states, one card, every action its own form; folds that remove something open as sheets (C11); buttons stack full width at 320 as built (`.access-card`).
+
+| State | The card |
+| --- | --- |
+| **Ohne Anmeldung** | the sentence „{name} meldet sich noch nicht an. Du trägst alles selbst ein."; then **one form**, `student_invite`: the address box (stacked, C9) pre-filled with `students.email`, the wizard's hint; the select row `t('Sprache der Einladung','Invitation language')`; the filled button `t('Einladung senden','Send the invitation')`. While `!account_mail_ready()`: `mail_not_ready_notice($user)` instead of the form. While the record's address is another login's: the built warning, no form. The built „Die Einladung geht an …" and „Trag oben zuerst eine E-Mail-Adresse ein und speichere." go: the box says it. |
+| **Eingeladen** | `login_facts()` with the address; „Eingeladen am {sent}; der Link gilt bis {until}." or the expired variants, as built; „Einladung erneut senden" (tinted; filled once the link has run out); „Einladung zurückziehen" as a sheet with nothing to type (`invitation_withdraw_details()`), or `login_delete_details()` when a password was ever set — as built. |
+| **Aktiv** | `login_facts()`; the muted „Passwort zuletzt per E-Mail-Link neu gesetzt: {when}" within 14 days; „Portal als {name} ansehen" (tinted, `may_impersonate()`); „Link zum Zurücksetzen senden" (tinted, `reset_link_possible()`); „Zugang sperren" (tinted); „Anmeldung löschen" (sheet, red, the address typed). |
+| **Gesperrt** | „Gesperrt – {name} kann sich nicht anmelden. Daten und Nachrichten bleiben."; `login_facts()`; „Zugang entsperren" (tinted); „Anmeldung löschen" (sheet). |
+
+- The `waiting` state, both sign-in-link folds, „Link zurückziehen", „Benutzernamen zurückziehen" and the „Anmeldelink vom … ({who})" lines go.
+- **Why the address box sits on the card.** The trainer gets the address weeks after adding the child, from a parent's message, with the child's page open at the card: typing it under Persönliche Daten, saving, scrolling back and tapping again is two posts for one thought. One form, one tap — ADR 0030 §6's "the address and „Einladung senden"". Persönliche Daten keeps its address box for a placeholder: anchor `#email`, where the list's „Kinder ohne E-Mail-Adresse" and the next steps lead, and the only place to keep an address while mail is not set up. Both boxes show `students.email`; the card's post writes it through `invite_student()`, byte for byte, as today.
+- **The way back.** An invitation to a wrong address: „Einladung zurückziehen" — nothing to type, nothing lost, invite again (as built). A login deleted: the child keeps a new, empty login and can be invited again; the sheet says so and offers „sperren" as the lighter choice (as built).
+- The danger zone „Schüler löschen": the `waiting` sentence goes; the placeholder, invited and active sentences stay.
+- Persönliche Daten's `#email` block keeps its three states (read-only in use, editable with the re-send hint while invited, editable for a placeholder).
+
+### §4 (new) Mein Konto (`views/profile.php`)
+The card „Anmeldung", then „Name und Darstellung", the privacy group and „Abmelden", as built. In the card:
+- `login_facts($user, t('bestätigt','verified'))`: the address, one row;
+- the one sentence `t('Mit dieser Adresse meldest du dich an.','You sign in with this address.')`;
+- **the resets of the last 14 days** (`password_resets_for()` only): `.notice.warn` with `<strong>` `t('Dein Passwort wurde per E-Mail-Link neu festgelegt','Your password was set anew through an email link')`, one line per reset with `fmt_datetime()`, then the built „Warst du das nicht? …" sentence (family / staff);
+- the fold „E-Mail-Adresse ändern", always this label, with the one hint (the current-address one); „Passwort ändern";
+- in „Name und Darstellung": the three switches (`check_field(…, switch: true)`) **always**; the hidden-field branch and „E-Mails vom Verein … sobald du oben eine E-Mail-Adresse hinzufügst" go.
+
+### §5 Sign-in, „vergessen", the link page
+- **`views/login.php`**: `input('email', t('E-Mail-Adresse','Email address'), '', 'email', true, '', '', sign_in_address_attributes())`. `type="email"` again (the „@" keyboard, the format checked before posting); no `inputmode`. The box's `name` is backend-dev's (`email` as at 0021, or `login` as the batch posts it; `tests/e2e.mjs` fills it by name). `autocomplete="username"` stays (ADR 0030 §7).
+- **The refusal** (`sign_in_refusal()`, backend-dev): `t('Anmeldung nicht möglich. Bitte E-Mail-Adresse und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link aus der Einladung öffnen.','Could not sign in. Please check the email address and the password. Not set up yet? Then first open the link in your invitation.')`.
+- **`views/forgot.php`**: `t('Gib deine E-Mail-Adresse ein. Du bekommst dann einen Link, mit dem du ein Passwort festlegst.','Enter your email address. You will then get a link to set a password.')`; the same box as the sign-in page; „Ohne E-Mail-Adresse angemeldet? …" goes; „Keine E-Mail bekommen? …" stays.
+- **`views/activate.php`**: „Link nicht mehr gültig": `t('Schon eingerichtet? Dann melde dich einfach mit deiner E-Mail-Adresse an.','Already set up? Then just sign in with your email address.')`; the lifetime sentence and „Neuen Link anfordern" stay; the coach's-link sentence goes. The form: no `$signin` branch; the eyebrow is the login's name for an invitation that has one, else the club's; h1 „Konto einrichten" / „E-Mail bestätigen" / „Neues Passwort"; the address read-only with „Damit meldest du dich an."; the username box goes; the password hint `t('Mindestens 12 Zeichen. Am besten lässt du es dein Handy speichern.','At least 12 characters. Best let your phone save it.')` wherever a password is set (the PM's decision of 2026-10-05); the two mail switches on every invitation, since every login here has an address; „Konto aktivieren" stays until Part 3 G1b makes it „Weiter".
+
+### §6 Zugänge (`views/accounts.php`)
+As built — the groups, the team rows, the student rows leading to the access card, the paging — with:
+- **The chips** on the Schüler group: „Alle (n)", „Eingeladen (n)", „Ohne Anmeldung (n)", „Gesperrt (n)"; zero-count chips hidden. „Eingeladen" is the batch's `waiting` chip (`a.state='invited'`) under the name its badge already has: one name per state. ADR 0030 §8 lists three chips; the fourth is this spec's recommendation, decided (above): „Wer hat die Einladung noch nicht angenommen?" is the question she opens this page for, and the badge alone means scrolling fifty rows.
+- **A student's row**: the name; `<small>` the address (no `.mono`, no „Benutzername: "); while invited „Link gilt bis {date}" or „Link abgelaufen" (`link_expires_at` from `invite` alone); `login_state_badge()` without its `waiting` branch; the chevron. A placeholder's row has no `<small>`.
+- **The footer**: `t('Einladen, sperren und löschen machst du auf der Seite der Schülerin oder des Schülers.','Inviting, suspending and deleting are done on the student’s own page.')`.
+- Badges: Aktiv green, Eingeladen amber, Ohne Anmeldung grey, Gesperrt red, Kein Zugang grey (never expected).
+
+### Without JavaScript
+Forms and links throughout, as built; the sheets open in place. Nothing new needs it.
+
+### Empty and error states
+- Wizard (a): an address invalid, in use, on a student without sign-in, or mail not ready → refused before the first write, back to step 2 with the typed address and the draft (as built, `held_for('student_create')`). Draft gone → step 1 with „Die Angaben waren nicht mehr da…" (as built).
+- The access card's form: the same refusals, back to the card (`#access`) with the typed address.
+- Zugänge empty, Mein Konto without a reset in 14 days (no notice): as built.
+
+### What a family sees
+The sign-in page: one box „E-Mail-Adresse" and the password. The link page: their address read-only, a password, the privacy acknowledgement, two switches. Mein Konto: their address, two folds, three switches. Nowhere a family reads does „Benutzername" or „Anmeldelink" appear.
+
+### Reuses
+`input()`, `select_field()`, `check_field(…, switch)`, `badge()`, `wizard_progress()`, `next_steps_card()`, `mail_not_ready_notice($user)` (its `$missing` and `$title` go, ADR 0030 §8), `login_facts()`, `login_state_badge()`, `login_delete_details()`, `invitation_withdraw_details()`, `sign_in_address_attributes()`, `token_lifetime_words()`, `invitation_dates()`, `invitation_link_live()`, `password_resets_for()`, `.access-card`, `.account-group`, `.member-row`, `.saved-filters .chip`, `.text-links`.
+
+### Takes away
+The username card and its privacy variant (`#by-username`); the link card, „Teilen", „Link kopieren", the QR on the done page and the access card; „Anmeldelink erstellen", „Neuen Link erstellen", „Link zurückziehen", „Benutzernamen zurückziehen"; the `waiting` state and „Noch nicht angemeldet" everywhere; „E-Mail oder Benutzername"; Mein Konto's three sign-in sentences, „E-Mail-Adresse hinzufügen" with its hint, and the hidden mail fields; `activate.php`'s `$signin` branch, username box and coach's-link sentence; `forgot.php`'s coach's-link sentence; the done page's username path and link lines; the access card's „Die Einladung geht an …" and „Trag oben zuerst …" lines (the box replaces them).
+
+### For backend-dev (beyond ADR 0030 §1–§4 and §6)
+- `student_invite` takes the posted `email` through `invitation_address()`, as the wizard does, and `locale` through `choose(…,['de','en'])`; falls back to the record's address when none is posted (an old page); `invite_student($s,$email,$locale)` writes both. The flash stays „Die Einladung an {email} ist unterwegs."
+- `student_login_filters()`: the key `waiting` becomes `invited` (chip address `logins=invited`); `student_logins()`' subquery reads `purpose='invite'`.
+- `sign_in_refusal()`'s text above.
+- Optional: while `account_mail_ready()`, `student_next_steps()`' „E-Mail-Adresse eintragen" may lead to `#access`, where the box now is.
+
+### Measured
+A copy of the working tree (HEAD `2f633c4` plus frontend-dev's uncommitted batch, `php -l` clean), on a throwaway portal with the example data and mail marked ready; MariaDB 10.11.14, PHP 8.4.26, Chromium 141; 320 and 390, light and dark; `tests/mobile.mjs`'s rules loaded from the file. Prototypes are the built pages edited in the browser; DejaVu Sans, wider than San Francisco.
+- **Wizard step 2.** Built (three cards): 2,022 px at 320; „Anlegen und Einladung senden" two lines (63 px); the third card's button at y 1,708. Revised two cards, tightened: 1,253 px; (a)'s „Anlegen und einladen" one line at y 632–676; card (b) begins at y 716, on the first 780 px screen; its button at 939–1,001 (two lines in the test font inside the card's 256 px; one line expected in San Francisco). 390: (b) at 647, button 846–890, one line. (b) as a plain block under the card instead of a card: button at 878–922, page 1,157 — rejected: a muted sentence under a card is what people here skip; the heading „Ohne Anmeldung" is what they scan for. 0 problems in every variant, both widths, both themes.
+- **Access card, placeholder.** Built: 305 px at 320 (with the sign-in-link fold). Revised (address box, language row, button, no fold): 459 px at 320, 436 at 390; the button 44 px, one line. 0 problems.
+- **Zugänge chips.** Four chips: three rows at 320 (148 px), two at 390 (96 px); built two chips: two rows / one. 0 problems.
+- Not measured: Mein Konto, sign-in, forgot, activate — text changes on built layouts.
+- Open: card (b)'s button may wrap to two lines at 320 in a wide font (44 pt either way; mobile-tester checks on the build); `tests/mobile.mjs` cannot reach step 2 (it needs a draft): a TESTING.md walk, or the views suite renders it; two address boxes on a placeholder's page (Persönliche Daten and the card), by design and stated; both read `students.email`.
