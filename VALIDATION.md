@@ -6,6 +6,27 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
+## 0.6.0, unreleased — at `2f633c4`, and ADR 0029 on top of it: age groups from the birth date, the small example data, a restore that keeps the portal closed
+
+Recorded 2026-10-08 by docs-writer, from the project manager's and qa-tester's runs; nothing
+here was watched by the writer, who ran no suite and no walk on either change. MariaDB
+10.11.14 with PHP 8.4.26, the walks in Chromium at 390 px. MySQL 8.0 was not run, and
+neither was Safari.
+
+- **Round 3, `2f633c4`, on a clean worktree of `005eb4e`**: the whole suite 8042 passed,
+  0 failed; the browser walk 381 passed, 0 failed.
+- **qa-tester's walk of TESTING.md N.1–N.7 at `2f633c4`**, in Chromium at 390 px: N.1, N.2,
+  N.3, N.5, N.6 and N.7 passed. **N.4 failed**: the students list's screen does not draw the
+  „Nach Alter" headers yet, which frontend-dev is building; until it does, the sort is
+  reached by `sort=age` in the address alone, and N.4 stays failed.
+- **ADR 0029, on a worktree of `2f633c4` with both code patches**: the whole suite 8195
+  passed, 0 failed; the browser walk `RESULT: PASS`. The implementers' run of the same with
+  their later additions — the console refusing `backup` on a database that holds nothing,
+  the background work staying out during a restore: 8205 passed, 0 failed, walk 381 passed,
+  0 failed. The project manager's run of exactly that state was still going when this was
+  written.
+- Not walked by anybody: TESTING.md H.1–H.5, 21.8 as now written, and G.1–G.9.
+
 ## 0.6.0, unreleased — at `65ca0f1` and `005eb4e`: the round-2 follow-ups and the delivery batch, on clean worktrees
 
 Recorded 2026-10-08 by docs-writer, from the project manager's runs; nothing here was

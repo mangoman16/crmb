@@ -60,6 +60,14 @@ function schema_state(): string { return schema_fingerprint() . ' ' . app_versio
  * Beside the maintenance flag, which is the path an operator running separate
  * release folders already points at shared storage, so switching releases does
  * not lose it.
+ *
+ * Its content is the state the database was last brought to: the page path's
+ * cache. Its existence says that a run has passed on this folder (ADR 0029 §1).
+ * Only a run that passes writes it - or schema_is_current(), from the settings
+ * row such a run wrote - and nothing in the portal deletes it, so an empty
+ * database beside it is one somebody emptied, not one to install into
+ * (schema_restore_refusal()). Deleting it by hand is how a new portal starts on
+ * a folder an old one used.
  */
 function schema_stamp_file(): string { return dirname(maintenance_file()) . '/schema.stamp'; }
 
@@ -367,20 +375,78 @@ class SchemaError extends UpdateBlocked {
     }
 }
 
+/** Whether the ledger records no migration: schema_migrations missing, or empty. */
+function schema_ledger_is_empty(): bool {
+    try { return (int)scalar('SELECT COUNT(*) FROM schema_migrations') === 0; }
+    catch (PDOException) { return true; /* no ledger yet, which is as empty as it gets */ }
+}
+
 /**
- * Whether this database is one a first install may migrate without the
- * safeguards: no migration recorded in its ledger, and nothing in any of the
- * tables an update must not lose.
+ * Whether this database holds nothing: no migration recorded in its ledger, and
+ * nothing in any of the tables an update must not lose. A first install may
+ * migrate it without the safeguards, and no run takes a copy of it: there is
+ * nothing in it to restore, and the copy would push out one that has something
+ * (ADR 0029 §3).
  *
  * Asked by schema_apply() itself rather than left to whoever calls it, because
  * the caller cannot know. The setup page skipped them whenever it believed it
  * was installing, and it believed that whenever the database had failed to
- * answer it a moment earlier - on a portal with families in it.
+ * answer it a moment earlier - on a portal with families in it. Over a folder
+ * on which a run has passed, the same empty database is one somebody emptied,
+ * and the run is refused before it asks this (schema_restore_refusal()).
  */
 function schema_first_install(): bool {
-    try { if ((int)scalar('SELECT COUNT(*) FROM schema_migrations') > 0) return false; }
-    catch (PDOException) { /* no ledger yet, which is as empty as it gets */ }
-    return array_sum(schema_counts()) === 0;
+    return schema_ledger_is_empty() && array_sum(schema_counts()) === 0;
+}
+
+/**
+ * Why nothing may touch this database now, or null (ADR 0029 §1):
+ *
+ * (a) a copy is being imported, or its import stopped: the table its first
+ *     statement makes and its last drops is there (import_unfinished());
+ * (b) the ledger records no migration, yet a guarded table has rows: a copy
+ *     without that table is being imported, or the configuration names a
+ *     database this portal did not make;
+ * (c) the ledger records no migration, the guarded tables are empty, and a run
+ *     has passed on this folder (schema_stamp_file() exists): a restore between
+ *     deleting the tables and importing the copy, setup pointed at a new
+ *     database, or a second portal on the same folder.
+ *
+ * The one place the three are decided. The runner asks before it writes
+ * anything, the sweep before it deletes anything, the console before it runs
+ * anything that writes. It writes nothing itself. On the portal's own database
+ * it asks two things, whether the marker is there and whether the ledger
+ * records a migration, and returns null; only an empty ledger has the guarded
+ * tables counted and the stamp looked for.
+ */
+function schema_restore_refusal(): ?UpdateBlocked {
+    if (import_unfinished())
+        return new UpdateBlocked(
+            'Gerade wird eine Sicherung eingespielt, oder das Einspielen ist abgebrochen. Solange bleibt das Portal geschlossen. Meldet phpMyAdmin, dass das Einspielen fertig ist: diese Seite neu laden. Ist es abgebrochen: dieselbe Datei in phpMyAdmin noch einmal einspielen – dabei wird nichts doppelt.',
+            'A copy is being imported, or the import stopped. The portal stays closed meanwhile. Once phpMyAdmin says the import has finished: reload this page. If it stopped: import the same file again in phpMyAdmin; nothing is doubled.',
+            'The table ' . IMPORT_UNFINISHED_TABLE . ' exists: a copy is being imported, or its import stopped. Nothing is run, copied or swept until'
+            . ' the copy\'s last statement drops it. If the import stopped, import the same file again: each table in it is dropped before it is made.'
+            . ' For a damaged copy whose last statement never arrives, drop ' . IMPORT_UNFINISHED_TABLE . ' in phpMyAdmin, accepting the database as'
+            . ' it is (UPDATING.md).');
+    if (!schema_ledger_is_empty()) return null;
+    $rows = array_filter(schema_counts());
+    if ($rows)
+        return new UpdateBlocked(
+            'In der Datenbank fehlt die Tabelle schema_migrations, die jedes Portal hat. Wird gerade eine Sicherung eingespielt: warten, bis phpMyAdmin fertig meldet, dann diese Seite neu laden. Ist das Einspielen abgebrochen: dieselbe Datei noch einmal einspielen. Wird nichts eingespielt, nennt config/config.php eine fremde Datenbank. Das Portal hat nichts verändert.',
+            "The database is missing the table schema_migrations, which every portal has. If a copy is being imported: wait until phpMyAdmin says it has finished, then reload this page. If the import stopped: import the same file again. If nothing is being imported, config/config.php names a database that is not the portal's. The portal has changed nothing.",
+            'schema_migrations records no migration, but guarded tables have rows ('
+            . implode(', ', array_map(fn(string $table, int $count): string => $table . ' ' . $count, array_keys($rows), $rows))
+            . '): a copy without ' . IMPORT_UNFINISHED_TABLE . ' is being imported, so finish the import, or the configuration names a database this'
+            . ' portal did not make. Nothing was changed.');
+    if (is_file(schema_stamp_file()))
+        return new UpdateBlocked(
+            'Die Datenbank ist leer, aber in diesem Ordner lief schon ein Portal. Zum Wiederherstellen: die Sicherung in phpMyAdmin einspielen, dann diese Seite neu laden. Soll hier ein neues, leeres Portal entstehen: im Dateimanager die Datei storage/schema.stamp löschen und diese Seite neu laden. Vorsicht: Belege und Fotos des alten Portals werden dann gelöscht; seine Sicherungen in storage/backups bleiben.',
+            "The database is empty, but a portal has run in this folder before. To restore: import the copy in phpMyAdmin, then reload this page. If a new, empty portal is meant to start here: delete the file storage/schema.stamp in the file manager and reload this page. Careful: the old portal's receipts and photos are deleted then; its copies in storage/backups stay.",
+            'The database holds nothing and schema_migrations records no migration, but ' . schema_stamp_file() . ' exists: a run has passed on'
+            . ' this folder. Restoring a copy: import it, and the next page view opens the portal. Starting a new, empty portal here: delete that'
+            . ' file and reload; the old portal\'s uploads are removed by the nightly sweep once an administrator exists, and its copies in'
+            . ' storage/backups stay.');
+    return null;
 }
 
 /**
@@ -400,6 +466,13 @@ function schema_first_install(): bool {
  * on a shortfall before anything else. The record's counts are each run's
  * "before", no further copy is written, and only the run that passes deletes
  * the record, after the version, before the stamp.
+ *
+ * Right after that comparison, schema_restore_refusal() is asked, and its reason
+ * thrown: while a copy is being imported, while the database holds data but no
+ * ledger, or while it is empty over a folder on which a run has passed, nothing
+ * is written - not the ledger's own table, no copy, no record, no stamp - with
+ * the safeguards waived or not (ADR 0029). A database that holds nothing gets no
+ * copy, whoever calls.
  */
 function schema_apply(?callable $log = null, bool $safeguards = true): array {
     $log ??= static fn(string $line) => null;
@@ -419,11 +492,15 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
             $log('An update is unfinished since ' . $unfinished['started'] . ' UTC; comparing with the counts from before it');
             schema_verify_counts($unfinished['counts'], $log, $unfinished);
         }
+        // Nor into a copy being imported, a database this portal did not make, or
+        // one somebody emptied (ADR 0029).
+        if ($refusal = schema_restore_refusal()) throw $refusal;
         run('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
         // Checked inside the lock and before anything is written, so two requests
         // cannot both decide the release is fine and then disagree.
-        $guarded = $safeguards || !schema_first_install();
-        $copy = $guarded ? schema_refuse_unsafe($log, $unfinished !== null) : null;
+        $holdsNothing = schema_first_install();
+        $guarded = $safeguards || !$holdsNothing;
+        $copy = $guarded ? schema_refuse_unsafe($log, $unfinished !== null, $holdsNothing) : null;
         // After the copy and the count, before the first statement: from here on
         // the update is unfinished until a run of it passes. A first install has
         // nothing to lose and writes none.
@@ -506,12 +583,14 @@ function run_migration_statement(string $statement): void {
  * remaining choice is whether to touch the database as well.
  *
  * Returns the copy it wrote, or null when it wrote none: nothing was pending,
- * the operator's skip-backup was there, or an update is $unfinished. That update
- * has its copy already; one taken now could only be of a half-updated database,
- * and it would push the copy from before out of the BACKUP_KEEP that are kept
- * (ADR 0027 §2).
+ * the operator's skip-backup was there, an update is $unfinished, or the
+ * database $holdsNothing. That update has its copy already; one taken now could
+ * only be of a half-updated database, and it would push the copy from before
+ * out of the BACKUP_KEEP that are kept (ADR 0027 §2). A copy of a database that
+ * holds nothing has nothing in it to restore, and would push out one that has
+ * (ADR 0029 §3).
  */
-function schema_refuse_unsafe(callable $log, bool $unfinished = false): ?string {
+function schema_refuse_unsafe(callable $log, bool $unfinished = false, bool $holdsNothing = false): ?string {
     // 1. Older files than the database. Nothing is pending, so without this the
     //    update looks like a success and the portal opens on the wrong code.
     if ($extra = schema_extra())
@@ -552,6 +631,7 @@ function schema_refuse_unsafe(callable $log, bool $unfinished = false): ?string 
     }
     if ($skipped) { $log('Backup skipped: storage/skip-backup was present.'); return null; }
     if ($unfinished) { $log('No backup: this update has its copy from before it began.'); return null; }
+    if ($holdsNothing) { $log('No backup: the database holds nothing to restore.'); return null; }
     try {
         $copy = backup_database('vor-update');
         $log('Writing a backup to ' . $copy);
@@ -676,8 +756,12 @@ function schema_blocked_html(Throwable $e): string {
         ? [$e->de, $e->en]
         : ['Die Datenbank konnte nicht aktualisiert werden. Die genaue Meldung steht im Fehlerprotokoll des Hostings.',
            'The database could not be updated. The full message is in the hosting error log.'];
+    // A tab left open asks again when Retry-After has passed, so the portal
+    // reopens in it by itself: one run and one log line per open tab every
+    // five minutes while it is closed.
     return '<!doctype html><html lang="de"><meta charset="utf-8">'
-        . '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Badminton</title>'
+        . '<meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="300">'
+        . '<meta name="color-scheme" content="light dark"><title>Badminton</title>'
         . '<p><strong>Das Portal ist vorübergehend geschlossen.</strong></p>'
         . '<p>Du musst nichts tun. Bitte versuche es später noch einmal.</p>'
         . '<p>Für die Person, die das Portal betreut: ' . e($de) . '</p>'

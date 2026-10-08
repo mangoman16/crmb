@@ -443,6 +443,17 @@ $rootAccess = (string)file_get_contents(APP_ROOT.'/.htaccess');
 ok(str_contains($rootAccess, 'RewriteRule ^public/ - [L]'), 'a request already inside public/ is left alone, so this cannot loop');
 ok(preg_match('/RewriteRule \^\(\.\*\)\$ public\/\$1/', $rootAccess) === 1, 'everything else is rewritten into public/');
 ok(str_contains($rootAccess, 'Options -Indexes'), 'and the project root is not browsable');
+/* The files at the root with no extension a pattern could match. MANIFEST was
+   served on Apache without mod_rewrite until it was named here: the rule denied
+   VERSION by name and *.txt by pattern, and nothing in between. */
+preg_match_all('~<Files(Match)? "([^"]+)">\s*Require all denied~', $rootAccess, $deny, PREG_SET_ORDER);
+$deniedByName = function (string $name) use ($deny): bool {
+    foreach ($deny as $rule)
+        if ($rule[1] === '' ? $rule[2] === $name : preg_match('~'.str_replace('~', '\~', $rule[2]).'~', $name) === 1) return true;
+    return false;
+};
+foreach (['VERSION', 'MANIFEST', 'BUILD.txt'] as $name)
+    ok($deniedByName($name), $name.' at the root is denied without mod_rewrite');
 foreach (['app', 'bin', 'config', 'database', 'docs', 'storage', 'tests', 'views'] as $directory) {
     $guard = APP_ROOT.'/'.$directory.'/.htaccess';
     ok(is_file($guard), $directory.'/.htaccess exists');
@@ -450,6 +461,33 @@ foreach (['app', 'bin', 'config', 'database', 'docs', 'storage', 'tests', 'views
 }
 ok(!is_file(APP_ROOT.'/public/.htaccess') || !str_contains((string)file_get_contents(APP_ROOT.'/public/.htaccess'), 'Require all denied'),
    'public/ is the one directory that does not, because it is the portal');
+
+case_('The marker of an import in progress is spelled once, and only a copy makes or drops it [ADR 0029 §2]');
+/* A copy makes import_unfinished as its first statement and drops it as its
+   last, and that is the whole rule: the portal itself never makes, fills or
+   drops it, and nothing else spells its name, so no second copy of the rule can
+   disagree about which table says "a copy is being imported". Read from the
+   source, because the suite's own tests make and drop it on purpose. */
+$spelled = []; $touched = [];
+foreach (['app', 'bin', 'public', 'views', 'database'] as $dir)
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(APP_ROOT.'/'.$dir, FilesystemIterator::SKIP_DOTS)) as $file) {
+        if (!preg_match('/\.(php|sql)$/', (string)$file)) continue;
+        $path = substr((string)$file, strlen(APP_ROOT) + 1);
+        $block = '(file)';
+        foreach (file((string)$file) as $line) {
+            // Functions here open with "function name(" and close with "}" at
+            // the margin; what lies between two of them belongs to the file.
+            if (preg_match('/^\s*function\s+([a-z_][a-z0-9_]*)\s*\(/i', $line, $m)) $block = $m[1];
+            if (preg_match('/[\'"`]'.IMPORT_UNFINISHED_TABLE.'[\'"`]/', $line)) $spelled[] = $path.' '.$block;
+            // The constant beside a statement that makes, fills, empties or renames a table.
+            if (str_contains($line, 'IMPORT_UNFINISHED_TABLE')
+                && preg_match('/\b(CREATE|DROP|ALTER|RENAME|TRUNCATE) TABLE\b|\bINSERT INTO\b|\bDELETE FROM\b/', $line)) $touched[] = $path.' '.$block;
+            if (preg_match('/^}\s*$/', $line)) $block = '(file)';
+        }
+    }
+is_same(['app/backup.php (file)'], $spelled, 'the name is spelled once, as the constant in app/backup.php, and nowhere else in app/, bin/, public/, views/ or database/');
+is_same(['app/backup.php backup_write', 'app/backup.php backup_write'], $touched,
+        'backup_write() is the one function that makes or drops the table, once each; no migration, no runner, no sweep does');
 
 case_('A database backup can never be served over the web');
 /* Each file holds every family's data in the clear, plus the encrypted SMTP

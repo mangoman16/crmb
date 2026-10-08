@@ -180,7 +180,11 @@ if ($post && $open && !$proven) {
             $done = true;
         } catch (Throwable $e) {
             error_log('CRM setup: ' . $e->getMessage());
-            $errors[] = $e->getMessage();
+            // The runner's refusals carry their sentence in both languages and
+            // keep the log line, with its paths, for the log (ADR 0029 §3): an
+            // empty database over a used storage/ folder is what somebody
+            // pointing setup at a new database meets.
+            $errors[] = $e instanceof UpdateBlocked ? (install_locale() === 'en' ? $e->en : $e->de) : $e->getMessage();
         }
     }
 }

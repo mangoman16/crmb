@@ -499,11 +499,18 @@ function upload_references(): array {
  * gives (STORED_UPLOAD_NAME): whatever else somebody put there is theirs.
  */
 function prune_uploads(int $graceSeconds = 3600): int {
-    // ponytail: a database caught halfway through an import - its accounts in,
-    // the rows that name the files not yet - still looks like the portal's own.
-    // backup_tables() writes the tables in name order, so accounts is the second
-    // a restore imports, and that gap is most of an import. The way up is a
-    // restore that keeps the portal closed until the import is done.
+    // Nothing is swept while a copy is being restored, whoever calls - the
+    // nightly work, the console, the update's step (ADR 0029 §3): the rows that
+    // name the files may not have arrived yet, and every file would look like
+    // an orphan.
+    if (schema_restore_refusal()) return 0;
+    // ponytail: a copy without the marker - written before this release, or
+    // exported in the panel - is judged by its ledger alone, and an import of it
+    // that stops after schema_migrations is not told apart from the portal's own
+    // database (ADR 0029 §6). backup_tables() writes the tables in name order, so
+    // accounts is among the first such an import brings; until the first
+    // administrator is in, nothing is swept. The way up is the marker in every
+    // copy, which the release that ships this writes.
     if (!(int)scalar('SELECT COUNT(*) FROM accounts')) return 0;
     $removed = 0;
     $cutoff = time() - max(60, $graceSeconds);

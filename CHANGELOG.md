@@ -196,9 +196,8 @@ I.1–I.11 walk.
   names found no row at all: it deleted every receipt, chat photo,
   problem-report screenshot, icon and logo older than ten minutes. A copy holds
   the rows, never the files. The sweep, after an update and at night, now does
-  nothing while the database has no login in it. It cannot tell a database
-  halfway through its import from the portal's own, so open the portal once the
-  import has finished, as INSTALL.md says.
+  nothing while the database has no login in it — and, since the section
+  below, not while a copy is being imported either.
 - **A chat photo or a receipt downloads as what it is.** The name the browser
   is given ends in the type the portal read from the file's bytes when it
   stored it: a photo sent as `x.apk` downloads as `x.jpg`, a receipt sent as
@@ -214,6 +213,51 @@ I.1–I.11 walk.
   before. What the account menu holds and the number of queries the page
   listing the team makes lost their tests when the online status went, and have
   them again; the `Permissions-Policy` header has one for the first time.
+
+### A restore keeps the portal closed until its import is done
+
+- **Every copy the portal writes now says when its import is done.** It begins
+  by making a table `import_unfinished`, with a comment phpMyAdmin shows, and
+  drops it with its last statement. While that table exists the portal is
+  closed to everybody and nothing is run, copied or swept — not by a page view,
+  not by the background work, not by the console — so a restore cannot be
+  caught halfway by an update, a copy of a half-imported database, or a sweep
+  that finds no rows naming the uploads (ADR 0029). Before, a page opened
+  while the tables were gone could make them afresh, run the update on nothing,
+  and write a copy of the empty database that pushed an older, fuller copy
+  out.
+- **The portal reopens by itself** once the whole copy is in: the closed page
+  reloads itself every five minutes, and any page view counts and opens. An
+  import that stopped halfway leaves the portal closed and the page saying to
+  import the same file again; each table in a copy is dropped before it is
+  made, so nothing is doubled.
+- **The closed page says what to do in phpMyAdmin's words**, one of three
+  sentences, in German and English: a copy is being imported or stopped; the
+  database has data but no list of migrations (a copy from before this
+  release, or one from the panel, on its way in — or `config/config.php`
+  naming a database that is not the portal's); the database is empty but the
+  folder belongs to a portal (a restore between deleting the tables and
+  importing, or setup pointed at a new database over an old `storage/`). The
+  last one also says how a new, empty portal starts there: delete
+  `storage/schema.stamp`. INSTALL.md's table has the three.
+- **A copy from before this release, or one exported in the hosting panel,
+  has no marker** and is judged by its ledger: while `schema_migrations` is
+  missing and tables have rows, the portal stays closed; once the ledger is in,
+  the database counts as the portal's own, whatever the copy still has to
+  bring. Restore such a copy with the files of its own version and with
+  maintenance mode on until the import has finished; the sweep's rule that
+  nothing goes while there is no login still holds then.
+- **No copy is written of a database that holds nothing**, by an update or by
+  `php bin/console.php backup`, which refuses it: it would have nothing to
+  restore and would push out one that has. The background work — mail, charges,
+  the nightly cleanup — stays out by itself while a copy is being imported,
+  with or without maintenance mode.
+- **`php bin/console.php maintenance` stops with exit 1 while
+  `storage/maintenance.flag` exists**, as `mail:work` does, so a cron job set up
+  for it fails each run during a restore and sweeps nothing. INSTALL.md's
+  „Wiederherstellen" now starts with maintenance mode on and ends with it off.
+  Setup shows a refusal's own sentence, in the page's language, instead of its
+  log line.
 
 ### Age groups come from the birth date alone, and the example data is one course
 

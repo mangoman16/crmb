@@ -1535,3 +1535,122 @@ foreach (['broken' => 'half a JSON object', 'counts_text' => 'counts that are a 
             [$r[$key]['ledger'] ?? null, $r[$key]['tables'] ?? null, $r[$key]['copies'] ?? null], $what . ': nothing ran, and no copy was written');
 }
 is_same(null, $r['after']['said'], 'deleted, the next page view runs as before');
+
+// ---------------------------------------------------------------------------
+// A restore keeps the portal closed until its import is done (ADR 0029). Three
+// states in which nothing touches the database, met the way a restore meets them
+// on the portal the last round left, with its data, its ledger and its stamp.
+$re = $u['restore'] ?? [];
+$restoreSaid = [
+    'a' => ['Gerade wird eine Sicherung eingespielt, oder das Einspielen ist abgebrochen. Solange bleibt das Portal geschlossen. Meldet phpMyAdmin, dass das Einspielen fertig ist: diese Seite neu laden. Ist es abgebrochen: dieselbe Datei in phpMyAdmin noch einmal einspielen – dabei wird nichts doppelt.',
+            'A copy is being imported, or the import stopped. The portal stays closed meanwhile. Once phpMyAdmin says the import has finished: reload this page. If it stopped: import the same file again in phpMyAdmin; nothing is doubled.'],
+    'b' => ['In der Datenbank fehlt die Tabelle schema_migrations, die jedes Portal hat. Wird gerade eine Sicherung eingespielt: warten, bis phpMyAdmin fertig meldet, dann diese Seite neu laden. Ist das Einspielen abgebrochen: dieselbe Datei noch einmal einspielen. Wird nichts eingespielt, nennt config/config.php eine fremde Datenbank. Das Portal hat nichts verändert.',
+            "The database is missing the table schema_migrations, which every portal has. If a copy is being imported: wait until phpMyAdmin says it has finished, then reload this page. If the import stopped: import the same file again. If nothing is being imported, config/config.php names a database that is not the portal's. The portal has changed nothing."],
+    'c' => ['Die Datenbank ist leer, aber in diesem Ordner lief schon ein Portal. Zum Wiederherstellen: die Sicherung in phpMyAdmin einspielen, dann diese Seite neu laden. Soll hier ein neues, leeres Portal entstehen: im Dateimanager die Datei storage/schema.stamp löschen und diese Seite neu laden. Vorsicht: Belege und Fotos des alten Portals werden dann gelöscht; seine Sicherungen in storage/backups bleiben.',
+            "The database is empty, but a portal has run in this folder before. To restore: import the copy in phpMyAdmin, then reload this page. If a new, empty portal is meant to start here: delete the file storage/schema.stamp in the file manager and reload this page. Careful: the old portal's receipts and photos are deleted then; its copies in storage/backups stay."],
+];
+// A run refused with one of the three, and nothing changed by it: the same
+// tables, ledger, copies, stamp, record, counts and files as just before it.
+$refusedAs = function (string $state, array $before, array $request, string $when) use ($restoreSaid): void {
+    is_same('UpdateBlocked', $request['said']['class'] ?? null, $when . 'is refused');
+    is_same($restoreSaid[$state], [$request['said']['de'] ?? null, $request['said']['en'] ?? null], $when . 'with the sentences of ADR 0029 §5 (' . $state . ')');
+    is_same(array_diff_key($before, ['said' => 1]), array_diff_key($request, ['said' => 1]),
+            $when . 'and changes nothing: the same tables, ledger, copies, stamp, record, counts and files');
+};
+$fullLedger = array_column($u['release']['state']['ledger'] ?? [], 'version');
+// A value by its path, or a word when a key is missing: a null the harness wrote
+// must not pass for one it did not write.
+$at = function (mixed $data, string ...$keys): mixed {
+    foreach ($keys as $key) {
+        if (!is_array($data) || !array_key_exists($key, $data)) return '«missing»';
+        $data = $data[$key];
+    }
+    return $data;
+};
+
+case_('The portal the restore scenarios start from has data, a full ledger and a stamp, and its own copy carries the marker [ADR 0029 §2]');
+$start = $re['before'] ?? [];
+ok(($start['counts']['students'] ?? 0) > 0 && ($start['counts']['accounts'] ?? 0) > 0, 'children and logins to lose: ' . ($start['counts']['students'] ?? 0) . ' and ' . ($start['counts']['accounts'] ?? 0));
+is_same($u['release']['state']['ledger'], $start['ledger'] ?? null, 'the ledger as the update that ran through left it');
+ok(is_string($start['stamp'] ?? null) && $start['stamp'] !== '', 'and the stamp a run that passed wrote');
+is_same(null, $at($start, 'record'), 'with no update unfinished');
+ok(in_array($re['copy'] ?? '?', $re['copied']['copies'] ?? [], true), 'the portal wrote a copy of itself: ' . ($re['copy'] ?? '?'));
+is_same(3, $re['importing']['marker_at'] ?? null, 'whose first statement after the three SET lines makes the marker');
+$stops = $re['importing']['stops'] ?? [];
+is_same(['marker', 'accounts', 'payment_proofs', 'ledger', 'before_last'], array_keys($stops), 'and which is stopped at five points');
+is_same(array_values($stops), array_values(array_unique($stops)), 'each further on than the one before');
+is_same(array_values($stops), (function (array $s): array { sort($s); return $s; })(array_values($stops)), 'in that order');
+is_same(($re['copy_statements'] ?? 0) - 1, $stops['before_last'] ?? null, 'the last of them with only the final statement to go');
+ok(in_array('payment_proofs', $re['importing']['order'] ?? [], true) && in_array('schema_migrations', $re['importing']['order'] ?? [], true),
+   'the copy holds payment_proofs and the ledger among its tables');
+
+case_('A database with data but no ledger is refused, and nothing is made [ADR 0029 §1 (b)]');
+$nl = $re['no_ledger'] ?? [];
+is_same(null, $at($nl, 'before', 'ledger'), 'the ledger was dropped from under the data');
+ok(($nl['before']['counts']['students'] ?? 0) > 0, 'which is still there');
+$refusedAs('b', $nl['before'] ?? [], $nl['request'] ?? [], 'a page view\'s run ');
+ok(!in_array('schema_migrations', $nl['request']['tables'] ?? ['schema_migrations'], true), 'it did not make the ledger\'s table');
+ok(str_contains($nl['request']['said']['log'] ?? '', 'students ' . ($nl['before']['counts']['students'] ?? -1)), 'the log line names the tables with rows, students among them');
+is_same([], $nl['empty_ledger']['ledger'] ?? null, 'with the ledger\'s table there but empty');
+$refusedAs('b', $nl['empty_ledger_before'] ?? [], $nl['empty_ledger'] ?? [], 'the run ');
+
+case_('An empty database over a folder a portal has used is refused, by a page view\'s run and by setup\'s, and nothing is written [ADR 0029 §1 (c)]');
+$em = $re['emptied'] ?? [];
+is_same([], $em['before']['tables'] ?? null, 'every table was deleted, as INSTALL.md\'s restore begins');
+is_same($start['stamp'] ?? null, $em['before']['stamp'] ?? null, 'with the stamp still there');
+$refusedAs('c', $em['before'] ?? [], $em['request'] ?? [], 'a page view\'s run ');
+$refusedAs('c', $em['before'] ?? [], $em['install'] ?? [], 'setup\'s run, with the safeguards waived, ');
+ok(str_contains($em['request']['said']['log'] ?? '', 'schema.stamp'), 'the log line names the stamp');
+is_same([], $em['install']['tables'] ?? null, 'afterwards no table exists, schema_migrations included');
+is_same($em['before']['copies'] ?? null, $em['install']['copies'] ?? 'changed', 'storage/backups holds the same files');
+is_same($em['before']['files'] ?? null, $em['install']['files'] ?? 'changed', 'and every upload is still there: the step after the files never ran');
+
+case_('A copy keeps the portal closed from its first statement to its last, and its last statement opens it [ADR 0029 §1 (a), §4]');
+$im = $re['importing'] ?? [];
+foreach (['marker' => 'after the marker is made', 'accounts' => 'after accounts', 'payment_proofs' => 'after payment_proofs',
+          'ledger' => 'after the ledger\'s last row', 'before_last' => 'with only the final DROP to go'] as $stop => $what) {
+    $round = $im['rounds'][$stop] ?? [];
+    is_same(null, $at($round, 'import_error'), 'the copy ran ' . $what);
+    ok(in_array(IMPORT_UNFINISHED_TABLE, $round['before']['tables'] ?? [], true), $what . ', the marker is there');
+    $refusedAs('a', $round['before'] ?? [], $round['request'] ?? [], $what . ', a run ');
+    ok(str_contains($round['request']['said']['log'] ?? '', IMPORT_UNFINISHED_TABLE), $what . ', the log line names the table');
+}
+is_same([IMPORT_UNFINISHED_TABLE], $im['rounds']['marker']['before']['tables'] ?? null, 'after the marker nothing else exists');
+$refusedAs('a', $im['rounds']['marker']['before'] ?? [], $im['rounds']['marker']['install'] ?? [], 'and setup\'s run, with the safeguards waived, ');
+is_same($fullLedger, array_values(array_intersect(array_column($im['rounds']['ledger']['before']['ledger'] ?? [], 'version'), $fullLedger)),
+        'after the ledger\'s last row the ledger is full, which alone would let the run through');
+ok(!in_array('settings', $im['rounds']['ledger']['before']['tables'] ?? ['settings'], true), 'while settings has not arrived yet');
+is_same(null, $at($im, 'last_error'), 'the last statement runs');
+$done = $im['done'] ?? [];
+ok(array_key_exists('said', $done) && $done['said'] === null, 'and the next run passes: the portal opens by itself');
+ok(!in_array(IMPORT_UNFINISHED_TABLE, $done['tables'] ?? [IMPORT_UNFINISHED_TABLE], true), 'the marker is gone');
+ok(is_string($done['stamp'] ?? null) && $done['stamp'] !== '', 'the stamp is written');
+is_same(null, $at($done, 'record'), 'no update is unfinished');
+is_same($start['copies'] ?? null, array_values(array_diff($done['copies'] ?? [], [$re['copy'] ?? ''])), 'and no copy was written during any of it');
+is_same($start['counts'] ?? null, $done['counts'] ?? null, 'every guarded table has as many rows as the portal had');
+is_same($except($re['portal']['sums'] ?? [], ['settings']), $except($done['portal']['sums'] ?? [], ['settings']),
+        'and every table but the settings, which the run marks, has every row it had, to the engine\'s checksum');
+
+case_('An import that stopped keeps the portal closed, and the same copy imported again opens it with every row once [ADR 0029 §4]');
+$ag = $re['again'] ?? [];
+is_same(null, $at($ag, 'first_error'), 'the copy ran up to payment_proofs and stopped');
+$refusedAs('a', $ag['stopped_before'] ?? [], $ag['stopped'] ?? [], 'the run ');
+is_same(null, $at($ag, 'second_error'), 'the same copy, imported again from its first statement, runs through: the marker is made IF NOT EXISTS, and each table dropped before it is made');
+ok(array_key_exists('said', $ag['done'] ?? []) && $ag['done']['said'] === null, 'then the run passes');
+is_same($start['counts'] ?? null, $ag['done']['counts'] ?? null, 'with every guarded table at the rows the portal had: nothing twice, nothing missing');
+is_same($except($re['portal']['sums'] ?? [], ['settings']), $except($ag['done']['portal']['sums'] ?? [], ['settings']), 'and every row as it was, to the engine\'s checksum');
+
+case_('A new install still installs, and copies nothing [ADR 0029 §3, §4]');
+$fr = $re['fresh'] ?? [];
+is_same([null, []], [$at($fr, 'before', 'stamp'), $at($fr, 'before', 'tables')], 'no stamp, no table');
+ok(array_key_exists('said', $fr['request'] ?? []) && $fr['request']['said'] === null, 'the run passes');
+is_same($fullLedger, array_column($fr['request']['ledger'] ?? [], 'version'), 'the ledger is complete');
+ok(is_string($fr['request']['stamp'] ?? null) && $fr['request']['stamp'] !== '', 'the stamp is written');
+is_same($fr['before']['copies'] ?? null, $fr['request']['copies'] ?? 'changed', 'and storage/backups holds no new copy: a database that holds nothing is not copied');
+
+case_('A new portal on a used folder: the stamp deleted by hand, the run passes and the old portal\'s copies stay [ADR 0029 §4]');
+$uf = $re['used_folder'] ?? [];
+is_same(null, $at($uf, 'before', 'stamp'), 'the stamp was deleted');
+ok(count($uf['before']['copies'] ?? []) > BACKUP_KEEP, 'beside more copies than are kept: ' . count($uf['before']['copies'] ?? []));
+ok(array_key_exists('said', $uf['request'] ?? []) && $uf['request']['said'] === null, 'the run passes');
+is_same($uf['before']['copies'] ?? null, $uf['request']['copies'] ?? 'changed', 'and every copy is still there: none was written, so none was pruned');

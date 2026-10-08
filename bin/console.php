@@ -36,8 +36,16 @@ try{
     // added meanwhile could make up a count that fell and hide what is missing.
     // An allowlist, so a command added later is refused until somebody decides
     // otherwise (ADR 0027 §3).
-    if(schema_is_unfinished()&&!in_array($command,['check','status','migrate','update','maintenance:on','maintenance:off'],true))
-        throw new RuntimeException('An update is unfinished ('.schema_unfinished_file().'), so until it has passed only check, status, migrate, update, maintenance:on and maintenance:off run; UPDATING.md, "A refused update", says what to do.');
+    if(!in_array($command,['check','status','migrate','update','maintenance:on','maintenance:off'],true)){
+        if(schema_is_unfinished())
+            throw new RuntimeException('An update is unfinished ('.schema_unfinished_file().'), so until it has passed only check, status, migrate, update, maintenance:on and maintenance:off run; UPDATING.md, "A refused update", says what to do.');
+        // The same list while a copy is being restored (ADR 0029 §3): backup
+        // would copy an empty or half database over the copy being restored,
+        // maintenance would sweep the uploads whose rows have not arrived, and
+        // billing:run and mail:work would work on half the rows.
+        if(($restoring=schema_restore_refusal())!==null)
+            throw new RuntimeException($restoring->getMessage().' Until then only check, status, migrate, update, maintenance:on and maintenance:off run.');
+    }
     if($command==='maintenance:on'){
         if(file_put_contents(maintenance_file(),now().PHP_EOL)===false)throw new RuntimeException('Cannot create maintenance file.');
         echo "Maintenance enabled. New web requests and mail workers are paused. Let running requests finish before migrating.\n";exit;
@@ -129,6 +137,12 @@ try{
         echo "Update complete.\n";exit;
     }
     if($command==='backup'){
+        // backup_database() directly, past the runner, so the runner's rule is
+        // repeated here: no copy of a database that holds nothing (ADR 0029 §3).
+        // With the stamp deleted by hand and before the first page view, nothing
+        // else refuses, and a copy of nothing could push an old one out of the five.
+        if(schema_first_install())
+            throw new RuntimeException('No copy written: the database holds nothing - its ledger records no migration and every guarded table is empty - and a copy of nothing could only push an older one out (ADR 0029 §3).');
         echo backup_database($argv[2]??'manuell').PHP_EOL;
         echo "Restore by importing that file into an empty database.\n";exit;
     }
@@ -183,6 +197,11 @@ try{
         exit($result['ok']?0:1);
     }
     if($command==='maintenance'){
+        // As mail:work: nothing is swept while maintenance mode is on. INSTALL.md
+        // has the owner switch it on before a restore, and this is the cron job
+        // that would otherwise run on through it (ADR 0029 §6).
+        if(is_file(maintenance_file()))
+            throw new RuntimeException('Maintenance mode is on ('.maintenance_file().'), so nothing is pruned. Switch it off first: php bin/console.php maintenance:off');
         prune_expired();
         set_setting('prune_last_run',now());
         echo "Expired tokens and temporary request records removed.\n";exit;

@@ -251,21 +251,48 @@ zeigt, welche Migration wo stehen geblieben ist, statt halb aktualisiert zu
 
 ### Wiederherstellen
 
-Zuerst die Programmdateien hochladen, die zur Sicherung gehören: eine Sicherung
-von vor einer Aktualisierung gehört zur vorherigen Version, also deren ZIP. Das
-Portal bleibt dabei geschlossen. Erst die Dateien, dann die Datenbank:
-andersherum würden die neueren Dateien ihre Datenbankänderungen beim nächsten
-Aufruf noch einmal anwenden.
+Zuerst den **Wartungsmodus einschalten**: unter **Einstellungen → System**, oder
+im Dateimanager eine leere Datei `storage/maintenance.flag` anlegen. Solange er
+an ist, sehen Familien und Trainer „Das Portal wird gerade aktualisiert“, und
+das Portal verschickt nichts, legt nichts an und räumt nichts auf – auch dann
+nicht, wenn die Tabellen gerade fehlen oder erst halb wieder da sind. Als
+Administrator bleibst du angemeldet; öffne trotzdem keine Seite, bis die
+Sicherung ganz drin ist.
+
+Dann die Programmdateien hochladen, die zur Sicherung gehören: eine Sicherung
+von vor einer Aktualisierung gehört zur vorherigen Version, also deren ZIP.
+Erst die Dateien, dann die Datenbank: andersherum würden die neueren Dateien
+ihre Datenbankänderungen beim nächsten Aufruf noch einmal anwenden.
 
 Dann im Hosting-Panel **phpMyAdmin** öffnen, die Datenbank auswählen, unter
 **Exportieren** zur Sicherheit den aktuellen Stand herunterladen, dann alle
 Tabellen löschen und unter **Importieren** die gewünschte Datei aus
 `storage/backups` einspielen. Die Datei bringt ihre eigenen Tabellen mit und
-lässt sich auch zweimal einspielen.
+lässt sich auch zweimal einspielen. Jede Sicherung, die das Portal ab dieser
+Version schreibt, legt als Erstes eine Tabelle `import_unfinished` an und
+löscht sie mit ihrer letzten Zeile wieder: solange sie da ist, weiß das Portal,
+dass gerade eingespielt wird, bleibt geschlossen und legt weder etwas an noch
+räumt es auf – wer die Seite aufruft, ob mit oder ohne Wartungsmodus; auch
+Versand, Beiträge und Aufräumen im Hintergrund warten von selbst. Bricht das
+Einspielen ab, dieselbe Datei noch einmal einspielen; jede Tabelle wird darin
+vor dem Anlegen gelöscht, nichts wird doppelt. Eine Sicherung von vor dieser
+Version, oder eine im Hosting-Panel exportierte, hat diese Tabelle nicht; bei
+ihr erkennt das Portal nur am Fehlen seiner Liste der Datenbankänderungen, dass
+noch eingespielt wird, und sobald die Liste drin ist, hält es die Datenbank für
+fertig. Eine solche Sicherung deshalb mit den Dateien ihrer eigenen Version
+einspielen und mit eingeschaltetem Wartungsmodus, der bis zum Ende an bleibt.
 
-Danach das Portal öffnen. Wurde eine Aktualisierung abgelehnt, weil Datensätze
-fehlten, zählt das Portal nach: sind alle wieder da, öffnet es sich von selbst;
-sonst nennt die Seite, was noch fehlt.
+Zuletzt den **Wartungsmodus ausschalten** – unter Einstellungen → System, oder
+die Datei löschen – und das Portal öffnen. Wurde eine Aktualisierung
+abgelehnt, weil Datensätze fehlten, zählt das Portal nach: sind alle wieder
+da, öffnet es sich von selbst; sonst nennt die Seite, was noch fehlt. Ohne
+Wartungsmodus zeigt das Portal, solange die Tabellen fehlen oder das Einspielen
+läuft, „Das Portal ist vorübergehend geschlossen.“ mit einem der drei Sätze
+unten in [Wenn etwas nicht klappt](#wenn-etwas-nicht-klappt); diese Seite lädt
+sich alle fünf Minuten neu und öffnet das Portal von selbst, sobald die
+Sicherung ganz eingespielt ist. Ein Ordner `storage` gehört zu genau einem
+Portal: zwei Portale, die ihn teilen, löschen einander Belege, Fotos und
+Sicherungen.
 
 ## Optional: Cronjob statt Seitenaufruf
 
@@ -332,6 +359,9 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 | „Vor der Aktualisierung konnte keine Sicherung angelegt werden“ | Rechte für `storage` auf `755` setzen. Oder im Panel selbst eine Sicherung anlegen und danach im Ordner `storage` eine leere Datei `skip-backup` erstellen; sie gilt für genau ein Update. |
 | „Vor der Aktualisierung konnte das Portal im Ordner storage nicht schreiben“ | Dem Ordner `storage` Schreibrechte geben (`755`) und neu laden. Das Portal hat dabei nichts geändert und keine Sicherung angelegt. |
 | Jedes Foto und jeder Beleg wird abgelehnt, auch eine Datei, die in Ordnung ist | Unter **Einstellungen → System** nachsehen: Steht dort „Es fehlt: Fotos und Belege hochladen (fileinfo)“, im Hosting-Panel die PHP-Erweiterung `fileinfo` aktivieren. |
+| „Gerade wird eine Sicherung eingespielt, oder das Einspielen ist abgebrochen.“ | Warten, bis phpMyAdmin fertig meldet, dann die Seite neu laden; sie lädt sich alle fünf Minuten von selbst neu. Ist das Einspielen abgebrochen: dieselbe Datei in phpMyAdmin noch einmal einspielen, nichts wird doppelt. Kommt das Ende der Datei nie an, weil sie beschädigt ist: in phpMyAdmin die Tabelle `import_unfinished` löschen – das Portal nimmt die Datenbank dann so, wie sie ist ([UPDATING.md](UPDATING.md#a-refused-update), „A refused update“). |
+| „In der Datenbank fehlt die Tabelle schema_migrations, die jedes Portal hat.“ | Wird gerade eine Sicherung von vor dieser Version oder eine aus dem Panel eingespielt: warten, bis phpMyAdmin fertig meldet, dann neu laden; abgebrochen: dieselbe Datei noch einmal einspielen. Wird nichts eingespielt, nennt `config/config.php` eine fremde Datenbank: die richtige eintragen. Das Portal hat nichts verändert. |
+| „Die Datenbank ist leer, aber in diesem Ordner lief schon ein Portal.“ | Beim Wiederherstellen: die Sicherung in phpMyAdmin einspielen, dann neu laden. Soll hier wirklich ein neues, leeres Portal entstehen: im Dateimanager `storage/schema.stamp` löschen und neu laden – Belege und Fotos des alten Portals werden danach gelöscht, seine Sicherungen in `storage/backups` bleiben. Die Einrichtungsseite sagt denselben Satz, wenn sie auf eine neue Datenbank zeigt, aber im Ordner eines alten Portals liegt. |
 | „Die hochgeladenen Dateien sind älter als die Datenbank“ | Das falsche Paket hochgeladen. Die neueste Version holen und noch einmal entpacken. |
 | „Die hochgeladenen Dateien sind unvollständig“ | Das Entpacken ist abgebrochen, oder der Upload lief über FTP im Textmodus. Noch einmal hochladen, FTP auf Binärmodus stellen. |
 | E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang** (unter **Nachrichten**), dort steht der Fehler der letzten Zustellung. |

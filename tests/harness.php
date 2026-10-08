@@ -269,11 +269,7 @@ function test_reset(): void {
     } finally {
         db()->exec('SET FOREIGN_KEY_CHECKS=1');
     }
-    // A running portal always has the migrations ledger: schema_apply() creates
-    // it before anything else, and a page reads it (version_applied_count()).
-    // The harness applies the migration files directly, and the install suite
-    // drops the ledger on purpose, so it is put back - empty - for every suite.
-    run('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
+    test_ledger_recorded();
     // The counter connection is separate by design, so clear it through itself.
     run_counter('DELETE FROM rate_limits');
     setting_cache_clear();
@@ -287,6 +283,24 @@ function test_reset(): void {
     payment_cache_clear();
     setup_cache_clear();
     error_capture_reset();
+}
+
+/**
+ * The migrations ledger as a running portal has it: present, and recording every
+ * shipped migration.
+ *
+ * schema_apply() creates the ledger before anything else and records every file
+ * it applies, and a page reads it (version_applied_count()). The harness applies
+ * the migration files directly, and the install suite drops the ledger on
+ * purpose, so it is put back for every suite - and by a case that needs a
+ * running portal after one that dropped it. Empty or missing, the database reads
+ * as data without a ledger, a copy being imported (ADR 0029 §1 (b)): the sweep
+ * deletes nothing and the tick does nothing, in any suite.
+ */
+function test_ledger_recorded(): void {
+    run('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
+    foreach (migration_files() as $file)
+        run('INSERT IGNORE INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)', [basename($file), hash_file('sha256', $file), now()]);
 }
 
 function test_has_table(string $name): bool {

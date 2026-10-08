@@ -300,7 +300,13 @@ Each request compares the migration files on disk against what the database
 records as applied. On the common path that is one file read and nothing else.
 When they differ, an advisory database lock is taken first, so two visitors
 arriving together cannot both migrate — the second one waits, then finds nothing
-left to do. Then, inside that lock and **before the database is touched at all**:
+left to do. Inside that lock the portal first asks whether the database is its
+own to touch: while a copy is being imported — the copy's first statement makes
+a table `import_unfinished`, its last drops it — or the ledger records no
+migration while tables have rows, or everything is empty over a folder a portal
+has run on, it answers the closed page and changes nothing, the ledger's own
+table included ([A refused update](#a-refused-update), ADR 0029). Otherwise,
+still inside the lock and **before the database is touched at all**:
 
 1. **Are these files newer than the database?** If the database records
    migrations these files do not contain, this is a downgrade: the wrong package,
@@ -408,11 +414,44 @@ alike, and maintenance mode does not change that. The console runs only `check`,
 `status`, `migrate`, `update`, `maintenance:on` and `maintenance:off`; mail,
 billing, the nightly cleanup and `backup` wait. Any other command stops with one
 sentence saying that an update is unfinished, and exits with 1; a cron job set
-up in the panel fails the same way each time it runs. Anything else that added
+up in the panel fails the same way each time it runs. The same list holds while
+a copy is being imported (below), with that as the sentence, and
+`php bin/console.php maintenance` stops with exit 1 while `storage/maintenance.flag`
+is there, as `mail:work` does, so a cron job for it fails each run meanwhile
+and sweeps nothing. Anything else that added
 rows could make up a count that fell and hide what is missing. On a server with
 a shell, `php bin/console.php check` is the quickest look: it prints the row
 counts, `null` for a table that is gone, and then names the missing table in one
 sentence that points here, ending with exit code 1.
+
+**While a copy is being imported** the portal is closed as well, from the
+copy's first statement to its last: every copy the portal writes from this
+version on begins by making a table `import_unfinished` and ends by dropping
+it, and while that table exists nothing is run, copied or swept, by a page
+view, the background work or the console (ADR 0029). The closed page says so
+in phpMyAdmin's words and reloads itself every five minutes, so a tab left open
+opens the portal by itself once the whole copy is in; a page view does the same.
+An import that stopped leaves the table there and the page the same: import the
+same file again, and each table is dropped before it is made, so nothing is
+doubled. The background work — mail, charges, the nightly cleanup — stays out
+by itself meanwhile, with or without maintenance mode. A copy from before this
+version, or one exported in the hosting panel, has no such table and is judged
+by its ledger: while `schema_migrations` is missing and tables have rows, the
+portal takes a copy to be on its way in and stays closed; once the ledger is in,
+it takes the database for its own, whatever the copy still has to bring. So
+restore such a copy with the files of its own version and with maintenance mode
+on until the import has finished. While everything is empty under a folder a
+portal has run on (`storage/schema.stamp` exists), the portal stays closed too
+and says how a new, empty portal would start there instead. INSTALL.md's
+„Wiederherstellen" has the steps, maintenance mode on first and off last,
+because the page path serves pages while the tables are gone.
+
+**The last way out of an import that never ends.** A damaged copy whose last
+statement never arrives leaves `import_unfinished` behind for good. Dropping
+that table in phpMyAdmin tells the portal to accept the database as it is: the
+next page view runs as after any import, with whatever the copy brought. Do it
+only once the copy has given all it can; the closed page offers the way that
+loses nothing first.
 
 **The last way out.** `storage/update-unfinished.json` holds the numbers from
 before. Deleting it tells the portal to accept the database as it is: the next
@@ -426,7 +465,13 @@ same, and takes the copies with it.
 ## Backups
 
 A full SQL dump of every table, written before any migration runs. Plain SQL
-because that is what the import screen in every hosting panel accepts.
+because that is what the import screen in every hosting panel accepts. From this
+version on, every copy begins by making a table `import_unfinished`, with a
+comment phpMyAdmin shows, and ends by dropping it, so the portal knows an import
+is under way (ADR 0029; [A refused update](#a-refused-update)). No copy is
+written of a database that holds nothing — by an update, or by
+`php bin/console.php backup`, which refuses it with exit 1: it would have
+nothing to restore and would push out one that has.
 
 - **Where:** `storage/backups`, beside the maintenance flag, so a deployment with
   separate release folders keeps them across a switch. The folder denies itself

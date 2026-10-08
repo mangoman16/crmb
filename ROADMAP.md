@@ -80,13 +80,13 @@ In this order.
    before an update stay in `storage/update-unfinished.json` until a run passes; until then
    no page is served and nothing writes, and the portal reopens by itself once the rows are
    back. The restore walk in TESTING.md (G.1–G.9) has not been walked in a real phpMyAdmin.
-8. **A restore keeps the portal closed until its import is done (ADR 0029): decided, to be
-   built** after the round-2 follow-ups. Today, during INSTALL.md's restore, a page opened
-   between deleting the tables and importing installs afresh and copies the empty database
-   over the copies kept (the round-2 follow-ups stop it sweeping the uploads). With 0029, every
+8. **A restore keeps the portal closed until its import is done (ADR 0029): done.** Every
    copy the portal writes says when its import is done; until then nothing changes the
-   database, sweeps or copies, and the portal opens by itself afterwards. database-engineer builds `app/schema.php` and `app/backup.php`,
-   devops-engineer setup, the console and the sweep's gate. Needed before real families.
+   database, sweeps, copies or runs in the background, the closed page says what to do in
+   phpMyAdmin's words and reloads itself, and the portal opens by itself once the whole copy
+   is in. A copy from before this release has no marker and is restored with the files of its
+   own version and maintenance mode on (INSTALL.md). The restore walk (TESTING.md G.1–G.9,
+   H.1–H.5, 21.8) has not been walked in a real phpMyAdmin.
 9. **Robustness suite: done** (`aa5b1b7`). `tests/suites/robustness.php` sends unexpected values
    to every action as every role and draws every page with them; 751 checks, about 45 s.
    What it cannot reach — uploads, actions no page draws a form for — it lists after a run.
@@ -226,6 +226,10 @@ For the owner to do:
 
 ## For the owner to test or deploy
 
+- **The restore, in your hosting panel's phpMyAdmin** (TESTING.md H.1–H.5 and G.1–G.9, test
+  data only): import a copy from `storage/backups`, open the portal in between and see it
+  closed with the sentence, see it open by itself afterwards; stop an import halfway and
+  import the file again. Nobody has walked this in a real phpMyAdmin yet.
 - **Example logins stop working 14 days after the data was filled** (round 3). Remove the
   example data and fill it again for fresh ones; the password is four made-up words, shown
   once. A child who was pinned to an age group and has no birth date shows no age group after

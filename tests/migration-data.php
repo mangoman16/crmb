@@ -91,6 +91,9 @@ require_once APP_ROOT . '/app/core.php';
 // schema_guarded_tables(): what an update must not lose a row of, read from the
 // runner rather than listed a second time here.
 require_once APP_ROOT . '/app/schema.php';
+// ... and the copies' marker it asks before anything is written or swept
+// (import_unfinished(), ADR 0029).
+require_once APP_ROOT . '/app/backup.php';
 // The runner's step after the files (database/defaults.php): the sign-in
 // comparison hash among it, with what that needs to write and to read a
 // setting.
@@ -1344,6 +1347,10 @@ mkdir($release . '/database/migrations', 0700, true);
 foreach (glob(APP_ROOT . '/database/migrations/*.sql') ?: [] as $file) copy($file, $release . '/database/migrations/' . basename($file));
 copy(APP_ROOT . '/database/defaults.php', $release . '/database/defaults.php');
 copy(APP_ROOT . '/VERSION', $release . '/VERSION');
+// The privacy drafts, which the seed a first install runs once reads: the
+// restore scenarios at the end install afresh through the runner.
+mkdir($release . '/docs', 0700);
+foreach (['privacy-draft-de.txt', 'privacy-draft-en.txt'] as $draft) copy(APP_ROOT . '/docs/' . $draft, $release . '/docs/' . $draft);
 // Defined once, here: had anything defined it already, the runner would read the
 // shipped files rather than this release, and nothing below would be what it says.
 if (defined('ROOT')) { fwrite(STDERR, "ROOT is already defined, so the runner would not read this run's own release.\n"); exit(2); }
@@ -1351,7 +1358,6 @@ define('ROOT', $release);
 // What schema_apply() needs beyond the files above: the manifest check, the backup
 // and the version it records.
 require_once APP_ROOT . '/app/install.php';
-require_once APP_ROOT . '/app/backup.php';
 require_once APP_ROOT . '/app/version.php';
 $GLOBALS['config']['maintenance_file'] = test_run_dir() . '/maintenance.flag';
 
@@ -1425,15 +1431,18 @@ $thisRelease = array_values(array_filter(glob(APP_ROOT . '/database/migrations/*
                                          fn(string $path): bool => strcmp(basename($path), '032') >= 0));
 $runner = ['written' => $written, 'files' => $files, 'previous_step_error' => $previousStepError,
            'shipped' => array_combine(array_map('basename', $thisRelease), array_map(fn(string $path): string => hash_file('sha256', $path), $thisRelease))];
-// What the update said, rather than this process stopping on it.
-$update = static function (): ?array {
-    try { schema_apply(); return null; }
+// What a run said, rather than this process stopping on it: null when it passed.
+$outcome = static function (callable $run): ?array {
+    try { $run(); return null; }
     catch (Throwable $e) {
         return ['class' => get_class($e), 'log' => $e->getMessage()]
             + ($e instanceof UpdateBlocked ? ['de' => $e->de, 'en' => $e->en] : [])
             + ($e instanceof SchemaError ? ['statement' => $e->statement, 'summary' => $e->summary()] : []);
     }
 };
+// A page view's run, with the safeguards; setup's waives them (schema_first_install()).
+$update = fn(): ?array => $outcome(fn() => schema_apply());
+$install = fn(): ?array => $outcome(fn() => schema_apply(null, safeguards: false));
 // Null when there is no ledger at all, as after an import that broke off before it.
 $ledger = function () use ($pdo): ?array {
     try { return $pdo->query('SELECT version, checksum FROM schema_migrations ORDER BY version')->fetchAll(); }
@@ -1646,8 +1655,123 @@ foreach (['033', '034', '035', '036', '037'] as $stop) {
     $restarted[$stop] = $round;
 }
 
+// --- a restore keeps the portal closed until its import is done (ADR 0029) -------------
+// On the portal the last round left - data, its ledger full, the stamp written by
+// a run that passed - the three states in which nothing may touch the database,
+// each met the way a restore meets it: the ledger dropped under the data (b); every
+// table deleted, as INSTALL.md's restore begins (c); then the portal's own copy,
+// which the engine wrote with the marker, imported statement by statement and the
+// run tried at each stop (a), through to its last statement, which opens the
+// portal; the import stopped and the same copy imported again; and, with the
+// stamp deleted, a new install on the used folder, which copies nothing. The
+// states are read without the settings table, which a restore takes away too.
+$clean();
+$restoreState = function () use ($pdo, $ledger, $record, $onDisk): array {
+    clearstatcache();
+    setting_cache_clear();
+    return ['ledger' => $ledger(), 'copies' => array_column(backups(), 'name'),
+            'stamp' => is_file(schema_stamp_file()) ? (string)file_get_contents(schema_stamp_file()) : null,
+            'record' => $record(), 'counts' => guarded_counts($pdo),
+            'tables' => array_column($pdo->query('SELECT table_name AS name FROM information_schema.tables'
+                . ' WHERE table_schema = DATABASE() ORDER BY table_name')->fetchAll(), 'name'),
+            'files' => $onDisk()];
+};
+$restoreRequest = function (callable $run) use ($restoreState): array {
+    clearstatcache();
+    setting_cache_clear();
+    return ['said' => $run()] + $restoreState();
+};
+// The copy's statements run from one to another, as an import that stops partway
+// runs them: what the engine refused, or null when it took them all.
+$importSteps = function (array $statements, int $from, int $to) use ($pdo): ?string {
+    for ($i = $from; $i < $to; $i++) {
+        try { $pdo->exec($statements[$i]); }
+        catch (PDOException $e) { return 'statement ' . ($i + 1) . ': ' . $e->getMessage(); }
+    }
+    return null;
+};
+$restore = ['portal' => every_table($pdo), 'before' => $restoreState()];
+// The copy the portal itself writes of this portal, marker and all.
+$restoreCopy = backup_database('wiederherstellung');
+$restore['copy'] = basename($restoreCopy);
+$copyStatements = split_sql((string)file_get_contents($restoreCopy));
+$restore['copy_statements'] = count($copyStatements);
+$restore['copied'] = $restoreState();
+
+// (b) The ledger gone from under the data, then there but empty.
+$pdo->exec('DROP TABLE schema_migrations');
+$noLedger = ['before' => $restoreState()];
+$noLedger['request'] = $restoreRequest($update);
+$pdo->exec('CREATE TABLE schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+$noLedger['empty_ledger_before'] = $restoreState();
+$noLedger['empty_ledger'] = $restoreRequest($update);
+$restore['no_ledger'] = $noLedger;
+
+// (c) Every table deleted, as the restore begins: a page view's run, then setup's.
+drop_every_table($pdo);
+$wiped = ['before' => $restoreState()];
+$wiped['request'] = $restoreRequest($update);
+$wiped['install'] = $restoreRequest($install);
+$restore['emptied'] = $wiped;
+
+// (a) The copy imported statement by statement, the run tried at each stop: after
+// the marker is made, after accounts, after payment_proofs, after the ledger's
+// last row, and with only the final DROP to go. Then the last statement.
+$dropOf = fn(string $table): int => (int)array_search('DROP TABLE IF EXISTS `' . $table . '`', $copyStatements, true);
+$order = [];
+foreach ($copyStatements as $statement)
+    if (preg_match('/^DROP TABLE IF EXISTS `([a-z_]+)`$/', $statement, $m) && $m[1] !== IMPORT_UNFINISHED_TABLE) $order[] = $m[1];
+$after = fn(string $table): int => $dropOf($order[array_search($table, $order, true) + 1]);
+$marker = array_search(true, array_map(fn(string $statement): bool => str_starts_with($statement, 'CREATE TABLE IF NOT EXISTS `' . IMPORT_UNFINISHED_TABLE . '`'), $copyStatements), true);
+$stops = ['marker' => (int)$marker + 1, 'accounts' => $after('accounts'), 'payment_proofs' => $after('payment_proofs'),
+          'ledger' => $after('schema_migrations'), 'before_last' => count($copyStatements) - 1];
+$importing = ['order' => $order, 'marker_at' => $marker, 'stops' => $stops, 'rounds' => []];
+$ran = 0;
+foreach ($stops as $name => $upto) {
+    $round = ['import_error' => $importSteps($copyStatements, $ran, $upto)];
+    $ran = $upto;
+    $round['before'] = $restoreState();
+    $round['request'] = $restoreRequest($update);
+    if ($name === 'marker') $round['install'] = $restoreRequest($install);
+    $importing['rounds'][$name] = $round;
+}
+$importing['last_error'] = $importSteps($copyStatements, $ran, count($copyStatements));
+$importing['done'] = $restoreRequest($update) + ['portal' => every_table($pdo)];
+$restore['importing'] = $importing;
+
+// The import stopped at payment_proofs, then the same copy imported again from
+// its first statement.
+drop_every_table($pdo);
+$again = ['first_error' => $importSteps($copyStatements, 0, $stops['payment_proofs'])];
+$again['stopped_before'] = $restoreState();
+$again['stopped'] = $restoreRequest($update);
+$again['second_error'] = $importSteps($copyStatements, 0, count($copyStatements));
+$again['done'] = $restoreRequest($update) + ['portal' => every_table($pdo)];
+$restore['again'] = $again;
+
+// A new install: no stamp, no table. Then one on a used folder with the stamp
+// deleted by hand, beside more copies than are kept, which a copy would prune.
+drop_every_table($pdo);
+unlink(schema_stamp_file());
+$fresh = ['before' => $restoreState()];
+$fresh['request'] = $restoreRequest($update);
+$restore['fresh'] = $fresh;
+drop_every_table($pdo);
+unlink(schema_stamp_file());
+$planted = [];
+for ($n = 1; $n <= BACKUP_KEEP; $n++) {
+    $planted[] = $name = '2026-01-0' . $n . '-000000-alt-0000000' . $n . '.sql';
+    file_put_contents(backup_dir() . '/' . $name, "-- an old copy\n");
+    touch(backup_dir() . '/' . $name, time() - 86400 * (BACKUP_KEEP + 1 - $n));
+}
+$used = ['planted' => $planted, 'before' => $restoreState()];
+$used['request'] = $restoreRequest($update);
+$restore['used_folder'] = $used;
+foreach ($planted as $name) @unlink(backup_dir() . '/' . $name);
+@unlink($restoreCopy);
+
 $result['runner'] = $runner + ['mistake' => $mistake, 'off_list' => $offList, 'emptied' => $emptied, 'halfway' => $halfway,
                                'stopping' => $stopping, 'uncopied' => $uncopied, 'unwritable' => $unwritable, 'unreadable' => $unreadable,
-                               'restarted' => $restarted];
+                               'restarted' => $restarted, 'restore' => $restore];
 
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

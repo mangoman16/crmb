@@ -100,6 +100,12 @@ function run_background_tasks(): void {
  * in their language.
  */
 function tick_work(): void {
+    // Nothing while a copy is being restored. A restore that keeps the files is
+    // not refused by the page path (ADR 0029 §6), so the tick after a page view
+    // would mail, sweep and bill on a database being emptied or imported, and
+    // only the owner's maintenance flag kept it out. One information_schema
+    // query and a COUNT(*), at most once a minute.
+    if (schema_restore_refusal()) return;
     foreach (['mail' => tick_mail(...), 'prune' => tick_prune(...), 'billing' => tick_billing(...)] as $name => $job) {
         try { as_the_portal($job); }
         catch (Throwable $e) {

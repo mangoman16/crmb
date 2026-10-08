@@ -79,7 +79,30 @@ function backup_database(string $reason = 'update'): string {
     return $path;
 }
 
-/** The dump itself. Split out so the failure path above has one place to clean up. */
+/**
+ * The table a copy makes before it drops its first table, and drops as its last
+ * statement: while it exists, a copy is being imported into this database, or its
+ * import stopped, and nothing but the import touches it (ADR 0029). It is not
+ * schema: no migration makes it, the ledger never records it, and the portal
+ * itself never makes, fills or drops it. Its name is spelled here only.
+ */
+const IMPORT_UNFINISHED_TABLE = 'import_unfinished';
+
+/** Whether a copy is being imported into this database, or its import stopped. */
+function import_unfinished(): bool {
+    return (bool)scalar('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+                        [IMPORT_UNFINISHED_TABLE]);
+}
+
+/**
+ * The dump itself. Split out so the failure path above has one place to clean up.
+ *
+ * It opens and closes with the marker of an import in progress: made after the
+ * SET lines, so its comment is read as utf8mb4, and before the first table is
+ * dropped; dropped as the very last statement, so that only an import that got
+ * through every row takes it away. IF NOT EXISTS, because a copy whose import
+ * stopped is imported again from its first statement, as INSTALL.md says it can.
+ */
 function backup_write($handle, PDO $reader, string $reason): void {
     // fwrite reports a short write by returning fewer bytes than it was given,
     // not by returning false, and a disk that fills up mid-dump does exactly
@@ -97,7 +120,10 @@ function backup_write($handle, PDO $reader, string $reason): void {
     $put("-- Badminton CRM " . (database_version() !== '' ? database_version() : app_version()) . " — " . $reason . "\n"
        . "-- " . gmdate('Y-m-d H:i:s') . " UTC\n"
        . "-- Restore by importing this file into an EMPTY database in the hosting panel.\n"
-       . "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\nSET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n\n");
+       . "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\nSET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n\n"
+       . "CREATE TABLE IF NOT EXISTS `" . IMPORT_UNFINISHED_TABLE . "` (importing TINYINT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+       . " COMMENT='Eine Sicherung wird gerade eingespielt. Ihre letzte Zeile löscht diese Tabelle wieder."
+       . " A copy is being imported. Its last statement drops this table.';\n\n");
     foreach (backup_tables($reader) as $table) {
         $quoted = '`' . sql_name($table, 'table') . '`';
         $create = $reader->query('SHOW CREATE TABLE ' . $quoted)->fetch(PDO::FETCH_NUM);
@@ -115,13 +141,18 @@ function backup_write($handle, PDO $reader, string $reason): void {
         $put("-- " . $count . " rows\n\n");
     }
     $put("SET FOREIGN_KEY_CHECKS=1;\n");
+    $put("DROP TABLE IF EXISTS `" . IMPORT_UNFINISHED_TABLE . "`;\n");
 }
 
-/** Base tables only; a view would be dumped as data it does not own. */
+/**
+ * Base tables only; a view would be dumped as data it does not own. Never the
+ * marker of an import in progress: a copy makes it first and drops it last, and
+ * nowhere else (ADR 0029 §2).
+ */
 function backup_tables(PDO $reader): array {
     $tables = [];
     foreach ($reader->query("SHOW FULL TABLES WHERE Table_type='BASE TABLE'") as $row)
-        $tables[] = (string)array_values($row)[0];
+        if (($name = (string)array_values($row)[0]) !== IMPORT_UNFINISHED_TABLE) $tables[] = $name;
     sort($tables);
     return $tables;
 }

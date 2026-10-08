@@ -436,6 +436,8 @@ ok(strpos($page, 'Das Portal ist') < strpos($page, 'The portal is'), 'German fir
 ok(!str_contains($page, '<script>') && str_contains($page, 'Grund &lt;script&gt;alert(1)&lt;/script&gt;')
    && str_contains($page, 'Reason &lt;script&gt;alert(2)'), 'a reason carrying markup is printed as text, in both languages');
 ok(!str_contains($page, 'SQLSTATE'), 'and the log line, which may carry SQL, is not on it');
+ok(str_contains($page, '<meta http-equiv="refresh" content="300">'), 'a tab left open asks again after the five minutes Retry-After names, so the portal reopens in it by itself');
+ok(str_contains($page, '<meta name="color-scheme" content="light dark">'), 'and the page follows the phone\'s light or dark setting');
 $lostPage = schema_blocked_html($lost ?? new RuntimeException('none'));
 ok(str_contains($lostPage, 'contacts (vorher ' . $was . ', jetzt ' . $is . ')') && str_contains($lostPage, 'contacts (' . $was . ' before, ' . $is . ' now)')
    && str_contains($lostPage, '„2026-10-07-123210-vor-update-…“'), 'a loss is named on it with its counts and its copy, in both languages');
@@ -739,6 +741,9 @@ foreach (['zwei Schritte', 'two steps', 'beide Entwürfe', 'both drafts'] as $st
 case_('Waiting work happens without a cron job');
 /* On hosting with no cron line, a queued invitation that nothing ever picks up
    is the difference between a working portal and a dead one. */
+// The cases above dropped the ledger on purpose; a tick runs only on a portal
+// whose ledger records its migrations (ADR 0029 §1 (b), tick_work()).
+test_ledger_recorded();
 $expired = make_account();
 run('INSERT INTO auth_tokens (account_id,token_hash,purpose,expires_at,created_at) VALUES (?,?,?,?,?)',
     [$expired, str_repeat('a', 64), 'invite', gmdate('Y-m-d H:i:s', time() - 3600), now()]);
@@ -1188,6 +1193,167 @@ if (!function_exists('proc_open')) {
     run('DELETE FROM classes WHERE id=?', [$course]);
 }
 
+/* ADR 0029: a copy being restored. The marker is the table its first statement
+   makes and its last drops; the portal itself never touches it, so the tests
+   make and drop it here. An old proof file, in the suite's own upload folder,
+   stands for every upload whose row has not arrived yet. */
+$marker = fn(bool $there) => db()->exec($there ? 'CREATE TABLE IF NOT EXISTS `'.IMPORT_UNFINISHED_TABLE.'` (importing TINYINT NULL) ENGINE=InnoDB'
+                                               : 'DROP TABLE IF EXISTS `'.IMPORT_UNFINISHED_TABLE.'`');
+$oldProof = function (string $dir): string {
+    @mkdir($dir, 0700, true);
+    $path = $dir.'/'.bin2hex(random_bytes(16)).'.jpg';
+    file_put_contents($path, 'x');
+    touch($path, time() - 7200);
+    return $path;
+};
+
+case_('The sweep deletes nothing while a copy is being restored, whoever calls it [ADR 0029 §3, test 7]');
+$keeper = make_account(['role' => 'admin', 'email' => 'kehrt.nicht@example.test']);
+$proof = $oldProof(upload_dir('proof'));
+$marker(true);
+try {
+    ok(schema_restore_refusal() !== null, 'with the marker there is a reason');
+    is_same(0, prune_uploads(), 'and the sweep returns 0');
+    clearstatcache();
+    ok(is_file($proof), 'the old proof file, which no row names, is still there');
+} finally { $marker(false); }
+ok(schema_restore_refusal() === null, 'without the marker the reason is gone');
+is_same(1, prune_uploads(), 'and the same sweep removes the file: it was the reason that held it back');
+run('DELETE FROM accounts WHERE id=?', [$keeper]);
+// The other state the sweep can meet: no table at all, and the stamp present.
+// That needs an empty database, so it is asked of the second one, in a
+// process of its own, with a stamp in a folder of its own.
+if ($noTables === '' || !function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['the sweep on an empty database over a used folder (needs CRM_MIGRATION_CONFIG and exec)']));
+} else {
+    $emptyDb = (require $noTables)['db'];
+    $used = test_run_dir().'/used-folder-'.bin2hex(random_bytes(4));
+    mkdir($used, 0700);
+    write_run_config($used.'/config.php', $emptyDb, $used);
+    file_put_contents($used.'/schema.stamp', 'a run passed here once');
+    $orphan = $oldProof($used.'/uploads/proof');
+    $out = [];
+    exec('CRM_CONFIG='.escapeshellarg($used.'/config.php').' '.escapeshellarg(PHP_BINARY).' -d error_log= -r '
+         .escapeshellarg('require $argv[1]; echo json_encode(["reason" => schema_restore_refusal()?->getMessage(), "removed" => prune_uploads()]);')
+         .' '.escapeshellarg(APP_ROOT.'/app/bootstrap.php').' 2>&1', $out, $code);
+    $swept = json_decode((string)end($out), true) ?: [];
+    ok(str_contains((string)($swept['reason'] ?? ''), $used.'/schema.stamp'), 'an empty database over a used folder has a reason naming the stamp'.($swept ? '' : ': '.implode("\n", $out)));
+    is_same(0, $swept['removed'] ?? null, 'and the sweep there returns 0');
+    ok(is_file($orphan), 'leaving the old proof file');
+    is_same(0, (int)install_connect($emptyDb)->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn(),
+            'and the empty database still has no table');
+}
+
+case_('The console runs only what reads while a copy is being restored, and maintenance honours the flag [ADR 0029 §3, test 8]');
+if (!function_exists('proc_open')) {
+    test_unsupported(array_merge(test_unsupported(), ['the console refusing to write during a restore (this PHP disables proc_open)']));
+} else {
+    $copies = fn(): int => count(glob($work.'/backups/*.sql') ?: []);
+    $consoleProof = $oldProof($work.'/uploads/proof');
+    $before = $copies();
+    $marker(true);
+    try {
+        $expected = (string)schema_restore_refusal()?->getMessage();
+        ok($expected !== '', 'with the marker there is a reason');
+        foreach (['backup', 'maintenance', 'billing:run', 'mail:work', 'demo:fill', 'a-command-added-later'] as $command) {
+            $held = $console($command);
+            ok($held['code'] === 1 && str_starts_with(trim($held['err']), $expected) && substr_count(trim($held['err']), "\n") === 0,
+               $command.' stops with exit code 1 and the reason as its one sentence'.($held['code'] !== 1 ? ': '.$held['out'] : ': '.$held['err']));
+        }
+        is_same($before, $copies(), 'no new copy was written');
+        clearstatcache();
+        ok(is_file($consoleProof), 'and the old proof file is still there');
+        $status = $console('status');
+        ok($status['code'] === 0 && str_contains($status['out'], 'files    '.app_version()), 'status runs'.($status['err'] !== '' ? ': '.$status['err'] : ''));
+    } finally { $marker(false); }
+    // Decided with ADR 0029: the cron job's maintenance honours the maintenance
+    // flag, as mail:work does, so a restore done with the flag on is not swept.
+    file_put_contents($work.'/maintenance.flag', now());
+    try {
+        $paused = $console('maintenance');
+        ok($paused['code'] === 1 && str_starts_with($paused['err'], 'Maintenance mode is on'), 'with the maintenance flag, maintenance stops with exit code 1 and says so'.($paused['code'] !== 1 ? ': '.$paused['out'] : ''));
+    } finally { unlink($work.'/maintenance.flag'); }
+    $swept = $console('maintenance');
+    is_same(0, $swept['code'], 'without the marker and the flag, maintenance runs'.($swept['err'] !== '' ? ': '.$swept['err'] : ''));
+    @unlink($consoleProof);
+}
+
+case_('Setup says a used folder in words, in the page\'s language, and makes nothing [ADR 0029 §3, test 10]');
+/* Pointing setup at a new, empty database over a storage/ folder a portal has
+   used is state (c). The page shows the sentence, not the log line with the
+   stamp's path, and the database stays as empty as it was. */
+if ($noTables === '' || !function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['setup over an empty database with a stamp (needs CRM_MIGRATION_CONFIG and exec)']));
+} else {
+    $emptyDb = (require $noTables)['db'];
+    $usedBySetup = test_run_dir().'/used-by-setup-'.bin2hex(random_bytes(4));
+    mkdir($usedBySetup, 0700);
+    write_run_config($usedBySetup.'/config.php', $emptyDb, $usedBySetup);
+    file_put_contents($usedBySetup.'/schema.stamp', 'a run passed here once');
+    $offered = $setupPage($usedBySetup.'/config.php');
+    is_same(200, $offered['status'], 'the page is offered, as the database has no tables yet'.($offered['log'] !== '' ? ': '.$offered['log'] : ''));
+    preg_match('/\b[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}\b/', (string)@file_get_contents($usedBySetup.'/setup-code.txt'), $code);
+    ok(($code[0] ?? '') !== '', 'and the setup code was written beside the stamp');
+    foreach (['de' => 'Die Datenbank ist leer, aber in diesem Ordner lief schon ein Portal.',
+              'en' => 'The database is empty, but a portal has run in this folder before.'] as $lang => $sentence) {
+        $refused = $setupPage($usedBySetup.'/config.php', ['method' => 'POST', 'post' => ['setup_code' => $code[0] ?? '', 'lang' => $lang] + $firstAccount]);
+        ok(str_contains($refused['body'], $sentence), 'in '.$lang.' the page says: '.$sentence);
+        ok(!str_contains($refused['body'], $usedBySetup.'/schema.stamp') && !str_contains($refused['body'], 'a run has passed on this folder'),
+           'and not the log line with the stamp\'s path');
+        ok(str_contains($refused['log'], 'CRM setup: ') && str_contains($refused['log'], $usedBySetup.'/schema.stamp'), 'which went to the log');
+    }
+    is_same(0, (int)install_connect($emptyDb)->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn(),
+            'the database still has no table, the ledger\'s included, so no administrator either');
+    ok(!glob($usedBySetup.'/backups/*'), 'and no copy was written');
+}
+
+case_('The console writes no copy of a database that holds nothing [ADR 0029 §3, code review]');
+/* console backup calls backup_database() directly, past the runner. With the
+   stamp deleted by hand and before the first page view, nothing else refuses: an
+   empty copy would be written, and the pruning could push an old one out of the
+   five. Asked of the second, empty database, with no stamp in its folder. */
+if ($noTables === '' || !function_exists('proc_open')) {
+    test_unsupported(array_merge(test_unsupported(), ['the console refusing to copy an empty database (needs CRM_MIGRATION_CONFIG and proc_open)']));
+} else {
+    $emptyDb = (require $noTables)['db'];
+    $bare = test_run_dir().'/holds-nothing-'.bin2hex(random_bytes(4));
+    mkdir($bare, 0700);
+    write_run_config($bare.'/config.php', $emptyDb, $bare);
+    $process = proc_open([PHP_BINARY, APP_ROOT.'/bin/console.php', 'backup'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                         $pipes, null, ['CRM_CONFIG' => $bare.'/config.php'] + getenv());
+    fclose($pipes[0]);
+    $out = (string)stream_get_contents($pipes[1]); $err = (string)stream_get_contents($pipes[2]);
+    fclose($pipes[1]); fclose($pipes[2]);
+    is_same(1, proc_close($process), 'backup on an empty database with no stamp stops with exit code 1'.($out !== '' ? ': '.$out : ''));
+    ok(str_starts_with($err, 'No copy written: the database holds nothing'), 'in one sentence saying why: '.trim($err));
+    ok(!glob($bare.'/backups/*'), 'and writes nothing');
+    is_same(0, (int)install_connect($emptyDb)->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn(),
+            'the database is as empty as it was');
+    // The same command on this run's portal, which has a ledger and data, writes one.
+    $had = glob($work.'/backups/*.sql') ?: [];
+    $written = $console('backup', 'test');
+    $now = array_diff(glob($work.'/backups/*.sql') ?: [], $had);
+    ok($written['code'] === 0 && count($now) === 1, 'on a portal with data the same command writes one copy'.($written['err'] !== '' ? ': '.$written['err'] : ''));
+    foreach ($now as $copy) unlink($copy);
+}
+
+case_('The background work does nothing while a copy is being restored [ADR 0029 §6, security review]');
+/* A restore that keeps the files is not refused by the page path, so the tick
+   that follows a page view would mail, sweep and bill on a database being
+   emptied or imported; until now only the owner's maintenance flag kept it out.
+   The nightly prune, due, is what shows whether the tick ran. */
+$billingWas = (bool)setting('auto_billing');
+set_setting('auto_billing', false);
+set_setting('prune_last_run', '');
+$marker(true);
+try {
+    tick_work();
+    is_same('', (string)setting('prune_last_run'), 'with the marker, the prune that is due does not run: the tick did nothing');
+} finally { $marker(false); }
+tick_work();
+ok((string)setting('prune_last_run') !== '', 'without the marker the same tick runs it: it was the marker that held it back');
+set_setting('auto_billing', $billingWas);
+
 case_('A portal with an https:// address is only ever served over HTTPS');
 /* app_url decides, not the web server: a portal set up without a certificate
    keeps working exactly as before an update, which a rule in .htaccess could
@@ -1277,3 +1443,74 @@ ok(str_contains($nginx, '/.well-known/acme-challenge/'), 'and keeps the certific
 ok(preg_match('~location = /setup\.php \{[^}]*fastcgi_pass~', $nginx) === 1, 'and passes setup.php to PHP, so a portal on nginx can be installed from the browser too');
 db()->exec('DROP TABLE IF EXISTS schema_migrations');
 run('DELETE FROM accounts');
+
+case_('A copy makes the marker of an import first, drops it last, and never lists it among its tables [ADR 0029 §2]');
+/* Its first statement after the SET lines makes import_unfinished, and its last
+   drops it: while the table is there, a copy is being imported, or its import
+   stopped. Carried in the middle, the table would be dropped there and the
+   portal opened on half the data, so backup_tables() leaves it out even when it
+   exists - as it does during an import, which is when the console might copy. */
+db()->exec('CREATE TABLE IF NOT EXISTS `'.IMPORT_UNFINISHED_TABLE.'` (importing TINYINT NULL)');
+$reader = connect();
+ok(!in_array(IMPORT_UNFINISHED_TABLE, backup_tables($reader), true), 'backup_tables() leaves the marker out, though it exists');
+ok(in_array('accounts', backup_tables($reader), true), 'and lists the tables that are the portal\'s');
+$dump = fopen('php://memory', 'w+b');
+backup_write($dump, $reader, 'test');
+rewind($dump);
+$copy = split_sql((string)stream_get_contents($dump));
+fclose($dump);
+is_same(['SET NAMES utf8mb4', 'SET FOREIGN_KEY_CHECKS=0', "SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO'"], array_slice($copy, 0, 3), 'the copy opens with its three SET lines');
+ok(str_starts_with($copy[3] ?? '', 'CREATE TABLE IF NOT EXISTS `'.IMPORT_UNFINISHED_TABLE.'`'), 'then makes the marker, before any table is dropped');
+ok(str_contains($copy[3] ?? '', 'IF NOT EXISTS') && str_contains($copy[3] ?? '', 'COMMENT='), 'IF NOT EXISTS, so a stopped import can be run again, and with a comment phpMyAdmin shows');
+is_same('DROP TABLE IF EXISTS `'.IMPORT_UNFINISHED_TABLE.'`', end($copy), 'and its last statement drops it');
+is_same([3, count($copy) - 1], array_keys(array_filter($copy, fn(string $statement): bool => str_contains($statement, IMPORT_UNFINISHED_TABLE))),
+        'no other statement names it: it is never dropped or made in the middle');
+ok(str_contains(implode("\n", $copy), 'DROP TABLE IF EXISTS `accounts`'), 'while the portal\'s tables are dropped and made as before');
+db()->exec('DROP TABLE `'.IMPORT_UNFINISHED_TABLE.'`');
+
+case_('The three states in which nothing touches the database are decided in one place, with the sentences the closed page shows [ADR 0029 §1, §5]');
+/* On the run's own database: the marker over a full ledger with data; the ledger
+   empty, then gone, under data; the database empty with and without the stamp.
+   The sentences are compared whole, because they are what the owner reads in the
+   file manager's moment of doubt. */
+$stampWas = is_file(schema_stamp_file()) ? (string)file_get_contents(schema_stamp_file()) : null;
+@unlink(schema_stamp_file());
+db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL)');
+db()->exec('DELETE FROM schema_migrations');
+foreach (migration_files() as $file)
+    run('INSERT INTO schema_migrations (version,checksum,applied_at) VALUES (?,?,?)', [basename($file), hash_file('sha256', $file), now()]);
+make_account(['role' => 'admin', 'name' => 'Bleibt da']);
+is_same(null, schema_restore_refusal(), 'a portal whose ledger records its migrations and which holds data: nothing to refuse');
+db()->exec('CREATE TABLE `'.IMPORT_UNFINISHED_TABLE.'` (importing TINYINT NULL)');
+$a = schema_restore_refusal();
+ok($a instanceof UpdateBlocked, '(a) the marker a copy makes first refuses, over a full ledger with data');
+is_same(['Gerade wird eine Sicherung eingespielt, oder das Einspielen ist abgebrochen. Solange bleibt das Portal geschlossen. Meldet phpMyAdmin, dass das Einspielen fertig ist: diese Seite neu laden. Ist es abgebrochen: dieselbe Datei in phpMyAdmin noch einmal einspielen – dabei wird nichts doppelt.',
+         'A copy is being imported, or the import stopped. The portal stays closed meanwhile. Once phpMyAdmin says the import has finished: reload this page. If it stopped: import the same file again in phpMyAdmin; nothing is doubled.'],
+        [$a?->de, $a?->en], 'in the words of ADR 0029 §5 (a)');
+ok(str_contains($a?->getMessage() ?? '', IMPORT_UNFINISHED_TABLE), 'and the log line names the table');
+db()->exec('DROP TABLE `'.IMPORT_UNFINISHED_TABLE.'`');
+db()->exec('DELETE FROM schema_migrations');
+$b = schema_restore_refusal();
+ok($b instanceof UpdateBlocked, '(b) an empty ledger under data refuses');
+is_same(['In der Datenbank fehlt die Tabelle schema_migrations, die jedes Portal hat. Wird gerade eine Sicherung eingespielt: warten, bis phpMyAdmin fertig meldet, dann diese Seite neu laden. Ist das Einspielen abgebrochen: dieselbe Datei noch einmal einspielen. Wird nichts eingespielt, nennt config/config.php eine fremde Datenbank. Das Portal hat nichts verändert.',
+         "The database is missing the table schema_migrations, which every portal has. If a copy is being imported: wait until phpMyAdmin says it has finished, then reload this page. If the import stopped: import the same file again. If nothing is being imported, config/config.php names a database that is not the portal's. The portal has changed nothing."],
+        [$b?->de, $b?->en], 'in the words of ADR 0029 §5 (b)');
+ok(str_contains($b?->getMessage() ?? '', 'accounts 1'), 'and the log line names the table with rows and how many: ' . test_show(mb_substr($b?->getMessage() ?? '', 0, 120)));
+db()->exec('DROP TABLE schema_migrations');
+is_same([$b?->de, $b?->en], [schema_restore_refusal()?->de, schema_restore_refusal()?->en], 'with no ledger table at all, the same');
+db()->exec('SET FOREIGN_KEY_CHECKS=0');
+foreach (schema_guarded_tables() as $table) run('DELETE FROM '.sql_name($table, 'table'));
+db()->exec('SET FOREIGN_KEY_CHECKS=1');
+is_same(null, schema_restore_refusal(), 'empty, with no ledger and no stamp: a first install, nothing to refuse');
+is_same(true, schema_first_install(), 'which is what schema_first_install() says too');
+file_put_contents(schema_stamp_file(), 'ein früherer Stand');
+$c = schema_restore_refusal();
+ok($c instanceof UpdateBlocked, '(c) the same empty database over a folder with a stamp refuses');
+is_same(['Die Datenbank ist leer, aber in diesem Ordner lief schon ein Portal. Zum Wiederherstellen: die Sicherung in phpMyAdmin einspielen, dann diese Seite neu laden. Soll hier ein neues, leeres Portal entstehen: im Dateimanager die Datei storage/schema.stamp löschen und diese Seite neu laden. Vorsicht: Belege und Fotos des alten Portals werden dann gelöscht; seine Sicherungen in storage/backups bleiben.',
+         "The database is empty, but a portal has run in this folder before. To restore: import the copy in phpMyAdmin, then reload this page. If a new, empty portal is meant to start here: delete the file storage/schema.stamp in the file manager and reload this page. Careful: the old portal's receipts and photos are deleted then; its copies in storage/backups stay."],
+        [$c?->de, $c?->en], 'in the words of ADR 0029 §5 (c)');
+ok(str_contains($c?->getMessage() ?? '', schema_stamp_file()), 'and the log line names the stamp\'s full path');
+is_same('ein früherer Stand', (string)file_get_contents(schema_stamp_file()), 'the stamp\'s content is untouched: asking changes nothing');
+@unlink(schema_stamp_file());
+if ($stampWas !== null) file_put_contents(schema_stamp_file(), $stampWas);
+db()->exec('DROP TABLE IF EXISTS schema_migrations');

@@ -108,6 +108,7 @@ release and emptied again for the next.
 - What ADR 0026 takes out, round one: custom fields with what was typed into them, copying, saved views, writing to many with its templates, „Warteschlange senden", the printed form and data sheet, and Verwaltung's „Tarife" tab: [R.1–R.8](#what-adr-0026-removes-round-one)
 - What ADR 0026 takes out, round two: the online dots, the status and when somebody was online; the status emoji; profile pictures, whose files the update deletes for good; asking to write to another family; voice notes and files in new messages, which are text and photos, a family's from the camera: [R.9–R.17](#what-adr-0026-removes-round-two), and 5.3i, 5.3j, 14.1–14.7, 20.4, 21.7
 - Age groups from the birth date alone — nothing to pin, one rule everywhere, bands that overlap still agree — and the example data cut to one course, four children and three sign-ins that work for 14 days: [N.1–N.7](#age-groups-from-the-birth-date-alone-and-the-small-example-data-round-three), 2.1, 3.4a, 3.4c, 7.2, 7.3
+- A restore keeps the portal closed until its import is done: every copy makes `import_unfinished` first and drops it last, nothing is run, copied or swept meanwhile, the closed page reloads itself, an import that stopped is imported again: [H.1–H.5](#a-restore-keeps-the-portal-closed-until-its-import-is-done-adr-0029), 21.8, G.7, G.9
 - After the review of round two: a backup restored with a page opened halfway keeps every upload; a chat photo or a receipt downloads under the type it really is, whatever its name said; a family sending anything but a JPEG is asked to take the photo with the camera: [21.8](#data-safety), [12.9](#payments-and-proof), [14.12](#messages), 14.2, R.12
 - An update that lost records keeps the portal closed, for everybody, on every page view, until the rows are back; the way back is the previous version's files, then the copy from before, in phpMyAdmin (ADR 0027): [G.1–G.9](#an-update-that-lost-records-stays-closed-adr-0027)
 - Any value from anyone is answered with one sentence on the same page: numbers, dates and pages held to their range, a family writes only to the trainer team, and nothing reaches the error log: [V.1–V.11](#any-value-from-anyone-adr-0026-5), 14.5, 14.7
@@ -1193,18 +1194,20 @@ that.
   anything younger is never swept, so it would prove nothing. Note how many
   files each folder in `storage/uploads` holds. In phpMyAdmin, **Exportieren**
   the database to your computer, then delete every table. In the file manager,
-  delete `storage/schema.stamp` as well: with the files unchanged the portal
-  still takes itself to be up to date and does not run the update at all, and
-  the moment this check is about is the one after the files of another version
-  were uploaded, when the stamp no longer matches. Now open the portal once. It
-  makes the tables afresh, as an update does, and writes a new copy into
-  `storage/backups`, of the empty database, which pushes out the oldest if there
-  are more than five — never import the new one. Delete every table again, since
-  that page made them, then **Importieren** your export. Afterwards each folder
-  in `storage/uploads` holds as many files as before, and the receipt, the photo
-  in the chat, the screenshot under **Einstellungen → Rückmeldungen**, the icon
-  and the logo all open or show as before. The version before this fix deleted
-  every one of those files at that page.
+  open `storage/schema.stamp` and change one character of it: with the files
+  unchanged the portal takes itself to be up to date and does not look at the
+  database at all, and the moment this check is about is the one after the
+  files of another version were uploaded, when the stamp no longer matches. Now
+  open the portal once, with maintenance mode off. It shows „Das Portal ist
+  vorübergehend geschlossen." with „Die Datenbank ist leer, aber in diesem
+  Ordner lief schon ein Portal. …", makes no table and writes no new copy into
+  `storage/backups`. **Importieren** your export, then reload, or leave the
+  closed page to reload itself within five minutes: the portal opens. Each
+  folder in `storage/uploads` holds as many files as before, and the receipt,
+  the photo in the chat, the screenshot under **Einstellungen → Rückmeldungen**,
+  the icon and the logo all open or show as before. The version before this fix
+  deleted every one of those files at that page; the version after it made the
+  tables afresh and wrote a copy of nothing.
 
 ---
 
@@ -2118,12 +2121,13 @@ and every place asks it. The students list's new look is frontend-dev's and not
 walked here yet; the sort is reached by its address.
 
 - [ ] **N.1** Overlapping bands agree everywhere. **Verwaltung → Altersgruppen**:
-  make „Früh" 8 to 11 and, below it, „Spät" 11 to 14; the page warns that they
-  overlap. A child aged 11: their page names „Früh", the first band in
-  Verwaltung's order that covers them. In **Schüler**, the filter „Früh" lists
-  them and the filter „Spät" does not; `?page=students&sort=age` shows them
-  once, under „Früh"; and Verwaltung counts them in „Früh". Nowhere a different
-  band.
+  archive the three bands a new portal starts with (otherwise „Unter 12" keeps
+  covering every child under 12 in N.2), then make „Früh" 8 to 11 and, below it,
+  „Spät" 11 to 14; the page warns that they overlap. A child aged 11: their page
+  names „Früh", the first band in Verwaltung's order that covers them. In
+  **Schüler**, the filter „Früh" lists them and the filter „Spät" does not;
+  `?page=students&sort=age` shows them once, under „Früh"; and Verwaltung counts
+  them in „Früh" (with every other child of 8 to 11). Nowhere a different band.
 - [ ] **N.2** Archive „Früh". The same child is now in „Spät" everywhere, a child
   of 8 under „Ohne Altersgruppe", and the filter no longer offers „Früh";
   Verwaltung lists it with nobody in it. Bring it back: both are counted in it
@@ -2138,12 +2142,15 @@ walked here yet; the sort is reached by its address.
   Geburtsdatum" with Mia, each youngest first; no other header.
 - [ ] **N.5** The example data shows one of each thing. **Kurse → Kindertraining**:
   Jonas's request to join is waiting under Anfragen, and the group's one message
-  is the trainer's welcome. **Geld**: Mia's last month is overdue, Elias's month
-  is recorded and not yet confirmed, Lena's month is open and not yet due — so
-  Lena's family sees the QR code and „Beleg hochladen" on **Beiträge**. The
-  overview names Mia under „Heute abwesend", sick from today for three days.
-  **Anwesenheit** on the last two Mondays: everybody present, Elias absent on
-  the latest. One news item, published; one chat, Lena's family with the
+  is the trainer's welcome. **Geld**: Mia's last month is overdue (its amount in
+  red), Lena's month is open and not yet due, and Elias's month is still listed —
+  his **Beiträge** tab shows the payment as „Unbestätigt" with „Bestätigen". Once
+  the club's IBAN is in (**Verwaltung → Zahlungsempfänger**), Lena's family sees
+  the QR code and „Beleg hochladen" on **Beiträge**; without it only the upload.
+  The overview counts 1 under „Heute abwesend": in **Schüler** the chip „Aktuell
+  krank" lists Mia, and her Abwesenheit tab says „Krank" from today for three
+  days. **Anwesenheit** on the last two Mondays: everybody present, Elias absent
+  on the latest. One news item, published; one chat, Lena's family with the
   trainer, with two messages.
 - [ ] **N.6** The example logins stop after 14 days. In phpMyAdmin, in `accounts`,
   set `created_at` of `trainerin@beispiel.test` back by 15 days. Signing in as
@@ -2151,8 +2158,9 @@ walked here yet; the sort is reached by its address.
   Benutzernamen und Passwort prüfen. …", the same sentence as a wrong password.
   The families' logins still sign in. „Beispieldaten entfernen", then „anlegen"
   again: three fresh sign-ins and a new password.
-- [ ] **N.7** `php bin/console.php demo:fill` ends with „They sign in for 14 days;
-  after that, demo:clear and demo:fill again give new ones."
+- [ ] **N.7** `php bin/console.php demo:fill` says „They sign in for 14 days;
+  after that, demo:clear and demo:fill again give new ones." before its last
+  line, „Remove everything with demo:clear."
 
 ### The portal as an iPhone app (design language, phase 1)
 
@@ -2235,7 +2243,11 @@ panel's file manager and phpMyAdmin.
   version from before it — and reload: still closed, still naming contacts.
 - [ ] **G.7** **(release)** In phpMyAdmin: **Exportieren** the database as it
   is now, select every table and drop them, then **Importieren** the copy from
-  `storage/backups` that the page named.
+  `storage/backups` that the page named. Opened meanwhile, the portal stays
+  closed: naming what is still missing while the tables are gone or on their
+  way in, and once every table is in but the copy's last line has not run,
+  saying that a copy is being imported. The closed page reloads itself every
+  five minutes.
 - [ ] **G.8** **(release)** Open the portal: it opens. `update-unfinished.json`
   is gone from `storage`, the contacts are back, and **Einstellungen → System**
   shows the same version as before G.2.
@@ -2243,7 +2255,54 @@ panel's file manager and phpMyAdmin.
   the named file cut off before `contacts` — everything from the line
   ``DROP TABLE IF EXISTS `contacts`;`` on deleted; the tables are in
   alphabetical order. The portal stays closed, naming contacts and the guarded
-  tables after it. Import the whole file and it opens.
+  tables after it, and the cut copy leaves the table `import_unfinished`
+  behind, which the whole file removes with its last line. Import the whole
+  file and it opens.
+
+### A restore keeps the portal closed until its import is done (ADR 0029)
+
+On a test install, with the hosting panel's file manager and phpMyAdmin, as the
+walk above. Every copy the portal writes now begins by making a table
+`import_unfinished` and ends by dropping it; the three closed-page texts are in
+INSTALL.md's table.
+
+- [ ] **H.1** **(release)** Open the newest copy in `storage/backups` in the file
+  manager: after its three `SET` lines, the first statement is ``CREATE TABLE IF
+  NOT EXISTS `import_unfinished` …`` with a comment in German and English, and
+  the last line is ``DROP TABLE IF EXISTS `import_unfinished`;``. The table is
+  nowhere in between.
+- [ ] **H.2** **(release)** With maintenance mode off, make a copy of that file
+  cut off after the `accounts` table's rows — everything from the next
+  ``DROP TABLE IF EXISTS`` on deleted — drop every table in phpMyAdmin and
+  import the cut copy. Open the portal: „Das Portal ist vorübergehend
+  geschlossen." with „Gerade wird eine Sicherung eingespielt, oder das
+  Einspielen ist abgebrochen. …" and the English under it; reload: the same,
+  and no new copy in `storage/backups`. phpMyAdmin lists `import_unfinished`
+  among the tables, with its comment. Now import the whole file: the next page
+  view opens the portal, `import_unfinished` is gone, and every table has as
+  many rows as before the drop — nothing doubled.
+- [ ] **H.3** **(release)** The same with the cut copy, then wait with the closed
+  page open in a tab while you import the whole file in phpMyAdmin: within five
+  minutes the tab shows the portal by itself. With mail set up and a mail
+  queued beforehand, **Postausgang** shows it was not sent while the import
+  ran: the background work stays out by itself.
+- [ ] **H.4** **(release)** On a server with a shell, while `import_unfinished`
+  exists: `php bin/console.php backup`, `maintenance` and `mail:work` each stop
+  with the sentence naming that table and exit code 1, and `storage/backups`
+  gains no file; `check` and `status` still answer. With the table gone and
+  `storage/maintenance.flag` created: `php bin/console.php maintenance` stops
+  with „Maintenance mode is on …" and exit code 1, and deletes nothing. With
+  every table dropped and the flag gone: `php bin/console.php backup` refuses
+  with exit code 1 and writes no file, because there is nothing to copy.
+- [ ] **H.5** **(release)** Point the same files at a second, empty database:
+  in `config/config.php` name a new, empty database and open `setup.php`. Give
+  it the setup code from `storage/setup-code.txt` if it asks, fill in an
+  administrator and tap **Installieren**: it shows „Die Datenbank ist leer,
+  aber in diesem Ordner lief schon ein Portal. …" and installs nothing — the
+  new database stays empty. Put the old database back in `config/config.php`.
+  (Deleting `storage/schema.stamp` instead would let a new portal start there
+  and, once it has an administrator, sweep the old one's uploads; do not do it
+  on this copy.)
 
 ### Any value from anyone (ADR 0026 §5)
 
