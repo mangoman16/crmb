@@ -258,8 +258,8 @@ header('X-Robots-Tag: noindex');
 <div class="card setup-step">
     <h2><?=install_e(install_t('Die Beispieldaten', 'The example data'))?></h2>
     <p><?=install_e(install_t('Angelegt: ', 'Created: ')
-        . (int)$demo['courses'] . install_t(' Kurse, ', ' courses, ') . (int)$demo['students']
-        . install_t(' Kinder, ', ' children, ') . (int)$demo['charges'] . install_t(' Beiträge.', ' charges.'))?></p>
+        . (int)$demo['courses'] . ((int)$demo['courses'] === 1 ? install_t(' Kurs, ', ' course, ') : install_t(' Kurse, ', ' courses, '))
+        . (int)$demo['students'] . install_t(' Kinder, ', ' children, ') . (int)$demo['charges'] . install_t(' Beiträge.', ' charges.'))?></p>
     <p><?=install_e(install_t('Diese Konten kannst du zum Anprobieren verwenden:', 'These accounts are there to try it with:'))?></p>
     <ul>
         <?php foreach ($demo['logins'] as $login): ?>
@@ -269,8 +269,8 @@ header('X-Robots-Tag: noindex');
     <p><?=install_e(install_t('Passwort für alle: ', 'The password for all of them: '))?>
        <strong class="mono"><?=install_e((string)$demo['password'])?></strong></p>
     <p class="muted"><?=install_e(install_t(
-        'Jetzt aufschreiben – es wird nicht noch einmal angezeigt. Entfernen lässt sich alles unter Einstellungen → System → „Beispieldaten entfernen“.',
-        'Write it down now – it is not shown again. Remove all of it under Einstellungen → System → “Remove example data”.'))?></p>
+        'Jetzt aufschreiben – es wird nicht noch einmal angezeigt. Die Konten gelten ' . DEMO_LOGIN_DAYS . ' Tage. Entfernen lässt sich alles unter Einstellungen → System → „Beispieldaten entfernen“.',
+        'Write it down now – it is not shown again. The accounts work for ' . DEMO_LOGIN_DAYS . ' days. Remove all of it under Einstellungen → System → “Remove example data”.'))?></p>
 </div>
 <?php endif ?>
 <div class="card setup-step">

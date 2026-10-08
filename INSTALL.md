@@ -145,11 +145,13 @@ muss also nicht gelöscht werden – schaden kann es aber auch nicht.
 ## Zum Ausprobieren: Beispieldaten
 
 Unter **Einstellungen → System → Beispieldaten anlegen** füllt sich das Portal
-mit erfundenen Kindern, Kursen, Beiträgen und Nachrichten. Damit lässt sich
-alles durchklicken, bevor echte Familien darin stehen – SMTP und
+mit einem erfundenen Kurs, vier Kindern, Beiträgen und Nachrichten. Damit lässt
+sich alles durchklicken, bevor echte Familien darin stehen – SMTP und
 Datenschutzerklärung sind dafür nicht nötig, weil die Beispielkonten fertig
-angelegt werden und keine Einladung per E-Mail brauchen. Das Passwort wird
-einmalig auf derselben Seite angezeigt.
+angelegt werden und keine Einladung per E-Mail brauchen. Das Passwort – vier
+erfundene Wörter in einem, etwa `KemoTapiRunaSofe` – wird einmalig auf derselben
+Seite angezeigt. Die Beispielkonten melden sich 14 Tage lang an; danach geben
+„Beispieldaten entfernen“ und erneutes Anlegen neue.
 
 Beispieldaten sind in der Datenbank gekennzeichnet und lassen sich mit einem
 Klick vollständig wieder entfernen. Echte Daten bleiben dabei unberührt. Auf

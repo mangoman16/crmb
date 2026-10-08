@@ -2,16 +2,20 @@
 declare(strict_types=1);
 
 /**
- * Seed data, in two parts that answer two different questions.
+ * The runner's step after the migration files, in two parts that answer two
+ * different questions.
  *
- * The first part is the lists the application cannot work without. It is checked
- * on every schema update rather than only on a fresh install, because a release
- * that introduces one has to bring it to a portal that already exists - and the
- * migration file cannot, since the operator may have emptied the table since.
+ * The first part runs on every schema update rather than only on a fresh
+ * install, and brings to a portal that already exists what a release needs and
+ * a migration file cannot give it. First the lists the application cannot work
+ * without: a file would seed one once, and the operator may have emptied the
+ * table since. Then what needs the application's own code - a hash, a login, a
+ * course's group, a file deleted. Each step does only what it finds still to
+ * do, so it can run on every update.
  *
  * The second part, below the guard, is the examples a new portal starts with.
  * Those run once: re-creating a payment profile the operator deleted would be
- * the software arguing with her.
+ * the software arguing with them.
  */
 
 // Levels: a child is always in one, so there is always one to be in.
@@ -22,7 +26,7 @@ if(!(int)scalar('SELECT COUNT(*) FROM levels')) {
         run('INSERT INTO levels (name,description,sort_order,is_default,created_at) VALUES (?,?,?,?,?)',
             [$name,$about,$order,$isDefault,now()]);
 }
-// Age groups: the bands she named, covering every age with no gap.
+// Age groups: the bands a new portal starts with, covering every age with no gap.
 if(!(int)scalar('SELECT COUNT(*) FROM age_groups')) {
     foreach([['Unter 12',0,11,10],['Jugend',12,17,20],['Erwachsene',18,null,30]] as [$name,$min,$max,$order])
         run('INSERT INTO age_groups (name,min_age,max_age,sort_order,created_at) VALUES (?,?,?,?,?)',
@@ -49,17 +53,13 @@ course_groups_fill();
 give_every_student_a_login();
 
 // Profile pictures went with 035 and 036 (ADR 0026 §8), and a child's photo must
-// not stay on the server once nothing shows it. They were stored beside the
-// problem reports' screenshots, and since 035 and 036 no column names them: to
-// prune_uploads() they are files no row points at, like any other upload left
-// behind, so they go now rather than at the nightly prune, which needs the
-// background work to run - and with them whatever else no row names, a receipt
-// or a chat photo whose row went, as that night's prune would take it. Its rule
-// is the one rule for every kind: only in the kind's own folder, only an
-// ordinary file with a name store_upload() gives, and never one younger than
-// the grace - ten minutes here, for a screenshot whose report another request
-// may still be saving. Every later update runs this again, as the nightly
-// prune does, and finds little or nothing to delete.
+// not stay on the server once nothing shows it. Since then no column names
+// them, so they are uploads left behind, which prune_uploads() deletes by its
+// one rule for every kind. Called here so that they go with the update rather
+// than at the nightly prune, which needs the background work to run. Ten
+// minutes of grace rather than the prune's hour: the pictures were stored
+// beside the problem reports' screenshots, and a screenshot that young may
+// belong to a report another request is still saving.
 // ponytail: a picture saved in the ten minutes before the update stays until
 // the next nightly prune. Naming the pictures before 035 drops their column
 // would need a step between two migrations, which the runner does not have.

@@ -281,7 +281,7 @@ function student_without_login_at(string $email): ?array {
  */
 function new_student_defaults(): array {
     return ['joined_on' => today(), 'status' => (string)setting('default_status', 'active'),
-            'level_id' => level_default()['id'] ?? null, 'age_group_id' => null,
+            'level_id' => level_default()['id'] ?? null,
             'address' => '', 'phone' => '', 'internal_notes' => ''];
 }
 
@@ -600,11 +600,40 @@ function payments_by_charge(array $chargeIds): array {
 }
 
 function student_charges(int $id): array { return rows('SELECT c.*,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? ORDER BY c.due_on DESC,c.id DESC',[$id]); }
+/**
+ * The students list's selection, from the address: each value text, trimmed and
+ * at most 200 characters, and an empty one no filter at all. The age group is a
+ * band the list can show - one not archived - or `none`, for the children no
+ * band places; the order is `age` or the default, A–Z. Anything else in either
+ * is ignored, as every value in an address is: a GET filter is never refused
+ * (ADR 0026 §5).
+ */
 function filters_from(array $data): array {
-    $keys=['q','status','absence','overdue','level','age_group','course']; $out=[];
-    foreach($keys as $key) if(isset($data[$key]) && is_scalar($data[$key])) $out[$key]=mb_substr(trim((string)$data[$key]),0,200);
+    $out=[];
+    foreach(['q','status','absence','overdue','level','age_group','course','sort'] as $key)
+        if(isset($data[$key]) && is_scalar($data[$key]) && ($value=mb_substr(trim((string)$data[$key]),0,200))!=='') $out[$key]=$value;
+    if(isset($out['age_group']) && $out['age_group']!=='none'
+       && !in_array($out['age_group'],array_map(fn(array $band): string => (string)$band['id'],age_groups()),true)) unset($out['age_group']);
+    if(isset($out['sort']) && $out['sort']!=='age') unset($out['sort']);
     return $out;
 }
+
+/**
+ * The students in a selection (filters_from()), each with what its row in the
+ * list shows, so that no row asks for it: 'age', in whole years or null;
+ * 'band', the age group student_age_group() gives, or null; 'level_name'; and
+ * 'in_course', whether the child is in a running course now.
+ *
+ * In A–Z order, or with sort=age in the order „Nach Alter" shows them
+ * (student_sections()): the bands in Verwaltung's order, then the children no
+ * band covers, then those without a birth date - within each the youngest
+ * first, then by name. A page cut from it with array_slice() keeps that order.
+ *
+ * The age group is decided by the one rule, in PHP, never by the band's ages in
+ * SQL: that second copy of the rule listed a child under one band while the row
+ * named another, wherever two bands overlap (ADR 0026). The list is read whole
+ * anyway and paged afterwards, so the filter costs no query of its own.
+ */
 function filtered_students(array $f,?int $accountId=null): array {
     $where=['1=1']; $p=[];
     if($accountId!==null){$where[]='s.account_id=?';$p[]=$accountId;}
@@ -614,26 +643,65 @@ function filtered_students(array $f,?int $accountId=null): array {
     // "Who is in Monday's group" is the view she builds most often, so a course
     // is a filter in its own right rather than something to be read off a card.
     if(!empty($f['course'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.class_id=? AND '.current_enrolment_sql().')';$p[]=(int)$f['course'];}
-    // An age group is usually not stored on the student, so filtering by one has
-    // to cover both the pinned case and the dates that fall into the band. The
-    // bounds become dates once here rather than a function call per row: at
-    // least min_age is born on or before the last day for that age, and at most
-    // max_age is born after the last day for max_age+1. Both were a year or a
-    // day out, and an 11–12 band found only twelve-year-olds.
-    if(!empty($f['age_group'])){
-        $band=one('SELECT * FROM age_groups WHERE id=?',[(int)$f['age_group']]);
-        if($band){
-            $youngest=latest_birth_date_for_age((int)$band['min_age']);
-            $tooOld=$band['max_age']===null?null:latest_birth_date_for_age((int)$band['max_age']+1);
-            $clause='s.age_group_id=? OR (s.age_group_id IS NULL AND s.birth_date IS NOT NULL AND s.birth_date<=?';
-            array_push($p,(int)$band['id'],$youngest);
-            if($tooOld!==null){$clause.=' AND s.birth_date>?';$p[]=$tooOld;}
-            $where[]='('.$clause.'))';
-        }
-    }
     if(!empty($f['absence'])){$where[]='EXISTS (SELECT 1 FROM absences a WHERE a.student_id=s.id AND a.reason=? AND a.starts_on<=? AND a.ends_on>=?)';array_push($p,$f['absence'],today(),today());}
     if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND '.charge_is_overdue_sql().')';$p[]=today();}
-    return rows('SELECT s.*,a.name AS account_name,l.name AS level_name FROM students s'
-        .' LEFT JOIN accounts a ON a.id=s.account_id LEFT JOIN levels l ON l.id=s.level_id'
-        .' WHERE '.implode(' AND ',$where).' ORDER BY s.last_name,s.first_name,s.id',$p);
+    $byAge=($f['sort']??'')==='age';
+    // One of these two literals, never a value from the address (ADR 0026 §12).
+    $order=$byAge?'s.birth_date IS NULL, s.birth_date DESC, s.last_name, s.first_name, s.id':'s.last_name, s.first_name, s.id';
+    // „Ohne Kurs": in no course that runs, as the course list counts its members.
+    $rows=rows('SELECT s.*,a.name AS account_name,l.name AS level_name,'
+        .' EXISTS (SELECT 1 FROM class_students cs JOIN classes c ON c.id=cs.class_id WHERE cs.student_id=s.id AND c.archived=0 AND '.current_enrolment_sql().') AS in_course'
+        .' FROM students s LEFT JOIN accounts a ON a.id=s.account_id LEFT JOIN levels l ON l.id=s.level_id'
+        .' WHERE '.implode(' AND ',$where).' ORDER BY '.$order,$p);
+    $bands=age_groups();
+    foreach($rows as &$row){
+        $row['age']=student_age($row['birth_date']);
+        $row['band']=student_age_group($row,$bands);
+        $row['in_course']=(bool)$row['in_course'];
+    }
+    unset($row);
+    $chosen=(string)($f['age_group']??'');
+    if($chosen!=='')
+        $rows=array_values(array_filter($rows,fn(array $s): bool => $chosen==='none'?$s['band']===null:(string)($s['band']['id']??'')===$chosen));
+    return $byAge?array_merge(...array_column(student_sections($rows,$bands),'rows')):$rows;
+}
+
+/**
+ * Rows of filtered_students() divided as „Nach Alter" shows them: each band in
+ * Verwaltung's order with the children the rule puts in it, then „Ohne
+ * Altersgruppe" for the children whose age no band covers, then „Ohne
+ * Geburtsdatum". Each section keeps the rows' own order, and one with nobody in
+ * it is left out. A section is ['key' => …, 'band' => ?array, 'rows' => […]],
+ * its key the anchor it is shown under: age-group-{id}, no-age-group or
+ * no-birth-date.
+ *
+ * $bands is age_groups(), for a page that has read them already; without it
+ * they are read once here. For a page of a longer list, ask it of the page's
+ * rows for the headers and of the whole list for each section's count.
+ */
+function student_sections(array $rows,?array $bands=null): array {
+    $bands??=age_groups();
+    $sections=[];
+    foreach($bands as $band) $sections['age-group-'.$band['id']]=['key'=>'age-group-'.$band['id'],'band'=>$band,'rows'=>[]];
+    $sections+=['no-age-group'=>['key'=>'no-age-group','band'=>null,'rows'=>[]],
+                'no-birth-date'=>['key'=>'no-birth-date','band'=>null,'rows'=>[]]];
+    foreach($rows as $row){
+        $band=array_key_exists('band',$row)?$row['band']:student_age_group($row,$bands);
+        $key=$band!==null?'age-group-'.$band['id']:(student_age($row['birth_date']??null)!==null?'no-age-group':'no-birth-date');
+        // A band the rows were placed in that $bands no longer holds is no band of this page's.
+        $sections[isset($sections[$key])?$key:'no-age-group']['rows'][]=$row;
+    }
+    return array_values(array_filter($sections,fn(array $section): bool => $section['rows']!==[]));
+}
+
+/**
+ * How many children without a birth date the selection leaves out because a
+ * band is chosen: those the rest of it would show. For the line under the
+ * list's controls, „2 Kinder ohne Geburtsdatum sind nicht dabei.". None when no
+ * band is chosen, or `none` is, which shows them.
+ */
+function left_out_without_birth_date(array $f,?int $accountId=null): int {
+    if(!ctype_digit((string)($f['age_group']??''))) return 0;
+    unset($f['age_group'],$f['sort']);
+    return count(array_filter(filtered_students($f,$accountId),fn(array $s): bool => $s['age']===null));
 }

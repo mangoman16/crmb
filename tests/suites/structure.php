@@ -911,6 +911,18 @@ is_same(['eine Stunde', 'one hour', '48 Stunden', '48 hours'],
         [token_lifetime_words('reset', false), token_lifetime_words('email', true), token_lifetime_words('invite', false), token_lifetime_words('signin', true)],
         'and says one hour, or a number of hours, in either language');
 
+case_('A child’s age group is never stored: the pin’s column is named only by the change log’s label [ADR 0026]');
+/* 038 dropped the pin. Code still writing it fails the first request after the
+   update; code still reading it reads nothing and says nothing. The change log
+   keeps the label, so its older lines still read „Altersgruppe". */
+$named = [];
+foreach (['app', 'views', 'bin', 'public'] as $folder)
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(APP_ROOT.'/'.$folder, FilesystemIterator::SKIP_DOTS)) as $file)
+        foreach (file($file->getPathname()) ?: [] as $line)
+            if (str_contains($line, 'age_group_id')) $named[] = substr($file->getPathname(), strlen(APP_ROOT) + 1).': '.trim($line);
+is_same(["app/history.php: 'age_group_id' => t('Altersgruppe', 'Age group'),"], $named,
+        'only app/history.php’s label names it, in app/, views/, bin/ and public/');
+
 case_('Every page switches the camera, the microphone and the location off [ADR 0022 §11.4]');
 /* Nothing asks a browser for any of them: a child's photo comes through the
    file input, which hands the camera to the phone. The microphone was on while

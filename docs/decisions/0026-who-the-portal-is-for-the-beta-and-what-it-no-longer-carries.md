@@ -59,6 +59,8 @@ date: 2026-10-07
 > round-2 note, in the note of the owner's answers, and in §4, §8, §9, §10, §11, §12, Rejected,
 > Consequences, "For the owner" and "In plain words". The notes on ADRs 0020 and 0021 gain a line
 > each.
+> Lines marked *Built 2026-10-08* say what building round 3 settled beyond the answer:
+> `latest_birth_date_for_age()` went with the date bounds, and §9's dates, password and expiry.
 
 > **Round 2 of the removals, 2026-10-07: the contact requests, the pictures' files, and the numbers
 > of round 3's migrations.** Written with round 2's code (`ROADMAP.md`, "Now and next" 3), which
@@ -129,6 +131,8 @@ date: 2026-10-07
 >   `app/groups.php` goes. No column is added: `students.birth_date` is all an age needs.
 >   *Later answer, 2026-10-07:* the sort stays, as „A–Z | Nach Alter" under a header per band. The
 >   range is not built, `app/groups.php` stays, and nothing moves to `app/domain.php`.
+>   *Built 2026-10-08:* `latest_birth_date_for_age()` goes after all. The date bounds in
+>   `filtered_students()` were its only caller, and they went with the pin; `student_age()` stays.
 > - **How the age shows on the list** is `ui-ux-designer`'s to specify. It may group the list under
 >   each age, if that reads better on a phone. Then `backend-dev` builds the sort and the range,
 >   `frontend-dev` the filter and the list, `qa-tester` keeps the `groups` suite's cases for the two
@@ -136,6 +140,7 @@ date: 2026-10-07
 >   *Later answer, 2026-10-07:* a header per band. `backend-dev` builds the sort and the one rule,
 >   and `qa-tester` keeps the `groups` suite, less its cases for the pin, and adds the sort and a case
 >   where the filter and the card agree on overlapping bands.
+>   *Built 2026-10-08:* the `groups` suite also loses `latest_birth_date_for_age()`'s cases.
 >
 > Rejected with the second answer: keeping the bands as lists the trainer edits, because the owner
 > said "without explicit groups"; and a fixed set of bands in code, such as U11 and U13, which are
@@ -503,6 +508,8 @@ What goes is `students.age_group_id` and its key (038), the select „Altersgrup
 pinned branch of `student_age_group()` and the date bounds in `filtered_students()`; the list
 gains „A–Z | Nach Alter" (the note at the top). Its tests stay, less the pin's cases, and so do
 most of its lines.
+*Built 2026-10-08:* `latest_birth_date_for_age()` goes too: the date bounds were its only caller.
+`student_age()` stays, and the `groups` cases for the function that went go with it.
 
 | Feature | Verdict | Why | What goes | Lines | Tests |
 | --- | --- | --- | --- | --- | --- |
@@ -564,6 +571,13 @@ ages from 7 to 41.
 
 *Later answer, 2026-10-07:* the four children have birth dates in two bands, so „Nach Alter" shows
 more than one header.
+*Built 2026-10-08:* fixed, except the password: `demo_password()` draws eight syllables at random,
+four made-up words that a phone's letter keyboard types, shown once as before; `random_int()` is used
+for nothing else. Every date, the birth dates included, is counted back from the day the data is
+written, so it says the same on any day and no child's band changes for most of a year. The example
+logins sign in for 14 days from the fill (`DEMO_LOGIN_DAYS`) and are refused at sign-in afterwards,
+which is the expiry `ROADMAP.md`'s security batch asked for; removing the example data and filling
+it again gives fresh ones.
 
 `tests/suites/demo.php` keeps its checks on the password, the flags, clearing and the chats. Its
 "cases that go wrong" become the ones above.
@@ -659,6 +673,9 @@ its key `student_level` and both tables stay, and 039 is not written.
   *Later answer, 2026-10-07:* nothing moves, and there is no range. `filtered_students()`, in
   `app/domain.php`, keeps calling into `app/groups.php`, loaded after it, at request time only. The
   sort's rule stands: a literal `ORDER BY` from a fixed list, chosen by a checked value.
+  *Built 2026-10-08:* `latest_birth_date_for_age()` goes after all. The date bounds in
+  `filtered_students()` were its only caller, and they went with the pin: the filter is decided in
+  PHP through `student_age_group()`, the one band rule. `student_age()` stays in `app/groups.php`.
 - **The router** drops `compose` and `print` from `$allowed` and from its staff list, and, with the
   dots (which go, 2026-10-07), its call to `presence_touch()`.
 - **The `structure` suite's** list of expected files loses each deleted file.
@@ -838,6 +855,9 @@ its key `student_level` and both tables stay, and 039 is not written.
   before. A child's age group is always worked out from the birth date, so it changes by itself on a
   birthday. The students list can be sorted by age, with a heading for each age group.
 - The example data is smaller: one course, four children, and every kind of charge.
+- *Built 2026-10-08:* the example logins work for two weeks after the data is filled, then sign-in
+  refuses them; remove the example data and fill it again for fresh ones. Their password is four
+  made-up words, shown once.
 - Anything with several steps becomes a guide with one question per step.
 - Whatever anybody types, the portal answers with one plain sentence, never an error page. A new test
   sends every form nonsense, as every kind of person.

@@ -36,12 +36,14 @@ In this order.
      their rows (037), and new voice notes and files — a message is text and photos, a
      family's from the camera; old voice notes and files stay, old chats between two
      students are readable and closed;
-   - round 3, being built: the age-group pin goes (038) — levels and the age bands the
-     trainer edits stay, and a child's band comes from the birth date only; the students list
-     sorts „Nach Alter" under a header per band
+   - round 3, done: the age-group pin went (038) — levels and the age bands the trainer
+     edits stay, and a child's band comes from the birth date by one rule, so the filter, the
+     row, the header and the child's page agree even where bands overlap; the example data is
+     one course, four children and two family logins (§9), with a password of eight syllables
+     that stops working 14 days after the fill. The students list sorts „Nach Alter" under a
+     header per band by its address (`sort=age`); its screen
      (docs/design/2026-10-07-ios-design-language-and-goal-screens.md, „Part 1, revised
-     2026-10-08"); and the example data, cut to one course, four children and two family
-     logins (§9).
+     2026-10-08") is frontend-dev's next batch.
 
    A document describing a removed feature changes in the commit that removes it, never
    before, so the documents never describe code that is not there.
@@ -71,7 +73,7 @@ In this order.
    kind of mail's unsubscribe page says what it stops; an invoice is made out to the
    student's name; a changed training date's notice and mail lead to the overview; a logo
    photo stored sideways is measured upright. Still open:
-   - The example trainer login: a high-entropy password, and an expiry (round 3).
+   - The example trainer login: done with round 3 (eight syllables, 14 days).
    - Targets below the minimum on a desktop screen: the help button's summary (36 px),
      „Alle ansehen" (21 px).
 7. **A refused update stays refused (ADR 0027): done** (`bfeb592`, `1ad0488`). The counts from
@@ -224,6 +226,10 @@ For the owner to do:
 
 ## For the owner to test or deploy
 
+- **Example logins stop working 14 days after the data was filled** (round 3). Remove the
+  example data and fill it again for fresh ones; the password is four made-up words, shown
+  once. A child who was pinned to an age group and has no birth date shows no age group after
+  the update; enter the birth date.
 - **Unsubscribe links in your own test mails stop working** with the next update: they now
   carry an expiry, and links made before have none. The next mail carries a working link,
   and the page says where the switches are.

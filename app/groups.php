@@ -12,7 +12,9 @@ declare(strict_types=1);
  * The difference between them is worth stating, because it is the thing that
  * gets confused: a level is chosen, an age group is worked out. A level has a
  * default so a new child is never blank; an age group has none, because the
- * date of birth already answers it and answers it again next birthday.
+ * date of birth already answers it and answers it again next birthday. Nobody
+ * sets a child's age group: since 038 it is worked out from the birth date
+ * alone, by one rule (student_age_group()).
  */
 
 /** Levels, in the operator's order. */
@@ -61,21 +63,6 @@ function student_age(?string $birthDate, ?string $on=null): ?int {
 }
 
 /**
- * The last day somebody can have been born and be $age years old on $on: the
- * same day $age years earlier, or the 28th when that is a 29 February the
- * year does not have. The bound a query uses for „at least this old“, written
- * so it agrees with student_age() on every day - modify('-11 years') turns
- * 29 February into 1 March and is a day out once in four years.
- */
-function latest_birth_date_for_age(int $age, ?string $on = null): string {
-    $day = new DateTimeImmutable($on ?? today());
-    $year = (int)$day->format('Y') - $age;
-    $month = (int)$day->format('n');
-    $last = (int)(new DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month)))->format('t');
-    return $day->setDate($year, $month, min((int)$day->format('j'), $last))->format('Y-m-d');
-}
-
-/**
  * The band an age falls into, or null when none covers it.
  *
  * First match in the operator's own order wins, so overlapping bands are decided
@@ -92,24 +79,25 @@ function age_group_for_age(?int $age, ?array $groups=null): ?array {
 }
 
 /**
- * Which age group one student is in, and whether that was decided or worked out.
+ * The age group one student is in: the first band, in Verwaltung's order, that
+ * covers their age today. Null without a birth date, or when no band covers the
+ * age. Archived bands place nobody, because age_groups() leaves them out.
  *
- * Returns ['group'=>?array, 'pinned'=>bool]. A pinned group survives a birthday;
- * an unpinned one moves with it, which is what "auto detect, changeable" has to
- * mean for a list of children that is read for years.
+ * The one rule for a child's band (ADR 0026, the owner's answer of 2026-10-07):
+ * the child's page, the students list's rows, its sections and its filter, and
+ * Verwaltung's counts all ask it, and none works a band out for itself. Nobody
+ * pins a band any more: a child who trains with older ones is a matter of level
+ * or course, not of age. $groups is age_groups(), for a caller asking for many
+ * children at once.
  */
-function student_age_group(array $student, ?array $groups=null): array {
-    if (!empty($student['age_group_id'])) {
-        $pinned = one('SELECT * FROM age_groups WHERE id=?', [(int)$student['age_group_id']]);
-        if ($pinned) return ['group'=>$pinned, 'pinned'=>true];
-    }
-    return ['group'=>age_group_for_age(student_age($student['birth_date'] ?? null), $groups), 'pinned'=>false];
+function student_age_group(array $student, ?array $groups=null): ?array {
+    return age_group_for_age(student_age($student['birth_date'] ?? null), $groups);
 }
 
 /** That group's name, with the reason it is blank when it is. */
 function age_group_name(array $student, ?array $groups=null): string {
-    $resolved = student_age_group($student, $groups);
-    if ($resolved['group']) return (string)$resolved['group']['name'];
+    $group = student_age_group($student, $groups);
+    if ($group) return (string)$group['name'];
     return student_age($student['birth_date'] ?? null) === null
         ? t('Kein Geburtsdatum', 'No date of birth')
         : t('Keine passende Gruppe', 'No band covers this age');
@@ -150,18 +138,20 @@ function age_group_warnings(?array $groups=null): array {
  * How many students are in each level and each age group.
  *
  * Shown beside the lists so that archiving or renaming one is done with its
- * weight visible. Age groups are counted in PHP because most students have no
- * pinned group and the band is worked out from a date.
+ * weight visible. Age groups are counted in PHP, by the one rule
+ * (student_age_group()): a band is worked out from a date, never stored. An
+ * archived band is listed with nobody in it, because it places nobody.
  */
 function group_usage(): array {
     $levels = [];
     foreach (rows('SELECT level_id, COUNT(*) AS n FROM students GROUP BY level_id') as $r)
         $levels[(int)$r['level_id']] = (int)$r['n'];
-    $bands = age_groups(true);
-    $ages = array_fill_keys(array_map(fn($g) => (int)$g['id'], $bands), 0);
+    $every = age_groups(true);
+    $ages = array_fill_keys(array_map(fn($g) => (int)$g['id'], $every), 0);
+    $bands = array_values(array_filter($every, fn($g) => !(int)$g['archived']));
     $unplaced = 0;
-    foreach (rows('SELECT birth_date, age_group_id FROM students') as $s) {
-        $group = student_age_group($s, $bands)['group'];
+    foreach (rows('SELECT birth_date FROM students') as $s) {
+        $group = student_age_group($s, $bands);
         if ($group) $ages[(int)$group['id']]++; else $unplaced++;
     }
     return ['levels'=>$levels, 'age_groups'=>$ages, 'unplaced'=>$unplaced];

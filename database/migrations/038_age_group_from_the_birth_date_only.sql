@@ -1,0 +1,36 @@
+-- A child's age group is worked out from the birth date only: a child can no
+-- longer be pinned to one
+-- (docs/decisions/0026-who-the-portal-is-for-the-beta-and-what-it-no-longer-carries.md,
+-- §8 and §11; the owner's answer of 2026-10-07, 19:03 UTC).
+--
+-- The owner: "Skill levels were good to have / age levels will also be needed,
+-- but it would be enough if the app can dynamically output in which age group
+-- one falls in". So levels stay, and so do the age groups themselves; what goes
+-- is the pin. 008 gave every child an age_group_id: NULL, the usual case, meant
+-- "work it out from the date of birth", and a band's id pinned the child to that
+-- band whatever their age. From now on every child falls in the band their age
+-- today gives, and students.birth_date, which stays, is all that needs.
+--
+-- What each pinned child was pinned to goes. Every child keeps their level and
+-- every other value; levels and age_groups keep every row and every column; no
+-- child is lost, so the update's guard, which counts the rows of students, has
+-- nothing to refuse. The copy the update takes beforehand, in storage/backups,
+-- holds the pins as they were. Lines in the change log that name a child's age
+-- group keep what they say.
+--
+-- The key is dropped by the name 008 gave it, student_age_group, so no lookup is
+-- needed (029 needed one only because 001 left its key unnamed). It is the only
+-- key on the column. The engine made an index for it, under the key's name and
+-- on the column alone, which goes with the column. student_level, the level's
+-- key, and its index stay. No other index, check, view or trigger uses the
+-- column (information_schema, MariaDB 10.11.14).
+--
+-- One statement, because it cannot run twice: MySQL 8.0 has neither DROP
+-- FOREIGN KEY IF EXISTS nor DROP COLUMN IF EXISTS. Split in two, an update that
+-- stopped between them would leave a file that can no longer start again from
+-- its first statement. Run a second time after it finished, as the next page
+-- view would if the update stopped before the ledger recorded it, the engine
+-- refuses it (1091, SQLSTATE 42000, on MariaDB 10.11.14) and nothing changes, as
+-- with 024, 035 and 036. A key and its column dropped in one ALTER has not been
+-- run on MySQL 8.0.
+ALTER TABLE students DROP FOREIGN KEY student_age_group, DROP COLUMN age_group_id;

@@ -25,7 +25,7 @@ replaced.
 down.** This version deletes the custom fields, with every value in them. After
 the update, take them out of the privacy notice too.
 
-Migrations 019 to 037 then run by themselves. 019 takes every child but the
+Migrations 019 to 038 then run by themselves. 019 takes every child but the
 first off a login they shared; nothing is deleted, and each change is written
 under **Änderungen**. 020 gives every account a status and an empty list of
 times online, which 034 and 035 take away again. 021 switches news by email on
@@ -41,7 +41,9 @@ the **Schüler** list and the e-mail templates; the custom fields' values are no
 longer among the tables counted before and after an update, so their going does
 not refuse it. 034 to 037 delete the times online, each login's status, emoji
 and picture, each child's picture, and every request one family made to write to
-another. After the files, the stored profile pictures are deleted, **for good**:
+another. 038 takes away the pin that held a child in an age group: the band
+now comes from the date of birth alone. After the files, the stored profile
+pictures are deleted, **for good**:
 the copy the update takes first is of the database, and brings back their names
 but not the pictures. Also after the files, every student without a login — the
 children 019 took off a shared one among them — is given a placeholder that
@@ -212,6 +214,45 @@ I.1–I.11 walk.
   before. What the account menu holds and the number of queries the page
   listing the team makes lost their tests when the online status went, and have
   them again; the `Permissions-Policy` header has one for the first time.
+
+### Age groups come from the birth date alone, and the example data is one course
+
+- **Levels and age groups stay**, the owner's later answer: „Skill levels were
+  good to have / age levels will also be needed, but it would be enough if the
+  app can dynamically output in which age group one falls in". A level is still
+  the trainer's choice for a child; the bands are still edited under
+  **Verwaltung → Altersgruppen**.
+- **Nobody pins a child to a band any more.** „Altersgruppe festlegen" is gone
+  from the child's page, and migration 038 drops what it stored. A child's band
+  is the first one, in Verwaltung's order, that covers their age today; a child
+  without a date of birth has none, and one no band covers reads „Keine
+  passende Gruppe". A child who was pinned shows the band their age gives after
+  the update; a pinned child without a date of birth shows none.
+- **One rule, everywhere.** The child's page, the row in the students list, the
+  list's headers, its filter and Verwaltung's counts all ask the same rule, so
+  they agree even where two bands overlap: before, the filter worked the band
+  out again from the band's ages, in SQL, and could list a child under one band
+  while their page named another. An archived band places nobody: its children
+  fall to the next band that covers them, or to „Ohne Altersgruppe".
+- **The students list sorts „Nach Alter"** (`sort=age` in its address), under a
+  header per band in Verwaltung's order, the youngest first, then „Ohne
+  Altersgruppe", then „Ohne Geburtsdatum"; with a band chosen, a line says how
+  many children without a date of birth are left out. The list's new look, with
+  the control for it, follows in its own change.
+- **The example data is as little as shows each screen** (ADR 0026 §9): one
+  course, „Kindertraining", four children — Lena (9) and Jonas (10), whose
+  families have the two example logins, Mia without a date of birth, Elias (13)
+  — a paid, an open, an overdue and an unconfirmed charge, a request to join,
+  a sick note, two days of attendance, a news item and a chat. Nothing in it is
+  drawn at random but the password, so it reads the same on any day. Before it
+  was three courses and fifteen children aged 7 to 41, with random dates.
+- **The example password is eight syllables**, four made-up words each starting
+  with a capital, such as `KemoTapiRunaSofe`, typed on a phone's letters alone;
+  the two words and four digits it replaces were far fewer passwords. **The
+  example logins work for 14 days**, and are refused at sign-in afterwards with
+  the sentence a wrong password gets: the trainer's example address is
+  published, and a login forgotten on a portal on the internet should not stay
+  a way in. The finish page and `demo:fill` say so.
 
 ### Any value from anyone is answered in one sentence
 
@@ -880,9 +921,10 @@ passed on every one of these:
 - **The installer offers to fill the portal with example data.** An empty portal
   is unrecognisable: no courses, no children, every page an empty state, and
   anybody deciding whether to use this had to invent a term's worth of data
-  first. One tick on the setup page now gives three courses, fifteen children
-  with charges, and three sign-ins — a trainer and two families — with the
-  password printed on the finish page. Unticked, nothing but the administrator
+  first. One tick on the setup page now gives example data — since round three
+  of ADR 0026 one course and four children with charges, above — and three
+  sign-ins — a trainer and two families — with the password printed on the
+  finish page. Unticked, nothing but the administrator
   is created, which is what a portal about to hold real data wants.
 - **`demo:fill` prints the password it set.** It said „the password printed
   above" and printed no password, so the three accounts it had just made could
@@ -1150,9 +1192,10 @@ open it.
   README says plainly that no ZIP is published anywhere yet, because there is no
   release: somebody with a shell builds it with `bin/release.sh`.
 - **Example data, one button.** **Einstellungen → System → „Beispieldaten
-  anlegen"** fills a portal with three courses, fifteen children aged 7 to 41,
-  contacts, enrolments, charges, payments, attendance, absences, news and a
-  conversation, so the app can be tried before it holds anybody real. It refuses
+  anlegen"** fills a portal with a course, children, contacts, enrolments,
+  charges, payments, attendance, an absence, news and a conversation (one
+  course and four children since round three of ADR 0026, above), so the app
+  can be tried before it holds anybody real. It refuses
   to run twice, and mixes into real students only when that is ticked as
   understood. „Beispieldaten entfernen" takes all of it out again.
 - **A rejected form no longer empties itself.** A euro sign in a number field

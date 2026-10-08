@@ -53,7 +53,7 @@ case_('A new child is asked the few things that cannot wait');
 $blank = render_view('student_new');
 foreach (['first_name', 'last_name', 'birth_date', 'course', 'status'] as $asked)
     ok(str_contains($blank, 'name="'.$asked.'"'), 'step 1 asks for '.$asked);
-foreach (['email', 'price_note', 'internal_notes', 'level_id', 'age_group_id', 'joined_on'] as $later)
+foreach (['email', 'price_note', 'internal_notes', 'level_id', 'joined_on'] as $later)
     ok(!str_contains($blank, 'name="'.$later.'"'), $later.' waits: the sign-in on step 2, the rest until the record exists');
 ok(str_contains($blank, e('Weiter')), 'and the button says there is more to come');
 

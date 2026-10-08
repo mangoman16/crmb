@@ -117,10 +117,10 @@ function create_student(array $details, ?int $accountId = null): int {
     if(tx_depth()===0) throw new RuntimeException('create_student() outside a transaction could leave a login nobody points to.');
     $d=new_student_defaults();
     $accountId??=placeholder_login((string)$details['first_name'],(string)$details['last_name']);
-    run('INSERT INTO students (account_id,first_name,last_name,email,address,phone,birth_date,joined_on,status,level_id,age_group_id,internal_notes,updated_at,created_at)'
-        .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    run('INSERT INTO students (account_id,first_name,last_name,email,address,phone,birth_date,joined_on,status,level_id,internal_notes,updated_at,created_at)'
+        .' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
         [$accountId,$details['first_name'],$details['last_name'],(string)($details['email']??''),$d['address'],$d['phone'],$details['birth_date']??null,
-         $d['joined_on'],$details['status']??$d['status'],$d['level_id'],$d['age_group_id'],$d['internal_notes'],now(),now()]);
+         $d['joined_on'],$details['status']??$d['status'],$d['level_id'],$d['internal_notes'],now(),now()]);
     return (int)db()->lastInsertId();
 }
 
@@ -527,14 +527,14 @@ function dispatch_action(string $action): array {
            where there is none - nothing found, a value that cannot be an address
            or a username, an invitation or a placeholder not yet set up. So how
            long the answer takes does not say whether the login exists, and the
-           words are the same for every failure. Nothing is hashed on the way to
-           a refusal. */
+           words are the same for every failure (sign_in_refusal()). Nothing is
+           hashed on the way to a refusal; an example login past its days is
+           refused by sign_in() below, after the one password_verify(). */
         $a=account_for_sign_in(...attempted_sign_in());
         $hash=(string)($a['password_hash']??'');
         $real=$hash!=='';
         if(!password_verify(post('password'),$real?$hash:sign_in_dummy_hash()) || !$real || $a['state']!=='active' || !$a['verified_at'])
-            throw new UserError(t('Anmeldung nicht möglich. Bitte E-Mail bzw. Benutzernamen und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link öffnen, den du bekommen hast.',
-                                  'Could not sign in. Please check the email or username and the password. Not set up yet? Then first open the link you were given.'));
+            throw sign_in_refusal();
         // Over the very hash just verified, and nothing else: a password changed
         // in the meantime is not overwritten with this one, and so the read
         // above needs no lock (security review F2).
@@ -836,11 +836,10 @@ function dispatch_action(string $action): array {
             // the old box, and a form without it would blank them on every save.
             $status=post('status');if(!isset(statuses()[$status]) && $status!==$existing['status']) throw new UserError(t('Bitte einen Status auswählen.','Please choose a status.'));
             // A child is always in a level, so an unanswered field means the
-            // default rather than nothing. An age group is the opposite: blank is
-            // the normal answer and means "work it out from the date of birth",
-            // which keeps being right as they have birthdays.
+            // default rather than nothing. The age group is not asked: it is
+            // worked out from the date of birth (student_age_group()), and a
+            // page from before still posting one changes nothing.
             $levelId=reference_or_null('levels','level_id') ?? (int)(level_default()['id'] ?? 0) ?: null;
-            $ageGroupId=reference_or_null('age_groups','age_group_id');
             $join=date_value(post('joined_on'));$end=date_value(post('ended_on'));date_range($join,$end);
             // Where the portal writes to this student: the invitation, invoices,
             // reminders - and, once they sign in with it, what they sign in with.
@@ -880,13 +879,13 @@ function dispatch_action(string $action): array {
                     $email=$posted; $readdress=true;
                 }
             }
-            $args=[$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,$ageGroupId,text_limit('internal_notes',12000),now()];
+            $args=[$first,$last,$email,$address,$phone,$birth,$join,$end,$status,$levelId,text_limit('internal_notes',12000),now()];
             // One tracked change for the whole save, so it is one line in the
             // change log and a stale form is refused as a whole. The login moves
             // inside it too, so the log shows the new address on the student it
             // belongs to.
             tracked('students',$id,$first.' '.$last,function() use ($args,$id,$account,$readdress,$email,$stale) {
-                $updated=run('UPDATE students SET first_name=?,last_name=?,email=?,address=?,phone=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,age_group_id=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
+                $updated=run('UPDATE students SET first_name=?,last_name=?,email=?,address=?,phone=?,birth_date=?,joined_on=?,ended_on=?,status=?,level_id=?,internal_notes=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?',[...$args,$id,(int)post('revision')]);
                 if(!$updated->rowCount()) throw $stale();
                 if($readdress) change_account_email((int)$account['id'],$email);
             });

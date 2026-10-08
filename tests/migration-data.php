@@ -51,7 +51,11 @@ declare(strict_types=1);
  * to, when logins were online, the status, emoji and picture each chose,
  * children's pictures and the requests families sent one another, beside a
  * screenshot and a chat's photo, voice note and file, which 034 to 037 must drop
- * and touch nothing else of; each file is run twice. Then the update this release
+ * and touch nothing else of; each file is run twice. Before 038, on a portal 032
+ * to 037 were applied to, levels and age bands as a portal keeps them, children
+ * in every level, two of them pinned to a band, and change-log lines that name
+ * them, written into the portal at the pause before 032: 038 must take the pins
+ * and touch nothing else, and is run twice. Then the update this release
  * brings, through the application's own runner on a release of this run's own,
  * with the pictures' files on disk, which its step after the files must delete
  * and nothing beside them; and the mistakes ADR 0027 is about, one file at a
@@ -62,8 +66,8 @@ declare(strict_types=1);
  * off the list; a file that empties the table, one that loses a row and stops,
  * one that stops every time, one that stops in an update run with skip-backup;
  * and the record of the unfinished update unwritable, then unreadable. Last, this
- * release's update stopped after 033, 034, 035 and 036 in turn and started again
- * by the next page view, which must end as the update that ran through.
+ * release's update stopped after each of 033 to 037 in turn and started again by
+ * the next page view, which must end as the update that ran through.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -95,8 +99,8 @@ require_once APP_ROOT . '/app/defaults.php';
 require_once APP_ROOT . '/app/auth.php';
 // ... and course_groups_fill(), which gives courses from before 025 their group.
 require_once APP_ROOT . '/app/messaging.php';
-// ... and upload_dir() and delete_upload(), with which it deletes the pictures
-// 035 and 036 leave behind on disk.
+// ... and prune_uploads(), with which it deletes the pictures 035 and 036 leave
+// behind on disk.
 require_once APP_ROOT . '/app/uploads.php';
 
 $target = (string)($argv[1] ?? '');
@@ -419,16 +423,13 @@ function every_login(PDO $pdo): array {
 }
 
 /**
- * Every index on accounts but the primary key, keyed by name: whether it is
+ * Every index on a table but the primary key, keyed by name: whether it is
  * unique, and its columns.
  *
- * The name is kept as well as the columns, because it shows the address is
+ * The name is kept as well as the columns: on accounts it shows the address is
  * still guarded by the index 001 made, which the engine called email after its
  * column.
  */
-function login_indexes(PDO $pdo): array { return table_indexes($pdo, 'accounts'); }
-
-/** The same for any table. */
 function table_indexes(PDO $pdo, string $table): array {
     $indexes = [];
     $query = $pdo->prepare("SELECT index_name AS name, non_unique AS non_unique, column_name AS col FROM information_schema.statistics"
@@ -564,7 +565,7 @@ function chat_state(PDO $pdo): array {
  * every guarded count, the sign-in links and the change log about logins.
  */
 function login_state(PDO $pdo): array {
-    return ['accounts' => every_login($pdo), 'columns' => table_columns($pdo, 'accounts'), 'indexes' => login_indexes($pdo),
+    return ['accounts' => every_login($pdo), 'columns' => table_columns($pdo, 'accounts'), 'indexes' => table_indexes($pdo, 'accounts'),
             'counts' => guarded_counts($pdo),
             'tokens' => $pdo->query('SELECT * FROM auth_tokens ORDER BY id')->fetchAll(),
             'versions' => $pdo->query("SELECT * FROM record_versions WHERE entity = 'accounts' ORDER BY id")->fetchAll()];
@@ -667,7 +668,7 @@ function login_rule_state(PDO $pdo): array {
             'columns' => ['email' => column_facts($pdo, 'accounts', 'email'), 'username' => column_facts($pdo, 'accounts', 'username'),
                           'left_on' => column_facts($pdo, 'class_students', 'left_on'),
                           'removed_on' => column_facts($pdo, 'class_students', 'removed_on')],
-            'keys' => student_keys($pdo), 'indexes' => login_indexes($pdo), 'one_account' => one_account_index($pdo),
+            'keys' => student_keys($pdo), 'indexes' => table_indexes($pdo, 'accounts'), 'one_account' => one_account_index($pdo),
             'counts' => guarded_counts($pdo),
             'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn()];
 }
@@ -675,13 +676,15 @@ function login_rule_state(PDO $pdo): array {
 /**
  * Run a file's statements again on a connection of its own, as the next page
  * view does after an update that applied the file but stopped before the ledger
- * recorded it: the SQLSTATE the engine refused it with, or null if it ran.
+ * recorded it: [SQLSTATE, the engine's own error number] it refused it with, or
+ * null if it ran. The number tells "what it drops is gone" (1091) from a
+ * statement the engine could not even read (1064), which share SQLSTATE 42000.
  */
-function run_again(string $path): ?string {
+function run_again(string $path): ?array {
     // A new connection: no variable or prepared statement of the first run survives into it.
     $next = connect();
     try { foreach (migration_statements($path) as $statement) $next->exec($statement); return null; }
-    catch (PDOException $e) { return (string)$e->getCode(); }
+    catch (PDOException $e) { return [(string)$e->getCode(), (int)($e->errorInfo[1] ?? 0)]; }
 }
 
 /**
@@ -737,11 +740,87 @@ function add_custom_fields_views_and_templates(PDO $pdo): array {
     return ['fields' => [$shirt, $school], 'views' => $views, 'templates' => $templates];
 }
 
-/** 001 to 031 with every portal above written in, and rows in the four tables 032 and 033 drop. */
+/**
+ * What the version before 038 keeps in what it changes (ADR 0026 §8, §11): each
+ * child's pinned band, beside the levels and the bands, which stay.
+ *
+ * Levels and bands as a portal keeps them: the three of each the step after the
+ * files seeds on a new portal, and one of each the trainer added and later
+ * archived. Every child in a level, as the step's backfill leaves them, with
+ * children in all four, the archived one included; two children pinned to a
+ * band, one of them to the archived band, and every other child not; and birth
+ * dates on four. Change-log lines about a child's level and band, a level and a
+ * band, and the audit log's entries about saving a level and a band. Written as
+ * data, so that every portal built from here has them whether or not the step
+ * ran on it; where it runs, it finds both lists filled and every child in a
+ * level, and adds to neither.
+ */
+function add_levels_and_pinned_bands(PDO $pdo): array {
+    [$first, $later] = ['2025-09-01 08:00:00', '2026-09-28 08:00:00'];
+    $level = fn(string $name, string $about, int $order, int $isDefault, int $archived, string $at): int =>
+        insert_row($pdo, 'levels', ['name' => $name, 'description' => $about, 'sort_order' => $order, 'is_default' => $isDefault,
+                                    'archived' => $archived, 'created_at' => $at]);
+    $band = fn(string $name, int $min, ?int $max, int $order, int $archived, string $at): int =>
+        insert_row($pdo, 'age_groups', ['name' => $name, 'min_age' => $min, 'max_age' => $max, 'sort_order' => $order,
+                                        'archived' => $archived, 'created_at' => $at]);
+    $levels = ['beginner' => $level('Anfänger', 'Lernt die Grundschläge.', 10, 1, 0, $first),
+               'advanced' => $level('Fortgeschritten', 'Spielt sicher im Training.', 20, 0, 0, $first),
+               'expert' => $level('Könner', 'Spielt Turniere oder Ligaspiele.', 30, 0, 0, $first),
+               'archived' => $level('Wettkampfgruppe', 'Bis zum Sommer.', 40, 0, 1, $later)];
+    $bands = ['under_12' => $band('Unter 12', 0, 11, 10, 0, $first), 'youth' => $band('Jugend', 12, 17, 20, 0, $first),
+              'adults' => $band('Erwachsene', 18, null, 30, 0, $first), 'archived' => $band('U15', 12, 14, 40, 1, $later)];
+    $pdo->prepare('UPDATE students SET level_id = ? WHERE level_id IS NULL')->execute([$levels['beginner']]);
+    // Paul, Lisa, Jakob and Ida, from the portal before 019.
+    $set = $pdo->prepare('UPDATE students SET level_id = ?, age_group_id = ?, birth_date = ? WHERE id = ?');
+    $set->execute([$levels['expert'], null, '2014-05-06', 20]);
+    $set->execute([$levels['archived'], $bands['youth'], '2012-11-30', 51]);
+    $set->execute([$levels['advanced'], $bands['archived'], '2011-02-28', 60]);
+    $set->execute([$levels['beginner'], null, '2016-08-15', 80]);
+    $line = fn(string $entity, int $id, string $operation, string $label, ?array $before, ?array $after) => insert_row($pdo, 'record_versions', [
+        'entity' => $entity, 'entity_id' => $id, 'operation' => $operation, 'label' => $label,
+        'before_json' => $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE),
+        'after_json' => $after === null ? null : json_encode($after, JSON_UNESCAPED_UNICODE), 'actor_id' => null, 'created_at' => $later]);
+    $line('students', 51, 'update', 'Lisa Huber', ['level_id' => $levels['beginner'], 'age_group_id' => null],
+          ['level_id' => $levels['archived'], 'age_group_id' => $bands['youth']]);
+    $line('levels', $levels['archived'], 'update', 'Wettkampfgruppe', ['archived' => 0], ['archived' => 1]);
+    $line('age_groups', $bands['archived'], 'insert', 'U15', null,
+          ['name' => 'U15', 'min_age' => 12, 'max_age' => 14, 'sort_order' => 40, 'archived' => 0]);
+    foreach ([['level.saved', 'level', $levels['archived']], ['age_group.saved', 'age_group', $bands['archived']]] as [$action, $type, $id])
+        insert_row($pdo, 'audit_log', ['actor_id' => null, 'action' => $action, 'entity_type' => $type, 'entity_id' => $id, 'created_at' => $later]);
+    return ['levels' => $levels, 'age_groups' => $bands];
+}
+
+/**
+ * 001 to 031 with every portal above written in, rows in the four tables 032 and
+ * 033 drop, and the levels, bands and pins of add_levels_and_pinned_bands().
+ */
 function build_portal_before_032(): array {
     [$pdo] = build_portal_before_028();
     apply_migrations($pdo, '028', '031');
-    return [$pdo, add_custom_fields_views_and_templates($pdo)];
+    return [$pdo, add_custom_fields_views_and_templates($pdo) + add_levels_and_pinned_bands($pdo)];
+}
+
+/**
+ * The change-log lines and audit-log entries about a level, a band or a child's
+ * level or band: what 038 must leave as they were written, though it drops the
+ * column some of them name.
+ */
+function lines_about_levels_and_bands(PDO $pdo): array {
+    return ['versions' => $pdo->query("SELECT * FROM record_versions WHERE entity IN ('levels', 'age_groups')"
+                . " OR before_json LIKE '%\"level_id\"%' OR after_json LIKE '%\"level_id\"%'"
+                . " OR before_json LIKE '%\"age_group_id\"%' OR after_json LIKE '%\"age_group_id\"%' ORDER BY id")->fetchAll(),
+            'audit' => $pdo->query("SELECT * FROM audit_log WHERE entity_type IN ('level', 'age_group') ORDER BY id")->fetchAll()];
+}
+
+/**
+ * Both lists as the engine has them, every row and every column: what 038 must
+ * leave as it found them.
+ */
+function levels_and_bands(PDO $pdo): array {
+    $lists = [];
+    foreach (['levels', 'age_groups'] as $table)
+        $lists[$table] = ['columns' => table_columns($pdo, $table), 'rows' => $pdo->query('SELECT * FROM ' . $table . ' ORDER BY id')->fetchAll()];
+    return $lists;
 }
 
 /**
@@ -849,11 +928,11 @@ function add_presence_pictures_and_requests(PDO $pdo): array {
 }
 
 /**
- * What 034 to 037 are held to, read back: every table with its rows and their
- * checksum and every key, and of the two tables that lose columns, every row,
- * every column and every index.
+ * What 034 to 038 are held to, read back: every table with its rows and their
+ * checksum and every key, and of the two tables that lose columns, accounts and
+ * students, every row, every column and every index.
  */
-function presence_and_pictures_state(PDO $pdo): array {
+function tables_and_people(PDO $pdo): array {
     return every_table($pdo) + [
         'accounts' => every_login($pdo), 'students' => $pdo->query('SELECT * FROM students ORDER BY id')->fetchAll(),
         'columns' => ['accounts' => table_columns($pdo, 'accounts'), 'students' => table_columns($pdo, 'students')],
@@ -958,7 +1037,7 @@ for ($stopped = 1; $stopped <= count($twentyThreeStatements); $stopped++) {
     run_statements($pdo, $twentyThree, $stopped < count($twentyThreeStatements)
         ? $twentyThreeStatements : array_slice($twentyThreeStatements, 0, -1));
     run_statements($pdo, $twentyFour, $twentyFourStatements);
-    $result['usernames']['retried'][$stopped] = ['accounts' => every_login($pdo), 'indexes' => login_indexes($pdo)];
+    $result['usernames']['retried'][$stopped] = ['accounts' => every_login($pdo), 'indexes' => table_indexes($pdo, 'accounts')];
 }
 
 // --- 024 on the logins the previous version left --------------------------------
@@ -1216,25 +1295,47 @@ $going = [];
 foreach (['034', '035', '036', '037'] as $number) $going[$number] = migration_path($number);
 [$pdo] = build_portal_before_032();
 apply_migrations($pdo, '032', '033');
-$gone = ['files' => add_presence_pictures_and_requests($pdo), 'before' => presence_and_pictures_state($pdo),
+$gone = ['files' => add_presence_pictures_and_requests($pdo), 'before' => tables_and_people($pdo),
          'statements' => array_map(fn(string $path): int => count(migration_statements($path)), $going)];
 foreach ($going as $number => $path) {
     run_statements($pdo, $path, migration_statements($path));
-    $gone[$number] = presence_and_pictures_state($pdo);
+    $gone[$number] = tables_and_people($pdo);
     $gone['refused'][$number] = run_again($path);
-    $gone[$number . '_again'] = presence_and_pictures_state($pdo);
+    $gone[$number . '_again'] = tables_and_people($pdo);
 }
 $result['going'] = $gone;
+
+// --- 038 on children pinned to an age band ---------------------------------------------
+// 038 takes each child's pinned band, with its key: a child's band is worked out
+// from the birth date alone (ADR 0026 §8, §11; the owner's answer of 2026-10-07).
+// On the portal 032 to 037 were applied to, with levels and bands seeded and
+// added, children in every level, two of them pinned to a band, and change-log
+// lines naming them, it is held to taking the pin and nothing else - each child's
+// level above all, the column beside the one it drops - then run a second time
+// on a connection of its own, as the next page view does after an update that
+// applied it but stopped before the ledger recorded it. One statement, so it
+// cannot stop inside itself; an update stopped just before it is started again
+// through the runner, below.
+$pinFile = migration_path('038');
+[$pdo, $written] = build_portal_before_032();
+apply_migrations($pdo, '032', '037');
+$pinState = fn(): array => tables_and_people($pdo) + ['lists' => levels_and_bands($pdo), 'lines' => lines_about_levels_and_bands($pdo)];
+$pins = ['written' => $written, 'before' => $pinState(), 'statements' => count(migration_statements($pinFile))];
+run_statements($pdo, $pinFile, migration_statements($pinFile));
+$pins['after'] = $pinState();
+$pins['refused'] = run_again($pinFile);
+$pins['again'] = $pinState();
+$result['pins'] = $pins;
 
 // --- this release's update, then one with a mistake in it, through the runner -------
 // schema_apply() itself, the one copy the installer, the console and the first
 // request after an upload all use, on a portal as the previous version leaves it:
-// 001 to 031 in its ledger, its runner step run, and rows in the four tables 032
-// and 033 drop. The runner reads ROOT/database/migrations, so ROOT is a release of
+// 001 to 031 in its ledger, its runner step run, and rows in everything 032 to
+// 038 drop. The runner reads ROOT/database/migrations, so ROOT is a release of
 // this run's own, a copy of the shipped files that one more file can be put into
 // without the portal's own folder ever seeing it; the stamp and the backups go to
 // this run's folder, beside the maintenance flag. First the update this release
-// brings, which must pass the guard and drop what 032 and 033 drop. Then a file
+// brings, which must pass the guard and drop what 032 to 038 drop. Then a file
 // that drops contacts, a guarded table with rows in it, which the guard must
 // refuse: before ADR 0026 §7 it compared only the tables it could still count, and
 // let such a file through.
@@ -1303,7 +1404,7 @@ $onDisk = function () use ($uploads, $outside): array {
 
 // A portal as the previous version leaves it: 001 to 031 in the ledger as
 // schema_apply() makes it, that update's step after the files run, rows in
-// everything 032 to 037 drop, and the files on disk, planted after that step.
+// everything 032 to 038 drop, and the files on disk, planted after that step.
 $previousVersion = function () use ($runnerStep, $plant): array {
     [$pdo, $written] = build_portal_before_032();
     $files = add_presence_pictures_and_requests($pdo);
@@ -1338,9 +1439,9 @@ $ledger = function () use ($pdo): ?array {
     try { return $pdo->query('SELECT version, checksum FROM schema_migrations ORDER BY version')->fetchAll(); }
     catch (PDOException) { return null; }
 };
-$runner['before'] = presence_and_pictures_state($pdo) + ['ledger' => $ledger(), 'files' => $onDisk()];
+$runner['before'] = tables_and_people($pdo) + ['ledger' => $ledger(), 'files' => $onDisk()];
 $runner['release'] = ['refused' => $update(), 'current' => schema_is_current(), 'backups' => count(backups())];
-$runner['release']['state'] = presence_and_pictures_state($pdo) + ['ledger' => $ledger(), 'files' => $onDisk()];
+$runner['release']['state'] = tables_and_people($pdo) + ['ledger' => $ledger(), 'files' => $onDisk()];
 // The step after the files once more, as every later update runs it.
 setting_cache_clear();
 $runner['release']['again'] = ['error' => $runnerStep(), 'files' => $onDisk()];
@@ -1525,22 +1626,22 @@ $unreadable['after'] = $request();
 foreach ($written($unwritable['before'], $unreadable['after']) as $name) @unlink(backup_dir() . '/' . $name);
 
 // --- this release's update stopped between two of its files, then started again --------
-// 034 to 037 are one statement each and cannot stop inside themselves, so what is
-// left is an update stopping between two files: after 033, 034, 035 or 036, which
-// a file that stops, put after each in turn, does to it. The next page view,
-// without that file, starts again at the first file the ledger does not have.
-// Each round on a portal of its own as the previous version left it, its files on
-// disk planted afresh.
+// 034 to 038 are one statement each and cannot stop inside themselves, so what is
+// left is an update stopping between two files: after 033, 034, 035, 036 or 037,
+// which a file that stops, put after each in turn, does to it. The next page
+// view, without that file, starts again at the first file the ledger does not
+// have. Each round on a portal of its own as the previous version left it, its
+// files on disk planted afresh.
 $restarted = [];
-foreach (['033', '034', '035', '036'] as $stop) {
+foreach (['033', '034', '035', '036', '037'] as $stop) {
     $clean();
     [$pdo] = $previousVersion();
-    $round = ['before' => presence_and_pictures_state($pdo) + ['files' => $onDisk(), 'copies' => $state()['copies']]];
+    $round = ['before' => tables_and_people($pdo) + ['files' => $onDisk(), 'copies' => $state()['copies']]];
     $stopper = $stop . '_zz_the_update_stops_here.sql';
     $add($stopper, "INSERT INTO no_such_table VALUES (1);\n");
     $round['stopped'] = $request() + ['files' => $onDisk()];
     $take($stopper);
-    $round['restarted'] = $request() + ['portal' => presence_and_pictures_state($pdo), 'files' => $onDisk()];
+    $round['restarted'] = $request() + ['portal' => tables_and_people($pdo), 'files' => $onDisk()];
     foreach ($written($round['before'], $round['restarted']) as $name) @unlink(backup_dir() . '/' . $name);
     $restarted[$stop] = $round;
 }

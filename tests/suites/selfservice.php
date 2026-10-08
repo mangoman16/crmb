@@ -49,7 +49,8 @@ $before = one('SELECT * FROM students WHERE id=?', [$lena]);
 $familySave(['status'=>'ended', 'joined_on'=>'2000-01-01', 'ended_on'=>'2000-02-02', 'level_id'=>'99', 'age_group_id'=>'1',
              'internal_notes'=>'überschrieben', 'email'=>'anders@beispiel.test', 'account_id'=>'1', 'tariff_id'=>'1', 'price_cents'=>'1']);
 $after = one('SELECT * FROM students WHERE id=?', [$lena]);
-foreach (['status', 'joined_on', 'ended_on', 'level_id', 'age_group_id', 'internal_notes', 'email', 'account_id', 'tariff_id', 'price_cents'] as $column)
+// age_group_id is posted as a page from before the pin went could, and there is no column left to change.
+foreach (['status', 'joined_on', 'ended_on', 'level_id', 'internal_notes', 'email', 'account_id', 'tariff_id', 'price_cents'] as $column)
     is_same($before[$column], $after[$column], 'a posted '.$column.' changes nothing');
 is_same([], version_changes(history_for('students', $lena)[0] ?? ['before_json'=>null, 'after_json'=>null, 'entity'=>'students']),
         'so the log has nothing to say about it');

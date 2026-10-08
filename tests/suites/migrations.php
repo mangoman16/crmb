@@ -11,12 +11,12 @@
  * a trainer is trusting with her families' money.
  *
  * tests/migration-data.php builds a portal as it stood before 015, 019, 020, 022,
- * 024, 025, 028, 032 and 034, applies the rest, and prints what it finds; then it
- * runs this release's update through the application's own runner, with the
- * files the pictures left on disk, the mistakes ADR 0027 keeps the portal closed
- * for, page view after page view, with the imports that reopen it, and the update
- * stopped between two of its files and started again. This reads that and holds
- * it to the promise.
+ * 024, 025, 028, 032, 034 and 038, applies the rest, and prints what it finds;
+ * then it runs this release's update through the application's own runner, with
+ * the files the pictures left on disk, the mistakes ADR 0027 keeps the portal
+ * closed for, page view after page view, with the imports that reopen it, and the
+ * update stopped between two of its files and started again. This reads that and
+ * holds it to the promise.
  *
  * What it does not yet hold to it: 017 backfills covered_from and covered_to on
  * every charge that carries a period, and no case below looks at a charge. The
@@ -269,6 +269,59 @@ run("DELETE FROM settings WHERE setting_key = 'defaults_initialized'");
 setting_cache_clear();
 does_not_throw($runnerStep, 'the seed a first install runs goes through on that schema, with no template left to write');
 
+case_('On this run’s own engine, a child is no longer pinned to an age band, and keeps a level and the birth date the band is worked out from [ADR 0026 §8, §11]');
+ok(!in_array('age_group_id', $columnsOf('students'), true), 'students has no age_group_id');
+ok(in_array('level_id', $columnsOf('students'), true) && in_array('birth_date', $columnsOf('students'), true), 'and keeps level_id and birth_date');
+foreach (['levels', 'age_groups'] as $table) ok(test_has_table($table), $table . ' is still there');
+is_same([['name' => 'student_level', 'refers_to' => 'levels', 'on_delete' => 'SET NULL']],
+        rows("SELECT constraint_name AS name, referenced_table_name AS refers_to, delete_rule AS on_delete FROM information_schema.referential_constraints"
+           . " WHERE constraint_schema = DATABASE() AND table_name = 'students' AND constraint_name IN ('student_level', 'student_age_group')"),
+        'the pin’s key, student_age_group, is gone, and the level’s, student_level, is there');
+is_same(['student_level'], array_column(rows("SELECT DISTINCT index_name AS name FROM information_schema.statistics WHERE table_schema = DATABASE()"
+    . " AND table_name = 'students' AND index_name IN ('student_level', 'student_age_group')"), 'name'),
+        'and of the two indexes the engine made for them, the level’s is there and the pin’s went with its column');
+
+case_('On this run’s own engine, the runner’s step gives a level only to a child without one, and adds nothing to lists that have rows');
+// Its backfill is one UPDATE over every child, and what keeps it to the children
+// without a level is its WHERE: held here to the child it must not touch as well
+// as the one it must.
+run("INSERT INTO levels (name, description, sort_order, is_default, archived, created_at) VALUES ('Fortgeschritten (Test)', '', 90, 0, 0, ?)", [now()]);
+$otherLevel = (int)db()->lastInsertId();
+$defaultLevel = (int)scalar('SELECT id FROM levels WHERE is_default = 1 ORDER BY id LIMIT 1');
+$inALevel = make_student(['first_name' => 'Hat', 'last_name' => 'Gruppe', 'level_id' => $otherLevel]);
+$withoutALevel = make_student(['first_name' => 'Ohne', 'last_name' => 'Gruppe', 'level_id' => null]);
+$levelsOfAll = fn(): array => array_map(fn($level) => $level === null ? null : (int)$level,
+                                        array_column(rows('SELECT id, level_id FROM students ORDER BY id'), 'level_id', 'id'));
+$listsNow = fn(): array => [rows('SELECT * FROM levels ORDER BY id'), rows('SELECT * FROM age_groups ORDER BY id')];
+[$levelsBefore, $listsBefore] = [$levelsOfAll(), $listsNow()];
+ok($defaultLevel > 0 && $defaultLevel !== $otherLevel && $levelsBefore[$withoutALevel] === null, 'before it, one child is in a level other than the default, and one in none');
+does_not_throw($runnerStep, 'the step goes through on that schema, and reads no pin');
+$levelsExpected = $levelsBefore;
+$levelsExpected[$withoutALevel] = $defaultLevel;
+is_same($levelsExpected, $levelsOfAll(), 'afterwards the child without a level has the default one, and every other child, the one in another level included, has the level they had');
+is_same($listsBefore, $listsNow(), 'and neither list gains or loses a row');
+
+case_('On this run’s own engine, a change-log line about a child’s level and pinned band reads in words, the pin’s column gone [ADR 0026 §8]');
+// Lines written before 038 stay until the horizon removes them, and the column
+// one of them names is gone, so the line is drawn from what it holds: the column
+// by its label, each value as history_value() shows what was written.
+$staff = make_account(['role' => 'admin', 'name' => 'Trainerin Gruppen']);
+$pinned = make_student(['first_name' => 'Lisa', 'last_name' => 'Angeheftet']);
+$was = ['level_id' => 1, 'age_group_id' => null];
+$became = ['level_id' => 4, 'age_group_id' => 2];
+run('INSERT INTO record_versions (entity, entity_id, operation, label, before_json, after_json, actor_id, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)',
+    ['students', $pinned, 'update', 'Lisa Angeheftet', json_encode($was), json_encode($became), now()]);
+sign_in_as($staff);
+$pinLine = preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags(render_view('history', ['entity' => 'students', 'record' => (string)$pinned])),
+                                                          ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+sign_out();
+foreach (['level_id', 'age_group_id'] as $column) {
+    ok(history_field_label($column) !== $column, $column . ' is named in words: ' . history_field_label($column));
+    ok(str_contains($pinLine, history_field_label($column) . ' ' . history_value($was[$column], $column) . ' → ' . history_value($became[$column], $column)),
+       'and the child’s line shows it so, from what it was to what it became');
+}
+ok(!str_contains($pinLine, 'level_id') && !str_contains($pinLine, 'age_group_id'), 'no column name shows');
+
 case_('On this run’s own engine, the runner’s step deletes the pictures left behind, and the screenshots stay [ADR 0026 §8]');
 // No column names a picture since 035 and 036, so a stored file in the pictures'
 // folder that no problem report names is one left behind. migration-data.php
@@ -277,22 +330,32 @@ case_('On this run’s own engine, the runner’s step deletes the pictures left
 $pictures = upload_dir('avatar');
 if (!is_dir($pictures)) mkdir($pictures, 0700, true);
 [$leftBehind, $screenshot, $justSaved] = [str_repeat('a', 32) . '.jpg', str_repeat('d', 32) . '.png', str_repeat('9', 32) . '.jpg'];
-foreach ([$leftBehind => time() - 86400, $screenshot => time() - 86400, $justSaved => time()] as $name => $when) {
+// Either side of the step's ten minutes, which the nightly prune's hour and
+// prune_uploads()' floor of one minute would each get wrong.
+[$nineMinutes, $elevenMinutes] = [str_repeat('b', 32) . '.jpg', str_repeat('c', 32) . '.jpg'];
+foreach ([$leftBehind => time() - 86400, $screenshot => time() - 86400, $justSaved => time(),
+          $nineMinutes => time() - 540, $elevenMinutes => time() - 660] as $name => $when) {
     file_put_contents($pictures . '/' . $name, 'x');
     touch($pictures . '/' . $name, $when);
 }
-run("INSERT INTO feedback (account_id, page, message, context_json, screenshot_name, created_at) VALUES (NULL, 'dashboard', 'Kaputt', '{}', ?, ?)",
-    [$screenshot, now()]);
+// The report comes from a login of its own making: prune_uploads() deletes
+// nothing while accounts is empty, as in a database half way through a restore,
+// so without one this case would hold the step to nothing.
+$reporter = make_account(['name' => 'Meldet einen Fehler']);
+run("INSERT INTO feedback (account_id, page, message, context_json, screenshot_name, created_at) VALUES (?, 'dashboard', 'Kaputt', '{}', ?, ?)",
+    [$reporter, $screenshot, now()]);
 $runnerStep();
 clearstatcache();
 ok(!is_file($pictures . '/' . $leftBehind), 'a picture a day old that no report names is deleted');
 ok(is_file($pictures . '/' . $screenshot), 'a screenshot a problem report names stays, though it is as old');
 ok(is_file($pictures . '/' . $justSaved), 'and so does a picture saved a moment ago, which may be a screenshot whose report is being saved');
+ok(is_file($pictures . '/' . $nineMinutes) && !is_file($pictures . '/' . $elevenMinutes),
+   'the step leaves ten minutes: a picture nine minutes old stays, and one eleven minutes old is deleted');
 $runnerStep();
 clearstatcache();
 ok(is_file($pictures . '/' . $screenshot) && is_file($pictures . '/' . $justSaved), 'run again, as every later update runs it, it deletes nothing more');
 run('DELETE FROM feedback WHERE screenshot_name = ?', [$screenshot]);
-foreach ([$screenshot, $justSaved] as $name) @unlink($pictures . '/' . $name);
+foreach ([$screenshot, $justSaved, $nineMinutes] as $name) @unlink($pictures . '/' . $name);
 
 case_('The functions 019 calls behave on this engine as 019 needs them to');
 // 019 builds its change-log lines and compares addresses with these. A CONCAT
@@ -334,14 +397,14 @@ if (!function_exists('exec')) {
     // Shared hosting often lists exec in disable_functions. The run says what it
     // could not do rather than stopping on an undefined function.
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 037, and the update refusing a migration that drops a guarded table'
+        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 038, and the update refusing a migration that drops a guarded table'
          . ' (this PHP disables exec, which the run with data in between needs)']));
     return;
 }
 $target = (string)getenv('CRM_MIGRATION_CONFIG');
 if ($target === '') {
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 037, and the update refusing a migration that drops a'
+        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 038, and the update refusing a migration that drops a'
          . ' guarded table (set CRM_MIGRATION_CONFIG to the config of a'
          . ' second, empty *_test database; tests/mariadb-local.sh does)']));
     return;
@@ -761,6 +824,8 @@ foreach ($g['retried'] as $stopped => $state)
 // version before 028 left it, one file at a time, each run a second time
 // straight after.
 $t = $after['twentyeight'];
+// What the engine said to a file run a second time: [SQLSTATE, its own error number].
+$refusedWith = fn(?array $said): string => $said === null ? 'nothing' : 'SQLSTATE ' . $said[0] . ', error ' . $said[1];
 $s = $t['state'];
 $p = $t['people'];
 $without = fn(array $rows, string ...$keys): array => array_map(fn($row) => array_diff_key($row, array_flip($keys)), $rows);
@@ -807,7 +872,7 @@ is_same(array_diff_key($s['before'], ['accounts' => 1, 'columns' => 1, 'indexes'
         'no student, enrolment, link, key or count changed');
 
 case_('028 run a second time is refused by the engine and changes nothing');
-ok($t['refused']['028'] !== null, 'the engine refuses it: SQLSTATE ' . var_export($t['refused']['028'], true));
+ok($t['refused']['028'] !== null, 'the engine refuses it: ' . $refusedWith($t['refused']['028']));
 is_same($s['028'], $s['028_again'], 'and every login, student, column, index, key and count is as one run left them');
 
 case_('029 drops the key that emptied a student’s login, and nothing else [ADR 0023 §4]');
@@ -845,7 +910,7 @@ is_same($s['029']['one_account'], $s['030']['one_account'], 'it uses student_one
 is_same(array_diff_key($s['029'], ['keys' => 1]), array_diff_key($s['030'], ['keys' => 1]), 'no login, student, enrolment, link, column, index or count changed');
 
 case_('030 run a second time is refused by the engine and changes nothing');
-ok($t['refused']['030'] !== null, 'the engine refuses it: SQLSTATE ' . var_export($t['refused']['030'], true));
+ok($t['refused']['030'] !== null, 'the engine refuses it: ' . $refusedWith($t['refused']['030']));
 is_same($s['030'], $s['030_again'], 'and the key, every row and every count is as one run left them');
 
 case_('031 gives every enrolment removed_on, NULL, and changes nothing else [ADR 0024 §1]');
@@ -860,7 +925,7 @@ is_same(array_diff_key($s['030'], ['enrolments' => 1, 'columns' => 1]), array_di
         'no login, student, link, key, index or count changed, class_students’ count included');
 
 case_('031 run a second time is refused by the engine and changes nothing');
-ok($t['refused']['031'] !== null, 'the engine refuses it: SQLSTATE ' . var_export($t['refused']['031'], true));
+ok($t['refused']['031'] !== null, 'the engine refuses it: ' . $refusedWith($t['refused']['031']));
 is_same($s['031'], $s['031_again'], 'and every enrolment and count is as one run left them');
 
 case_('The runner’s step after 031 gives every student without a login a placeholder of their own [ADR 0023 §4]');
@@ -1110,15 +1175,88 @@ case_('Run a second time, 034 and 037 do nothing, and 035 and 036 are refused by
 // 8.0 has no DROP COLUMN IF EXISTS, so 035 and 036 cannot, and what matters is
 // that the second run stops there, with the portal closed and the copy in place,
 // and loses nothing - as 024's does.
-is_same(['034' => null, '035' => '42000', '036' => '42000', '037' => null], $go['refused'] ?? [],
-        'each runs again on a connection of its own; the engine refuses only the two that drop columns, with SQLSTATE 42000');
+is_same(['034' => null, '035' => ['42000', 1091], '036' => ['42000', 1091], '037' => null], $go['refused'] ?? [],
+        'each runs again on a connection of its own; the engine refuses only the two that drop columns, because what they drop is gone (1091, SQLSTATE 42000)');
 foreach (['034', '035', '036', '037'] as $number)
     is_same($go[$number], $go[$number . '_again'], $number . ' run again changes nothing: the same tables, rows, checksums, keys, columns and indexes');
 
 // ---------------------------------------------------------------------------
+// 038: a child is no longer pinned to an age band, and falls in the band their
+// birth date gives (ADR 0026 §8, §11; the owner's answer of 2026-10-07). It drops
+// one column and its key, so it is held to taking those and nothing else: every
+// other value of every child - their level and their birth date above all -
+// every other key and index, both lists with every row and every column, every
+// other table to the engine's checksum of every row, and the change log's and
+// the audit log's lines about levels and bands.
+$pins = $after['pins'];
+[$was, $is] = [$pins['before'], $pins['after']];
+$lists = ['levels', 'age_groups'];
+$childGone = ['avatar_name', 'age_group_id'];
+$studentOf = fn(array $state, int $id): array => array_column($state['students'], null, 'id')[$id] ?? [];
+$keyRows = fn(array $keys): array => array_map(fn($k) => [$k['on_table'], $k['name'], $k['refers_to'], $k['on_delete']], $keys);
+
+case_('Before 038 children are pinned to an age band, beside levels, bands and children in every level, which must stay');
+is_same(['age_groups' => 4, 'levels' => 4], array_intersect_key($was['rows'], array_flip($lists)),
+        'four levels and four bands: three of each as a new portal starts, and one of each the trainer added and archived');
+is_same(count($was['students']), $filled($was['students'], 'level_id', null), 'every child is in a level, as the step after the files leaves them');
+is_same(4, count(array_unique(array_column($was['students'], 'level_id'))), 'and there are children in all four, the archived one included');
+is_same(2, $filled($was['students'], 'age_group_id', null), 'two children are pinned to a band, and every other child is not');
+is_same([(int)$pins['written']['levels']['archived'], (int)$pins['written']['age_groups']['youth']],
+        [(int)($studentOf($was, 51)['level_id'] ?? 0), (int)($studentOf($was, 51)['age_group_id'] ?? 0)],
+        'Lisa is in the archived level and pinned to „Jugend“');
+is_same((int)$pins['written']['age_groups']['archived'], (int)($studentOf($was, 60)['age_group_id'] ?? 0), 'Jakob is pinned to the archived band');
+ok($filled($was['students'], 'birth_date', null) >= 4, 'children have birth dates to keep: ' . $filled($was['students'], 'birth_date', null));
+is_same([['students', 'student_age_group', 'age_groups', 'SET NULL'], ['students', 'student_level', 'levels', 'SET NULL']], $keyRows($touching($was['keys'], $lists)),
+        'the only keys that touch either list are students’ two, under the names 008 gave them');
+is_same([['unique' => false, 'columns' => ['age_group_id']], ['unique' => false, 'columns' => ['level_id']]],
+        [$was['indexes']['students']['student_age_group'] ?? null, $was['indexes']['students']['student_level'] ?? null],
+        'the engine made an index for each key, under its name and on its column alone');
+is_same(['students', 'levels', 'age_groups'], array_column($was['lines']['versions'], 'entity'),
+        'the change log has a line about a child’s level and band, one about a level and one about a band');
+is_same(['level.saved', 'age_group.saved'], array_column($was['lines']['audit'], 'action'), 'and the audit log an entry about saving a level and a band');
+
+case_('038 takes the pinned band from every child, with its key, and nothing else');
+is_same($listed($was['columns']['students'], ['age_group_id']), $is['columns']['students'], 'students loses age_group_id, and keeps every other column in its order');
+ok(in_array('level_id', $is['columns']['students'], true) && in_array('birth_date', $is['columns']['students'], true),
+   'level_id and birth_date, from which the band is worked out, among them');
+is_same($except($was['indexes']['students'], ['student_age_group']), $is['indexes']['students'],
+        'the index the engine made for the key goes with its column, and every other index stays, the level’s among them');
+is_same(array_values(array_filter($was['keys'], fn($k) => $k['name'] !== 'student_age_group')), $is['keys'],
+        'the key gone is student_age_group, and every other key is as it was');
+is_same([['students', 'student_level', 'levels', 'SET NULL']], $keyRows($touching($is['keys'], $lists)), 'so the one key left that touches either list is the level’s');
+is_same($less($was['students'], ['age_group_id']), $is['students'], 'every child has every other value they had, their level and their birth date included, and none is lost');
+is_same($except($was['sums'], ['students']), $except($is['sums'], ['students']), 'every other table has every row it had, to the engine’s checksum');
+is_same([$was['tables'], $was['rows']], [$is['tables'], $is['rows']], 'the same tables, and as many rows in each');
+is_same([$was['accounts'], $was['columns']['accounts'], $was['indexes']['accounts']], [$is['accounts'], $is['columns']['accounts'], $is['indexes']['accounts']],
+        'and every login, with its columns and indexes, as it was');
+
+case_('038 leaves the levels and the age groups with every row and every column');
+is_same($was['lists'], $is['lists'], 'levels and age_groups have every column and every row they had, each value included');
+is_same([$was['sums']['levels'] ?? 'missing', $was['sums']['age_groups'] ?? 'missing'], [$is['sums']['levels'] ?? 'gone', $is['sums']['age_groups'] ?? 'gone'],
+        'and the engine’s checksum of each is the same');
+
+case_('038 leaves the change log’s and the audit log’s lines about levels, bands and pins as they were written [ADR 0026 §8]');
+is_same($was['lines'], $is['lines'], 'every one, those that name age_group_id included, so the history page has them to read');
+
+case_('038 lowers no guarded count, so the update’s guard stays as it is');
+is_same($was['counts'], $is['counts'], 'every table in schema_guarded_tables() has as many rows as before');
+ok(in_array('students', schema_guarded_tables(), true) && ($was['counts']['students'] ?? 0) > 0, 'students is guarded and had rows to lose');
+
+case_('038 is one statement, so it cannot stop inside itself');
+is_same(1, $pins['statements'], 'one statement');
+
+case_('Run a second time, 038 is refused by the engine and changes nothing');
+// As 035 and 036: MySQL 8.0 has no DROP FOREIGN KEY IF EXISTS and no DROP COLUMN
+// IF EXISTS, so what matters is that the second run stops there, with the portal
+// closed and the copy in place.
+is_same(['42000', 1091], $pins['refused'] ?? null,
+        'it runs again on a connection of its own, as the next page view would, and the engine refuses it because what it drops is gone (1091, SQLSTATE 42000)');
+is_same($is, $pins['again'] ?? null, 'and the tables, rows, checksums, keys, columns, indexes, lists and lines are as one run left them');
+
+// ---------------------------------------------------------------------------
 // The update this release brings, then one with a mistake in it, through the
 // application's own runner, schema_apply(), on a portal the previous version
-// left: 001 to 031 in its ledger, rows in everything 032 to 037 drop, and the
+// left: 001 to 031 in its ledger, rows in everything 032 to 038 drop, and the
 // files the pictures were stored in on disk.
 $u = $after['runner'];
 $ledgerOf = fn(array $state): array => array_column($state['ledger'], 'checksum', 'version');
@@ -1127,24 +1265,26 @@ $ledgerOf = fn(array $state): array => array_column($state['ledger'], 'checksum'
 $droppedTables = array_merge($custom, $views, ['online_periods', 'contact_requests']);
 $changedTables = ['settings', 'schema_migrations', 'accounts', 'students'];
 
-case_('This release’s update passes the guard on a portal with custom-field values, and drops exactly what 032 to 037 drop');
+case_('This release’s update passes the guard on a portal with custom-field values, and drops exactly what 032 to 038 drop');
 is_same('', $u['previous_step_error'], 'the portal was where the previous version’s update leaves it, its step after the files run');
 ok(($u['before']['rows']['field_values'] ?? 0) > 0, 'with custom-field values for the guard to see: ' . ($u['before']['rows']['field_values'] ?? 0));
 ok(($u['before']['rows']['online_periods'] ?? 0) > 0 && ($u['before']['rows']['contact_requests'] ?? 0) > 0,
    'and an online history and contact requests to drop');
+ok($filled($u['before']['students'], 'age_group_id', null) > 0 && ($u['before']['rows']['levels'] ?? 0) > 0 && ($u['before']['rows']['age_groups'] ?? 0) > 0,
+   'and children pinned to an age band, beside levels and bands that stay');
 is_same(null, $u['release']['refused'], 'schema_apply() goes through: field_values is off the guard, so 032 emptying it does not refuse the update');
 is_same(true, $u['release']['current'], 'and files and database agree afterwards, so the portal opens');
 is_same(1, $u['release']['backups'], 'with the copy taken before the files ran');
-is_same(['032', '033', '034', '035', '036', '037'], array_map(fn(string $version): string => substr($version, 0, 3), array_keys($u['shipped'])),
-        'this release’s files are 032 to 037');
+is_same(['032', '033', '034', '035', '036', '037', '038'], array_map(fn(string $version): string => substr($version, 0, 3), array_keys($u['shipped'])),
+        'this release’s files are 032 to 038');
 is_same($u['shipped'], array_diff_key($ledgerOf($u['release']['state']), $ledgerOf($u['before'])),
         'the ledger gained each of them, with the checksum of the file shipped, and nothing else');
 is_same(array_values(array_diff($u['before']['tables'], $droppedTables)), $u['release']['state']['tables'],
         'the six tables are gone, and every other table is there');
 is_same($except($u['before']['sums'], array_merge($droppedTables, $changedTables)), $except($u['release']['state']['sums'], $changedTables),
-        'every table but the settings, the ledger, accounts and students has every row it had: the backup, the files and the step after them changed nothing else');
+        'every table but the settings, the ledger, accounts and students has every row it had, levels and age_groups among them: the backup, the files and the step after them changed nothing else');
 is_same($less($u['before']['accounts'], $presence), $u['release']['state']['accounts'], 'every login has every value it had but the four 035 takes');
-is_same($less($u['before']['students'], ['avatar_name']), $u['release']['state']['students'], 'and every child every value but the picture');
+is_same($less($u['before']['students'], $childGone), $u['release']['state']['students'], 'and every child every value but the picture and the pinned band, their level included');
 is_same($u['before']['counts'], $u['release']['state']['counts'], 'every guarded table has as many rows as before');
 is_same(null, $u['release']['record'], 'and it leaves no record of an unfinished update behind: the run that passes deletes it [ADR 0027 §1]');
 
@@ -1171,10 +1311,10 @@ is_same('', $u['release']['again']['error'], 'the step runs again, as every late
 is_same($u['release']['state']['files'], $u['release']['again']['files'], 'and deletes nothing more');
 
 case_('This release’s update stopped between two of its files and started again by the next page view ends as the update that ran through');
-// 034 to 037 are one statement each, so an update can stop only between them: a
+// 034 to 038 are one statement each, so an update can stop only between them: a
 // file that stops is put after each in turn, and the next page view runs without it.
 $restarts = $u['restarted'] ?? [];
-is_same(['033', '034', '035', '036'], array_map('strval', array_keys($restarts)), 'stopped after 033, 034, 035 and 036 in turn');
+is_same(['033', '034', '035', '036', '037'], array_map('strval', array_keys($restarts)), 'stopped after each of 033 to 037 in turn');
 foreach ($restarts as $stop => $round) {
     $when = 'stopped after ' . $stop . ': ';
     $stopped = $round['stopped'];
@@ -1196,7 +1336,7 @@ foreach ($restarts as $stop => $round) {
     is_same($except($round['before']['sums'], array_merge($droppedTables, $changedTables)), $except($again['portal']['sums'], $changedTables),
             $when . 'every other table has every row it had, to the engine’s checksum');
     is_same($less($round['before']['accounts'], $presence), $again['portal']['accounts'], $when . 'every login every value but the four 035 takes');
-    is_same($less($round['before']['students'], ['avatar_name']), $again['portal']['students'], $when . 'and every child every value but the picture');
+    is_same($less($round['before']['students'], $childGone), $again['portal']['students'], $when . 'and every child every value but the picture and the pinned band');
     is_same($u['release']['state']['files'], $again['files'], $when . 'and the files on disk end as after the update that ran through');
 }
 

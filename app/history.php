@@ -42,6 +42,8 @@ function history_field_label(string $column): string {
         'ended_on' => t('Mitgliedschaft bis', 'Membership until'),
         'status' => t('Mitgliedschaft', 'Membership'),
         'level_id' => t('Leistungsgruppe', 'Level'),
+        // A band a child was pinned to, on lines written before 038 took the
+        // pin away (ADR 0026): kept, so those lines still read „Altersgruppe".
         'age_group_id' => t('Altersgruppe', 'Age group'),
         'tariff_id' => t('Tarif', 'Tariff'),
         'class_id' => t('Kurs', 'Course'),

@@ -71,8 +71,28 @@ function forget_session_leftovers(): void {
     unset($_SESSION['impersonator_id'],$_SESSION['impersonator_auth_version'],$_SESSION['signin_links'],$_SESSION['student_drafts'],
           $_SESSION['activation_hash'],$_SESSION['answered_forms']);
 }
-/** A new session for $a, and nothing of the one before it (forget_session_leftovers()). */
-function sign_in(array $a): void { session_regenerate_id(true); forget_session_leftovers(); $_SESSION['user_id']=(int)$a['id']; $_SESSION['auth_version']=(int)$a['auth_version']; $_SESSION['last_seen']=time(); $_SESSION['locale']=$a['locale']; $_SESSION['csrf']=bin2hex(random_bytes(32)); current_user(true); }
+/**
+ * The one sentence a refused sign-in is given, whatever the reason: it says
+ * nothing about whether the login exists, or why it was refused (ADR 0019,
+ * 0023 §7). Thrown by the password path and by sign_in() itself.
+ */
+function sign_in_refusal(): UserError {
+    return new UserError(t('Anmeldung nicht möglich. Bitte E-Mail bzw. Benutzernamen und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link öffnen, den du bekommen hast.',
+                           'Could not sign in. Please check the email or username and the password. Not set up yet? Then first open the link you were given.'));
+}
+/**
+ * A new session for $a, and nothing of the one before it (forget_session_leftovers()).
+ *
+ * Every way in ends here - the password, an invitation, a sign-in link, a reset
+ * link, a changed password - so an example login past its days
+ * (demo_login_expired()) is refused here, in the usual words, and a link made
+ * for it signs nobody in either. Thrown before anything of the session changes,
+ * and inside the action's transaction, so a link's password is not written.
+ */
+function sign_in(array $a): void {
+    if(demo_login_expired($a)) throw sign_in_refusal();
+    session_regenerate_id(true); forget_session_leftovers(); $_SESSION['user_id']=(int)$a['id']; $_SESSION['auth_version']=(int)$a['auth_version']; $_SESSION['last_seen']=time(); $_SESSION['locale']=$a['locale']; $_SESSION['csrf']=bin2hex(random_bytes(32)); current_user(true);
+}
 function strong_password(string $p): string {
     if(strlen($p)<12 || strlen($p)>72) throw new UserError(t('Das Passwort muss 12 bis 72 Byte lang sein. Umlaute zählen doppelt.','The password must be 12 to 72 bytes long. Accented characters count double.'));
     // A 12-character minimum alone still admits these; they are the passwords an

@@ -38,7 +38,7 @@ with MariaDB; MySQL is meant to work but has never been run.
 - **Paying** by bank transfer, with a QR code for what is still owed; a family can upload a
   receipt. Payment reminders by e-mail.
 - **Levels and age groups**, renameable and extendable; the age group follows the date of
-  birth.
+  birth alone, by one rule that the child's page, the list and its filter all share.
 - **Contacts** are the people to ring about a child. The portal writes to the child's own
   login.
 - **A chat**: a group for every course, whose children are whoever is enrolled now, and a
@@ -71,7 +71,8 @@ with MariaDB; MySQL is meant to work but has never been run.
   new password meanwhile, the view ends and that browser is signed out.
 - **„Änderungen"**, a change log that says what changed, field by field, and who changed it.
   It informs; there is no undo.
-- **Example data** at the press of a button, and out again.
+- **Example data** at the press of a button, and out again: one course, four children and
+  three sign-ins that work for 14 days.
 - **Installing from a browser** on hosting without a shell, migrations that apply themselves
   after an upload, and an update that refuses rather than guesses: older files than the
   database, an incomplete upload, a database it could not back up first, or fewer rows

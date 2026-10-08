@@ -69,12 +69,19 @@ if($staff):
     }
     echo '</div>';
 endif;
+/* How old, and the age group that follows (Part 1, revised 2026-10-08): the
+   first of the trainer's bands that covers the age, from the date of birth
+   alone - shown here once, under the date it comes from. A gap in the bands is
+   hers to close under Verwaltung, so only staff read that none fits. */
 $age=student_age($s['birth_date']??null);
+$band=student_age_group($s);
 echo '<div id="birth-date">';
 input('birth_date',t('Geburtsdatum','Date of birth'),$s['birth_date'],'date',false,
     match(true) {
-        $age!==null => plural($age,'Jahr alt','Jahre alt','year old','years old').' · '.t('Altersgruppe: ','Age group: ').age_group_name($s),
-        default     => t('Fehlt noch. Danach richtet sich die Altersgruppe.','Still missing. It decides the age group.'),
+        $age===null  => t('Fehlt noch. Danach richtet sich die Altersgruppe.','Still missing. It decides the age group.'),
+        $band!==null => plural($age,'Jahr alt','Jahre alt','year old','years old').' · '.t('Altersgruppe: ','Age group: ').$band['name'],
+        $staff       => plural($age,'Jahr alt','Jahre alt','year old','years old').' · '.t('keine Altersgruppe passt','no age group fits'),
+        default      => plural($age,'Jahr alt','Jahre alt','year old','years old'),
     });
 echo '</div>';
 ?></div>
@@ -106,12 +113,12 @@ input('phone',t('Telefonnummer','Telephone number'),$s['phone']??'','tel',false,
 
 <?php if($staff):
 /* What the child is in the club, in the order it is asked: whether and since
-   when they are a member, then how far along and how old. The prices went to
-   the course (ADR 0011) - a tariff on the child billed nobody - and the two
-   dates came here with the status they belong to. Inside the student form, so
-   „Schüler speichern" keeps saving them. */ ?>
+   when they are a member, then how far along. How old they are is under the
+   date of birth it follows from, and nobody sets it (Part 1, revised
+   2026-10-08). The prices went to the course (ADR 0011) - a tariff on the child
+   billed nobody - and the two dates came here with the status they belong to.
+   Inside the student form, so „Schüler speichern" keeps saving them. */ ?>
 <section class="card"><h2><?=e(t('Einteilung','Grouping'))?></h2>
-<p class="muted"><?=e(t('Drei verschiedene Dinge, die leicht durcheinandergehen: wie weit das Kind ist, wie alt es ist, und ob und seit wann es dabei ist.','Three different things that are easy to confuse: how far along the child is, how old they are, and whether and since when they are taking part.'))?></p>
 <div class="grid three"><?php
 select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$s['status'],true,false,
     t('Probetraining, aktiv, pausiert oder beendet.','On trial, active, paused or ended.'));
@@ -121,8 +128,6 @@ input('ended_on',t('Mitgliedschaft bis','Membership until'),$s['ended_on'],'date
     t('Leer lassen, solange kein Ende feststeht.','Leave it empty while no end is fixed.'));
 select_field('level_id',t('Leistungsgruppe','Level'),array_column(rows('SELECT id,name FROM levels WHERE archived=0 OR id=? ORDER BY sort_order,name',[$s['level_id']??0]),'name','id'),$s['level_id'],false,false,
     t('Du wählst sie. Neue Kinder starten in ','You choose it. New children start in ').(level_default()['name']??'–').'.');
-select_field('age_group_id',t('Altersgruppe festlegen','Pin the age group'),array_column(age_groups(),'name','id'),$s['age_group_id'],false,false,
-    $s['age_group_id']?t('Fest eingestellt. Leer lassen, damit sie sich wieder aus dem Geburtsdatum ergibt.','Pinned. Clear it to let the date of birth decide again.'):t('Leer = ergibt sich aus dem Geburtsdatum: ','Empty = worked out from the date of birth: ').age_group_name($s));
 ?></div></section>
 <?php else:?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Dabei seit','Member since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div></dl></section><?php endif ?>
 <?php if($staff):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>

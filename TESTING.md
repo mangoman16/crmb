@@ -107,6 +107,7 @@ release and emptied again for the next.
 - A view through somebody's eyes ends with the viewer's own login — deleted, suspended or given a new password, the browser looking is signed out on its next tap; a sign-in link's page asks what the link may still do before it shows anything of the login; a trainer is told an administrator releases the privacy notice; a stale „Einladung senden" says the child has a login: [5.11c](#the-shell-the-bar-notifications-feedback-impersonation), [L.20a, L.20d, L.21b](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
 - What ADR 0026 takes out, round one: custom fields with what was typed into them, copying, saved views, writing to many with its templates, „Warteschlange senden", the printed form and data sheet, and Verwaltung's „Tarife" tab: [R.1–R.8](#what-adr-0026-removes-round-one)
 - What ADR 0026 takes out, round two: the online dots, the status and when somebody was online; the status emoji; profile pictures, whose files the update deletes for good; asking to write to another family; voice notes and files in new messages, which are text and photos, a family's from the camera: [R.9–R.17](#what-adr-0026-removes-round-two), and 5.3i, 5.3j, 14.1–14.7, 20.4, 21.7
+- Age groups from the birth date alone — nothing to pin, one rule everywhere, bands that overlap still agree — and the example data cut to one course, four children and three sign-ins that work for 14 days: [N.1–N.7](#age-groups-from-the-birth-date-alone-and-the-small-example-data-round-three), 2.1, 3.4a, 3.4c, 7.2, 7.3
 - After the review of round two: a backup restored with a page opened halfway keeps every upload; a chat photo or a receipt downloads under the type it really is, whatever its name said; a family sending anything but a JPEG is asked to take the photo with the camera: [21.8](#data-safety), [12.9](#payments-and-proof), [14.12](#messages), 14.2, R.12
 - An update that lost records keeps the portal closed, for everybody, on every page view, until the rows are back; the way back is the previous version's files, then the copy from before, in phpMyAdmin (ADR 0027): [G.1–G.9](#an-update-that-lost-records-stays-closed-adr-0027)
 - Any value from anyone is answered with one sentence on the same page: numbers, dates and pages held to their range, a family writes only to the trainer team, and nothing reaches the error log: [V.1–V.11](#any-value-from-anyone-adr-0026-5), 14.5, 14.7
@@ -274,9 +275,10 @@ the path through it.
 
 **0 · Put it up.** Open `setup.php`, give it the database details, a name, an
 address and a password — and **tick „Beispieldaten anlegen"**. The finish page
-prints three sign-ins and one password for all of them; write the password down,
-it is not shown again. (From a shell: `php bin/console.php demo:fill` prints the
-same three and the password.)
+prints three sign-ins and one password for all of them — four made-up words run
+together, such as `KemoTapiRunaSofe` — and says the accounts work for 14 days;
+write the password down, it is not shown again. (From a shell: `php
+bin/console.php demo:fill` prints the same three, the password and the 14 days.)
 
 | You sign in as | Address | What you are testing |
 |---|---|---|
@@ -324,9 +326,9 @@ ansehen"**. A red strip names whose eyes you are using; the portal shows that on
 child only. **Ansicht beenden** gives you yourself back.
 
 **8 · Sign in as a family for real.** Sign out, sign in as
-`lena.hofer@beispiel.test`. Four menu entries — Übersicht, **Profil**,
-Nachrichten, Neuigkeiten — and **Profil** opens their one child; one login is
-one child, so there is no list of children. Their own charges only. Try
+`lena.hofer@beispiel.test`. The bar at the bottom reads Übersicht, Beiträge,
+Chats, **Profil**, and **Profil** opens their one child; one login is one child,
+so there is no list of children. Their own charges only. Try
 `?page=student&id=` with a number that is not theirs: it answers 404.
 
 **9 · Put it back.** **Einstellungen → System → „Beispieldaten entfernen"**.
@@ -338,9 +340,14 @@ Every invented child, course and charge goes; anything you made yourself stays.
 
 - [ ] **2.1** **Einstellungen → System → „Beispieldaten anlegen"** on a portal
   with no real students, or the box on the setup page, which does the same thing
-  at install and saves the trip. It creates three courses, fifteen children aged 7 to
-  41, contacts, enrolments, charges, payments, attendance, absences, news and a
-  conversation. The page then says example data is present.
+  at install and saves the trip. It creates one course, „Kindertraining", and
+  four children — Lena Hofer (9) and Jonas Berger (10), whose families have the
+  two example logins, Mia Gruber without a date of birth, and Elias Wagner
+  (13) — each with a contact; charges with one paid, one open, one overdue and
+  one recorded but not confirmed; a request to join waiting; a sick note;
+  attendance on the last two training days; a news item and a chat. Nothing in
+  it is drawn at random but the password, so it reads the same on any day. The
+  page then says example data is present.
 - [ ] **2.2** Press it a second time. It refuses, and says so. It does not
   create a second set.
 - [ ] **2.3** Note the password the screen gives you for the example accounts —
@@ -373,13 +380,17 @@ Skip on an ordinary code change; do all of it before a release.
 - [ ] **3.4** Correct details. `config/config.php` is written, every migration
   is recorded, exactly one administrator exists, and the sign-in page is served.
 - [ ] **3.4a** Tick **„Beispieldaten anlegen"** on the setup page. The finish
-  page reports what was made and prints three sign-ins with one password for all
-  of them. That password is shown once and never again.
+  page reports what was made — one course, four children, six charges — and
+  prints three sign-ins with one password for all of them: eight syllables, four
+  made-up words each starting with a capital, such as `KemoTapiRunaSofe`, typed
+  on a phone's letters alone. It says the accounts work for 14 days. That
+  password is shown once and never again.
 - [ ] **3.4b** The same install with the box unticked creates nothing but the
   administrator, which is what a portal about to hold real data wants.
 - [ ] **3.4c** `php bin/console.php demo:fill` prints the three addresses and
-  the password too. (It used to say „the password printed above" and print no
-  password, which left three accounts nobody could sign in to.)
+  the password too, and that they sign in for 14 days. (It used to say „the
+  password printed above" and print no password, which left three accounts
+  nobody could sign in to.)
 - [ ] **3.4d** Two tabs on `setup.php`, and the honest limit of what one person
   can prove here. Open the setup page in two tabs, fill both in completely with
   **different** administrator addresses, then submit the first and afterwards
@@ -729,10 +740,13 @@ that.
 - [ ] **7.1** Create a child with a name and a date of birth (L.3–L.10 walk the
   wizard itself). On their page, under **Einteilung**, the level is **Anfänger**
   unless you changed which one is default.
-- [ ] **7.2** The age group is worked out from the date of birth — „Unter 12",
-  „Jugend", „Erwachsene" — and says it was worked out, not chosen.
-- [ ] **7.3** Set the age group by hand. It stays set, and says it was set by
-  hand, even after a birthday would have moved it.
+- [ ] **7.2** The age group is worked out from the date of birth alone — „Unter
+  12", „Jugend", „Erwachsene" — and there is nothing to set: no „Altersgruppe
+  festlegen" on the child's page. A child without a date of birth has none, and
+  one whose age no band covers reads „Keine passende Gruppe".
+- [ ] **7.3** Change the date of birth so that the child falls into another band,
+  and save: their page, their row in **Schüler** and the filter all name the new
+  band at once.
 - [ ] **7.4** **Verwaltung → Leistungsgruppen**: rename one, add a fourth, make
   a different one the default. All three take effect without an administrator.
 - [ ] **7.5** **Verwaltung → Altersgruppen**: the page warns if the bands leave
@@ -1781,8 +1795,7 @@ cancel, mark paid or e-mail.
 - [ ] **B.11** **Verwaltung → Altersgruppen**: make a band 11 to 12. **Schüler**,
   filter by it: a child whose eleventh birthday is today is in the list, so is
   one who turns thirteen tomorrow; one who turns eleven tomorrow and one whose
-  thirteenth birthday is today are not. (Children with a pinned age group are
-  listed by the pin, as before.)
+  thirteenth birthday is today are not.
 - [ ] **B.12** With „Monatsbeiträge automatisch anlegen" on **Beiträge**, and
   the month not yet billed: sign in as a family whose language is English and
   open two pages a minute apart. As the trainer, the new charges read „Beitrag
@@ -2096,6 +2109,50 @@ the families use.
 - [ ] **R.17** **(release)** In a desktop browser's developer tools
   (**Netzwerk** / **Network**), open any page: its response carries
   `Permissions-Policy: camera=(), microphone=(), geolocation=()`.
+
+### Age groups from the birth date alone, and the small example data (round three)
+
+Levels stay, and so do the age bands under **Verwaltung → Altersgruppen**; what
+went is the pin that held a child in a band. One rule gives every child's band,
+and every place asks it. The students list's new look is frontend-dev's and not
+walked here yet; the sort is reached by its address.
+
+- [ ] **N.1** Overlapping bands agree everywhere. **Verwaltung → Altersgruppen**:
+  make „Früh" 8 to 11 and, below it, „Spät" 11 to 14; the page warns that they
+  overlap. A child aged 11: their page names „Früh", the first band in
+  Verwaltung's order that covers them. In **Schüler**, the filter „Früh" lists
+  them and the filter „Spät" does not; `?page=students&sort=age` shows them
+  once, under „Früh"; and Verwaltung counts them in „Früh". Nowhere a different
+  band.
+- [ ] **N.2** Archive „Früh". The same child is now in „Spät" everywhere, a child
+  of 8 under „Ohne Altersgruppe", and the filter no longer offers „Früh";
+  Verwaltung lists it with nobody in it. Bring it back: both are counted in it
+  again.
+- [ ] **N.3** **(release)** On a copy from before this release with a child
+  pinned to a band their age does not give, and one pinned who has no date of
+  birth: after the update the first shows the band their age gives, the second
+  no band at all. Lines under **Änderungen** written before still read
+  „Altersgruppe". The pins are only in the copy under `storage/backups`.
+- [ ] **N.4** With the example data, `?page=students&sort=age`: „Unter 12" with
+  Lena (9) and Jonas (10), then „Jugend" with Elias (13), then „Ohne
+  Geburtsdatum" with Mia, each youngest first; no other header.
+- [ ] **N.5** The example data shows one of each thing. **Kurse → Kindertraining**:
+  Jonas's request to join is waiting under Anfragen, and the group's one message
+  is the trainer's welcome. **Geld**: Mia's last month is overdue, Elias's month
+  is recorded and not yet confirmed, Lena's month is open and not yet due — so
+  Lena's family sees the QR code and „Beleg hochladen" on **Beiträge**. The
+  overview names Mia under „Heute abwesend", sick from today for three days.
+  **Anwesenheit** on the last two Mondays: everybody present, Elias absent on
+  the latest. One news item, published; one chat, Lena's family with the
+  trainer, with two messages.
+- [ ] **N.6** The example logins stop after 14 days. In phpMyAdmin, in `accounts`,
+  set `created_at` of `trainerin@beispiel.test` back by 15 days. Signing in as
+  the trainer is refused with „Anmeldung nicht möglich. Bitte E-Mail bzw.
+  Benutzernamen und Passwort prüfen. …", the same sentence as a wrong password.
+  The families' logins still sign in. „Beispieldaten entfernen", then „anlegen"
+  again: three fresh sign-ins and a new password.
+- [ ] **N.7** `php bin/console.php demo:fill` ends with „They sign in for 14 days;
+  after that, demo:clear and demo:fill again give new ones."
 
 ### The portal as an iPhone app (design language, phase 1)
 

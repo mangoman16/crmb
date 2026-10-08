@@ -82,7 +82,9 @@ try{
     }
     if($command==='demo:fill'){
         $result=demo_fill(($argv[2]??'')==='--force');
-        printf("Created %d students, %d courses, %d charges, %d accounts.\n",$result['students'],$result['courses'],$result['charges'],$result['accounts']);
+        $count=fn(int $n,string $one,string $many):string=>$n.' '.($n===1?$one:$many);
+        printf("Created %s, %s, %s and %s.\n",$count($result['students'],'student','students'),$count($result['courses'],'course','courses'),
+               $count($result['charges'],'charge','charges'),$count($result['accounts'],'login','logins'));
         // It said "the password printed above" and printed no password, so the
         // three accounts it had just made could not be signed in to at all.
         // Generated once and never stored in the clear, so this is the only
@@ -90,7 +92,8 @@ try{
         echo "\n";
         foreach($result['logins'] as $login)printf("  %-32s (%s)\n",$login['email'],$login['role']==='student'?'family':$login['role']);
         echo "\nAll of them sign in with: ".$result['password']."\n"
-            ."Write it down: it is not shown again. Remove everything with demo:clear.\n";exit;
+            ."Write it down: it is not shown again. They sign in for ".DEMO_LOGIN_DAYS." days; after that, demo:clear and demo:fill again\n"
+            ."give new ones. Remove everything with demo:clear.\n";exit;
     }
     if($command==='demo:clear'){
         $result=demo_clear();

@@ -244,3 +244,29 @@ ok(str_contains($donePage, $droppedNote), 'and the page says the typed values we
 ok(!str_contains($donePage, 'Beim Erledigen werden'), 'rather than warning about a deletion that has happened');
 run('DELETE FROM feedback');
 sign_out();
+
+case_('The age line under the date of birth says the band, and a gap in the bands only to staff');
+/* Part 1, revised 2026-10-08: a child's band follows from the date of birth
+   alone, and shows once, under the date. When no band covers the age, staff
+   read so - the gap is theirs to close under Verwaltung - and a family reads
+   only the age. */
+$coach = make_account(['role'=>'trainer', 'name'=>'Band Trainerin']);
+$familyLogin = make_account(['role'=>'student', 'name'=>'Familie Lücke']);
+$youth = make_student(['first_name'=>'Jana', 'last_name'=>'Jugend', 'birth_date'=>date('Y-m-d', strtotime('-14 years -10 days'))]);
+$gapChild = make_student(['first_name'=>'Gero', 'last_name'=>'Lücke', 'birth_date'=>date('Y-m-d', strtotime('-19 years -10 days')), 'account_id'=>$familyLogin]);
+$noDate = make_student(['first_name'=>'Ohne', 'last_name'=>'Datum', 'birth_date'=>null]);
+sign_in_as($coach);
+ok(str_contains(render_view('student', ['id'=>$youth]), e('14 Jahre alt · Altersgruppe: Jugend')), 'a covered age names its band');
+ok(str_contains(render_view('student', ['id'=>$noDate]), e('Fehlt noch. Danach richtet sich die Altersgruppe.')), 'no date of birth says it is missing');
+ok(!str_contains(render_view('student', ['id'=>$youth]), 'name="age_group_id"'), 'and nobody pins a band: the select is gone');
+// A gap: adults start at 21, so a nineteen-year-old is in no band.
+run("UPDATE age_groups SET min_age=21 WHERE name='Erwachsene'");
+$staffSees = render_view('student', ['id'=>$gapChild]);
+ok(str_contains($staffSees, e('19 Jahre alt · keine Altersgruppe passt')), 'staff read that no band covers the age');
+sign_in_as($familyLogin);
+$familySees = render_view('student', ['id'=>$gapChild]);
+ok(str_contains($familySees, e('19 Jahre alt')) && !str_contains($familySees, e('keine Altersgruppe passt')) && !str_contains($familySees, e('Altersgruppe:')),
+   'a family reads only the age: the gap is the trainer’s to close');
+run("UPDATE age_groups SET min_age=18 WHERE name='Erwachsene'");
+ok(str_contains(render_view('student', ['id'=>$gapChild]), e('19 Jahre alt · Altersgruppe: Erwachsene')), 'and the band once it covers the age again');
+sign_out();

@@ -141,6 +141,15 @@ two children stay, to be read by the two of them, and take no new messages.
 Voice notes and files sent before stay where they are and open as before; a new
 message is text and photos.
 
+**Migration 038 takes the pin off the age groups.** A child's age group now
+comes from the date of birth alone: the first band, in the order **Verwaltung →
+Altersgruppen** lists them, that covers the child's age today. 038 drops the
+column that held a child in a band whatever their age. After the update a child
+who was pinned shows the band their age gives, and a pinned child without a
+date of birth shows no band; the pins are only in the copy the update writes
+first. No child is lost, so the check passes. Levels stay as they were, and so
+do the bands, which you still edit under Verwaltung.
+
 **The profile pictures are deleted for good.** Once the update has passed, the
 portal deletes the stored pictures from `storage/uploads/avatar`. The problem
 reports' screenshots, kept in the same folder, stay. The copy the update writes
@@ -268,6 +277,12 @@ here so that nothing surprises you.
   training date now leads a family to their **Übersicht**, in the bell and in
   the mail, where before it led to the course's page and „Kein Zugriff". A
   family can send twenty receipts an hour; the next is told to wait.
+- **Example logins work for 14 days**, counted from when the example data was
+  made. One made before this update and older than that is refused at sign-in
+  from the moment the new files are opened, with the sentence a wrong password
+  gets. „Beispieldaten entfernen" and „Beispieldaten anlegen" give three fresh
+  sign-ins and a new password; what a fill makes is now one course and four
+  children.
 - **No longer in the portal**: custom fields, copying, saved views of the
   **Schüler** list, „An mehrere schreiben" with its e-mail templates,
   „Warteschlange senden", the printed form and data sheet, Verwaltung's „Tarife"

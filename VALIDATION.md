@@ -6,6 +6,21 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
+## 0.6.0, unreleased — at `65ca0f1` and `005eb4e`: the round-2 follow-ups and the delivery batch, on clean worktrees
+
+Recorded 2026-10-08 by docs-writer, from the project manager's runs; nothing here was
+watched by the writer. Both on MariaDB 10.11.14 with PHP 8.4.26, the walk in Chromium.
+MySQL 8.0 was not run, and neither was Safari.
+
+- **The round-2 follow-ups**, committed as `65ca0f1`, on a clean worktree of `7e40ffc`: the
+  whole suite 7942 passed, 0 failed; the browser walk 381 passed, 0 failed.
+- **The delivery batch**, `005eb4e` on a worktree of `7e40ffc`, still being verified when
+  this was written: the whole suite 7904 passed, 0 failed; the browser walk `RESULT: PASS`.
+
+What the writer watched of the same code before it was committed: for the follow-ups,
+7812 passed, 0 failed on `159de33` and the restore played through in a scratch check
+(CHANGELOG.md, „What this was checked on"); for the delivery batch, the record below.
+
 ## 0.6.0, unreleased — at `7e40ffc`: administrators read every chat, IBAN changes are kept, the security batch
 
 Recorded 2026-10-08 by docs-writer, from the project manager's run; nothing here was watched
