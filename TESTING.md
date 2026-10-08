@@ -108,6 +108,7 @@ release and emptied again for the next.
 - What ADR 0026 takes out, round one: custom fields with what was typed into them, copying, saved views, writing to many with its templates, „Warteschlange senden", the printed form and data sheet, and Verwaltung's „Tarife" tab: [R.1–R.8](#what-adr-0026-removes-round-one)
 - What ADR 0026 takes out, round two: the online dots, the status and when somebody was online; the status emoji; profile pictures, whose files the update deletes for good; asking to write to another family; voice notes and files in new messages, which are text and photos, a family's from the camera: [R.9–R.17](#what-adr-0026-removes-round-two), and 5.3i, 5.3j, 14.1–14.7, 20.4, 21.7
 - Age groups from the birth date alone — nothing to pin, one rule everywhere, bands that overlap still agree — and the example data cut to one course, four children and three sign-ins that work for 14 days: [N.1–N.7](#age-groups-from-the-birth-date-alone-and-the-small-example-data-round-three), 2.1, 3.4a, 3.4c, 7.2, 7.3
+- The students list for a phone: a search of its own that keeps the selection, „Alle | Überfällig | Krank", the other filters folded under „Filter", „A–Z | Nach Alter" with a card per age group and its count, rows without a price and „Ohne Kurs" for a child in no course, and „Per E-Mail einladen" reached from the wizard's first step: [17.1–17.8](#the-students-list), A.7, N.4, R.4
 - A restore keeps the portal closed until its import is done: every copy makes `import_unfinished` first and drops it last, nothing is run, copied or swept meanwhile, the closed page reloads itself, an import that stopped is imported again: [H.1–H.5](#a-restore-keeps-the-portal-closed-until-its-import-is-done-adr-0029), 21.8, G.7, G.9
 - After the review of round two: a backup restored with a page opened halfway keeps every upload; a chat photo or a receipt downloads under the type it really is, whatever its name said; a family sending anything but a JPEG is asked to take the photo with the camera: [21.8](#data-safety), [12.9](#payments-and-proof), [14.12](#messages), 14.2, R.12
 - An update that lost records keeps the portal closed, for everybody, on every page view, until the rows are back; the way back is the previous version's files, then the copy from before, in phpMyAdmin (ADR 0027): [G.1–G.9](#an-update-that-lost-records-stays-closed-adr-0027)
@@ -1111,14 +1112,66 @@ that.
 
 ---
 
-## Filters
+## The students list
 
-- [ ] **17.1** **Schüler**: filter by level, age group, course and status. The
-  list shows the children that match, and the line under the heading counts
-  them.
-- [ ] **17.2** The chips above the list, „Überfällige Beiträge" and „Aktuell
-  krank", each open that selection with one tap; „Alle Schüler" goes back to
-  everybody. There is nothing to save a selection under a name with.
+Signed in as the trainer, on the example data, with the levels a new portal
+starts with: Lena (9, Anfänger), Jonas (10, Fortgeschritten), Elias (13,
+Anfänger) and Mia (no date of birth, Könner). Lena, Mia and Elias are in
+„Kindertraining"; Jonas has only asked to join. A family never sees this list.
+The `views` suite checks the same page's HTML; these checks are for the screen.
+
+- [ ] **17.1** On **Schüler**, the list's controls start with a search box of
+  its own, „Suchen". Under „Filter" choose the course Kindertraining and
+  „Anwenden": three children, and „3 in dieser Auswahl" under the heading. Now
+  search for „a", which every name has: still the three, still „3 in dieser
+  Auswahl", and the row „Filter" still reads „Kindertraining" — the search keeps
+  the selection. Empty the box and search again: the course is still chosen.
+- [ ] **17.2** „Alle | Überfällig | Krank" above the list, one tap each.
+  „Überfällig" lists Mia alone, „35,00 € überfällig" in her row; „Krank" lists
+  Mia alone, sick from today. Either starts afresh: a course chosen under
+  „Filter" is dropped. „Alle" brings all four back. Nothing saves a selection
+  under a name.
+- [ ] **17.3** Tap the row „Filter": it unfolds to Kurs, Mitgliedschaft,
+  Leistungsgruppe and Altersgruppe — the groups in the order **Verwaltung →
+  Altersgruppen** lists them, then „Ohne Altersgruppe" — and „Anwenden". Choose
+  Kindertraining, Anfänger and Unter 12 and apply: Lena alone, the fold closed
+  again, and its row reads „Kindertraining · Anfänger · Unter 12", ending in „…"
+  where the row is too narrow for it. The fold no longer asks for an absence or
+  for overdue charges: those are „Krank" and „Überfällig" above it.
+- [ ] **17.4** „A–Z | Nach Alter", under the fold. In A–Z a row reads the age
+  group and the level: Lena „Unter 12 · Anfänger", Mia „Geburtsdatum fehlt ·
+  Könner". „Nach Alter" is a card per age group in Verwaltung's order, its name
+  with the span under it and the count beside it: „Unter 12", „bis 11", 2 —
+  Lena (9), then Jonas (10); „Jugend", „12 bis 17", 1 — Elias; then „Ohne
+  Geburtsdatum", 1 — Mia. No card for „Erwachsene", which has nobody. Under a
+  card a row reads the age and the level, „9 Jahre · Anfänger". Each child is
+  listed once. With the course chosen under „Filter", „Nach Alter" keeps it and
+  shows its three.
+- [ ] **17.5** On Lena's page, give her a date of birth 19 years ago and save:
+  „Nach Alter" now has „Erwachsene", „18 und älter", with Lena. **Verwaltung →
+  Altersgruppen**: let „Erwachsene" start at 21. Lena is now under „Ohne
+  Altersgruppe", after „Jugend" and before „Ohne Geburtsdatum", with „Keine
+  deiner Altersgruppen passt." and „Altersgruppen ansehen", which opens the
+  groups. Archive all three groups: „Es gibt noch keine Altersgruppen." with
+  „Altersgruppen anlegen", and Lena, Jonas and Elias under „Ohne
+  Altersgruppe". Put the groups and Lena's date of birth back.
+- [ ] **17.6** Choose „Unter 12" under „Filter" and apply: Lena and Jonas, and
+  above the list „1 Kind ohne Geburtsdatum ist nicht dabei." with „Zeigen",
+  which opens the list „Nach Alter" at the card „Ohne Geburtsdatum", with Mia.
+  With „Ohne Altersgruppe" chosen instead, Mia alone and no such line; with no
+  age group chosen, no line either.
+- [ ] **17.7** No row shows a price any more, on **Schüler** or in the
+  overview's „Schüler". Jonas, who has only asked to join, wears an amber „Ohne
+  Kurs" beside „Probetraining" in both; Lena, in the course, does not. With more
+  than fifty children — on a copy, before a release; the `views` suite checks
+  the same with 54 — search for a letter most names share and choose „Nach
+  Alter": „Weiter" at the bottom keeps the search, the filters and the order,
+  and a card that runs on to the next page shows the count of its whole group
+  on both pages, not the page's.
+- [ ] **17.8** Switch JavaScript off, as in 5.3g. The search, „Alle |
+  Überfällig | Krank", „Filter" unfolding, „Anwenden", „A–Z | Nach Alter",
+  „Zeigen" and „Weiter" all work as above; the search and „Anwenden" reload the
+  page.
 
 ---
 
@@ -1545,11 +1598,11 @@ where it says so
 
 **Two ways to add a person** (ADR 0021)
 
-- [ ] **A.7** **Schüler → „Per E-Mail einladen"**, a real second address,
-  language English. The flash says the invitation is on its way, and „Offene
-  Einladungen" lists the address with the date it was sent. The mail opens
-  "Hello," with no name and says the person fills in their details and then
-  chooses a course.
+- [ ] **A.7** **Schüler → + Schüler anlegen → „Nur die E-Mail-Adresse bekannt?
+  Ohne Namen einladen"**, a real second address, language English. The flash
+  says the invitation is on its way, and „Offene Einladungen" lists the address
+  with the date it was sent. The mail opens "Hello," with no name and says the
+  person fills in their details and then chooses a course.
 - [ ] **A.8** Open that link on a phone that has never chosen a language: the
   page is in English and says whose invitation it is. Leave the names empty,
   then try a birth date in the future: both are refused, and what was typed
@@ -2034,10 +2087,9 @@ On the example data or a copy.
   level, an age group, a payment recipient or a news item, and no „Kurs
   kopieren". („Kopieren" beside a sign-in link and „Für den Support kopieren"
   put text on the clipboard; they stay.)
-- [ ] **R.4** **Schüler** has no „Diese Auswahl als Ansicht speichern", and its
-  chips are „Alle Schüler", „Überfällige Beiträge" and „Aktuell krank", nothing
-  else. A saved view's old address, `?page=students&saved=1`, shows all
-  children.
+- [ ] **R.4** **Schüler** has no „Diese Auswahl als Ansicht speichern"; above
+  the list stand „Alle | Überfällig | Krank" and „Filter", nothing to save. A
+  saved view's old address, `?page=students&saved=1`, shows all children.
 - [ ] **R.5** No „An mehrere schreiben", at the top of **Nachrichten** or on
   **Übersicht**; no „Auswahl anschreiben" under the **Schüler** filter; no
   „Zahlungserinnerung schreiben" on **Geld**, where „Alle überfälligen per
@@ -2117,8 +2169,8 @@ the families use.
 
 Levels stay, and so do the age bands under **Verwaltung → Altersgruppen**; what
 went is the pin that held a child in a band. One rule gives every child's band,
-and every place asks it. The students list's new look is frontend-dev's and not
-walked here yet; the sort is reached by its address.
+and every place asks it. The students list's look, „Nach Alter" with it, is
+walked under [The students list](#the-students-list).
 
 - [ ] **N.1** Overlapping bands agree everywhere. **Verwaltung → Altersgruppen**:
   archive the three bands a new portal starts with (otherwise „Unter 12" keeps
@@ -2137,9 +2189,10 @@ walked here yet; the sort is reached by its address.
   birth: after the update the first shows the band their age gives, the second
   no band at all. Lines under **Änderungen** written before still read
   „Altersgruppe". The pins are only in the copy under `storage/backups`.
-- [ ] **N.4** With the example data, `?page=students&sort=age`: „Unter 12" with
-  Lena (9) and Jonas (10), then „Jugend" with Elias (13), then „Ohne
-  Geburtsdatum" with Mia, each youngest first; no other header.
+- [ ] **N.4** With the example data, **Schüler → „Nach Alter"** (`sort=age` in
+  the address): „Unter 12" with Lena (9) and Jonas (10), then „Jugend" with
+  Elias (13), then „Ohne Geburtsdatum" with Mia, each youngest first, the
+  counts 2, 1 and 1 beside the names; no other card (17.4).
 - [ ] **N.5** The example data shows one of each thing. **Kurse → Kindertraining**:
   Jonas's request to join is waiting under Anfragen, and the group's one message
   is the trainer's welcome. **Geld**: Mia's last month is overdue (its amount in
@@ -2147,8 +2200,8 @@ walked here yet; the sort is reached by its address.
   his **Beiträge** tab shows the payment as „Unbestätigt" with „Bestätigen". Once
   the club's IBAN is in (**Verwaltung → Zahlungsempfänger**), Lena's family sees
   the QR code and „Beleg hochladen" on **Beiträge**; without it only the upload.
-  The overview counts 1 under „Heute abwesend": in **Schüler** the chip „Aktuell
-  krank" lists Mia, and her Abwesenheit tab says „Krank" from today for three
+  The overview counts 1 under „Heute abwesend": in **Schüler** the selection
+  „Krank" lists Mia, and her Abwesenheit tab says „Krank" from today for three
   days. **Anwesenheit** on the last two Mondays: everybody present, Elias absent
   on the latest. One news item, published; one chat, Lena's family with the
   trainer, with two messages.

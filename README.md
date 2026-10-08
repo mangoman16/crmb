@@ -15,7 +15,8 @@ with MariaDB; MySQL is meant to work but has never been run.
 - **Adding a student** in two steps: who is joining and into which course, then how they sign
   in — an invitation by e-mail, a username with a sign-in link that works once within 48
   hours, or no sign-in for now. Somebody known only by their address can be invited from
-  **Schüler** and fills in their own details. A student's login is replaced, never deleted.
+  the wizard's first step and fills in their own details. A student's login is replaced,
+  never deleted.
   The screens for this are still the minimum the server side needed (ROADMAP.md, item 5).
 - **„Dein Portal einrichten"**, nine steps from an empty portal to the first invitation, each
   ticked from the data. An administrator lands there at every sign-in until it is done or
@@ -39,6 +40,8 @@ with MariaDB; MySQL is meant to work but has never been run.
   receipt. Payment reminders by e-mail.
 - **Levels and age groups**, renameable and extendable; the age group follows the date of
   birth alone, by one rule that the child's page, the list and its filter all share.
+  **Schüler** finds a child by name, narrows the list with „Alle | Überfällig | Krank" and
+  „Filter", and lists the children „Nach Alter", a card per group with its count.
 - **Contacts** are the people to ring about a child. The portal writes to the child's own
   login.
 - **A chat**: a group for every course, whose children are whoever is enrolled now, and a

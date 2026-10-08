@@ -231,3 +231,19 @@ public/assets/app.css` must report the checklist as wider than the screen.
 What it does not prove: Safari (it is Chromium with an iPhone's size and user
 agent), a real mail provider, the PDF in a reader other than a parser, Apache or
 a host's PHP settings (it is `php -S`), and MySQL.
+
+## The layout check, in a browser
+
+```bash
+node tests/mobile.mjs --admin <email> --password '<password>' \
+     [--family <email>] [--family-password '<password>'] [--base <url>]
+```
+
+It opens every page for both roles at 320 and 390 px, light and dark, and fails
+on what [TESTING.md](../TESTING.md#the-layout-check-in-a-real-browser) lists
+under „The layout check, in a real browser". Its arguments
+are a name and a value with a space between them, `--admin x`. Written
+`--admin=x` they are not read: without `--admin` and `--password` it stops with
+its usage line, and a `--family=…` or `--base=…` written that way is skipped
+without a word — the family's pages go unchecked, or the default address is
+used.

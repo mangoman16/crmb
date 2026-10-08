@@ -66,10 +66,16 @@ const pages = async (page, role) => {
         const own = await page.locator('.mobile-nav a[href*="page=student&"]').first().getAttribute('href').catch(() => null);
         return own ? [...common, own.split('?page=')[1]] : common;
     }
-    // students&invite=1 opens „Per E-Mail einladen“ and the open invitations (ADR 0021);
-    // student_new is the wizard „Schüler anlegen“, at its first step (ADR 0023);
-    // more is „Mehr“, the bar's fifth place (ADR 0028).
-    const staff = ['more', 'students', 'students&invite=1', 'student_new', 'classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox',
+    // students&sort=age lists the children under their age groups, and a group
+    // or „none“ are the filter's two kinds of choice, read from the fold
+    // (Part 1, revised 2026-10-08); students&invite=1 opens „Per E-Mail
+    // einladen“ and the open invitations (ADR 0021); student_new is the wizard
+    // „Schüler anlegen“, at its first step (ADR 0023); more is „Mehr“, the bar's
+    // fifth place (ADR 0028).
+    await page.goto(BASE + '?page=students', { waitUntil: 'networkidle' });
+    const band = await page.locator('select[name=age_group] option[value]:not([value=""]):not([value=none])').first().getAttribute('value').catch(() => null);
+    const staff = ['more', 'students', 'students&sort=age', ...(band ? ['students&age_group=' + band] : []), 'students&age_group=none',
+                   'students&invite=1', 'student_new', 'classes', 'attendance', 'payments', 'invoices', 'accounts', 'outbox',
                    'manage', 'manage&tab=ages', 'manage&tab=payments'];
     const admin = ['settings', 'settings&tab=organisation', 'settings&tab=smtp',
                    'settings&tab=privacy', 'settings&tab=system', 'history'];

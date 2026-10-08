@@ -41,9 +41,10 @@ In this order.
      row, the header and the child's page agree even where bands overlap; the example data is
      one course, four children and two family logins (§9), with a password of eight syllables
      that stops working 14 days after the fill. The students list sorts „Nach Alter" under a
-     header per band by its address (`sort=age`); its screen
+     header per band; its screen
      (docs/design/2026-10-07-ios-design-language-and-goal-screens.md, „Part 1, revised
-     2026-10-08") is frontend-dev's next batch.
+     2026-10-08") is built: a search, „Alle | Überfällig | Krank", a „Filter" fold, „A–Z |
+     Nach Alter", rows with age group and level instead of the price, and „Ohne Kurs".
 
    A document describing a removed feature changes in the commit that removes it, never
    before, so the documents never describe code that is not there.
@@ -97,12 +98,22 @@ In this order.
    is in. A copy from before this release has no marker and is restored with the files of its
    own version and maintenance mode on (INSTALL.md). The restore walk (TESTING.md G.1–G.9,
    H.1–H.5, 21.8) has not been walked in a real phpMyAdmin.
-9. **Robustness suite: done** (`aa5b1b7`). `tests/suites/robustness.php` sends unexpected values
+9. **Pictures and a calmer start (owner, 2026-10-08).**
+   - **No white flash in dark mode**, and a short waiting screen with a badminton element,
+     shown only when a page is slow; a badminton mark and icons where a club has uploaded
+     none. frontend-dev fixes the flash's cause; ui-ux-designer specifies the waiting screen
+     and the mark.
+   - **Profile pictures come back** (ADR 0031, being written): faces for the trainer on
+     Anwesenheit, the lists and the child's page, and for the children to make their profile
+     their own; visible to the course with each family's consent; the family and the trainer
+     add them, the family can always replace or remove them. This reverses round 2's removal
+     of pictures.
+10. **Robustness suite: done** (`aa5b1b7`). `tests/suites/robustness.php` sends unexpected values
    to every action as every role and draws every page with them; 751 checks, about 45 s.
    What it cannot reach — uploads, actions no page draws a form for — it lists after a run.
-10. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
+11. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
    started.
-11. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
+12. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
 
 ## The owner's goals
 
@@ -150,6 +161,16 @@ In their words.
 
 ## Decided
 
+- **2026-10-08** — the owner, later: "please also implement a custom loading screen, should
+  not be too slow, but now sometimes pages flash into eyes although dark mode is active and
+  that is annoying. a short waiting page. for logo and waiting use badminton elements. also
+  customization is very important for the brain of the young, so profile picture would still
+  be nice, specially good for the trainer to see faces and not only names to know who people
+  are, so for anwesenheit imagine how hard it is for someone to start teaching and remember
+  who people are, otherwise i love everything that has changed so far". Asked, they answered:
+  a child's picture is seen by the others in the same course too (with each family's
+  consent); the family and the trainer may add or change it, and the family can always
+  replace or remove it; a child may still be added without an address and invited later.
 - **2026-10-08** — the owner: "Drop once again the username support, mainly email login
   support / 1 admin 1 email / 1 person 1 email / 1 trainer 1 email / 1 student 1 email"
   (ADR 0030). So: usernames go, every login has its own address, one address per person (a
@@ -244,6 +265,10 @@ For the owner to do:
 
 ## For the owner to test or deploy
 
+- **The students list on your iPhone** (TESTING.md 17.1–17.8, test data only): search a
+  child, tap „Überfällig" and „Krank", open „Filter", switch to „Nach Alter". Say what
+  feels wrong; the price no longer shows in the list or on the overview, only on the
+  child's page and on Geld.
 - **The restore, in your hosting panel's phpMyAdmin** (TESTING.md H.1–H.5 and G.1–G.9, test
   data only): import a copy from `storage/backups`, open the portal in between and see it
   closed with the sentence, see it open by itself afterwards; stop an import halfway and
@@ -290,6 +315,13 @@ For the owner to do:
 
 ## Later, not scheduled
 
+- A tap within about 0.2 s of a page appearing is lost on every page, to the cross-fade
+  (`@view-transition`, app.css; mobile-tester, 2026-10-08, the same with JavaScript off).
+  Shorter, or letting taps through during it, is frontend-dev's to measure; the staff
+  overview's stat tiles overflowing at 200 % text go with the overview build.
+- At 320 px with 200 % text, a child's „Beiträge" tab is 327 px wide: „Notfallkontakt
+  eintragen" with its hint and „Überfällig" run past the screen (mobile-tester, 2026-10-08,
+  older than the students list). It goes with the Bezahlen build, which redraws that tab.
 - Export to CSV of students, charges and payments, so the club's data is never hostage to the
   portal and an accountant can be handed a file.
 - „Who is at training on Thursday": a register view that the enrolments and absences can

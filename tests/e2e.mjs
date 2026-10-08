@@ -682,13 +682,18 @@ step('9 invite', async () => {
     ok(!(setting('setup_hidden') === 'true' || setting('setup_hidden') === '1'), '„Wieder anzeigen“ brings it back', setting('setup_hidden'));
 });
 
-/** „Per E-Mail einladen“ on the students page: an address and a language. */
+/** „Per E-Mail einladen“: an address and a language, reached from the wizard's
+ *  first step - the students page's heading has one button, „+ Schüler
+ *  anlegen“ (Part 1, revised 2026-10-08). */
 async function inviteByAddress(page, email, locale) {
     await page.goto(BASE + '/index.php?page=dashboard');
     await submit(page, barLink(page, 'Schüler'));
     await look(page, 'admin');
-    const open = page.locator('main a[href*="invite=1"]', { hasText: 'Per E-Mail einladen' });
-    must(await open.count() === 1, 'the students page offers „Per E-Mail einladen“', await mainText(page));
+    ok(await page.locator('main a[href*="invite=1"]').count() === 0, 'the students page no longer offers „Per E-Mail einladen“ beside „+ Schüler anlegen“');
+    await submit(page, page.locator('main a[href*="page=student_new"]', { hasText: 'Schüler anlegen' }));
+    await look(page, 'admin');
+    const open = page.locator('main a[href*="invite=1"]', { hasText: 'Ohne Namen einladen' });
+    must(await open.count() === 1, 'step 1 of the wizard offers „Nur die E-Mail-Adresse bekannt? Ohne Namen einladen“', await mainText(page));
     await submit(page, open);
     await look(page, 'admin');
     const f = page.locator('#invite form:has(input[name=action][value=email_invite])');

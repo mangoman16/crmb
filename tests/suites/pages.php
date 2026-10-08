@@ -453,7 +453,8 @@ case_('Inviting by address is on the students list for staff, with the invitatio
 mail_ready(true);
 sign_in_as($trainer);
 $list = render_view('students');
-ok(str_contains($list, e(url('students', ['invite'=>1]).'#invite')) && str_contains($list, e('Per E-Mail einladen')), 'the heading offers „Per E-Mail einladen"');
+ok(!str_contains($list, e(url('students', ['invite'=>1]).'#invite')) && str_contains(render_view('student_new'), e(url('students', ['invite'=>1, '#'=>'invite']))),
+   'the heading offers one button, „+ Schüler anlegen"; the way to „Per E-Mail einladen" is step 1 of the wizard (Part 1)');
 ok(!str_contains($list, 'id="invite"') && !str_contains($list, 'value="email_invite"'), 'the card is not there until asked for');
 $card = render_view('students', ['invite'=>1]);
 $inviteForm = $formOf($card, 'email_invite');

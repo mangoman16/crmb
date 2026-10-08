@@ -3,7 +3,7 @@ $staff=is_staff($user);$students=filtered_students([],$staff?null:(int)$user['id
 $open=0;$overdue=0;$active=0;$absent=0;
 // One query each for the whole list, not one per student. The cards below show
 // an overdue amount for every role, so both maps are worth loading either way.
-$openBy=balances();$overdueBy=balances(true);$coursePrices=$staff?course_prices_by_student():[];
+$openBy=balances();$overdueBy=balances(true);
 $absentToday=$staff?array_flip(array_map('intval',array_column(
     rows('SELECT DISTINCT student_id FROM absences WHERE starts_on<=? AND ends_on>=?',[today(),today()]),'student_id'))):[];
 foreach($students as $s){
@@ -135,7 +135,7 @@ if($timeline): ?>
 <?php endif ?>
 <?php if($staff): ?><div class="dashboard-grid"><section class="card"><div class="section-heading"><h2><?=e(t('Schüler','Students'))?></h2><a href="<?=e(url('students'))?>"><?=e(t('Alle ansehen','View all'))?><?=icon('chevron')?></a></div>
 <?php if(!$students&&!$hasCourse)empty_state(t('Noch keine Schüler','No students yet'),t('Leg zuerst einen Kurs an – Kinder werden in Kurse eingetragen.','Create a course first – children are put into courses.'),link_button(t('Ersten Kurs anlegen','Create the first course'),'classes',['new'=>1]),'calendar');
-elseif(!$students)empty_state(t('Noch keine Schüler','No students yet'),t('Lege zuerst einen Schüler an. Einen Zugang lädst du danach auf seiner Seite ein.','Add your first student. You invite them in from their own page afterwards.'),link_button(t('Ersten Schüler anlegen','Add first student'),'student_new',['from'=>'dashboard']));else foreach(array_slice($students,0,6) as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0,'course_price'=>$coursePrices[(int)$s['id']]??course_price_label([])]); ?>
+elseif(!$students)empty_state(t('Noch keine Schüler','No students yet'),t('Lege zuerst einen Schüler an. Einen Zugang lädst du danach auf seiner Seite ein.','Add your first student. You invite them in from their own page afterwards.'),link_button(t('Ersten Schüler anlegen','Add first student'),'student_new',['from'=>'dashboard']));else foreach(array_slice($students,0,6) as $s)student_card($s+['due_cents'=>$overdueBy[(int)$s['id']]??0]); ?>
 </section><?php endif ?><?php /* All the news, from here: a family's bar no longer has „Neues" - news
          reaches them through the bell and this group. */ ?>
 <section class="card news-panel"><div class="section-heading"><h2><?=e(t('Neuigkeiten','News'))?></h2><a href="<?=e(url('news'))?>"><?=e(t('Alle ansehen','View all'))?><?=icon('chevron')?></a></div>

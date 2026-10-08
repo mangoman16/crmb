@@ -67,9 +67,9 @@ What the portal carries has been cut to what the trainer and the families need
   eigenes Feld".
 - **Copying**: „Kopieren" on a tariff, a level, an age group, a payment
   recipient or a news item, and „Kurs kopieren".
-- **Saved views** of the **Schüler** list, which the update deletes. The chips
-  „Überfällige Beiträge" and „Aktuell krank" stay, and so do the filters,
-  except „Tarif und eigene Felder".
+- **Saved views** of the **Schüler** list, which the update deletes. The two
+  selections stay, „Überfällig" and „Krank" beside „Alle" above the list, and
+  so do the filters, except „Tarif und eigene Felder".
 - **Writing to many at once** — „An mehrere schreiben", „Auswahl anschreiben"
   under the **Schüler** filter and „Zahlungserinnerung schreiben" on **Geld** —
   with its **e-mail templates** under **Verwaltung**, which the update deletes.
@@ -278,11 +278,32 @@ I.1–I.11 walk.
   out again from the band's ages, in SQL, and could list a child under one band
   while their page named another. An archived band places nobody: its children
   fall to the next band that covers them, or to „Ohne Altersgruppe".
-- **The students list sorts „Nach Alter"** (`sort=age` in its address), under a
-  header per band in Verwaltung's order, the youngest first, then „Ohne
-  Altersgruppe", then „Ohne Geburtsdatum"; with a band chosen, a line says how
-  many children without a date of birth are left out. The list's new look, with
-  the control for it, follows in its own change.
+- **The students list is built for a phone.** A search box of its own at the
+  top, which keeps the rest of the selection; „Alle | Überfällig | Krank", one
+  tap each, starting afresh; the other filters — Kurs, Mitgliedschaft,
+  Leistungsgruppe and Altersgruppe, with „Ohne Altersgruppe" — folded under one
+  row, „Filter", that names what is chosen; and „A–Z | Nach Alter". Every
+  control is a link or a plain form, so the list works without JavaScript and
+  its address says what is shown. A row reads the age group and the level,
+  „Unter 12 · Anfänger", and wears „Ohne Kurs" in amber when the child is in no
+  running course. The price left the rows, here and in the overview's
+  „Schüler", and stays on the child's page and on **Geld**. The fold no longer
+  asks for an absence reason or „Nur überfällige Beiträge": „Krank" and
+  „Überfällig" are those selections. The heading of **Schüler** has one button,
+  „+ Schüler anlegen"; „Per E-Mail einladen" is reached from the wizard's
+  first step, „Nur die E-Mail-Adresse bekannt? Ohne Namen einladen".
+- **„Nach Alter"** (`sort=age` in the address) is a card per age group in
+  Verwaltung's order, its name with the span under it — „bis 11", „12 bis 17",
+  „18 und älter" — and the count beside it: each child once, under the first
+  group that covers their age, the youngest first, a row reading the age,
+  „9 Jahre · Anfänger". Then „Ohne Altersgruppe" for the children no group
+  covers, with „Keine deiner Altersgruppen passt." and the way to the groups,
+  then „Ohne Geburtsdatum". A group with nobody in it draws no card; with no
+  group at all the list says „Es gibt noch keine Altersgruppen." and offers to
+  make them. A chosen group says whom it leaves out, „1 Kind ohne Geburtsdatum
+  ist nicht dabei.", with „Zeigen" to them. On a list longer than a page,
+  „Weiter" keeps the search, the filters and the order, and a group that runs
+  on keeps the count of the whole group.
 - **The example data is as little as shows each screen** (ADR 0026 §9): one
   course, „Kindertraining", four children — Lena (9) and Jonas (10), whose
   families have the two example logins, Mia without a date of birth, Elias (13)
@@ -368,7 +389,8 @@ I.1–I.11 walk.
 - A child who signs in with a username and has no address is not recorded as
   saying yes or no to e-mail they cannot receive. An address added later under
   **Mein Konto** starts with club news and message e-mails both off.
-- **„Per E-Mail einladen"** on the **Schüler** page: type an address and a
+- **„Per E-Mail einladen"**, from the wizard's first step („Nur die
+  E-Mail-Adresse bekannt? Ohne Namen einladen"): type an address and a
   language. The person fills in their name and birth date, sets a password and
   lands on their own page with „Kurs wählen" first; choosing a course is a
   request the trainer answers. Staff are told in the bell when somebody new has

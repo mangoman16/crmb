@@ -252,9 +252,16 @@ here so that nothing surprises you.
   how they sign in — an invitation by e-mail, a username with a sign-in link
   that works once within 48 hours, shown as a QR code to scan or copied to
   send, or no sign-in for now. A child's page shows „Ohne Anmeldung" until one
-  of those is done. „Per E-Mail einladen" on the **Schüler** page still invites
-  somebody by their address alone: they fill in their own details and then
-  choose a course.
+  of those is done. „Per E-Mail einladen", now reached from the wizard's first
+  step, still invites somebody by their address alone: they fill in their own
+  details and then choose a course.
+- **The Schüler list looks different**, built for a phone: a search box at the
+  top, „Alle | Überfällig | Krank" where the chips were, the other filters
+  folded under „Filter", and „A–Z | Nach Alter", which lists the children under
+  their age groups. A row shows the age group and the level, and „Ohne Kurs"
+  where a child is in no course, but no price any more, there or on the
+  overview: the price is on the child's page and on **Geld**. A filter by an
+  absence reason other than „Krank" is no longer offered.
 - **Club news by email starts switched on** for a new family: the switch on
   the invitation page is already on, and they can switch it off there, or later
   under **Mein Konto**.

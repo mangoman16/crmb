@@ -270,3 +270,96 @@ ok(str_contains($familySees, e('19 Jahre alt')) && !str_contains($familySees, e(
 run("UPDATE age_groups SET min_age=18 WHERE name='Erwachsene'");
 ok(str_contains(render_view('student', ['id'=>$gapChild]), e('19 Jahre alt · Altersgruppe: Erwachsene')), 'and the band once it covers the age again');
 sign_out();
+
+case_('The students list: the search, the quick selection, the filter fold and the order (Part 1, revised 2026-10-08)');
+/* Staff find a child by name first; the quick selection starts afresh, the
+   fold's row says what is chosen, the order keeps the filters, and a row says
+   the age group and the level - under a group's own header the age. Every
+   control is a GET link or a GET form. */
+test_reset(); sign_in_as($coach = make_account(['role'=>'trainer', 'name'=>'Listen Trainerin']));
+$aged = fn(int $years): string => (new DateTimeImmutable(today()))->modify('-'.$years.' years')->modify('-100 days')->format('Y-m-d');
+$course = make_class(['name'=>'Kindertraining']);
+$level = level_default();
+$unter12 = (int)scalar("SELECT id FROM age_groups WHERE name='Unter 12'");
+$jugend = (int)scalar("SELECT id FROM age_groups WHERE name='Jugend'");
+run("UPDATE age_groups SET min_age=21 WHERE name='Erwachsene'");   // a gap: a nineteen-year-old is in no group
+$anna = make_student(['first_name'=>'Anna', 'last_name'=>'Alt', 'birth_date'=>$aged(9), 'level_id'=>$level['id']]);
+$ben = make_student(['first_name'=>'Ben', 'last_name'=>'Berg', 'birth_date'=>$aged(14), 'level_id'=>$level['id']]);
+$cora = make_student(['first_name'=>'Cora', 'last_name'=>'Clever', 'birth_date'=>null, 'level_id'=>$level['id']]);
+$dan = make_student(['first_name'=>'Dan', 'last_name'=>'Dazwischen', 'birth_date'=>$aged(19), 'level_id'=>$level['id']]);
+make_enrolment($course, $anna);
+$decoded = fn(string $s): string => html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+$subtitleOf = fn(string $html, string $name): string => preg_match('~<h3>'.preg_quote(e($name), '~').'</h3><p>([^<]*)</p>~', $html, $m) ? $decoded($m[1]) : '(no row)';
+$rowOf = fn(string $html, string $name): string => preg_match('~<a class="student-card"[^>]*>(?:(?!</a>).)*<h3>'.preg_quote(e($name), '~').'</h3>.*?</a>~s', $html, $m) ? $m[0] : '';
+$control = fn(string $html, string $label): string => preg_match('~<nav class="tabs is-segmented" aria-label="'.preg_quote(e($label), '~').'">(.*?)</nav>~s', $html, $m) ? $m[1] : '';
+$fold = fn(string $html): string => preg_match('~<details class="card filter-fold">(.*?)</details>~s', $html, $m) ? $m[1] : '';
+$sections = fn(string $html): array => preg_match_all('~<section class="card age-section" id="([^"]+)"~', $html, $m) ? $m[1] : [];
+$list = render_view('students');
+ok(str_contains($list, '<form method="get" class="search" role="search">') && str_contains($list, 'type="search" name="q"') && str_contains($list, 'placeholder="'.e('Suchen').'"'),
+   'the search is a form of its own, a box that says „Suchen"');
+$quick = $control($list, 'Auswahl');
+ok(str_contains($quick, 'aria-current="page" href="'.e(url('students')).'"') && str_contains($quick, 'href="'.e(url('students', ['overdue'=>1])).'"') && str_contains($quick, 'href="'.e(url('students', ['absence'=>'sick'])).'"'),
+   '„Alle | Überfällig | Krank" is a segmented control of three plain links, „Alle" lit');
+ok(str_contains($fold($list), '<summary><span>'.e('Filter').'</span><svg'), 'the fold’s row says „Filter", and nothing chosen');
+foreach (['course', 'status', 'level', 'age_group'] as $field) ok(str_contains($fold($list), 'name="'.$field.'"'), 'it asks for '.$field);
+ok(preg_match('~<option value="none"[^>]*>'.preg_quote(e('Ohne Altersgruppe'), '~').'</option>~', $fold($list)) === 1, 'with „Ohne Altersgruppe" among the groups');
+ok(!str_contains($fold($list), 'name="absence"') && !str_contains($fold($list), 'type="checkbox"') && !str_contains($fold($list), 'name="q"'),
+   'and no longer for an absence, the overdue or the search, which stand on their own');
+ok(str_contains($fold($list), e('Anwenden')), 'with „Anwenden"');
+$sorted = render_view('students', ['course'=>(string)$course]);
+$sort = $control($sorted, 'Sortieren');
+ok(str_contains($sort, 'aria-current="page" href="'.e(url('students', ['course'=>(string)$course])).'"') && str_contains($sort, 'href="'.e(url('students', ['course'=>(string)$course, 'sort'=>'age'])).'"'),
+   '„A–Z | Nach Alter" keeps the filters, A–Z lit');
+ok(str_contains($control($sorted, 'Auswahl'), 'href="'.e(url('students', ['overdue'=>1])).'"'), 'while „Überfällig" starts afresh');
+ok(str_contains($sorted, '<input type="hidden" name="course" value="'.$course.'">'), 'and the search keeps the course');
+$chosen = render_view('students', ['course'=>(string)$course, 'level'=>(string)$level['id'], 'age_group'=>(string)$unter12, 'sort'=>'age', 'q'=>'A']);
+ok(str_contains($fold($chosen), '<span class="filter-value">'.e('Kindertraining · '.$level['name'].' · Unter 12').'</span>'), 'chosen, the row names the choices in the fields’ order');
+ok(str_contains($fold($chosen), '<input type="hidden" name="q" value="A">') && str_contains($fold($chosen), '<input type="hidden" name="sort" value="age">'),
+   'and „Anwenden" keeps the search and the order');
+is_same(['Anna Alt', 'Ben Berg', 'Cora Clever', 'Dan Dazwischen'], array_map($decoded, preg_match_all('~<h3>([^<]*)</h3>~', $list, $m) ? $m[1] : []), 'A–Z is by last name');
+is_same('Unter 12 · '.$level['name'], $subtitleOf($list, 'Anna Alt'), 'in A–Z a row says the age group and the level');
+is_same('19 Jahre · '.$level['name'], $subtitleOf($list, 'Dan Dazwischen'), 'an age no group covers says the age');
+is_same('Geburtsdatum fehlt · '.$level['name'], $subtitleOf($list, 'Cora Clever'), 'and no birth date says so');
+ok(!str_contains($list, '€') && !str_contains($list, e('in keinem Kurs')), 'the price left the row');
+$overview = render_view('dashboard');   // the same rows on the overview's Schüler group; nobody here is overdue, so „€" can only be a price
+ok(preg_match_all('~<a class="student-card".*?</a>~s', $overview, $m) >= 1 && !str_contains(implode('', $m[0]), '€'), 'and from the overview’s Schüler rows');
+ok(!str_contains($rowOf($list, 'Anna Alt'), e('Ohne Kurs')) && str_contains($rowOf($list, 'Ben Berg'), '<span class="badge amber">'.e('Ohne Kurs').'</span>'),
+   'a child in no running course wears „Ohne Kurs" instead');
+$byAge = render_view('students', ['sort'=>'age']);
+foreach (['age-group-'.$unter12 => ['Unter 12', 'bis 11'], 'age-group-'.$jugend => ['Jugend', '12 bis 17'], 'no-age-group' => ['Ohne Altersgruppe', ''], 'no-birth-date' => ['Ohne Geburtsdatum', '']] as $key => [$title, $span])
+    ok(preg_match('~<section class="card age-section" id="'.$key.'">\s*<div class="section-heading"><div><h2>'.preg_quote(e($title), '~').'</h2>\s*'
+                  .($span !== '' ? '<small>'.preg_quote(e($span), '~').'</small>' : '').'\s*</div><span class="badge ">1</span></div>~', $byAge) === 1,
+       '„Nach Alter" has the group '.$title.($span !== '' ? ' ('.$span.')' : '').', its count beside it');
+is_same(['age-group-'.$unter12, 'age-group-'.$jugend, 'no-age-group', 'no-birth-date'], $sections($byAge), 'in Verwaltung’s order, then no group, then no birth date');
+ok(!str_contains($list, e('Nach Nachnamen sortiert')) && !str_contains($byAge, e('Nach Nachnamen sortiert')), 'and the line „Nach Nachnamen sortiert" is gone: the control says the order');
+is_same('9 Jahre · '.$level['name'], $subtitleOf($byAge, 'Anna Alt'), 'under a group’s header a row says the age and the level');
+ok(str_contains($byAge, '<p class="section-footer">'.e('Keine deiner Altersgruppen passt.').' <a href="'.e(url('manage', ['tab'=>'ages'])).'">'.e('Altersgruppen ansehen').'</a></p>'),
+   '„Ohne Altersgruppe" says the groups leave a gap, with the way to them');
+$withBand = render_view('students', ['age_group'=>(string)$unter12]);
+ok(str_contains($withBand, e('1 Kind ohne Geburtsdatum ist nicht dabei.')) && str_contains($withBand, 'href="'.e(url('students', ['age_group'=>'none', 'sort'=>'age', '#'=>'no-birth-date'])).'">'.e('Zeigen').'</a>'),
+   'a chosen group says whom it leaves out, with „Zeigen" to them');
+// Rows, not the page: the notices above the list name children too.
+ok($rowOf($withBand, 'Anna Alt') !== '' && $rowOf($withBand, 'Ben Berg') === '', 'and shows only its children');
+$none = render_view('students', ['age_group'=>'none']);
+ok($rowOf($none, 'Cora Clever') !== '' && $rowOf($none, 'Dan Dazwischen') !== '' && $rowOf($none, 'Anna Alt') === '' && !str_contains($none, e('nicht dabei')) && !str_contains($list, e('nicht dabei')),
+   '„Ohne Altersgruppe" is the children no group places - no birth date, or the gap - and neither it nor „Alle" has the line');
+$nobody = render_view('students', ['q'=>'Niemand']);
+ok(str_contains($nobody, '<h2>'.e('Niemand in dieser Auswahl').'</h2>') && str_contains($nobody, e(url('students')).'">'.e('Alle Schüler').'</a>'), 'a selection with nobody in it offers „Alle Schüler"');
+run('DELETE FROM age_groups');
+$noBands = render_view('students', ['sort'=>'age']);
+ok(str_contains($noBands, e('Es gibt noch keine Altersgruppen.')) && str_contains($noBands, e(url('manage', ['tab'=>'ages'])).'">'.e('Altersgruppen anlegen').'</a>'),
+   'without any group, the list says so and leads to Verwaltung');
+is_same(['no-age-group', 'no-birth-date'], $sections($noBands), 'and every child with a birth date is under „Ohne Altersgruppe"');
+ok(!str_contains($noBands, 'class="section-footer"'), 'without a footer saying none of them fits');
+for ($i = 0; $i < 50; $i++) make_student(['first_name'=>'Viele', 'last_name'=>'Kind'.str_pad((string)$i, 2, '0', STR_PAD_LEFT), 'level_id'=>$level['id']]);
+$first = render_view('students', ['sort'=>'age', 'q'=>'e']);
+ok(str_contains($first, 'href="'.e(url('students', ['q'=>'e', 'sort'=>'age', 'p'=>2])).'"'), 'the pager keeps the search and the order');
+ok(substr_count($first, 'class="student-card"') === 50 && preg_match('~id="no-birth-date">.*?<span class="badge ">51</span>~s', $first) === 1,
+   'a group that runs on to the next page keeps the count of the whole group');
+$second = render_view('students', ['q'=>'e', 'sort'=>'age', 'p'=>'2']);
+ok(substr_count($second, 'class="student-card"') === 3 && str_contains($second, '<span class="badge ">51</span>') && $sections($second) === ['no-birth-date'],
+   'and the next page continues it under the same header');
+run('DELETE FROM class_students'); run('DELETE FROM students');
+$empty = render_view('students');
+ok(str_contains($empty, '<h2>'.e('Noch keine Schüler').'</h2>') && str_contains($empty, e(url('student_new', ['from'=>'students']))), 'with no student at all, the list offers the wizard');
+sign_out();

@@ -19,6 +19,7 @@ function icon(string $name): string {
         'wallet'=>'<path d="M20 8V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h15v12H5a3 3 0 0 1-3-3V6"/><path d="M20 12h-5v5h5"/>',
         'arrow'=>'<path d="M5 12h14m-6-6 6 6-6 6"/>',
         'plus'=>'<path d="M12 5v14M5 12h14"/>',
+        'search'=>'<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
         'check'=>'<path d="m5 12 4 4L19 6"/>',
         'lock'=>'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/>',
         'logout'=>'<path d="M9 3H4v18h5m5-14 5 5-5 5M8 12h11"/>',
@@ -278,57 +279,79 @@ function wizard_progress(int $step,int $total): void {
 }
 function badge(string $text,string $style=''): void {echo '<span class="badge '.e($style).'">'.e($text).'</span>';}
 /**
- * One student in a list.
+ * One child in a list (Part 1, revised 2026-10-08): the initials, the name,
+ * and under it what tells her who this is - in A–Z the age group and the level
+ * („Unter 12 · Anfänger"), under a group's own header ($underBand) the age and
+ * the level („9 Jahre · Anfänger"). An age no group covers reads as the age;
+ * no birth date as „Geburtsdatum fehlt". Then where the child stands, and
+ * „Ohne Kurs" when they are in no course that runs - the one thing the price
+ * told a list that matters there. The price itself left the row: beside the
+ * age, the group and the level it wrapped every row at 320 to three lines and
+ * more (the designer's measurement); it stays on the child's page and on Geld.
  *
- * $s['due_cents'] and $s['course_price'] may be supplied by a caller that
- * resolved every card in one query (balances(), course_prices_by_student());
- * without them the card looks up its own, which is correct but costs queries
- * per card.
+ * A row reads 'age', 'band', 'level_name' and 'in_course' as filtered_students()
+ * supplies them, so no row asks for anything; a row from elsewhere works its
+ * own out, and one that does not say whether the child is in a course claims
+ * nothing. $s['due_cents'] is the overdue amount a caller resolved for every
+ * row at once (balances()); without it the row asks for its own.
  */
-function student_card(array $s): void {
+function student_card(array $s,bool $underBand=false): void {
     $due=array_key_exists('due_cents',$s)?(int)$s['due_cents']:balance((int)$s['id'],true);
-    $price=array_key_exists('course_price',$s)?(string)$s['course_price']:course_price_label(student_enrolments((int)$s['id']));
-    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s).'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$s['level_name']??'',age_group_name($s),$price]))).'</p></div><div class="student-card-status">';
+    $age=array_key_exists('age',$s)?$s['age']:student_age($s['birth_date']??null);
+    $band=array_key_exists('band',$s)?$s['band']:student_age_group($s);
+    $years=$age===null?t('Geburtsdatum fehlt','No date of birth yet'):plural($age,'Jahr','Jahre','year','years');
+    $who=$underBand||$band===null?$years:(string)$band['name'];
+    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s).'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$who,(string)($s['level_name']??'')]))).'</p></div><div class="student-card-status">';
     badge(status_label($s['status']),$s['status']==='active'?'green':'');
+    if(array_key_exists('in_course',$s) && !$s['in_course'])badge(t('Ohne Kurs','No course'),'amber');
     if($due)echo '<span class="due">'.e(money($due)).' '.e(t('überfällig','overdue')).'</span>';
     echo '</div>'.icon('chevron').'</a>';
 }
 /**
- * What a child pays, from the courses they are in now: the price is the
- * course's (ADR 0011), so a list that said „Kein Tarif" from the child's own,
- * unused tariff was saying something about nothing. $enrolments are rows as
- * student_enrolments() and billing_enrolments() give them.
+ * The list's filters, folded away under one row, „Filter" (Part 1, revised
+ * 2026-10-08). The row says what is chosen - „Kindertraining · Anfänger ·
+ * Unter 12" (filter_summary()) - and holds the four choices: Kurs,
+ * Mitgliedschaft, Leistungsgruppe and Altersgruppe, with „Ohne Altersgruppe"
+ * for the children no group places, and „Anwenden". A GET form, so nothing
+ * needs JavaScript and nothing is ever refused (filters_from()); what the form
+ * does not ask - the search, the order, the quick selection - travels along
+ * unchanged. Neither the search nor the quick selection is in the row's
+ * summary: both show on their own above it. $bands is age_groups(), for a
+ * page that has read them already.
  */
-function course_price_label(array $enrolments): string {
-    $current=array_filter($enrolments,fn($row)=>$row['left_on']===null);
-    if(!$current) return t('in keinem Kurs','in no course');
-    $prices=[];
-    foreach($current as $row) {
-        $cents=enrolment_price($row)['cents'];
-        if($cents!==null) $prices[]=money($cents).' '.billing_interval_label((int)($row['interval_months']??1));
-    }
-    return $prices?implode(' + ',$prices):t('Kurs ohne Preis','course without a price');
-}
-/** course_price_label() for every child at once, id => label: one query for a whole list. */
-function course_prices_by_student(): array {
-    $by=[];
-    foreach(billing_enrolments() as $row) $by[(int)$row['student_id']][]=$row;
-    return array_map('course_price_label',$by);
-}
-function render_filters(array $f,string $target='students'): void {
+function render_filters(array $f,?array $bands=null): void {
+    $choices=['course'=>array_column(training_classes(),'name','id'),
+              'status'=>array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),
+              'level'=>array_column(levels(),'name','id'),
+              'age_group'=>array_column($bands??age_groups(),'name','id')+['none'=>t('Ohne Altersgruppe','No age group')]];
+    $summary=filter_summary($f,$choices);
     // A GET form is never rejected, so it has no held submission to offer back.
     // Saying so explicitly keeps the fields below from picking up the context of
     // whichever form was written out before them.
     form_context('');
-    echo '<form method="get" class="filters"><input type="hidden" name="page" value="'.e($target).'">';
-    input('q',t('Suche','Search'),$f['q']??'','search');
-    select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$f['status']??'');
-    select_field('absence',t('Aktuell abwesend','Currently absent'),array_combine(array_keys(reasons()),array_map('reason_label',array_keys(reasons()))),$f['absence']??'');
-    select_field('course',t('Kurs','Course'),array_column(training_classes(),'name','id'),$f['course']??'');
-    select_field('level',t('Leistungsgruppe','Level'),array_column(levels(),'name','id'),$f['level']??'');
-    select_field('age_group',t('Altersgruppe','Age group'),array_column(age_groups(),'name','id'),$f['age_group']??'');
-    check_field('overdue',t('Nur überfällige Beiträge','Overdue charges only'),!empty($f['overdue']));
-    submit_button(t('Filtern','Filter'),'secondary');echo '</form>';
+    echo '<details class="card filter-fold"><summary><span>'.e(t('Filter','Filter')).'</span>'
+        .($summary!==''?'<span class="filter-value">'.e($summary).'</span>':'').icon('chevron').'</summary>'
+        .'<form method="get" class="filters"><input type="hidden" name="page" value="students">';
+    foreach(['q','sort','overdue','absence'] as $kept) if(isset($f[$kept])) echo '<input type="hidden" name="'.e($kept).'" value="'.e($f[$kept]).'">';
+    select_field('course',t('Kurs','Course'),$choices['course'],$f['course']??'');
+    select_field('status',t('Mitgliedschaft','Membership'),$choices['status'],$f['status']??'');
+    select_field('level',t('Leistungsgruppe','Level'),$choices['level'],$f['level']??'');
+    select_field('age_group',t('Altersgruppe','Age group'),$choices['age_group'],$f['age_group']??'');
+    submit_button(t('Anwenden','Apply'),'secondary');
+    echo '</form></details>';
+}
+
+/**
+ * What the filter row says is chosen: the chosen values' names in the fields'
+ * order, joined by „ · ", or '' when nothing is. $choices is each field's
+ * options, key => name, as render_filters() draws them; a value the address
+ * names that is no option any more - a course since archived - is not named.
+ */
+function filter_summary(array $f,array $choices): string {
+    $named=[];
+    foreach($choices as $key=>$options)
+        if(isset($f[$key]) && isset($options[$f[$key]])) $named[]=(string)$options[$f[$key]];
+    return implode(' · ',$named);
 }
 
 /**

@@ -6,6 +6,32 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
+## 0.6.0, unreleased — at `7b98be7` with the students-list patch: the list built for a phone
+
+Recorded 2026-10-08 by docs-writer. The two runs are reported, the project manager's and
+frontend-dev's; the writer watched only the scratch check below. MariaDB 10.11.14 with PHP
+8.4.26, the walk in Chromium. MySQL 8.0 was not run, and neither was Safari.
+
+- **The project manager's run, on a clean worktree of `7b98be7` with the patch as
+  committed**: the whole suite 8249 passed, 0 failed; the browser walk 384 passed, 0 failed,
+  no PHP warnings, no layout findings, `RESULT: PASS`. A worktree runs one structure check
+  fewer than a checkout, because its `.git` is a file. Two earlier versions of the patch gave
+  8247 and 8248 passed, 0 failed, walk PASS.
+- **frontend-dev's own runs**: 8082 passed, 0 failed, walk PASS, on `2f633c4` with the first
+  version; 8250 passed, 0 failed on `7b98be7` with the patch as committed. frontend-dev
+  reports TESTING.md N.4 passing now, and qa-tester walks it again.
+- **Watched by the writer**, on `7b98be7` with the same patch: a scratch suite, not in the
+  repository, filled the example data and drew the list as the trainer. „Nach Alter" showed
+  „Unter 12" („bis 11") with 2, „Jugend" („12 bis 17") with 1 and „Ohne Geburtsdatum" with
+  1. „Überfällig" and „Krank" each listed Mia alone. The course chosen and „a" searched
+  listed three. With „Unter 12" chosen the list said „1 Kind ohne Geburtsdatum ist nicht
+  dabei.". A 19-year-old went under „Erwachsene" („18 und älter"), and under „Ohne
+  Altersgruppe" once „Erwachsene" started at 21; with every group archived the list said
+  „Es gibt noch keine Altersgruppen.". The overview's rows showed no price either. The check
+  read HTML and saw no screen; the values TESTING.md 17.1–17.7 expect are taken from it.
+- Not reported walked or measured by anybody: TESTING.md 17.1–17.8 on a phone, and the new
+  list at 320 and 390 px.
+
 ## 0.6.0, unreleased — at `2f633c4`, and ADR 0029 on top of it: age groups from the birth date, the small example data, a restore that keeps the portal closed
 
 Recorded 2026-10-08 by docs-writer, from the project manager's and qa-tester's runs; nothing
@@ -16,9 +42,8 @@ neither was Safari.
 - **Round 3, `2f633c4`, on a clean worktree of `005eb4e`**: the whole suite 8042 passed,
   0 failed; the browser walk 381 passed, 0 failed.
 - **qa-tester's walk of TESTING.md N.1–N.7 at `2f633c4`**, in Chromium at 390 px: N.1, N.2,
-  N.3, N.5, N.6 and N.7 passed. **N.4 failed**: the students list's screen does not draw the
-  „Nach Alter" headers yet, which frontend-dev is building; until it does, the sort is
-  reached by `sort=age` in the address alone, and N.4 stays failed.
+  N.3, N.5, N.6 and N.7 passed. **N.4 failed** there: the students list's screen did not
+  draw the „Nach Alter" headers yet. The list screen that does is recorded above.
 - **ADR 0029, on a worktree of `2f633c4` with both code patches**: the whole suite 8195
   passed, 0 failed; the browser walk `RESULT: PASS`. The implementers' run of the same with
   their later additions — the console refusing `backup` on a database that holds nothing,
