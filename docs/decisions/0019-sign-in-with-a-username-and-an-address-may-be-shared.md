@@ -5,6 +5,12 @@ date: 2026-09-29
 
 # 0019. Sign in with a username, and an address may be shared
 
+> **Superseded again by ADR 0030 (2026-10-08).** 0023 had reused this record's alphabet and
+> functions for a student's login without an address: `username_normalised()`, `username_value()`,
+> `username_from_name()`, `username_first_free()` and `username_for_new_account()`. The owner
+> dropped usernames for every role, and 039 removes the column 028 had added. Nothing of this
+> record is a rule any more, and nothing of it is code.
+
 > **Superseded by ADR 0021 (2026-10-01).** The owner reversed the usernames as well, so neither
 > half of the title holds: every login has its own address (0020), and the address is the only
 > sign-in (0021). 022 and 023 stay as shipped; 024 removes the column. What 0020 §8 kept stands as

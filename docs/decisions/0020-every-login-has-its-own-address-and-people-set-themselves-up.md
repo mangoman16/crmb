@@ -1,9 +1,17 @@
 ---
-status: accepted, amended by 0021, 0023, 0026
+status: accepted, amended by 0021, 0023, 0026, 0030
 date: 2026-09-30
 ---
 
 # 0020. Every login has its own address, and people set themselves up
+
+> **Amended by ADR 0030 (2026-10-08).** Usernames are gone again, for every role, and so are the
+> one-time sign-in links. Where the 0023 note below brought usernames back it no longer holds: §3
+> and §4 hold for the address alone, with one throttle bucket per login, as the 0021 note says, and
+> §2 stays gone. The 0023 note's placeholder, wizard and RESTRICT key stand; its sentence on
+> copyable links no longer holds, so "Letting staff copy a reset or invitation link to send another
+> way" is rejected again in full. §1, every login has its own address, is the whole rule.
+> Everything else stands.
 
 > **Superseded in part by ADR 0026 (2026-10-07).** Custom fields, the printed data sheet and profile
 > pictures are gone. These parts no longer hold:

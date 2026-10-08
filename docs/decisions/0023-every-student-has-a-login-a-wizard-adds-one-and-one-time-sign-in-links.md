@@ -1,9 +1,37 @@
 ---
-status: accepted, amended by 0026
+status: accepted, amended by 0026, 0030
 date: 2026-10-06
 ---
 
 # 0023. Every student has a login, a wizard adds one, and one-time sign-in links
+
+> **Superseded in part by ADR 0030 (2026-10-08).** The owner: "Drop once again the username support,
+> mainly email login support / 1 admin 1 email / 1 person 1 email / 1 trainer 1 email / 1 student 1
+> email". Usernames and one-time sign-in links go, for every role; 039 drops the column 028 added
+> and turns a login that signed in by a username into a placeholder. These parts no longer hold:
+>
+> - §1, §6 and §7 whole: the address is the only name a login has (0021 §1), and the invitation and
+>   the reset mail are the ways in;
+> - §2's reasoning; 028 stays as shipped, and 039 undoes it;
+> - in §3, the username in the table, the badge „Noch nicht angemeldet", `username_login_waiting()`
+>   and `give_student_username()`: a placeholder becomes a login by `invite_student()` alone;
+> - in §4, „Benutzernamen zurückziehen" (the correction below), while „Einladung zurückziehen" and
+>   „Anmeldung löschen" stand;
+> - in §5, card (b) and the done page's link card: two cards, (a) and (c);
+> - in §8, the username as a sign-in name and the link's date;
+> - in §11, the username functions, `username_for_new_account()`, `signin_link_possible()`,
+>   `signin_links_for()`, `may_create_signin_link()`, `give_student_username()`, the case
+>   `signin_link` and `views/_signin_link.php`;
+> - in §12, rows A1, A4, A5 and A8, the PM rows on sign-in links, and the three "Spec §3" rows;
+> - in Rejected, every entry about links and usernames;
+> - in Consequences, `signin_link` among the added actions, the `qa-tester`, `mobile-tester`,
+>   `security-reviewer` and `docs-writer` items about usernames and links, and in "Must stay true"
+>   `accounts.username` and the sign-in link;
+> - "For the owner" 2, and in "In plain words" the second way to sign in and the link.
+>
+> What stands: every student has a login (§4); the placeholder, now a login without an address yet
+> (0030 §3); the wizard (§5) with two cards; „Zugänge" in three groups (§8); the quick action (§9);
+> viewing as somebody (§10); and 028–030 as shipped.
 
 > **Corrected on 2026-10-07: „Link zurückziehen" in §4.** §4 lists it among the buttons that go
 > through `replace_login_with_placeholder()`. It does not, and the code is right: as §6 says,

@@ -1,9 +1,14 @@
 ---
-status: accepted, amended by 0019, 0020, 0021, 0023
-date: 2026-09-24
+status: accepted, amended by 0019, 0020, 0021, 0023, 0030
+date: 2026-09-28
 ---
 
 # 0010. One account is one student
+
+> **Amended a fifth time by ADR 0030 (2026-10-08).** Usernames are gone again, for every role. In
+> the 0023 note below, "Until it is given an address or a username" reads "until it is given an
+> address": a placeholder becomes a login only by an invitation to its address. Everything else in
+> that note, and in the ones below it, stands.
 
 > **Amended a fourth time by ADR 0023 (2026-10-06, proposed until the owner approves migrations
 > 028–030).** The owner: "there should be no student ever in a course without an account".

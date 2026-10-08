@@ -1,9 +1,14 @@
 ---
-status: accepted, amended by 0023, 0026
+status: accepted, amended by 0023, 0026, 0030
 date: 2026-10-01
 ---
 
 # 0021. Sign in by address, and two ways to add a person
+
+> **Amended by ADR 0030 (2026-10-08).** The owner: "Drop once again the username support". The
+> username parts of the 0023 note below no longer hold: §1 holds in full again, for every role, and
+> 039 drops the column 028 added. What the 0023 note says about the wizard, the placeholder and the
+> ways `students.account_id` is written still holds. Everything else stands.
 
 > **Superseded in part by ADR 0026 (2026-10-07).** Levels and configured age groups go, with
 > `app/groups.php`, on the owner's word of 2026-10-07 (0026 §8 and §12). In Consequences, "Load

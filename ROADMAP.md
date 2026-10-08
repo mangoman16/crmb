@@ -55,8 +55,18 @@ In this order.
    helpers in app/ui.php) after the removals, and the owner sees screenshots before the
    screens below are built in it.
 5. **Screens.**
-   - ADR 0023, as specified in
-     [docs/design/2026-10-05-accounts-and-chat-screens.md](docs/design/2026-10-05-accounts-and-chat-screens.md).
+   - **ADR 0030 first (owner, 2026-10-08): usernames and one-time sign-in links go; every login
+     signs in by its own address.** Migration 039 drops `accounts.username`; a username login
+     becomes a placeholder until invited by address; the wizard has two cards (address →
+     invitation; „Ohne Anmeldung anlegen"). Being built: database-engineer (039), backend-dev
+     (sign-in by address only, the `signin_link` action and its helpers gone, the structure
+     allowlist of §7), ui-ux-designer (the account screens respecified), frontend-dev (the
+     built ADR 0023 screens trimmed per 0030 §8), docs-writer (both privacy drafts, README,
+     INSTALL, UPDATING, TESTING, CHANGELOG).
+   - ADR 0023's screens, as specified in
+     [docs/design/2026-10-05-accounts-and-chat-screens.md](docs/design/2026-10-05-accounts-and-chat-screens.md):
+     built and reviewed, parked until 0030's trim; what stands is Zugänge's groups and chips,
+     the mail switches, the view bar on public pages and the lifetimes from the setting.
    - ADR 0022 §11, the chat cut to its basics. Built with round 2 (`8e5ce48`): a message is
      text and photos (a student's from the camera, JPEG; staff JPEG, PNG or WebP), and no new
      chat between two students — old ones are readable and closed. §11.1 and §11.2 built:
@@ -140,6 +150,14 @@ In their words.
 
 ## Decided
 
+- **2026-10-08** — the owner: "Drop once again the username support, mainly email login
+  support / 1 admin 1 email / 1 person 1 email / 1 trainer 1 email / 1 student 1 email"
+  (ADR 0030). So: usernames go, every login has its own address, one address per person (a
+  parent with two children has two logins, as before). The project manager, with it: the
+  one-time sign-in links go too — they existed for logins that could get no mail, and the
+  invitation and the reset mail cover every way in; a child may still be added „Ohne
+  Anmeldung" and invited once the address is known, unless the owner says no child without an
+  address (asked).
 - **2026-10-08** — the project manager:
   - An invoice is made out to the student's name, never to the login's freely typed name. A
     billing name of the family's own (the paying parent, for an invoice over 400 €) needs a
