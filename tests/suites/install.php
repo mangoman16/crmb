@@ -384,7 +384,12 @@ is_same(null, schema_unfinished(), 'and there is no record to read');
 $version = one("SELECT setting_value FROM settings WHERE setting_key='schema_written_by'");
 set_setting('schema_written_by', '0.5.2');
 setting_cache_clear();
+// A copy is of a portal with something in it: backup_database() refuses a
+// database that holds nothing (ADR 0029 §3), and here the ledger is gone and
+// the guarded tables are empty, so one row stands in for the families.
+$someone = make_account();
 $copy = backup_database('vor-update');
+run('DELETE FROM accounts WHERE id=?', [$someone]);
 $written = schema_mark_unfinished(['contacts' => 3, 'students' => 2], $copy);
 $text = (string)file_get_contents(schema_unfinished_file());
 is_same(true, schema_is_unfinished(), 'written, an update is unfinished');
@@ -553,6 +558,7 @@ case_('A copy names the release whose database it holds, not the one about to re
    line named the release about to replace them, and a restore went looking for
    the wrong files. */
 $writtenBy = (string)setting('schema_written_by');
+$someone = make_account();   // a copy is of a portal with something in it (ADR 0029 §3)
 foreach (['0.5.9-beta.1' => 'the release that wrote the database', '' => 'and a database no release has written yet, this one'] as $wrote => $what) {
     set_setting('schema_written_by', $wrote);
     $copy = backup_database('vor-update');
@@ -560,6 +566,7 @@ foreach (['0.5.9-beta.1' => 'the release that wrote the database', '' => 'and a 
             'the first line names '.$what);
     unlink($copy);
 }
+run('DELETE FROM accounts WHERE id=?', [$someone]);
 set_setting('schema_written_by', $writtenBy);
 
 case_('The backup is real SQL carrying the real data');
@@ -1503,6 +1510,14 @@ foreach (schema_guarded_tables() as $table) run('DELETE FROM '.sql_name($table, 
 db()->exec('SET FOREIGN_KEY_CHECKS=1');
 is_same(null, schema_restore_refusal(), 'empty, with no ledger and no stamp: a first install, nothing to refuse');
 is_same(true, schema_first_install(), 'which is what schema_first_install() says too');
+// backup_database() itself refuses such a database, once for every caller: the
+// runner goes on from it, the console stops with its sentence (ADR 0029 §3).
+$copiesBefore = count(backups());
+try { backup_database('test'); $noCopy = null; } catch (BackupError $e) { $noCopy = $e; }
+ok($noCopy instanceof NothingToCopy, 'backup_database() refuses a database that holds nothing, as the one BackupError the runner goes on from');
+ok(str_starts_with((string)$noCopy?->getMessage(), 'No copy written: the database holds nothing'), 'with the sentence the console shows: '.test_show(mb_substr((string)$noCopy?->getMessage(), 0, 80)));
+is_same($copiesBefore, count(backups()), 'and the copies are as they were');
+is_same([], glob(backup_dir().'/*.part') ?: [], 'with no half-written file either');
 file_put_contents(schema_stamp_file(), 'ein früherer Stand');
 $c = schema_restore_refusal();
 ok($c instanceof UpdateBlocked, '(c) the same empty database over a folder with a stamp refuses');

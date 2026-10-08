@@ -20,6 +20,15 @@ declare(strict_types=1);
 class BackupError extends RuntimeException {}
 
 /**
+ * No copy was written because the database holds nothing (ADR 0029 §3): its
+ * ledger records no migration and every guarded table is empty. A class of its
+ * own, because the two callers answer it differently: the runner goes on - a
+ * first install has nothing to restore - where any other BackupError refuses the
+ * update, and the console stops with the sentence, as it does for any error.
+ */
+class NothingToCopy extends BackupError {}
+
+/**
  * Where the copies live: beside the maintenance flag, which is already the path
  * an operator with separate release folders points at shared storage, so a
  * release switch does not leave the backups behind in the old one.
@@ -36,6 +45,27 @@ const BACKUP_KEEP = 5;
  * see what each copy was taken before.
  */
 function backup_database(string $reason = 'update'): string {
+    // Its own connection, unbuffered: a table with years of messages in it is
+    // streamed row by row rather than loaded into memory all at once. Opened
+    // before anything is written, so a database it cannot reach leaves no folder
+    // and no empty half-file behind; its error is not wrapped, because the page
+    // an update shows when it stops is public and a connection error names the
+    // database user. Opened before the question below as well, so that a
+    // database this cannot connect to is reported as that, not as empty.
+    $reader = connect();
+    $reader->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+    // No copy of a database that holds nothing, whoever asks (ADR 0029 §3): a
+    // first install has nothing to restore, and the copy would push an older one
+    // out of the BACKUP_KEEP that are kept. Decided here, once, for the runner,
+    // the console and anything that calls this later. The question is asked on
+    // the main connection, not the reader, and it reads a connection error as
+    // "no ledger, no rows". That is safe here because both callers' main
+    // connection has already answered in this request - the runner's lock and
+    // its refusal checks, the console's restore check - each of which stops on
+    // its own error if it has not.
+    if (schema_first_install())
+        throw new NothingToCopy('No copy written: the database holds nothing - its ledger records no migration and every guarded table is empty - and a copy of nothing could only push an older one out (ADR 0029 §3).');
+
     $dir = backup_dir();
     if (!is_dir($dir) && !@mkdir($dir, 0750, true))
         throw new BackupError('Cannot create ' . $dir);
@@ -49,14 +79,6 @@ function backup_database(string $reason = 'update'): string {
     // Seconds, not minutes: two copies in the same minute would otherwise be
     // ordered by their random part, and pruning would pick a victim at random.
     $path = $dir . '/' . gmdate('Y-m-d-His') . '-' . $slug . '-' . bin2hex(random_bytes(4)) . '.sql';
-
-    // Its own connection, unbuffered: a table with years of messages in it is
-    // streamed row by row rather than loaded into memory all at once. Opened
-    // before the file, so a database it cannot reach leaves no empty half-file
-    // behind; its error is not wrapped, because the page an update shows when
-    // it stops is public and a connection error names the database user.
-    $reader = connect();
-    $reader->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
     $handle = @fopen($path . '.part', 'wb');
     if (!$handle) throw new BackupError('Cannot write into ' . $dir);
     try {

@@ -137,12 +137,8 @@ try{
         echo "Update complete.\n";exit;
     }
     if($command==='backup'){
-        // backup_database() directly, past the runner, so the runner's rule is
-        // repeated here: no copy of a database that holds nothing (ADR 0029 §3).
-        // With the stamp deleted by hand and before the first page view, nothing
-        // else refuses, and a copy of nothing could push an old one out of the five.
-        if(schema_first_install())
-            throw new RuntimeException('No copy written: the database holds nothing - its ledger records no migration and every guarded table is empty - and a copy of nothing could only push an older one out (ADR 0029 §3).');
+        // A database that holds nothing is backup_database()'s own refusal
+        // (NothingToCopy), caught below like any error: one sentence, exit 1.
         echo backup_database($argv[2]??'manuell').PHP_EOL;
         echo "Restore by importing that file into an empty database.\n";exit;
     }

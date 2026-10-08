@@ -498,9 +498,8 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
         run('CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
         // Checked inside the lock and before anything is written, so two requests
         // cannot both decide the release is fine and then disagree.
-        $holdsNothing = schema_first_install();
-        $guarded = $safeguards || !$holdsNothing;
-        $copy = $guarded ? schema_refuse_unsafe($log, $unfinished !== null, $holdsNothing) : null;
+        $guarded = $safeguards || !schema_first_install();
+        $copy = $guarded ? schema_refuse_unsafe($log, $unfinished !== null) : null;
         // After the copy and the count, before the first statement: from here on
         // the update is unfinished until a run of it passes. A first install has
         // nothing to lose and writes none.
@@ -584,13 +583,13 @@ function run_migration_statement(string $statement): void {
  *
  * Returns the copy it wrote, or null when it wrote none: nothing was pending,
  * the operator's skip-backup was there, an update is $unfinished, or the
- * database $holdsNothing. That update has its copy already; one taken now could
+ * database holds nothing. That update has its copy already; one taken now could
  * only be of a half-updated database, and it would push the copy from before
- * out of the BACKUP_KEEP that are kept (ADR 0027 §2). A copy of a database that
- * holds nothing has nothing in it to restore, and would push out one that has
- * (ADR 0029 §3).
+ * out of the BACKUP_KEEP that are kept (ADR 0027 §2). A database that holds
+ * nothing is backup_database()'s own refusal, NothingToCopy, which this goes on
+ * from where any other BackupError stops the update (ADR 0029 §3).
  */
-function schema_refuse_unsafe(callable $log, bool $unfinished = false, bool $holdsNothing = false): ?string {
+function schema_refuse_unsafe(callable $log, bool $unfinished = false): ?string {
     // 1. Older files than the database. Nothing is pending, so without this the
     //    update looks like a success and the portal opens on the wrong code.
     if ($extra = schema_extra())
@@ -631,11 +630,14 @@ function schema_refuse_unsafe(callable $log, bool $unfinished = false, bool $hol
     }
     if ($skipped) { $log('Backup skipped: storage/skip-backup was present.'); return null; }
     if ($unfinished) { $log('No backup: this update has its copy from before it began.'); return null; }
-    if ($holdsNothing) { $log('No backup: the database holds nothing to restore.'); return null; }
     try {
         $copy = backup_database('vor-update');
         $log('Writing a backup to ' . $copy);
         return $copy;
+    } catch (NothingToCopy $e) {
+        // A first install: nothing to restore, so nothing to refuse over.
+        $log('No backup: ' . $e->getMessage());
+        return null;
     } catch (BackupError $e) {
         throw new UpdateBlocked(
             'Vor der Aktualisierung konnte keine Sicherung angelegt werden: ' . $e->getMessage()
