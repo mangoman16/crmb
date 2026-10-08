@@ -116,6 +116,9 @@ lists its options. `php bin/console.php help` lists the console's commands.
 | [VALIDATION.md](VALIDATION.md) | What was verified, on what, and what was not |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, release by release |
 
+The package that `bin/release.sh` builds leaves out ROADMAP.md, CLAUDE.md, `tests/` and the
+agents' prompts in `.claude/`, so the links to those three work in the Git copy only.
+
 Beta: no portal holds real families' data. Everything verified so far ran on MariaDB 10.11.14
 and in Chromium; MySQL 8.0, Safari on a real iPhone, a real mail provider and a real hosting
 account have not been tried.

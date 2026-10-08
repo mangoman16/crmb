@@ -31,7 +31,7 @@ command -v mariadbd >/dev/null || {
     echo "hosting panel, then run tests/existing-database.sh instead." >&2
     exit 2; }
 
-mkdir -p "$WORK/data" "$WORK/run"
+mkdir -p "$WORK/data" "$WORK/run" "$WORK/tmp"
 if [ ! -d "$WORK/data/mysql" ]; then
     echo "Initialising a database in $WORK"
     mariadb-install-db --user="$(id -un)" --datadir="$WORK/data" \
@@ -41,7 +41,9 @@ fi
 SOCK="$WORK/run/mysql.sock"
 if ! mariadb --socket="$SOCK" -e "SELECT 1" >/dev/null 2>&1; then
     echo "Starting mariadbd on port $PORT"
-    mariadbd --user="$(id -un)" --datadir="$WORK/data" --socket="$SOCK" \
+    # Its own temp folder: a server sharing /tmp with other runs once had a temp
+    # table's file deleted from under it, and the suite aborted part-way.
+    mariadbd --user="$(id -un)" --datadir="$WORK/data" --socket="$SOCK" --tmpdir="$WORK/tmp" \
         --port="$PORT" --bind-address=127.0.0.1 --pid-file="$WORK/run/mysqld.pid" \
         > "$WORK/server.log" 2>&1 &
     for _ in $(seq 1 30); do

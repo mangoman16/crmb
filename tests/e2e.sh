@@ -2,23 +2,26 @@
 # The owner's first evening, end to end, in a real browser against a real engine.
 #
 #   tests/e2e.sh                 # PHP from PATH
+#   CRM_E2E_REF=HEAD tests/e2e.sh                         # exactly one commit
+#   CRM_E2E_ZIP=../badminton-crm-0.6.0.zip tests/e2e.sh   # a built package, as the owner unpacks it
 #   CRM_E2E_PHP=php8.5 tests/e2e.sh
 #   CRM_E2E_KEEP=1 tests/e2e.sh  # leave the servers and the work dir up afterwards
 #
-# Copies the checkout into a fresh work directory (what an upload does), starts
-# a throwaway MariaDB, a local SMTP sink and `php -S`, then runs tests/e2e.mjs:
-# setup.php, the nine setup steps, the family's invitation from the captured
-# mail, a payment proof, a problem report, an invoice PDF and a provoked error.
-# Nothing outside the work directory is touched and no real mail leaves.
+# Copies the checkout, one commit or a built package into a fresh work directory
+# (what an upload does), starts a throwaway MariaDB, a local SMTP sink and
+# `php -S`, then runs tests/e2e.mjs: setup.php, the nine setup steps, the
+# family's invitation from the captured mail, a payment proof, a problem report,
+# an invoice PDF and a provoked error. Nothing outside the work directory is
+# touched and no real mail leaves.
 #
-# Ports: CRM_E2E_PORT (web, 8765), +1 SMTP, +2 MariaDB.
+# Ports: CRM_E2E_PORT (web, 8765), +1 SMTP, +2 MariaDB unless CRM_E2E_DB_PORT says.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PHP="${CRM_E2E_PHP:-php}"
 PORT="${CRM_E2E_PORT:-8765}"
 SMTP_PORT=$((PORT + 1))
-DB_PORT=$((PORT + 2))
+DB_PORT="${CRM_E2E_DB_PORT:-$((PORT + 2))}"
 WORK="${CRM_E2E_WORK:-${TMPDIR:-/tmp}/crm-e2e-$PORT}"
 DB=crm_e2e
 
@@ -39,7 +42,7 @@ trap cleanup EXIT
 # replaced - and every check would be about the wrong thing. Refuse instead.
 busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 for p in "$PORT" "$SMTP_PORT" "$DB_PORT"; do
-    if busy "$p"; then echo "Port $p is in use - a server from an earlier run? Stop it, or set CRM_E2E_PORT." >&2; exit 2; fi
+    if busy "$p"; then echo "Port $p is in use - a server from an earlier run? Stop it, or set CRM_E2E_PORT or CRM_E2E_DB_PORT." >&2; exit 2; fi
 done
 
 # A fresh work dir every run: a second run must not find the first one's portal.
@@ -48,13 +51,47 @@ if [ -d "$WORK" ]; then
     sleep 1
     rm -rf "$WORK"
 fi
-mkdir -p "$WORK/data" "$WORK/run" "$WORK/mail" "$WORK/site" "$WORK/shots"
+mkdir -p "$WORK/data" "$WORK/run" "$WORK/tmp" "$WORK/mail" "$WORK/site" "$WORK/shots"
 
 # --- the upload: the files she would put on the server, nothing else -------
-# CRM_E2E_REF=<commit> tests that commit exactly, whatever the working tree holds;
-# without it, the working tree as it is now. vendor/ is not in git, so it comes
-# from the checkout either way.
-if [ -n "${CRM_E2E_REF:-}" ]; then
+# CRM_E2E_ZIP=<package> walks a package from bin/release.sh, unpacked the way
+# the operator unpacks it: what the owner is handed, vendor/ included, rather
+# than what git holds. CRM_E2E_REF=<commit> tests that commit exactly, whatever
+# the working tree holds; with neither, the working tree as it is now. For those
+# two vendor/ is not in git, so it comes from the checkout.
+if [ -n "${CRM_E2E_ZIP:-}" ]; then
+    [ -z "${CRM_E2E_REF:-}" ] || { echo "Set CRM_E2E_ZIP or CRM_E2E_REF, not both." >&2; exit 2; }
+    [ -f "$CRM_E2E_ZIP" ] || { echo "There is no package at $CRM_E2E_ZIP." >&2; exit 2; }
+    command -v unzip >/dev/null || { echo "unzip not found." >&2; exit 2; }
+    unzip -q "$CRM_E2E_ZIP" -d "$WORK/unpacked"
+    # One folder, as bin/release.sh makes it; what is inside goes on the server.
+    TOP="$(ls -A "$WORK/unpacked")"
+    [ -n "$TOP" ] && [ -d "$WORK/unpacked/$TOP" ] \
+        || { echo "$CRM_E2E_ZIP does not hold the one folder bin/release.sh makes." >&2; exit 2; }
+    rmdir "$WORK/site"
+    mv "$WORK/unpacked/$TOP" "$WORK/site"
+    # Checked against bin/release.sh's own lists, so the two cannot disagree. A
+    # package that holds what it leaves out is not one it builds, and is not
+    # walked as if it were. Anything in config/ or storage/ beyond what it ships
+    # there would be somebody's password or a family's data: the other two ways
+    # drop a config/config.php below without a word, but here the walk stops.
+    release_list() { sed -n "s/^$1=(\(.*\))\$/\1/p" "$ROOT/bin/release.sh"; }
+    LEAVE_OUT="$(release_list LEAVE_OUT)"
+    CONFIG_AND_STORAGE="$(release_list CONFIG_AND_STORAGE)"
+    [ -n "$LEAVE_OUT" ] && [ -n "$CONFIG_AND_STORAGE" ] \
+        || { echo "bin/release.sh has no LEAVE_OUT or CONFIG_AND_STORAGE list to check the package against." >&2; exit 2; }
+    HELD=""
+    for entry in $LEAVE_OUT; do [ ! -e "$WORK/site/$entry" ] || HELD="$HELD $entry"; done
+    [ -z "$HELD" ] || { echo "$CRM_E2E_ZIP holds$HELD, which bin/release.sh leaves out: this is not a package it builds." >&2; exit 1; }
+    SHIPPED=()
+    for entry in $CONFIG_AND_STORAGE; do SHIPPED+=(! -path "$entry"); done
+    CARRIED="$(cd "$WORK/site" && find config storage -mindepth 1 "${SHIPPED[@]}")"
+    [ -z "$CARRIED" ] \
+        || { echo "$CRM_E2E_ZIP carries ${CARRIED//$'\n'/ }, and config/ and storage/ ship with nothing but their deny files and config.example.php." >&2; exit 1; }
+    # bin/release.sh writes the commit into BUILD.txt; VERSION alone cannot name one.
+    BUILT="$(sed -n 's/^commit \([0-9a-f]\{7\}\).*/, commit \1/p' "$WORK/site/BUILD.txt" 2>/dev/null || true)"
+    SOURCE="package $(basename "$CRM_E2E_ZIP") (VERSION $(tr -d '[:space:]' < "$WORK/site/VERSION")$BUILT, sha256 $(sha256sum "$CRM_E2E_ZIP" | cut -c1-12))"
+elif [ -n "${CRM_E2E_REF:-}" ]; then
     git -C "$ROOT" archive "$CRM_E2E_REF" | tar -C "$WORK/site" -xf -
     rm -rf "$WORK/site/tests" "$WORK/site/.claude"
     cp -a "$ROOT/vendor" "$WORK/site/vendor"
@@ -77,7 +114,9 @@ fi
 # --- MariaDB --------------------------------------------------------------
 mariadb-install-db --user="$(id -un)" --datadir="$WORK/data" \
     --auth-root-authentication-method=normal > "$WORK/install-db.log" 2>&1
-mariadbd --user="$(id -un)" --datadir="$WORK/data" --socket="$WORK/run/mysql.sock" \
+# Its own temp folder: a server sharing /tmp with other runs once had a temp
+# table's file deleted from under it, and the run aborted part-way.
+mariadbd --user="$(id -un)" --datadir="$WORK/data" --socket="$WORK/run/mysql.sock" --tmpdir="$WORK/tmp" \
     --port="$DB_PORT" --bind-address=127.0.0.1 --pid-file="$WORK/run/mysqld.pid" \
     > "$WORK/mariadb.log" 2>&1 &
 for _ in $(seq 1 30); do mariadb --socket="$WORK/run/mysql.sock" -uroot -e "SELECT 1" >/dev/null 2>&1 && break; sleep 1; done

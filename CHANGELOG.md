@@ -499,6 +499,48 @@ I.1–I.11 walk.
 - The nginx example passes `setup.php` to PHP, so a portal on nginx can be
   installed from the browser.
 
+### Setup checks the PHP extensions, and the package carries only the portal
+
+- **Setup needs PHP's `fileinfo`, `iconv`, `ctype` and `filter` extensions**,
+  besides the four it already checked, and does not install without them. A
+  PHP without one installed cleanly and broke later, somewhere else: without
+  fileinfo every photo and receipt is refused, with a sentence about the file
+  that is not true; without iconv no invoice opens as a PDF and every page with
+  a QR code shows an error; without ctype the student list, the invoices, the
+  outbox and every page with a QR code show an error, and no IBAN can be saved;
+  without filter no page opens at all. **Einstellungen → System** names any of
+  the eight a running portal has lost — after the PHP version was switched in
+  the hosting panel, say — with what it is for and what to do. The suite holds
+  the list to what the code and the dependencies declare they need. A new
+  install on a PHP without iconv, ctype or filter is refused where before it
+  went through; a portal already running on such a PHP is not refused and keeps
+  running — what breaks there broke before too — and shows the warning under
+  **Einstellungen → System** until the extension is switched on.
+- **The package lists what it ships**, one by one: the portal, the notes for
+  whoever runs it (README, INSTALL, UPDATING, CHANGELOG, VALIDATION and TESTING)
+  and the scripts. The prompts the project's agents work from (`.claude/`),
+  CLAUDE.md, ROADMAP.md and `tests/` stay out, and an entry at the top of the
+  repository that is on neither list stops the build until somebody decides. The
+  script before listed only what to leave out, and so put `.claude/` into every
+  package built after that folder was added. A `.claude` folder an earlier
+  package left on a server can be deleted in the file manager; the portal never
+  reads it.
+- **A package is built from what is committed**, and named after its
+  `VERSION`: `0.6.0-beta.N` for the packages of the beta, `0.6.0` for the
+  release. `bin/release.sh` refuses a `VERSION` that is changed but not
+  committed, and takes a folder to write the package into. Every package
+  carries a `BUILD.txt` naming the commit it was built from and when, which the
+  web server denies like every `.txt` file, so a package can be named by its
+  commit, where `VERSION` stays the same across many. `config/` and `storage/`
+  ship with nothing but their deny files and `config.example.php`; the script
+  refuses to build while git tracks anything else there, because such a file is
+  in git's history already.
+- **A package can be walked** before it is handed out: `tests/e2e.sh` with
+  `CRM_E2E_ZIP` unpacks it as the owner does and names the package, its
+  `VERSION` and its commit in its first line. It refuses a package that holds
+  anything `bin/release.sh` leaves out, read from that script's own list, or
+  anything in `config/` or `storage/` beyond what ships there.
+
 ### After an update, the browser fetches what changed
 
 - The stylesheet and script were linked with the version number, which did not
@@ -508,6 +550,11 @@ I.1–I.11 walk.
   colours too.
 
 ### Tests run on MariaDB only
+
+- The throwaway MariaDB that `tests/mariadb-local.sh` and `tests/e2e.sh`
+  start uses a temp folder of its own: a server sharing `/tmp` with other runs
+  once had a temp table's file deleted from under it, and the run aborted
+  part-way.
 
 - The SQLite translation the tests used to run on is gone. `tests/mariadb-local.sh`
   starts a throwaway MariaDB; `tests/e2e.sh` walks the first evening in a

@@ -461,6 +461,22 @@ Each release can contain a symlink `config/config.php` to the shared configurati
   own — `bin/release.sh` reads `VERSION` to build it. The tag and the README
   line are typed, so check both against `VERSION` before tagging: the README
   line is the first thing anybody reads and nothing derives it.
+- A release is numbered like `0.6.0`. A package handed to the owner before the
+  release is `0.6.0-beta.N`, counting from 2, because the ZIP built from
+  `00dc020` was the first. The portal compares two versions only to see whether
+  they are the same, and tells newer from older by the migrations, so the
+  suffix needs nothing else.
+- To build a package, commit `VERSION` first, then run `bin/release.sh
+  <folder>`: it writes `badminton-crm-<version>.zip` into that folder, or beside
+  the project without one, with a `BUILD.txt` inside that names the commit it
+  was built from and when, so that a walk of the package and VALIDATION.md can
+  name it by its commit. It builds from the committed `HEAD`, so it refuses a
+  `VERSION` changed but not committed, a version shaped like neither `0.6.0` nor
+  `0.6.0-beta.2`, an entry at the top of the repository that it has not been
+  told to ship or to leave out, and anything git tracks in `config/` or
+  `storage/` besides their deny files and `config.example.php`: such a file is
+  already in git's history, and a password in it has to be changed. Walk the
+  package before handing it out (`CRM_E2E_ZIP`, TESTING.md).
 - `CHANGELOG.md` records behavior and any compatibility notes.
 - `composer.lock` fixes dependency versions. Deployment uses **install**, never **update**.
 - Database migrations are ordered SQL files. The migration ledger stores each file’s checksum. Do not edit a migration that has already been applied; add a new file.

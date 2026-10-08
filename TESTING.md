@@ -83,6 +83,7 @@ Each line is one change; its checks are in
 not marked **(release)**, straight after the five-minute sweep. Filled in for each
 release and emptied again for the next.
 
+- Setup needs PHP's `fileinfo` extension, and **Einstellungen → System** names any required extension a portal has lost: [3.1a](#installation-and-update)
 - A shorter menu of seven, a hub at the top of **Einstellungen**, links at the top of **Nachrichten** and **Geld**: U.45–U.52
 - A start checklist, **„Einrichtung"**, until the portal is ready: U.31–U.39
 - The rarely needed fields wait under **„Mehr Möglichkeiten"**, VAT fields only with VAT: U.53–U.55
@@ -221,6 +222,7 @@ in with. It only ever reads: every page is opened with GET.
 ```bash
 tests/e2e.sh                        # the working tree
 CRM_E2E_REF=HEAD tests/e2e.sh       # one commit exactly
+CRM_E2E_ZIP=../badminton-crm-0.6.0-beta.2.zip tests/e2e.sh   # the package you will hand out
 ```
 
 It installs a fresh copy through `setup.php` against its own MariaDB, walks the
@@ -229,14 +231,19 @@ eingerichtet", invites a family and follows the link out of the captured mail,
 has the family upload a proof and send „Etwas funktioniert hier nicht", confirms
 the payment, issues an invoice and parses its PDF, and breaks a table on purpose
 to check the friendly page and Rückmeldungen. It must end in **`RESULT: PASS`**;
-its first lines name the commit, the MariaDB and the PHP it ran on, and those
-are the only ones it has proven. **Notes** at the end are things the design
+its first lines name the commit — for a package, the package, its `VERSION` and
+the commit it was built from, out of its `BUILD.txt` — the MariaDB and the PHP
+it ran on, and those are the only ones it has proven. Before handing a package out,
+walk that package, not only its commit: only the package has its own `vendor/`
+and leaves out what `bin/release.sh` does not ship. **Notes** at the end are things the design
 intends that are worth a decision; they do not fail it. Details:
-[tests/README.md](tests/README.md#the-first-evening-end-to-end-in-a-browser).
+[tests/README.md](tests/README.md#the-first-evening-end-to-end-in-a-browser), in
+the Git copy: the package leaves `tests/` out, and the walk runs from a checkout.
 
-**Last walked:** the working tree at d095ca4 on 07.10.2026, `RESULT: PASS`, 372
-checks, against MariaDB 10.11.14 with PHP 8.4.26 (`php -S`), in Chromium at
-390px and 320px ([VALIDATION.md](VALIDATION.md)). The U.x checks it walks are
+**Last walked:** a package built by the new `bin/release.sh` from ead038a with
+the delivery batch applied, on 08.10.2026, `RESULT: PASS`, 381 checks, against
+MariaDB 10.11.14 with PHP 8.4.26 (`php -S`), in Chromium at 390px and 320px
+([VALIDATION.md](VALIDATION.md)). The U.x checks it walks are
 marked below where they stand: ticked when the walk covers the whole check and it
 is one for whoever makes the release, annotated when it covers part, or when the
 check is yours to do on your own phone. The annotations name the commit they were
@@ -351,6 +358,14 @@ Skip on an ordinary code change; do all of it before a release.
 
 - [ ] **3.1** Fresh install: empty database, unpacked files, open the address.
   The setup page appears.
+- [ ] **3.1a** On the second copy, never the portal with the families in it, and
+  only if the hosting panel lets you: switch PHP's `fileinfo` extension off.
+  Opened before installing, the setup page lists „Fotos und Belege hochladen
+  (fileinfo)" among what is missing and does not install. On an installed copy,
+  **Einstellungen → System** shows „Es fehlt: Fotos und Belege hochladen
+  (fileinfo)" with what to do. Switch it back on afterwards. The same for
+  `iconv`, `ctype` and `filter`, each named with what it is for. A panel that
+  offers no such switch: write that down.
 - [ ] **3.2** Enter a wrong database password. It is reported in words, and
   nothing is written.
 - [ ] **3.3** Enter two different account passwords. Same: reported, nothing

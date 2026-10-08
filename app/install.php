@@ -217,6 +217,58 @@ function install_writable(string $path): bool {
 }
 
 /**
+ * One row per PHP extension the portal cannot do without: what it is for,
+ * whether this PHP has it, and what to do if not. Label and fix come in German
+ * and English, so that setup.php and the signed-in portal each say them in
+ * their own language.
+ *
+ * setup.php will not install without them. Einstellungen → System names any a
+ * running portal has lost, because a PHP version switched in the hosting panel
+ * can come without one the old version had. $loaded answers whether an
+ * extension is there; the suite passes its own, to watch a missing one being
+ * reported without taking anything away from the PHP it runs on.
+ */
+function extension_checks(?callable $loaded = null): array {
+    $loaded ??= extension_loaded(...);
+    // The ones whose loss would not be obvious say what breaks without them.
+    // Each is called with nothing to catch a missing one, and composer.json
+    // names every one of them (the structure suite holds the two to each other).
+    $needed = [
+        'pdo_mysql' => ['de' => 'Datenbankzugriff', 'en' => 'Database access'],
+        'mbstring'  => ['de' => 'Umlaute und Zeichensätze', 'en' => 'Character handling'],
+        'openssl'   => ['de' => 'Verschlüsselung', 'en' => 'Encryption'],
+        'session'   => ['de' => 'Anmeldungen', 'en' => 'Sign-in sessions'],
+        // store_upload() reads a file's type from its bytes, and only this can.
+        'fileinfo'  => ['de' => 'Fotos und Belege hochladen', 'en' => 'Uploading photos and receipts',
+                        'why' => ['Ohne diese Erweiterung lehnt das Portal jedes hochgeladene Foto und jeden Beleg ab.',
+                                  'Without this extension the portal refuses every photo and receipt anybody uploads.']],
+        // pdf_encode() for every line of an invoice, and bacon-qr-code for every
+        // QR code with a lowercase letter in it, which is all of them.
+        'iconv'     => ['de' => 'Rechnungen als PDF und der QR-Code zum Bezahlen', 'en' => 'Invoices as PDF and the QR code for paying',
+                        'why' => ['Ohne diese Erweiterung öffnet sich keine Rechnung als PDF, und jede Seite mit einem QR-Code – zum Bezahlen oder für einen Anmeldelink – zeigt einen Fehler.',
+                                  'Without this extension no invoice opens as a PDF, and every page with a QR code – for paying or for a sign-in link – shows an error.']],
+        // page_number() on every view of a paged list, wanted page or not,
+        // valid_iban(), and bacon-qr-code while it encodes.
+        'ctype'     => ['de' => 'Seitenzahlen in Listen und die IBAN-Prüfung', 'en' => 'Page numbers in lists and the IBAN check',
+                        'why' => ['Ohne diese Erweiterung zeigen die Schülerliste, die Rechnungen, der Postausgang und jede Seite mit einem QR-Code einen Fehler, und keine IBAN lässt sich speichern.',
+                                  'Without this extension the student list, the invoices, the outbox and every page with a QR code show an error, and no IBAN can be saved.']],
+        // bootstrap.php checks the portal's own address with it on every request.
+        'filter'    => ['de' => 'E-Mail- und Webadressen prüfen', 'en' => 'Checking email and web addresses',
+                        'why' => ['Ohne diese Erweiterung öffnet sich keine Seite des Portals.',
+                                  'Without this extension no page of the portal opens.']],
+    ];
+    $rows = [];
+    foreach ($needed as $extension => $about) {
+        $why = $about['why'] ?? ['', ''];
+        $rows[] = ['extension' => $extension, 'ok' => (bool)$loaded($extension),
+                   'label' => [$about['de'] . ' (' . $extension . ')', $about['en'] . ' (' . $extension . ')'],
+                   'fix'   => [trim($why[0] . ' Die PHP-Erweiterung „' . $extension . '“ im Hosting-Panel aktivieren.'),
+                               trim($why[1] . ' Enable the “' . $extension . '” PHP extension in the hosting panel.')]];
+    }
+    return $rows;
+}
+
+/**
  * One row per requirement: what it is, whether it holds, and what to do if not.
  *
  * A row marked fatal stops the installation; the rest are reported and the
@@ -224,9 +276,10 @@ function install_writable(string $path): bool {
  * runs without them, it just cannot send email or draw a payment QR code yet.
  *
  * $server is the request asking, which decides the HTTPS row; without a web
- * request - a command-line run - there is no connection to judge.
+ * request - a command-line run - there is no connection to judge. $loaded is
+ * passed on to extension_checks().
  */
-function install_requirements(?array $server = null): array {
+function install_requirements(?array $server = null, ?callable $loaded = null): array {
     $server ??= $_SERVER;
     $checks = [];
     $add = function (string $de, string $en, bool $ok, string $fixDe = '', string $fixEn = '', bool $fatal = true) use (&$checks): void {
@@ -245,13 +298,8 @@ function install_requirements(?array $server = null): array {
          PHP_VERSION_ID >= 80200,
          'Im Hosting-Panel unter „PHP-Version“ eine neuere Version auswählen.',
          'Choose a newer version under “PHP version” in the hosting panel.');
-    foreach (['pdo_mysql' => ['Datenbankzugriff (pdo_mysql)', 'Database access (pdo_mysql)'],
-              'mbstring'  => ['Umlaute und Zeichensätze (mbstring)', 'Character handling (mbstring)'],
-              'openssl'   => ['Verschlüsselung (openssl)', 'Encryption (openssl)'],
-              'session'   => ['Anmeldungen (session)', 'Sign-in sessions (session)']] as $extension => $label)
-        $add($label[0], $label[1], extension_loaded($extension),
-             'Die PHP-Erweiterung „' . $extension . '“ im Hosting-Panel aktivieren.',
-             'Enable the “' . $extension . '” PHP extension in the hosting panel.');
+    foreach (extension_checks($loaded) as $extension)
+        $add($extension['label'][0], $extension['label'][1], $extension['ok'], $extension['fix'][0], $extension['fix'][1]);
     $add('Der Ordner config/ ist beschreibbar', 'The config/ folder is writable',
          install_writable(config_path()),
          'Im Dateimanager für den Ordner config die Rechte auf 755 setzen. Die Einstellungen lassen sich sonst unten von Hand anlegen.',
@@ -273,8 +321,8 @@ function install_requirements(?array $server = null): array {
 }
 
 /** Requirements that must hold before anything is written. */
-function install_blockers(?array $server = null): array {
-    return array_values(array_filter(install_requirements($server), fn($c) => !$c['ok'] && $c['fatal']));
+function install_blockers(?array $server = null, ?callable $loaded = null): array {
+    return array_values(array_filter(install_requirements($server, $loaded), fn($c) => !$c['ok'] && $c['fatal']));
 }
 
 // ---------------------------------------------------------------------------

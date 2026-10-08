@@ -121,13 +121,37 @@ foreach ($requirements as $check) {
     ok($check['ok'] || $check['fix'] !== '', 'a failing check says what to do: ' . $check['label']);
 }
 $labels = implode(' | ', array_column($requirements, 'label'));
-foreach (['PHP', 'pdo_mysql', 'mbstring', 'openssl', 'session', 'config/', 'storage/'] as $needed)
+foreach (['PHP', 'pdo_mysql', 'mbstring', 'openssl', 'session', 'fileinfo', 'iconv', 'ctype', 'filter', 'config/', 'storage/'] as $needed)
     ok(str_contains($labels, $needed), 'it checks ' . $needed);
 // This process is running the suite, so these must be satisfied here by definition.
 foreach ($requirements as $check)
     if (in_array($check['fatal'], [true], true) && str_contains($check['label'], 'pdo_mysql'))
         ok($check['ok'], 'pdo_mysql is reported as present, which it is');
 ok(count(install_blockers()) <= count($requirements), 'blockers are a subset of the requirements');
+
+case_('A PHP without fileinfo is refused before installing, and handed to the System page by name');
+/* Uploads read a file's type from its bytes, and only fileinfo can: without it
+   every photo and receipt is refused with a sentence about the file. So setup
+   must not install on such a PHP, and extension_checks() must give the System
+   page (views/_settings_system.php, which draws whatever it returns as not ok)
+   that one to name. Nothing is taken away from the PHP running this: the
+   function is given the suite's own answer to which extensions are loaded. */
+$withoutFileinfo = fn(string $extension): bool => $extension !== 'fileinfo';
+$fileinfoRow = array_values(array_filter(install_requirements([], $withoutFileinfo),
+                                         fn($c) => str_contains($c['label'], 'fileinfo')))[0] ?? null;
+ok($fileinfoRow !== null && $fileinfoRow['ok'] === false && $fileinfoRow['fatal'] === true,
+   'setup lists fileinfo as missing, and as something it does not install without');
+ok(in_array($fileinfoRow['label'] ?? null, array_column(install_blockers([], $withoutFileinfo), 'label'), true),
+   'so it is among what stops the installation');
+ok(str_contains($fileinfoRow['fix'] ?? '', 'fileinfo') && preg_match('/Foto|photo/', $fileinfoRow['fix'] ?? '') === 1,
+   'with what it breaks and what to do: ' . ($fileinfoRow['fix'] ?? '(no sentence)'));
+is_same(['fileinfo'], array_column(array_filter(extension_checks($withoutFileinfo), fn($c) => !$c['ok']), 'extension'),
+        'the System page is given exactly that one to name');
+$named = array_values(array_filter(extension_checks($withoutFileinfo), fn($c) => !$c['ok']))[0] ?? ['label' => ['', ''], 'fix' => ['', '']];
+ok(str_contains($named['fix'][0], 'Hosting-Panel') && str_contains($named['fix'][1], 'hosting panel'),
+   'in German and in English, whichever the administrator reads');
+is_same([], array_column(array_filter(extension_checks(), fn($c) => !$c['ok']), 'extension'),
+        'and on the PHP running this suite, which has every one, it names none');
 
 case_('An old database server is named rather than silently accepted');
 is_same('', install_server_note('8.0.36'), 'MySQL 8 is fine');

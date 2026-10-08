@@ -149,6 +149,7 @@ covered, rather than passed.
 ```bash
 tests/e2e.sh                          # the working tree as it is now
 CRM_E2E_REF=HEAD tests/e2e.sh         # exactly one commit, whatever the tree holds
+CRM_E2E_ZIP=../badminton-crm-0.6.0.zip tests/e2e.sh   # a package from bin/release.sh, as it is handed out
 CRM_E2E_PHP=php8.5 tests/e2e.sh       # another PHP on the same machine
 tests/e2e.sh --stop-after "7 mail"    # stop once that step has run
 CRM_E2E_VERBOSE=1 tests/e2e.sh        # list every check that passed, not only the failures
@@ -193,13 +194,28 @@ that the design intends but that are worth a decision are printed as **Notes**
 and do not fail the run.
 
 It needs `mariadbd`, `python3`, `openssl`, `node` and Playwright's Chromium
-(`PLAYWRIGHT_PATH`, as for `mobile.mjs`). Each run copies the portal into a
-fresh `$TMPDIR/crm-e2e-<port>` - what an upload does - and starts its own
-MariaDB, an SMTP sink (`e2e_smtp.py`, STARTTLS with a certificate made for the
-run) and `php -S` on ports `CRM_E2E_PORT` (8765), +1 and +2. It refuses to start
-if any of them is taken: a server left from an earlier run would answer instead
-of this one's, about files this run has replaced. `CRM_E2E_KEEP=1` leaves all
-three running afterwards to look around; stop them before the next run.
+(`PLAYWRIGHT_PATH`, as for `mobile.mjs`), and `unzip` for a package. Each run
+copies the portal into a fresh `$TMPDIR/crm-e2e-<port>` - what an upload does -
+and starts its own MariaDB, an SMTP sink (`e2e_smtp.py`, STARTTLS with a
+certificate made for the run) and `php -S` on ports `CRM_E2E_PORT` (8765), +1
+and +2, or for the MariaDB `CRM_E2E_DB_PORT` where that is set. It refuses to
+start if any of them is taken: a server left from an earlier run would answer
+instead of this one's, about files this run has replaced. `CRM_E2E_KEEP=1`
+leaves all three running afterwards to look around; stop them before the next
+run.
+
+`CRM_E2E_ZIP` walks a package instead of the checkout: it unpacks it the way the
+owner does, `vendor/` and all, and the first line names the package, its
+`VERSION`, the commit it was built from — out of `BUILD.txt`, which
+`bin/release.sh` writes into every package — and the start of its SHA-256. It
+stops before starting any server if the package holds anything that script
+leaves out (`.claude`, `tests`, `CLAUDE.md`, `ROADMAP.md`, `.gitignore`, read
+from the script's own list, so a package built some other way is not walked as
+one of its), or anything in `config/` or `storage/` beyond their deny files and
+`config.example.php`; and it takes `CRM_E2E_ZIP` or `CRM_E2E_REF`, not both. A
+package built from a commit and that commit walked with `CRM_E2E_REF` can still
+differ: the package has `vendor/` from its own `composer install`, and leaves
+out what `bin/release.sh` does not ship.
 
 Mail is not sent by a command. Like on her host, the queue is worked by the
 background task after page views, at most once a minute, so the invitation takes

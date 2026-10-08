@@ -4,7 +4,14 @@ Auf einem normalen Webhosting-Paket, ohne Kommandozeile, in drei Schritten.
 
 ## Was das Hosting können muss
 
-- PHP ab 8.2 mit `pdo_mysql`, `mbstring`, `openssl` und Sitzungen.
+- PHP ab 8.2 mit `pdo_mysql`, `mbstring`, `openssl`, `session`, `fileinfo`,
+  `iconv`, `ctype` und `filter`. Fehlt eine, installiert die Einrichtungsseite
+  nicht; fehlt eine später, etwa nach einem Wechsel der PHP-Version im Panel,
+  steht es unter **Einstellungen → System**. Ohne `fileinfo` lehnt das Portal
+  jedes Foto und jeden Beleg ab; ohne `iconv` öffnet sich keine Rechnung als PDF
+  und keine Seite mit einem QR-Code; ohne `ctype` zeigen die Schülerliste, die
+  Rechnungen, der Postausgang und jede Seite mit einem QR-Code einen Fehler, und
+  keine IBAN lässt sich speichern; ohne `filter` öffnet sich keine Seite.
 - MariaDB mit InnoDB und `utf8mb4`. Geprüft ist das Portal nur mit MariaDB 10.11;
   MySQL 8.0 ist vorgesehen, aber noch nie ausprobiert worden.
 - Apache oder LiteSpeed mit `.htaccess`, oder Nginx (Beispiel in `docs/nginx.conf.example`).
@@ -322,6 +329,7 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 | „Im Ordner storage liegt eine Datei skip-backup, die das Portal nicht löschen kann“ | Dem Ordner `storage` Schreibrechte geben (`755`) und neu laden. Die Datei gilt nur für eine Aktualisierung; eine, die liegen bliebe, würde jede spätere Sicherung auslassen. |
 | „Vor der Aktualisierung konnte keine Sicherung angelegt werden“ | Rechte für `storage` auf `755` setzen. Oder im Panel selbst eine Sicherung anlegen und danach im Ordner `storage` eine leere Datei `skip-backup` erstellen; sie gilt für genau ein Update. |
 | „Vor der Aktualisierung konnte das Portal im Ordner storage nicht schreiben“ | Dem Ordner `storage` Schreibrechte geben (`755`) und neu laden. Das Portal hat dabei nichts geändert und keine Sicherung angelegt. |
+| Jedes Foto und jeder Beleg wird abgelehnt, auch eine Datei, die in Ordnung ist | Unter **Einstellungen → System** nachsehen: Steht dort „Es fehlt: Fotos und Belege hochladen (fileinfo)“, im Hosting-Panel die PHP-Erweiterung `fileinfo` aktivieren. |
 | „Die hochgeladenen Dateien sind älter als die Datenbank“ | Das falsche Paket hochgeladen. Die neueste Version holen und noch einmal entpacken. |
 | „Die hochgeladenen Dateien sind unvollständig“ | Das Entpacken ist abgebrochen, oder der Upload lief über FTP im Textmodus. Noch einmal hochladen, FTP auf Binärmodus stellen. |
 | E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang** (unter **Nachrichten**), dort steht der Fehler der letzten Zustellung. |

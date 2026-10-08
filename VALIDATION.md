@@ -6,6 +6,55 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
+## 0.6.0, unreleased — at `7e40ffc`: administrators read every chat, IBAN changes are kept, the security batch
+
+Recorded 2026-10-08 by docs-writer, from the project manager's run; nothing here was watched
+by the writer. The three commits `549f313`, `ebb1cd5` and `7e40ffc`, applied together on a
+clean worktree of `ead038a`, on MariaDB 10.11.14 with PHP 8.4.26: the whole suite 7864
+passed, 0 failed; the browser walk 381 passed, 0 failed, in Chromium. MySQL 8.0 was not
+run, and neither was Safari.
+
+What the writer did watch, before the commits: the three patches applied to an export of
+`ead038a`, the whole suite 7857 passed, 0 failed, in 270 seconds, and after the documents
+were written the `settings`, `install` and `migrations` suites, which read the privacy
+drafts, 1470 passed, 0 failed. TESTING.md E.1–E.5, K.1–K.3 and S.1–S.6 have not been
+walked by anybody.
+
+## 0.6.0, unreleased — the delivery batch on `ead038a`: setup checks the PHP extensions, the package carries only the portal
+
+Recorded 2026-10-08 by docs-writer. MariaDB 10.11.14 (`10.11.14-MariaDB-0ubuntu0.24.04.1`)
+with PHP 8.4.26, the walk on web port 3431 and database port 3434 (`CRM_E2E_DB_PORT`), in
+Chromium. MySQL 8.0 was not run, and neither was Safari.
+
+- **A package built by the new `bin/release.sh` and walked**: built from a scratch commit
+  holding `ead038a`, the batch's four patches and these documents, 402 files, with a
+  `BUILD.txt` naming that commit and the minute it was built. `tests/e2e.sh` with
+  `CRM_E2E_ZIP` on it: `RESULT: PASS`, 381 checks, 0 failed, in 183 seconds; its first line
+  named the package, `VERSION 0.6.0`, the commit and the first twelve characters of the
+  SHA-256. No PHP warning, notice or deprecation; no JavaScript error, failed request or
+  unexpected 4xx/5xx; no overflow and no tap target under 44px; four 503s, all provoked on
+  purpose; four mails captured; the 320px pass over 39, 6 and 3 pages.
+- **The refusals, each watched once.** `tests/e2e.sh` refused a copy of that package with a
+  `tests/` folder added („holds tests, which bin/release.sh leaves out: this is not a
+  package it builds", exit 1) and one with `config/config.php` added („carries
+  config/config.php, and config/ and storage/ ship with nothing but their deny files and
+  config.example.php", exit 1). `bin/release.sh` refused to build while git tracked
+  `storage/secret.sql` (exit 2, naming the file and `git rm --cached`). With the batch's
+  first version of the script, before `BUILD.txt`: a `VERSION` changed but not committed,
+  an unknown top-level `NOTES.md` and `VERSION` „0.6.0-rc1" were each refused with exit 2,
+  a committed `0.6.0-beta.2` built `badminton-crm-0.6.0-beta.2.zip` into the folder given,
+  `CRM_E2E_ZIP` together with `CRM_E2E_REF` was refused with exit 2, a package with a file
+  under `storage/backups` with exit 1, and a package built from `ead038a` by that script
+  walked with `RESULT: PASS`, 381 checks, 0 failed, in 180 seconds.
+- **Reported and not reproduced here**, by devops-engineer: the whole suite on a clone of
+  `ead038a` with the batch, 7799 passed, 0 failed, on the same MariaDB and PHP; the package
+  built from `ead038a` (402 files, `BUILD.txt`) walked with `CRM_E2E_ZIP`, 381 passed,
+  0 failed; each refusal of `bin/release.sh` and `tests/e2e.sh` watched once.
+- **What none of this shows.** No PHP without one of the eight extensions was tried: the
+  refusal of a PHP without `fileinfo`, and the row on **Einstellungen → System**, were seen
+  only through the suite's stand-in answer to which extensions are loaded. TESTING.md 3.1a
+  has not been walked.
+
 ## 0.6.0, unreleased — round two of ADR 0026's removals, on the working tree at `883be4d`
 
 Recorded 2026-10-07 by docs-writer, before round two was committed: the code of

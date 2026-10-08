@@ -784,6 +784,34 @@ if (!function_exists('exec')) {
     }
 }
 
+case_('Every PHP extension the code or a dependency requires is one setup checks for');
+/* A PHP without one of them installs cleanly and breaks somewhere else later:
+   without iconv the family's payment page and every invoice, without ctype
+   every paged list. composer.json names what the code calls and the lock file
+   what each dependency calls; extension_checks() is what setup.php refuses to
+   install without, and what Einstellungen → System names when a PHP switched in
+   the hosting panel has lost one. The two have to agree, both ways, apart from
+   what PHP 8.2 cannot be built without: hash and json (since 7.4 and 8.0),
+   random (since 8.2), and pcre, spl, date, standard and reflection (always). */
+$alwaysThere = ['hash', 'json', 'random', 'pcre', 'spl', 'date', 'standard', 'reflection', 'core'];
+// pdo is loaded whenever pdo_mysql is, which needs it, so it is checked through that one.
+$checkedThrough = ['pdo' => 'pdo_mysql'];
+$required = [];
+foreach (array_keys(json_decode((string)file_get_contents(APP_ROOT.'/composer.json'), true)['require'] ?? []) as $name)
+    if (str_starts_with($name, 'ext-')) $required[substr($name, 4)][] = 'composer.json';
+foreach (json_decode((string)file_get_contents(APP_ROOT.'/composer.lock'), true)['packages'] ?? [] as $package)
+    foreach (array_keys($package['require'] ?? []) as $name)
+        if (str_starts_with($name, 'ext-')) $required[substr($name, 4)][] = $package['name'];
+ok(count($required) >= 8, 'composer.json and the lock file name the extensions: '.implode(', ', array_keys($required)));
+$checked = array_column(extension_checks(), 'extension');
+foreach ($required as $extension => $by) {
+    if (in_array($extension, $alwaysThere, true)) continue;
+    ok(in_array($checkedThrough[$extension] ?? $extension, $checked, true),
+       'setup checks for '.$extension.', which '.implode(' and ', array_unique($by)).' require');
+}
+foreach ($checked as $extension)
+    ok(in_array('composer.json', $required[$extension] ?? [], true), 'composer.json requires '.$extension.', which setup checks for');
+
 case_('The rule for what counts as paid is written once');
 /* Every balance, the overdue filter and the payments screen depend on it. A
    second copy is the one that gets forgotten when the rule changes, and the
