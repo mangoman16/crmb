@@ -239,6 +239,38 @@ ok($stored['at'] !== '', 'with the time it was run');
 is_same(0, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE category='test'"),
         'and nothing was queued: the test is the connection, not a message in a list');
 
+case_('A mail server that takes the connection and then says nothing costs one send fifteen seconds, not five minutes');
+/* PHPMailer waits 300 seconds for each answer unless told otherwise, and twice
+   that after the message: a server that stalled held the background run, and the
+   account row the send locks, for five minutes and more. The queue and the
+   connection test build their mailer in one place (smtp_mailer()). */
+$mailer = smtp_mailer(['host'=>'mail.example.test', 'port'=>587, 'encryption'=>'tls']);
+is_same([15, 15], [$mailer->Timeout, $mailer->getSMTPInstance()->Timelimit], 'fifteen seconds to connect, and fifteen for each answer');
+
+case_('A send that fails is a failed attempt, tried again later, and never lost');
+/* Whatever ends a send - a refusal, or a server that ran out its fifteen seconds
+   - it is one attempt, written down with why, and the queue tries it again after
+   a while. A security mail is not tried again by itself: its link may have
+   lapsed by then. It stays in the outbox, failed, for staff to send again. */
+run('DELETE FROM mail_jobs');
+set_setting('smtp', ['host'=>'127.0.0.1', 'port'=>1, 'encryption'=>'tls', 'from_email'=>'portal@example.test', 'from_name'=>'B']);   // nothing listens there
+$reader = make_account(['email'=>'leserin@beispiel.test']);
+queue_mail($reader, 'leserin@beispiel.test', 'Neuigkeit', 'Hallo', 'newsletter');
+$resetFor = make_account(['email'=>'vergessen@beispiel.test']);
+queue_mail($resetFor, 'vergessen@beispiel.test', 'Passwort zurücksetzen', url('activate', ['token'=>make_token($resetFor, 'reset')]), 'security');
+process_mail();
+$jobOf = fn(int $id): array => one('SELECT status,attempts,error,retry_after FROM mail_jobs WHERE account_id=?', [$id]) ?? [];
+$news = $jobOf($reader);
+is_same(['failed', 1], [$news['status'] ?? null, (int)($news['attempts'] ?? 0)], 'a send that fails is written down as one failed attempt');
+ok((string)($news['error'] ?? '') !== '' && (string)($news['retry_after'] ?? '') > now(), 'with why, and when to try again');
+run('UPDATE mail_jobs SET retry_after=? WHERE account_id IN (?,?)', [gmdate('Y-m-d H:i:s', time() - 1), $reader, $resetFor]);
+process_mail();
+is_same(['failed', 2], [$jobOf($reader)['status'] ?? null, (int)($jobOf($reader)['attempts'] ?? 0)], 'once its time has come it is tried again, and counted again');
+is_same(['failed', 1], [$jobOf($resetFor)['status'] ?? null, (int)($jobOf($resetFor)['attempts'] ?? 0)],
+        'a security mail is not tried again by itself, and stays in the outbox for staff to send again');
+run('DELETE FROM mail_jobs');
+set_setting('smtp', []);
+
 case_('Nothing in a transcript is a password');
 /* The transcript is shown on a screen, stored in the settings table and copied
    into support emails. AUTH LOGIN sends the user name and the password as two

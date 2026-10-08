@@ -288,6 +288,20 @@ function smtp_mailer(array $s, ?callable $debug=null): \PHPMailer\PHPMailer\PHPM
         ?\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS
         :\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
     $m->Timeout=15; $m->CharSet='UTF-8';
+    // And fifteen seconds for each answer, which PHPMailer otherwise waits 300
+    // for - twice that after the message itself: a server that took the
+    // connection and then said nothing held one send, the background run it
+    // was part of and the account row it locks, for five minutes and more.
+    // Timeout above is the connection's. A send that runs out is a failed
+    // attempt like any other: process_mail() writes it down, and tries again
+    // later all but a security mail, whose link may have lapsed by then.
+    // The cost, accepted because the bound matters more: RFC 5321 gives a
+    // server ten minutes to answer the end of the message, so a slow provider
+    // may have taken an ordinary mail that is then sent a second time (a
+    // security mail never is); without the bound, one background run - which
+    // no visitor waits for, since the session is let go first - holds the
+    // queue and that row lock for many minutes a mail.
+    $m->getSMTPInstance()->Timelimit=15;
     $m->SMTPDebug=$debug?\PHPMailer\PHPMailer\SMTP::DEBUG_SERVER:\PHPMailer\PHPMailer\SMTP::DEBUG_OFF;
     if($debug) $m->Debugoutput=static function(string $line,int $level) use ($debug): void { $debug($line); };
     return $m;

@@ -165,6 +165,19 @@ and the screens for the owner's goals. **Seen in Chromium only**, at 320 and 390
 pixels, as each role, light and dark; not yet on a real iPhone, which TESTING.md
 I.1–I.12 walk. Chromium cannot show whether Safari still flashes white.
 
+### A slow or silent mail server no longer holds up the next page
+
+- **The next page no longer waits for the mail.** The background work after a
+  page, the queued mail among it, now lets go of the visitor's session before it
+  begins, so the same phone's next page and its stylesheet no longer wait behind
+  a mail server that is slow to answer.
+- **A mail server that takes the connection and then says nothing costs a send
+  fifteen seconds, not five minutes:** a send waits at most 15 seconds for each
+  answer. One that runs out counts as a failed attempt and is tried again later,
+  as a refused one is — except an invitation or a password link, which stays in
+  **Postausgang** as failed for staff to send again, because its link may have
+  lapsed by then.
+
 ### An update that lost records stays closed until they are back
 
 - **Before, the portal closed for one page view and then opened as if nothing

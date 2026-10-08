@@ -802,6 +802,29 @@ set_setting('auto_background', true);
 run('DELETE FROM auth_tokens');
 run('DELETE FROM accounts');
 
+case_('The background work lets go of the browser’s session before it begins');
+/* The same phone's next request - the club's stylesheet, the next page - waits
+   for the session the last one holds, and the work after a page view held it to
+   the end: the stylesheet waited 8.1 s behind an 8-second mail stall, and 2 min
+   15 s behind a mail server that never answered. Asked in a process of its own
+   (tests/background-request.php), because PHP starts a session only before
+   anything is printed. */
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['the session let go before the background work (this PHP disables exec)']));
+} else {
+    $work = test_run_dir().'/background-'.bin2hex(random_bytes(4));
+    mkdir($work, 0700);
+    write_run_config($work.'/config.php', config('db'), $work);
+    $out = [];
+    exec('CRM_CONFIG='.escapeshellarg($work.'/config.php').' '.escapeshellarg(PHP_BINARY).' '.escapeshellarg(TEST_ROOT.'/background-request.php').' 2>&1', $out);
+    $answer = json_decode((string)end($out), true);
+    $answer = is_array($answer) ? $answer : ['output' => implode("\n", $out)];
+    is_same('', $answer['let_go'] ?? null, 'the session is saved and let go before the run is even stamped, before any of the work');
+    ok(str_contains((string)($answer['written'] ?? ''), 'written by the page'), 'with what the page put in it');
+    ok((string)($answer['stamped'] ?? '') !== '', 'and the work then ran');
+    setting_cache_clear();
+}
+
 case_('The first administrator is validated like any other account');
 foreach ([['', 'a@example.test', 'korrektesPferdBatterie', 'an empty name'],
           [str_repeat('n', 161), 'a@example.test', 'korrektesPferdBatterie', 'a name that is too long'],

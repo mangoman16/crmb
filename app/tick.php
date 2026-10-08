@@ -11,7 +11,9 @@ declare(strict_types=1);
  * and optionally the monthly charges.
  *
  * Three things keep this from being a burden on a page view:
- *   - it runs after the response has been sent, so nobody waits for it;
+ *   - it runs after the response has been sent and the visitor's session has
+ *     been let go, so nobody waits for it - not even the same phone's next
+ *     request, which waits for the session the last one holds;
  *   - an advisory lock means one worker at a time across every visitor and any
  *     real cron job that is also configured;
  *   - a stored timestamp means at most one run per interval, so a busy minute
@@ -71,6 +73,13 @@ function run_background_tasks(): void {
     try {
         if (!setting('auto_background') || is_file(maintenance_file())) return;
         if (!tick_due('tick_last_run', TICK_INTERVAL)) return;
+        // The session first: the same phone's next request - the club's
+        // stylesheet, the next page - waits until this one lets go of it, and
+        // the work below can take as long as a mail server that does not
+        // answer. Held to the end, it kept the stylesheet waiting 8.1 seconds
+        // behind an 8-second stall. What the page wrote is saved here; nothing
+        // in the work writes to $_SESSION, so nothing is lost after it.
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
         finish_response();
         // Whoever gets the lock does the work; everyone else has already been
         // served and simply stops here.
