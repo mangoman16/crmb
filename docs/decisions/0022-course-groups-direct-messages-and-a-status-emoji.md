@@ -1,9 +1,21 @@
 ---
-status: accepted, amended by 0026
+status: accepted, amended by 0026, 0031
 date: 2026-10-02
 ---
 
 # 0022. Course groups, direct messages, and a status emoji
+
+> **Amended by ADR 0031 (2026-10-08): pictures come back to the chat, for children.** The 0026
+> note's line on §8 no longer holds for children: the chat list and others' bubbles show a child's
+> picture again, under 0031 §5's rule rather than ADR 0017's. Staff see every child's picture; a
+> family sees its own child's, and another child's where that child's family has said yes and the
+> two are in a running course together. The team has no pictures and shows as initials. In §11.4,
+> "Profile pictures keep GIF" stays gone: a picture is stored as a square JPEG made on the server
+> (0031 §3), which takes no GIF. §4's cleaner stays plain PHP; gd makes only that square, and the
+> cleaner still passes it. In Consequences, the privacy line reads: children in a course see each
+> other's names and initials, and a child's picture where the family has said yes. What a message
+> may carry is unchanged: §11.4 is about photos sent in a chat, and a profile picture is not one.
+> Everything else stands.
 
 > **Amended on 2026-10-07, under ADR 0026: the contact requests go, with their table.** The project
 > manager decided that day that the old requests are deleted rather than kept unused: no real family

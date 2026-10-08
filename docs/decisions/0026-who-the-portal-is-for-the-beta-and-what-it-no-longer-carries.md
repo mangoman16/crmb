@@ -1,9 +1,32 @@
 ---
-status: accepted
+status: accepted, amended by 0031
 date: 2026-10-07
 ---
 
 # 0026. Who the portal is for, the beta, and what it no longer carries
+
+> **Amended by ADR 0031 (2026-10-08): profile pictures come back, for children.** The owner,
+> 2026-10-08: "customization is very important for the brain of the young, so profile picture would
+> still be nice, specially good for the trainer to see faces and not only names to know who people
+> are, so for anwesenheit imagine how hard it is for someone to start teaching and remember who
+> people are". §8's reason for removing them, "Photos of children that the club does not need", no
+> longer holds: the trainer needs the faces. These parts no longer hold:
+>
+> - in §8, the row for profile pictures, for a child's picture; the team still has none;
+> - in §10, "its hint stops naming profile pictures": `upload_max_kb`'s hint names them again;
+> - in Consequences, `avatar_save` among the actions removed (0031 adds `picture_save` and
+>   `picture_consent`), "the pictures" in the order of work, "initials wherever a picture was" (a
+>   child's picture where there is one), and "the privacy drafts lose the profile pictures";
+> - "For the owner" 2, its sentence on profile pictures;
+> - in "In plain words", "profile pictures (everybody shows as initials)".
+>
+> What stands: 035 and 036 as shipped, since 040 adds new columns under new names (0031 §2), and
+> `accounts.avatar_name` stays dropped, because the team has no pictures; the round-2 note's point
+> 3, because the old pictures' files went with that update and nothing brings them back; in §10,
+> „Bild" gone from Mein Konto, because a child's picture card is on the child's page; the
+> screenshots' folder, still called `avatar`; and this record's supersession of 0017, whose caching
+> 0031 restates. Lines marked *ADR 0031, 2026-10-08* say so in §8, §10 and §11. Everything else
+> stands.
 
 > **The owner's later answer on levels and age groups, 2026-10-07, 19:03 UTC.** Recorded on
 > 2026-10-08. The owner: "Skill levels were good to have / age levels will also be needed, but it
@@ -79,8 +102,8 @@ date: 2026-10-07
 >    left it to the owner"; in Rejected, "or `contact_requests`"; and "For the owner" 4. ADR 0022
 >    carries a note of its own.
 > 2. **Voice notes and files sent before stay**, their rows and their files, as 0022 §11.4 says. Only
->    new ones are refused. Deleting them would lower the rows of `message_files`, which is guarded,
->    and remove what somebody sent.
+>    new ones are refused. Deleting them would lower the rows of `message_files`, which is guarded, and
+>    remove what somebody sent.
 > 3. **The pictures' files go with the pictures.** §8's row names the columns, not the files. After a
 >    run that has passed the guard, the runner's PHP step (`database/defaults.php`) deletes the
 >    stored pictures, which no column names any more. The problem reports' screenshots, kept in the
@@ -510,6 +533,8 @@ gains „A–Z | Nach Alter" (the note at the top). Its tests stay, less the pin
 most of its lines.
 *Built 2026-10-08:* `latest_birth_date_for_age()` goes too: the date bounds were its only caller.
 `student_age()` stays, and the `groups` cases for the function that went go with it.
+*ADR 0031, 2026-10-08:* a child's picture comes back, made small on the server, seen by staff and,
+by the child's course once the family says yes; the team keeps its initials (the note at the top).
 
 | Feature | Verdict | Why | What goes | Lines | Tests |
 | --- | --- | --- | --- | --- | --- |
@@ -607,6 +632,8 @@ Not settings, but gone from the screens where things are configured:
 - Verwaltung → „Leistungsgruppen" and „Altersgruppen" (†, decided 2026-10-07; the students list sorts and filters by age instead);
   *Later answer, 2026-10-07:* both stay; what goes is „Altersgruppe festlegen" on the child's page.
 - Mein Konto → „Bild", and the account menu's „Status" and „Status-Emoji" (the last two †, decided 2026-10-07).
+  *ADR 0031, 2026-10-08:* „Bild" stays gone from Mein Konto; a child's picture card comes back on
+  the child's page, and `upload_max_kb`'s hint names profile pictures again.
 
 ### 11. Migrations, in order
 
@@ -627,6 +654,8 @@ when each lands; the order is what matters.
 `038_age_group_from_the_birth_date_only.sql`, with
 `ALTER TABLE students DROP FOREIGN KEY student_age_group, DROP COLUMN age_group_id;`. `level_id`,
 its key `student_level` and both tables stay, and 039 is not written.
+*ADR 0031, 2026-10-08:* 035 and 036 stay as shipped. A child's picture comes back in new columns,
+`students.picture_name` and `students.course_sees_picture` (040); the team has none.
 
 - **Restartable.** A `DROP TABLE IF EXISTS` can run twice. An `ALTER` that drops cannot, on MySQL 8.0,
   so each is one statement, alone in its file, as 024 is. 008 named both keys in 037, so no lookup is

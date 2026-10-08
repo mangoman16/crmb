@@ -1,9 +1,17 @@
 ---
-status: accepted, amended by 0021, 0023, 0026, 0030
+status: accepted, amended by 0021, 0023, 0026, 0030, 0031
 date: 2026-09-30
 ---
 
 # 0020. Every login has its own address, and people set themselves up
+
+> **Amended by ADR 0031 (2026-10-08).** A child's profile picture is back. In §7's table, a family
+> adds, replaces and removes its child's picture, and so do staff (0031 §7). The family also answers
+> whether the children in the child's courses see it (`students.course_sees_picture`, 0031 §8): the
+> one value a family writes that staff can switch off and never on, because nobody says yes in a
+> family's place. "Must not"'s "Make any field a family can write read-only for staff" holds but for
+> that one. Where the picture card sits is `ui-ux-designer`'s to specify anew; §10e, which the 0026
+> note took away, does not come back. Everything else stands.
 
 > **Amended by ADR 0030 (2026-10-08).** Usernames are gone again, for every role, and so are the
 > one-time sign-in links. Where the 0023 note below brought usernames back it no longer holds: §3

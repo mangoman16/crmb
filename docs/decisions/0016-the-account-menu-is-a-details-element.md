@@ -1,9 +1,14 @@
 ---
-status: accepted, amended by 0022, 0026
+status: accepted, amended by 0022, 0026, 0031
 date: 2026-09-29
 ---
 
 # 0016. The account menu is a `<details>`, and a status is a POST
+
+> **Amended by ADR 0031 (2026-10-08).** Profile pictures are back for children, so a family's
+> `<summary>` shows its child's picture where there is one, through `avatar()` (0031 §1). Staff have
+> no picture and keep their initials, as the 0026 note below says; so does a family whose child has
+> none. Everything else stands.
 
 > **Superseded in part by ADR 0026 (2026-10-07).** Profile pictures are gone, so the `<summary>` shows
 > the person's initials, name and role. The owner gave their word on 0026's † the same day ("Remove

@@ -103,11 +103,12 @@ In this order.
      shown only when a page is slow; a badminton mark and icons where a club has uploaded
      none. frontend-dev fixes the flash's cause; ui-ux-designer specifies the waiting screen
      and the mark.
-   - **Profile pictures come back** (ADR 0031, being written): faces for the trainer on
+   - **Profile pictures come back** (ADR 0031, decided): faces for the trainer on
      Anwesenheit, the lists and the child's page, and for the children to make their profile
      their own; visible to the course with each family's consent; the family and the trainer
      add them, the family can always replace or remove them. This reverses round 2's removal
-     of pictures.
+     of pictures. Children only: staff keep their initials. Next, ui-ux-designer specifies the
+     screens; then migration 040, the server and the screens.
 10. **Robustness suite: done** (`aa5b1b7`). `tests/suites/robustness.php` sends unexpected values
    to every action as every role and draws every page with them; 751 checks, about 45 s.
    What it cannot reach — uploads, actions no page draws a form for — it lists after a run.
@@ -161,6 +162,14 @@ In their words.
 
 ## Decided
 
+- **2026-10-08** — the project manager, on ADR 0031: pictures are for children only. The
+  architect proposed pictures for staff too; nobody asked for them, so they wait under Later.
+  Whether the children of a course see each other's pictures is a club's choice, so it is a
+  setting (`pictures_in_course`), on by default as the owner answered.
+  Migration 039 also takes a username login it turns into a placeholder out of its chats,
+  its read marks and its bell (ADR 0030, addendum): a placeholder holds nothing a fresh one
+  could not, or whoever is invited into it next would read the child's old chats. In the
+  beta these are test chats.
 - **2026-10-08** — the owner, later: "please also implement a custom loading screen, should
   not be too slow, but now sometimes pages flash into eyes although dark mode is active and
   that is annoying. a short waiting page. for logo and waiting use badminton elements. also
@@ -312,9 +321,14 @@ For the owner to do:
 - MySQL 8.0, if a club's host runs it. INSTALL.md names it as intended; it has never been
   run.
 - No independent security review or penetration test has been done.
+- Two sentences only the owner can write, before families use pictures (ADR 0031): from what
+  age a child may say yes alone to the course seeing its picture, and on what legal basis
+  staff see a picture the trainer took. The privacy drafts hold a bracket for each.
 
 ## Later, not scheduled
 
+- Pictures for trainers and administrators, if somebody asks: one column and one case in the
+  rule of who sees a picture (ADR 0031, Rejected).
 - A tap within about 0.2 s of a page appearing is lost on every page, to the cross-fade
   (`@view-transition`, app.css; mobile-tester, 2026-10-08, the same with JavaScript off).
   Shorter, or letting taps through during it, is frontend-dev's to measure; the staff

@@ -5,6 +5,35 @@ date: 2026-10-08
 
 # 0030. One person, one address: usernames and sign-in links go
 
+> **Amended on 2026-10-08, after the reviews of 039 and of the screens.** Four points, and the
+> owner's answer to the question in Consequences:
+>
+> 1. **§2: 039 turns suspended username logins into placeholders too**, not only invited and active
+>    ones: its `UPDATE` reads `state<>'placeholder'`. „Gesperrt" becomes „Ohne Anmeldung". That
+>    widens nobody's rights: a trainer can already restore a student's login.
+> 2. **§2, decided by the project manager: 039 also takes a converted login out of its chats and
+>    empties its bell.** Three statements between the `UPDATE` and the `ALTER` delete the converted
+>    logins' rows in `thread_participants`, `thread_reads` and `notifications`; each must be able to
+>    run twice, because only the `ALTER` may not. Their exact condition is `database-engineer`'s,
+>    and this note quotes it once it is reported. The reason is this record's own rule, "a row that
+>    lies about itself": a placeholder holds nothing a fresh placeholder could not, read marks
+>    included. Otherwise any member of staff could invite an address into a converted login, and
+>    its new holder would read and write the child's old chats. The threads and their messages stay,
+>    for the other side. None of the three tables is guarded, and in the beta these are test chats.
+>    Rejected with it: refusing `invite_student()` for staff while a placeholder still takes part in
+>    a conversation, which is permanent code for a state 039 can simply not leave behind.
+> 3. **§8 and Tests 6 name three chips; the code has four:** „Alle", „Eingeladen", „Ohne
+>    Anmeldung" and „Gesperrt". „Eingeladen" is the project manager's decision, recorded in the
+>    addendum to `docs/design/2026-10-05-accounts-and-chat-screens.md`. This note brings the record
+>    in line with the code.
+> 4. **Consequences, for `docs-writer`:** UPDATING says that suspended username logins become „Ohne
+>    Anmeldung" too, and that a converted login's side of its chats goes. None of 039's conversions
+>    shows in „Änderungen": a migration writes no line there.
+>
+> **The owner's answer, 2026-10-08:** "Yes, invite later". A child may exist without an address, as
+> „Ohne Anmeldung", and is invited once the address is known. §3 stands as written, and the question
+> in Consequences and "In plain words" is answered.
+
 > **Accepted** on 2026-10-08. The owner, verbatim: "Drop once again the username support, mainly
 > email login support / 1 admin 1 email / 1 person 1 email / 1 trainer 1 email / 1 student 1 email".
 > Decided by the architect at the project manager's request, at `78799a0`. The reading of the words
