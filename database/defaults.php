@@ -47,7 +47,7 @@ refresh_sign_in_dummy_hash();
 course_groups_fill();
 
 // Students made before migration 028 get a login here: a placeholder nobody can
-// sign in with until staff give it an address or a username. A new student gets
+// sign in with until staff give it an address. A new student gets
 // one as it is made, and the key 030 adds keeps it (ADR 0023 §4). After the
 // files, never in one of them: nothing in SQL ties a new login to its student.
 give_every_student_a_login();

@@ -16,13 +16,12 @@ In this order.
    by `d095ca4`; the reviews' findings fixed in `2788c4f` (a form sent twice lands where the
    first went; viewing is look-only; the last place in a course is held). The security
    re-review passed; the code re-review's remaining items, and a view that outlived its
-   viewer, are fixed in the commit after it. A student's login may sign in with a username instead of an address; every
-   student has a login, a placeholder until it gets an address or a username; „Schüler
-   anlegen" is a two-step wizard; staff make sign-in links that work once, within 48 hours;
-   a student's login is replaced, never deleted (migrations 028–031). The screens are still
-   the minimum the server side needed: their design pass is item 5. The whole suite and the
-   browser walk pass at `2788c4f` on MariaDB 10.11.14 with PHP 8.4.26; the sweep at phone
-   width has not been run on it.
+   viewer, are fixed in the commit after it. Every student has a login, a placeholder until
+   it gets an address and an invitation; „Schüler anlegen" is a two-step wizard; a student's
+   login is replaced, never deleted (migrations 028–031). The usernames and one-time sign-in
+   links built with it went again with ADR 0030, and its screens were built with that (item
+   5). The whole suite and the browser walk pass at `2788c4f` on MariaDB 10.11.14 with PHP
+   8.4.26; the sweep at phone width has not been run on it.
 2. **ADR 0026.** Accepted (`4314eef`): who the portal is for, the beta rules, the goals as the
    scope test with eight gaps (G1–G8), the robustness rule, and what goes. The architect
    recorded the owner's answers of 2026-10-07 in it (`b5d92e1`), and their later answer on
@@ -56,18 +55,15 @@ In this order.
    helpers in app/ui.php) after the removals, and the owner sees screenshots before the
    screens below are built in it.
 5. **Screens.**
-   - **ADR 0030 first (owner, 2026-10-08): usernames and one-time sign-in links go; every login
-     signs in by its own address.** Migration 039 drops `accounts.username`; a username login
-     becomes a placeholder until invited by address; the wizard has two cards (address →
-     invitation; „Ohne Anmeldung anlegen"). Being built: database-engineer (039), backend-dev
-     (sign-in by address only, the `signin_link` action and its helpers gone, the structure
-     allowlist of §7), ui-ux-designer (the account screens respecified), frontend-dev (the
-     built ADR 0023 screens trimmed per 0030 §8), docs-writer (both privacy drafts, README,
-     INSTALL, UPDATING, TESTING, CHANGELOG).
-   - ADR 0023's screens, as specified in
-     [docs/design/2026-10-05-accounts-and-chat-screens.md](docs/design/2026-10-05-accounts-and-chat-screens.md):
-     built and reviewed, parked until 0030's trim; what stands is Zugänge's groups and chips,
-     the mail switches, the view bar on public pages and the lifetimes from the setting.
+   - **ADR 0030 (owner, 2026-10-08): done.** Everybody signs in by their own address;
+     usernames and one-time sign-in links are gone. Migration 039 drops `accounts.username`,
+     turns every login that signed in by a username into a placeholder, „Ohne Anmeldung",
+     and takes it out of its chats, its read marks and its bell. The wizard has two cards;
+     the card „Zugang zum Portal" invites in one tap; „Zugänge", Mein Konto and the sign-in
+     box are built as the designer respecified them, from ADR 0023's parked screens trimmed
+     per 0030 §8. The security review passed; the whole suite and the browser walk pass on
+     a clean worktree (VALIDATION.md). Not walked by hand yet: TESTING.md L.2a, L.2b, L.9a,
+     L.9b, Z.1–Z.6.
    - ADR 0022 §11, the chat cut to its basics. Built with round 2 (`8e5ce48`): a message is
      text and photos (a student's from the camera, JPEG; staff JPEG, PNG or WebP), and no new
      chat between two students — old ones are readable and closed. §11.1 and §11.2 built:
@@ -152,7 +148,8 @@ In their words.
 - 2026-10-06: "trainer should be able to change iban" (ADR 0025); about taking a child out of
   a course: "child can undo but needs to be accepted by trainer" (ADR 0024).
 - 2026-10-05: "now that usernames are allowed, no email login should also be possible, but
-  ideally discouraged" (ADR 0021, amended by 0023); "there should be no student ever in a
+  ideally discouraged" (ADR 0021, amended by 0023; undone on 2026-10-08, ADR 0030); "there
+  should be no student ever in a
   course without an account" (ADR 0010, amended by 0023); a chat that is "the absolute basics"
   (ADR 0022 §11).
 - 2026-10-02: the chat "should basically be more like whatsapp … there should be groups for
@@ -186,8 +183,8 @@ In their words.
   parent with two children has two logins, as before). The project manager, with it: the
   one-time sign-in links go too — they existed for logins that could get no mail, and the
   invitation and the reset mail cover every way in; a child may still be added „Ohne
-  Anmeldung" and invited once the address is known, unless the owner says no child without an
-  address (asked).
+  Anmeldung" and invited once the address is known. Asked whether no child should exist
+  without an address, the owner answered: "Yes, invite later".
 - **2026-10-08** — the project manager:
   - An invoice is made out to the student's name, never to the login's freely typed name. A
     billing name of the family's own (the paying parent, for an invoice over 400 €) needs a
@@ -216,7 +213,8 @@ In their words.
     - Only an administrator makes a sign-in link for a login already in use; a trainer makes
       one only for a login not yet signed in. A child without an address who forgets the
       password needs an administrator. The admin's half waits for ADR 0022 §11, because
-      until then such a link would open a child's private chats with other families.
+      until then such a link would open a child's private chats with other families. (Gone
+      with the links, ADR 0030.)
     - Viewing the portal as somebody else is look-only: every change is refused while
       viewing, by one rule, except ending the view and signing out.
   - The owner, on ADR 0026's questions: the online dots, the chosen status, the status emoji
@@ -241,10 +239,11 @@ In their words.
   - Students send photos from the camera only (JPEG); staff send JPEG, PNG or WebP.
   - The trainer can change the IBAN.
   - A child removed from a course can ask to come back, and staff accept.
-  - The student wizard, usernames and one-time sign-in links (ADR 0023).
-  - Sign-in links last 48 hours.
+  - The student wizard, usernames and one-time sign-in links (ADR 0023); the usernames and
+    the links went again with ADR 0030, 2026-10-08.
+  - Sign-in links last 48 hours (gone with the links).
   - The minimum password length stays 12.
-  - No sign-in links for staff.
+  - No sign-in links for staff (gone with the links).
   - One quick action on the start page: „Schüler anlegen".
   - Chats between two students are closed; the existing ones stay readable.
   - Everybody is signed out once after the update.
@@ -270,10 +269,14 @@ For the owner to do:
 - Write the privacy sentences only the operator can write — who runs the portal, the host and
   the mail provider, how long things are kept, and the legal bases in the bracketed notes —
   and release the German notice under **Einstellungen → Datenschutz**. Until it is released
-  no invitation goes out, and nobody can sign in for the first time with a sign-in link.
+  no invitation goes out.
 
 ## For the owner to test or deploy
 
+- **Signing in by address only** (ADR 0030, test data only): after the update, a test login
+  that signed in with a username is „Ohne Anmeldung"; enter its address on the child's card
+  and send the invitation. Old sign-in links stop working. On your iPhone, walk TESTING.md
+  L.2a, L.9a, L.9b and Z.1–Z.6. The update needs nothing from you.
 - **The students list on your iPhone** (TESTING.md 17.1–17.8, test data only): search a
   child, tap „Überfällig" and „Krank", open „Filter", switch to „Nach Alter". Say what
   feels wrong; the price no longer shows in the list or on the overview, only on the
@@ -336,6 +339,12 @@ For the owner to do:
 - At 320 px with 200 % text, a child's „Beiträge" tab is 327 px wide: „Notfallkontakt
   eintragen" with its hint and „Überfällig" run past the screen (mobile-tester, 2026-10-08,
   older than the students list). It goes with the Bezahlen build, which redraws that tab.
+- One rule for the whole portal, `overflow-wrap:anywhere` with tables left out, instead of
+  fixing each screen at 200 % text as a measurement finds it (frontend-dev, 2026-10-08). To
+  be measured on what mobile-tester found sideways at 200 % text on a 320 px screen, all of
+  it older than ADR 0030: the signed-out footer's „v0.6.0" (357 px), the privacy page's
+  „Fassung …" (364 px), the staff overview's tiles (338 px), and Geld, Rechnungen and a
+  child's „Beiträge" tab (327 px).
 - Export to CSV of students, charges and payments, so the club's data is never hostage to the
   portal and an accountant can be handed a file.
 - „Who is at training on Thursday": a register view that the enrolments and absences can

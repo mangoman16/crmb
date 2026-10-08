@@ -182,7 +182,7 @@ const run = async () => {
         const session = await browser.newContext({ viewport: { width: 390, height: 800 }, isMobile: true, hasTouch: true });
         const door = await session.newPage();
         await door.goto(BASE + '?page=login');
-        // One box for the address or the username (ADR 0023 §7), posted as login.
+        // One box, for the address (ADR 0030 §1), posted as login.
         await door.fill('input[name=login]', email);
         await door.fill('input[name=password]', role === 'family' ? FAMILY_PASSWORD : PASSWORD);
         await door.click('form button[type=submit]');
@@ -206,15 +206,34 @@ const run = async () => {
                 const noise = [];
                 page.on('pageerror', e => noise.push('JavaScript error: ' + e.message));
                 page.on('response', r => { if (r.status() >= 400) noise.push(r.status() + ' ' + r.url().replace(BASE, '')); });
-                for (const query of await pages(page, role)) {
-                    const res = await page.goto(BASE + '?page=' + query, { waitUntil: 'networkidle' });
-                    const label = `${role} ${width}px ${scheme} ?page=${query}`;
-                    const result = await page.evaluate(inspect, { label, expected: width });
+                const judge = (result, query, status) => {
                     screens++;
-                    if (isThePage(result, query, res.status(), true)) measured[role]++;
+                    if (isThePage(result, query, status, true)) measured[role]++;
                     if (result.sideways) result.problems.push({ kind: 'the page scrolls sideways' });
                     for (const n of noise.splice(0)) result.problems.push({ kind: 'browser complained', text: n });
                     if (result.problems.length) failures.push(result);
+                };
+                for (const query of await pages(page, role)) {
+                    const res = await page.goto(BASE + '?page=' + query, { waitUntil: 'networkidle' });
+                    const label = `${role} ${width}px ${scheme} ?page=${query}`;
+                    judge(await page.evaluate(inspect, { label, expected: width }), query, res.status());
+                }
+                // Step 2 of the wizard has no address of its own: it needs a draft,
+                // which step 1 keeps in the session and nowhere else (ADR 0023 §5) -
+                // so it is reached the way she reaches it, and nothing is written.
+                if (role === 'admin') {
+                    await page.goto(BASE + '?page=student_new', { waitUntil: 'networkidle' });
+                    await page.fill('input[name=first_name]', 'Mara');
+                    await page.fill('input[name=last_name]', 'Messung');
+                    await page.selectOption('select[name=course]', 'none');
+                    // Sent with Enter, as a keyboard's „Weiter" does: a tap made while the
+                    // page still cross-fades in can land on the fading copy and be lost.
+                    await Promise.all([page.waitForURL(/draft=/), page.press('input[name=last_name]', 'Enter')]);
+                    await page.waitForLoadState('networkidle');
+                    const result = await page.evaluate(inspect, { label: `${role} ${width}px ${scheme} ?page=student_new, step 2`, expected: width });
+                    if (!await page.locator('#by-email').count() || !await page.locator('#later').count())
+                        result.problems.push({ kind: 'not the page asked for, so nothing measured on it counts', text: 'no step 2 of the wizard' });
+                    judge(result, 'student_new', 200);
                 }
                 await ctx.close();
             }

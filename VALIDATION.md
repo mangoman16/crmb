@@ -6,6 +6,38 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
+## 0.6.0, unreleased — at `76cc959` with the ADR 0030 patches: one person, one address
+
+Recorded 2026-10-08 by docs-writer, from the project manager's run, the implementers' and
+mobile-tester's reports and the reviews; nothing here was watched by the writer, who ran no
+suite and no walk on this change. MariaDB 10.11.14 with PHP 8.4.26, the walk in Chromium.
+MySQL 8.0 was not run, and neither was Safari.
+
+- **The project manager's final run, on a clean worktree of `76cc959`** with
+  adr0030-db.patch (md5 `e2ee9369…`), adr0030-server.patch (`43534e8d…`),
+  adr0030-views.patch (`9154821c…`), adr0030-record-quote.patch and the documents patch:
+  the whole suite 8364 passed, 0 failed — a worktree runs one structure check fewer than a
+  checkout, because its `.git` is a file; the browser walk 382 passed, 0 failed, no PHP
+  warnings, no layout findings, `RESULT: PASS`. The documents patch was the one before its
+  last three fixes, which change only Markdown text that no suite reads.
+- **The implementers' final runs, on checkouts**: frontend-dev 8365 passed, walk 382 PASS;
+  backend-dev 8309 passed; database-engineer's earlier run, 8268 passed on `7b98be7` with
+  the server patches.
+- **mobile-tester**, on the views patch before its last change, which only adds the
+  card's note for a refused „Portal als … ansehen": 208 screens of ADR 0030 at 320 and 390
+  px, light and dark, at 100 % and 200 % text, with no problem; every page of the portal
+  before and after the patches, 0 of 256 worse and 14 better.
+- **frontend-dev's measurements, reported**, in Chromium: in a window 320 by 780 px the
+  wizard's second card, „Ohne Anmeldung", starts at 716 px of a 1,253 px page, on the first
+  screen, and at 390 px wide at 647 px — Safari on a phone, whose window is shorter, was not
+  measured.
+- **Reviews**: the security review passed all four patches; the code review passed the
+  code.
+- Not walked by anybody, as far as reported: TESTING.md L.2a, L.2b, L.9a, L.9b and
+  Z.1–Z.6. 039 has run on the `migrations` suite's own username logins only, and never on
+  MySQL 8.0, where neither its multi-table `DELETE` nor its one `ALTER` that drops an index
+  and a column has been tried.
+
 ## 0.6.0, unreleased — at `7b98be7` with the students-list patch: the list built for a phone
 
 Recorded 2026-10-08 by docs-writer. The two runs are reported, the project manager's and
@@ -282,6 +314,10 @@ manager; how each comes about was read in the code).
   Until it is used, withdrawn, replaced or lapsed, the readable link is held in its maker's
   session on the server, where whoever can read the session store could already take over
   sessions (ADR 0023 §6).
+
+**All three are gone again.** ADR 0030 (2026-10-08) takes usernames and one-time sign-in
+links out, and migration 039 drops the username column; the three bullets stay as the
+record of what was accepted while the feature existed, and no longer describe the portal.
 
 **Known limit.** A logo photo that a phone stored sideways, with a note telling the viewer
 to turn it (EXIF orientation), is measured as stored and can be refused as too tall.

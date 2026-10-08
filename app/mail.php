@@ -23,10 +23,12 @@ const MAIL_STRUCTURED = "\x01crm-mail\n";
  * back the whole action - a newsletter to every other family with it (ADR 0019,
  * R2).
  *
- * A login signing in with a username may have no address at all (ADR 0023 §7):
- * then $recipient is null, and nothing is queued and nothing thrown, for the
- * same reason - one child without a mailbox must not roll back a newsletter to
- * everybody else.
+ * A login without an address has $recipient null: then nothing is queued and
+ * nothing thrown, for the same reason - one login without a mailbox must not
+ * roll back a newsletter to everybody else. The portal makes none that signs in
+ * (ADR 0030), and a placeholder takes no mail (account_takes_mail()), so what
+ * reaches this is a login edited by hand in the database - an active one
+ * without an address.
  */
 function queue_mail(?int $accountId,?string $recipient,string $subject,string $body,string $category,array $attach=[]): void {
     if($recipient===null) return;
@@ -76,15 +78,16 @@ function same_address(string $a, string $b): bool { return email_normalised($a)=
  * checked, not the first, so a body that ever carries more cannot let a stale
  * one through [S1]. A mail with no link in it is not a security mail and is not
  * sent.
- * Each link must be live, belong to a login that is not suspended, and belong to
- * this recipient: the login's own address, or for a changed address the new one
- * it is confirming.
+ * Each link must still open what it was made for - link_usable(), the rule the
+ * page and the action ask, so a mail never carries a link that would only say
+ * „Link nicht mehr gültig" - and belong to this recipient: the login's own
+ * address, or for a changed address the new one it is confirming.
  */
 function security_mail_links_live(string $body, string $recipient): bool {
     if(!preg_match_all('/[?&]token=([a-f0-9]{64})\b/',$body,$found)) return false;
     foreach($found[1] as $token) {
         $record=token_record(hash('sha256',$token));
-        if(!$record || $record['state']==='suspended') return false;
+        if(!link_usable($record)) return false;
         $address=$record['purpose']==='email' ? (string)$record['target_email'] : (string)$record['email'];
         if(!same_address($address,$recipient)) return false;
     }
@@ -102,7 +105,8 @@ function account_in_use(array $account): bool { return ($account['state']??'')==
  * third, so an invoice was queued, dropped, and marked as e-mailed.
  */
 function account_takes_mail(array $account, string $category): bool {
-    // A username login without an address has nowhere to take it (ADR 0023 §7).
+    // A login in use without an address - only a row edited by hand, since
+    // the portal makes none (ADR 0030) - has nowhere to take it.
     if(!account_in_use($account) || (string)($account['email']??'')==='') return false;
     $switch=unsubscribe_categories()[$category]??null;
     return $switch===null || (bool)($account[$switch]??1);

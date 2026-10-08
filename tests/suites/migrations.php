@@ -11,7 +11,7 @@
  * a trainer is trusting with her families' money.
  *
  * tests/migration-data.php builds a portal as it stood before 015, 019, 020, 022,
- * 024, 025, 028, 032, 034 and 038, applies the rest, and prints what it finds;
+ * 024, 025, 028, 032, 034, 038 and 039, applies the rest, and prints what it finds;
  * then it runs this release's update through the application's own runner, with
  * the files the pictures left on disk, the mistakes ADR 0027 keeps the portal
  * closed for, page view after page view, with the imports that reopen it, and the
@@ -74,18 +74,19 @@ try { make_account(['email' => 'eigene-adresse@example.test']); make_account(['e
 catch (PDOException $e) { $refusal = $e; }
 is_same(null, $refusal, 'while a dot, a hyphen and nothing at all are three different addresses to it');
 
-case_('On this run’s own engine, a login may have an address, a username, both or neither, and logins without one do not collide [ADR 0023 §2]');
-// 022 and 023 left a username column unique at a default of '', which refused
-// the second login made without one; 024 dropped it. 028 brings it back with
-// NULL as "none", and lets the address be NULL too: a unique index lets any
-// number of rows share NULL and nothing else.
+case_('On this run’s own engine, a login has an address or none, there is no username column, and logins without an address do not collide [ADR 0030 §2, 0023 §2]');
+// 028 let the address be NULL for a placeholder and gave every login a username
+// column; 039 drops the column and its index again, and the address stays as 028
+// left it: a unique index lets any number of rows share NULL and nothing else.
 $column = fn(string $name): ?array => one('SELECT is_nullable AS nullable, column_type AS type FROM information_schema.columns'
     . " WHERE table_schema = DATABASE() AND table_name = 'accounts' AND column_name = ?", [$name]);
-is_same(['nullable' => 'YES', 'type' => 'varchar(30)'], $column('username'), 'accounts has a username column of 30 characters, which may be empty');
-is_same(['nullable' => 'YES', 'type' => 'varchar(254)'], $column('email'), 'and its address may be empty too');
-is_same([['non_unique' => 0, 'col' => 'username']], array_map(fn($r) => ['non_unique' => (int)$r['non_unique'], 'col' => $r['col']],
-    rows("SELECT non_unique, column_name AS col FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'accounts' AND index_name = 'account_username'")),
-        'the index account_username keeps a username to one login');
+is_same(null, $column('username'), 'accounts has no username column');
+is_same(['nullable' => 'YES', 'type' => 'varchar(254)'], $column('email'), 'and its address may be empty');
+is_same(0, (int)scalar("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'accounts' AND index_name = 'account_username'"),
+        'the index account_username went with the column');
+is_same([['non_unique' => 0, 'col' => 'email']], array_map(fn($r) => ['non_unique' => (int)$r['non_unique'], 'col' => $r['col']],
+    rows("SELECT non_unique, column_name AS col FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'accounts' AND index_name = 'email'")),
+        'and the one 001 put on the address keeps an address to one login');
 $unnamed = [];
 does_not_throw(function () use (&$unnamed) {
     foreach (['ohne.namen.eins@example.test', 'ohne.namen.zwei@example.test'] as $email) {
@@ -94,24 +95,15 @@ does_not_throw(function () use (&$unnamed) {
     }
 }, 'two logins written the way an invitation by address writes them, naming only name, address, role and time, are both taken');
 is_same(2, count(array_filter($unnamed)), 'and both are there');
-is_same([null, null], array_column(rows('SELECT username FROM accounts WHERE id IN (?, ?) ORDER BY id', array_pad($unnamed, 2, 0)), 'username'),
-        'each with no username, rather than an empty one');
 $neither = [];
 does_not_throw(function () use (&$neither) {
     foreach (['Platzhalter Eins', 'Platzhalter Zwei'] as $name) {
         run("INSERT INTO accounts (name, role, state, created_at) VALUES (?, 'student', 'placeholder', ?)", [$name, now()]);
         $neither[] = (int)db()->lastInsertId();
     }
-}, 'two logins with neither an address nor a username are both taken');
-is_same([[null, null], [null, null]], array_map(fn($r) => [$r['email'], $r['username']],
-    rows('SELECT email, username FROM accounts WHERE id IN (?, ?) ORDER BY id', array_pad($neither, 2, 0))), 'and both have NULL for each');
-$refusal = null;
-try {
-    make_account(['email' => null, 'username' => 'lena.eigen']);
-    make_account(['email' => null, 'username' => 'Lena.Eigen']);
-} catch (PDOException $e) { $refusal = $e; }
-is_same('23000', (string)$refusal?->getCode(), 'a username taken in other capitals is refused, under the tables’ collation');
-does_not_throw(fn() => make_account(['email' => null, 'username' => 'lena.eigen2']), 'while one of its own is taken, so what refused it was the username');
+}, 'two logins without an address, placeholders, are both taken');
+is_same([null, null], array_column(rows('SELECT email FROM accounts WHERE id IN (?, ?) ORDER BY id', array_pad($neither, 2, 0)), 'email'),
+        'and both have NULL for the address');
 
 case_('On this run’s own engine, a locking read also locks the gap where a row would go [R8]');
 // refuse_address_in_use() reads FOR UPDATE and relies on REPEATABLE READ
@@ -243,10 +235,10 @@ is_same(count(array_filter($studentsBefore, fn($s) => $s['account_id'] === null)
         'one placeholder for each student who had none');
 is_same(count($accountsBefore) + count($placeholders), (int)scalar('SELECT COUNT(*) FROM accounts'), 'and not one login more');
 $of = array_column($placeholders, null, 'student_id');
-is_same(['Jürgen Groß-Özdemir', null, null, null, null, 'student', 'placeholder', 0],
-        [$of[$gets]['name'], $of[$gets]['email'], $of[$gets]['username'], $of[$gets]['password_hash'], $of[$gets]['verified_at'],
+is_same(['Jürgen Groß-Özdemir', null, null, null, 'student', 'placeholder', 0],
+        [$of[$gets]['name'], $of[$gets]['email'], $of[$gets]['password_hash'], $of[$gets]['verified_at'],
          $of[$gets]['role'], $of[$gets]['state'], (int)$of[$gets]['is_demo']],
-        'named after the child, with no address, no username, no password, not set up, a student’s, a placeholder');
+        'named after the child, with no address, no password, not set up, a student’s, a placeholder');
 ok(isset($of[$sibling]) && $of[$sibling]['email'] === null && (int)$of[$sibling]['id'] !== (int)$of[$gets]['id'],
    'a sister on the same parent’s address gets a placeholder of her own, which no more carries the address than her brother’s');
 is_same(1, (int)($of[$example]['is_demo'] ?? 0), 'an example student’s placeholder is example data, for demo_clear() to take with them');
@@ -1254,36 +1246,165 @@ is_same(['42000', 1091], $pins['refused'] ?? null,
 is_same($is, $pins['again'] ?? null, 'and the tables, rows, checksums, keys, columns, indexes, lists and lines are as one run left them');
 
 // ---------------------------------------------------------------------------
+// 039: everybody signs in by their own address again (ADR 0030 §2). The username
+// column and its index go, and a login that signed in by a username - the only
+// kind without an address that is not a placeholder, invited, active or
+// suspended - becomes one, with no password and not set up, and holding nothing
+// a placeholder made any other way could not: no place in a chat, no notice and
+// no read mark (security finding F1). It is held to exactly that: every other
+// value of every login byte for byte, every other login's places, notices and
+// read marks, the chats and their messages, the count of every guarded table,
+// every other table to the engine's checksum, and levels, age groups and every
+// child as they were.
+$ad = $after['addresses'];
+[$was, $is] = [$ad['before'], $ad['after']];
+$loginOf = fn(array $state, int $id): array => array_column($state['accounts'], null, 'id')[$id] ?? [];
+$byUsername = array_map(fn(string $key): int => (int)$ad['written'][$key], ['username_invited', 'username_active', 'username_suspended']);
+[$lea, $trainer, $leasChat] = [(int)$ad['written']['username_active'], (int)$ad['written']['trainer'], (int)$ad['written']['chat']];
+[$family, $familysChat, $leasGroup] = [(int)$ad['written']['family'], (int)$ad['written']['family_chat'], (int)$ad['written']['course_group']];
+// What 039 takes from a login, besides its username, and leaves of every other.
+$held = ['participants', 'notifications', 'reads'];
+$heldTables = ['thread_participants', 'notifications', 'thread_reads'];
+// A login's value by its column, or a word when the column is missing: a NULL the
+// harness read must not pass for a column it did not find.
+$valueOf = fn(array $login, string $column): mixed => array_key_exists($column, $login) ? $login[$column] : '«missing»';
+$facts = fn(array $login): array => [$valueOf($login, 'email'), $valueOf($login, 'state'), $valueOf($login, 'password_hash'), $valueOf($login, 'verified_at')];
+// What 039 makes of a login without an address: a placeholder, with no password,
+// not set up - its columns in their order, which is_same() compares too.
+$asPlaceholders = fn(array $rows): array => array_map(fn(array $row): array =>
+    array_key_exists('email', $row) && $row['email'] === null && ($row['state'] ?? '') !== 'placeholder'
+        ? array_replace($row, ['state' => 'placeholder', 'password_hash' => null, 'verified_at' => null]) : $row, $rows);
+// The logins 039 converts, read from a state before it: no address, not a placeholder.
+$convertedIn = fn(array $state): array => array_map('intval', array_column(array_filter($state['accounts'],
+    fn(array $a): bool => array_key_exists('email', $a) && $a['email'] === null && ($a['state'] ?? '') !== 'placeholder'), 'id'));
+// Places in chats, or notices, less those of the given logins: what 039 leaves.
+$keptFrom = fn(array $rows, array $logins): array => array_values(array_filter($rows, fn(array $row): bool => !in_array((int)$row['account_id'], $logins, true)));
+$whose = fn(array $rows): array => array_map(fn(array $row): int => (int)$row['account_id'], $rows);
+// Who is in a chat, in order of their ids.
+$inChat = fn(array $state, int $chat): array => (function (array $ids): array { sort($ids); return $ids; })(
+    array_map(fn(array $p): int => (int)$p['account_id'], array_filter($state['participants'], fn(array $p): bool => (int)$p['thread_id'] === $chat)));
+
+case_('Before 039 the portal has three logins that sign in by a username, one of them in a chat with a notice, beside address logins, a placeholder and the staff');
+ok(in_array('username', $was['columns']['accounts'], true), 'accounts has the username column 028 added');
+is_same(['unique' => true, 'columns' => ['username']], $was['indexes']['accounts']['account_username'] ?? null, 'under the unique index account_username');
+is_same([null, 'invited', null, null, 'noah.steiner'], [...$facts($loginOf($was, $byUsername[0])), $valueOf($loginOf($was, $byUsername[0]), 'username')],
+        'one login invited by username, not yet signed in: no address, no password, not set up');
+$active = $loginOf($was, $lea);
+is_same([null, 'active', 'lea.brunner'], [$valueOf($active, 'email'), $valueOf($active, 'state'), $valueOf($active, 'username')], 'one set up by username and active');
+ok(is_string($active['password_hash'] ?? null) && is_string($active['verified_at'] ?? null), 'with the password its holder set and the time it was set up');
+$suspended = $loginOf($was, $byUsername[2]);
+is_same([null, 'suspended', 'tom.berger'], [$valueOf($suspended, 'email'), $valueOf($suspended, 'state'), $valueOf($suspended, 'username')],
+        'and one set up by username, then suspended by staff');
+is_same($byUsername, array_map('intval', array_column(array_filter($was['accounts'], fn(array $a): bool => $a['username'] !== null), 'id')), 'they are the only logins with a username');
+is_same($byUsername, $convertedIn($was), 'and the only logins without an address that are not placeholders');
+is_same([null, 'placeholder', null, null], $facts($loginOf($was, (int)$ad['written']['placeholder'])), 'a placeholder, without an address, which is what it is already');
+ok(count(array_filter($was['accounts'], fn(array $a): bool => $a['email'] !== null && $a['state'] === 'invited')) >= 1, 'an invited address login');
+ok(count(array_filter($was['accounts'], fn(array $a): bool => $a['email'] !== null && $a['state'] === 'active' && $a['role'] !== 'student')) >= 1,
+   'and the staff, who sign in by address');
+is_same(array_values(array_unique([min($trainer, $lea), max($trainer, $lea)])), $inChat($was, $leasChat), 'Lea and the trainer are in a chat together');
+ok(in_array($lea, $whose($was['notifications']), true) && in_array($trainer, $whose($was['notifications']), true), 'each with a notice about it in the bell');
+is_same(null, $valueOf($loginOf($was, $family), 'username'), 'and a family that signs in by address');
+ok($valueOf($loginOf($was, $family), 'email') !== null, 'with its address');
+is_same(array_values(array_unique([min($trainer, $family), max($trainer, $family)])), $inChat($was, $familysChat), 'is in a chat of its own with the trainer');
+ok(in_array($family, $whose($was['notifications']), true), 'with a notice about it too');
+$marks = fn(array $state, int $login): array => array_map(fn(array $r): int => (int)$r['thread_id'],
+    array_values(array_filter($state['reads'], fn(array $r): bool => (int)$r['account_id'] === $login)));
+is_same([$leasChat, $leasGroup], $marks($was, $lea), 'Lea has read her chat, and her course group up to the trainer\'s latest message');
+is_same([$leasChat, $familysChat], $marks($was, $trainer), 'the trainer has read both chats');
+is_same([$familysChat], $marks($was, $family), 'and the family its own');
+is_same([], array_values(array_intersect($heldTables, schema_guarded_tables())),
+        'none of places in chats, notices and read marks is on the update\'s guard, so taking some does not refuse the update');
+ok(in_array('threads', schema_guarded_tables(), true) && in_array('messages', schema_guarded_tables(), true), 'while the chats and their messages are');
+
+case_('039 turns the three username logins into placeholders holding nothing a placeholder could not, drops the column and its index, and changes nothing else [ADR 0030 §2, F1]');
+is_same($listed($was['columns']['accounts'], ['username']), $is['columns']['accounts'], 'accounts loses username, and keeps every other column in its order');
+is_same($except($was['indexes']['accounts'], ['account_username']), $is['indexes']['accounts'], 'and account_username, and keeps every other index, the address’s among them');
+foreach ($byUsername as $id)
+    is_same([null, 'placeholder', null, null], $facts($loginOf($is, $id)), 'login ' . $id . ' is a placeholder: no address, no password, not set up');
+is_same($asPlaceholders($less($was['accounts'], ['username'])), $is['accounts'],
+        'every login has every value it had but the username; the three that signed in by one are placeholders, and no other login changed by a byte');
+is_same(count($was['accounts']), count($is['accounts']), 'and not one login is lost');
+is_same([], array_values(array_intersect($byUsername, $whose($is['participants']))), 'none of the three is in any chat any more');
+is_same($keptFrom($was['participants'], $byUsername), $is['participants'], 'and every other place in every chat is as it was, the trainer\'s in Lea\'s chat among them');
+is_same([], array_values(array_intersect($byUsername, $whose($is['notifications']))), 'none of the three has a notice');
+is_same($keptFrom($was['notifications'], $byUsername), $is['notifications'], 'and every other notice is as it was, the trainer\'s about Lea\'s chat among them');
+is_same([[$trainer], $inChat($was, $familysChat)], [$inChat($is, $leasChat), $inChat($is, $familysChat)],
+        'Lea\'s chat keeps the trainer; the family that signs in by address keeps its chat whole');
+ok(in_array($family, $whose($is['notifications']), true), 'and its notice');
+is_same([], array_values(array_intersect($byUsername, $whose($is['reads']))), 'none of the three has a read mark: Lea\'s course group is unread for whoever holds her login next');
+is_same($keptFrom($was['reads'], $byUsername), $is['reads'], 'and every other read mark is as it was, the trainer\'s and the family\'s among them');
+is_same([$was['sums']['threads'] ?? 'missing', $was['sums']['messages'] ?? 'missing'], [$is['sums']['threads'] ?? 'gone', $is['sums']['messages'] ?? 'gone'],
+        'Lea\'s chat and both its messages are still there, to the engine\'s checksum');
+is_same($was['counts'], $is['counts'], 'every guarded table has as many rows as before, accounts, threads and messages among them');
+is_same($except($was['sums'], ['accounts', ...$heldTables]), $except($is['sums'], ['accounts', ...$heldTables]),
+        'every other table has every row it had, to the engine’s checksum, the course group and its enrolment among them');
+is_same([$was['lists'], $was['students'], $was['tables'], $was['keys'], $was['columns']['students'], $was['indexes']['students']],
+        [$is['lists'], $is['students'], $is['tables'], $is['keys'], $is['columns']['students'], $is['indexes']['students']],
+        'levels, age groups, every child, every table and every key are as they were');
+is_same(5, $ad['statements'], 'five statements: the UPDATE and the three DELETEs, which can run twice, first; the ALTER, which cannot, last');
+
+case_('Run a second time, 039 is refused by the engine at its ALTER and changes nothing; stopped after each statement and started again, it ends as one run does');
+is_same(['42000', 1091], $ad['refused'],
+        'run again on a connection of its own, the UPDATE and the DELETEs find nothing to change and the engine refuses the ALTER: what it drops is gone (1091, SQLSTATE 42000)');
+is_same($is, $ad['again'], 'and nothing changed: the same logins, places, notices, read marks, columns, indexes, checksums, keys, lists and counts');
+is_same([1, 2, 3, 4], array_keys($ad['retried'] ?? []), 'stopped after each statement but the last');
+foreach ($ad['retried'] ?? [] as $stopped => $round) {
+    $when = 'stopped after statement ' . $stopped . ' of 5: ';
+    $byThen = $round['stopped'];
+    ok(in_array('username', $byThen['columns']['accounts'], true), $when . 'the column is still there');
+    foreach ($byUsername as $id)
+        is_same([null, 'placeholder', null, null], $facts($loginOf($byThen, $id)), $when . 'login ' . $id . ' is a placeholder already');
+    is_same($stopped >= 2, !in_array($lea, $whose($byThen['participants']), true), $when . ($stopped >= 2 ? 'Lea\'s place in the chat is gone' : 'Lea\'s place in the chat is still there'));
+    is_same($stopped >= 4, $marks($byThen, $lea) === [], $when . ($stopped >= 4 ? 'Lea\'s read marks are gone' : 'Lea\'s read marks are still there'));
+    $again = $round['restarted'];
+    is_same($less($byThen['accounts'], ['username']), $again['accounts'], $when . 'started again from the first statement, every login as after the stop, less the username');
+    is_same([$is['participants'], $is['notifications'], $is['reads']], [$again['participants'], $again['notifications'], $again['reads']],
+            $when . 'the places, notices and read marks of one run');
+    is_same([$is['columns']['accounts'], $is['indexes']['accounts']], [$again['columns']['accounts'], $again['indexes']['accounts']], $when . 'with the columns and indexes of one run');
+    is_same($except($byThen['sums'], ['accounts', ...$heldTables]), $except($again['sums'], ['accounts', ...$heldTables]), $when . 'and every other table as it was');
+}
+
+case_('After 039 a login written the way the portal writes one, naming no username, is taken, twice');
+is_same([null, null], $ad['two_new'], 'two logins on addresses of their own, naming only name, address, role and time: the engine takes both');
+
+// ---------------------------------------------------------------------------
 // The update this release brings, then one with a mistake in it, through the
 // application's own runner, schema_apply(), on a portal the previous version
-// left: 001 to 031 in its ledger, rows in everything 032 to 038 drop, and the
-// files the pictures were stored in on disk.
+// left: 001 to 031 in its ledger, rows in everything 032 to 039 drop or change,
+// and the files the pictures were stored in on disk.
 $u = $after['runner'];
+// What 035 and 039 take from every login.
+$accountGone = array_merge($presence, ['username']);
 $ledgerOf = fn(array $state): array => array_column($state['ledger'], 'checksum', 'version');
 // What this release drops, and the tables whose rows it changes: the settings and
 // the ledger record the update, and accounts and students lose columns.
 $droppedTables = array_merge($custom, $views, ['online_periods', 'contact_requests']);
-$changedTables = ['settings', 'schema_migrations', 'accounts', 'students'];
+$changedTables = ['settings', 'schema_migrations', 'accounts', 'students', 'thread_participants', 'notifications', 'thread_reads'];
 
-case_('This release’s update passes the guard on a portal with custom-field values, and drops exactly what 032 to 038 drop');
+case_('This release’s update passes the guard on a portal with custom-field values, and drops exactly what 032 to 039 drop');
 is_same('', $u['previous_step_error'], 'the portal was where the previous version’s update leaves it, its step after the files run');
 ok(($u['before']['rows']['field_values'] ?? 0) > 0, 'with custom-field values for the guard to see: ' . ($u['before']['rows']['field_values'] ?? 0));
 ok(($u['before']['rows']['online_periods'] ?? 0) > 0 && ($u['before']['rows']['contact_requests'] ?? 0) > 0,
    'and an online history and contact requests to drop');
 ok($filled($u['before']['students'], 'age_group_id', null) > 0 && ($u['before']['rows']['levels'] ?? 0) > 0 && ($u['before']['rows']['age_groups'] ?? 0) > 0,
    'and children pinned to an age band, beside levels and bands that stay');
+is_same(3, count($convertedIn($u['before'])), 'and three logins that sign in by a username, one of them in chats, with a notice and read marks');
 is_same(null, $u['release']['refused'], 'schema_apply() goes through: field_values is off the guard, so 032 emptying it does not refuse the update');
 is_same(true, $u['release']['current'], 'and files and database agree afterwards, so the portal opens');
 is_same(1, $u['release']['backups'], 'with the copy taken before the files ran');
-is_same(['032', '033', '034', '035', '036', '037', '038'], array_map(fn(string $version): string => substr($version, 0, 3), array_keys($u['shipped'])),
-        'this release’s files are 032 to 038');
+is_same(['032', '033', '034', '035', '036', '037', '038', '039'], array_map(fn(string $version): string => substr($version, 0, 3), array_keys($u['shipped'])),
+        'this release’s files are 032 to 039');
 is_same($u['shipped'], array_diff_key($ledgerOf($u['release']['state']), $ledgerOf($u['before'])),
         'the ledger gained each of them, with the checksum of the file shipped, and nothing else');
 is_same(array_values(array_diff($u['before']['tables'], $droppedTables)), $u['release']['state']['tables'],
         'the six tables are gone, and every other table is there');
 is_same($except($u['before']['sums'], array_merge($droppedTables, $changedTables)), $except($u['release']['state']['sums'], $changedTables),
-        'every table but the settings, the ledger, accounts and students has every row it had, levels and age_groups among them: the backup, the files and the step after them changed nothing else');
-is_same($less($u['before']['accounts'], $presence), $u['release']['state']['accounts'], 'every login has every value it had but the four 035 takes');
+        'every table but the settings, the ledger, accounts, students, places in chats, notices and read marks has every row it had, levels, age_groups, threads and messages among them: the backup, the files and the step after them changed nothing else');
+is_same($asPlaceholders($less($u['before']['accounts'], $accountGone)), $u['release']['state']['accounts'],
+        'every login has every value it had but the four 035 takes and the username 039 takes, the three that signed in by one now placeholders');
+is_same(array_map(fn(string $kind): array => $keptFrom($u['before'][$kind], $convertedIn($u['before'])), $held),
+        array_map(fn(string $kind): array => $u['release']['state'][$kind], $held),
+        'and those three hold no place in a chat, no notice and no read mark, while every other login keeps every one it had');
 is_same($less($u['before']['students'], $childGone), $u['release']['state']['students'], 'and every child every value but the picture and the pinned band, their level included');
 is_same($u['before']['counts'], $u['release']['state']['counts'], 'every guarded table has as many rows as before');
 is_same(null, $u['release']['record'], 'and it leaves no record of an unfinished update behind: the run that passes deletes it [ADR 0027 §1]');
@@ -1311,10 +1432,11 @@ is_same('', $u['release']['again']['error'], 'the step runs again, as every late
 is_same($u['release']['state']['files'], $u['release']['again']['files'], 'and deletes nothing more');
 
 case_('This release’s update stopped between two of its files and started again by the next page view ends as the update that ran through');
-// 034 to 038 are one statement each, so an update can stop only between them: a
-// file that stops is put after each in turn, and the next page view runs without it.
+// 034 to 038 are one statement each, and 039 stopped inside itself is run above,
+// so what is left is an update stopping between two files: a file that stops is
+// put after each in turn, and the next page view runs without it.
 $restarts = $u['restarted'] ?? [];
-is_same(['033', '034', '035', '036', '037'], array_map('strval', array_keys($restarts)), 'stopped after each of 033 to 037 in turn');
+is_same(['033', '034', '035', '036', '037', '038'], array_map('strval', array_keys($restarts)), 'stopped after each of 033 to 038 in turn');
 foreach ($restarts as $stop => $round) {
     $when = 'stopped after ' . $stop . ': ';
     $stopped = $round['stopped'];
@@ -1335,7 +1457,10 @@ foreach ($restarts as $stop => $round) {
     is_same($round['before']['counts'], $again['counts'], $when . 'every guarded table has as many rows as before');
     is_same($except($round['before']['sums'], array_merge($droppedTables, $changedTables)), $except($again['portal']['sums'], $changedTables),
             $when . 'every other table has every row it had, to the engine’s checksum');
-    is_same($less($round['before']['accounts'], $presence), $again['portal']['accounts'], $when . 'every login every value but the four 035 takes');
+    is_same($asPlaceholders($less($round['before']['accounts'], $accountGone)), $again['portal']['accounts'], $when . 'every login every value but the four 035 takes and the username, the three username logins now placeholders');
+    is_same(array_map(fn(string $kind): array => $keptFrom($round['before'][$kind], $convertedIn($round['before'])), $held),
+            array_map(fn(string $kind): array => $again['portal'][$kind], $held),
+            $when . 'and they hold no place in a chat, no notice and no read mark, every other login all it had');
     is_same($less($round['before']['students'], $childGone), $again['portal']['students'], $when . 'and every child every value but the picture and the pinned band');
     is_same($u['release']['state']['files'], $again['files'], $when . 'and the files on disk end as after the update that ran through');
 }

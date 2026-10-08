@@ -1,11 +1,11 @@
 <?php if($user)go('dashboard');
-/* One box for the address or the username (ADR 0023 §7): type="text", because
-   type="email" refuses a username, and inputmode="email" keeps „@" and „." on
-   the first keyboard layer. sign_in_address_attributes() says why the rest of
-   the box looks as it does. Posted as login; attempted_sign_in() reads it. */ ?>
+/* One box, for the address (ADR 0021 §1, 0030 §1): type="email" brings „@"
+   and „." to the keyboard and checks the shape before posting.
+   sign_in_address_attributes() says why the rest of the box looks as it does.
+   Posted as login; attempted_address() reads it. */ ?>
 <div class="auth-card card"><h1><?=e(t('Anmelden','Sign in'))?></h1>
 <?php start_form('login');
-input('login',t('E-Mail oder Benutzername','Email or username'),'','text',true,'','',sign_in_address_attributes()+['inputmode'=>'email']);
+input('login',t('E-Mail-Adresse','Email address'),'','email',true,'','',sign_in_address_attributes());
 input('password',t('Passwort','Password'),'','password',true,'','',current_password_attributes());
 submit_button(t('Anmelden','Sign in')); ?></form>
 <?php /* Said where it applies: under the button that signs you in. Setting up an

@@ -13,8 +13,8 @@ $items=['levels'=>t('Leistungsgruppen','Levels'),'ages'=>t('Altersgruppen','Age 
 if(!isset($items[$tab]))$tab='levels';
 $edit=(int)($_GET['edit']??0);
 page_head(t('Verwaltung','Management'),t('Die Listen, mit denen du arbeitest. Technisches steht unter Einstellungen.','The lists you work with. The technical settings are under Einstellungen.'),
-    // For a trainer, Verwaltung is the menu entry Konten belongs to (nav_owner()).
-    link_button(t('Team und Zugänge','Team and logins'),'accounts',[],'secondary'));
+    // For a trainer, Verwaltung is the menu entry Zugänge belongs to (nav_owner()).
+    link_button(t('Zugänge','Logins'),'accounts',[],'secondary'));
 tabs($items,$tab,'manage');
 ?>
 <?php /* The four groupings exist for different reasons and get mixed up exactly

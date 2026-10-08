@@ -57,7 +57,7 @@ $invitations=open_invitations();
 if($invitations): $mailReady=account_mail_ready(); ?>
 <details class="card invitation-list" id="invitations" <?=!empty($_GET['invitations'])||$inviting?'open':''?>>
     <summary><span class="badge-line"><span><?=e(t('Offene Einladungen','Open invitations'))?></span><?php badge((string)count($invitations),'amber');?></span></summary>
-    <p class="muted"><?=e(t('Noch nicht angenommen. Ein Link gilt 48 Stunden.','Not accepted yet. A link is valid for 48 hours.'))?></p>
+    <p class="muted"><?=e(strtr(t('Noch nicht angenommen. Ein Link gilt {valid}.','Not accepted yet. A link is valid for {valid}.'),['{valid}'=>token_lifetime_words('invite',locale()==='en')]))?></p>
     <?php foreach($invitations as $a): $sent=invitation_dates((int)$a['id']); $live=invitation_link_live($sent); ?>
     <div class="record-row">
         <div><div class="badge-line"><strong><?=e($a['email'])?></strong><?php if(!$live)badge(t('Abgelaufen','Expired'),'amber');?></div>

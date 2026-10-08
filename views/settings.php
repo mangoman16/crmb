@@ -18,7 +18,7 @@ page_head(t('Einstellungen','Settings'));
 if($tab===''):
     $setupSteps=setup_progress();$setupHidden=(bool)setting('setup_hidden');
     $hub=[['page'=>'manage','params'=>[],'what'=>t('Verwaltung','Management'),'why'=>t('Gruppen, Mitgliedschaft, Bankkonto.','Groups, membership, bank account.')],
-          ['page'=>'accounts','params'=>[],'what'=>t('Konten','Accounts'),'why'=>t('Wer außer dir das Portal verwaltet.','Who else runs the portal.')],
+          ['page'=>'accounts','params'=>[],'what'=>t('Zugänge','Logins'),'why'=>t('Wer sich anmelden kann: das Team und die Schüler.','Who can sign in: the team and the students.')],
           ['page'=>'history','params'=>[],'what'=>t('Änderungen','Changes'),'why'=>t('Was zuletzt geändert wurde, und von wem.','What was changed lately, and by whom.')],
           ['page'=>'start','params'=>[],'what'=>t('Einrichtung ansehen','Look at the setup'),'why'=>strtr(t('Die {total} Schritte zum Start. {done} von {total} erledigt.','The {total} steps to get started. {done} of {total} done.'),['{total}'=>$setupSteps['total'],'{done}'=>$setupSteps['done']]),'setup'=>true],
           ['page'=>'settings','params'=>['tab'=>'system','open'=>'advanced'],'anchor'=>'advanced','what'=>t('Erweitert','Advanced'),'why'=>t('Selten gebraucht: Hintergrundaufgaben, wie lange Änderungen bleiben.','Rarely needed: background work, how long changes are kept.')]]; ?>

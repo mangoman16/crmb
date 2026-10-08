@@ -14,7 +14,8 @@ privacy notice** under **Einstellungen → Datenschutz**: one replacing the old
 newsletter paragraph, because club news by email now starts switched on and is
 no longer described as voluntary consent; one about the course groups, what a
 message holds, and the administrators reading chats between a child and a
-trainer; and one about usernames and one-time sign-in links. UPDATING.md has
+trainer; and one saying that everybody signs in with their own address and that
+a login without one receives no e-mail. UPDATING.md has
 the first to copy and says where in the drafts the other two are. The drafts shipped with this version only fill in the
 notice of a new portal; an existing one keeps the text it had. Where the legal
 basis goes there is a note in square brackets, which is the operator's to
@@ -25,13 +26,14 @@ replaced.
 down.** This version deletes the custom fields, with every value in them. After
 the update, take them out of the privacy notice too.
 
-Migrations 019 to 038 then run by themselves. 019 takes every child but the
+Migrations 019 to 039 then run by themselves. 019 takes every child but the
 first off a login they shared; nothing is deleted, and each change is written
 under **Änderungen**. 020 gives every account a status and an empty list of
 times online, which 034 and 035 take away again. 021 switches news by email on
 for accounts created from now on; every existing account keeps its choice. 022
 to 024 give usernames and take them away again; 028 brings them back, for
-students only, and lets a login have no address. 025 to 027 give every course
+students only, and lets a login have no address; 039 takes them away for good.
+025 to 027 give every course
 its group chat, let staff take a group message down, and add the status emoji,
 which 035 takes away again; the old shared conversations stay readable and
 closed. 029 and 030 make a student's login impossible to delete: it is replaced
@@ -42,12 +44,17 @@ longer among the tables counted before and after an update, so their going does
 not refuse it. 034 to 037 delete the times online, each login's status, emoji
 and picture, each child's picture, and every request one family made to write to
 another. 038 takes away the pin that held a child in an age group: the band
-now comes from the date of birth alone. After the files, the stored profile
-pictures are deleted, **for good**:
+now comes from the date of birth alone. 039 drops the username column: a test
+login that signed in with a username — invited, in use or suspended — is „Ohne
+Anmeldung" afterwards and needs an address and an invitation, and its side of
+its chats, its read marks and its bell notices go, while the chats stay for the
+other side. Nothing of this shows under „Änderungen", and a portal updated
+from 0.4.0 has no such login.
+After the files, the stored profile pictures are deleted, **for good**:
 the copy the update takes first is of the database, and brings back their names
 but not the pictures. Also after the files, every student without a login — the
 children 019 took off a shared one among them — is given a placeholder that
-nobody signs in with until staff give it an address or a username.
+nobody signs in with until staff enter its address and send the invitation.
 
 Invitations and „Passwort vergessen?“ links wait until **„Nur Verbindung
 prüfen“** under **Einstellungen → SMTP** has passed once. Everybody is signed
@@ -345,31 +352,24 @@ I.1–I.11 walk.
 - A form sent after signing out lands on the sign-in page without a line in the
   server's error log, and `setup.php` reads its language safely.
 
-### Signing in, adding a student, and sign-in links
+### Signing in, and adding a student
 
-- **Every student has a login from the moment they exist** (ADR 0023). Until it
-  is given an address or a username it is a placeholder nobody signs in with,
-  shown as „Ohne Anmeldung" on the child's card „Zugang zum Portal".
-- **Staff sign in with their address; a student with an address or a username**,
-  typed into one box, „E-Mail oder Benutzername", in any capitals. A username is
-  three to thirty lower-case letters, digits, dots and hyphens. „Passwort
-  vergessen" takes either, and mails nothing to a login without an address.
+- **Every student has a login from the moment they exist** (ADR 0023). Until
+  the child's own address is entered on their page and the invitation sent, it
+  is a placeholder nobody signs in with, shown as „Ohne Anmeldung" on the
+  child's card „Zugang zum Portal"; the invitation turns it into a login.
+- **Everybody signs in with their own e-mail address** — one person, one
+  address, one login (ADR 0030): a parent with two children has two logins
+  with two addresses, and the parent's own address goes on the children's
+  emergency contacts. Usernames and one-time sign-in links, added while this
+  version was being built and never released, are gone again; the invitation
+  and „Passwort vergessen" are the two ways in.
 - **„Schüler anlegen" is a wizard in two steps**: who is joining and into which
-  course, then how they sign in — an invitation by e-mail, a username with a
-  sign-in link, or no sign-in for now. Nothing is written before the second
-  step, and a course that filled up or was archived in between is refused with
-  everything typed still there.
-- **A sign-in link** works once, within 48 hours, and whoever uses it chooses a
-  new password. Staff show it as a QR code or copy it into a messenger; it is
-  never mailed. Staff make one for a login not yet in use, and only an
-  administrator for one already in use. A new link ends the old one, a link can
-  be withdrawn, and the child's card says who made the last one and when it was
-  used. The first link for a login waits, as an invitation does, until the
-  privacy notice is released; a trainer is told that an administrator has to
-  release it. A link is checked again when it is used: one whose login has
-  since become a team member's, lost its child or been given an address nobody
-  confirmed signs nobody in, and its page shows nothing of that login. Deleting
-  a child ends its links.
+  course, then how they sign in — an invitation by e-mail, or no sign-in for
+  now. Nothing is written before the second step, and a course that filled up
+  or was archived in between is refused with everything typed still there. The
+  done page says where the invitation went and until when its link works, or,
+  without sign-in, leads to the child's card with „Anmeldung einrichten".
 - **„Anmeldung löschen" gives the child a fresh, empty login** instead of
   leaving them without one. The child's private chats go with the old login;
   the record, the courses, charges and invoices stay. On a child whose record
@@ -381,23 +381,60 @@ I.1–I.11 walk.
   date, no decided request — so the invitation that later gives them a login
   does not hand the family a list of old news.
 - **A browser several people use forgets what somebody left half done.**
-  Signing in, or a session running out, drops a sign-in link somebody opened
-  and did not finish, the wizard's half-typed children, the sign-in links shown
-  to a member of staff, and any view of somebody else. A link opened in a
-  browser whose signed-in session then runs out is refused once, „Dieser Link
-  ist ungültig oder abgelaufen", and works when it is opened again.
-- A child who signs in with a username and has no address is not recorded as
-  saying yes or no to e-mail they cannot receive. An address added later under
-  **Mein Konto** starts with club news and message e-mails both off.
+  Signing in, or a session running out, drops an invitation somebody opened
+  and did not finish, the wizard's half-typed children and any view of
+  somebody else. An invitation opened in a browser whose signed-in session
+  then runs out is refused once, „Dieser Link ist ungültig oder abgelaufen",
+  and works when it is opened again.
 - **„Per E-Mail einladen"**, from the wizard's first step („Nur die
   E-Mail-Adresse bekannt? Ohne Namen einladen"): type an address and a
   language. The person fills in their name and birth date, sets a password and
   lands on their own page with „Kurs wählen" first; choosing a course is a
   request the trainer answers. Staff are told in the bell when somebody new has
-  set themselves up. Open invitations are listed there, to send again or
-  withdraw without typing anything. Nobody sets another person's password.
+  set themselves up. Open invitations are listed on **Schüler**, to send again
+  or withdraw without typing anything, and on **Zugänge** under „Einladungen
+  ohne Namen". Nobody sets another person's password.
 - A birth date in the future or more than a hundred years ago is refused,
   wherever it is typed.
+
+### Zugänge, the access card and Mein Konto
+
+- **„Konten" is „Zugänge"**, and lists everybody who can sign in, in three
+  groups with their counts: Trainer, Administratoren and Schüler. An
+  administrator taps a team member's row open for what she can do with it; her
+  own row, and every row for a trainer, is a row to read. A student's row shows
+  the address, where the login stands and, for an invitation, until when its
+  link works, and leads to the child's card „Zugang zum Portal": nothing on the
+  page acts on a student, as a line under the list says. Chips „Alle ·
+  Eingeladen · Ohne Anmeldung · Gesperrt" filter the students, each with its
+  count, a chip nobody is in left out, without JavaScript. „Einladungen ohne
+  Namen" and „Zugänge ohne Schüler" are groups of their own.
+- **The card „Zugang zum Portal" invites in one tap.** For a child without
+  sign-in it is one form: the address from the record, which can be changed
+  there, the invitation's language and „Einladung senden". An address that is
+  somebody's login, or that a brother's or sister's record also carries, is
+  said before anybody taps, with no form; while mail cannot go out, the card
+  says what is missing instead. „Einladung senden" brings the page back to the
+  card, which then says „Eingeladen", and a refusal of any of the card's
+  buttons comes back to the card and is said there as well as at the top. The
+  others — „Einladung erneut senden", „Einladung zurückziehen", „Link zum
+  Zurücksetzen senden", „Zugang sperren", „Zugang entsperren" and „Anmeldung
+  löschen" — land at the top of the child's page, where the message says what
+  happened, such as how long a reset link works.
+- **Mein Konto** shows the address you sign in with, each time a mailed link set
+  the password in the last 14 days, „E-Mail-Adresse ändern", and the three mail
+  switches, for everybody. The one for notices is called after what it sends,
+  „E-Mail bei neuen Nachrichten und Änderungen im Training", and the switch on
+  the invitation page names the same.
+- **The address box** on the sign-in page and on „Passwort vergessen" is an
+  e-mail box: a phone shows the keyboard with „@", and the browser checks that
+  what was typed is an address before it is sent.
+- **How long a link lasts is said from one place**, the same the links are made
+  with, so no page can promise a link longer than it lasts: an invitation 48
+  hours, a password link one hour — on the link's page, on the child's card and
+  with the open invitations.
+- **The strip saying whose portal somebody is viewing** is on the public pages
+  too, the privacy notice among them, with „Ansicht beenden".
 
 ### A double tap does nothing twice, and viewing changes nothing
 
@@ -406,8 +443,8 @@ I.1–I.11 walk.
   the first one led to, and nothing is done a second time. It used to replace
   the first one's „gespeichert" with a red „Diese Eingabe wurde bereits
   verarbeitet.", so it looked as if it had failed, and she did it again. In the
-  wizard, Back from the page that says the child is added shows „{Name} ist
-  schon angelegt." and the way back to that page, not the form. A form sent
+  wizard, Back from the page that says the child is added shows that page
+  again, headed „{Name} ist schon angelegt", not the form. A form sent
   again after ten newer ones, or from another browser, is still refused with
   „bereits verarbeitet".
 - **Viewing the portal as somebody else is for looking only.** Everything but
@@ -429,8 +466,6 @@ I.1–I.11 walk.
 - A value in the address that is a list instead of a word, such as
   `?tab[]=x`, is dropped before any page reads it, so a mangled link no longer
   writes PHP warnings into the server's log.
-- A refusal comes before anything is written: giving a child a username while
-  the privacy notice is not released no longer saves the username first.
 
 ### The chat works like a messenger
 
@@ -722,8 +757,8 @@ I.1–I.11 walk.
 - **A student's address, when they have one, is their own login.** Brothers and
   sisters each need an address of their own. Access is invited, suspended, sent
   again or replaced on the student's own page, in a card „Zugang zum Portal“
-  whose badge says **Ohne Anmeldung**, **Eingeladen**, **Noch nicht
-  angemeldet**, **Aktiv** or **Gesperrt**. An address that is already
+  whose badge says **Ohne Anmeldung**, **Eingeladen**, **Aktiv** or
+  **Gesperrt**. An address that is already
   somebody's login is refused with „Diese E-Mail-Adresse gehört schon zu einem
   anderen Zugang. Jede Person braucht ihre eigene.“ before anything is written,
   and a unique index in the database refuses it too, so no later mistake in the
@@ -734,9 +769,10 @@ I.1–I.11 walk.
   **Änderungen** saying which login they were on. Each of them then has a
   placeholder login, and their card says the address on the record is already
   somebody else's.
-- **Konten is the team's page now**, „Team und Zugänge“: trainers and
-  administrators. A student login that no student points to any more is listed
-  there under „Zugänge ohne Schüler“, to lock or delete. A family's menu has
+- **Konten is „Zugänge" now**: trainers, administrators and students, in groups
+  („Zugänge, the access card and Mein Konto", above). A student login that no
+  student points to any more is listed there under „Zugänge ohne Schüler“, to
+  lock or delete. A family's menu has
   **Profil**, which goes straight to their child's page; **Mein Konto** keeps
   the sign-in settings. Every mail to a family opens with the child's first
   name.
@@ -777,9 +813,9 @@ I.1–I.11 walk.
   unfinished. Nothing folds open or shut. The rest is reached from where it
   belongs: **Rechnungen** by a „Beiträge · Rechnungen“ switch under Geld;
   „Neuigkeiten“ and „Postausgang“ from the top of
-  Nachrichten; Verwaltung, Konten, Änderungen, Einrichtung ansehen and Erweitert
-  as cards at the top of Einstellungen. The entry a page belongs to stays
-  marked while it is open.
+  Nachrichten; Verwaltung, Zugänge, Änderungen, Einrichtung ansehen and
+  Erweitert as cards at the top of Einstellungen. The entry a page belongs to
+  stays marked while it is open.
 - **The phone bar** got the order and the names it has now in „The portal
   looks and behaves like an iPhone app“, above, where „Mehr“ is a page. A
   family's way to the privacy notice and the version is at the end of **Mein
@@ -943,8 +979,6 @@ passed on every one of these:
   address answers, so the other spellings reach nothing. The attempts are
   counted against what was typed, never against the login it names, which keeps
   the form from telling anybody whether an address has a login (ADR 0020, 0021).
-  A username counts the same way; a login with both an address and a username
-  has a count for each, an accepted risk VALIDATION.md describes.
 - **That the lockout ends was never actually checked.** „Bitte später erneut
   versuchen" is a promise that later arrives, and a count that never reset would
   have looked exactly like a working limit to every test there was: it would

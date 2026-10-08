@@ -256,26 +256,6 @@ function may_impersonate(array $actor, array $target): bool {
     return is_staff($actor) && !is_staff($target);
 }
 
-/**
- * Whether $actor may make a sign-in link for $target (ADR 0023 §6). The rule
- * underneath: a link opens nothing its maker cannot already read.
- *
- * Staff, for a student's login not yet signed in - a placeholder, or a username
- * login waiting: there is nothing private in it. Only an administrator for one
- * already in use: thread_readable_sql() gives her every chat of every kind
- * (ADR 0022 §11.1), the child's chats with other families from before those
- * closed included, so the link opens none she cannot already read. A trainer
- * signed in with a link would read the child's chats with other staff,
- * unnarrowed, and could write as the child - which viewing as somebody never
- * lets her do. Which logins can have a link at all is signin_link_possible()'s
- * answer; staff logins never can, so a link is never its maker's own.
- */
-function may_create_signin_link(array $actor, array $target): bool {
-    if (!is_staff($actor) || (int)$actor['id'] === (int)$target['id']) return false;
-    if (!signin_link_possible($target)) return false;
-    return $target['state'] !== 'active' || is_admin($actor);
-}
-
 /** Start looking. The real account is remembered; the session becomes theirs. */
 function start_impersonation(int $targetId): array {
     $actor = require_staff();

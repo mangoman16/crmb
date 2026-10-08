@@ -64,7 +64,8 @@ function history_field_label(string $column): string {
         'internal_notes' => t('Interne Notizen', 'Internal notes'),
         'name' => t('Name', 'Name'),
         'email' => t('E-Mail-Adresse', 'Email address'),
-        // What a login without an address signs in with (ADR 0023 §1).
+        // For change-log lines written while a login could sign in by a name of
+        // its own, 022 to 024 and 028 to 039; nothing does now (ADR 0030 §7).
         'username' => t('Benutzername', 'Username'),
         'role' => t('Rolle', 'Role'),
         'state' => t('Zustand', 'State'),

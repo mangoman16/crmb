@@ -155,7 +155,7 @@ throws(fn() => act('account_invite', ['name'=>'Familie Wartend', 'email'=>'warte
     'inviting one is refused, and says where to go instead', 'Seite der Schülerin oder des Schülers');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['wartend@beispiel.test']), 'no account was written');
 // Every student has a login from the start - a placeholder until somebody gives
-// it an address or a username (ADR 0023 §3) - so "not touched" is: the same one.
+// it an address (ADR 0023 §3, 0030 §3) - so "not touched" is: the same one.
 $waitingLogin = (int)scalar('SELECT account_id FROM students WHERE id=?', [$waiting]);
 is_same([$waitingLogin, 'placeholder'], [(int)scalar('SELECT account_id FROM students WHERE id=?', [$waiting]), (string)scalar('SELECT state FROM accounts WHERE id=?', [$waitingLogin])],
         'and the student at that address was not touched: still on their own placeholder');
@@ -311,12 +311,12 @@ case_('Spelling an address differently does not buy a fresh ten guesses, and not
 throttle_clear('login', $familyBucket);
 foreach (['familie@beispiel.test', ' Familie@Beispiel.TEST', "FAMILIE@beispiel.test\n"] as $spelling) {
     $_POST = ['login' => $spelling];
-    is_same($familyBucket, sign_in_identity(attempted_sign_in()), 'counted in the one bucket: '.json_encode($spelling));
+    is_same($familyBucket, address_identity(attempted_address()), 'counted in the one bucket: '.json_encode($spelling));
 }
 $actions = (string)file_get_contents(APP_ROOT.'/app/actions.php');
 ok(!str_contains($actions, 'function attempted_identity'), 'and no step resolves the typed value to a row first');
 $handle = (string)strstr((string)strstr($actions, 'function handle_post('), 'function forget_attempts_after_success(', true);
-ok(str_contains($handle, "throttle('login',sign_in_identity(attempted_sign_in()),10);"),
+ok(str_contains($handle, "throttle('login',address_identity(attempted_address()),10);"),
    'the request counts the typed address, before anything is looked up');
 $lockout = function (string $typed) use ($hits, $ourIp): array {
     run_counter('UPDATE rate_limits SET window_start = window_start - 901 WHERE bucket = ?', [rate_limit_bucket('auth-ip', $ourIp)]);
@@ -326,7 +326,7 @@ $lockout = function (string $typed) use ($hits, $ourIp): array {
         catch (UserError $e) { $answers[] = str_contains($e->getMessage(), 'Zu viele') ? 'throttled' : $e->getMessage(); }
     }
     $_POST = ['login' => $typed];
-    $bucket = sign_in_identity(attempted_sign_in());
+    $bucket = address_identity(attempted_address());
     $counted = $hits('login', $bucket);
     throttle_clear('login', $bucket);
     return [$answers, $counted];
@@ -337,10 +337,10 @@ is_same(['throttled'], array_slice($known[0], 10), 'an address that has a login 
 is_same($known, $lockout('niemand@beispiel.test'), 'and one that has none gets exactly the same answers, counted exactly the same way');
 is_same($known, $lockout('familie.sieber'), 'and so does something that is no address at all');
 
-case_('The address signs in, in any capitals, and a username its login does not have does not');
-/* ADR 0023 §1: a username signs in only to the login that has it, and this
-   family's login has its address and no username - so the name it carried
-   under ADR 0019 is a username nobody has now, refused in the same words. */
+case_('The address signs in, in any capitals, and nothing else does');
+/* ADR 0030 §1: the address is the only name a login has. The name this family's
+   login carried as a username under ADR 0019 and 0023 is nothing now, refused
+   in the same words as a wrong password and counted like any typed value. */
 sign_out();
 does_not_throw(fn() => submit('login', ['login' => ' Familie@Beispiel.test ', 'password' => $familyPassword]), 'the address signs in, in any capitals');
 is_same($familyId, (int)(current_user()['id'] ?? 0), 'as the right login');
@@ -348,9 +348,10 @@ sign_out();
 throws(fn() => submit('login', ['login' => 'familie.sieber', 'password' => $familyPassword]),
        'the name that was once its username is refused, with the right password', 'Anmeldung nicht möglich');
 is_same(null, current_user(), 'and nobody is signed in');
-throws(fn() => submit('login', ['username' => $familyEmail, 'password' => $familyPassword]),
-       'and the address posted under any name but the one box, login, signs nobody in', 'Anmeldung nicht möglich');
-throttle_clear('login', username_identity('familie.sieber')); throttle_clear('login', username_identity(''));
+foreach (['username', 'email'] as $otherBox)
+    throws(fn() => submit('login', [$otherBox => $familyEmail, 'password' => $familyPassword]),
+           'and the address posted under any name but the one box, login, signs nobody in: '.$otherBox, 'Anmeldung nicht möglich');
+throttle_clear('login', address_identity('familie.sieber')); throttle_clear('login', address_identity(''));
 $_POST = [];
 
 case_('An address that reaches a login only through the collation signs nobody in');
@@ -378,7 +379,7 @@ $loginCode = implode('', array_map(fn($t) => is_array($t) ? (in_array($t[0], [T_
                                    token_get_all("<?php\n".$login)));
 is_same(1, substr_count($loginCode, 'password_verify('), 'the case has exactly one password_verify(), which every refusal passes through');
 ok(!str_contains($loginCode, '$2y$'), 'and no literal hash');
-ok(str_contains($loginCode, 'account_for_sign_in(...attempted_sign_in())'), 'it looks the login up through account_for_sign_in()');
+ok(str_contains($loginCode, 'account_for_sign_in(attempted_address())'), 'it looks the login up through account_for_sign_in()');
 $dummy = sign_in_dummy_hash();
 ok($dummy !== '' && !password_needs_rehash($dummy, PASSWORD_DEFAULT), 'the comparison hash exists at today’s cost');
 ok(!password_verify('', $dummy) && !password_verify('Test-Only-Password-2026', $dummy), 'and matches no password anybody has');
@@ -391,9 +392,9 @@ foreach (['an invitation not yet accepted' => ['eingeladen-noch@beispiel.test', 
           'an address nobody has' => ['niemand@beispiel.test', $familyPassword], 'a wrong password' => [$familyEmail, 'falsch']] as $what => [$typed, $typedPassword]) {
     try { submit('login', ['login' => $typed, 'password' => $typedPassword]); $said[$what] = 'in'; }
     catch (UserError $e) { $said[$what] = $e->getMessage(); }
-    $_POST = ['login' => $typed]; throttle_clear('login', sign_in_identity(attempted_sign_in()));
+    $_POST = ['login' => $typed]; throttle_clear('login', address_identity(attempted_address()));
 }
-is_same(['Anmeldung nicht möglich. Bitte E-Mail bzw. Benutzernamen und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link öffnen, den du bekommen hast.'],
+is_same(['Anmeldung nicht möglich. Bitte E-Mail-Adresse und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link aus der Einladung öffnen.'],
         array_values(array_unique($said)), 'every one of them gets the one sentence, word for word: '.implode(', ', array_keys($said)));
 $_POST = [];
 
@@ -604,7 +605,7 @@ is_same("Hallo Mia Stein,\n\nfür deinen Zugang wurde ein Link für ein neues Pa
     'the reset mail, one text whoever asked for it, saying the old password keeps working');
 is_same('reset', (string)scalar('SELECT purpose FROM auth_tokens WHERE account_id=?', [$mia]), 'a reset link');
 $flash = (string)($_SESSION['flash']['message'] ?? '');
-is_same('Wenn dazu ein Zugang mit E-Mail-Adresse gehört, ist eine E-Mail dorthin unterwegs.', $flash, 'the answer names no address (spec S3), and is the same for an address and a username (ADR 0023 §7)');
+is_same('Wenn dazu ein Zugang mit E-Mail-Adresse gehört, ist eine E-Mail dorthin unterwegs.', $flash, 'the answer names no address (spec S3), and is the same whatever was typed');
 foreach (['niemand@beispiel.test', 'mia.stein'] as $unknown) {
     run('DELETE FROM mail_jobs'); $freshIp();
     is_same(['forgot', []], submit('forgot', ['login' => $unknown]), 'an unknown '.$unknown.' lands on the same page');

@@ -17,14 +17,15 @@ drafts. A portal that already has families in it needs one thing done
 **before** the upload — two, if anything in its custom fields is worth keeping —
 and then changes in the ways below the moment the new files are opened.
 
-**Before you upload: add three paragraphs to your privacy notice.** This
-version switches club news by email on for new accounts, it gives every course
-a group chat, and a student can sign in with a username and a one-time sign-in
-link. Your privacy notice has to say all three. The drafts in the download only
-fill in the notice of a brand-new portal; yours keeps the text you saved, so the
-paragraphs have to be added by hand. Do it while the old version is still
-running, so that no family uses the new one under a notice that does not
-mention it. Open **Einstellungen → Datenschutz**, and in the German text:
+**Before you upload: add three paragraphs to your privacy notice.** This version
+switches club news by email on for new accounts, it gives every course a group
+chat, and a child can be in the portal before anybody signs in for them, as a
+login without an address, which receives no e-mail. Your privacy notice has to
+say all three. The drafts in the download only fill in the notice of a brand-new
+portal; yours keeps the text you saved, so the paragraphs have to be added by
+hand. Do it while the old version is still running, so that no family uses the
+new one under a notice that does not mention it. Open **Einstellungen →
+Datenschutz**, and in the German text:
 
 1. In „4. Rechtsgrundlagen", replace the paragraph that begins „Der Newsletter
    wird nur an Konten mit aktiviertem Newsletter-Abonnement gesendet" with:
@@ -36,9 +37,9 @@ mention it. Open **Einstellungen → Datenschutz**, and in the German text:
    > und über den Link in jeder dieser E-Mails; im Portal bleiben die
    > Neuigkeiten lesbar.
    > [Rechtsgrundlage ergänzen – z. B. berechtigtes Interesse]
-   > E-Mail-Hinweise auf private Nachrichten haben eine eigene Einstellung.
-   > Sicherheitsmails wie Einladungen und Passwortlinks dienen der
-   > Bereitstellung des Zugangs.
+   > E-Mail-Hinweise auf neue Nachrichten, geänderte Trainingstermine und
+   > Antworten auf Anfragen haben eine eigene Einstellung. Sicherheitsmails wie
+   > Einladungen und Passwortlinks dienen der Bereitstellung des Zugangs.
 
 2. At the end of the section that lists what is processed (in the draft, „3.
    Welche Angaben verarbeitet werden"), add the paragraph about the chat, with
@@ -53,12 +54,11 @@ mention it. Open **Einstellungen → Datenschutz**, and in the German text:
 
 3. After the sentence „SMTP-Passwörter und versandbereite E-Mail-Inhalte sind
    in der Anwendungsdatenbank verschlüsselt.", add the paragraph from
-   `docs/privacy-draft-de.txt` beginning „Angemeldet wird mit der
-   E-Mail-Adresse". It says that a student can sign in with a username, that a
-   login without an address receives no e-mail, and what a sign-in link is and
-   what is kept of it. In „2.", replace the sentence „Jeder Schüler hat
-   höchstens ein eigenes Konto, …" with the draft's, which begins „Jeder
-   Schüler hat ein eigenes Konto".
+   `docs/privacy-draft-de.txt` beginning „Angemeldet wird mit der eigenen
+   E-Mail-Adresse". It says that everybody signs in with their own address and
+   that a login without an address receives no e-mail. In „2.", replace the
+   sentence „Jeder Schüler hat höchstens ein eigenes Konto, …" with the
+   draft's, which begins „Jeder Schüler hat ein eigenes Konto".
 
 4. Replace each line in square brackets with your own words, then save.
 
@@ -111,15 +111,16 @@ emoji, which 035 takes away again. No row is removed, so the check that counts
 the guarded tables before and after passes; only the chats grow, by one group
 per course.
 
-**Migrations 028 to 031 follow.** 028 lets a login have a username instead of an
-address; every existing login keeps its address and gets no username. 029 and
+**Migrations 028 to 031 follow.** 028 lets a login have no address, and gives
+logins a username column again, which 039 (below) takes away for good; every
+existing login keeps its address and gets no username. 029 and
 030 make a student's login impossible to delete: the database refuses it, and
 the portal gives the student a fresh login in its place instead. 031 adds what
 will keep a child taken out of a course rather than deleting the enrolment;
 nothing uses it yet. After the files, every student without a login is given
-one, a placeholder that nobody can sign in with until staff give it an address
-or a username. No row is removed; the logins grow by one for each such
-student.
+one, a placeholder that nobody can sign in with until staff enter its address
+and send the invitation. No row is removed; the logins grow by one for each
+such student.
 
 **Migrations 032 and 033 delete what this version no longer has.** 032 deletes
 the custom fields, with every value typed into them. 033 deletes the saved views
@@ -150,6 +151,31 @@ date of birth shows no band; the pins are only in the copy the update writes
 first. No child is lost, so the check passes. Levels stay as they were, and so
 do the bands, which you still edit under Verwaltung.
 
+**Migration 039 takes the usernames away again, for good.** Between 028 and
+this file a student's login could sign in with a username instead of an
+address, and staff could make one-time sign-in links for it; the owner has
+decided that everybody signs in with their own e-mail address (ADR 0030). 039
+drops the username column with its index. A login that signed in with a
+username — invited, in use or suspended alike — is „Ohne Anmeldung"
+afterwards, with its password cleared, and whoever was signed in with it is
+signed out. The child stays, with courses, charges and invoices, and signs in
+again once staff enter the child's own address on the card „Zugang zum
+Portal" and send the invitation. Such a login's side of its chats goes, with
+its read marks and its bell notices: the chats stay, every message in them,
+for the member of staff on the other side, and whoever is invited into the
+login later starts without them. Every login with an address keeps every value
+as it was. The rows 039 deletes are in tables the update does not count, so
+the check passes, and none of it shows under „Änderungen": an update writes no
+line there. Sign-in links made before this file stop working at once; the
+invitation and „Passwort vergessen" are the two ways in. What stays of the
+links is the audit log's lines on who made one and when it was used or
+withdrawn, which the portal shows nowhere and never deletes; a line under
+„Änderungen" that names a username stays until „Änderungen aufbewahren
+(Monate)" removes it. On a portal updated from 0.4.0 none of this happens:
+every login there has an address, because until 028 the database allowed
+nothing else, and usernames existed only in versions that were never released.
+There is nothing for you to do.
+
 **The profile pictures are deleted for good.** Once the update has passed, the
 portal deletes the stored pictures from `storage/uploads/avatar`. The problem
 reports' screenshots, kept in the same folder, stay. The copy the update writes
@@ -167,11 +193,10 @@ address on their record. Nothing is deleted, so the check that compares the
 guarded tables before and after passes unchanged. Each child taken
 off a login gets a line under **Änderungen** saying which login it was on. The
 update sends the families no message. Each of those children is then given a
-placeholder login (see 028 to 031 above) and cannot sign in until staff give
-it, on the child's page, an address of the child's own with an invitation, or a
-username with a sign-in link. A shared login cannot be restored once the
-update has run, because the database now refuses it: the way back is the
-backup the update writes first.
+placeholder login (see 028 to 031 above) and cannot sign in until staff enter,
+on the child's page, an address of the child's own and send the invitation. A
+shared login cannot be restored once the update has run, because the database
+now refuses it: the way back is the backup the update writes first.
 
 **After the update, press „Nur Verbindung prüfen“ once.** Invitations,
 password-reset links and address confirmations are now only sent when the last
@@ -247,14 +272,20 @@ here so that nothing surprises you.
   Nothing records that an administrator read a chat: the two in it see nothing,
   and their unread marks stay. Tell the trainers; the families read it in
   every chat.
-- **Signing in is by address, or for a student by username.** „Schüler
-  anlegen" is a wizard in two steps: who is joining and into which course, then
-  how they sign in — an invitation by e-mail, a username with a sign-in link
-  that works once within 48 hours, shown as a QR code to scan or copied to
-  send, or no sign-in for now. A child's page shows „Ohne Anmeldung" until one
-  of those is done. „Per E-Mail einladen", now reached from the wizard's first
-  step, still invites somebody by their address alone: they fill in their own
-  details and then choose a course.
+- **Everybody signs in with their own address, and every student has a
+  login.** „Schüler anlegen" is a wizard in two steps: who is joining and into
+  which course, then how they sign in — an invitation by e-mail, or no sign-in
+  for now. A child's page shows „Ohne Anmeldung" until the child's address is
+  entered there and the invitation sent. „Per E-Mail einladen", now reached
+  from the wizard's first step, still invites somebody by their address alone:
+  they fill in their own details and then choose a course.
+- **„Konten" is „Zugänge"**, under **Einstellungen**: trainers, administrators
+  and students in groups, each with its count. An administrator taps a team
+  member's row open for what she can do with it; a student's row leads to the
+  child's card „Zugang zum Portal", where that child's login is invited,
+  suspended or deleted. **Mein Konto** shows everybody the address they sign in
+  with and the three e-mail switches; the one for notices is now called „E-Mail
+  bei neuen Nachrichten und Änderungen im Training".
 - **The Schüler list looks different**, built for a phone: a search box at the
   top, „Alle | Überfällig | Krank" where the chips were, the other filters
   folded under „Filter", and „A–Z | Nach Alter", which lists the children under

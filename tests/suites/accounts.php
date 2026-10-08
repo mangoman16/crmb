@@ -93,21 +93,66 @@ ok(str_starts_with($invitation, "Hallo Mia,\n\n") && str_contains($invitation, '
    && !str_contains($invitation, 'Benutzername') && !str_contains($invitation, 'Geburtsdatum'),
    'the invitation greets her, says the address signs in, and asks for no details: her student exists');
 
-case_('Everything about the new login comes from the student, and a long name is cut to fit');
-/* The page offers a button, not a form. The action used to read an address, a
-   name and a language that nothing sends - a way round the student's own
-   address for anybody writing their own POST. And a name built from two
-   100-character halves is 201 characters, where a login's name holds 160,
-   and MariaDB refused the insert. */
+case_('The card’s invitation takes the address and the language typed on it, and the login’s name from the student, cut to fit');
+/* ADR 0030 §6: the address box sits on the access card, so the address is
+   posted with the button and goes through invitation_address() as the wizard's
+   does; a page from before the card had its box posts none, and then the
+   record's is used. A posted name is never read: the login is called what the
+   student is called - and a name built from two 100-character halves is 201
+   characters, where a login's name holds 160, and MariaDB refused the insert. */
 $longName = make_student(['first_name'=>str_repeat('Ä', 100), 'last_name'=>str_repeat('B', 100), 'email'=>'lang@beispiel.test']);
 is_same(201, mb_strlen(student($longName)['first_name'].' '.student($longName)['last_name']), 'the name really is 201 characters');
-act('student_invite', ['student_id'=>(string)$longName, 'email'=>'anders@beispiel.test', 'name'=>'Jemand Anderes', 'locale'=>'en']);
+act('student_invite', ['student_id'=>(string)$longName, 'email'=>' Anders@Beispiel.test ', 'name'=>'Jemand Anderes', 'locale'=>'en']);
 $longLogin = one('SELECT * FROM accounts WHERE id=?', [(int)student($longName)['account_id']]);
-is_same('lang@beispiel.test', $longLogin['email'] ?? null, 'an address posted with it is not used; the student’s is');
-is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['anders@beispiel.test']), 'and nothing was made at it');
+is_same('anders@beispiel.test', $longLogin['email'] ?? null, 'the address typed on the card is the login’s, normalised');
+is_same('anders@beispiel.test', (string)scalar('SELECT email FROM students WHERE id=?', [$longName]), 'and the record’s copy follows it');
+$change = history_for('students', $longName)[0] ?? [];
+is_same(['update', 'lang@beispiel.test', 'anders@beispiel.test'],
+        [$change['operation'] ?? null, version_changes($change)['email']['from'] ?? null, version_changes($change)['email']['to'] ?? null],
+        'and the student’s „Änderungen“ shows the address the card replaced, and by what');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE email=?', ['lang@beispiel.test']), 'nothing was made at the record’s old address');
 is_same(TEXT_LINE_MAX, mb_strlen((string)($longLogin['name'] ?? '')), 'the name is cut to the 160 a login holds');
-is_same(str_repeat('Ä', 100).' '.str_repeat('B', 59), $longLogin['name'] ?? null, 'from the end, by characters rather than bytes');
-is_same('de', $longLogin['locale'] ?? null, 'and a posted language is not used either');
+is_same(str_repeat('Ä', 100).' '.str_repeat('B', 59), $longLogin['name'] ?? null, 'from the end, by characters rather than bytes, and not the name posted');
+is_same('en', $longLogin['locale'] ?? null, 'and the invitation speaks the language chosen on the card');
+$oldPage = make_student(['first_name'=>'Alte', 'last_name'=>'Seite', 'email'=>'alte.seite@beispiel.test']);
+is_same(['student', ['id'=>$oldPage, '#'=>'access']], act('student_invite', ['student_id'=>(string)$oldPage]),
+        'the invitation lands at the access card, which now says „Eingeladen“, so she sees it without scrolling');
+is_same([], history_for('students', $oldPage), 'an invitation to the address on the record changes nothing on the student, and adds no line to its „Änderungen“');
+is_same(['alte.seite@beispiel.test', 'de'], array_values(one('SELECT email,locale FROM accounts WHERE id=?', [(int)student($oldPage)['account_id']]) ?? []),
+        'a page that posts no address - opened before the card had its box - invites the record’s, in German');
+$typo = make_student(['first_name'=>'Falsch', 'last_name'=>'Getippt', 'email'=>'falsch@beispiel.test']);
+throws(fn() => act('student_invite', ['student_id'=>(string)$typo, 'email'=>'kein-at']), 'an address that is none is refused', 'Ungültige E-Mail-Adresse');
+throws(fn() => act('student_invite', ['student_id'=>(string)$typo, 'email'=>'anders@beispiel.test']), 'and one that is another login’s', 'Jede Person braucht ihre eigene');
+throws(fn() => act('student_invite', ['student_id'=>(string)$typo, 'email'=>'neu.getippt@beispiel.test', 'locale'=>'fr']), 'and a language the portal does not speak', 'Ungültige Auswahl');
+is_same('placeholder', (string)scalar('SELECT state FROM accounts WHERE id=?', [(int)student($typo)['account_id']]), 'and the placeholder is as it was');
+
+case_('Two children whose records carry one address, neither signing in: neither is invited at it, and each is asked for an own one [ADR 0030 §5]');
+/* One person, one address. A parent's address typed on a brother's and a
+   sister's record before either had a login is a contact's, not the login of
+   whichever child is invited first. The card refuses it as the wizard does,
+   naming the other child; the student's own record carrying it is no reason
+   to refuse. */
+$twinOne = make_student(['first_name'=>'Zwilling', 'last_name'=>'Eins', 'email'=>'zwillinge@beispiel.test']);
+$twinTwo = make_student(['first_name'=>'Zwilling', 'last_name'=>'Zwei', 'email'=>'zwillinge@beispiel.test']);
+$written = fn(): array => [(int)scalar('SELECT COUNT(*) FROM auth_tokens'), (int)scalar('SELECT COUNT(*) FROM mail_jobs'), (int)scalar('SELECT COUNT(*) FROM record_versions'),
+    scalar('SELECT GROUP_CONCAT(a.state ORDER BY s.id) FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.id IN (?,?)', [$twinOne, $twinTwo])];
+$before = $written();
+throws(fn() => act('student_invite', ['student_id'=>(string)$twinTwo]), 'the record’s own address is refused while the sister’s record carries it too, naming her',
+       'Diese Adresse steht schon bei Zwilling Eins. Ist es Zwilling Eins, lade dort ein; sonst braucht Zwilling eine eigene Adresse');
+throws(fn() => act('student_invite', ['student_id'=>(string)$twinOne, 'email'=>' Zwillinge@Beispiel.test ']), 'whichever of the two is invited, however it is typed', 'steht schon bei Zwilling Zwei');
+is_same($before, $written(), 'nothing is written: no link, no mail, no change, both still without sign-in');
+$stepsOf = fn(int $id): array => array_column(student_next_steps($id), null, 'what');
+foreach ([[$twinOne, 'Zwilling Zwei'], [$twinTwo, 'Zwilling Eins']] as [$twin, $other]) {
+    $steps = $stepsOf($twin);
+    ok(!isset($steps['Zugang einladen']), 'the next steps offer no invitation that could only be refused');
+    is_same(['email', true], [$steps['Eigene E-Mail-Adresse eintragen']['anchor'] ?? null, str_contains($steps['Eigene E-Mail-Adresse eintragen']['why'] ?? '', $other)],
+            'they ask for an address of their own, at the record’s address box, naming '.$other);
+}
+save_student($twinTwo, ['email'=>'zwilling.zwei@beispiel.test']);
+ok(isset($stepsOf($twinOne)['Zugang einladen']) && isset($stepsOf($twinTwo)['Zugang einladen']), 'once one has an own address, each is offered the invitation');
+act('student_invite', ['student_id'=>(string)$twinOne]);
+is_same(['invited', 'zwillinge@beispiel.test'], array_values(one('SELECT state,email FROM accounts WHERE id=?', [(int)student($twinOne)['account_id']]) ?? []),
+        'and the address on her own record alone is hers to be invited at');
 
 case_('A brother at the same address is refused, in words, before anything is written');
 /* ADR 0020, §1: one person, one login, one address of their own. The sentence
@@ -540,8 +585,8 @@ case_('A reset link can go only to a login in use, at its address');
 is_same([true, false, false, false, false], array_map(fn($a) => reset_link_possible($a), [
     ['state'=>'active', 'verified_at'=>now(), 'email'=>'a@b.test'], ['state'=>'invited', 'verified_at'=>null, 'email'=>'a@b.test'],
     ['state'=>'suspended', 'verified_at'=>now(), 'email'=>'a@b.test'], ['state'=>'active', 'verified_at'=>null, 'email'=>'a@b.test'],
-    ['state'=>'active', 'verified_at'=>now(), 'email'=>null, 'username'=>'lena.hofer']]),
-    'active, verified and with an address, and nothing else - a username login gets a sign-in link instead (ADR 0023 §6)');
+    ['state'=>'active', 'verified_at'=>now(), 'email'=>null]]),
+    'active, verified and with an address, and nothing else');
 
 case_('Staff can have a link for a new password mailed, and never see it');
 /* ADR 0020, §5: an active login only, never one's own, a trainer for students'

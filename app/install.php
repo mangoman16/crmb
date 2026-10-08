@@ -245,8 +245,8 @@ function extension_checks(?callable $loaded = null): array {
         // pdf_encode() for every line of an invoice, and bacon-qr-code for every
         // QR code with a lowercase letter in it, which is all of them.
         'iconv'     => ['de' => 'Rechnungen als PDF und der QR-Code zum Bezahlen', 'en' => 'Invoices as PDF and the QR code for paying',
-                        'why' => ['Ohne diese Erweiterung öffnet sich keine Rechnung als PDF, und jede Seite mit einem QR-Code – zum Bezahlen oder für einen Anmeldelink – zeigt einen Fehler.',
-                                  'Without this extension no invoice opens as a PDF, and every page with a QR code – for paying or for a sign-in link – shows an error.']],
+                        'why' => ['Ohne diese Erweiterung öffnet sich keine Rechnung als PDF, und jede Seite mit dem QR-Code zum Bezahlen zeigt einen Fehler.',
+                                  'Without this extension no invoice opens as a PDF, and every page with the QR code for paying shows an error.']],
         // page_number() on every view of a paged list, wanted page or not,
         // valid_iban(), and bacon-qr-code while it encodes.
         'ctype'     => ['de' => 'Seitenzahlen in Listen und die IBAN-Prüfung', 'en' => 'Page numbers in lists and the IBAN check',

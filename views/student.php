@@ -50,8 +50,8 @@ input('last_name',t('Nachname','Last name'),$s['last_name'],'text',true,'','',['
 if($staff):
     echo '<div id="email">';
     // Only a login with an address signs in with it: a placeholder signs in
-    // with nothing and a username login with its username (ADR 0023 §3), so
-    // for them the address on the record is hers to type, as before a login.
+    // with nothing (ADR 0023 §3), so for it the address on the record is hers
+    // to type, as before a login.
     $signsInWithAddress=(string)($login['email']??'')!=='';
     if($signsInWithAddress && $login['state']!=='invited') {
         echo '<div class="field"><label>'.e(t('E-Mail-Adresse','Email address')).'</label><div class="readonly">'.e($login['email']).'</div><small>'
@@ -140,40 +140,59 @@ select_field('level_id',t('Leistungsgruppe','Level'),array_column(rows('SELECT i
 <?php endif ?>
 <?php if($staff):
 /* Everything about this student's login, in one card and in the order it
-   happens: without sign-in, invited or waiting for a first sign-in, active,
+   happens (ADR 0030 §6, spec addendum §3): without sign-in, invited, in use,
    suspended. Outside the student form, because each of these is its own
    decision and its own POST - saving a birth date should not send anybody an
    email - and a form inside a form is thrown away by the browser. Nobody here
-   sets or sees a password (ADR 0020, §5); a sign-in link is shown only to the
-   member of staff who made it, while it works (ADR 0023 §6).
-
-   Backend-dev's working minimum for ADR 0023; frontend-dev gives it the
-   designer's card (spec §3). */
-$loginState=login_without_sign_in($login)?'placeholder':(username_login_waiting($login)?'waiting':$login['state']);
-$maySignin=$login && may_create_signin_link($user,$login);
-$lastLink=$login?(signin_links_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[0]??null):null; ?>
+   sets or sees a password (ADR 0020, §5). Every form on the card names it as
+   the place a refusal comes back to (return_anchor, FORM_RETURN_ANCHORS), so
+   she is not left at the top of a long page with the card out of sight. */
+$loginState=login_without_sign_in($login)?'placeholder':$login['state'];
+$atCard=['return_anchor'=>'access'];
+// The card's own forms, each of which carries $atCard: the one list the note below asks.
+$cardActions=['student_invite','account_state','impersonate']; ?>
 <section class="card access-card" id="access">
     <div class="badge-line access-title"><h2><?=e(t('Zugang zum Portal','Access to the portal'))?></h2><?php login_state_badge($login); ?></div>
-<?php if($loginState==='placeholder'):
-    /* Said before she taps rather than in the refusal after it (ADR 0020, §1):
-       the address on the record is somebody else's login - a brother's or a
-       parent's, typed in before every login needed its own. Staff only, so the
-       holder may be named. No button, because an invitation there can only be
-       refused. */
-    $holder=$s['email']!==''?account_with_address((string)$s['email']):null; ?>
-    <p><?=e($firstName.t(' meldet sich noch nicht an. Du trägst alles selbst ein.',' does not sign in yet. You enter everything yourself.')
-        .($s['email']!=='' && !$holder?t(' Die Einladung geht an ',' The invitation goes to ').$s['email'].'.':''))?></p>
-    <?php if($s['email']===''): ?>
-    <p class="muted"><?=e(t('Trag oben zuerst eine E-Mail-Adresse ein und speichere.','Enter an email address above first, and save.'))?></p>
-    <?php elseif($holder): ?>
-    <div class="notice warn"><strong><?=e(strtr(t('Diese Adresse gehört schon zum Zugang von {name}','This address already belongs to {name}’s login'),['{name}'=>login_holder_name($holder)]))?></strong>
+<?php /* A refusal of one of the card's own forms comes back here, with what was
+         typed; the banner that says why is at the top of the page, out of
+         sight at the card, so the card says it too. Read, not taken: the
+         layout still prints the banner. */
+if(($_SESSION['flash']['kind']??'')==='error' && array_filter($cardActions,fn(string $action)=>held_for($action)!==[])): ?>
+    <div class="notice warn" role="status"><p><?=e((string)$_SESSION['flash']['message'])?></p></div>
+<?php endif;
+if($loginState==='placeholder'):
+    /* The address and „Einladung senden" in one form: she gets the address
+       weeks after adding the child, from a parent's message, with this card
+       open - one form, one tap. The box shows the record's address, which the
+       invitation writes back byte for byte (invite_student()); Persönliche
+       Daten keeps its own box for an address kept while mail is not set up.
+
+       Said before she taps rather than in the refusal after it (ADR 0020, §1;
+       0030 §5): the address on the record is somebody else's login, or a
+       brother's or sister's record without sign-in carries it too - typed in
+       before every person needed their own. Staff only, so they may be named.
+       No form then, because an invitation there can only be refused; the
+       record's own box above is where the address is put right, and the next
+       steps lead there. */
+    $holder=$s['email']!==''?account_with_address((string)$s['email']):null;
+    $sharer=$s['email']!=='' && !$holder?student_without_login_at((string)$s['email'],$id):null; ?>
+    <p><?=e($firstName.t(' meldet sich noch nicht an. Du trägst alles selbst ein.',' does not sign in yet. You enter everything yourself.'))?></p>
+    <?php if($holder || $sharer): ?>
+    <div class="notice warn"><strong><?=e($holder
+            ? strtr(t('Diese Adresse gehört schon zum Zugang von {name}','This address already belongs to {name}’s login'),['{name}'=>login_holder_name($holder)])
+            : strtr(t('Diese Adresse steht auch bei {name}','This address is on {name}’s record too'),['{name}'=>$sharer['first_name'].' '.$sharer['last_name']]))?></strong>
         <p><?=e($firstName.t(' braucht eine eigene. Trag sie oben unter „E-Mail-Adresse“ ein und speichere – die Adresse der Eltern gehört zu den Kontakten.',
                              ' needs one of their own. Enter it above under “Email address” and save – a parent’s address belongs with the contacts.'))?></p></div>
-    <?php elseif(!$mailReady): mail_not_ready_notice($user); ?>
-    <?php else: ?>
-    <div class="row-actions access-actions"><?php start_form('student_invite',['student_id'=>$id],'inline-form');submit_button(t('Einladung senden','Send the invitation'));?></form></div>
+    <?php elseif(!$mailReady): mail_not_ready_notice($user);
+    else:
+        start_form('student_invite',['student_id'=>$id]+$atCard);
+        // autocomplete="off" first, so it wins: her iPhone would offer her own address.
+        input('email',t('E-Mail-Adresse','Email address'),$s['email'],'email',true,
+              strtr(t('Die eigene Adresse von {name} – die der Eltern gehört zu den Kontakten.','{name}’s own address – a parent’s belongs with the contacts.'),['{name}'=>$firstName]),
+              '',['autocomplete'=>'off']+sign_in_address_attributes());
+        select_field('locale',t('Sprache der Einladung','Invitation language'),['de'=>'Deutsch','en'=>'English'],(string)($login['locale']??'de'),true);
+        submit_button(t('Einladung senden','Send the invitation')); ?></form>
     <?php endif ?>
-    <?php if($maySignin): ?><div class="row-actions access-actions"><?php signin_link_details($login,$s,true); ?></div><?php endif ?>
 <?php else:
     $deleteText=t('Löscht die Anmeldung und die privaten Unterhaltungen. ','Deletes the login and the private conversations. ')
         .$firstName.t(' bekommt eine neue, leere; Kurse, Beiträge und Rechnungen bleiben, und du kannst neu einladen. Nur vorübergehend? Dann lieber sperren.',
@@ -185,81 +204,57 @@ $lastLink=$login?(signin_links_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[
     $invitationLive=false;
     if($loginState==='invited'):
         /* What she needs when a parent says "the link doesn't work" (ADR 0020,
-           §10c): when it was sent and until when it works. An expired
-           invitation's row is usually gone by the next morning
-           (prune_expired()), and then the line says so without a date rather
-           than guessing one. */
+           §10c): when it was sent and until when it works, and how long a new
+           one lasts, as token_lifetime() makes it. An expired invitation's row
+           is usually gone by the next morning (prune_expired()), and then the
+           line says so without a date rather than guessing one. */
         $sent=invitation_dates((int)$login['id']);
-        $invitationLive=invitation_link_live($sent); ?>
+        $invitationLive=invitation_link_live($sent);
+        $valid=token_lifetime_words('invite',locale()==='en'); ?>
     <p><?=e(match(true) {
         $invitationLive => strtr(t('Eingeladen am {sent}; der Link gilt bis {until}.',
                                    'Invited on {sent}; the link is valid until {until}.'),
                                  ['{sent}'=>fmt_datetime((string)$sent['created_at']),'{until}'=>fmt_datetime((string)$sent['expires_at'])]),
-        $sent!==null    => strtr(t('Die Einladung vom {sent} ist abgelaufen. Schick sie noch einmal – der neue Link gilt wieder 48 Stunden.',
-                                   'The invitation of {sent} has expired. Send it again – the new link is valid for another 48 hours.'),
-                                 ['{sent}'=>fmt_date((string)$sent['created_at'])]),
-        default         => t('Die Einladung ist abgelaufen. Schick sie noch einmal – der neue Link gilt wieder 48 Stunden.',
-                             'The invitation has expired. Send it again – the new link is valid for another 48 hours.'),
+        $sent!==null    => strtr(t('Die Einladung vom {sent} ist abgelaufen. Schick sie noch einmal – der neue Link gilt wieder {valid}.',
+                                   'The invitation of {sent} has expired. Send it again – the new link is valid for another {valid}.'),
+                                 ['{sent}'=>fmt_date((string)$sent['created_at']),'{valid}'=>$valid]),
+        default         => strtr(t('Die Einladung ist abgelaufen. Schick sie noch einmal – der neue Link gilt wieder {valid}.',
+                                   'The invitation has expired. Send it again – the new link is valid for another {valid}.'),
+                                 ['{valid}'=>$valid]),
     })?></p>
     <?php if(!$mailReady) mail_not_ready_notice($user);
     endif;
-    /* The newest sign-in link: when it was made and by whom, and until when it
-       works or when it was used (ADR 0023 §6, "Every use is visible"). */
-    if($lastLink): ?>
-    <p class="muted"><?=e(strtr(match(true) {
-        $lastLink['used_at']!==null      => t('Anmeldelink vom {sent} ({who}), benutzt am {used}.','Sign-in link of {sent} ({who}), used on {used}.'),
-        $lastLink['withdrawn_at']!==null => t('Anmeldelink vom {sent} ({who}), zurückgezogen.','Sign-in link of {sent} ({who}), withdrawn.'),
-        $lastLink['expires_at']!==null   => t('Anmeldelink erstellt am {sent} ({who}); er gilt einmal, bis {until}.','Sign-in link created on {sent} ({who}); it works once, until {until}.'),
-        default                          => t('Der Anmeldelink vom {sent} ({who}) ist abgelaufen. Erstell einen neuen – er gilt wieder 48 Stunden.','The sign-in link of {sent} ({who}) has expired. Create a new one – it is valid for another 48 hours.'),
-    },['{sent}'=>fmt_datetime($lastLink['created_at']),'{who}'=>$lastLink['made_by']!==''?$lastLink['made_by']:t('gelöschter Zugang','deleted login'),
-       '{used}'=>fmt_datetime($lastLink['used_at']),'{until}'=>fmt_datetime($lastLink['expires_at'])]))?></p>
-    <?php endif;
-    $signinLogin=$login; $signinFirstName=$firstName; $signinStudentId=$id;
-    require __DIR__.'/_signin_link.php';
     /* Whether a mailed link set the password lately - „vergessen", or the
        button below (ADR 0019, I1; 0020, §8): the same thing the holder sees on
        Mein Konto. */
-    if(!in_array($loginState,['invited','waiting'],true) && ($lastReset=password_resets_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[0]??null)): ?>
+    if($loginState!=='invited' && ($lastReset=password_resets_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[0]??null)): ?>
     <p class="muted"><?=e(t('Passwort zuletzt per E-Mail-Link neu gesetzt: ','Password last set anew through an email link: ').fmt_datetime((string)$lastReset['created_at']))?></p>
     <?php endif ?>
     <div class="row-actions access-actions">
     <?php if($loginState==='invited'):
         // The way forward is the button when the link no longer works.
-        if($mailReady){start_form('account_state',['id'=>$login['id'],'mode'=>'reinvite'],'inline-form');submit_button(t('Einladung erneut senden','Send the invitation again'),$invitationLive?'secondary':'primary');echo '</form>';}
+        if($mailReady){start_form('account_state',['id'=>$login['id'],'mode'=>'reinvite']+$atCard,'inline-form');submit_button(t('Einladung erneut senden','Send the invitation again'),$invitationLive?'secondary':'primary');echo '</form>';}
         /* Nothing to type for a login never set up (ADR 0021, §3): nothing is
            lost, and inviting again is the way back. One that was set up and is
            somehow invited again keeps the typed address. */
         if(empty($login['verified_at']))
             invitation_withdraw_details($login,t('Einladung zurückziehen','Withdraw the invitation'),
                 t('Der Link in der Einladung gilt dann nicht mehr. ','The link in the invitation then stops working. ')
-                .$firstName.t(', Kurse, Beiträge und Rechnungen bleiben. Versehentlich? Einfach neu einladen.',', the courses, charges and invoices stay. By mistake? Just invite again.'));
+                .$firstName.t(', Kurse, Beiträge und Rechnungen bleiben. Versehentlich? Einfach neu einladen.',', the courses, charges and invoices stay. By mistake? Just invite again.'),$atCard);
         else
-            login_delete_details($login,t('Einladung zurückziehen','Withdraw the invitation'),$deleteText,t('Einladung endgültig zurückziehen','Withdraw the invitation for good'));
-    elseif($loginState==='waiting'):
-        // A username waiting for its first sign-in: a new link, the link
-        // withdrawn, or the username given back - to change it, or to invite
-        // by e-mail instead (ADR 0023 §1, §4).
-        if($maySignin) signin_link_details($login,$s,false);
-        if($lastLink && $lastLink['expires_at']!==null){start_form('signin_link',['student_id'=>$id,'mode'=>'withdraw'],'inline-form');submit_button(t('Link zurückziehen','Withdraw the link'),'subtle danger-text');echo '</form>';}
-        invitation_withdraw_details($login,t('Benutzernamen zurückziehen','Withdraw the username'),
-            t('Der Benutzername wird wieder frei, und ein Anmeldelink gilt nicht mehr. ','The username becomes free again, and any sign-in link stops working. ')
-            .$firstName.t(' ist dann wieder ohne Anmeldung; Kurse, Beiträge und Rechnungen bleiben.',' is then without sign-in again; the courses, charges and invoices stay.'),
-            t('Benutzernamen zurückziehen','Withdraw the username'));
+            login_delete_details($login,t('Einladung zurückziehen','Withdraw the invitation'),$deleteText,t('Einladung endgültig zurückziehen','Withdraw the invitation for good'),$atCard);
     elseif($loginState==='active'):
-        if(may_impersonate($user,$login)){start_form('impersonate',['id'=>$login['id'],'mode'=>'start'],'inline-form');submit_button(t('Portal als ','View the portal as ').$firstName.t(' ansehen',''),'secondary');echo '</form>';}
+        if(may_impersonate($user,$login)){start_form('impersonate',['id'=>$login['id'],'mode'=>'start']+$atCard,'inline-form');submit_button(t('Portal als ','View the portal as ').$firstName.t(' ansehen',''),'secondary');echo '</form>';}
         /* A link for a new password, to the login's own address (ADR 0020,
            §5). Not destructive: the old password works until the link is used,
            and the link lapses in an hour. Only for a login in use, and only
            when mail can go out - a button that can only fail is not offered. */
-        if($mailReady && reset_link_possible($login)){start_form('account_state',['id'=>$login['id'],'mode'=>'reset_link'],'inline-form');submit_button(t('Link zum Zurücksetzen senden','Send a reset link'),'secondary');echo '</form>';}
-        // The way back from a forgotten password without a mailbox; only an
-        // administrator's, for a login in use (may_create_signin_link()).
-        if($maySignin) signin_link_details($login,$s,false);
-        start_form('account_state',['id'=>$login['id'],'mode'=>'suspend'],'inline-form');submit_button(t('Zugang sperren','Suspend the access'),'secondary');echo '</form>';
-        login_delete_details($login,t('Anmeldung löschen','Delete the sign-in'),$deleteText,t('Anmeldung endgültig löschen','Delete the sign-in for good'));
+        if($mailReady && reset_link_possible($login)){start_form('account_state',['id'=>$login['id'],'mode'=>'reset_link']+$atCard,'inline-form');submit_button(t('Link zum Zurücksetzen senden','Send a reset link'),'secondary');echo '</form>';}
+        start_form('account_state',['id'=>$login['id'],'mode'=>'suspend']+$atCard,'inline-form');submit_button(t('Zugang sperren','Suspend the access'),'secondary');echo '</form>';
+        login_delete_details($login,t('Anmeldung löschen','Delete the sign-in'),$deleteText,t('Anmeldung endgültig löschen','Delete the sign-in for good'),$atCard);
     else:
-        start_form('account_state',['id'=>$login['id'],'mode'=>'restore'],'inline-form');submit_button(t('Zugang entsperren','Restore the access'),'secondary');echo '</form>';
-        login_delete_details($login,t('Anmeldung löschen','Delete the sign-in'),$deleteText,t('Anmeldung endgültig löschen','Delete the sign-in for good'));
+        start_form('account_state',['id'=>$login['id'],'mode'=>'restore']+$atCard,'inline-form');submit_button(t('Zugang entsperren','Restore the access'),'secondary');echo '</form>';
+        login_delete_details($login,t('Anmeldung löschen','Delete the sign-in'),$deleteText,t('Anmeldung endgültig löschen','Delete the sign-in for good'),$atCard);
     endif ?>
     </div>
 <?php endif ?>
@@ -270,10 +265,10 @@ $lastLink=$login?(signin_links_for((int)$login['id'],PASSWORD_RESET_SHOWN_DAYS)[
     <p><?=e(t('Das lässt sich nicht rückgängig machen. Die Änderungen verzeichnen zwar, was gelöscht wurde, stellen es aber nicht wieder her. Nur möglich, wenn keine Beiträge vorhanden sind – sonst die Mitgliedschaft beenden.','This cannot be undone. The change log records what was deleted, but it cannot bring it back. Only possible when no charges exist – otherwise, end the membership.'))?></p>
     <?php /* A student's login never set up is deleted with the student, so its
              link cannot rebuild the record (ADR 0021, §4); any other login stays
-             - the foreign key only unhooks it - and turns up under Konten. */
+             - the foreign key only unhooks it - and turns up under Zugänge. */
     if($loginState==='placeholder'): ?><p><?=e(t('Die leere Anmeldung geht mit.','The empty login goes with it.'))?></p>
     <?php elseif(login_goes_with_student($login)): ?><p><?=e(t('Die offene Einladung wird dabei zurückgezogen.','The open invitation is withdrawn with it.'))?></p>
-    <?php elseif($login): ?><p><?=e($firstName.t(' hat einen Zugang. Lösche ihn vorher, sonst bleibt er unter „Konten“ ohne Schüler übrig.',' has an access. Delete it first, or it is left under “Accounts” with no student.'))?></p><?php endif ?>
+    <?php elseif($login): ?><p><?=e($firstName.t(' hat einen Zugang. Lösche ihn vorher, sonst bleibt er unter „Zugänge“ ohne Schüler übrig.',' has an access. Delete it first, or it is left under “Logins” with no student.'))?></p><?php endif ?>
     <?php start_form('student_delete',['id'=>$id]);input('confirmation',t('Vollständigen Namen zur Bestätigung eingeben','Enter the full name to confirm'),'','text',true);submit_button(t('Schüler endgültig löschen','Permanently delete student'),'danger');?></form>
 </details>
 <?php endif ?>
@@ -608,9 +603,9 @@ if($remaining>0 && !$c['cancelled'] && setting('show_payment_qr')):
         $reference=charge_reference($c,$s);
         $payload=qr_payload($profile,$remaining,$reference);
 ?>
-<div class="pay-box">
-    <div class="pay-qr"><?=$payload!==''?qr_svg($payload,200):''?></div>
-    <div class="pay-details">
+<div class="qr-box">
+    <div class="qr-plate"><?=$payload!==''?qr_svg($payload,200):''?></div>
+    <div class="qr-details">
         <h3><?=e(t('Offenen Betrag überweisen','Transfer the outstanding amount'))?></h3>
         <p class="muted"><?=e(t('Mit der Bank-App den Code scannen – Betrag und Verwendungszweck werden übernommen.','Scan the code with your banking app and the amount and reference are filled in for you.'))?></p>
         <dl class="facts">

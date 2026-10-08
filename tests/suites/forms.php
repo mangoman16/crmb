@@ -27,6 +27,21 @@ $draftKey = (string)act('student_draft', ['first_name'=>'Lena','last_name'=>'Hof
 mail_ready(true);
 $_POST = ['return_draft'=>$draftKey, 'return_page'=>'student_new'];
 is_same(['student_new', ['draft'=>$draftKey]], form_return(), 'a refusal returns to the page with the draft’s key, so a reload keeps step 2');
+
+case_('A refused form returns to the place on its page it names, from a fixed list, and to the top otherwise');
+/* ADR 0030 §6: the access card's form comes back to the card, with the address
+   that was refused in its box. The fragment is the one part of the way back
+   that is not a page, a record or a tab, so only a name on the list is used. */
+$_POST = ['return_page'=>'student', 'return_id'=>'7', 'return_tab'=>'', 'return_anchor'=>'access'];
+is_same(['student', ['id'=>7, '#'=>'access']], form_return(), 'the access card’s form comes back to the card');
+ok(str_ends_with(url(...form_return()), '/index.php?page=student&id=7#access'), 'as the fragment of the address the browser is sent to');
+foreach (['', 'Access', 'add-contact', 'access"><script>', 'javascript:alert(1)', str_repeat('a', 300)] as $other) {
+    $_POST['return_anchor'] = $other;
+    is_same(['student', ['id'=>7]], form_return(), 'a place not on the list is left out: '.json_encode($other));
+}
+$_POST['return_anchor'] = ['access'];
+is_same(['student', ['id'=>7]], form_return(), 'and so is a list where a word belongs');
+$_POST = [];
 $reject('student_create', ['return_page'=>'student_new','return_id'=>'0','return_tab'=>'','return_draft'=>$draftKey,
     'draft'=>$draftKey, 'method'=>'email', 'email'=>'maria.hofer@', 'locale'=>'de']);
 $html = render_view('student_new', ['draft'=>$draftKey]);
@@ -93,9 +108,10 @@ is_same(['q'=>'Hofer'], $_SESSION['form_input']['fields'], 'only the field she f
    own, so read that off a rendered form: a field start_form() gains tomorrow
    fails here until the list names it too. */
 // With a wizard draft's key in the address too, which a form carries back after
-// a refusal (ADR 0023 §5); without one, return_draft is simply not written.
+// a refusal (ADR 0023 §5), and a place on the page it names to come back to (ADR
+// 0030 §6); without them, return_draft and return_anchor are simply not written.
 $GLOBALS['page'] = 'student'; $_GET = ['id'=>7, 'tab'=>'contacts', 'draft'=>str_repeat('a', 32)];
-ob_start(); start_form('student_save', ['id'=>7]); echo '</form>'; $rendered = (string)ob_get_clean();
+ob_start(); start_form('student_save', ['id'=>7, 'return_anchor'=>'access']); echo '</form>'; $rendered = (string)ob_get_clean();
 preg_match_all('/<input type="hidden" name="([^"]+)"/', $rendered, $hidden);
 $added = array_values(array_diff($hidden[1], ['id', 'csrf']));
 sort($added); $declared = FORM_BOOKKEEPING_FIELDS; sort($declared);
@@ -135,11 +151,11 @@ case_('A view can ask what was held for one form by name, and gets the same answ
    refused invitation's card left open, a refused contact's details opened. held_for() is
    where the form, page, record and tab are matched, and holding_input() is
    built on it, so the two cannot disagree about what was refused where. */
-$_POST = ['return_page'=>'student','return_id'=>'5','return_tab'=>'','invite'=>'','email'=>'eltern@beispiel.test'];
+$_POST = ['return_page'=>'student','return_id'=>'5','return_tab'=>'','return_anchor'=>'access','invite'=>'','email'=>'eltern@beispiel.test'];
 remember_input('student_invite');
 take_held_input();
 $GLOBALS['page'] = 'student'; $_GET = ['id'=>5];
-is_same(['invite'=>'', 'email'=>'eltern@beispiel.test'], held_for('student_invite'), 'the refused form, asked for by name, on its page and record');
+is_same(['invite'=>'', 'email'=>'eltern@beispiel.test'], held_for('student_invite'), 'the refused form, asked for by name, on its page and record - its way back is not something she typed');
 is_same([], held_for('student_save'), 'nothing for another form on the same page');
 $_GET = ['id'=>6];
 is_same([], held_for('student_invite'), 'nor for the same form on another record');

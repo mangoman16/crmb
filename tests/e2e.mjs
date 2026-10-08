@@ -225,7 +225,7 @@ const barLink = (page, word) => page.locator('.mobile-nav a').filter({ has: page
 async function signIn(page, who, role = who === ADMIN ? 'admin' : 'family') {
     if (!/page=login/.test(page.url())) await page.goto(BASE + '/index.php?page=login');
     await look(page, role);
-    // One box for the address or the username (ADR 0023 §7), posted as login.
+    // One box, for the address (ADR 0030 §1), posted as login.
     await page.fill('input[name=login]', who.email); await page.fill('input[name=password]', who.password);
     await submit(page, page.locator('main form button[type=submit]'));
     await look(page, role);
@@ -638,20 +638,16 @@ step('9 invite', async () => {
     S.invitedChild = Number(u.searchParams.get('id'));
     must(u.searchParams.get('page') === 'student' && S.invitedChild > 0, 'step 9 leads to a child without access', page.url());
     S.childName = sql(`SELECT first_name FROM students WHERE id=${S.invitedChild}`);
-    // The child has no address yet: the access card says to enter one above first.
-    const card = page.locator('#access');
     // U.20: no address yet - „Ohne Anmeldung“ (the placeholder every student
-    // has, ADR 0023 §3), the sentence, and no invitation button.
+    // has, ADR 0023 §3), and the card's own form: an empty address box, the
+    // invitation's language and „Einladung senden“ (ADR 0030 §6).
+    const card = page.locator('#access');
     const empty = (await card.innerText()).replace(/\s+/g, ' ');
-    ok(empty.includes('Ohne Anmeldung') && empty.includes('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')
-       && await card.locator('form:has(input[name=action][value=student_invite])').count() === 0,
-       'with no address the card says „Ohne Anmeldung“ and „Trag oben zuerst eine E-Mail-Adresse ein und speichere.“, with no invitation button', empty);
-    const f = page.locator('form:has(input[name=action][value=student_save])');
-    await f.locator('[name=email]').fill(FAMILY.email);
-    await save(page, f, 'the child form');
-    await look(page, 'admin');
-    const invite = page.locator('#access form:has(input[name=action][value=student_invite]):not(:has(input[name=mode]))');
-    must(await invite.count() === 1, '„Einladung senden“ is offered once the address is saved', await page.locator('#access').innerText());
+    const invite = card.locator('form:has(input[name=action][value=student_invite])');
+    must(empty.includes('Ohne Anmeldung') && await invite.count() === 1 && await invite.locator('input[name=email]').inputValue() === ''
+         && await invite.locator('select[name=locale]').count() === 1,
+         'with no address the card says „Ohne Anmeldung“ and offers its own box for one, the language and „Einladung senden“', empty);
+    await invite.locator('[name=email]').fill(FAMILY.email);
     await save(page, invite, '„Einladung senden“');
     await look(page, 'admin');
     const invited = (await page.locator('#access').innerText()).replace(/\s+/g, ' ');

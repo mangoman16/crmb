@@ -3,15 +3,15 @@
          the menu, and the two must not read as the same page. */
 page_head(t('Mein Konto','My account'),t('Wie du dich anmeldest und wie das Portal für dich aussieht.','How you sign in and how the portal looks for you.'));
 /* Everything about signing in, in one card and first, as the heading promises:
-   the address - the only name a login has (ADR 0021, §1) - whether a mailed
-   link set the password lately, and the two changes. */
+   the address - the only name a login has (ADR 0021, §1; 0030 §1) - whether a
+   mailed link set the password in the last two weeks, and the two changes. */
 $resets=password_resets_for((int)$user['id'],PASSWORD_RESET_SHOWN_DAYS); ?>
 <section class="card" id="sign-in">
     <h2><?=e(t('Anmeldung','Signing in'))?></h2>
     <?php login_facts($user,t('bestätigt','verified')); ?>
     <p class="muted"><?=e(t('Mit dieser Adresse meldest du dich an.','You sign in with this address.'))?></p>
     <?php if($resets): ?>
-    <div class="notice warn"><strong><?=e(t('Dein Passwort wurde per E-Mail-Link neu gesetzt','Your password was set anew through an email link'))?></strong>
+    <div class="notice warn"><strong><?=e(t('Dein Passwort wurde per E-Mail-Link neu festgelegt','Your password was set anew through an email link'))?></strong>
         <?php foreach($resets as $reset): ?><p><?=e(fmt_datetime((string)$reset['created_at']))?></p><?php endforeach ?>
         <?php /* A family asks the trainer; the trainer, or an administrator, would
                  be sent to herself (ADR 0019, I2). */ ?>
@@ -56,7 +56,7 @@ foreach(accents() as $key=>$label): ?>
         <input type="radio" name="accent" value="<?=e($key)?>" <?=($user['accent']??'')===$key?'checked':''?>>
         <span class="accent-dot accent-<?=e($key)?>"></span><small><?=e($label)?></small></label>
 <?php endforeach ?>
-</div><p class="muted"><?=e(t('„Wie am Gerät eingestellt“ übernimmt den Dunkelmodus von iPhone, iPad oder Mac automatisch.','“Match my device” follows the dark mode setting on your iPhone, iPad or Mac automatically.'))?></p><?php check_field('newsletter',t('Neuigkeiten per E-Mail erhalten','Receive news by email'),(bool)$user['newsletter'],'',false,true);check_field('notifications',t('E-Mail-Hinweise bei privaten Nachrichten erhalten','Receive email notifications for private messages'),(bool)$user['notifications'],'',false,true);
+</div><p class="muted"><?=e(t('„Wie am Gerät eingestellt“ übernimmt den Dunkelmodus von iPhone, iPad oder Mac automatisch.','“Match my device” follows the dark mode setting on your iPhone, iPad or Mac automatically.'))?></p><?php check_field('newsletter',t('Neuigkeiten per E-Mail erhalten','Receive news by email'),(bool)$user['newsletter'],'',false,true);check_field('notifications',t('E-Mail bei neuen Nachrichten und Änderungen im Training','Email me about new messages and changes to training'),(bool)$user['notifications'],'',false,true);
 check_field('payment_notices',t('Erinnerung, wenn ein Beitrag offen ist','Remind me when a payment is outstanding'),(bool)($user['payment_notices']??true),'',false,true);
 submit_button();?></form></section>
 <?php /* The sidebar's foot holds these on a computer; on a phone a family has

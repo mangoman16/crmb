@@ -135,15 +135,17 @@ $bare = make_student(['first_name'=>'Neu', 'last_name'=>'Angelegt', 'birth_date'
 foreach ([[], ['tab'=>'contacts'], ['tab'=>'absence'], ['tab'=>'attendance'], ['tab'=>'classes'],
           ['tab'=>'invoices'], ['tab'=>'payments']] as $tab)
     does_not_throw(fn() => render_view('student', ['id'=>$bare] + $tab), 'a bare record: '.json_encode($tab));
-// The access card has a state for each step (ADR 0010). With no address there
-// is nobody to invite yet, so it says what to do first and offers no button; a
-// button that could only be refused is worse than none.
+// The access card has a state for each step (ADR 0010). Without sign-in it is
+// one form, the address and „Einladung senden“ (ADR 0030 §6): with no address on
+// the record its box is empty, and the box says what is missing.
+$cardOf = fn(string $html): string => preg_match('~<section class="card access-card" id="access">.*?</section>~s', $html, $m) ? $m[0] : '';
+mail_ready(true);
 $bareHtml = render_view('student', ['id'=>$bare]);
 ok(str_contains($bareHtml, e('Zugang zum Portal')), 'a child without sign-in has the access card');
 ok(str_contains($bareHtml, e('Ohne Anmeldung')), 'which says „Ohne Anmeldung“ for a placeholder (ADR 0023 §3)');
-ok(str_contains($bareHtml, e('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')), 'which, with no address, says to enter one first');
-ok(!str_contains($bareHtml, 'value="student_invite"') && !str_contains($bareHtml, e('Einladung senden')),
-   'and offers no invitation to send');
+ok(str_contains($cardOf($bareHtml), 'value="student_invite"') && preg_match('~name="email" type="email" value=""~', $cardOf($bareHtml)) === 1,
+   'which, with no address on the record, has an empty box for one beside „Einladung senden“');
+ok($cardOf($bareHtml) !== '' && !str_contains($bareHtml, e('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')), 'rather than sending her up the page first');
 // With an address the invitation is offered, and that form is the one the
 // nested-form rule has to see: it sits beside the record's own form. Only when
 // mail can go out (ADR 0020, §6): otherwise the card says what is missing,
@@ -159,7 +161,7 @@ mail_ready(true);
 $addressedHtml = render_view('student', ['id'=>$addressed]);
 ok(str_contains($addressedHtml, e('Einladung senden')) && str_contains($addressedHtml, 'value="student_invite"'),
    'a child with an address and no account is offered the invitation');
-ok(str_contains($addressedHtml, e(' Die Einladung geht an neu.mitadresse@example.test.')), 'and the card says where it goes');
+ok(preg_match('~name="email" type="email" value="neu\.mitadresse@example\.test"~', $cardOf($addressedHtml)) === 1, 'with the record’s address in the card’s box, which says where it goes');
 ok(!str_contains($addressedHtml, e('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')), 'without being told to enter an address');
 is_same(1, deepest_form_nesting($addressedHtml), 'and that form is not inside the record’s own form');
 
@@ -260,17 +262,18 @@ $formWith = function (string $html, string $marker): string {
 $formOf = fn(string $html, string $action): string => $formWith($html, 'name="action" value="'.$action.'"');
 $addressBox = ['type="email"', 'autocomplete="username"', 'autocapitalize="none"', 'autocorrect="off"', 'spellcheck="false"'];
 
-/* The sign-in and „vergessen" box takes an address or a username (ADR 0023 §7):
-   type="text", because type="email" refuses a username, with inputmode="email"
-   for the keyboard, and the rest of what a sign-in box carries. */
-$signInBox = ['type="text"', 'inputmode="email"', 'autocomplete="username"', 'autocapitalize="none"', 'autocorrect="off"', 'spellcheck="false"'];
+/* The sign-in and „vergessen" box takes the address (ADR 0021 §1, 0030 §1):
+   type="email", which brings „@" to the keyboard and checks the shape before
+   posting, and the rest of what a sign-in box carries. */
+$signInBox = ['type="email"', 'autocomplete="username"', 'autocapitalize="none"', 'autocorrect="off"', 'spellcheck="false"'];
 
-case_('The sign-in page has one box, for the address or the username, which the password is saved under');
+case_('The sign-in page has one box, for the address, which the password is saved under');
 sign_out();
 $signIn = render_view('login');
 $box = $tag($signIn, 'login');
 ok($box !== '', 'there is one box, posted as login');
-ok(str_contains($signIn, e('E-Mail oder Benutzername')), 'labelled as either');
+ok(str_contains($signIn, e('E-Mail-Adresse')) && !str_contains($signIn, e('Benutzername')), 'labelled as the address, and nothing about a username');
+ok(!str_contains($box, 'inputmode'), 'with no inputmode, which type="email" makes pointless');
 foreach ([...$signInBox, ' required'] as $attribute)
     ok(str_contains($box, $attribute), 'it carries '.$attribute);
 is_same('', $tag($signIn, 'email'), 'there is no second box for the address');
@@ -298,8 +301,8 @@ foreach ([...$signInBox, ' required'] as $attribute)
     ok(str_contains($box, $attribute), 'the box carries '.$attribute);
 is_same('', $tag($forgot, 'username'), 'and there is no second box beside it');
 ok(str_contains($forgot, '<h1>'.e('Passwort vergessen').'</h1>'), 'headed for the password');
-ok(str_contains($forgot, e('Ohne E-Mail-Adresse angemeldet? Dann bekommst du einen neuen Anmeldelink von deiner Trainerin.')),
-   'and a login without an address is told where its new link comes from (ADR 0023 §7)');
+ok(!str_contains($forgot, e('Ohne E-Mail-Adresse angemeldet?')) && !str_contains($forgot, e('Benutzername')),
+   'and nothing about a login without an address, which cannot sign in (ADR 0030 §1)');
 ok(str_contains($forgot, e('Oder frag deine Trainerin – sie sieht, mit welcher Adresse du eingetragen bist.')), 'and the trainer is named as the other way');
 
 case_('Every page that sets a password shows the address read-only, directly above it');
@@ -435,13 +438,13 @@ $hold('student_save', 'student', $mia, ['email'=>$familyEmail, 'first_name'=>'Mi
 ok(!str_contains(render_view('student', ['id'=>$mia]), 'name="same_family"'), 'and no „Gleiche Familie“ tick after a refusal either (ADR 0020)');
 unset($GLOBALS['crm_held_input']);
 
-case_('Konten names each login and its address, and no username');
+case_('Zugänge names each login and its address, and no username');
 /* The R10 flag for a staff login sharing an address cannot arise any more: the
    unique index refuses the pair (ADR 0020, §8). */
 sign_in_as($admin);
 $team = render_view('accounts');
 $trainerEmail = (string)scalar('SELECT email FROM accounts WHERE id=?', [$trainer]);
-ok(str_contains($team, '<h3>'.e('Trainerin Beispiel').'</h3><p>'.e($trainerEmail).'</p>'), 'each login shows its name and its address');
+ok(str_contains($team, '<strong>'.e('Trainerin Beispiel').'</strong><small>'.e($trainerEmail).'</small>'), 'each login shows its name and its address');
 ok(!str_contains($team, '<p class="mono">'), 'and no username line');
 ok(!str_contains($team, e('Ein Konto für Trainerin oder Administrator braucht eine eigene E-Mail-Adresse.')), 'with no sharing flag');
 ok(str_contains($team, e('Zur Bestätigung die E-Mail-Adresse eintippen: ')), 'deleting a team login asks for the address too');
@@ -581,8 +584,10 @@ sign_in_as($admin);
 $wizardDraft = (string)act('student_draft', ['first_name'=>'Lea', 'last_name'=>'Neu', 'birth_date'=>'', 'course'=>'none', 'status'=>'active'])[1]['draft'];
 $step2 = render_view('student_new', ['draft'=>$wizardDraft]);
 ok(str_contains($step2, 'name="method" value="email"') && str_contains($step2, e('Empfohlen')), '„Per E-Mail einladen“ is offered, marked „Empfohlen“ (ADR 0023 §5)');
-ok(strpos($step2, 'id="by-email"') < strpos($step2, 'id="by-username"') && strpos($step2, 'id="by-username"') < strpos($step2, 'id="later"'),
-   'first of the three, before the username and „Ohne Anmeldung“');
+// An order holds only between two that are there: false < 1 is true in PHP.
+$byEmail = strpos($step2, 'id="by-email"'); $later = strpos($step2, 'id="later"');
+ok($byEmail !== false && $later !== false && $byEmail < $later && !str_contains($step2, 'id="by-username"') && !str_contains($step2, 'name="username"'),
+   'first of the two, before „Ohne Anmeldung“, with no username card (ADR 0030 §6)');
 mail_ready(false);
 $step2 = render_view('student_new', ['draft'=>$wizardDraft]);
 ok(!str_contains($step2, 'name="method" value="email"'), 'with mail not ready there is no e-mail form');

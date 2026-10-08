@@ -123,7 +123,7 @@ function login_goes_with_student(?array $login): bool {
 
 /**
  * Student logins left behind by a deleted student, which was set up and so
- * stays (ADR 0010). Without a list of their own on the Konten page they could
+ * stays (ADR 0010). Without a list of their own on the Zugänge page they could
  * neither be seen nor switched off.
  */
 function orphan_logins(): array {
@@ -151,14 +151,14 @@ const STUDENT_LOGINS_PER_PAGE = 50;
 
 /**
  * The Schüler card's filter chips, as key => the condition on the login aliased
- * a. „Noch nicht angemeldet" is every login waiting for its first sign-in - an
- * invitation by e-mail and a username with a link alike: the badge tells the
- * two apart, the chip asks who has not arrived yet.
+ * a: „Alle", „Eingeladen", „Ohne Anmeldung", „Gesperrt" - one name per state,
+ * the badge's. „Eingeladen" is the project manager's decision of 2026-10-08 in
+ * the addendum to docs/design/2026-10-05-accounts-and-chat-screens.md (§6).
  */
 function student_login_filters(): array {
     return [
         'all'         => '1=1',
-        'waiting'     => "a.state='invited'",
+        'invited'     => "a.state='invited'",
         'placeholder' => "a.state='placeholder'",
         'suspended'   => "a.state='suspended'",
     ];
@@ -178,11 +178,11 @@ function student_login_counts(): array {
 
 /**
  * One page of the Schüler card: every student with their login, sorted by last
- * name, as the login's columns - for login_state_badge() and the sign-in name -
+ * name, as the login's columns - for login_state_badge() and the address -
  * plus the student's id and names, and link_expires_at: when the newest
- * invitation or sign-in link still waiting runs out, or null when there is none
- * (lapsed links are pruned every night). An unknown filter is 'all'. The link's
- * date only, never its hash.
+ * invitation still waiting runs out, or null when there is none (lapsed links
+ * are pruned every night). An unknown filter is 'all'. The link's date only,
+ * never its hash.
  *
  * The page is held as every pager holds it (page_in_range()): a page number
  * of twenty nines would otherwise multiply out past the largest integer into a
@@ -193,7 +193,7 @@ function student_logins(string $filter, int $page): array {
     $condition = student_login_filters()[$filter] ?? student_login_filters()['all'];
     $offset = (page_in_range($page) - 1) * STUDENT_LOGINS_PER_PAGE;
     return rows('SELECT a.*, s.id AS student_id, s.first_name, s.last_name,'
-        ." (SELECT MAX(t.expires_at) FROM auth_tokens t WHERE t.account_id=a.id AND t.purpose IN ('invite','signin')) AS link_expires_at"
+        ." (SELECT MAX(t.expires_at) FROM auth_tokens t WHERE t.account_id=a.id AND t.purpose='invite') AS link_expires_at"
         .' FROM students s JOIN accounts a ON a.id=s.account_id WHERE '.$condition
         .' ORDER BY s.last_name, s.first_name, s.id LIMIT '.STUDENT_LOGINS_PER_PAGE.' OFFSET '.$offset);
 }
@@ -262,12 +262,15 @@ function student_without_sign_in_sql(string $student = 's'): string {
 
 /**
  * The student whose login is still a placeholder and whose record carries this
- * address, or null. An invitation by address to it would make the same person
- * twice, so email_invite and the wizard refuse it and point to that student's
- * own page (ADR 0021 §3, 0023 §3).
+ * address, or null - leaving out $exceptId, a student asking about the address
+ * on their own record. An invitation to it would make the same person twice, or
+ * give one child the address a brother's or sister's record carries too (ADR
+ * 0030 §5: one person, one address). So email_invite, the wizard and the access
+ * card refuse it and point to that student's own page (ADR 0021 §3, 0023 §3),
+ * and the next steps do not offer the invitation.
  */
-function student_without_login_at(string $email): ?array {
-    return one('SELECT s.id,s.first_name,s.last_name FROM students s WHERE s.email=? AND '.student_without_sign_in_sql().' ORDER BY s.id LIMIT 1', [$email]);
+function student_without_login_at(string $email, int $exceptId = 0): ?array {
+    return one('SELECT s.id,s.first_name,s.last_name FROM students s WHERE s.email=? AND s.id<>? AND '.student_without_sign_in_sql().' ORDER BY s.id LIMIT 1', [$email, $exceptId]);
 }
 
 /**
@@ -363,18 +366,30 @@ function student_next_steps(int $studentId): array {
         $steps[] = ['what' => t('Notfallkontakt eintragen', 'Add an emergency contact'),
                     'why'  => t('Wen du anrufst, wenn etwas ist.', 'Who you ring if something happens.'),
                     'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'contacts'], 'anchor' => 'add-contact'];
+    // To the access card, whose form takes the address and sends the
+    // invitation in one tap (ADR 0030 §6) - while mail can go out; before that
+    // the card offers no form, and the record's own box is the place to keep it.
     if ((string)$student['email'] === '' && $withoutSignIn)
         $steps[] = ['what' => t('E-Mail-Adresse eintragen', 'Add an email address'),
                     'why'  => t('Dorthin gehen Einladung, Rechnungen und Erinnerungen.', 'The invitation, the invoices and the reminders go there.'),
-                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
-    // Asked before "invite": an invitation to this address would be refused
-    // (refuse_address_in_use()), and a button that can only fail is not a next
-    // step. Typically a brother's or a parent's address, typed in before the
-    // rule came back; a parent's belongs on the contacts.
+                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => account_mail_ready() ? 'access' : 'email'];
+    // Asked before "invite": an invitation to this address would be refused -
+    // it is somebody's login (refuse_address_in_use()), or a brother's or
+    // sister's record without sign-in carries it too
+    // (refuse_address_on_student_without_sign_in(), ADR 0030 §5) - and a button
+    // that can only fail is not a next step. Typically a parent's address, typed
+    // in before the rule came back; it belongs on the contacts. Both lead to the
+    // record's own box, where the address on the record is corrected.
     elseif ($withoutSignIn && account_with_address((string)$student['email']))
         $steps[] = ['what' => t('Eigene E-Mail-Adresse eintragen', 'Enter an email address of their own'),
                     'why'  => t('Die eingetragene Adresse ist schon der Zugang einer anderen Person. Jede Person braucht ihre eigene; die Adresse der Eltern gehört zu den Kontakten.',
                                 'The address on the record is already somebody else’s login. Everybody needs their own; a parent’s address belongs on the contacts.'),
+                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
+    elseif ($withoutSignIn && ($sharer = student_without_login_at((string)$student['email'], $studentId)))
+        $steps[] = ['what' => t('Eigene E-Mail-Adresse eintragen', 'Enter an email address of their own'),
+                    'why'  => strtr(t('Die eingetragene Adresse steht auch bei {name}. Jede Person braucht ihre eigene; die Adresse der Eltern gehört zu den Kontakten.',
+                                      'The address on the record is on {name}’s record too. Everybody needs their own; a parent’s address belongs on the contacts.'),
+                                    ['{name}' => $sharer['first_name'].' '.$sharer['last_name']]),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
     elseif ($withoutSignIn)
         $steps[] = ['what' => t('Zugang einladen', 'Invite them in'),

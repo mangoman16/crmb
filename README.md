@@ -7,17 +7,16 @@ with MariaDB; MySQL is meant to work but has never been run.
 
 ## What it includes
 
-- **Signing in.** Staff sign in with their address, a student with an address or a
-  username. Every student has a login of their own, one student per login; until it has an
-  address or a username it is a placeholder nobody signs in with. An administrator invites
-  staff by address. Invitations and reset links go out only once the mail connection has passed a test
-  and the German privacy notice is released. Administrator, trainer and student roles.
+- **Signing in.** Everybody signs in with their own e-mail address: one person, one address,
+  one login. Every student has a login of their own, one student per login; until the child's
+  own address is entered on their page and the invitation sent, it is a placeholder nobody
+  signs in with, „Ohne Anmeldung". An administrator invites staff by address. Invitations and
+  reset links go out only once the mail connection has passed a test and the German privacy
+  notice is released. Administrator, trainer and student roles.
 - **Adding a student** in two steps: who is joining and into which course, then how they sign
-  in — an invitation by e-mail, a username with a sign-in link that works once within 48
-  hours, or no sign-in for now. Somebody known only by their address can be invited from
-  the wizard's first step and fills in their own details. A student's login is replaced,
-  never deleted.
-  The screens for this are still the minimum the server side needed (ROADMAP.md, item 5).
+  in — an invitation by e-mail, or no sign-in for now. Somebody known only by their address
+  can be invited from the wizard's first step and fills in their own details. A student's
+  login is replaced, never deleted.
 - **„Dein Portal einrichten"**, nine steps from an empty portal to the first invitation, each
   ticked from the data. An administrator lands there at every sign-in until it is done or
   hidden.

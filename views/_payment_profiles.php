@@ -38,7 +38,7 @@ $sepa="BCD\n002\n1\nSCT\n{bic}\n{recipient}\n{iban}\n{currency}{amount}\n\n{refe
         <?php if($profile && $profile['iban']!==''): $demo=qr_payload($profile,4500,t('Beispiel','Example'));?>
         <h3><?=e(t('Vorschau','Preview'))?></h3>
         <p class="muted"><?=e(t('So sieht der Code für 45,00 € aus.','This is the code for 45.00.'))?></p>
-        <div class="pay-qr"><?=$demo!==''?qr_svg($demo,170):''?></div>
+        <div class="qr-plate"><?=$demo!==''?qr_svg($demo,170):''?></div>
         <?php endif ?>
     </section>
 </div>

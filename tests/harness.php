@@ -419,7 +419,7 @@ function make_thread(array $accountIds, array $over=[]): int {
 
 /**
  * Make a student the way staff do (ADR 0023 §5): step 1 posts student_draft,
- * step 2 posts student_create with $method - 'none', 'email' or 'username' -
+ * step 2 posts student_create with $method - 'none' or 'email' -
  * and what that card asks for in $fields. Returns the new student's id.
  */
 function create_through_wizard(array $details = [], string $method = 'none', array $fields = []): int {

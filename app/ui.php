@@ -109,14 +109,11 @@ function input(string $name,string $label,mixed $value='',string $type='text',bo
  *
  * autocomplete="username" although it is an address: that is the word the
  * password manager pairs with the password beside it, so an iPhone saves the
- * new password under this address and offers it again at sign-in. And it
- * neither capitalises the first letter, nor "corrects" lena.hofer into a word,
- * nor underlines it as a spelling mistake. No inputmode here: a box drawn as
- * type="email" already brings „@" and „." to the first keyboard layer, and the
- * sign-in and „vergessen" boxes, which are type="text" because they take a
- * username too (ADR 0023 §7), add inputmode="email" themselves. A username box
- * uses these too, so a phone saves the password under the username. Where the
- * browser must not fill in anything - the invitation, the
+ * new password under this address and offers it again at sign-in (ADR 0030
+ * §7). And it neither capitalises the first letter, nor "corrects" lena.hofer
+ * into a word, nor underlines it as a spelling mistake. No inputmode: a box
+ * drawn as type="email" already brings „@" and „." to the first keyboard
+ * layer. Where the browser must not fill in anything - the invitation, the
  * delete confirmation - the caller puts ['autocomplete'=>'off'] first in the
  * union, so it wins.
  */
@@ -164,11 +161,11 @@ function check_field(string $name,string $label,bool $value=false,string $hint='
 }
 
 /**
- * Why an invitation cannot go out yet, in one wording for the three places it
- * can be blocked: the create form, a student's access card and Konten (ADR
- * 0020, §10d). account_mail_missing() names the missing steps. The setup
- * checklist is an administrator's page, so a trainer is told who does it
- * instead of being given a link she cannot open. It only reads.
+ * Why an invitation cannot go out yet, in one wording for the places it can be
+ * blocked: the wizard, a student's access card and Zugänge (ADR 0020, §10d).
+ * account_mail_missing() names the missing steps. The setup checklist is an
+ * administrator's page, so a trainer is told who does it instead of being
+ * given a link she cannot open. It only reads.
  */
 function mail_not_ready_notice(array $user): void {
     $missing=account_mail_missing();
@@ -410,7 +407,7 @@ function nav_entries(array $user,bool $counted=true): array {
  *                               family, whose news group links to all of them
  *   manage, accounts, history → settings for an administrator (the hub at the top
  *                               of Einstellungen); manage for a trainer, whose
- *                               Verwaltung links to Team und Zugänge
+ *                               Verwaltung links to Zugänge
  *   start                     → itself while it is in the menu; settings once hidden
  *                               („Einrichtung ansehen" on the hub)
  *   student                   → students for staff (the list); a family's own
@@ -883,22 +880,20 @@ function students_notice(array $students,string $heading,string $body='',array $
 
 /**
  * Where a login stands, as a badge: the same words and colours on the student
- * page and on the Konten page. Worked out from the state and the columns rather
- * than stored (ADR 0023 §3): an invitation waiting at an address is
- * „Eingeladen", a username waiting for its first sign-in „Noch nicht
- * angemeldet", a placeholder „Ohne Anmeldung". $account is null for a student
- * no update has given a login yet - „Kein Zugang", which should never show.
+ * page and on the Zugänge page, one name per state (ADR 0023 §3, 0030 §3): an
+ * invitation waiting at an address is „Eingeladen", a placeholder „Ohne
+ * Anmeldung". $account is null for a student no update has given a login yet
+ * - „Kein Zugang", which should never show.
  */
 function login_state_badge(?array $account): void {
-    $state = $account !== null && username_login_waiting($account) ? 'waiting' : ($account['state'] ?? 'none');
+    $state = $account['state'] ?? 'none';
     badge(match ($state) {
         'active'      => t('Aktiv','Active'),
         'invited'     => t('Eingeladen','Invited'),
-        'waiting'     => t('Noch nicht angemeldet','Not signed in yet'),
         'placeholder' => t('Ohne Anmeldung','No sign-in'),
         'suspended'   => t('Gesperrt','Suspended'),
         default       => t('Kein Zugang','No access'),
-    }, match ($state) { 'active' => 'green', 'invited', 'waiting' => 'amber', 'suspended' => 'red', default => '' });
+    }, match ($state) { 'active' => 'green', 'invited' => 'amber', 'suspended' => 'red', default => '' });
 }
 
 /**
@@ -911,10 +906,8 @@ function login_state_badge(?array $account): void {
  * Only for the login's holder and for staff (ADR 0019, §8).
  */
 function login_facts(array $account,string $addressNote=''): void {
-    // A username login without an address shows its username instead (ADR 0023 §1).
-    $byUsername=(string)($account['email']??'')==='' && (string)($account['username']??'')!=='';
     echo '<dl class="facts login-facts">'
-        .'<div class="fact-wide"><dt>'.e($byUsername?t('Benutzername','Username'):t('E-Mail-Adresse','Email address')).'</dt><dd'.($byUsername?' class="mono"':'').'>'.e(sign_in_name($account))
+        .'<div class="fact-wide"><dt>'.e(t('E-Mail-Adresse','Email address')).'</dt><dd>'.e((string)($account['email']??''))
         .($addressNote!==''?'<small class="muted">'.e(' · '.$addressNote).'</small>':'').'</dd></div>'
         .'</dl>';
 }
@@ -965,40 +958,17 @@ function chat_hue(int $id): string {
  * data-sheet: with JavaScript the fold opens as a sheet from the bottom of the
  * screen, with „Abbrechen" under it (app.js); without, it opens in place. The
  * same for every fold that removes or makes something (Part 0, C11).
+ *
+ * $hidden is what the form carries besides its own fields: on the access card,
+ * the card as the place a refusal comes back to (return_anchor).
  */
-function login_delete_details(array $account,string $summary,string $explanation,string $button): void {
-    // The sign-in name: the address, or the username of a login without one
-    // (ADR 0023 §4). A username box is plain text; type="email" refuses one.
-    $byUsername=(string)($account['email']??'')==='';
+function login_delete_details(array $account,string $summary,string $explanation,string $button,array $hidden=[]): void {
     echo '<details class="account-delete" data-sheet><summary>'.e($summary).'</summary>'
-        .'<p>'.e($explanation.' '.($byUsername?t('Zur Bestätigung den Benutzernamen eintippen: ','To confirm, type the username: '):t('Zur Bestätigung die E-Mail-Adresse eintippen: ','To confirm, type the email address: ')))
-        .'<strong class="mono">'.e(sign_in_name($account)).'</strong></p>';
-    start_form('account_state',['id'=>$account['id'],'mode'=>'delete']);
-    input('confirmation',$byUsername?t('Benutzername','Username'):t('E-Mail-Adresse','Email address'),'',$byUsername?'text':'email',true,'','',['autocomplete'=>'off']+sign_in_address_attributes());
+        .'<p>'.e($explanation.' '.t('Zur Bestätigung die E-Mail-Adresse eintippen: ','To confirm, type the email address: '))
+        .'<strong class="mono">'.e((string)($account['email']??'')).'</strong></p>';
+    start_form('account_state',['id'=>$account['id'],'mode'=>'delete']+$hidden);
+    input('confirmation',t('E-Mail-Adresse','Email address'),'','email',true,'','',['autocomplete'=>'off']+sign_in_address_attributes());
     submit_button($button,'danger');
-    echo '</form></details>';
-}
-
-/**
- * „Anmeldelink erstellen" on the access card (ADR 0023 §6), folded away like the
- * two folds beside it: what the link does, that it replaces an earlier one, and
- * for a login without sign-in the username it is given in the same POST. Only
- * offered where may_create_signin_link() says so; the action asks again. It
- * makes something rather than removing it, so its fold is not drawn in red.
- */
-function signin_link_details(array $account, array $student, bool $askUsername): void {
-    $firstName=(string)$student['first_name'];
-    $hasLink=(bool)array_filter(signin_links_for((int)$account['id'],PASSWORD_RESET_SHOWN_DAYS),fn($l)=>$l['expires_at']!==null);
-    echo '<details class="action-fold" data-sheet><summary>'.e($hasLink?t('Neuen Link erstellen','Create a new link'):t('Anmeldelink erstellen','Create a sign-in link')).'</summary>'
-        .'<p>'.e(strtr(t('Mit dem Link meldet sich {name} einmal ohne Passwort an und legt dann ein neues fest. Er gilt 48 Stunden.',
-                         'With the link {name} signs in once without a password and then chooses a new one. It is valid for 48 hours.'),['{name}'=>$firstName])).'</p>'
-        .($hasLink?'<p>'.e(t('Der Link, den du vorher erstellt hast, gilt dann nicht mehr.','The link you created before then stops working.')).'</p>':'');
-    start_form('signin_link',['student_id'=>(int)$student['id'],'mode'=>'create']);
-    if($askUsername)
-        input('username',t('Benutzername','Username'),username_suggested($firstName,(string)$student['last_name']),'text',true,
-              strtr(t('Kleinbuchstaben, Ziffern, Punkt und Bindestrich. Damit meldet sich {name} an.','Lower-case letters, digits, dot and hyphen. {name} signs in with it.'),['{name}'=>$firstName]),
-              '',sign_in_address_attributes()+['maxlength'=>'30']);
-    submit_button(t('Link erstellen','Create the link'));
     echo '</form></details>';
 }
 
@@ -1008,14 +978,13 @@ function signin_link_details(array $account, array $student, bool $askUsername):
  * was ever set, and a student stays where they were - and the way back is to
  * invite again, which the explanation says. One copy for the open invitations
  * on the students list and for the access card, so the two cannot drift. The
- * action allows it only for a login never set up (verified_at IS NULL). A
- * username waiting for its first sign-in is withdrawn the same way, under its
- * own $button (ADR 0023 §4).
+ * action allows it only for a login never set up (verified_at IS NULL).
+ * $hidden as for login_delete_details().
  */
-function invitation_withdraw_details(array $account,string $summary,string $explanation,string $button=''): void {
+function invitation_withdraw_details(array $account,string $summary,string $explanation,array $hidden=[]): void {
     echo '<details class="account-delete" data-sheet><summary>'.e($summary).'</summary><p>'.e($explanation).'</p>';
-    start_form('account_state',['id'=>$account['id'],'mode'=>'withdraw']);
-    submit_button($button!==''?$button:t('Einladung zurückziehen','Withdraw the invitation'),'danger');
+    start_form('account_state',['id'=>$account['id'],'mode'=>'withdraw']+$hidden);
+    submit_button(t('Einladung zurückziehen','Withdraw the invitation'),'danger');
     echo '</form></details>';
 }
 

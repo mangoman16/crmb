@@ -12,16 +12,27 @@ date: 2026-10-08
 >    ones: its `UPDATE` reads `state<>'placeholder'`. „Gesperrt" becomes „Ohne Anmeldung". That
 >    widens nobody's rights: a trainer can already restore a student's login.
 > 2. **§2, decided by the project manager: 039 also takes a converted login out of its chats and
->    empties its bell.** Three statements between the `UPDATE` and the `ALTER` delete the converted
->    logins' rows in `thread_participants`, `thread_reads` and `notifications`; each must be able to
->    run twice, because only the `ALTER` may not. Their exact condition is `database-engineer`'s,
->    and this note quotes it once it is reported. The reason is this record's own rule, "a row that
->    lies about itself": a placeholder holds nothing a fresh placeholder could not, read marks
->    included. Otherwise any member of staff could invite an address into a converted login, and
->    its new holder would read and write the child's old chats. The threads and their messages stay,
->    for the other side. None of the three tables is guarded, and in the beta these are test chats.
->    Rejected with it: refusing `invite_student()` for staff while a placeholder still takes part in
->    a conversation, which is permanent code for a state 039 can simply not leave behind.
+>    empties its bell.** Three statements between the `UPDATE` and the `ALTER`, as built:
+>
+>    ```sql
+>    DELETE p FROM thread_participants p JOIN accounts a ON a.id=p.account_id WHERE a.state='placeholder'
+>    DELETE n FROM notifications n JOIN accounts a ON a.id=n.account_id WHERE a.state='placeholder'
+>    DELETE r FROM thread_reads r JOIN accounts a ON a.id=r.account_id WHERE a.state='placeholder'
+>    ```
+>
+>    Keying on `state='placeholder'` is exact, as `database-engineer` reports and the code bears
+>    out: no other placeholder can hold such rows. A chat starts only with an active login
+>    (`may_message()`), `notify()` skips placeholders, `mark_thread_read()` marks only for the
+>    signed-in reader, and nothing turns a login with a history into a placeholder except 039. Each
+>    statement can run twice, and a run that stops after the `UPDATE` finds the converted logins
+>    again. The reason is this record's own rule, "a row that lies about itself": a placeholder
+>    holds nothing a fresh placeholder could not, read marks included. Otherwise any member of staff
+>    could invite an address into a converted login, and its new holder would read and write the
+>    child's old chats. The threads and their messages stay, for the other side, and so do
+>    `threads.account_id` and `consent_log`, which grant nothing. None of the three tables is
+>    guarded, and in the beta these are test chats. Rejected with it: refusing `invite_student()` for
+>    staff while a placeholder still takes part in a conversation, which is permanent code for a
+>    state 039 can simply not leave behind.
 > 3. **§8 and Tests 6 name three chips; the code has four:** „Alle", „Eingeladen", „Ohne
 >    Anmeldung" and „Gesperrt". „Eingeladen" is the project manager's decision, recorded in the
 >    addendum to `docs/design/2026-10-05-accounts-and-chat-screens.md`. This note brings the record

@@ -186,9 +186,10 @@ und führt mit einem Tippen jeweils dorthin, wo es erledigt wird:
    sonst die deutsche mit einem Hinweis darauf.
 9. **Familien einladen** – geht erst, wenn 7 und 8 erledigt sind. Jedes Kind
    bekommt seinen Zugang auf seiner eigenen Seite: eine Einladung an seine
-   eigene E-Mail-Adresse – Geschwister brauchen jeweils eine eigene –, oder,
-   für ein Kind ohne eigene Adresse, einen Benutzernamen und einen
-   Anmeldelink, den die Trainerin als QR-Code zeigt oder weiterschickt.
+   eigene E-Mail-Adresse – Geschwister brauchen jeweils eine eigene; die
+   Adresse der Eltern gehört zu den Notfallkontakten. Ein Kind, dessen Adresse
+   noch fehlt, bleibt „Ohne Anmeldung“, bis die Adresse auf seiner Seite
+   eingetragen und die Einladung geschickt ist.
 
 Jeder Schritt wird aus den Daten abgehakt, nicht von Hand. Wer von der Liste
 aus einen Schritt öffnet, findet nach dem Speichern oben auf der Seite
@@ -366,8 +367,7 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 | „Die hochgeladenen Dateien sind unvollständig“ | Das Entpacken ist abgebrochen, oder der Upload lief über FTP im Textmodus. Noch einmal hochladen, FTP auf Binärmodus stellen. |
 | E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang** (unter **Nachrichten**), dort steht der Fehler der letzten Zustellung. |
 | „Eine Einladung lässt sich noch nicht verschicken …“ | Die Meldung sagt, was fehlt: unter **Einstellungen → SMTP** **„Nur Verbindung prüfen“**, bis dort **Erfolgreich** steht – nach jeder Änderung der SMTP-Angaben noch einmal –, und unter **Einstellungen → Datenschutz** die deutsche Datenschutzerklärung freigeben. |
-| „Ein Anmeldelink geht erst, wenn die Datenschutzerklärung freigegeben ist …“ | Unter **Einstellungen → Datenschutz** die deutsche Datenschutzerklärung freigeben; sie wird bei der ersten Anmeldung bestätigt. |
-| „Diese E-Mail-Adresse gehört schon zu einem anderen Zugang …“ | Die Adresse ist schon die Anmeldung einer anderen Person, oft eines Geschwisters. Für dieses Kind eine andere Adresse eintragen – oder einen Benutzernamen. |
+| „Diese E-Mail-Adresse gehört schon zu einem anderen Zugang …“ | Die Adresse ist schon die Anmeldung einer anderen Person, oft eines Geschwisters; jede Person braucht ihre eigene. Für dieses Kind seine eigene Adresse eintragen – bis dahin bleibt es „Ohne Anmeldung“. |
 | Jemand sieht „Die Anwendung ist vorübergehend nicht verfügbar“ oder „Speichern fehlgeschlagen. Bitte erneut versuchen.“ | Das Portal hat den Fehler selbst festgehalten: **Einstellungen → Rückmeldungen**, Eintrag „Automatisch erfasst“, mit der Zahl, wie oft er vorkam. Unter **„Für den Support kopieren“** steht ein Text ohne Namen, E-Mail-Adressen und Eingaben, der an die Person gehen kann, die hilft. |
 
 ## Was geprüft wurde

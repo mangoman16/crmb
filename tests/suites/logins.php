@@ -1,15 +1,16 @@
 <?php
 /**
- * Every student has a login, a wizard adds one, and one-time sign-in links
- * (docs/decisions/0023-every-student-has-a-login-a-wizard-adds-one-and-one-time-sign-in-links.md).
+ * Every student has a login and a wizard adds one (ADR 0023), and everybody
+ * signs in by their own address (ADR 0030):
+ * docs/decisions/0023-every-student-has-a-login-a-wizard-adds-one-and-one-time-sign-in-links.md,
+ * docs/decisions/0030-one-person-one-address-usernames-and-sign-in-links-go.md.
  *
- * The rules the record's "Must stay true" and its list for qa-tester name, each
- * asserted where it can break: a student is never without a login after any
- * path; enrolment refuses one without; a student's login is replaced, never
- * deleted; usernames sign in in any capitals and are throttled like addresses;
- * a sign-in link is used up only by the POST that sets a new password, once,
- * for 48 hours, made only by whom the rule allows and shown only to its maker;
- * the wizard writes nothing before student_create. The structure suite holds
+ * The rules the records' "Must stay true" name, each asserted where it can
+ * break: a student is never without a login after any path; enrolment refuses
+ * one without; a student's login is replaced, never deleted; the wizard writes
+ * nothing before student_create, and makes an invited login or a placeholder
+ * and nothing else; only the invitation turns a placeholder into a login; a
+ * sign-in link from before ADR 0030 signs nobody in. The structure suite holds
  * the same rules to the code's shape.
  */
 $admin = make_account(['role'=>'admin', 'name'=>'Chefin', 'email'=>'chefin@beispiel.test']);
@@ -26,9 +27,7 @@ $written = fn(): array => [(int)scalar('SELECT COUNT(*) FROM students'), (int)sc
     (int)scalar('SELECT COUNT(*) FROM audit_log')];
 /** The student's login row. */
 $loginOf = fn(int $studentId): ?array => one('SELECT a.* FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.id=?', [$studentId]);
-/** The readable link a member of staff's session keeps for a login. */
-$keptToken = fn(int $accountId): string => (string)($_SESSION['signin_links'][$accountId]['token'] ?? '');
-/** Use a sign-in link as its holder does: open it, then post the page. */
+/** Open a link as its holder does - signed out, as from a mailbox - and post its page. */
 $useLink = function (string $token, array $fields) use ($ip): array {
     sign_out();
     throttle_clear('auth-ip', $ip);
@@ -88,10 +87,10 @@ $done = act('student_create', ['draft'=>$key, 'method'=>'none']);
 $jonas = (int)($done[1]['id'] ?? 0);
 is_same(['student_new', ['step'=>'done', 'id'=>$jonas]], $done, 'it lands on the done page');
 $login = $loginOf($jonas);
-is_same(['student', 'placeholder', null, null, null, null, 'Jonas Berger'],
-        [$login['role'] ?? null, $login['state'] ?? null, $login['email'] ?? null, $login['username'] ?? null, $login['password_hash'] ?? null,
+is_same(['student', 'placeholder', null, null, null, 'Jonas Berger'],
+        [$login['role'] ?? null, $login['state'] ?? null, $login['email'] ?? null, $login['password_hash'] ?? null,
          $login['verified_at'] ?? null, $login['name'] ?? null],
-        'a student’s login with no address, no username, no password, called what the student is called');
+        'a student’s login with no address, no password, called what the student is called');
 is_same([$tariff, today()], [(int)scalar('SELECT tariff_id FROM class_students WHERE class_id=? AND student_id=?', [$course, $jonas]),
         (string)scalar('SELECT joined_on FROM class_students WHERE class_id=? AND student_id=?', [$course, $jonas])],
         'and is in the course, on the tariff, from today');
@@ -120,8 +119,8 @@ is_same($said, $_SESSION['flash'] ?? null, 'and that is still what she reads, wi
 $pia = (int)$first[1]['id'];
 is_same(1, (int)scalar("SELECT COUNT(*) FROM students WHERE last_name='Doppelt'"), 'one child');
 $back = render_view('student_new', ['draft'=>$key]);
-ok(str_contains($back, e('Pia Doppelt ist schon angelegt.')) && str_contains($back, e(url('student_new', ['step'=>'done', 'id'=>$pia]))),
-   'Back from the done page shows step 2 saying the child is made, with the way back to the done page');
+ok(str_contains($back, e('Pia Doppelt ist schon angelegt')) && str_contains($back, e(url('student', ['id'=>$pia, '#'=>'access']))),
+   'Back from the done page shows step 2 saying the child is made, and what came of it - here the way to set up the sign-in');
 ok(!str_contains($back, e('Die Angaben waren nicht mehr da.')) && !str_contains($back, 'value="student_create"'),
    'and neither asks for the details again nor offers to make the child');
 is_same(['student_new', ['draft'=>$key]], act('student_create', ['draft'=>$key, 'method'=>'none']),
@@ -131,6 +130,13 @@ is_same(['student_new', ['draft'=>$key]], act('student_draft', ['draft'=>$key, '
 is_same(1, (int)scalar("SELECT COUNT(*) FROM students WHERE last_name='Doppelt'"), 'still one child');
 $_SESSION['student_drafts'][$key]['saved_at'] = time() - STUDENT_DRAFT_SECONDS - 1;
 ok(str_contains(render_view('student_new', ['draft'=>$key]), e('Die Angaben waren nicht mehr da.')), 'what it became is kept as long as a draft is, two hours');
+/* A step 2 sent after its draft has gone is refused with that sentence in the
+   banner, and comes back to step 1 - which said it a second time. */
+$GLOBALS['crm_held_input'] = ['action'=>'student_create', 'page'=>'student_new', 'id'=>'0', 'tab'=>'', 'record'=>null, 'fields'=>['draft'=>$key, 'method'=>'none']];
+$stepOne = render_view('student_new', ['draft'=>$key]);
+ok(str_contains($stepOne, 'value="student_draft"') && !str_contains($stepOne, e('Die Angaben waren nicht mehr da.')),
+   'after a refused step 2 the banner says it, and step 1 does not say it again');
+$GLOBALS['crm_held_input'] = null;
 $_SESSION['student_drafts'] = [];
 
 case_('A course that filled or closed since step 1 is refused at step 2, and nothing is written');
@@ -179,332 +185,148 @@ is_same([0, 1], [(int)scalar("SELECT COUNT(*) FROM students WHERE first_name='Ni
         'nobody is written, and the course holds the one child who got there first');
 ok(student_draft($key) !== null, 'and the draft is whole for another choice');
 
-case_('„Ohne E-Mail, mit Benutzername“ gives a username and a sign-in link, kept only in the maker’s session');
+case_('„Per E-Mail einladen“ refuses before the first write, and turns the placeholder into an invited login with the invitation queued');
+/* ADR 0030 §6: every refusal before the first write, as ADR 0023 §5 had it -
+   an address at all, nobody else's login, not one a student without sign-in
+   carries, and mail that can go out - one transaction, the draft kept whole. */
 $key = (string)act('student_draft', ['first_name'=>'Lena', 'last_name'=>'Hofer', 'birth_date'=>'', 'course'=>'none', 'status'=>'active'])[1]['draft'];
-ok(str_contains(render_view('student_new', ['draft'=>$key]), 'value="lena.hofer"'), 'step 2 suggests first name, dot, last name');
-throws(fn() => act('student_create', ['draft'=>$key, 'method'=>'username', 'username'=>'lena_hofer']), 'a username with „_“ is refused', '3 bis 30 Zeichen');
-throws(fn() => act('student_create', ['draft'=>$key, 'method'=>'username', 'username'=>'lena@hofer']), 'and one with „@“', '3 bis 30 Zeichen');
-set_setting('privacy_ready', false);
+make_account(['role'=>'student', 'email'=>'vergeben@beispiel.test']);
+make_student(['first_name'=>'Bruder', 'last_name'=>'Hofer', 'email'=>'eltern@beispiel.test']);
 $before = $written();
-throws(fn() => act('student_create', ['draft'=>$key, 'method'=>'username', 'username'=>'lena.hofer']),
-       'without a released privacy notice it is refused, saying what to do', 'Datenschutzerklärung');
-is_same($before, $written(), 'nothing is written');
-set_setting('privacy_ready', true);
-$done = act('student_create', ['draft'=>$key, 'method'=>'username', 'username'=>' Lena.Hofer ']);
+throws(fn() => act('student_create', ['draft'=>$key, 'method'=>'email', 'email'=>'lena@beispiel']), 'an address that is none is refused', 'Ungültige E-Mail-Adresse');
+throws(fn() => act('student_create', ['draft'=>$key, 'method'=>'email', 'email'=>'vergeben@beispiel.test']), 'and one that is another login’s', 'Jede Person braucht ihre eigene');
+throws(fn() => act('student_create', ['draft'=>$key, 'method'=>'email', 'email'=>'eltern@beispiel.test']),
+       'and one a student without sign-in carries, naming them', 'steht schon bei Bruder Hofer');
+mail_ready(false);
+throws(fn() => act('student_create', ['draft'=>$key, 'method'=>'email', 'email'=>'lena@beispiel.test']), 'and any address while mail cannot go out', 'lässt sich noch nicht verschicken');
+mail_ready(true);
+is_same($before, $written(), 'nothing is written by any of them');
+ok(student_draft($key) !== null, 'and the draft is whole for another try');
+$done = act('student_create', ['draft'=>$key, 'method'=>'email', 'email'=>' Lena@Beispiel.test ', 'locale'=>'en']);
 $lena = (int)$done[1]['id'];
 $lenaLogin = $loginOf($lena);
-is_same(['lena.hofer', 'invited', null, null], [$lenaLogin['username'] ?? null, $lenaLogin['state'] ?? null, $lenaLogin['email'] ?? null, $lenaLogin['verified_at'] ?? null],
-        'the username is stored in lower case, the login waits for its first sign-in, with no address');
-$link = one("SELECT * FROM auth_tokens WHERE account_id=? AND purpose='signin'", [(int)$lenaLogin['id']]);
-ok($link !== null, 'a sign-in link exists');
-$token = $keptToken((int)$lenaLogin['id']);
-ok(preg_match('/^[a-f0-9]{64}$/D', $token) === 1 && hash('sha256', $token) === $link['token_hash'], 'the readable link is in the maker’s session; the database has only its hash');
-is_same(token_lifetime('signin'), strtotime((string)$link['expires_at'].' UTC') - strtotime((string)$link['created_at'].' UTC'), 'it lasts 48 hours');
-is_same(172800, token_lifetime('signin'), 'which is 48 hours');
-is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.signin_link' AND entity_id=? AND actor_id=?", [(int)$lenaLogin['id'], $trainer]),
-        'its making is written down, with the maker as actor');
-is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE account_id=?', [(int)$lenaLogin['id']]), 'and nothing is mailed');
+is_same(['invited', 'lena@beispiel.test', null, null, 'en', 'Lena Hofer'],
+        [$lenaLogin['state'] ?? null, $lenaLogin['email'] ?? null, $lenaLogin['password_hash'] ?? null, $lenaLogin['verified_at'] ?? null, $lenaLogin['locale'] ?? null, $lenaLogin['name'] ?? null],
+        'the student’s placeholder became the invited login, at the address normalised, in the language chosen, with no password yet');
+is_same('lena@beispiel.test', (string)scalar('SELECT email FROM students WHERE id=?', [$lena]), 'and the record carries the same address');
+is_same(['insert'], array_column(history_for('students', $lena), 'operation'), 'whose „Änderungen“ has its creation and no empty line after it');
+is_same(['invite'], array_column(rows('SELECT purpose FROM auth_tokens WHERE account_id=?', [(int)$lenaLogin['id']]), 'purpose'), 'one link, the invitation');
+is_same(['lena@beispiel.test'], array_column(rows('SELECT recipient FROM mail_jobs WHERE account_id=?', [(int)$lenaLogin['id']]), 'recipient'), 'queued to that address');
+is_same([172800, 3600], [token_lifetime('invite'), token_lifetime('reset')], 'an invitation works 48 hours, a reset link one');
 $page = render_view('student_new', ['step'=>'done', 'id'=>$lena]);
-ok(str_contains($page, '<svg') && str_contains($page, e(url('activate', ['token'=>$token]))), 'the done page shows the QR code and the link');
-ok(str_contains($page, 'lena.hofer'), 'and the sign-in name');
-throws(fn() => create_through_wizard(['first_name'=>'Lena', 'last_name'=>'Hofer'], 'username', ['username'=>'LENA.HOFER']),
-       'a username somebody has is refused, ignoring case, with a free one named', 'Frei wäre zum Beispiel lena.hofer2.');
-is_same('lena.hofer2', username_suggested('Lena', 'Hofer'), 'and the next suggestion is numbered');
-sign_in_as($admin);
-is_same(null, signin_link_shown((int)$lenaLogin['id']), 'another member of staff is never shown the link somebody else made');
-sign_in_as($trainer);
-ok(signin_link_shown((int)$lenaLogin['id']) !== null, 'its maker is, while it works');
+ok(str_contains($page, e('Die Einladung geht an lena@beispiel.test')), 'the done page says where the invitation went');
+ok(str_contains($page, e('Kommt keine E-Mail an? Auf der Seite von Lena prüfst du die Adresse und sendest die Einladung noch einmal.')),
+   'and where to look when nothing arrives');
+ok(!str_contains($page, e('Benutzername')) && !str_contains($page, e('Anmeldelink')), 'and nothing of a username or a link');
 
-case_('A sign-in link GET uses nothing up; only its POST does, which always sets a new password');
-sign_out();
-$_SESSION['activation_hash'] = hash('sha256', $token);
-$page = render_view('activate');
-ok(str_contains($page, 'value="lena.hofer"') && str_contains($page, 'readonly'), 'the page shows the username, read-only, for the phone to save the password under');
-ok(str_contains($page, 'name="privacy_seen"') && !str_contains($page, 'name="newsletter"'), 'it asks for the privacy acknowledgement, and no mail ticks without an address');
-ok(token_record(hash('sha256', $token)) !== null, 'opening it - as a WhatsApp preview does - uses nothing up');
-$router = (string)file_get_contents(APP_ROOT.'/public/index.php');
-ok(preg_match("~if\(\\\$page==='activate' && isset\(\\\$_GET\['token'\]\)\) \{\s*throttle\('token-view'~", $router) === 1,
-   'the GET only counts, stores the hash in the session and redirects (public/index.php)');
-foreach (['no password at all' => [[], 'Byte'], 'a password too short' => [['password'=>'kurz', 'password_confirm'=>'kurz'], 'Byte'],
-          'two passwords that differ' => [['password'=>$password, 'password_confirm'=>$password.'x'], 'stimmen nicht'],
-          'no privacy tick on the first sign-in' => [['password'=>$password, 'password_confirm'=>$password, 'privacy_seen'=>''], 'Datenschutz']] as $what => [$fields, $said])
-    throws(fn() => $useLink($token, $fields + ['privacy_seen'=>'1']), 'a POST with '.$what.' is refused', $said);
-ok(token_record(hash('sha256', $token)) !== null, 'and none of them used the link up');
-sign_in_as($trainer);
-$someoneElse = make_account(['role'=>'student', 'name'=>'Wer anderes']);
-sign_in_as($someoneElse);
-$authBefore = (int)scalar('SELECT auth_version FROM accounts WHERE id=?', [(int)$lenaLogin['id']]);
-throttle('login', username_identity('lena.hofer'), 10);
-$_SESSION['activation_hash'] = hash('sha256', $token);
-throttle_clear('auth-ip', $ip);
-$landed = submit('activate', ['password'=>$password, 'password_confirm'=>$password, 'privacy_seen'=>'1', 'newsletter'=>'1']);
-$after = one('SELECT * FROM accounts WHERE id=?', [(int)$lenaLogin['id']]);
+case_('The wizard knows two ways to sign in: method=username is refused by choose() and writes nothing');
+$key = (string)act('student_draft', ['first_name'=>'Kim', 'last_name'=>'Weg', 'birth_date'=>'', 'course'=>'none', 'status'=>'active'])[1]['draft'];
+$before = $written();
+throws(fn() => act('student_create', ['draft'=>$key, 'method'=>'username', 'username'=>'kim.weg']), 'the method from before ADR 0030 is refused', 'Ungültige Auswahl');
+is_same($before, $written(), 'and nothing is written');
+ok(student_draft($key) !== null, 'the draft is whole for one of the two');
+$step2 = render_view('student_new', ['draft'=>$key]);
+ok(str_contains($step2, 'name="method" value="email"') && str_contains($step2, 'name="method" value="none"'), 'step 2 offers the two');
+ok(!str_contains($step2, 'name="username"') && !str_contains($step2, 'value="username"') && !str_contains($step2, e('Benutzername')), 'and no username anywhere');
+ok(preg_match('~id="by-email">.*?'.preg_quote(e('Empfohlen'), '~').'.*?'.preg_quote(e('Anlegen und einladen'), '~').'.*?id="later">.*?<h2>'.preg_quote(e('Ohne Anmeldung'), '~').'</h2>.*?'
+              .preg_quote(e('Ohne Anmeldung anlegen'), '~').'~s', $step2) === 1,
+   'first „Per E-Mail einladen“, recommended, with „Anlegen und einladen“; then „Ohne Anmeldung“ with its own button (spec addendum §2)');
+
+case_('The invitation sets the login up, and from then on the address alone signs in, in any capitals');
+$token = make_token((int)$lenaLogin['id'], 'invite');
+$landed = $useLink($token, ['password'=>$password, 'password_confirm'=>$password, 'privacy_seen'=>'1', 'newsletter'=>'1']);
 is_same(['student', ['id'=>$lena]], $landed, 'the first sign-in lands on her own student page');
-ok(str_contains((string)($_SESSION['flash']['message'] ?? ''), 'Du meldest dich ab jetzt mit lena.hofer an.') && str_contains((string)($_SESSION['flash']['message'] ?? ''), 'Willkommen, Lena!'),
-   'told how she signs in, and welcomed to check her details: '.($_SESSION['flash']['message'] ?? ''));
-is_same((int)$lenaLogin['id'], (int)(current_user()['id'] ?? 0), 'she is signed in, and whoever was signed in on this browser is not');
-ok($after['state'] === 'active' && $after['verified_at'] !== null && password_verify($password, (string)$after['password_hash']),
-   'active, set up, with the password she chose');
-is_same($authBefore + 1, (int)$after['auth_version'], 'every other session of the login ends');
-is_same([0, 0], [(int)$after['newsletter'], (int)$after['notifications']], 'a newsletter tick posted without an address to send to is nothing she said yes to');
-is_same(0, (int)scalar("SELECT COUNT(*) FROM consent_log WHERE account_id=? AND purpose IN ('newsletter','notifications','payment_notices')", [(int)$after['id']]),
-        'nor is any answer about mail written down for her: she was asked nothing about mail she cannot receive');
-is_same(1, (int)scalar("SELECT COUNT(*) FROM consent_log WHERE account_id=? AND purpose='privacy_acknowledged'", [(int)$after['id']]), 'the privacy acknowledgement is recorded');
+ok(str_contains((string)($_SESSION['flash']['message'] ?? ''), 'Du meldest dich ab jetzt mit lena@beispiel.test an.'), 'told what she signs in with: '.($_SESSION['flash']['message'] ?? ''));
+$after = one('SELECT * FROM accounts WHERE id=?', [(int)$lenaLogin['id']]);
+ok($after['state'] === 'active' && $after['verified_at'] !== null && password_verify($password, (string)$after['password_hash']), 'active, set up, with the password she chose');
+is_same([1, 0], [(int)$after['newsletter'], (int)$after['notifications']], 'the two mail switches are what she ticked');
+is_same(['newsletter'=>1, 'notifications'=>0, 'payment_notices'=>1, 'privacy_acknowledged'=>1],
+        array_map('intval', array_column(rows('SELECT purpose,enabled FROM consent_log WHERE account_id=? ORDER BY purpose', [(int)$after['id']]), 'enabled', 'purpose')),
+        'and written down as her answers, every invitation having an address');
 is_same(0, (int)scalar('SELECT COUNT(*) FROM auth_tokens WHERE account_id=?', [(int)$after['id']]), 'every link of the login is gone');
-is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.signin_link_used' AND entity_id=? AND actor_id=?", [(int)$after['id'], (int)$after['id']]),
-        'its use is written down, with the holder as actor');
-is_same(0, (int)(run_counter('SELECT hits FROM rate_limits WHERE bucket=?', [rate_limit_bucket('login', username_identity('lena.hofer'))])->fetchColumn() ?: 0),
-        'and the attempts counted against her username are forgotten');
-throws(fn() => $useLink($token, ['password'=>$password, 'password_confirm'=>$password, 'privacy_seen'=>'1']), 'a used link fails a second time', 'ungültig oder abgelaufen');
-ok(!str_contains(render_page('activate'), $token), 'and its page says only that it no longer works');
-sign_in_as($trainer);
-is_same(null, signin_link_shown((int)$after['id']), 'the maker is no longer shown a link that has been used');
-ok(!isset($_SESSION['signin_links'][(int)$after['id']]), 'and it is gone from her session');
-
-case_('A username signs in in any capitals, and a known and an unknown username are throttled alike');
 sign_out();
 throttle_clear('auth-ip', $ip);
-does_not_throw(fn() => submit('login', ['login'=>' Lena.Hofer ', 'password'=>$password]), '„Lena.Hofer“ signs in as lena.hofer');
+does_not_throw(fn() => submit('login', ['login'=>' LENA@Beispiel.TEST ', 'password'=>$password]), '„LENA@Beispiel.TEST“ signs in as lena@beispiel.test');
 is_same((int)$after['id'], (int)(current_user()['id'] ?? 0), 'as the right login');
 sign_out();
 throttle_clear('auth-ip', $ip);
-$lockout = function (string $typed) use ($ip): array {
-    $answers = [];
-    for ($i = 0; $i < 11; $i++) {
-        throttle_clear('auth-ip', $ip);
-        try { submit('login', ['login'=>$typed, 'password'=>'falsch-geraten']); $answers[] = 'in'; }
-        catch (UserError $e) { $answers[] = str_contains($e->getMessage(), 'Zu viele') ? 'throttled' : $e->getMessage(); }
-    }
-    $_POST = ['login'=>$typed];
-    $bucket = sign_in_identity(attempted_sign_in());
-    $counted = (int)(run_counter('SELECT hits FROM rate_limits WHERE bucket=?', [rate_limit_bucket('login', $bucket)])->fetchColumn() ?: 0);
-    throttle_clear('login', $bucket);
-    return [$answers, $counted, str_starts_with($bucket, 'username:')];
-};
-$known = $lockout('lena.hofer');
-is_same(['throttled'], array_slice($known[0], 10), 'a username that has a login is refused ten times, then throttled');
-is_same(true, $known[2], 'counted under the typed username, not the login it names');
-is_same($known, $lockout('niemand.hier'), 'and one that has none gets exactly the same answers, counted the same way');
-is_same('Anmeldung nicht möglich. Bitte E-Mail bzw. Benutzernamen und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link öffnen, den du bekommen hast.',
-        $known[0][0], 'in the one sentence every refusal gets');
-$_POST = [];
-is_same(['username', 'lena.hofer'], (function () { $_POST = ['login'=>'Lena.Hofer']; return attempted_sign_in(); })(), 'a typed value without „@“ is a username, lower-cased');
-is_same(['address', 'lena@beispiel.test'], (function () { $_POST = ['login'=>' Lena@Beispiel.test']; return attempted_sign_in(); })(), 'and one with it an address');
-$_POST = [];
-is_same(null, account_for_sign_in('username', 'lena_hofer'), 'a value that fails the username rule is never looked up');
+is_same(null, account_for_sign_in('lena.hofer'), 'a value that is no address finds nobody');
+is_same(0, query_count(fn() => account_for_sign_in('lena.hofer')), 'and reaches no SELECT: it is never looked up (ADR 0030, Tests 1)');
+is_same(1, query_count(fn() => account_for_sign_in('niemand@beispiel.test')), 'while an address is one statement, found or not');
+throws(fn() => submit('login', ['login'=>'lena.hofer', 'password'=>$password]), 'and the name a username would have had is refused, with the right password, in the one sentence',
+       'Anmeldung nicht möglich. Bitte E-Mail-Adresse und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link aus der Einladung öffnen.');
+throttle_clear('login', address_identity('lena.hofer'));
 
-case_('A username follows ADR 0023 §1, one rule to a line');
-/* Each rule of the record once, each worked out on its own line, so that any
-   one of them breaking fails that line rather than hiding behind another or
-   stopping the suite. A refusal reads as 'refused', no free name as null. */
-foreach ([
-    'ä, ö, ü and ß are written ae, oe, ue and ss'     => [fn() => username_from_name('Jörg', 'Weiß'), 'joerg.weiss'],
-    'in capitals too'                                  => [fn() => username_from_name('Ännchen', 'Bürger'), 'aennchen.buerger'],
-    'and in what is typed'                             => [fn() => username_value('ÖLMÜLLER'), 'oelmueller'],
-    'two characters are refused'                       => [fn() => username_value('ab'), 'refused'],
-    'three are accepted'                               => [fn() => username_value('abc'), 'abc'],
-    'thirty are accepted'                              => [fn() => username_value(str_repeat('a', 30)), str_repeat('a', 30)],
-    'thirty-one are refused'                           => [fn() => username_value(str_repeat('a', 31)), 'refused'],
-    'a digit first is refused'                         => [fn() => username_value('1lena'), 'refused'],
-    'a dot last is refused'                            => [fn() => username_value('lena.'), 'refused'],
-    'a hyphen last is refused'                         => [fn() => username_value('lena-'), 'refused'],
-    'two separators in a row are refused'              => [fn() => username_value('lena..hofer'), 'refused'],
-    "an apostrophe is dropped: O'Neill"                => [fn() => username_from_name('Seán', "O'Neill"), 'sean.oneill'],
-    'and so is a typographic one: O’Neill'             => [fn() => username_from_name('Seán', 'O’Neill'), 'sean.oneill'],
-    'a name with nothing left is „konto“'              => [fn() => username_from_name('Иван', 'Петров'), 'konto'],
-    'numbered like any other when taken'               => [fn() => username_first_free('konto', ['konto']), 'konto2'],
-    'a long name is cut back to a separator in 26'     => [fn() => username_from_name('Alexandra', 'Zimmermann-Oberhuber'), 'alexandra.zimmermann'],
-    'one without a separator is cut at 26'             => [fn() => username_from_name('Donaudampfschifffahrtsgesellschaft', ''), 'donaudampfschifffahrtsgese'],
-    'a base of 30 has no room for a number: none free' => [fn() => username_first_free(str_repeat('a', 30), [str_repeat('a', 30)]), null],
-] as $rule => [$work, $expected]) {
-    try { $got = $work(); } catch (UserError) { $got = 'refused'; }
-    is_same($expected, $got, $rule);
-}
-
-case_('„Vergessen“ with a username sends nothing to a login without an address, and says the same');
+case_('A sign-in link from before the update signs nobody in: its row opens nothing, and the prune removes it once lapsed');
+/* ADR 0030 §2: no statement deletes the sign-in links' rows. link_usable()
+   names the three purposes there are, so such a row opens nothing, and the
+   nightly prune takes it within 48 hours. */
+$leftover = bin2hex(random_bytes(32));
+fixture('auth_tokens', ['account_id'=>(int)$after['id'], 'token_hash'=>hash('sha256', $leftover), 'purpose'=>'signin', 'target_email'=>null,
+                        'expires_at'=>gmdate('Y-m-d H:i:s', time() + 3600), 'created_at'=>now()]);
 sign_out();
+$_SESSION['activation_hash'] = hash('sha256', $leftover);
+$page = render_view('activate');
+ok(str_contains($page, e('Link nicht mehr gültig')) && !str_contains($page, 'name="password"') && !str_contains($page, 'lena@beispiel.test'),
+   'the page says the link no longer works, offers no form and shows nothing of the login');
+$rowBefore = one('SELECT * FROM accounts WHERE id=?', [(int)$after['id']]);
+$before = $written();
+throws(fn() => $useLink($leftover, ['password'=>'Neues-Passwort-2026!', 'password_confirm'=>'Neues-Passwort-2026!', 'privacy_seen'=>'1']), 'the POST is refused', 'ungültig oder abgelaufen');
+is_same([$rowBefore, $before, null], [one('SELECT * FROM accounts WHERE id=?', [(int)$after['id']]), $written(), current_user()],
+        'the login is as it was, nothing is written, and nobody is signed in');
+run('UPDATE auth_tokens SET expires_at=? WHERE token_hash=?', [gmdate('Y-m-d H:i:s', time() - 1), hash('sha256', $leftover)]);
+prune_expired();
+is_same(0, (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE purpose='signin'"), 'lapsed, the prune removes it');
+sign_in_as($trainer);
+throws(fn() => act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'create']), 'and signin_link is no action any more', 'Unbekannte Aktion');
+
+case_('A link opens only the state it was made for, and a mail carrying one that no longer does is not sent [security review F3]');
+/* An invitation goes with a login still invited: accepted on a login in use it
+   would set a new password, consents and the privacy acknowledgement - a reset
+   that skips the reset's rule. A reset and a changed address go with a login in
+   use. The sender asks the same rule, so a mail waiting in the outbox for a
+   login that has changed since is dropped rather than delivered with a link
+   that can only say „Link nicht mehr gültig“ - a confirmation of a new address
+   for a username login that 039 has made a placeholder, say. */
+$asIs = fn(int $id): array => [one('SELECT * FROM accounts WHERE id=?', [$id]), (int)scalar('SELECT COUNT(*) FROM consent_log WHERE account_id=?', [$id])];
+$lenaId = (int)$lenaLogin['id'];
+$lateInvite = make_token($lenaId, 'invite');
+is_same(false, link_usable(token_record(hash('sha256', $lateInvite))), 'an invitation to a login in use opens nothing');
+$before = $asIs($lenaId);
+throws(fn() => $useLink($lateInvite, ['password'=>'Neues-Passwort-2026!', 'password_confirm'=>'Neues-Passwort-2026!', 'privacy_seen'=>'1']),
+       'its POST is refused', 'ungültig oder abgelaufen');
+is_same($before, $asIs($lenaId), 'and writes nothing: not the password, not a consent');
+$invitedOnly = make_account(['role'=>'student', 'email'=>'nur.eingeladen@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+$placeholderOnly = make_account(['role'=>'student', 'email'=>null, 'state'=>'placeholder', 'verified_at'=>null, 'password_hash'=>null]);
+$suspendedOnly = make_account(['role'=>'student', 'email'=>'gesperrt.nur@beispiel.test', 'state'=>'suspended']);
+$opens = fn(int $id, string $purpose): bool => link_usable(token_record(hash('sha256', make_token($id, $purpose, $purpose === 'email' ? 'neu.'.$id.'@beispiel.test' : null))));
+is_same(['invite'=>[true, false, false, false], 'reset'=>[false, true, false, false], 'email'=>[false, true, false, false]],
+        array_map(fn($purpose) => array_map(fn($id) => $opens($id, $purpose), [$invitedOnly, $lenaId, $placeholderOnly, $suspendedOnly]), ['invite'=>'invite', 'reset'=>'reset', 'email'=>'email']),
+        'each purpose opens the one state it is for - invited, in use, in use - and never a placeholder or a suspended login');
+run('DELETE FROM auth_tokens WHERE account_id IN (?,?,?,?)', [$invitedOnly, $lenaId, $placeholderOnly, $suspendedOnly]);
+// The outbox: a confirmation of a new address, queued while the login was in
+// use, for a login that is a placeholder by the time the sender comes.
 run('DELETE FROM mail_jobs');
-throttle_clear('auth-ip', $ip); throttle_clear('forgot-ip', $ip);
-submit('forgot', ['login'=>'lena.hofer']);
-$said = (string)($_SESSION['flash']['message'] ?? '');
-is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs'), 'nothing is queued for a login without an address');
-is_same(0, (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE account_id=?", [(int)$after['id']]), 'and no link is made');
-throttle_clear('forgot-ip', $ip);
-submit('forgot', ['login'=>'niemand.hier']);
-is_same($said, (string)($_SESSION['flash']['message'] ?? ''), 'the answer is the one an unknown name gets');
-$both = make_account(['role'=>'student', 'email'=>'mit.adresse@beispiel.test', 'username'=>'mit.adresse']);
-throttle_clear('forgot-ip', $ip);
-submit('forgot', ['login'=>'Mit.Adresse']);
-is_same(['mit.adresse@beispiel.test'], array_column(rows("SELECT recipient FROM mail_jobs WHERE account_id=?", [$both]), 'recipient'),
-        'a username login that added an address gets its reset link at that address');
-throws(fn() => transactional(fn() => send_account_token($after, 'reset')), 'send_account_token() refuses a login without an address', 'keine E-Mail-Adresse');
-throws(fn() => transactional(fn() => send_account_token($after, 'signin')), 'and a sign-in link is never mailed', 'never mailed');
-does_not_throw(fn() => queue_mail((int)$after['id'], null, 'Neuigkeit', 'Hallo', 'newsletter'), 'queue_mail() with no recipient throws nothing');
-is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE account_id=?', [(int)$after['id']]), 'and queues nothing');
-sign_in_as($admin);
-run('UPDATE accounts SET newsletter=1 WHERE id=?', [(int)$after['id']]);
-$reader = make_account(['role'=>'student', 'email'=>'leser@beispiel.test', 'newsletter'=>1]);
-does_not_throw(fn() => act('news_save', ['title'=>'Turnier', 'body'=>'Am Samstag', 'published'=>'1', 'send_email'=>'1']),
-               'a newsletter to everybody, a username login without an address among them, goes out');
-is_same(1, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE account_id=? AND category='newsletter'", [$reader]), 'to those with an address');
-is_same(0, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE account_id=?", [(int)$after['id']]), 'and to nobody without one');
-
-case_('Who may make a sign-in link for whom');
-$inUse = one('SELECT * FROM accounts WHERE id=?', [(int)$after['id']]);
-$invitedByMail = $loginOf($mailed = create_through_wizard(['first_name'=>'Per', 'last_name'=>'Post'], 'email', ['email'=>'per.post@beispiel.test']));
-$placeholder = $loginOf($jonas);
-$staffTarget = one('SELECT * FROM accounts WHERE id=?', [$trainer]);
-$adminRow = one('SELECT * FROM accounts WHERE id=?', [$admin]);
-$trainerRow = one('SELECT * FROM accounts WHERE id=?', [$trainer]);
-is_same([true, true, false, false, false],
-        [signin_link_possible($placeholder), signin_link_possible($inUse), signin_link_possible($invitedByMail),
-         signin_link_possible($staffTarget), signin_link_possible(['state'=>'suspended'] + $inUse)],
-        'possible for a placeholder and a student’s login in use; never an invitation by e-mail, a staff login or a suspended one');
-is_same([true, false, false, false], [may_create_signin_link($trainerRow, $placeholder), may_create_signin_link($trainerRow, $inUse),
-        may_create_signin_link($trainerRow, $invitedByMail), may_create_signin_link($trainerRow, $adminRow)],
-        'a trainer for a login not yet signed in, and not for one in use, an invitation by e-mail or any staff login');
-is_same([true, true, false, false], [may_create_signin_link($adminRow, $placeholder), may_create_signin_link($adminRow, $inUse),
-        may_create_signin_link($adminRow, $invitedByMail), may_create_signin_link($adminRow, $adminRow)],
-        'an administrator also for one in use, and never for her own');
-sign_in_as($trainer);
-throws(fn() => act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'create']), 'the action refuses a trainer for a login in use', 'nur eine Administratorin');
-throws(fn() => act('signin_link', ['student_id'=>(string)$mailed, 'mode'=>'create']), 'and anybody for an invitation by e-mail', 'Einladung per E-Mail');
-sign_in_as($admin);
-throws(fn() => act('signin_link', ['student_id'=>(string)$mailed, 'mode'=>'create']), 'an administrator too', 'Einladung per E-Mail');
-is_same(0, (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE purpose='signin'"), 'no link was made by any of them');
-$firstLink = act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'create']);
-is_same(['student', ['id'=>$lena, '#'=>'access']], $firstLink, 'an administrator makes one for a login in use, the way back from a forgotten password');
-$old = $keptToken((int)$inUse['id']);
-act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'create']);
-is_same(null, token_record(hash('sha256', $old)), 'a new link kills the old one');
-is_same(1, (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE account_id=? AND purpose='signin'", [(int)$inUse['id']]), 'one link per login');
-$newer = $keptToken((int)$inUse['id']);
-act('account_state', ['id'=>(string)$inUse['id'], 'mode'=>'suspend']);
-is_same(null, token_record(hash('sha256', $newer)), 'and so does suspending the login');
-is_same(null, signin_link_shown((int)$inUse['id']), 'and the card no longer shows it');
-act('account_state', ['id'=>(string)$inUse['id'], 'mode'=>'restore']);
-is_same('active', (string)scalar('SELECT state FROM accounts WHERE id=?', [(int)$inUse['id']]), 'restored, it is in use again');
-throttle_clear('signin-link', (string)$admin);
-for ($i = 0; $i < 20; $i++) act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'create']);
-throws(fn() => act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'create']), 'a member of staff makes at most twenty an hour: the twenty-first is refused', 'Zu viele');
-throttle_clear('signin-link', (string)$admin);
-
-case_('A first sign-in link waits for the privacy notice, whichever way it is made');
-/* Security review, finding 6. Its holder acknowledges the notice on the page the
-   link opens, and a link that page would refuse cannot work. The gate is in
-   make_signin_link(), where every link is made - and, for a placeholder, in
-   username_to_give(), before its username is written (code review). */
-sign_in_as($admin);
-$noNotice = make_student(['first_name'=>'Pauline', 'last_name'=>'Wartet']);
-$waitingOne = create_through_wizard(['first_name'=>'Wim', 'last_name'=>'Wartet'], 'username', ['username'=>'wim.wartet']);
-set_setting('privacy_ready', false);
-$linksBefore = (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE purpose='signin'");
-throws(fn() => act('signin_link', ['student_id'=>(string)$noNotice, 'mode'=>'create', 'username'=>'pauline.wartet']),
-       'a placeholder gets no username and no link while the notice is not released, and is told what to do', 'Einstellungen → Datenschutz');
-is_same(['placeholder', null], array_values(one('SELECT state,username FROM accounts WHERE id=?', [(int)$loginOf($noNotice)['id']]) ?? []),
-        'its login is as it was');
-throws(fn() => act('signin_link', ['student_id'=>(string)$waitingOne, 'mode'=>'create']),
-       'nor does a username login waiting for its first sign-in get a new one', 'Einstellungen → Datenschutz');
-is_same($linksBefore, (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE purpose='signin'"), 'no link was made');
-/* Settings are an administrator's: a trainer was sent to „Einstellungen →
-   Datenschutz", a page she cannot open (code review). She is told who
-   releases it, as the e-mail card tells her. */
-sign_in_as($trainer);
-$toTrainer = '';
-try { act('signin_link', ['student_id'=>(string)$noNotice, 'mode'=>'create', 'username'=>'pauline.wartet']); }
-catch (UserError $e) { $toTrainer = $e->getMessage(); }
-ok(str_contains($toTrainer, 'Eine Administratorin muss zuerst die Datenschutzerklärung freigeben.') && !str_contains($toTrainer, 'Einstellungen'),
-   'a trainer is told an administrator releases it, and sent to no page she cannot open: '.$toTrainer);
-set_setting('privacy_ready', true);
-throttle_clear('signin-link', (string)$admin); throttle_clear('signin-link', (string)$trainer);
-sign_in_as($admin);
-
-case_('A link for a login in use changes only the password, ends the old one, and the holder can see who made it');
-$keep = one('SELECT email,username,locale,newsletter,notifications,privacy_version,verified_at FROM accounts WHERE id=?', [(int)$inUse['id']]);
-act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'create']);
-$token = $keptToken((int)$inUse['id']);
-$landed = $useLink($token, ['password'=>'Neues-Passwort-2026!', 'password_confirm'=>'Neues-Passwort-2026!']);
-is_same($keep, one('SELECT email,username,locale,newsletter,notifications,privacy_version,verified_at FROM accounts WHERE id=?', [(int)$inUse['id']]),
-        'everything but the password is as it was - no privacy tick asked again');
-ok(!password_verify($password, (string)scalar('SELECT password_hash FROM accounts WHERE id=?', [(int)$inUse['id']])), 'and the old password no longer works');
-is_same(['dashboard', []], $landed, 'it lands where every later sign-in lands, not on the welcome');
-is_same('Dein neues Passwort gilt ab sofort.', $_SESSION['flash']['message'] ?? null, 'and says the new password works');
-$links = signin_links_for((int)$inUse['id'], PASSWORD_RESET_SHOWN_DAYS);
-is_same(['Chefin', true], [$links[0]['made_by'] ?? null, ($links[0]['used_at'] ?? null) !== null],
-        'the newest link says who made it and that it was used - what Mein Konto and the access card read');
-is_same('Trainerin', end($links)['made_by'] ?? null, 'and the first, the trainer’s');
-sign_in_as($admin);
-ok(str_contains(render_view('student', ['id'=>$lena]), e('(Chefin), benutzt am')), 'the access card names who made the last link, and that it was used');
-
-case_('A link is asked again as it is used what was asked when it was made');
-/* Security review, finding 3. Between making a link and its use, the login it
-   opens can change: given an address nobody confirmed, or left without its
-   student. Each is refused by the same rule that decided the link could be
-   made (signin_link_possible()). */
-sign_in_as($admin);
-$ole = create_through_wizard(['first_name'=>'Ole', 'last_name'=>'Adresse'], 'username', ['username'=>'ole.adresse']);
-$oleLogin = $loginOf($ole);
-$oleToken = $keptToken((int)$oleLogin['id']);
-run('UPDATE accounts SET email=? WHERE id=?', ['ole@beispiel.test', (int)$oleLogin['id']]);   // an address nobody confirmed, written since
-throws(fn() => $useLink($oleToken, ['password'=>$password, 'password_confirm'=>$password, 'privacy_seen'=>'1']),
-       'a first link on a login that has an address now is refused: it would set up an address nobody confirmed', 'ungültig oder abgelaufen');
-is_same(['invited', null], array_values(one('SELECT state,verified_at FROM accounts WHERE id=?', [(int)$oleLogin['id']]) ?? []), 'and nothing is set up');
-/* The page the link opens asked less than the action: it offered the form for
-   it, and printed the login's address beside the new password for whoever
-   held the link (security re-review N2). Both ask link_usable() now. */
-$linkPage = render_view('activate');   // the link is still the one this browser opened
-ok(str_contains($linkPage, e('Link nicht mehr gültig')) && !str_contains($linkPage, 'name="password"'),
-   'its page says the link no longer works, rather than offering a form that is refused');
-ok(!str_contains($linkPage, 'ole@beispiel.test') && !str_contains($linkPage, 'ole.adresse'), 'and says nothing of the login: neither its address nor its username');
-sign_in_as($admin);
-$gina = create_through_wizard(['first_name'=>'Gina', 'last_name'=>'Weg'], 'username', ['username'=>'gina.weg']);
-$ginaLogin = $loginOf($gina);
-$useLink($keptToken((int)$ginaLogin['id']), ['password'=>$password, 'password_confirm'=>$password, 'privacy_seen'=>'1']);
-sign_in_as($admin);
-act('signin_link', ['student_id'=>(string)$gina, 'mode'=>'create']);
-act('student_delete', ['id'=>(string)$gina, 'confirmation'=>'Gina Weg']);
-is_same([1, 0], [(int)scalar('SELECT COUNT(*) FROM accounts WHERE id=?', [(int)$ginaLogin['id']]),
-                 (int)scalar("SELECT COUNT(*) FROM auth_tokens WHERE account_id=? AND purpose='signin'", [(int)$ginaLogin['id']])],
-        'deleting the student leaves the login that was set up, and takes its sign-in link');
-$leftBehind = make_token((int)$ginaLogin['id'], 'signin');   // as a link made before this rule would still be there
-throws(fn() => $useLink($leftBehind, ['password'=>'Neues-Passwort-2026!', 'password_confirm'=>'Neues-Passwort-2026!']),
-       'and a sign-in link to a login without its student signs nobody in', 'ungültig oder abgelaufen');
-ok(password_verify($password, (string)scalar('SELECT password_hash FROM accounts WHERE id=?', [(int)$ginaLogin['id']])), 'its password is as it was');
-$linkPage = render_view('activate');
-ok(str_contains($linkPage, e('Link nicht mehr gültig')) && !str_contains($linkPage, 'name="password"') && !str_contains($linkPage, 'gina.weg'),
-   'and its page says so too, without the username of a login that is in use');
-sign_in_as($admin);
-
-case_('Withdrawing a link takes it away and says so; withdrawing a username frees it');
-act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'create']);
-$token = $keptToken((int)$inUse['id']);
-act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'withdraw']);
-is_same(null, token_record(hash('sha256', $token)), 'the withdrawn link no longer works');
-ok(!isset($_SESSION['signin_links'][(int)$inUse['id']]), 'and is gone from the session');
-is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.signin_link_withdrawn' AND entity_id=?", [(int)$inUse['id']]), 'written down once');
-act('signin_link', ['student_id'=>(string)$lena, 'mode'=>'withdraw']);
-is_same(1, (int)scalar("SELECT COUNT(*) FROM audit_log WHERE action='account.signin_link_withdrawn' AND entity_id=?", [(int)$inUse['id']]),
-        'withdrawing nothing writes nothing down');
-$waiting = create_through_wizard(['first_name'=>'Tom', 'last_name'=>'Weber'], 'username', ['username'=>'tom.weber']);
-$tomLogin = $loginOf($waiting);
-throws(fn() => act('account_state', ['id'=>(string)$tomLogin['id'], 'mode'=>'reinvite']), 'a username login is not „sent again“: it gets a new link', 'Nur offene Einladungen');
-act('account_state', ['id'=>(string)$tomLogin['id'], 'mode'=>'withdraw']);
-$tomNow = $loginOf($waiting);
-ok((int)$tomNow['id'] !== (int)$tomLogin['id'] && $tomNow['state'] === 'placeholder', 'withdrawn, the student is on a fresh placeholder');
-is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts WHERE id=?', [(int)$tomLogin['id']]), 'and the username login is gone');
-does_not_throw(fn() => act('signin_link', ['student_id'=>(string)$waiting, 'mode'=>'create', 'username'=>'tom.weber']),
-               'so the username can be given again - the way to change one before it is used (ADR 0023 §1)');
+$moved = make_account(['role'=>'student', 'email'=>null, 'state'=>'active']);
+$confirm = make_token($moved, 'email', 'umzug@beispiel.test');
+queue_mail($moved, 'umzug@beispiel.test', 'E-Mail-Adresse bestätigen', "Öffne diesen Link:\n".url('activate', ['token'=>$confirm]), 'security');
+ok(security_mail_links_live("Öffne diesen Link:\n".url('activate', ['token'=>$confirm]), 'umzug@beispiel.test'), 'while the login is in use, the mail may go');
+run("UPDATE accounts SET state='placeholder', verified_at=NULL, password_hash=NULL WHERE id=?", [$moved]);
+ok(!security_mail_links_live("Öffne diesen Link:\n".url('activate', ['token'=>$confirm]), 'umzug@beispiel.test'), 'once it is a placeholder, its link opens nothing and the mail may not');
+process_mail();
+is_same('cancelled', (string)scalar('SELECT status FROM mail_jobs WHERE account_id=?', [$moved]), 'so the sender drops it rather than send a dead link');
 
 case_('A student’s login is replaced, never removed, and the database refuses it too');
 sign_in_as($admin);
+$inUse = one('SELECT * FROM accounts WHERE id=?', [(int)$lenaLogin['id']]);
 $chat = make_thread([(int)$inUse['id'], $admin], ['kind'=>'staff_direct']);
 throws(fn() => transactional(fn() => delete_login((int)$inUse['id'])), 'delete_login() refuses a login a student points to, in words', 'wird nie allein gelöscht');
 $refusal = null;
 try { run('DELETE FROM accounts WHERE id=?', [(int)$inUse['id']]); } catch (PDOException $e) { $refusal = $e; }
 is_same(1451, (int)($refusal?->errorInfo[1] ?? 0), 'and the database refuses it with 1451, the backstop');
-throws(fn() => act('account_state', ['id'=>(string)$inUse['id'], 'mode'=>'delete', 'confirmation'=>'lena.hofer@beispiel.test']),
-       '„Anmeldung löschen“ of a username login asks for the username typed', 'den Benutzernamen eingeben');
-is_same(['student', ['id'=>$lena]], act('account_state', ['id'=>(string)$inUse['id'], 'mode'=>'delete', 'confirmation'=>' Lena.Hofer ']),
+throws(fn() => act('account_state', ['id'=>(string)$inUse['id'], 'mode'=>'delete', 'confirmation'=>'lena.hofer']),
+       '„Anmeldung löschen“ asks for the address typed', 'die E-Mail-Adresse eingeben');
+is_same(['student', ['id'=>$lena]], act('account_state', ['id'=>(string)$inUse['id'], 'mode'=>'delete', 'confirmation'=>' Lena@Beispiel.test ']),
         'typed, in any capitals, it deletes and returns to the student');
 $fresh = $loginOf($lena);
 ok($fresh !== null && (int)$fresh['id'] !== (int)$inUse['id'] && $fresh['state'] === 'placeholder', 'the student has a fresh placeholder');
@@ -516,6 +338,26 @@ is_same([(int)$inUse['id'], (int)$fresh['id']], [(int)(version_changes($change)[
         'the student’s change log has the move');
 throws(fn() => act('account_state', ['id'=>(string)$fresh['id'], 'mode'=>'delete', 'confirmation'=>'']), 'a placeholder has nothing to delete', 'noch leer');
 throws(fn() => act('account_state', ['id'=>(string)$fresh['id'], 'mode'=>'suspend']), 'nor to suspend', 'noch leer');
+// A login in use with no address is what only a database edited by hand can
+// hold now (039): typing nothing deletes nothing.
+$bare = make_account(['role'=>'student', 'email'=>null]);
+make_student(['first_name'=>'Ohne', 'last_name'=>'Adresse', 'account_id'=>$bare]);
+throws(fn() => act('account_state', ['id'=>(string)$bare, 'mode'=>'delete', 'confirmation'=>'']), 'nor is a login without an address deleted by typing nothing', 'die E-Mail-Adresse eingeben');
+is_same(1, (int)scalar('SELECT COUNT(*) FROM accounts WHERE id=?', [$bare]), 'it is still there');
+/* Such a login is also what reaches the guards the mail keeps for a login
+   without an address, now that no username login is one. */
+throws(fn() => transactional(fn() => send_account_token(one('SELECT * FROM accounts WHERE id=?', [$bare]), 'reset')),
+       'send_account_token() refuses it before any link is made', 'keine E-Mail-Adresse');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM auth_tokens WHERE account_id=?', [$bare]), 'and no link is made');
+does_not_throw(fn() => queue_mail($bare, null, 'Neuigkeit', 'Hallo', 'newsletter'), 'queue_mail() with no recipient throws nothing');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE account_id=?', [$bare]), 'and queues nothing');
+$reader = make_account(['role'=>'student', 'email'=>'leser@beispiel.test', 'newsletter'=>1]);
+run('UPDATE accounts SET newsletter=1 WHERE id=?', [$bare]);
+does_not_throw(fn() => act('news_save', ['title'=>'Turnier', 'body'=>'Am Samstag', 'published'=>'1', 'send_email'=>'1']),
+               'a newsletter to everybody, that login among them, goes out');
+is_same([1, 0], [(int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE account_id=? AND category='newsletter'", [$reader]),
+                 (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE account_id=?', [$bare])],
+        'to those with an address, and to nobody without one');
 $orphan = make_account(['role'=>'student', 'email'=>'verwaist@beispiel.test']);
 does_not_throw(fn() => transactional(fn() => delete_login($orphan)), 'a login no student points to is still deleted');
 
@@ -561,14 +403,22 @@ is_same([1, 0, 0], array_map(fn(int $a) => (int)scalar("SELECT COUNT(*) FROM not
         [$signsIn, (int)$loginOf($jonas)['id'], (int)$loginOf($legacy)['id']]),
         'a changed date is told to a login that signs in, never to a placeholder, whose later holder would find old news');
 $card = render_view('student', ['id'=>$jonas]);
-ok(str_contains($card, e('Ohne Anmeldung')) && str_contains($card, 'value="signin_link"') && str_contains($card, 'name="username"'),
-   'the access card of a placeholder says „Ohne Anmeldung“ and offers a link with a username');
+ok(str_contains($card, e('Ohne Anmeldung')) && !str_contains($card, 'value="signin_link"') && !str_contains($card, 'name="username"') && !str_contains($card, e('Benutzername')),
+   'the access card of a placeholder says „Ohne Anmeldung“, and offers neither a link nor a username (ADR 0030 §6)');
 ok(!str_contains($card, 'value="impersonate"'), 'and no view as the child (A6 overruled)');
-is_same([false, false, false], [may_impersonate($adminRow, $placeholder), may_impersonate($adminRow, $loginOf($waiting)),
+$adminRow = one('SELECT * FROM accounts WHERE id=?', [$admin]);
+$placeholder = $loginOf($jonas);
+$mailed = create_through_wizard(['first_name'=>'Per', 'last_name'=>'Post'], 'email', ['email'=>'per.post@beispiel.test']);
+is_same([false, false, false], [may_impersonate($adminRow, $placeholder), may_impersonate($adminRow, $loginOf($mailed)),
         may_impersonate($adminRow, ['state'=>'active', 'verified_at'=>null] + $placeholder)],
-        'nobody views the portal as a placeholder, a login not yet signed in, or an active one never set up');
+        'nobody views the portal as a placeholder, an invited login, or an active one never set up');
 
 case_('Saving a student whose login has no address leaves the address on the record hers to type');
+$emailStep = fn() => array_column(student_next_steps($jonas), null, 'what')['E-Mail-Adresse eintragen'] ?? null;
+is_same('access', $emailStep()['anchor'] ?? null, 'with mail ready, the next step for a child without an address leads to the access card, where its box is (ADR 0030 §6)');
+mail_ready(false);
+is_same('email', $emailStep()['anchor'] ?? null, 'and to the record’s own box while the card can offer no form');
+mail_ready(true);
 $jonasRow = one('SELECT * FROM students WHERE id=?', [$jonas]);
 act('student_save', ['id'=>(string)$jonas, 'revision'=>(string)$jonasRow['revision'], 'first_name'=>'Jonas', 'last_name'=>'Berger',
     'email'=>'jonas@beispiel.test', 'birth_date'=>'', 'joined_on'=>'', 'ended_on'=>'', 'status'=>'active', 'internal_notes'=>'', 'address'=>'', 'phone'=>'']);
@@ -578,10 +428,9 @@ ok(in_array('Zugang einladen', array_column(student_next_steps($jonas), 'what'),
 act('student_invite', ['student_id'=>(string)$jonas]);
 is_same(['invited', 'jonas@beispiel.test', (int)$placeholder['id']], [$loginOf($jonas)['state'], $loginOf($jonas)['email'], (int)$loginOf($jonas)['id']],
         'and the invitation turns that placeholder into the login, without a new one');
-// A card opened before the child was given a username still offers the
-// invitation. Sent, it is told what happened, not that the address is missing.
-$given = create_through_wizard(['first_name'=>'Kai', 'last_name'=>'Karte'], 'username', ['username'=>'kai.karte']);
-throws(fn() => act('student_invite', ['student_id'=>(string)$given]), 'an invitation from a card older than the child’s login says the child has one', 'schon eine eigene Anmeldung');
+// A card opened before the child was invited still offers the invitation.
+// Sent, it is told what happened, not that the address is missing.
+throws(fn() => act('student_invite', ['student_id'=>(string)$mailed]), 'an invitation from a card older than the child’s login says the child has one', 'schon eine eigene Anmeldung');
 $students = (int)scalar('SELECT COUNT(*) FROM students');
 throws(fn() => act('student_save', ['id'=>'0', 'first_name'=>'Neu', 'last_name'=>'Alt', 'status'=>'active']),
        'student_save makes nobody: without a student it finds none', 'nicht gefunden');
@@ -595,25 +444,55 @@ sign_in_as($boss);
 mail_ready(true);
 $a = create_through_wizard(['first_name'=>'Anna', 'last_name'=>'Zander'], 'none');
 $b = create_through_wizard(['first_name'=>'Ben', 'last_name'=>'Adler'], 'email', ['email'=>'ben@beispiel.test']);
-$c = create_through_wizard(['first_name'=>'Cem', 'last_name'=>'Moser'], 'username', ['username'=>'cem.moser']);
 $d = create_through_wizard(['first_name'=>'Dora', 'last_name'=>'Huber'], 'email', ['email'=>'dora@beispiel.test']);
 run("UPDATE accounts SET state='suspended' WHERE id=?", [(int)$loginOf($d)['id']]);
 $team = team_logins();
 is_same([[$coach], [$boss]], [array_map('intval', array_column($team['trainer'], 'id')), array_map('intval', array_column($team['admin'], 'id'))],
         'the team in two: trainers, then administrators');
-is_same(['all'=>4, 'waiting'=>2, 'placeholder'=>1, 'suspended'=>1], student_login_counts(), 'each chip counts its students; waiting is an invitation or a username alike');
-is_same([$b, $d, $c, $a], array_map('intval', array_column(student_logins('all', 1), 'student_id')), 'one row per student, sorted by last name');
-is_same([$b, $c], array_map('intval', array_column(student_logins('waiting', 1), 'student_id')), 'and filtered by a chip');
-is_same([$b, $d, $c, $a], array_map('intval', array_column(student_logins('erfunden', 1), 'student_id')), 'an unknown chip is „Alle“');
-ok(student_logins('waiting', 1)[1]['link_expires_at'] !== null && student_logins('placeholder', 1)[0]['link_expires_at'] === null,
-   'a login waiting carries until when its link works; a placeholder has none');
-is_same([], student_logins('all', 2), 'fifty to a page, so four fill the first');
+is_same(['all', 'invited', 'placeholder', 'suspended'], array_keys(student_login_filters()),
+        'the chips: „Alle“, „Eingeladen“, „Ohne Anmeldung“, „Gesperrt“ - one name per state (the design addendum of 2026-10-08, §6)');
+is_same(['all'=>3, 'invited'=>1, 'placeholder'=>1, 'suspended'=>1], student_login_counts(), 'each chip counts its students');
+is_same([$b, $d, $a], array_map('intval', array_column(student_logins('all', 1), 'student_id')), 'one row per student, sorted by last name');
+is_same([$b], array_map('intval', array_column(student_logins('invited', 1), 'student_id')), 'and filtered by a chip');
+is_same([$b, $d, $a], array_map('intval', array_column(student_logins('erfunden', 1), 'student_id')), 'an unknown chip is „Alle“');
+ok(student_logins('invited', 1)[0]['link_expires_at'] !== null && student_logins('placeholder', 1)[0]['link_expires_at'] === null,
+   'an invited login carries until when its invitation works; a placeholder has none');
+is_same([], student_logins('all', 2), 'fifty to a page, so three fill the first');
 for ($i = 0; $i < STUDENT_LOGINS_PER_PAGE; $i++) make_student(['first_name'=>'Viele', 'last_name'=>'Kind'.str_pad((string)$i, 2, '0', STR_PAD_LEFT)]);
-is_same([STUDENT_LOGINS_PER_PAGE, 4], [count(student_logins('all', 1)), count(student_logins('all', 2))], 'and the rest on the next');
+is_same([STUDENT_LOGINS_PER_PAGE, 3], [count(student_logins('all', 1)), count(student_logins('all', 2))], 'and the rest on the next');
 $hugePage = null;
 does_not_throw(function () use (&$hugePage) { $hugePage = student_logins('all', (int)'99999999999999999999'); },
                'a page number far past any there is - ?p= typed with twenty nines - does not stop the page');
 is_same([], $hugePage, 'it is simply empty');
+/* The page (ADR 0023 §8, 0030 §8, spec addendum §6): three groups, the
+   students' four chips with their counts and none for a chip nobody is in, and
+   a row per student that leads to the access card and acts on nothing. */
+$page = render_view('accounts');
+foreach (['trainers', 'admins', 'students'] as $group) ok(str_contains($page, 'id="'.$group.'"'), 'Zugänge has the group '.$group);
+ok(str_contains($page, e('Alle (53)')) && str_contains($page, e('Eingeladen (1)')) && str_contains($page, e('Ohne Anmeldung (51)')) && str_contains($page, e('Gesperrt (1)')),
+   'each chip says how many are in it');
+ok(str_contains($page, 'id="students"') && !str_contains($page, e('Noch nicht angemeldet')) && !str_contains($page, '<small class="mono">'),
+   'none is „Noch nicht angemeldet“, and no row reads like a username');
+ok(str_contains($page, 'id="students"') && !str_contains($page, 'name="student_id"'), 'no form on the page acts on a student');
+$invitedOnly = render_view('accounts', ['logins'=>'invited']);
+ok(str_contains($invitedOnly, e(url('student', ['id'=>$b, '#'=>'access']))) && !str_contains($invitedOnly, e(url('student', ['id'=>$d, '#'=>'access']))),
+   'a chip shows only its students');
+ok(str_contains($invitedOnly, '<small>ben@beispiel.test</small>') && str_contains($invitedOnly, e('Link gilt bis ')), 'an invited row has its address, and until when the invitation works');
+$rowOf = fn(string $html, int $student): string => preg_match('~<a class="member-row" href="'.preg_quote(e(url('student', ['id'=>$student, '#'=>'access'])), '~').'">.*?</a>~s', $html, $m) ? $m[0] : '';
+$first = (int)scalar("SELECT id FROM students WHERE last_name='Kind00'");
+ok($rowOf($page, $first) !== '' && !str_contains($rowOf($page, $first), '<small>'), 'a placeholder’s row has no address line');
+ok(str_contains($page, e('Einladen, sperren und löschen machst du auf der Seite der Schülerin oder des Schülers.')), 'and the footnote says where all of it is done');
+ok($rowOf($page, $b) !== '' && $rowOf($page, $a) === '', 'fifty to a page, by last name: Adler on the first, Zander on the next');
+ok($rowOf(render_view('accounts', ['p'=>'2']), $a) !== '', 'where the next page has her');
+ok($rowOf(render_view('accounts', ['logins'=>'erfunden']), $d) !== '', 'an unknown chip in the address is „Alle“');
+run("UPDATE accounts SET state='active', verified_at=? WHERE id=?", [now(), (int)$loginOf($d)['id']]);
+$page = render_view('accounts');
+ok(str_contains($page, e('Alle (53)')) && !str_contains($page, e('Gesperrt (')), 'a chip nobody is in is left out');
+sign_in_as($coach);
+$asTrainer = render_view('accounts');
+ok(str_contains($asTrainer, 'id="trainers"') && !str_contains($asTrainer, '<details class="account-row">') && !str_contains($asTrainer, 'value="suspend"'),
+   'a trainer reads the team and acts on nobody');
+sign_in_as($boss);
 
 case_('The start checklist leads to the wizard, and its invitations step to a child without sign-in');
 test_reset();
@@ -632,30 +511,28 @@ $redirect = strpos($router, "if(\$page==='student' && (int)(\$_GET['id']??0)<=0)
 ok($redirect !== false && $redirect > (int)strpos($router, '$user=$public?') && $redirect < (int)strpos($router, "require ROOT.'/views/'"),
    'a student page without an id goes to the wizard, once the router knows who is asking');
 
-case_('Signing in drops the readable links, drafts and answered forms the person before made');
-$kid = make_student(['first_name'=>'Kim', 'last_name'=>'Link']);
+case_('Signing in drops the drafts, the link being opened and the answered forms the person before made');
+$kid = make_student(['first_name'=>'Kim', 'last_name'=>'Link', 'email'=>'kim.link@beispiel.test']);
 mail_ready(true);
-act('signin_link', ['student_id'=>(string)$kid, 'mode'=>'create', 'username'=>'kim.link']);
+act('student_invite', ['student_id'=>(string)$kid]);
 act('student_draft', ['first_name'=>'Noch', 'last_name'=>'Einer', 'birth_date'=>'', 'course'=>'none', 'status'=>'active']);
-$_SESSION['activation_hash'] = hash('sha256', $keptToken((int)$loginOf($kid)['id']));   // she opened the link on her own phone
+$_SESSION['activation_hash'] = hash('sha256', make_token((int)$loginOf($kid)['id'], 'invite'));   // she opened the invitation on her own phone
 // Where a form she sent landed: a copy sent again by whoever comes next would
 // be taken there, to her page, as though they had sent it.
 $herForm = str_repeat('d', 64);
 remember_answered_form($herForm, ['student', ['id'=>$kid]]);
-ok($_SESSION['signin_links'] !== [] && $_SESSION['student_drafts'] !== [] && answered_form_landing($herForm) !== null,
-   'her session holds a link, a draft, a link being opened and a form she sent');
+ok($_SESSION['student_drafts'] !== [] && isset($_SESSION['activation_hash']) && answered_form_landing($herForm) !== null,
+   'her session holds a draft, a link being opened and a form she sent');
 $other = make_account(['role'=>'trainer', 'email'=>'andere@beispiel.test', 'password_hash'=>password_hash($password, PASSWORD_DEFAULT)]);
 throttle_clear('auth-ip', $ip);
 submit('login', ['login'=>'andere@beispiel.test', 'password'=>$password]);
-ok(!isset($_SESSION['signin_links']) && !isset($_SESSION['student_drafts']) && !isset($_SESSION['activation_hash']),
-   'whoever signs in next on the browser finds none of them');
+ok(!isset($_SESSION['student_drafts']) && !isset($_SESSION['activation_hash']), 'whoever signs in next on the browser finds none of them');
 is_same(null, answered_form_landing($herForm), 'nor where her form landed');
 $_SESSION['user_id'] = $other; $_SESSION['auth_version'] = 999;
-$_SESSION['signin_links'] = [1=>['token'=>str_repeat('a', 64), 'by'=>$other]]; $_SESSION['activation_hash'] = str_repeat('b', 64);
+$_SESSION['activation_hash'] = str_repeat('b', 64);
 remember_answered_form($herForm, ['student', ['id'=>$kid]]);
 current_user(true);
-ok(!isset($_SESSION['signin_links']) && !isset($_SESSION['activation_hash']) && answered_form_landing($herForm) === null,
-   'and a session that ended keeps none either');
+ok(!isset($_SESSION['activation_hash']) && answered_form_landing($herForm) === null, 'and a session that ended keeps none either');
 sign_out();
 $_SESSION['activation_hash'] = str_repeat('c', 64);
 current_user(true);
@@ -663,22 +540,138 @@ is_same(str_repeat('c', 64), $_SESSION['activation_hash'] ?? null,
         'while a link opened with nobody signed in stays until its page is sent: that is where it lives in between');
 unset($_SESSION['activation_hash']);
 
-case_('A username login adds an address under Mein Konto, confirmed from the new mailbox, and then signs in with both');
+case_('The access card: the address and „Einladung senden“ in one form, said before the tap where it cannot go, and every form coming back to the card');
+/* Spec addendum §3 (ADR 0030 §6): a placeholder's card holds the address box,
+   the record's address in it, the invitation's language and the button. An
+   address that is another login's, or one a brother's or sister's record
+   without sign-in carries too, is said instead of a form that can only be
+   refused. Every form on the card names it as the place a refusal comes back
+   to (return_anchor). */
 test_reset();
+$boss = make_account(['role'=>'admin', 'name'=>'Karten Chefin']);
+sign_in_as($boss);
 mail_ready(true);
-$kid = make_student(['first_name'=>'Ida', 'last_name'=>'Adresse',
-    'account_id'=>$holder = make_account(['role'=>'student', 'email'=>null, 'username'=>'ida.adresse', 'password_hash'=>password_hash($password, PASSWORD_DEFAULT)])]);
-sign_in_as($holder);
-throttle_clear('email-change', (string)$holder);
-does_not_throw(fn() => act('email_change', ['password'=>$password, 'email'=>'ida@beispiel.test']), '„E-Mail-Adresse hinzufügen“ is the change of address there is (ADR 0023 §1)');
-is_same(['ida@beispiel.test'], array_column(rows("SELECT recipient FROM mail_jobs WHERE account_id=? AND category='security'", [$holder]), 'recipient'),
-        'the confirmation goes to the new mailbox, though the login had none');
-$_SESSION['activation_hash'] = hash('sha256', make_token($holder, 'email', 'ida@beispiel.test'));
-act('activate', []);
-is_same(['ida@beispiel.test', 'ida.adresse', 'ida@beispiel.test'], [scalar('SELECT email FROM accounts WHERE id=?', [$holder]),
-        scalar('SELECT username FROM accounts WHERE id=?', [$holder]), scalar('SELECT email FROM students WHERE id=?', [$kid])],
-        'confirmed, the login has the address and keeps its username, and the student’s copy follows');
-is_same([$holder, $holder], [(int)(account_for_sign_in('address', 'ida@beispiel.test')['id'] ?? 0), (int)(account_for_sign_in('username', 'ida.adresse')['id'] ?? 0)],
-        'and both sign in to it');
-ok(account_takes_mail(one('SELECT * FROM accounts WHERE id=?', [$holder]), 'payments'), 'and mail reaches it from now on');
+$cardOf = fn(int $student): string => preg_match('~<section class="card access-card" id="access">.*?</section>~s', render_view('student', ['id'=>$student]), $m) ? $m[0] : '';
+/** The markup of the first form in $html that contains $marker, up to its closing tag. */
+$formWith = function (string $html, string $marker): string {
+    $at = strpos($html, $marker);
+    if ($at === false) return '';
+    $start = strrpos(substr($html, 0, $at), '<form');
+    return substr($html, $start, strpos($html, '</form>', $at) - $start);
+};
+$atCard = '<input type="hidden" name="return_anchor" value="access">';
+$karla = make_student(['first_name'=>'Karla', 'last_name'=>'Karte', 'email'=>'karla@beispiel.test']);
+$card = $cardOf($karla);
+$invite = $formWith($card, 'name="action" value="student_invite"');
+ok(preg_match('~<input id="[^"]+" name="email" type="email" value="karla@beispiel\.test"[^>]*autocomplete="off"~', $invite) === 1,
+   'a placeholder’s card has the address box, the record’s address in it, which the phone does not fill with her own');
+ok(str_contains($invite, 'name="locale"') && str_contains($invite, $atCard), 'with the invitation’s language, and the card as where a refusal comes back to');
+ok(str_contains($card, e('Karla meldet sich noch nicht an. Du trägst alles selbst ein.')), 'under the sentence that says what „Ohne Anmeldung“ means');
+ok($card !== '' && !str_contains($card, e('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')) && !str_contains($card, e('Die Einladung geht an ')), 'the lines the box replaces are gone');
+$emil = make_student(['first_name'=>'Emil', 'last_name'=>'Leer']);
+ok(preg_match('~<input id="[^"]+" name="email" type="email" value=""~', $formWith($cardOf($emil), 'name="action" value="student_invite"')) === 1,
+   'with no address on the record, the box is there to type one');
+make_account(['role'=>'student', 'email'=>'vergeben@beispiel.test', 'name'=>'Vera Vergeben']);
+$tom = make_student(['first_name'=>'Tom', 'last_name'=>'Taken', 'email'=>'vergeben@beispiel.test']);
+$card = $cardOf($tom);
+ok(str_contains($card, e('Diese Adresse gehört schon zum Zugang von Vera Vergeben')) && !str_contains($card, 'value="student_invite"'),
+   'an address that is another login’s is said before the tap, with no form');
+$sina = make_student(['first_name'=>'Sina', 'last_name'=>'Schwester', 'email'=>'familie@beispiel.test']);
+$bruno = make_student(['first_name'=>'Bruno', 'last_name'=>'Bruder', 'email'=>'familie@beispiel.test']);
+$card = $cardOf($bruno);
+ok(str_contains($card, e('Diese Adresse steht auch bei Sina Schwester')) && str_contains($card, e('Bruno braucht eine eigene.')) && !str_contains($card, 'value="student_invite"'),
+   'and so is one a sister’s record carries too, naming her (one person, one address)');
+ok(str_contains($cardOf($sina), e('Diese Adresse steht auch bei Bruno Bruder')), 'on her card the same, naming him');
+throws(fn() => act('student_invite', ['student_id'=>(string)$bruno, 'email'=>'familie@beispiel.test', 'locale'=>'de', 'return_anchor'=>'access']),
+       'which the action refuses too, should a form be sent all the same', 'steht schon bei Sina Schwester');
+/* A refused post comes back to the card (#access) with what was typed; the
+   banner at the top of the page is out of sight there, so the card says why. */
+$_SESSION['flash'] = ['message'=>'Diese E-Mail-Adresse gehört schon zu einem anderen Zugang.', 'kind'=>'error'];
+$GLOBALS['crm_held_input'] = ['action'=>'student_invite', 'page'=>'student', 'id'=>(string)$karla, 'tab'=>'', 'record'=>null, 'fields'=>['student_id'=>(string)$karla, 'email'=>'vergeben@beispiel.test', 'locale'=>'de']];
+$card = $cardOf($karla);
+ok(str_contains($card, '<div class="notice warn" role="status"><p>'.e('Diese E-Mail-Adresse gehört schon zu einem anderen Zugang.').'</p></div>')
+   && preg_match('~name="email" type="email" value="vergeben@beispiel\.test"~', $card) === 1,
+   'a refused invitation is said on the card it comes back to, with the address that was typed');
+$GLOBALS['crm_held_input'] = null;
+$card = $cardOf($karla);
+ok($card !== '' && !str_contains($card, 'role="status"'), 'and only after a refusal of the card’s own form');
+$_SESSION['flash'] = ['message'=>'Konto aktualisiert.', 'kind'=>'success'];
+$GLOBALS['crm_held_input'] = ['action'=>'student_invite', 'page'=>'student', 'id'=>(string)$karla, 'tab'=>'', 'record'=>null, 'fields'=>['student_id'=>(string)$karla]];
+$card = $cardOf($karla);
+ok($card !== '' && !str_contains($card, 'Konto aktualisiert.'), 'never a success, which the banner says on its own');
+$GLOBALS['crm_held_input'] = null;
+unset($_SESSION['flash']);
+mail_ready(false);
+$card = $cardOf($karla);
+ok(str_contains($card, e('Einladen geht noch nicht')) && !str_contains($card, 'value="student_invite"'), 'while mail cannot go out, the card says what is missing instead of the form');
+mail_ready(true);
+act('student_invite', ['student_id'=>(string)$emil, 'email'=>' Emil@Beispiel.test ', 'locale'=>'en', 'return_anchor'=>'access']);
+is_same(['invited', 'emil@beispiel.test', 'en', 'emil@beispiel.test'],
+        [$loginOf($emil)['state'] ?? null, $loginOf($emil)['email'] ?? null, $loginOf($emil)['locale'] ?? null, (string)scalar('SELECT email FROM students WHERE id=?', [$emil])],
+        'the address typed on the card and the language chosen are the invitation’s, and the record carries the address');
+$card = $cardOf($emil);
+foreach (['reinvite', 'withdraw'] as $mode)
+    ok(str_contains($formWith($card, 'name="mode" value="'.$mode.'"'), $atCard), 'invited: „'.$mode.'“ comes back to the card too');
+$alma = make_student(['first_name'=>'Alma', 'last_name'=>'Aktiv', 'account_id'=>make_account(['role'=>'student', 'name'=>'Alma Aktiv', 'email'=>'alma@beispiel.test',
+                      'state'=>'active', 'verified_at'=>now(), 'password_hash'=>password_hash($password, PASSWORD_DEFAULT)])]);
+$card = $cardOf($alma);
+foreach (['reset_link', 'suspend', 'delete'] as $mode)
+    ok(str_contains($formWith($card, 'name="mode" value="'.$mode.'"'), $atCard), 'in use: „'.$mode.'“ comes back to the card too');
+ok(str_contains($card, '<dd>alma@beispiel.test</dd>') && !str_contains($card, 'name="email"'), 'and the card reads the address rather than offering a box for it');
+/* The card's other two forms come back to it too: „Anmeldung löschen" with
+   the wrong address typed, and „Portal als … ansehen" refused - the login
+   suspended in another tab, say. Each is said on the card. */
+foreach (['account_state'=>['Zum Löschen die E-Mail-Adresse eingeben.', ['id'=>(string)$loginOf($alma)['id'], 'mode'=>'delete']],
+          'impersonate'=>['Dieses Konto kannst du nicht ansehen.', ['id'=>(string)$loginOf($alma)['id'], 'mode'=>'start']]] as $action => [$message, $fields]) {
+    $_SESSION['flash'] = ['message'=>$message, 'kind'=>'error'];
+    $GLOBALS['crm_held_input'] = ['action'=>$action, 'page'=>'student', 'id'=>(string)$alma, 'tab'=>'', 'record'=>null, 'fields'=>$fields];
+    $card = $cardOf($alma);
+    ok($card !== '' && str_contains($card, '<div class="notice warn" role="status"><p>'.e($message).'</p></div>'), 'a refused '.$action.' is said on the card it comes back to');
+}
+$GLOBALS['crm_held_input'] = null;
+unset($_SESSION['flash']);
+act('account_state', ['id'=>(string)$loginOf($alma)['id'], 'mode'=>'suspend']);
+ok(str_contains($formWith($cardOf($alma), 'name="mode" value="restore"'), $atCard), 'suspended: „restore“ too');
+sign_out();
+
+case_('Mein Konto: the address, one sentence, the resets of two weeks and the three switches, for everybody');
+/* Spec addendum §4 (ADR 0030 §6): every login that reaches the page has an
+   address, so the switches are always there and nothing travels hidden. */
+test_reset();
+$mona = make_account(['role'=>'student', 'name'=>'Mona Konto', 'email'=>'mona@beispiel.test']);
+make_student(['first_name'=>'Mona', 'last_name'=>'Konto', 'account_id'=>$mona]);
+sign_in_as($mona);
+$mine = render_view('profile');
+ok(substr_count($mine, '<div class="fact-wide">') === 1 && str_contains($mine, '<dd>mona@beispiel.test<small') && str_contains($mine, e('Mit dieser Adresse meldest du dich an.')),
+   'one row, the address, and the one sentence');
+foreach (['newsletter', 'notifications', 'payment_notices'] as $switch)
+    ok(str_contains($mine, '<input type="checkbox" role="switch" name="'.$switch.'"'), 'the switch '.$switch);
+ok(str_contains($mine, 'id="sign-in"') && !str_contains($mine, '<input type="hidden" name="newsletter"') && !str_contains($mine, e('sobald du oben eine E-Mail-Adresse hinzufügst')),
+   'and nothing carried hidden, nor a promise for later');
+ok(str_contains($mine, e('E-Mail bei neuen Nachrichten und Änderungen im Training')), 'the message switch named for what it sends');
+ok(str_contains($mine, e('E-Mail-Adresse ändern')) && !str_contains($mine, e('E-Mail-Adresse hinzufügen')), 'the fold says „E-Mail-Adresse ändern“, always');
+ok(str_contains($mine, 'id="sign-in"') && !str_contains($mine, 'class="notice warn"'), 'with no reset, no notice');
+fixture('audit_log', ['actor_id'=>$mona, 'action'=>'account.password_reset', 'entity_type'=>'account', 'entity_id'=>$mona, 'created_at'=>$recent = gmdate('Y-m-d H:i:s', time() - 2 * 86400)]);
+fixture('audit_log', ['actor_id'=>$mona, 'action'=>'account.password_reset', 'entity_type'=>'account', 'entity_id'=>$mona, 'created_at'=>$old = gmdate('Y-m-d H:i:s', time() - 20 * 86400)]);
+$mine = render_view('profile');
+ok(str_contains($mine, '<strong>'.e('Dein Passwort wurde per E-Mail-Link neu festgelegt').'</strong>') && str_contains($mine, e(fmt_datetime($recent)))
+   && !str_contains($mine, e(fmt_datetime($old))), 'a reset of the last two weeks is listed under its heading, an older one not');
+sign_out();
+
+case_('Whose portal is being looked at is said on the public pages too, with the way out');
+/* While a view lasts, the page a link opens, the sign-in and „abbestellen"
+   refuse to go on until it ends (security review, finding 5). The bar with
+   „Ansicht beenden" was drawn on the signed-in pages only, so on those pages
+   there was no way to end it but going back to one of them. */
+test_reset();
+$looker = make_account(['role'=>'admin', 'name'=>'Ansicht Chefin']);
+$looked = make_account(['role'=>'student', 'name'=>'Angesehen Familie']);
+make_student(['first_name'=>'Angesehen', 'last_name'=>'Familie', 'account_id'=>$looked]);
+view_as($looker, $looked);
+$privacy = render_page('privacy');
+ok(str_contains($privacy, 'class="impersonation-bar"') && str_contains($privacy, '<strong>'.e('Angesehen Familie').'</strong>') && str_contains($privacy, 'value="stop"'),
+   'the privacy notice, a public page, says whose portal it is and offers „Ansicht beenden“');
+unset($_SESSION['impersonator_id'], $_SESSION['impersonator_auth_version']);
+$privacy = render_page('privacy');
+ok(str_contains($privacy, '<main') && !str_contains($privacy, 'class="impersonation-bar"'), 'and once the view has ended, it says nothing');
 sign_out();

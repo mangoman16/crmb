@@ -186,13 +186,13 @@ demo_clear();
 case_('The example logins sign in for two weeks, and then not at all - by password or by link [security review]');
 /* The trainer's address is published and a staff login, and an example set
    forgotten on a portal on the internet stayed a way in for ever. Refused in
-   sign_in(), where the password, a sign-in link and a reset link all end, in the
-   words every refusal uses, so it holds on a portal whose background work never
-   runs. */
+   sign_in(), where the password, an invitation and a reset link all end, in
+   the words every refusal uses, so it holds on a portal whose background work
+   never runs. */
 $filled = demo_fill(true);
 $lenaLogin = (int)scalar('SELECT id FROM accounts WHERE email=?', ['lena.hofer@beispiel.test']);
 $openLink = function () use ($lenaLogin): array {
-    $_SESSION['activation_hash'] = hash('sha256', make_token($lenaLogin, 'signin'));
+    $_SESSION['activation_hash'] = hash('sha256', make_token($lenaLogin, 'reset'));
     return submit('activate', ['password'=>'Neues-Passwort-Lena-2026', 'password_confirm'=>'Neues-Passwort-Lena-2026']);
 };
 sign_out();
@@ -206,7 +206,7 @@ throws(fn() => submit('login', ['login'=>'trainerin@beispiel.test', 'password'=>
        'past them, the right password is refused', 'Anmeldung nicht möglich');
 is_same(null, current_user(true), 'and nobody is signed in');
 $hashBefore = (string)scalar('SELECT password_hash FROM accounts WHERE id=?', [$lenaLogin]);
-throws($openLink, 'a sign-in link made for an expired example login is refused in the same words', 'Anmeldung nicht möglich');
+throws($openLink, 'a reset link made for an expired example login is refused in the same words', 'Anmeldung nicht möglich');
 is_same([null, $hashBefore], [current_user(true), (string)scalar('SELECT password_hash FROM accounts WHERE id=?', [$lenaLogin])],
         'nobody is signed in, and the password the link would have set is not written');
 run('UPDATE accounts SET created_at=? WHERE is_demo=1', [now()]);

@@ -55,7 +55,15 @@ declare(strict_types=1);
  * to 037 were applied to, levels and age bands as a portal keeps them, children
  * in every level, two of them pinned to a band, and change-log lines that name
  * them, written into the portal at the pause before 032: 038 must take the pins
- * and touch nothing else, and is run twice. Then the update this release
+ * and touch nothing else, and is run twice. Before 039, on a portal 032 to 038
+ * were applied to, three logins that sign in by a username - invited, set up, and
+ * suspended - the set-up one in a chat with the trainer, in a course group, with
+ * a notice in its bell and its read marks, beside the address logins, a
+ * placeholder and the staff, written into the portal at the pause before 032:
+ * 039 must turn the three into placeholders, take their places in chats, their
+ * notices and their read marks, and touch nothing else; it is run twice, and
+ * stopped after each statement but the last and started again.
+ * Then the update this release
  * brings, through the application's own runner on a release of this run's own,
  * with the pictures' files on disk, which its step after the files must delete
  * and nothing beside them; and the mistakes ADR 0027 is about, one file at a
@@ -66,7 +74,7 @@ declare(strict_types=1);
  * off the list; a file that empties the table, one that loses a row and stops,
  * one that stops every time, one that stops in an update run with skip-backup;
  * and the record of the unfinished update unwritable, then unreadable. Last, this
- * release's update stopped after each of 033 to 037 in turn and started again by
+ * release's update stopped after each of 033 to 038 in turn and started again by
  * the next page view, which must end as the update that ran through.
  *
  * Its own process and its own database, because the database the suite is using
@@ -794,13 +802,86 @@ function add_levels_and_pinned_bands(PDO $pdo): array {
 }
 
 /**
+ * Logins without an address, as the version between 028 and 039 wrote them
+ * (ADR 0023 §1 to §4): three that sign in by a username, which 039 turns into
+ * placeholders, and a placeholder, which it must leave as it is (ADR 0030 §2).
+ *
+ * One invited by username and not yet signed in; one set up by its holder and
+ * active, with the password that set it and verified_at; one set up and then
+ * suspended by staff; and a placeholder, as placeholder_login() writes one, with
+ * no address, no username, no password. Each a student's login, as every login
+ * without an address was. The active one has a chat with the trainer, a notice
+ * about it and its read marks, as has a family that signs in by address; it is
+ * also in Kindertraining, whose group it has read to the trainer's latest
+ * message. 039 takes the first one's place, notice and read marks, and nothing
+ * of the trainer's or the family's (security finding F1). Written at the pause
+ * before 032, so that every portal built from here carries them to 039, the
+ * runner's included.
+ */
+function add_logins_without_an_address(PDO $pdo): array {
+    $at = '2026-10-06 08:00:00';
+    $login = fn(string $name, ?string $username, string $state, ?string $hash, ?string $verified): int => insert_row($pdo, 'accounts', [
+        'name' => $name, 'email' => null, 'username' => $username, 'password_hash' => $hash, 'role' => 'student', 'state' => $state,
+        'verified_at' => $verified, 'locale' => 'de', 'newsletter' => 0, 'created_at' => $at]);
+    $logins = ['username_invited' => $login('Noah Steiner', 'noah.steiner', 'invited', null, null),
+               'username_active' => $login('Lea Brunner', 'lea.brunner', 'active', '$2y$10$abcdefghijklmnopqrstuuSETWITHTHEUSERNAMEXXXXXXXXXXXX', '2026-10-06 09:00:00'),
+               'username_suspended' => $login('Tom Berger', 'tom.berger', 'suspended', '$2y$10$abcdefghijklmnopqrstuuSETWITHTHEUSERNAMEYYYYYYYYYYYY', '2026-10-06 09:00:00'),
+               'placeholder' => $login('Mila Koch', null, 'placeholder', null, null)];
+    foreach ([['username_invited', 'Noah', 'Steiner'], ['username_active', 'Lea', 'Brunner'], ['username_suspended', 'Tom', 'Berger'],
+              ['placeholder', 'Mila', 'Koch']] as [$key, $first, $last])
+        $logins[$key . '_student'] = insert_row($pdo, 'students', ['account_id' => $logins[$key], 'first_name' => $first, 'last_name' => $last,
+            'status' => 'active', 'joined_on' => '2026-10-06', 'revision' => 1, 'created_at' => $at, 'updated_at' => $at]);
+    $loginBy = fn(string $email): int => (int)$pdo->query('SELECT id FROM accounts WHERE email = ' . $pdo->quote($email))->fetchColumn();
+    $logins['trainer'] = $loginBy('trainerin@beispiel.test');
+    $logins['chat'] = add_chat_with_notices($pdo, $logins['username_active'], $logins['trainer'], 'Lea Brunner', '2026-10-06 10:00:00');
+    // Hans-Jürgen Groß's family, which signs in by address. Not the Müllers: the
+    // runner's portal gives them a chat with the trainer already, and a pair has one.
+    $logins['family'] = $loginBy('gross@beispiel.test');
+    $logins['family_chat'] = add_chat_with_notices($pdo, $logins['family'], $logins['trainer'], 'Familie Groß', '2026-10-06 11:00:00');
+    // Lea in Kindertraining, its group as course_group_thread() makes one, with a
+    // message from the trainer that Lea has read: a mark that would let a new
+    // holder of her login start out with the group read.
+    $kids = (int)$pdo->query("SELECT id FROM classes WHERE name = 'Kindertraining'")->fetchColumn();
+    insert_row($pdo, 'class_students', ['class_id' => $kids, 'student_id' => $logins['username_active_student'], 'joined_on' => '2026-10-06']);
+    $logins['course_group'] = insert_row($pdo, 'threads', ['account_id' => null, 'kind' => 'course', 'class_id' => $kids, 'subject' => '',
+                                                           'updated_at' => '2026-10-06 12:00:00']);
+    $said = insert_row($pdo, 'messages', ['thread_id' => $logins['course_group'], 'sender_id' => $logins['trainer'],
+                                          'body' => 'Training heute in der Halle Süd.', 'created_at' => '2026-10-06 12:00:00']);
+    insert_row($pdo, 'thread_reads', ['thread_id' => $logins['course_group'], 'account_id' => $logins['username_active'],
+                                      'last_read_message_id' => $said, 'updated_at' => '2026-10-06 12:05:00']);
+    return $logins;
+}
+
+/**
+ * A chat between a student's login and the trainer as direct_thread() makes one
+ * - owned by the student, both in it, a message from each, each read to the
+ * last by both - and a notice about it in each one's bell, as notify() writes
+ * them.
+ */
+function add_chat_with_notices(PDO $pdo, int $student, int $trainer, string $studentName, string $at): int {
+    $chat = insert_row($pdo, 'threads', ['account_id' => $student, 'kind' => 'staff_direct', 'subject' => '', 'updated_at' => $at]);
+    foreach ([$trainer, $student] as $person)
+        insert_row($pdo, 'thread_participants', ['thread_id' => $chat, 'account_id' => $person, 'joined_at' => $at]);
+    $last = 0;
+    foreach ([[$student, 'Ich bin morgen krank.'], [$trainer, 'Gute Besserung!']] as [$sender, $body])
+        $last = insert_row($pdo, 'messages', ['thread_id' => $chat, 'sender_id' => $sender, 'body' => $body, 'created_at' => $at]);
+    foreach ([$trainer, $student] as $reader)
+        insert_row($pdo, 'thread_reads', ['thread_id' => $chat, 'account_id' => $reader, 'last_read_message_id' => $last, 'updated_at' => $at]);
+    foreach ([[$student, 'Neue Nachricht von Trainerin'], [$trainer, 'Neue Nachricht von ' . $studentName]] as [$to, $title])
+        insert_row($pdo, 'notifications', ['account_id' => $to, 'kind' => 'message', 'title' => $title, 'body' => '',
+            'link_page' => 'messages', 'link_params' => 'thread=' . $chat, 'created_at' => $at]);
+    return $chat;
+}
+
+/**
  * 001 to 031 with every portal above written in, rows in the four tables 032 and
- * 033 drop, and the levels, bands and pins of add_levels_and_pinned_bands().
+ * 033 drop, the levels, bands and pins of add_levels_and_pinned_bands(), and the
+ * logins of add_logins_without_an_address().
  */
 function build_portal_before_032(): array {
     [$pdo] = build_portal_before_028();
     apply_migrations($pdo, '028', '031');
-    return [$pdo, add_custom_fields_views_and_templates($pdo) + add_levels_and_pinned_bands($pdo)];
+    return [$pdo, add_logins_without_an_address($pdo) + add_custom_fields_views_and_templates($pdo) + add_levels_and_pinned_bands($pdo)];
 }
 
 /**
@@ -931,15 +1012,20 @@ function add_presence_pictures_and_requests(PDO $pdo): array {
 }
 
 /**
- * What 034 to 038 are held to, read back: every table with its rows and their
- * checksum and every key, and of the two tables that lose columns, accounts and
- * students, every row, every column and every index.
+ * What 034 to 039 are held to, read back: every table with its rows and their
+ * checksum and every key; of the two tables that lose columns, accounts and
+ * students, every row, every column and every index; and every place in a chat,
+ * every notice and every read mark, which 039 takes from the logins it turns into
+ * placeholders.
  */
 function tables_and_people(PDO $pdo): array {
     return every_table($pdo) + [
         'accounts' => every_login($pdo), 'students' => $pdo->query('SELECT * FROM students ORDER BY id')->fetchAll(),
         'columns' => ['accounts' => table_columns($pdo, 'accounts'), 'students' => table_columns($pdo, 'students')],
         'indexes' => ['accounts' => table_indexes($pdo, 'accounts'), 'students' => table_indexes($pdo, 'students')],
+        'participants' => $pdo->query('SELECT * FROM thread_participants ORDER BY thread_id, account_id')->fetchAll(),
+        'notifications' => $pdo->query('SELECT * FROM notifications ORDER BY id')->fetchAll(),
+        'reads' => $pdo->query('SELECT * FROM thread_reads ORDER BY thread_id, account_id')->fetchAll(),
         'counts' => guarded_counts($pdo)];
 }
 
@@ -1330,6 +1416,43 @@ $pins['refused'] = run_again($pinFile);
 $pins['again'] = $pinState();
 $result['pins'] = $pins;
 
+// --- 039 on logins that signed in by a username ------------------------------------------
+// 039 turns every login without an address that is not a placeholder already -
+// invited, active or suspended - into one; deletes every place in a chat, notice
+// and read mark a placeholder holds, which only those logins do (security finding
+// F1); and drops the username column with its index: everybody signs in by their
+// own address again (ADR 0030 §2). On the portal 032 to 038 were applied to, with
+// the three username logins - the active one in a chat with the trainer and in a
+// course group, with notices and read marks - beside the address logins, a
+// family's chat with the trainer, a placeholder and the staff, it is held to
+// changing those three logins, taking what they hold in chats and bells, and
+// nothing else, then run a second time on a connection of its own, as the next
+// page view does after an update that applied it but stopped before the ledger
+// recorded it. Then, each round on a portal of its own, stopped after each
+// statement but the last and started again from the first. Afterwards two logins
+// written the way the portal writes one, naming no username, must both be taken.
+// Each state is read from the portal it names.
+$addressFile = migration_path('039');
+$addressStatements = migration_statements($addressFile);
+$addressState = fn(PDO $portal): array => tables_and_people($portal) + ['lists' => levels_and_bands($portal)];
+[$pdo, $written] = build_portal_before_032();
+apply_migrations($pdo, '032', '038');
+$addresses = ['written' => $written, 'statements' => count($addressStatements), 'before' => $addressState($pdo)];
+run_statements($pdo, $addressFile, $addressStatements);
+$addresses['after'] = $addressState($pdo);
+$addresses['refused'] = run_again($addressFile);
+$addresses['again'] = $addressState($pdo);
+$addresses['two_new'] = two_logins_without_a_username($pdo);
+for ($stopped = 1; $stopped < count($addressStatements); $stopped++) {
+    [$portal] = build_portal_before_032();
+    apply_migrations($portal, '032', '038');
+    run_statements($portal, $addressFile, array_slice($addressStatements, 0, $stopped));
+    $round = ['stopped' => $addressState($portal)];
+    run_statements($portal, $addressFile, $addressStatements);
+    $addresses['retried'][$stopped] = $round + ['restarted' => $addressState($portal)];
+}
+$result['addresses'] = $addresses;
+
 // --- this release's update, then one with a mistake in it, through the runner -------
 // schema_apply() itself, the one copy the installer, the console and the first
 // request after an upload all use, on a portal as the previous version leaves it:
@@ -1635,14 +1758,15 @@ $unreadable['after'] = $request();
 foreach ($written($unwritable['before'], $unreadable['after']) as $name) @unlink(backup_dir() . '/' . $name);
 
 // --- this release's update stopped between two of its files, then started again --------
-// 034 to 038 are one statement each and cannot stop inside themselves, so what is
-// left is an update stopping between two files: after 033, 034, 035, 036 or 037,
-// which a file that stops, put after each in turn, does to it. The next page
-// view, without that file, starts again at the first file the ledger does not
-// have. Each round on a portal of its own as the previous version left it, its
-// files on disk planted afresh.
+// 034 to 038 are one statement each and cannot stop inside themselves, and 039
+// stopped after each of its statements but the last is run above; what is left
+// is an update stopping between two files: after each of 033 to 038, which a
+// file that stops, put after each in turn, does to it. The next page view,
+// without that file, starts again at the first file the ledger does not have.
+// Each round on a portal of its own as the previous version left it, its files
+// on disk planted afresh.
 $restarted = [];
-foreach (['033', '034', '035', '036', '037'] as $stop) {
+foreach (['033', '034', '035', '036', '037', '038'] as $stop) {
     $clean();
     [$pdo] = $previousVersion();
     $round = ['before' => tables_and_people($pdo) + ['files' => $onDisk(), 'copies' => $state()['copies']]];

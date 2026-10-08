@@ -2,7 +2,12 @@
 <?php
 [$theme,$textScale]=appearance($user);
 $accent=accent_for($user);
-$realUser=$public?null:impersonator();
+/* Viewing the portal as somebody (ADR 0022 §9) is said on every page it
+   reaches, the public ones too: while it lasts, a link's page, the sign-in and
+   „abbestellen" refuse to go on until it ends, and the bar is the way to end
+   it. On the error page $user is null; the person looked at is still asked. */
+$realUser=impersonator();
+$viewed=$realUser?($user??current_user()):null;
 ?>
 <html lang="<?=e(locale())?>"<?=$theme!=='auto'?' data-theme="'.e($theme).'"':''?><?=$textScale!=='normal'?' data-text="'.e($textScale).'"':''?> data-accent="<?=e($accent)?>">
 <head>
@@ -107,9 +112,9 @@ $unreadNotes=unread_notifications((int)$user['id']);
 <header class="public-header"><?php brand_block($user,'public',url($user?'dashboard':'login')); ?><a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['account','category','signature']))))?>"><?=locale()==='de'?'EN':'DE'?></a></header>
 <?php endif ?>
 <main id="main" class="<?=$public?'public-main':'main-content'?>">
-<?php if($realUser): ?>
+<?php if($realUser && $viewed): ?>
 <div class="impersonation-bar" role="status">
-    <span><?=e(t('Du siehst das Portal als ','You are seeing the portal as '))?><strong><?=e($user['name'])?></strong><?=e(t('. Angemeldet bist du als ','. You are signed in as '))?><strong><?=e($realUser['name'])?></strong>.</span>
+    <span><?=e(t('Du siehst das Portal als ','You are seeing the portal as '))?><strong><?=e($viewed['name'])?></strong><?=e(t('. Angemeldet bist du als ','. You are signed in as '))?><strong><?=e($realUser['name'])?></strong>.</span>
     <?php start_form('impersonate',['mode'=>'stop'],'inline-form');submit_button(t('Ansicht beenden','Stop viewing'),'secondary');?></form>
 </div>
 <?php endif ?>

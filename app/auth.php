@@ -11,7 +11,7 @@ function current_user(bool $reload=false): ?array {
     // asked (security review F1). Not forget_session_leftovers(): nothing ended
     // here, and a link being opened by whoever holds this browser lives in
     // exactly this session between opening it and sending its page - dropped
-    // here, no invitation, reset or sign-in link would ever work signed out.
+    // here, no invitation or reset link would ever work signed out.
     if(empty($_SESSION['user_id'])) { unset($_SESSION['impersonator_id']); return $cached=null; }
     $a=one('SELECT * FROM accounts WHERE id=?',[(int)$_SESSION['user_id']]);
     $expired=time()-(int)($_SESSION['last_seen']??0)>(int)config('session_idle_minutes')*60;
@@ -41,7 +41,7 @@ function role_label(string $role): string {
     };
 }
 /**
- * Roles that may be granted from the Konten page, and who may grant them.
+ * Roles that may be granted from the Zugänge page, and who may grant them.
  *
  * Staff only, and only by an administrator. A student's account is made on
  * that student's own page by student_invite, because it belongs to exactly one
@@ -57,9 +57,8 @@ function require_admin(): array { $a=require_user(); if($a['role']!=='admin') th
  * Forget what a session holds for the person signed in to it, which nobody
  * after them on this browser may have: a view through somebody's eyes, which
  * handed the next person „Ansicht beenden" and the staff member's login
- * (security review F1); the readable sign-in links and the wizard's drafts they
- * made (ADR 0023 §5, §6), a link being a key to a child's login; a link being
- * opened (activation_hash), which is somebody's key too; and where the forms
+ * (security review F1); the wizard's drafts they made (ADR 0023 §5); a link
+ * being opened (activation_hash), which is somebody's key; and where the forms
  * they sent landed (remember_answered_form()), which a copy sent by the next
  * person would otherwise be taken to.
  *
@@ -68,23 +67,23 @@ function require_admin(): array { $a=require_user(); if($a['role']!=='admin') th
  * (impersonator()). Signing out empties the whole session.
  */
 function forget_session_leftovers(): void {
-    unset($_SESSION['impersonator_id'],$_SESSION['impersonator_auth_version'],$_SESSION['signin_links'],$_SESSION['student_drafts'],
+    unset($_SESSION['impersonator_id'],$_SESSION['impersonator_auth_version'],$_SESSION['student_drafts'],
           $_SESSION['activation_hash'],$_SESSION['answered_forms']);
 }
 /**
  * The one sentence a refused sign-in is given, whatever the reason: it says
  * nothing about whether the login exists, or why it was refused (ADR 0019,
- * 0023 §7). Thrown by the password path and by sign_in() itself.
+ * 0021 §1). Thrown by the password path and by sign_in() itself.
  */
 function sign_in_refusal(): UserError {
-    return new UserError(t('Anmeldung nicht möglich. Bitte E-Mail bzw. Benutzernamen und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link öffnen, den du bekommen hast.',
-                           'Could not sign in. Please check the email or username and the password. Not set up yet? Then first open the link you were given.'));
+    return new UserError(t('Anmeldung nicht möglich. Bitte E-Mail-Adresse und Passwort prüfen. Noch nicht eingerichtet? Dann zuerst den Link aus der Einladung öffnen.',
+                           'Could not sign in. Please check the email address and the password. Not set up yet? Then first open the link in your invitation.'));
 }
 /**
  * A new session for $a, and nothing of the one before it (forget_session_leftovers()).
  *
- * Every way in ends here - the password, an invitation, a sign-in link, a reset
- * link, a changed password - so an example login past its days
+ * Every way in ends here - the password, an invitation, a reset link, a
+ * confirmed new address, a changed password - so an example login past its days
  * (demo_login_expired()) is refused here, in the usual words, and a link made
  * for it signs nobody in either. Thrown before anything of the session changes,
  * and inside the action's transaction, so a link's password is not written.
@@ -151,7 +150,7 @@ function refuse_address_in_use(string $email, ?int $exceptId = null): void {
 /**
  * Who a login belongs to, by name: the student's own name for a student's login,
  * the account's name otherwise - "Familie Hofer" on an old login says less than
- * "Lena Hofer" does - and the sign-in name while there is no name at all: an
+ * "Lena Hofer" does - and the address while there is no name at all: an
  * invitation by address has none until its holder types one (ADR 0021, §3).
  * $student is the login's student row when the caller has already read it;
  * otherwise it is looked up.
@@ -162,31 +161,7 @@ function login_holder_name(array $account, ?array $student = null): string {
         $student??=isset($account['id']) ? one('SELECT first_name,last_name FROM students WHERE account_id=?',[(int)$account['id']]) : null;
         if($student) $name=trim($student['first_name'].' '.$student['last_name']);
     }
-    return $name!=='' ? $name : sign_in_name($account);
-}
-
-/**
- * What a login signs in with, as its holder types it: the address, or the
- * username of a login without one (ADR 0023 §1), or '' for a placeholder, which
- * signs in with nothing. The address first: a username login whose holder added
- * an address signs in with both, and the address is the one mail goes to.
- */
-function sign_in_name(array $account): string {
-    $email=(string)($account['email']??'');
-    return $email!=='' ? $email : (string)($account['username']??'');
-}
-
-/**
- * Whether what somebody typed to confirm is this login's sign-in name: the
- * address, compared the way addresses are, or the username, the way usernames
- * are. For „Anmeldung löschen", which asks for it typed (ADR 0021 §1, 0023 §4).
- * A placeholder has no sign-in name, so nothing matches it.
- */
-function typed_sign_in_name_matches(string $typed, array $account): bool {
-    $email=(string)($account['email']??'');
-    if($email!=='') return email_normalised($typed)===email_normalised($email);
-    $username=(string)($account['username']??'');
-    return $username!=='' && username_normalised($typed)===$username;
+    return $name!=='' ? $name : (string)($account['email']??'');
 }
 
 /**
@@ -202,9 +177,9 @@ function login_name_for(string $first, string $last): string {
 
 /**
  * A student's login that nobody can sign in with yet (ADR 0023 §3): state
- * placeholder, no address, no username, no password, called what the student is
- * called. Returns its id. The caller points the student at it, in its own
- * transaction, so a placeholder never exists without its student.
+ * placeholder, no address, no password, called what the student is called.
+ * Returns its id. The caller points the student at it, in its own transaction,
+ * so a placeholder never exists without its student.
  *
  * No address, even when the student's record carries one: two brothers or
  * sisters may carry a parent's address while neither has a login (0020 §1), and
@@ -213,7 +188,7 @@ function login_name_for(string $first, string $last): string {
  */
 function placeholder_login(string $firstName, string $lastName, bool $isDemo = false): int {
     if(tx_depth()===0) throw new RuntimeException('placeholder_login() outside a transaction could leave a login nobody points to.');
-    run("INSERT INTO accounts (name,email,username,role,state,locale,is_demo,created_at) VALUES (?,NULL,NULL,'student','placeholder','de',?,?)",
+    run("INSERT INTO accounts (name,email,role,state,locale,is_demo,created_at) VALUES (?,NULL,'student','placeholder','de',?,?)",
         [login_name_for($firstName,$lastName),$isDemo?1:0,now()]);
     return (int)db()->lastInsertId();
 }
@@ -227,10 +202,10 @@ function placeholder_login(string $firstName, string $lastName, bool $isDemo = f
  * One transaction, holding the students it reads, so a failure part way leaves
  * every student as they were and the next request starts again. Run again, it
  * finds nobody and changes nothing, in one query on student_one_account. Not
- * tracked(): no person made the change (0019 §4). The revision is raised, as
- * invite_student() raises it when it links a login, because the student page
- * offers different things to a student with a login: a form opened before the
- * update is refused on saving rather than taken as though nothing had changed.
+ * tracked(): no person made the change (0019 §4). The revision is raised
+ * because the student page offers different things to a student with a login:
+ * a form opened before the update is refused on saving rather than taken as
+ * though nothing had changed.
  *
  * PHP rather than SQL, because an INSERT ... SELECT makes logins with nothing
  * that ties each one to its student, and would be a second copy of how a
@@ -244,61 +219,6 @@ function give_every_student_a_login(): int {
                 [placeholder_login((string)$s['first_name'],(string)$s['last_name'],(bool)$s['is_demo']),now(),(int)$s['id']]);
         return count($students);
     });
-}
-
-/*
- * Giving a username (ADR 0023 §1). A username is unique ignoring case; nothing
- * but lower case is ever written (username_value()), and the unique index on
- * accounts.username compares under utf8mb4_unicode_ci as a second guard, not as
- * the rule. The pattern has no '_' and no '%', so the LIKE below holds no
- * wildcard but its own.
- */
-
-/** The usernames $base and $base followed by digits that logins already have. $base% takes in $base itself. */
-function usernames_taken_near(string $base, bool $lock): array {
-    $near=rows('SELECT username FROM accounts WHERE username LIKE ?'.($lock?' FOR UPDATE':''),[$base.'%']);
-    return array_values(array_filter(array_map('strval',array_column($near,'username')),
-        fn(string $u)=>$u===$base || preg_match('/^'.preg_quote($base,'/').'[0-9]+$/D',$u)===1));
-}
-
-/**
- * $username if no login has it, or the first free one numbered after it
- * (username_first_free()), or null when there is none - read with a lock on the
- * name and on every numbered one, so two requests giving lena.hofer at once
- * cannot both have it: the second waits for the first to commit and then sees
- * its row.
- *
- * Relies on REPEATABLE READ for the lock to cover a name nobody has yet, like
- * refuse_address_in_use(), and refuses outside a transaction, where it would
- * hold nothing. The caller compares the answer with what it asked for: the same
- * name is free, any other is the suggestion its refusal offers.
- */
-function username_for_new_account(string $username): ?string {
-    if(tx_depth()===0) throw new RuntimeException('username_for_new_account() outside a transaction holds nothing.');
-    return username_first_free($username,usernames_taken_near($username,true));
-}
-
-/**
- * The username a form offers for a person: their name's (username_from_name()),
- * numbered when it is taken. A plain read, for a page: the form only suggests,
- * and the action that writes asks username_for_new_account() again.
- */
-function username_suggested(string $firstName, string $lastName): string {
-    $base=username_from_name($firstName,$lastName);
-    return username_first_free($base,usernames_taken_near($base,false)) ?? $base;
-}
-
-/**
- * Refuse a username another login has, saying which one is free instead - staff
- * see every username anyway, so the answer tells them nothing new (ADR 0023 §1).
- * Asked inside the transaction that writes it, before it writes.
- */
-function refuse_username_in_use(string $username): void {
-    $free=username_for_new_account($username);
-    if($free===$username) return;
-    throw new UserError(t('Diesen Benutzernamen hat schon jemand. ','Somebody already has this username. ')
-        .($free!==null ? strtr(t('Frei wäre zum Beispiel {free}.','{free} would be free, for example.'),['{free}'=>$free])
-                       : t('Bitte einen anderen wählen.','Please choose another one.')));
 }
 
 /**
@@ -356,44 +276,34 @@ function refresh_sign_in_dummy_hash(): bool {
 }
 
 /**
- * The login a sign-in or „vergessen" input names, or null (ADR 0021 §1, 0023 §7).
+ * The login a sign-in or „vergessen" input names, or null (ADR 0021 §1, 0030 §1).
  *
- * $kind and $value come from attempted_sign_in(): 'address' with a normalised
- * address, or 'username' with a normalised username. In this order, and each
- * step is a reason this is not an oracle:
+ * $email is what was typed, normalised (attempted_address()). In this order,
+ * and each step is a reason this is not an oracle:
  *
- * 1. A value that fails its format - email_is_dot_atom() or USERNAME_PATTERN -
- *    is never looked up [M1]. Nothing outside atext reaches the collation.
- * 2. Two literal statements, one per kind; the column is never interpolated. A
- *    plain read for a sign-in: under REPEATABLE READ, FOR UPDATE takes a record
- *    lock on a login that exists and only a gap lock on one that does not, so
- *    concurrent sign-ins queued only for real logins, and the wait said which
- *    exist (security review F2). The sign-in's one write, the rehash, is
- *    conditional on the hash it verified instead. „Vergessen" passes $lock, and
+ * 1. A value that fails the format - email_is_dot_atom() - is never looked up
+ *    [M1]. Nothing outside atext reaches the collation.
+ * 2. One literal statement; nothing is interpolated. A plain read for a
+ *    sign-in: under REPEATABLE READ, FOR UPDATE takes a record lock on a login
+ *    that exists and only a gap lock on one that does not, so concurrent
+ *    sign-ins queued only for real logins, and the wait said which exist
+ *    (security review F2). The sign-in's one write, the rehash, is conditional
+ *    on the hash it verified instead. „Vergessen" passes $lock, and
  *    ' FOR UPDATE' is appended as a literal: two requests at once must not leave
  *    two live links.
  * 3. A row counts only if it is exactly what was typed, compared in PHP after
  *    normalising both sides. utf8mb4_unicode_ci folds accents, ß against ss and
  *    full-width letters (ADR 0007); a spelling that reaches a row only through
  *    that fold finds nothing here. A legacy address stored with capitals still
- *    matches, because email_normalised() lower-cases both sides; a username is
- *    only ever stored in lower case.
+ *    matches, because email_normalised() lower-cases both sides.
  *
  * The caller has already counted the attempt under the typed value
- * (sign_in_identity()); nothing here decides what is counted.
+ * (address_identity()); nothing here decides what is counted.
  */
-function account_for_sign_in(string $kind, string $value, bool $lock = false): ?array {
-    if($kind==='address') {
-        if(!email_is_dot_atom($value)) return null;
-        $a=one('SELECT * FROM accounts WHERE email=?'.($lock?' FOR UPDATE':''),[$value]);
-        return $a && email_normalised((string)$a['email'])===$value ? $a : null;
-    }
-    if($kind==='username') {
-        if(!preg_match(USERNAME_PATTERN,$value)) return null;
-        $a=one('SELECT * FROM accounts WHERE username=?'.($lock?' FOR UPDATE':''),[$value]);
-        return $a && (string)$a['username']===$value ? $a : null;
-    }
-    throw new LogicException('Not a kind of sign-in: '.$kind);
+function account_for_sign_in(string $email, bool $lock = false): ?array {
+    if(!email_is_dot_atom($email)) return null;
+    $a=one('SELECT * FROM accounts WHERE email=?'.($lock?' FOR UPDATE':''),[$email]);
+    return $a && email_normalised((string)$a['email'])===$email ? $a : null;
 }
 
 /**
@@ -421,7 +331,7 @@ function create_admin_account(string $name,string $email,string $password,bool $
     $email=email_value($email); strong_password($password);
     return transactional(function() use ($name,$email,$password,$force): array {
         if(!$force && rows("SELECT id FROM accounts WHERE role='admin' FOR UPDATE"))
-            throw new UserError(t('Es gibt bereits einen Administrator. Weitere Konten werden im Portal unter „Konten“ eingeladen.','An administrator already exists. Invite further accounts under “Konten” in the portal.'));
+            throw new UserError(t('Es gibt bereits einen Administrator. Weitere Konten werden im Portal unter „Zugänge“ eingeladen.','An administrator already exists. Invite further accounts under “Logins” in the portal.'));
         refuse_address_in_use($email);
         run("INSERT INTO accounts (name,email,password_hash,role,state,verified_at,created_at) VALUES (?,?,?,'admin','active',?,?)",
             [$name,$email,password_hash($password,PASSWORD_DEFAULT),now(),now()]);
@@ -472,12 +382,12 @@ function throttle_clear(string $name,string $identity): void {
     run_counter('DELETE FROM rate_limits WHERE bucket=?',[rate_limit_bucket($name,$identity)]);
 }
 /**
- * How long a link of each purpose works, in seconds. 48 hours for the two that
- * lead to a first password - an invitation and a sign-in link (ADR 0023 §12):
- * one lifetime a parent already knows. An hour for a reset and a changed address.
+ * How long a link of each purpose works, in seconds. 48 hours for an invitation,
+ * which leads to a first password (ADR 0023 §12): one lifetime a parent already
+ * knows. An hour for a reset and a changed address.
  */
 function token_lifetime(string $purpose): int {
-    return in_array($purpose,['invite','signin'],true) ? 172800 : 3600;
+    return $purpose==='invite' ? 172800 : 3600;
 }
 
 /**
@@ -495,7 +405,7 @@ function token_lifetime_words(string $purpose, bool $en): string {
 /**
  * Make a one-time link: 32 random bytes, of which only the sha256 is stored. It
  * replaces the login's earlier link of the same purpose, so there is one per
- * login and purpose - a new sign-in link kills the old one (ADR 0023 §6).
+ * login and purpose - an invitation sent again kills the old one.
  */
 function make_token(int $accountId,string $purpose,?string $email=null): string {
     run('DELETE FROM auth_tokens WHERE account_id=? AND purpose=?',[$accountId,$purpose]);
@@ -504,34 +414,38 @@ function make_token(int $accountId,string $purpose,?string $email=null): string 
     return $token;
 }
 /**
- * A live link and the login it belongs to. With the address or the username,
- * because the page a link opens shows it beside the new password for the phone
- * to save it under: whoever holds the link signs in with it anyway. With the
- * language, because an invitation's page speaks the one it was sent in
- * (public/index.php), and with verified_at, because a sign-in link's page asks
- * for the privacy acknowledgement only on the first sign-in (ADR 0023 §6).
+ * A live link and the login it belongs to. With the address, because the page
+ * a link opens shows it beside the new password for the phone to save it
+ * under: whoever holds the link signs in with it anyway. With the language,
+ * because an invitation's page speaks the one it was sent in (public/index.php).
  */
 function token_record(string $hash,bool $lock=false): ?array {
-    return one('SELECT t.*,a.state,a.email,a.username,a.verified_at,a.role,a.name,a.locale FROM auth_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.token_hash=? AND t.expires_at>?'.($lock?' FOR UPDATE':''),[$hash,now()]);
+    return one('SELECT t.*,a.state,a.email,a.role,a.name,a.locale FROM auth_tokens t JOIN accounts a ON a.id=t.account_id WHERE t.token_hash=? AND t.expires_at>?'.($lock?' FOR UPDATE':''),[$hash,now()]);
 }
 
 /**
  * Whether a link token_record() found can still be used; null - no such link,
  * or one that has run out - cannot. One rule for the page a link opens and the
  * activate action that uses it, so the page never offers a form the action
- * refuses, nor shows the login's address or username for a link that signs
- * nobody in (security re-review N2).
+ * refuses, nor shows the login's address for a link that signs nobody in
+ * (security re-review N2).
  *
- * Not to a suspended login, and only for the four purposes there are. A sign-in
- * link is asked, as it is used, what was asked when it was made
- * (signin_link_possible()): one whose login has since become a staff login,
- * lost its student or been given an address it never confirmed signs nobody in.
- * The last is also why a first link never sets up an address: an invitation by
- * e-mail is accepted from its mailbox, or not at all.
+ * Each of the three purposes there are goes with the one state it is made for
+ * (security review F3): an invitation with a login still invited - accepting
+ * it sets the password, the consents and the privacy acknowledgement, which on
+ * a login in use would be a reset that skips the reset's rule - and a reset or
+ * a changed address with a login in use. Nothing opens a suspended login or a
+ * placeholder. A row left in auth_tokens by a sign-in link from before ADR 0030
+ * has no purpose here, so it opens nothing, and the nightly prune removes it as
+ * it lapses. The sender asks the same before a mail with a link goes out
+ * (security_mail_links_live()).
  */
 function link_usable(?array $r): bool {
-    if(!$r || $r['state']==='suspended' || !in_array($r['purpose'],['invite','reset','email','signin'],true)) return false;
-    return $r['purpose']!=='signin' || signin_link_possible(['id'=>(int)$r['account_id']]+$r);
+    return $r!==null && match($r['purpose']) {
+        'invite'         => $r['state']==='invited',
+        'reset', 'email' => $r['state']==='active',
+        default          => false,
+    };
 }
 
 /**
@@ -557,8 +471,7 @@ function setup_creates_student(array $tokenRecord): bool {
 /**
  * Whether staff may have a link for a new password mailed to this login: only
  * to one in use, active and verified (ADR 0020, §5), that has an address to mail
- * it to - a username login without one gets a sign-in link instead (ADR 0023
- * §6). An invitation is sent again instead; a suspended login is restored
+ * it to. An invitation is sent again instead; a suspended login is restored
  * first. One rule for the account_state action and for the card that offers the
  * button, so the card never offers what the action refuses.
  */
@@ -566,111 +479,6 @@ function reset_link_possible(array $account): bool {
     return ($account['state'] ?? '')==='active' && !empty($account['verified_at']) && (string)($account['email'] ?? '')!=='';
 }
 
-/*
- * Sign-in links („Anmeldelink", ADR 0023 §6): purpose 'signin' in auth_tokens,
- * made by staff for a student's login and shared by them - shown as a QR code
- * or sent through a messenger, never mailed. The GET of ?page=activate&token=
- * uses nothing up; only the activate POST does, and it always sets a new
- * password. Whether one may be made is decided here and by
- * may_create_signin_link() (app/shell.php), and nowhere else.
- */
-
-/**
- * Whether a sign-in link can be made for this login at all, by anybody: the one
- * rule the action and every button ask.
- *
- * Only a student's login that a student points to - staff recover by mail, and
- * a link to a login with staff rights is the most valuable key the portal could
- * hand out. Not a suspended one. And one of: a placeholder, which gets its
- * username in the same request; a username login not yet signed in; or a login
- * in use, with an address or a username - for which the link is the way back
- * from a forgotten password without a mailbox.
- *
- * Never an invitation by e-mail: a link would set up a login whose address
- * nobody confirmed, and its invoices and reminders would go there - a mistyped
- * address would send a child's invoices to a stranger, unnoticed.
- */
-function signin_link_possible(array $account): bool {
-    if(($account['role'] ?? '')!=='student' || !isset($account['id']) || !login_student_id((int)$account['id'])) return false;
-    return ($account['state'] ?? '')==='placeholder' || username_login_waiting($account) || account_in_use($account);
-}
-
-/**
- * A username login waiting for its first sign-in (ADR 0023 §3): given a
- * username and a link, and no address - „Noch nicht angemeldet". An invitation
- * by e-mail waits too, but at an address, and is „Eingeladen". One rule for the
- * badge, the access card and signin_link_possible().
- */
-function username_login_waiting(array $account): bool {
-    return ($account['state'] ?? '')==='invited' && (string)($account['email'] ?? '')==='' && (string)($account['username'] ?? '')!=='';
-}
-
-/**
- * The sign-in links made for one login in the last $days days, newest first:
- * when each was made and by whom, until when it works while it still does, and
- * when it was used or withdrawn. Read from the audit, which records who made a
- * link and who used one (ADR 0023 §6, "Every use is visible"), and for the live
- * one its end from auth_tokens - never its hash.
- *
- * For the access card, which shows the newest, and for Mein Konto, which lists
- * those used to set a password - so a link used by anybody but its holder
- * cannot go unnoticed. Every caller passes PASSWORD_RESET_SHOWN_DAYS. A use or
- * a withdrawal belongs to the newest link made before it, because a new link
- * replaces the old one.
- */
-function signin_links_for(int $accountId, int $days): array {
-    $entries=rows("SELECT l.action,l.created_at,a.name AS actor_name FROM audit_log l LEFT JOIN accounts a ON a.id=l.actor_id"
-        ." WHERE l.entity_type='account' AND l.entity_id=? AND l.action IN ('account.signin_link','account.signin_link_used','account.signin_link_withdrawn')"
-        .' AND l.created_at>=? ORDER BY l.id',[$accountId,gmdate('Y-m-d H:i:s',time()-$days*86400)]);
-    $links=[];
-    foreach($entries as $entry) {
-        if($entry['action']==='account.signin_link') {
-            $links[]=['created_at'=>(string)$entry['created_at'],'made_by'=>(string)($entry['actor_name']??''),
-                      'expires_at'=>null,'used_at'=>null,'withdrawn_at'=>null];
-            continue;
-        }
-        $last=count($links)-1;
-        if($last<0) continue;
-        $links[$last][$entry['action']==='account.signin_link_used'?'used_at':'withdrawn_at']??=(string)$entry['created_at'];
-    }
-    $live=one("SELECT created_at,expires_at FROM auth_tokens WHERE account_id=? AND purpose='signin' AND expires_at>? ORDER BY id DESC LIMIT 1",[$accountId,now()]);
-    $last=count($links)-1;
-    if($live && $last>=0 && $links[$last]['used_at']===null && $links[$last]['withdrawn_at']===null) $links[$last]['expires_at']=(string)$live['expires_at'];
-    return array_reverse($links);
-}
-
-/**
- * Keep the readable sign-in link in the session of the member of staff who made
- * it, and nowhere else - not the database, a log, a mail or an address (ADR
- * 0023 §6, A5): an iPhone reloads the tab after a switch to WhatsApp, and a link
- * shown once would be gone the moment she went to share it. Only the actions
- * that make one call this.
- */
-function remember_signin_link(int $accountId, string $token): void {
-    $_SESSION['signin_links'][$accountId]=['token'=>$token,'by'=>(int)acting_account_id()];
-}
-
-/** Forget the readable link for one login: withdrawn, replaced, used up or lapsed. */
-function forget_signin_link(int $accountId): void {
-    unset($_SESSION['signin_links'][$accountId]);
-}
-
-/**
- * The readable sign-in link for a login, as ['link','token','expires_at'], while
- * the person looking made it and it still works - or null. A link this session
- * holds that has been used, replaced, withdrawn or has lapsed is dropped here,
- * the first time a page finds it so; and one somebody else made never shows,
- * whoever this browser is signed in as now.
- */
-function signin_link_shown(int $accountId): ?array {
-    $kept=$_SESSION['signin_links'][$accountId] ?? null;
-    if(!is_array($kept) || !is_string($kept['token'] ?? null)) return null;
-    $record=preg_match('/^[a-f0-9]{64}$/D',$kept['token']) ? token_record(hash('sha256',$kept['token'])) : null;
-    $live=$record && $record['purpose']==='signin' && (int)$record['account_id']===$accountId && $record['state']!=='suspended';
-    if(!$live) { forget_signin_link($accountId); return null; }
-    if((int)($kept['by'] ?? 0)!==(int)acting_account_id()) return null;
-    return ['link'=>url('activate',['token'=>$kept['token']]),'token'=>$kept['token'],'expires_at'=>(string)$record['expires_at']];
-}
 /**
  * When the newest invitation to a login was sent and when it stops working, as
  * created_at and expires_at - or null when there is none (ADR 0020, §10c).
@@ -736,10 +544,10 @@ function account_mail_missing(): string {
 /**
  * The step that releases the privacy notice, as the sentence that says where -
  * or '' once it is released. Everybody acknowledges the notice the first time
- * they set up their login, by invitation or by sign-in link, so neither can
- * go out before; every refusal and notice that says so quotes this. Settings
- * are an administrator's, so a trainer is told who releases it rather than sent
- * to a page she cannot open - as the e-mail card tells her (mail_not_ready_notice()).
+ * they set up their login, from the invitation, so none can go out before;
+ * every refusal and notice that says so quotes this. Settings are an
+ * administrator's, so a trainer is told who releases it rather than sent to a
+ * page she cannot open - as the e-mail card tells her (mail_not_ready_notice()).
  */
 function privacy_notice_missing(): string {
     if(setting('privacy_ready',false)) return '';
@@ -758,26 +566,14 @@ function refuse_until_invitations_can_go(): void {
 }
 
 /**
- * Refuse a first sign-in link while the privacy notice is not released: its
- * holder acknowledges the notice on the page the link opens, and a link that
- * page would refuse is a link that cannot work. Asked by make_signin_link() for
- * every login not yet set up (security review, finding 6), and by the wizard
- * before it writes anything (ADR 0023 §5).
- */
-function refuse_signin_link_until_privacy_released(): void {
-    if(($missing=privacy_notice_missing())!=='')
-        throw new UserError(t('Ein Anmeldelink geht erst, wenn die Datenschutzerklärung freigegeben ist – sie wird bei der ersten Anmeldung bestätigt. ',
-                              'A sign-in link only works once the privacy notice is released – it is acknowledged at the first sign-in. ').$missing);
-}
-/**
  * Mail a one-time link: an invitation, a reset, or the confirmation of a new
- * address ($email, the new mailbox). Never a sign-in link, which is shared by
- * staff rather than mailed (ADR 0023 §6) - a mailed one would be a reset link
- * under another name. A login without an address is refused before any link is
- * made (§7): nothing is mailed to a login that has none.
+ * address ($email, the new mailbox). A login without an address is refused
+ * before any link is made: nothing is mailed to a login that has none. The
+ * portal makes none that signs in (ADR 0030), and a placeholder is never asked
+ * for a link, so what reaches this is a login edited by hand in the database -
+ * an active one without an address.
  */
 function send_account_token(array $account,string $purpose,?string $email=null): void {
-    if($purpose==='signin') throw new LogicException('A sign-in link is never mailed (ADR 0023 §6).');
     if((string)($email ?? $account['email'] ?? '')==='')
         throw new UserError(t('Dieser Zugang hat keine E-Mail-Adresse, an die ein Link gehen könnte.','This login has no email address for a link to go to.'));
     if(!account_mail_ready()) throw new UserError(account_mail_missing());
