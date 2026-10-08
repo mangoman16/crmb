@@ -5,6 +5,98 @@ date: 2026-10-08
 
 # 0031. Profile pictures come back: staff see every face, a course once the family agrees
 
+> **Amended on 2026-10-08: the owner's answers.** The owner, the same day:
+>
+> - "we are based in austria, use austrian law"
+> - "trainer at least should always see them, and the admin"
+> - "No legal basis? idk? use is just for my mom, the trainer to see who is in course and help her
+>   remember her name"
+> - "yea definitely admin and trainer picture too makes it more personal"
+> - "yea we can definitely do it that a child can also add a photo, but also so that trainer too"
+>
+> What they decide:
+>
+> 1. **Team members have pictures again, as this record first had them.** The owner reversed the
+>    project manager's veto. `041_a_team_members_picture.sql` is one statement, alone in its file,
+>    and writes no row:
+>    `ALTER TABLE accounts ADD COLUMN picture_name VARCHAR(40) NOT NULL DEFAULT '' AFTER name;`.
+>    - A team member adds, replaces and removes their own on Mein Konto, through the one writer;
+>      nobody changes another team member's.
+>    - Staff and families see every team member's picture: `may_see_picture()` takes a person again,
+>      a child or a team member, and a team member's is seen by every signed-in viewer. The route's
+>      branch takes `kind` (`student` or `account`) beside `id` and `v`.
+>    - A student's login never has one: the writer refuses it, and a family's top bar shows the
+>      child's.
+>    - `delete_login()` deletes a team member's file at once, `upload_references()` names
+>      `accounts.picture_name` beside `students.picture_name`, and `demo_clear()` takes the example
+>      trainer's.
+>
+>    These parts no longer hold:
+>
+>    - under the title, "the project manager kept the pictures to children", "for children" in what
+>      it reverses of 0026 §8, and one migration and one setting: there are two of each (041, and
+>      `consent_age` below);
+>    - in §1, "Only children have one"; in §5, `array $student`, the table's initials for the team
+>      and "The team is shown by initials everywhere"; in §6, the route by the student's id alone;
+>      in §7 and §9, a writer and deletions for children only; and §10's list, which gains
+>      `delete_login()`, Mein Konto and „Dein Foto" among the views, and 041;
+>    - in Rejected, "Pictures for staff";
+>    - in Consequences, "Schema: 040", "Settings: one" and the `ROADMAP.md` line; in "Must stay
+>      true", "a picture is a child's", which now reads: a child's picture is on the student, a team
+>      member's on their account, and a student's login has none; and the one writer and "040 is
+>      never edited" take in `accounts.picture_name` and 041;
+>    - in Tests, 4's team member drawn as initials and 12's "no `accounts` column holds a picture";
+>      in "In plain words", the team without pictures.
+> 2. **Who says yes for a child is Austrian law's** (§ 4 Abs. 4 DSG): from 14 the child alone,
+>    under 14 a person with parental responsibility. The family's login holds the switch either way.
+>    - `needs_a_parents_yes(array $student): bool`, in `app/uploads.php` beside `may_see_picture()`,
+>      is the one rule: true under the age, or without a birth date, by `student_age()`
+>      (`app/groups.php`, loaded before). The switch is then worded for a parent, and
+>      `record_consent()` writes the purpose `course_sees_picture_by_parent`; from the age on it is
+>      the child's own yes, written as `course_sees_picture`. The rule reads the column alone; the
+>      log says who said it.
+>    - The age is a setting, `consent_age`: 14 by default, from 13 to 16, the range Art. 8 DSGVO
+>      leaves to each country. *The architect's call*: another club's country is then a setting
+>      away (`CLAUDE.md`, "Another club could run it too").
+>    - **A parent's yes stays valid when the child turns 14, and nobody is asked again.** It was
+>      given by whoever could give it at the time; at 14 the child holds the same switch and can
+>      take it back at once; and asking again is the asking §8 rules out.
+>    - Not chosen: asking again at 14, or ending the parent's yes then, which would take from the
+>      course what was validly given; and a column in `consent_log` for who agreed, which the
+>      purpose (`VARCHAR(40)`) already says without a migration.
+>    - Whether a switch worded for a parent is enough where a child under 14 holds the login with
+>      their own address (Art. 8 Abs. 2 DSGVO, reasonable efforts) is part of the check in 3.
+> 3. **The legal basis for staff seeing a child's picture**, the project manager's reading,
+>    recorded as such and to be checked before real families: the club's legitimate interest in
+>    recognising who is in the course, for attendance and the children's safety (Art. 6 Abs. 1 lit. f
+>    DSGVO), with the weighing that a child's data asks for written down. The privacy notice says so,
+>    and that the family can remove the picture at any time. A family's own upload is their choice;
+>    the course seeing a picture stays consent (§8); a team member's picture is their own upload.
+>    This and 2 answer §11's two brackets.
+>    - Not chosen: consent for staff seeing too. The trainer's sight of a child would then hang on a
+>      yes that a family could withhold, and the owner wants the trainer always to see them.
+> 4. **The first sign-in offers „Dein Foto",** one optional step right after the password is set on
+>    the invitation's page: the child's picture for a family, one's own for a team member.
+>    - The invitation's activation lands on it, once, so it is never asked again and needs no column
+>      or flag. Saved or skipped („Überspringen"), it goes on to where the activation landed
+>      before: a family to its child's page, with the welcome (0023 §5), a team member to
+>      `landing_after_sign_in()` (0011). A reset and a confirmed address land as before. This
+>      record now amends 0011, 0021 and 0023 too, and their notes say so.
+>    - It posts `picture_save`, the one writer, and offers the picture only, never the course switch,
+>      which waits on the child's page (§8).
+>    - Every invitation has something to put a picture on: a team member's account, or the child,
+>      whom an invitation by address makes in the same activation (0021 §3). The administrator
+>      that setup makes has no invitation, and adds theirs on Mein Konto.
+>    - A page of its own, or the card's page opened as a step, is the designer's call; either way it
+>      is reached from where it belongs, as 0011's check asks of every page.
+>    - Not chosen: a card on the page the activation lands on, shown once by a flag in the session.
+>      On a family's child's page it would sit beside the picture card, and it is not a step.
+> 5. **The trainer still adds or changes a child's picture at any time** (§7), and a child can add
+>    their own: both as recorded.
+>
+> Lines marked *Owner, 2026-10-08* say so in §1, §2, §5, §8, §11, Rejected, Consequences, Tests and
+> "In plain words".
+
 > **Accepted** on 2026-10-08. The owner asked for profile pictures back and answered three questions
 > the same day (Context). Decided by the architect at the project manager's request, from the working
 > tree as read that day; the project manager kept the pictures to children (Rejected). It reverses
@@ -83,6 +175,8 @@ Read from the working tree on 2026-10-08, not assumed:
   owner asked for the children's faces, and nobody asked for the team's (Rejected). A family's top
   bar shows the child's picture, and a team member's shows their initials. A login with no student
   shows initials: an invitation by address not yet taken up, or a login left behind on Zugänge.
+  *Owner, 2026-10-08:* no longer: a team member has a picture too, on their account (the note at
+  the top). A student's login still never has one.
 
 ### 2. Migration 040
 
@@ -90,6 +184,12 @@ Read from the working tree on 2026-10-08, not assumed:
 -- 040_a_childs_picture_and_whether_the_course_sees_it.sql
 ALTER TABLE students ADD COLUMN picture_name VARCHAR(40) NOT NULL DEFAULT '' AFTER last_name, ADD COLUMN course_sees_picture TINYINT(1) NOT NULL DEFAULT 0 AFTER picture_name;
 ```
+
+*Decided 2026-10-08, before 040 ships:* `course_sees_picture` is plain `TINYINT`, the house style
+ADR 0015 names for flag columns, not `TINYINT(1)`. `database-engineer` raised it; the project
+manager decided it.
+*Owner, 2026-10-08:* and `041_a_team_members_picture.sql` adds `accounts.picture_name`, alone in its
+file (the note at the top).
 
 - **One statement, alone in its file**, because an `ALTER` cannot run twice (MySQL 8.0 has no
   `ADD COLUMN IF NOT EXISTS`), as in 035 and 036.
@@ -119,9 +219,21 @@ ALTER TABLE students ADD COLUMN picture_name VARCHAR(40) NOT NULL DEFAULT '' AFT
   form's `accept` never offers what the server refuses. No GIF: its animation would be lost on the
   way to a still. No HEIC, which gd cannot read. An iPhone hands Safari a JPEG when `accept` does not
   name HEIC; that is measured on an iPhone, not assumed.
+  *Decided 2026-10-08, by the project manager, from the security audit:* JPEG and PNG only; a WebP
+  is refused in words, as a GIF is. gd is the first native decoder a family can reach here, and
+  CVE-2023-4863 was in libwebp.
 - **How big:** the limit every upload has, `upload_limit()`, from `upload_max_kb`, whose hint names
   profile pictures again. There is no second setting. Whether an iPhone photo fits in the 4 MB
   default is measured; if it does not, the setting is the owner's to raise.
+  *Decided 2026-10-08, by the project manager:* the browser shrinks a chosen photo before sending
+  it. A 24-megapixel iPhone photo is often over the 4 MB default, and the trainer is on weak 4G in
+  the hall. It is `frontend-dev`'s, in `app.js`, and sends a JPEG drawn upright, as the phone shows
+  it, because the smaller copy carries no EXIF for the server to turn it by; it is drawn straight at
+  the smaller size, never at the photo's own, which a phone's browser may refuse. Without
+  JavaScript, or where shrinking fails, the photo goes as it is. The server still enforces every
+  limit this record names, for a page without JavaScript: the upload limit, the types,
+  `PICTURE_MAX_PIXELS`, the memory check, and the square it makes itself. `TESTING.md` walks both:
+  with JavaScript, a 24-megapixel photo arrives; without it, one over the limit is refused in words.
 - **What is stored:** one square JPEG of `PICTURE_SIDE` = 320 pixels, cut from the middle of the
   photo, turned upright by its EXIF orientation (`exif_orientation()`, which exists), on white where
   the picture was transparent, then passed through `image_without_metadata()` like every stored
@@ -148,8 +260,19 @@ ALTER TABLE students ADD COLUMN picture_name VARCHAR(40) NOT NULL DEFAULT '' AFT
     images, and otherwise refuses in words. A 12-megapixel photo needs about 60 MB;
   - a file gd cannot read is a refusal in words, never gd's warning;
   - the decoded pictures are released before the file is written.
+  - *Decided 2026-10-08, by the project manager, from the security audit:* it decodes with
+    `imagecreatefromjpeg()` or `imagecreatefrompng()`, whichever the type read from the bytes names,
+    and never with `imagecreatefromstring()`, which tries every decoder gd has; a header naming
+    another type is refused. Both read a file, so it takes the path of the upload `store_upload()`
+    has typed, not its bytes, and reads the header with `getimagesize()`. `PICTURE_MAX_PIXELS` is
+    24 million, not about 50: a tiny one-colour PNG can claim 50, and a few sessions at once could
+    push a shared host over its memory. Without JavaScript a 48-megapixel photo is refused in
+    words; with it, the browser has shrunk it first.
 - **Twenty an hour** per login, as for `proof_upload` (`throttle('picture', …, 20, 3600)`). Decoding
   is the most expensive thing a request here can ask for.
+  *Decided 2026-10-08, by the project manager, from the security audit:* the throttle is counted
+  before anything is decoded, and every refusal counts, so twenty refused files use up the hour
+  too.
 
 ### 4. gd, an extension the portal now requires
 
@@ -185,6 +308,9 @@ serves pictures. It is true when:
    group's members and a picture's audience cannot come to disagree.
 
 Otherwise it is false, and nobody signed out sees any picture.
+*Owner, 2026-10-08:* and a fourth: **the person is a team member**, whose picture every signed-in
+viewer sees. In the table, a team member's picture shows wherever the team does: a family sees it in
+a chat between two, and the top bar shows one's own (the note at the top).
 
 - **Not in return.** A family that does not share its child's picture still sees the pictures of
   those who do. Seeing in exchange for showing would put a price on the yes, and a consent with a
@@ -207,6 +333,7 @@ Otherwise it is false, and nobody signed out sees any picture.
 | The top bar | their own initials | their child's | – |
 
 - **The team** is shown by initials everywhere, to everybody.
+  *Owner, 2026-10-08:* no longer; the team has pictures (above).
 - **An administrator reading along** (0022 §11.1) sees every child's picture: she is staff.
 - **Viewing as somebody** (0022 §9): the rule asks `current_user()`, who is the person viewed, so the
   view shows what they see. Staff see more than any family, so the view adds nothing.
@@ -270,6 +397,9 @@ The owner: "Family and trainer".
   with one sentence saying who then sees the picture (the children in the child's courses and their
   families) and that it can be turned off at any time. The words are the designer's. From what age a
   child may say yes alone is the owner's to answer before real families use the portal (§11).
+  *Owner, 2026-10-08:* answered by Austrian law: from 14 the child's own yes, under 14 or without a
+  birth date a parent's, by `needs_a_parents_yes()` and the setting `consent_age`; a parent's yes
+  stays valid past 14 (the note at the top).
 - **Only the child's own login turns it on.** Staff can turn it off, for a family that asks on the
   phone or a picture that should not be shown, and never on: nobody says yes in a family's place. It
   is the one value a family writes that staff can only take back, and 0020's "Must not" gains that
@@ -346,6 +476,9 @@ No new file, and the load order does not change.
     child may say yes alone, under the law that applies; and on what legal basis staff see a picture
     the trainer took. The project manager puts both to the owner. Until the owner has written those
     sentences, the brackets stay in the drafts and in the notice.
+    *Owner, 2026-10-08:* both answered (the note at the top, 2 and 3): from 14, under § 4 Abs. 4
+    DSG, held in `consent_age`; and the project manager's reading of lit. f, to be checked before
+    real families. The paragraph also says that every signed-in person sees the team's pictures.
 - **The chat paragraph** „In der Gruppe sieht man voneinander Namen und Initialen" gains „und, wenn
   die Familie zugestimmt hat, das Profilbild", and the English one its translation.
 - **UPDATING**, for an operator whose notice is released: add both before the upload and release
@@ -361,6 +494,8 @@ No new file, and the load order does not change.
   for the children's faces, so that the trainer learns who is who. It stays one line in `ROADMAP.md`
   until somebody asks; the mechanism allows it later with one column, `accounts.picture_name`, and
   one branch in `may_see_picture()`.
+  *Owner, 2026-10-08:* no longer rejected. The owner asked for them: "yea definitely admin and
+  trainer picture too makes it more personal" (the note at the top).
 - **Only staff and the child's own family see a picture**, the owner's other option. The owner chose
   the course.
 - **A picture shown to the course without the family's yes, and a picture staff put on a child
@@ -412,11 +547,20 @@ No new file, and the load order does not change.
   PHP extension the portal now requires (§4). **Load order:** unchanged.
 - **`ROADMAP.md`**, by the project manager: one line under „Later, not scheduled", pictures for the
   team, if somebody asks (Rejected).
+  *Owner, 2026-10-08:* no such line: the team has pictures. **Schema:** 040 and 041. **Settings:**
+  two, `pictures_in_course` and `consent_age`. **Records:** 0011, 0021 and 0023 are amended too, for
+  „Dein Foto", and 0016, 0017, 0022 and 0026 gain a dated line for the team's pictures.
+  `ui-ux-designer` adds Mein Konto's card for a team member, the switch's wording for a parent and
+  for a child, „Dein Foto", and where `consent_age` sits; `docs-writer`'s drafts say Austrian law
+  and the age of 14, the project manager's reading of lit. f, and that every signed-in person sees
+  the team's pictures.
 - **The owner is told** by the project manager what to test (below), and that the hosting needs gd.
   **Two questions are the owner's to answer before real families use the portal:** from what age a
   child may switch the course view on alone, and on what legal basis staff see a picture the trainer
   took. The project manager puts them to the owner; the privacy drafts carry both in brackets until
   the owner has answered (§11).
+  *Owner, 2026-10-08:* answered (the note at the top). What remains before real families is to
+  check the project manager's reading of lit. f, with its weighing for children written down.
 - **`ui-ux-designer`** specifies before anything is built: the picture card on the child's page for
   both roles, with the switch and its sentence; the faces on the attendance page, and taking a
   picture there; the students list, Zugänge, the chat's list, bubbles and member sheet, and the top
@@ -493,11 +637,16 @@ Each rule is broken once on purpose and seen to fail; then the whole suite, `tes
    text file, an empty string, a GIF and HEIC bytes are each refused in words. No case leaves a PHP
    warning. *Break:* skip the size check; the 30,000 × 30,000 case runs out of memory, in a process
    of its own.
+   *Decided 2026-10-08, from the security audit:* a WebP is refused in words like the GIF; a
+   5,000 × 5,000 one-colour PNG, a few hundred bytes that claim 25 megapixels, is refused before
+   anything is decoded; and nothing in `app/` calls `imagecreatefromstring()` (`structure`).
 6. **The writer.** A picture staff put on a child sets `course_sees_picture` to 0 and puts one notice
    in the family's bell, and none for a placeholder. The family's own picture leaves the answer. The
    old file is gone the moment the action returns. Removing empties the column and deletes the file.
    „Änderungen" has one line with the actor, labelled „Profilbild", naming no file. The twenty-first
    picture in an hour is refused. *Break:* keep the old file; it is still there after the action.
+   *Decided 2026-10-08, from the security audit:* refusals count toward the twenty, and the
+   twenty-first attempt in an hour is refused before anything is decoded.
 7. **The yes.** Only the child's own login turns it on. Staff are refused turning it on and may turn
    it off. While viewing as somebody, both are refused. Each change writes a `consent_log` row with
    the purpose and the notice's version. After `replace_login_with_placeholder()` it is 0. With
@@ -525,6 +674,23 @@ Each rule is broken once on purpose and seen to fail; then the whole suite, `tes
     `upload_references()` names `picture`, and the case that keeps a test run out of the portal's
     folder lists it.
 
+*Owner, 2026-10-08:* 4's team member drawn as initials and 12's "no `accounts` column holds a
+picture" no longer hold. Added, each broken once:
+
+13. **041, with data in place:** `accounts.picture_name` with its type and default, `''` on every row,
+    the counts unchanged; run again, refused. A team member's picture is seen by every signed-in
+    viewer and by nobody signed out; a picture on a student's login is refused; `accounts.picture_name`
+    is written only by the writer. *Break:* let the writer take a student's login.
+14. **A team member's file goes** with `delete_login()` and with `demo_clear()`, at once, and the
+    prune keeps a named one. *Break:* drop the file from `delete_login()`.
+15. **The age.** `needs_a_parents_yes()` is true the day before the 14th birthday and without a birth
+    date, false on the birthday, and follows `consent_age`; the yes is logged as
+    `course_sees_picture_by_parent` or as `course_sees_picture` to match; a parent's yes still counts
+    the day the child turns 14, and nothing asks again. *Break:* treat a missing birth date as 14.
+16. **„Dein Foto".** The invitation's activation lands on it once, for a family and for a team
+    member; „Überspringen" lands where the activation landed before; a later sign-in and a reset
+    never show it; it offers no course switch. *Break:* land a reset on it.
+
 **TESTING.md**, on a real iPhone and an Android phone, with test data only: a photo from the gallery
 and one from the camera each arrive as an upright JPEG; a 24-megapixel photo against the 4 MB limit;
 the trainer photographs a child without an address from the attendance page; two family logins in one
@@ -544,6 +710,8 @@ course, with and without the yes, and the yes taken back; a removed picture is g
   sees the others.
 - The team has no pictures for now: families see you and the trainer by your initials, as today. If
   you want team pictures later, say so; it is a small addition.
+  *Owner, 2026-10-08:* you asked for them: you, the trainer and the other staff each add your own on
+  Mein Konto, and everybody signed in sees them.
 - The portal keeps a small square copy, without where or when it was taken; the phone's photo itself
   is not kept. A removed picture is gone at once, and so is a child's picture when the child is
   deleted.
@@ -552,3 +720,8 @@ course, with and without the yes, and the yes taken back; a removed picture is g
 - Before real families use the portal, the privacy notice gets a paragraph about pictures, and you
   answer two questions for it: from what age a child may switch the course view on alone, and on what
   legal basis staff see a photo the trainer took. The project manager will ask you.
+  *Owner, 2026-10-08:* answered. Austrian law: a child of 14 or over says yes alone, and a parent says
+  it for a younger child, and that yes stays when the child turns 14. Staff seeing the pictures rests
+  on the club's interest in knowing who is in the course; that reading is checked before real
+  families. Whoever sets their password from an invitation is offered „Dein Foto" once, and can skip
+  it; you set the portal up yourself, so yours is on Mein Konto.

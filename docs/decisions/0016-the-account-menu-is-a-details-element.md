@@ -9,6 +9,10 @@ date: 2026-09-29
 > `<summary>` shows its child's picture where there is one, through `avatar()` (0031 §1). Staff have
 > no picture and keep their initials, as the 0026 note below says; so does a family whose child has
 > none. Everything else stands.
+>
+> *Owner, 2026-10-08:* staff have pictures too (0031's note at the top), so "Staff have no picture
+> and keep their initials" no longer holds: a team member's `<summary>` shows their own picture
+> where there is one, through the same `avatar()`, and their initials otherwise.
 
 > **Superseded in part by ADR 0026 (2026-10-07).** Profile pictures are gone, so the `<summary>` shows
 > the person's initials, name and role. The owner gave their word on 0026's † the same day ("Remove

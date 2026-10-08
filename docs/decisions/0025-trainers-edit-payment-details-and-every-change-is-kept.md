@@ -5,6 +5,26 @@ date: 2026-10-06
 
 # 0025. Trainers edit payment details, and every change to them is kept
 
+> **Amended on 2026-10-08 by the project manager, from the security audit: the QR code is a bank
+> transfer, and administrators hear of every change to where the money goes.** Trainers still
+> change the IBAN, as the owner decided.
+>
+> - `qr_template` must give an EPC payload for a SEPA credit transfer (EPC069-12): what
+>   `qr_payload()` makes from it has `BCD` as its first line. `profile_save` refuses a template that
+>   does not, and `qr_payload()` draws no code from one, so a template saved before is held to it
+>   too. One check does both.
+> - *The architect's call:* the template's sixth and seventh lines are `{recipient}` and `{iban}`
+>   exactly, so the code pays the account the IBAN field shows, the one the change log and the
+>   notice name. Without it, a template could carry an IBAN of its own, past `valid_iban()` and
+>   past the notice about the IBAN.
+> - Every administrator gets a notice in the bell (`notify_admins()`), written in the same
+>   transaction, when a profile's IBAN, recipient or template changes: who changed it, and a link
+>   to „Änderungen". A new profile counts as a change (*the architect's reading*: it brings an IBAN
+>   of its own).
+>
+> These parts no longer hold: in the Decision, "No other change"; in Rejected, "A notice to
+> administrators" (a second person's approval stays rejected). Everything else stands.
+
 > **Superseded in part by ADR 0026 (2026-10-07).** Copying records („Kopieren", `record_duplicate`,
 > `duplicate_record()`) is gone. These parts no longer hold: "Copying a profile stays administrators
 > only", and in the `structure` item, "with `duplicate_record()` as it is": every write of

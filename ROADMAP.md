@@ -101,17 +101,26 @@ In this order.
      link pressed, and after 0.7 s a shuttlecock flies along the bar; the shuttlecock is the
      mark and the home-screen icon where a club has uploaded none (design document, „Part 0,
      continued"). Not yet seen on an iPhone or an Android phone (TESTING.md W.1–W.5).
+   - **A full waiting page instead of the shuttle along the bar** (owner, later on
+     2026-10-08): specified by ui-ux-designer (Part 0.4b), being built. A page slower than
+     0.5 s gets the whole screen with a shuttlecock rallying over a net and the club's name,
+     shown at least 0.5 s, carried on by the next page and faded out; after 6 s „Dauert
+     länger als sonst." with „Abbrechen".
    - **Profile pictures come back** (ADR 0031, decided): faces for the trainer on
      Anwesenheit, the lists and the child's page, and for the children to make their profile
      their own; visible to the course with each family's consent; the family and the trainer
      add them, the family can always replace or remove them. This reverses round 2's removal
-     of pictures. Children only: staff keep their initials. Next, ui-ux-designer specifies the
-     screens; then migration 040, the server and the screens.
+     of pictures. The owner's answers of the same evening (ADR 0031, amended): trainers and
+     administrators have pictures too; a child agrees alone from 14 under Austrian law, a
+     parent below that; an optional „Dein Foto" right after the first password. Specified;
+     migrations 040 and 041 written; the server and the screens being built.
 10. **Robustness suite: done** (`aa5b1b7`). `tests/suites/robustness.php` sends unexpected values
    to every action as every role and draws every page with them; 751 checks, about 45 s.
    What it cannot reach — uploads, actions no page draws a form for — it lists after a run.
-11. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Not
-   started.
+11. **The owner's goals, walked at phone width** by ui-ux-designer, then the fixes. Started
+   2026-10-08 as a design audit against the owner's words: "something schick, modern and
+   minimalistic and well made and intuitive and easy to use without too much reading but
+   visual signs".
 12. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
 
 ## The owner's goals
@@ -161,11 +170,34 @@ In their words.
 
 ## Decided
 
+- **2026-10-08** — the owner, standing: "Work as a team of agents of different skills to make
+  sure this software does everything i want, i need and i wanted or needed without knowing.
+  whenever you are done with open tasks, you can preset ideas by looking at other open source
+  projects on how to make it better, optimize it, or how to make it leaner by removing certain
+  elements, constantly keeping me updated and guiding me through it, act as the project
+  manager. full time". And: "for that work on perfection and improvement and be the one who
+  works on new ideas, it shouldnt be constant, but useful and always improving"; "also from
+  the security aspect very important". So after the open work, the project manager brings
+  proposals, each with its reason, from comparable open-source club software: what to add,
+  what to simplify, what to remove. The owner says yes or no.
+- **2026-10-08** — the owner, on pictures: "we are based in austria, use austrian law";
+  "trainer at least should always see them, and the admin"; "No legal basis? idk? use is just
+  for my mom, the trainer to see who is in course and help her remember her name"; "yea
+  definitely admin and trainer picture too makes it more personal"; "yea we can definitely do
+  it that a child can also add a photo, but also so that trainer too". And on waiting: "I
+  want a full waiting page with nice animations and transitions, it should not be too long to
+  annoy and not too short to be even weird to be there / smooth". ADR 0031 records the
+  pictures; the bar shuttle below gives way to the full waiting page.
+- **2026-10-08** — the project manager, from the whole-portal security audit: the payment QR
+  carries only a SEPA bank transfer (EPC, first line „BCD"), and every administrator is told
+  when the IBAN, the recipient, the template or a course's payment profile changes (ADR 0025);
+  pictures are opened only as JPEG or PNG, up to 24 megapixels (ADR 0031); the body of a sent
+  mail that is not a security mail is cleared after 90 days.
 - **2026-10-08** — the project manager, on the owner's "a short waiting page": the waiting
   is shown on the page being left — the tapped link stays pressed, and a shuttlecock flies
   along the bar after 0.7 s — not as a separate waiting page, which would itself flash
   between two pages. A full-screen variant is a few lines more if the owner wants it; the
-  owner is being asked. Files open in the same tab, not a new one: in the iPhone
+  owner was asked, and wants the full waiting page (above). Files open in the same tab, not a new one: in the iPhone
   home-screen app a new tab likely opens without the app's sign-in (security's point).
 - **2026-10-08** — the project manager, on ADR 0031: pictures are for children only. The
   architect proposed pictures for staff too; nobody asked for them, so they wait under Later.
@@ -272,6 +304,13 @@ For the project manager to decide:
   that right?
 - Reminders per family instead of per charge?
 
+For the owner to decide:
+
+- How long the portal keeps what it holds: chats, sick notes, attendance, mail, logs. ADR 0032
+  proposes a period for each, with accounting records kept seven years (BAO § 132).
+- Whether a photo whose hidden data cannot be read through is refused instead of kept as it
+  came, as decided on 2026-10-05 (ADR 0022 §11.5; the security audit recommends refusing).
+
 For the owner to do:
 
 - Write the privacy sentences only the operator can write — who runs the portal, the host and
@@ -341,10 +380,12 @@ For the owner to do:
   0.2.0 install.
 - MySQL 8.0, if a club's host runs it. INSTALL.md names it as intended; it has never been
   run.
-- No independent security review or penetration test has been done.
-- Two sentences only the owner can write, before families use pictures (ADR 0031): from what
-  age a child may say yes alone to the course seeing its picture, and on what legal basis
-  staff see a picture the trainer took. The privacy drafts hold a bracket for each.
+- No independent security review or penetration test has been done. security-reviewer read
+  the whole code on 2026-10-08: no High finding; the fixes are being built.
+- The legal reading behind pictures checked (ADR 0031): legitimate interest (Art. 6 Abs. 1
+  lit. f DSGVO) for staff seeing a child's picture; a parent's yes in words for a child under
+  14 (§ 4 Abs. 4 DSG, Art. 8 DSGVO's "reasonable efforts"); whether consent records must
+  outlive a deleted login.
 
 ## Later, not scheduled
 
@@ -352,8 +393,6 @@ For the owner to do:
   sidebar, the sign-in page and their previews put the dark menu colour behind it, about
   1.2:1 (mobile-tester, 2026-10-08; as before the shuttlecock mark). Backing it with the tint
   in light mode too is ui-ux-designer's call.
-- Pictures for trainers and administrators, if somebody asks: one column and one case in the
-  rule of who sees a picture (ADR 0031, Rejected).
 - A tap within about 0.2 s of a page appearing is lost on every page, to the cross-fade
   (`@view-transition`, app.css; mobile-tester, 2026-10-08, the same with JavaScript off).
   Shorter, or letting taps through during it, is frontend-dev's to measure; the staff

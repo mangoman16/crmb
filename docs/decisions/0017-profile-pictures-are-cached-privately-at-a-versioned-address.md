@@ -12,6 +12,9 @@ date: 2026-09-29
 > address; `private, max-age=604800` for the picture in use and `private, no-store` for any other,
 > never `public` or `immutable`; `Clear-Site-Data` at sign-out; one rule that the route and the
 > drawing both ask; and the same 404 for nobody and for not allowed.
+>
+> *Owner, 2026-10-08:* the team has pictures too, and every signed-in person sees them (0031's note
+> at the top). That rule is 0031's as well; nothing here becomes one again.
 
 > **Superseded by ADR 0026 (2026-10-07).** Profile pictures go, for accounts and students alike;
 > everybody is shown by their initials. With them go `may_see_account_picture()`,

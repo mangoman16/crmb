@@ -1,9 +1,16 @@
 ---
-status: accepted, amended by 0022, 0026, 0028
+status: accepted, amended by 0022, 0026, 0028, 0031
 date: 2026-09-27
 ---
 
 # 0011. The start checklist, and a menu of seven
+
+> **Amended by ADR 0031 (2026-10-08).** An invitation's activation lands on „Dein Foto" first: one
+> optional step for a picture (0031's note, 4). Saved or skipped, it goes on to
+> `landing_after_sign_in()`, or for a family to its child's page (0023 §5). In "Where the logic
+> lives", "The `login` and `activate` cases return it" now holds for a sign-in, a reset and a
+> confirmed address, and so does `qa-tester`'s "followed by `login` and by `activate`" in
+> Consequences. Everything else stands.
 
 > **Amended by ADR 0028 (2026-10-07).** On a phone, staff's „Mehr" is a page, `?page=more`, not the
 > side menu slid in. These parts no longer hold:

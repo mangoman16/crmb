@@ -1,9 +1,13 @@
 ---
-status: accepted, amended by 0026, 0030
+status: accepted, amended by 0026, 0030, 0031
 date: 2026-10-06
 ---
 
 # 0023. Every student has a login, a wizard adds one, and one-time sign-in links
+
+> **Amended by ADR 0031 (2026-10-08).** In §5, the first set-up lands on „Dein Foto" first, one
+> optional step for the child's picture; saved or skipped, it goes on to the student page with the
+> welcome, as §5 says. Everything else stands.
 
 > **Superseded in part by ADR 0030 (2026-10-08).** The owner: "Drop once again the username support,
 > mainly email login support / 1 admin 1 email / 1 person 1 email / 1 trainer 1 email / 1 student 1

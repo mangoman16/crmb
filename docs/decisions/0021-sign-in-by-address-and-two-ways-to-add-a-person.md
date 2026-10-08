@@ -1,9 +1,13 @@
 ---
-status: accepted, amended by 0023, 0026, 0030
+status: accepted, amended by 0023, 0026, 0030, 0031
 date: 2026-10-01
 ---
 
 # 0021. Sign in by address, and two ways to add a person
+
+> **Amended by ADR 0031 (2026-10-08).** In §3, an invitation by address lands on „Dein Foto"
+> first, one optional step for the child's picture; saved or skipped, it goes on to their own page,
+> as §3 says. Everything else stands.
 
 > **Amended by ADR 0030 (2026-10-08).** The owner: "Drop once again the username support". The
 > username parts of the 0023 note below no longer hold: §1 holds in full again, for every role, and

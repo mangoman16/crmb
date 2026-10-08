@@ -27,6 +27,12 @@ date: 2026-10-07
 > screenshots' folder, still called `avatar`; and this record's supersession of 0017, whose caching
 > 0031 restates. Lines marked *ADR 0031, 2026-10-08* say so in §8, §10 and §11. Everything else
 > stands.
+>
+> *Owner, 2026-10-08:* the team has pictures too, in a new column, `accounts.picture_name` (041;
+> 0031's note at the top). So "the team still has none" no longer holds, and neither does „Bild"
+> gone from Mein Konto: it comes back there for a team member's own picture, while a child's card
+> stays on the child's page. `accounts.avatar_name` stays dropped, as 035 shipped it. Lines marked
+> *Owner, 2026-10-08* say so in §8, §10 and §11.
 
 > **The owner's later answer on levels and age groups, 2026-10-07, 19:03 UTC.** Recorded on
 > 2026-10-08. The owner: "Skill levels were good to have / age levels will also be needed, but it
@@ -535,6 +541,7 @@ most of its lines.
 `student_age()` stays, and the `groups` cases for the function that went go with it.
 *ADR 0031, 2026-10-08:* a child's picture comes back, made small on the server, seen by staff and,
 by the child's course once the family says yes; the team keeps its initials (the note at the top).
+*Owner, 2026-10-08:* the team has pictures too, each added on Mein Konto (0031's note at the top).
 
 | Feature | Verdict | Why | What goes | Lines | Tests |
 | --- | --- | --- | --- | --- | --- |
@@ -634,6 +641,7 @@ Not settings, but gone from the screens where things are configured:
 - Mein Konto → „Bild", and the account menu's „Status" and „Status-Emoji" (the last two †, decided 2026-10-07).
   *ADR 0031, 2026-10-08:* „Bild" stays gone from Mein Konto; a child's picture card comes back on
   the child's page, and `upload_max_kb`'s hint names profile pictures again.
+  *Owner, 2026-10-08:* „Bild" comes back on Mein Konto, for a team member's own picture (0031).
 
 ### 11. Migrations, in order
 
@@ -656,6 +664,7 @@ when each lands; the order is what matters.
 its key `student_level` and both tables stay, and 039 is not written.
 *ADR 0031, 2026-10-08:* 035 and 036 stay as shipped. A child's picture comes back in new columns,
 `students.picture_name` and `students.course_sees_picture` (040); the team has none.
+*Owner, 2026-10-08:* and the team's, `accounts.picture_name`, in 041 (0031's note at the top).
 
 - **Restartable.** A `DROP TABLE IF EXISTS` can run twice. An `ALTER` that drops cannot, on MySQL 8.0,
   so each is one statement, alone in its file, as 024 is. 008 named both keys in 037, so no lookup is

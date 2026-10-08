@@ -5,6 +5,15 @@ date: 2026-10-02
 
 # 0022. Course groups, direct messages, and a status emoji
 
+> **Proposed on 2026-10-08 by the project manager, from the security audit: a picture the cleaner
+> cannot read through is refused.** A `message` or `proof` picture that `image_without_metadata()`
+> cannot read through (§4) would be refused in words, rather than stored with its metadata; the
+> privacy drafts already tell families, in „3.", that an uploaded photo loses where and when it was
+> taken. It takes back the owner's answer of 2026-10-05, "kept as it came" (§11.5, Rejected, and
+> "The owner's answers" 3), so it holds once the owner confirms it, and until then §11.5 stands. A
+> GIF, which the cleaner never reads, is the same case: `proof` takes one and keeps it as it came.
+> The comment in `image_without_metadata()` saying the owner has not decided is wrong: they had.
+
 > **Amended by ADR 0031 (2026-10-08): pictures come back to the chat, for children.** The 0026
 > note's line on §8 no longer holds for children: the chat list and others' bubbles show a child's
 > picture again, under 0031 §5's rule rather than ADR 0017's. Staff see every child's picture; a
@@ -16,6 +25,10 @@ date: 2026-10-02
 > other's names and initials, and a child's picture where the family has said yes. What a message
 > may carry is unchanged: §11.4 is about photos sent in a chat, and a profile picture is not one.
 > Everything else stands.
+>
+> *Owner, 2026-10-08:* the team has pictures too (0031's note at the top), so "The team has no
+> pictures and shows as initials" no longer holds: every signed-in person sees a team member's
+> picture in the chat list, the bubbles and the member sheet.
 
 > **Amended on 2026-10-07, under ADR 0026: the contact requests go, with their table.** The project
 > manager decided that day that the old requests are deleted rather than kept unused: no real family
