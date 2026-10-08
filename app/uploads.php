@@ -132,14 +132,15 @@ function uploaded_file_type(string $path, ?bool $readable = null): string {
  * The extension a file of $mime is stored under as $kind, or the refusal, in
  * words the person sending it can act on.
  *
- * A child's photo in the chat comes from the camera (message_upload_types()),
- * so a list of file types tells them nothing; what to do instead does. Staff,
- * who may pick from the gallery, are told which kinds are possible.
+ * A child's photo in the chat comes from the camera (chat_photo_from_camera(),
+ * the one rule for it), so a list of file types tells them nothing; what to do
+ * instead does. Staff, who may pick from the gallery, are told which kinds are
+ * possible.
  */
 function upload_extension(string $kind, string $mime): string {
     $allowed = upload_types($kind);
     if (isset($allowed[$mime])) return $allowed[$mime];
-    if ($kind === 'message' && !is_staff())
+    if ($kind === 'message' && chat_photo_from_camera(current_user()))
         throw new UserError(t('Bitte nimm das Foto mit der Kamera auf.', 'Please take the photo with the camera.'));
     throw new UserError(t('Dieser Dateityp ist hier nicht erlaubt. Möglich sind: ', 'That kind of file is not allowed here. Allowed: ')
         . implode(', ', array_unique(array_values($allowed))) . '.');
