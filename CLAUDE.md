@@ -9,6 +9,21 @@ and a chat. It is in **beta**: no portal holds real families' data yet.
 - **Students and families** are not technical, work on phones and read little. They see a
   deliberately small part of the portal.
 
+## The owner's requests: restate and clarify first
+
+The owner, 2026-10-08: "it appears to me that my prompts are too vague or confused, make sure
+to always clarify whenever i give a prompt to reach the ideal prompt and clear
+misunderstandings and reach better results." So every request from the owner starts with a
+short restatement, before anything is built or delegated:
+
+- **What I understood**, written as the clear prompt the owner meant: the outcome, for whom,
+  and what done looks like.
+- **What is unclear or missing**, each with the answer I would choose and why.
+- **Then act** on everything that does not depend on an answer. Wait only where two readings
+  lead to materially different work, and then ask once, with a recommendation.
+
+A few plain lines, not a form to fill in.
+
 ## Which document, when
 
 | When | Read |

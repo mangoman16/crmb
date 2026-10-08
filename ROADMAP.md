@@ -170,6 +170,10 @@ In their words.
 
 ## Decided
 
+- **2026-10-08** — the owner: "it appears to me that my prompts are too vague or confused,
+  make sure to always clarify whenever i give a prompt to reach the ideal prompt and clear
+  misunderstandings and reach better results." CLAUDE.md now opens every request with a short
+  restatement: what was understood, what is unclear with the answer chosen, then the work.
 - **2026-10-08** — the owner, standing: "Work as a team of agents of different skills to make
   sure this software does everything i want, i need and i wanted or needed without knowing.
   whenever you are done with open tasks, you can preset ideas by looking at other open source
