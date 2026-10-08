@@ -5,6 +5,61 @@ date: 2026-10-07
 
 # 0026. Who the portal is for, the beta, and what it no longer carries
 
+> **The owner's later answer on levels and age groups, 2026-10-07, 19:03 UTC.** Recorded on
+> 2026-10-08. The owner: "Skill levels were good to have / age levels will also be needed, but it
+> would be enough if the app can dynamically output in which age group one falls in". It reverses
+> part of their first answer (the note of the owner's answers, below) and changes round 3. What it
+> decides, as the project manager read it:
+>
+> - **Levels stay as they are:** the `levels` table, `students.level_id`, Verwaltung's
+>   „Leistungsgruppen", `level_save`, the select on the child's page and in the list's filter,
+>   and the seeding and the level backfill in `database/defaults.php`. A level is a group the
+>   trainer chooses for a child, not the progress tracking that `ROADMAP.md` rules out: nothing
+>   records more about it than the change log does.
+> - **The age bands stay as lists the trainer edits:** `age_groups`, Verwaltung's „Altersgruppen",
+>   `age_group_save` and the seeding.
+> - **A child's band comes from the birth date only.** The pin goes: `students.age_group_id`
+>   (008) and its key, the select „Altersgruppe festlegen" on the child's page, and the pinned
+>   branch of `student_age_group()`. Round 3 has one migration,
+>   `038_age_group_from_the_birth_date_only.sql`, one statement, as 024 is:
+>   `ALTER TABLE students DROP FOREIGN KEY student_age_group, DROP COLUMN age_group_id;`. It lands
+>   in the commit that stops the code reading and writing the column. 039 is not written.
+> - **`app/groups.php` stays**, where it is in the load order, and nothing moves to `app/domain.php`.
+> - **The students list** sorts „A–Z | Nach Alter", the youngest first under a header per band.
+>   The filter keeps its Leistungsgruppe and Altersgruppe selects. „Alter von – bis" is not built:
+>   the bands do its job, and the trainer edits them. `ui-ux-designer` revises Part 1 of
+>   `docs/design/2026-10-07-ios-design-language-and-goal-screens.md`.
+> - **The example data (§9)** stays as planned, except that its four children have ages in two
+>   bands, so „Nach Alter" shows more than one header.
+>
+> **One rule decides a child's band:** the first band, in the order Verwaltung lists them, that
+> covers the child's age today (`age_group_for_age()`, through `student_age_group()`). The child's
+> page, the list's card and its headers, the filter and Verwaltung's counts all ask it, and no view
+> works a band out for itself. Bands may still overlap or leave a gap, as today, and Verwaltung says
+> so (`age_group_warnings()`). Two things follow:
+>
+> - **the filter keeps the children the rule puts in the band.** Today `filtered_students()` bounds
+>   the birth date by the chosen band's own ages, in SQL: a second copy of the rule, which lists a
+>   child under one band while the card names another wherever bands overlap. That copy goes with
+>   the pin's half of the same clause;
+> - **„Nach Alter" lists each child once, under the band the rule gives:** the bands in Verwaltung's
+>   order, the youngest first within each, then the children no band covers, then those without a
+>   birth date. For bands in age order that do not overlap, as the seeded ones are, that is simply
+>   the youngest first.
+>
+> Rejected with it: removing the bands as "explicit groups", because the owner now asks for age
+> groups; keeping the pin, which `student_age_group()`'s comment calls "auto detect, changeable",
+> because the owner said working the band out is enough, and a child who trains with older ones is
+> a matter of level or course, not of age; keeping the SQL bounds and refusing overlapping bands so
+> the two agree, which takes away an arrangement the trainer may mean, to keep a copy nobody needs;
+> and a header printed wherever the band changes down a list sorted by birth date alone, which
+> shows a band twice when bands overlap.
+>
+> Lines marked *Later answer, 2026-10-07* say where this record said otherwise: in point 4 of the
+> round-2 note, in the note of the owner's answers, and in §4, §8, §9, §10, §11, §12, Rejected,
+> Consequences, "For the owner" and "In plain words". The notes on ADRs 0020 and 0021 gain a line
+> each.
+
 > **Round 2 of the removals, 2026-10-07: the contact requests, the pictures' files, and the numbers
 > of round 3's migrations.** Written with round 2's code (`ROADMAP.md`, "Now and next" 3), which
 > removes presence (the dots, the chosen status and the online history), the status emoji, profile
@@ -36,6 +91,8 @@ date: 2026-10-07
 >    `039_levels_and_age_groups_go.sql`, each with the same statements. Wherever this record says 037
 >    or 038 for levels and age groups (the note below, §8's row, and §11's table and bullets), read
 >    038 and 039. §11 already says that the order is what matters.
+>    *Later answer, 2026-10-07:* only 038 is written, and it drops one key and one column:
+>    `038_age_group_from_the_birth_date_only.sql`. 039 is not written (the note above).
 >
 > Rejected with them:
 >
@@ -60,27 +117,38 @@ date: 2026-10-07
 > - **The dots, the chosen status, the status emoji and the online history go**, as §8 proposed, with
 >   the four settings of §10 and migrations 034 and 035. This record supersedes 0015.
 > - **Levels go**, as §8 proposed. The owner did not ask to keep them.
+>   *Later answer, 2026-10-07:* levels stay as they are (the note at the top).
 > - **Configured age bands go:** the `age_groups` table, Verwaltung's „Altersgruppen" tab, and pinning
 >   a child to a band with `students.age_group_id`. Migrations 037 and 038 stand as planned.
+>   *Later answer, 2026-10-07:* the bands and their tab stay, as lists the trainer edits. Only the
+>   pin goes, with 038, which drops `age_group_id` and its key; 039 is not written.
 > - **Sorting by age stays, worked out from the birth date alone.** The students list can be sorted
 >   by age, and filtered by an age range („Alter von – bis", in whole years). Both are new: today the
 >   list sorts by last name only, and its age filter is a configured band. `student_age()` and
 >   `latest_birth_date_for_age()` stay and move to `app/domain.php` (§12); the rest of
 >   `app/groups.php` goes. No column is added: `students.birth_date` is all an age needs.
+>   *Later answer, 2026-10-07:* the sort stays, as „A–Z | Nach Alter" under a header per band. The
+>   range is not built, `app/groups.php` stays, and nothing moves to `app/domain.php`.
 > - **How the age shows on the list** is `ui-ux-designer`'s to specify. It may group the list under
 >   each age, if that reads better on a phone. Then `backend-dev` builds the sort and the range,
 >   `frontend-dev` the filter and the list, `qa-tester` keeps the `groups` suite's cases for the two
 >   functions and adds the sort and the range, and `mobile-tester` measures the list.
+>   *Later answer, 2026-10-07:* a header per band. `backend-dev` builds the sort and the one rule,
+>   and `qa-tester` keeps the `groups` suite, less its cases for the pin, and adds the sort and a case
+>   where the filter and the card agree on overlapping bands.
 >
 > Rejected with the second answer: keeping the bands as lists the trainer edits, because the owner
 > said "without explicit groups"; and a fixed set of bands in code, such as U11 and U13, which are
 > explicit groups too, and club-specific code besides (§6).
+> *Later answer, 2026-10-07:* the first of these no longer holds, because the bands stay as lists
+> the trainer edits. The second still does.
 >
 > §8, §10, §11, §12, "For the owner" and "In plain words" carry lines dated 2026-10-07 that say so.
 > Wherever else this record says "with the owner's word" or "once the owner agrees", the word has been
 > given. ADR 0021 gains a note too, for its line about `level_default()`. Nothing here waits for the
 > owner any more but the privacy notice ("For the owner", 2), and, from 0022, the old contact
 > requests (4).
+> *Later answer, 2026-10-07:* the note on ADR 0021 no longer holds, and now says so.
 
 > **Accepted** on 2026-10-07. The owner set the direction in their own words (Context) and handed the
 > planning to the project manager. This record amends ADRs 0011, 0016, 0018, 0020, 0022, 0023 and
@@ -246,6 +314,7 @@ dependency. Each is its own change.
   light and dark, by `tests/mobile.mjs`: nothing wider than the screen, 44 pt targets, text of at
   least 12 px. Its page list follows the pages: `compose`, `manage&tab=ages`, `manage&tab=tariffs` and
   `settings&tab=fields` leave it, and `student_new` and every new wizard step join it.
+  *Later answer, 2026-10-07:* `manage&tab=ages` stays in it, because the bands stay.
 - **A task with several steps is a wizard**, built the way „Schüler anlegen" is (0023 §5), and no
   other way:
   - one question per step, with „Schritt 2 von 3" and a way back;
@@ -429,6 +498,12 @@ Line counts are rough: what the files hold today. Rows marked † wait for the o
 *Decided 2026-10-07:* the owner has given it (the note under the title). The rows for the dots and
 the emoji stand as written; the row for levels and age groups keeps the age, as its cells now say.
 
+*Later answer, 2026-10-07:* the row for levels and age groups becomes **keep**, but for the pin.
+What goes is `students.age_group_id` and its key (038), the select „Altersgruppe festlegen", the
+pinned branch of `student_age_group()` and the date bounds in `filtered_students()`; the list
+gains „A–Z | Nach Alter" (the note at the top). Its tests stay, less the pin's cases, and so do
+most of its lines.
+
 | Feature | Verdict | Why | What goes | Lines | Tests |
 | --- | --- | --- | --- | --- | --- |
 | Custom fields | **remove** | The owner's decision. | §7 | ~190 | `selfservice`, `history`, `pages`, `forms`, `structure`, `install`, `brand_pages`; `mobile.mjs`, `integration.py` |
@@ -487,6 +562,9 @@ What goes: two courses and two tariffs, the extra prices and the discount templa
 the second course membership, the random attendance, the second absence, the draft news item, and the
 ages from 7 to 41.
 
+*Later answer, 2026-10-07:* the four children have birth dates in two bands, so „Nach Alter" shows
+more than one header.
+
 `tests/suites/demo.php` keeps its checks on the password, the flags, clearing and the chats. Its
 "cases that go wrong" become the ones above.
 
@@ -513,6 +591,7 @@ Not settings, but gone from the screens where things are configured:
 - Einstellungen → „Eigene Felder für Schüler" (§7);
 - Verwaltung → „E-Mail-Vorlagen", and the „Tarife" tab, which only pointed to the courses;
 - Verwaltung → „Leistungsgruppen" and „Altersgruppen" (†, decided 2026-10-07; the students list sorts and filters by age instead);
+  *Later answer, 2026-10-07:* both stay; what goes is „Altersgruppe festlegen" on the child's page.
 - Mein Konto → „Bild", and the account menu's „Status" and „Status-Emoji" (the last two †, decided 2026-10-07).
 
 ### 11. Migrations, in order
@@ -530,20 +609,31 @@ when each lands; the order is what matters.
 | `037_students_without_level_or_age_group.sql` | `ALTER TABLE students DROP FOREIGN KEY student_level, DROP FOREIGN KEY student_age_group, DROP COLUMN level_id, DROP COLUMN age_group_id;` | levels and age groups †, decided 2026-10-07 |
 | `038_levels_and_age_groups_go.sql` | `DROP TABLE IF EXISTS levels;` `DROP TABLE IF EXISTS age_groups;` | levels and age groups †, decided 2026-10-07 |
 
+*Later answer, 2026-10-07:* the last two rows give way to one, which lands with the pin:
+`038_age_group_from_the_birth_date_only.sql`, with
+`ALTER TABLE students DROP FOREIGN KEY student_age_group, DROP COLUMN age_group_id;`. `level_id`,
+its key `student_level` and both tables stay, and 039 is not written.
+
 - **Restartable.** A `DROP TABLE IF EXISTS` can run twice. An `ALTER` that drops cannot, on MySQL 8.0,
   so each is one statement, alone in its file, as 024 is. 008 named both keys in 037, so no lookup is
   needed.
+  *Later answer, 2026-10-07:* 038 drops the one key 008 named for the pin, `student_age_group`.
 - **If the owner keeps the dots**, 034 is not written, and 035 drops only `avatar_name`. If they keep
   levels and age groups, 037 and 038 are not written.
   *Decided 2026-10-07:* they keep neither, so all seven files are written. 037 drops `age_group_id`
   with `level_id`: an age is worked out from `students.birth_date`, which stays.
+  *Later answer, 2026-10-07:* they keep both but the pin, so 032 to 038 are written, and 038 drops
+  `age_group_id` alone.
 - **The guard.** None of these tables is guarded except `field_values` (§7). Dropping a column changes
   no row count.
 - **`database/defaults.php`** stops seeding levels, age groups and message templates, and stops the
   level backfill, in the same commits. After 037 and 038 that code would fail on every request and
   keep the portal closed.
+  *Later answer, 2026-10-07:* it keeps seeding levels and age groups, and keeps the level backfill.
+  It never read `age_group_id`, so 038 asks nothing of it.
 - **Engines.** `database-engineer` runs every file on MariaDB 10.11.14. MySQL 8.0 stays unverified, and
   the report says so, in particular for 037's two key drops and two column drops in one `ALTER`.
+  *Later answer, 2026-10-07:* the same goes for 038's key and column dropped in one `ALTER`.
 - **Not dropped:** `students.tariff_id`, `price_cents` and `price_note`, which nothing reads since 0011
   (4). `tariff_id` carries a key that 001 left unnamed, and dropping it needs 029's lookup; three unused
   columns are not worth that migration on their own. `contact_requests` stays, as 0022 left it to the
@@ -553,6 +643,8 @@ when each lands; the order is what matters.
 
 - **Deleted:** `app/duplicate.php`, `views/print.php` and `views/compose.php`; and, with the owner's
   word (given 2026-10-07), `app/presence.php` and `app/groups.php`.
+  *Later answer, 2026-10-07:* not `app/groups.php`, which stays where it is, with its `require` and
+  its place in the `structure` suite's list.
 - **`app/bootstrap.php`** loses their `require`s, and the comments that name `presence.php` and
   `duplicate_record()`. Nothing is added to the load order.
 - **`student_age()`** moves from `app/groups.php` to `app/domain.php`, the first file of the domain
@@ -564,6 +656,9 @@ when each lands; the order is what matters.
   by age is a literal `ORDER BY` clause chosen from a fixed list by a checked value, so no column name
   from the request reaches the SQL. The two ages are read and bounded as §5 says for every value from
   the address.
+  *Later answer, 2026-10-07:* nothing moves, and there is no range. `filtered_students()`, in
+  `app/domain.php`, keeps calling into `app/groups.php`, loaded after it, at request time only. The
+  sort's rule stands: a literal `ORDER BY` from a fixed list, chosen by a checked value.
 - **The router** drops `compose` and `print` from `$allowed` and from its staff list, and, with the
   dots (which go, 2026-10-07), its call to `presence_touch()`.
 - **The `structure` suite's** list of expected files loses each deleted file.
@@ -594,6 +689,7 @@ when each lands; the order is what matters.
   can ask me", and asking costs a minute. Each was somebody's request a week ago.
 - **Keeping levels and age groups for display only.** Two lists, two tabs and two filters to maintain,
   for labels that one course does not need. A level a club needs can be a course.
+  *Later answer, 2026-10-07:* no longer rejected: the owner keeps both (the note at the top).
 - **Keeping „An mehrere schreiben" beside the group chat.** The group reaches everybody in a course,
   news reaches everybody, `payment_remind` reaches everybody who owes, and the direct chat reaches one
   family. A fifth way to write is the one nobody remembers how to use.
@@ -620,10 +716,14 @@ when each lands; the order is what matters.
     new record from now on.
   - If the owner keeps a † feature, a note on this record says so, and the notes on 0015, 0016, 0020,
     0022 and 0023 lose their † parts.
+    *Later answer, 2026-10-07:* the owner kept levels and age groups; the notes on 0020 and 0021
+    say so.
 - **Actions.** 78 today, and 76 after 0022 §11. This record removes 13: `field_save`,
   `record_duplicate`, `filter_save`, `filter_delete`, `template_save`, `bulk_preview`, `bulk_send`,
   `mail_run`, `avatar_save`, and with the owner's word `presence_save`, `status_emoji_save`,
   `level_save` and `age_group_save`. 63 remain.
+  *Later answer, 2026-10-07:* `level_save` and `age_group_save` stay, so it removes 11, and 65
+  remain by the same count.
 - **Pages.** `compose` and `print` leave the router.
 - **Schema.** §11. No guarded table loses rows but `field_values`, whose guard goes with it.
 - **Dependencies.** None added, none removed.
@@ -690,6 +790,9 @@ when each lands; the order is what matters.
   - the change log reads what it wrote: a column or an entity it no longer knows is named, never
     looked up and never thrown on;
   - 020, 027 and every other shipped migration stay as they are.
+  - *Later answer, 2026-10-07:* one rule decides a child's band, `student_age_group()`, and the
+    list, the filter, the child's page and Verwaltung's counts all ask it; nothing reads or writes
+    `students.age_group_id` once 038 has run.
 
 ### For the owner
 
@@ -703,6 +806,10 @@ when each lands; the order is what matters.
      to sort them by age groups, if it is possible to do that with only birth dates and without
      explicit groups then well do it". All three go, and the students list sorts and filters by age,
      worked out from the birth date (the note under the title).
+   - *Later answer, 2026-10-07, 19:03 UTC:* "Skill levels were good to have / age levels will
+     also be needed, but it would be enough if the app can dynamically output in which age group
+     one falls in". Levels stay; the age groups stay as lists you edit, and each child's is worked
+     out from the birth date, so the setting that fixed a child in one goes (the note at the top).
 2. **The privacy notice, afterwards.** Under Einstellungen → Datenschutz it should no longer say that
    profile pictures are stored, nor, if the dots go, that when somebody was online is kept for 30 days.
    `docs-writer` drafts the sentences, and you release them.
@@ -727,6 +834,9 @@ when each lands; the order is what matters.
   and levels and age groups. If they go, four settings about the dots go with them.
 - *2026-10-07:* you answered. All three go, with the four settings. Instead, the students list can be
   sorted by age and filtered by age, worked out from the birth date alone.
+- *Later answer, 2026-10-07:* you answered again. Levels and age groups stay, and you edit them as
+  before. A child's age group is always worked out from the birth date, so it changes by itself on a
+  birthday. The students list can be sorted by age, with a heading for each age group.
 - The example data is smaller: one course, four children, and every kind of charge.
 - Anything with several steps becomes a guide with one question per step.
 - Whatever anybody types, the portal answers with one plain sentence, never an error page. A new test

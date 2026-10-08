@@ -10,6 +10,11 @@ date: 2026-10-01
 > order" no longer holds where it says `new_student_defaults()` calls `level_default()`: there is no
 > level to start a student at, and `new_student_defaults()` calls nothing loaded after
 > `app/domain.php`. Everything else stands.
+>
+> *Later answer, 2026-10-07:* this note no longer holds. The owner kept levels, and the age groups
+> as lists the trainer edits, so `app/groups.php` stays (0026, the note at the top). "Load order"
+> holds as written: `new_student_defaults()` calls `level_default()` at request time only, with the
+> comment saying so. Nothing else in this record names levels or age groups.
 
 > **Amended by ADR 0023 (2026-10-06).** The owner, on 2026-10-05: "now that usernames are allowed, no
 > email login should also be possible, but ideally discouraged". The decision to bring usernames back

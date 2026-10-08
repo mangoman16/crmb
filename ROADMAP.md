@@ -24,8 +24,9 @@ In this order.
    browser walk pass at `2788c4f` on MariaDB 10.11.14 with PHP 8.4.26; the sweep at phone
    width has not been run on it.
 2. **ADR 0026.** Accepted (`4314eef`): who the portal is for, the beta rules, the goals as the
-   scope test with eight gaps (G1–G8), the robustness rule, and what goes. The architect is
-   recorded the owner's answers of 2026-10-07 in it (`b5d92e1`).
+   scope test with eight gaps (G1–G8), the robustness rule, and what goes. The architect
+   recorded the owner's answers of 2026-10-07 in it (`b5d92e1`), and their later answer on
+   levels and age groups.
 3. **Removals (ADR 0026 §7–§12).** In separate commits, each with its migrations:
    - **round 1, done:** custom fields with their data (032); copying records; saved views and
      message templates (033); writing to many; the queue button „Warteschlange senden"; the
@@ -35,10 +36,12 @@ In this order.
      their rows (037), and new voice notes and files — a message is text and photos, a
      family's from the camera; old voice notes and files stay, old chats between two
      students are readable and closed;
-   - round 3: levels and configured age groups — children are sorted and filtered by age
-     from the birth date (docs/design/2026-10-07-ios-design-language-and-goal-screens.md,
-     Part 1) — and the example data, cut to one course, four children and two family logins
-     (§9).
+   - round 3, being built: the age-group pin goes (038) — levels and the age bands the
+     trainer edits stay, and a child's band comes from the birth date only; the students list
+     sorts „Nach Alter" under a header per band
+     (docs/design/2026-10-07-ios-design-language-and-goal-screens.md, „Part 1, revised
+     2026-10-08"); and the example data, cut to one course, four children and two family
+     logins (§9).
 
    A document describing a removed feature changes in the commit that removes it, never
    before, so the documents never describe code that is not there.
@@ -130,6 +133,12 @@ In their words.
 
 ## Decided
 
+- **2026-10-08** — the project manager:
+  - The students list's rows show the band and the level instead of the price, which wrapped
+    every row at 320 px; a child in no current course gets an „Ohne Kurs" badge. Prices stay
+    on the child's page and on Geld. It is cheap to put back if the owner misses it.
+  - A package handed to the owner for the beta is numbered `0.6.0-beta.N`, counting from 2
+    (the ZIP of `00dc020` was the first); the release is `0.6.0`.
 - **2026-10-07**
   - The owner is the administrator, and builds the portal together with Claude. The trainer is
     not technical and works on a phone. Students and families are not technical, work on
@@ -152,10 +161,13 @@ In their words.
     - Viewing the portal as somebody else is look-only: every change is refused while
       viewing, by one rule, except ending the view and signing out.
   - The owner, on ADR 0026's questions: the online dots, the chosen status, the status emoji
-    and the online history go ("Remove all"). Levels go. Age groups: "trainer needs to sort
-    them by age groups, if it is possible to do that with only birth dates and without
-    explicit groups then well do it" — so no configured bands; the list sorts and filters by
-    age from the birth date.
+    and the online history go ("Remove all"). Levels and age groups stay. First: "trainer
+    needs to sort them by age groups, if it is possible to do that with only birth dates and
+    without explicit groups then well do it"; later the same day: "Skill levels were good to
+    have / age levels will also be needed, but it would be enough if the app can dynamically
+    output in which age group one falls in". So the bands the trainer edits stay, a child's
+    band comes from the birth date only, the pin goes, and the list sorts by age under a
+    header per band (ADR 0026, its note on the later answer).
   - The owner, on the design language's questions: age counts as how old a child is today,
     not by birth year; a family's tab bar has four entries (Übersicht · Beiträge · Chats ·
     Profil), news reaching them through the bell and the overview; both overviews get

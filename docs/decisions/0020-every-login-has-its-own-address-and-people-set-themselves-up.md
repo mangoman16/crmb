@@ -22,6 +22,11 @@ date: 2026-09-30
 > Change-log lines written before keep their `field:<id>` keys, under a fixed label that needs no
 > query (0026 §7). With the owner's word on 0026's †, levels and age groups go too, and the lines
 > here that name them describe nothing. Everything else stands.
+>
+> *Later answer, 2026-10-07:* levels and age groups stay (0026, the note at the top), so the lines
+> here that name them hold again, but for the pin, which goes with 038: "pinned age group" in §7's
+> table, and "It cannot move a pinned age group." A child's age group is worked out from the birth
+> date alone, so a new birth date moves it; a family still writes no level.
 
 > **Amended by ADR 0023 (2026-10-06).** This note and the status line were added on 2026-10-07;
 > until then 0021's note carried the change. These parts no longer hold as written:
