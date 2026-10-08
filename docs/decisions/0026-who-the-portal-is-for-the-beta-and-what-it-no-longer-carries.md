@@ -1,9 +1,16 @@
 ---
-status: accepted, amended by 0031
+status: accepted, amended by 0031, 0032
 date: 2026-10-07
 ---
 
 # 0026. Who the portal is for, the beta, and what it no longer carries
+
+> **Amended by ADR 0032, and the owner on privacy measures (2026-10-08).** The owner accepted
+> 0032's periods that day. In the round-2 note, point 2's "Voice notes and files sent before stay"
+> and its Rejected line about deleting them now hold for 12 months after their message was sent;
+> then they go with it (0032 §1), outside any update, so the guard is not touched. The same day the
+> owner said of privacy measures "no need to be over sensitive", which a line in §2 records, marked
+> *Owner on privacy, 2026-10-08*. Everything else stands.
 
 > **Amended by ADR 0031 (2026-10-08): profile pictures come back, for children.** The owner,
 > 2026-10-08: "customization is very important for the brain of the young, so profile picture would
@@ -295,6 +302,9 @@ The portal is in beta. No real family's data is in it: whatever an install holds
   manager decides them, then tells the owner in plain steps what to test and what to deploy.
 - **What still needs the owner:** a choice that is ambiguous, costs money, reverses something the
   owner asked for, or decides how families' data will be handled once real families arrive.
+  *Owner on privacy, 2026-10-08:* "no need to be over sensitive", said of a photo the cleaner
+  cannot read through (0022): a privacy measure is proportionate to the risk, not the most that
+  could be done. What the law requires, and what the privacy notice promises, still hold.
 - **What does not change**, because each rule protects any install, a test one included:
   - migrations are append-only, and the ledger refuses an edited one (0004);
   - an update refuses rather than guesses: older files, an incomplete upload, a database it could not

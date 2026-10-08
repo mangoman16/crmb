@@ -11,6 +11,9 @@ The application is ~8,200 lines of procedural PHP in `app/`, 30 server-rendered 
 files, 784 lines of CSS and **175 lines of JavaScript**. There is no build step, no
 `package.json`, and two Composer dependencies: `phpmailer/phpmailer` and
 `bacon/bacon-qr-code`.
+*Checked 2026-10-08:* two direct dependencies, the ones `composer.json` names. `composer.lock`
+holds a third, `dasprid/enum`, which `bacon/bacon-qr-code` requires. It ships in `vendor/` with
+the other two and is kept patched with them: `composer audit` checks every installed package.
 
 Three constraints drive this and none of them is taste:
 

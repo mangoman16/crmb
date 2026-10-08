@@ -1,9 +1,15 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-08
 ---
 
 # 0032. How long the portal keeps what it holds
+
+> **Accepted by the owner on 2026-10-08, as proposed.** The owner: "keep as long as architect
+> suggest, "yes"". The periods in §1 are the settings' defaults, and Consequences is the work, which
+> `backend-dev` is building. Accepting it amends 0022 (§4, §11.3 and §11.4: messages, removed ones,
+> and the voice notes and files sent before, are kept for their periods, not for ever) and 0026 (the
+> round-2 note's point 2), each with a note; 0031's line on how long consents are kept points here.
 
 > **Proposed on 2026-10-08; the owner decides.** Drafted by the architect at the project manager's
 > request, after the whole-portal security audit of the same day, from the working tree as read that
@@ -150,6 +156,7 @@ damages can be brought once the harm and who caused it are known (§ 1489 ABGB).
     copies; `UPDATING.md`, with the first prune; `TESTING.md`;
   - ADR 0022 §4 is amended: a removed message can be put back for 30 days, not for ever;
   - `ROADMAP.md`: "How long `audit_log` and `consent_log` are kept" leaves „Later, not scheduled".
+  - *Owner, 2026-10-08:* chosen as proposed. 0022 and 0026 carry notes for it, and 0031 a line.
 - **Load order:** unchanged. No new file, no dependency, no migration.
 - **Must stay true:**
   - a prune line deletes only by its own setting;
@@ -171,3 +178,5 @@ damages can be brought once the harm and who caused it are known (§ 1489 ABGB).
   are fine, and the project manager has it built.
 - What is deleted stays in the last five safety copies until newer ones replace them. The privacy
   notice will say so.
+- *2026-10-08:* you said yes. Each period can be changed later under Einstellungen → System, in
+  „Erweitert".

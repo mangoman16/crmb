@@ -589,6 +589,7 @@ No new file, and the load order does not change.
   `ext-gd`. Nothing for the owner to run.
 - **Consent records**, like every consent's, go with a deleted login (`consent_log` cascades). How
   long they are kept is the question `ROADMAP.md` keeps open.
+  *ADR 0032, 2026-10-08:* answered there: a replaced answer goes three years after it was replaced.
 - **Must stay true:**
   - a picture is a child's, on the student, and no login carries one;
   - who sees a picture is decided only by `may_see_picture()`, which `avatar()` and the route both

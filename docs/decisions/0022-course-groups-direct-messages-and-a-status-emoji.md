@@ -1,9 +1,18 @@
 ---
-status: accepted, amended by 0026, 0031
+status: accepted, amended by 0026, 0031, 0032
 date: 2026-10-02
 ---
 
 # 0022. Course groups, direct messages, and a status emoji
+
+> **Amended by ADR 0032 (2026-10-08): messages are kept for a year.** The owner accepted 0032's
+> periods the same day. A message goes 12 months after it was sent, with its photo, voice note or
+> file (`messages_months`), and a removed one 30 days after it was removed
+> (`removed_messages_days`). These parts now hold for those periods, not for ever: in §4, staff
+> putting a removed message back; in §11.3, "Nothing is deleted"; in §11.4 and in the note of
+> 2026-10-07, "Voice notes and files sent before stay"; and in Rejected, "Deleting or blanking a
+> removed message" and "Deleting the chats between students". The guard is not touched: the prune
+> never runs inside an update (0032 §2). Everything else stands.
 
 > **Proposed on 2026-10-08 by the project manager, from the security audit: a picture the cleaner
 > cannot read through is refused.** A `message` or `proof` picture that `image_without_metadata()`
@@ -13,6 +22,12 @@ date: 2026-10-02
 > "The owner's answers" 3), so it holds once the owner confirms it, and until then §11.5 stands. A
 > GIF, which the cleaner never reads, is the same case: `proof` takes one and keeps it as it came.
 > The comment in `image_without_metadata()` saying the owner has not decided is wrong: they had.
+>
+> *Owner, 2026-10-08: declined.* "a photo that contains metadata: ignore, it happens every where,
+> try to clear it, but otherwise ignore. dont refuse. and no need to be over sensitive". §11.5
+> stands: the cleaner clears what it can read, and a picture it cannot read through is kept as it
+> came, a GIF in `proof` included. The privacy drafts' „3." says so. The comment in
+> `image_without_metadata()` names the owner's answer instead of saying that none was given.
 
 > **Amended by ADR 0031 (2026-10-08): pictures come back to the chat, for children.** The 0026
 > note's line on §8 no longer holds for children: the chat list and others' bubbles show a child's

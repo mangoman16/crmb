@@ -417,8 +417,6 @@ For the owner to do:
 - Search across messages and notes.
 - Two-factor sign-in for administrators.
 - A viewer for `audit_log`. „Änderungen" is the separate change log.
-- How long `audit_log` and `consent_log` are kept. Both grow without end; decide it with the
-  privacy notice's retention periods.
 - Terms instead of months, one invoice per family, waiting lists and trial lessons: only once
   real use asks for them.
 - Push notifications for a new message. A mail notice exists; ask before building.
