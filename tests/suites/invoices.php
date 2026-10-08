@@ -160,6 +160,34 @@ $banked = invoice(create_invoice($student, [fixture('charges', ['student_id'=>$s
 ok(str_contains($pdfText(invoice_pdf($banked)), 'AT05 5100 0805 1317 6900'),
    'and the invoice carries it in groups, not as one twenty-character run');
 
+case_('A trainer’s change of the IBAN is kept in „Änderungen“, and an issued invoice keeps its own [ADR 0025]');
+/* The owner: "trainer should be able to change iban". profile_save wrote with a
+   plain UPDATE, so the change log never saw it: who changed the account was in
+   the audit log, what it had been was nowhere. */
+$profileId = (int)$house['id'];
+$asSaved = one('SELECT * FROM payment_profiles WHERE id=?', [$profileId]);
+$asPosted = fn(array $profile): array => array_map('strval', array_intersect_key($profile, array_flip(['name', 'recipient', 'iban', 'bic', 'currency', 'qr_template', 'note'])));
+is_same([], history_for('payment_profiles', $profileId), 'the recipient the invoice was issued with has no line in the change log yet');
+act('profile_save', ['id'=>(string)$profileId, 'iban'=>'AT61 1904 3002 3457 3201'] + $asPosted($asSaved));
+$kept = history_for('payment_profiles', $profileId);
+is_same(1, count($kept), 'the trainer’s new IBAN leaves one line');
+is_same(['update', $trainer], [$kept[0]['operation'] ?? '', (int)($kept[0]['actor_id'] ?? 0)], 'a change, made by the trainer');
+is_same(['iban'=>['from'=>'AT055100080513176900', 'to'=>'AT611904300234573201']], version_changes($kept[0] ?? []),
+        'with the old IBAN and the new one, and nothing else');
+$issued = $pdfText(invoice_pdf(invoice((int)$invoice['id'])));
+ok(str_contains($issued, 'AT05 5100 0805 1317 6900') && !str_contains($issued, 'AT61 1904 3002 3457 3201'),
+   'the invoice issued before still shows the IBAN it was issued with');
+act('profile_save', ['name'=>'Turnierkonto', 'recipient'=>'TSV Beispiel', 'iban'=>'AT022050302101023600', 'bic'=>'',
+                     'currency'=>'EUR', 'qr_template'=>'', 'note'=>'Nur für Turniere']);
+$made = (int)scalar("SELECT id FROM payment_profiles WHERE name='Turnierkonto'");
+$madeLines = history_for('payment_profiles', $made);
+is_same([['insert', $trainer]], array_map(fn($v) => [$v['operation'], (int)$v['actor_id']], $madeLines), 'a new recipient leaves one line, made by the trainer');
+is_same('AT022050302101023600', json_decode((string)($madeLines[0]['after_json'] ?? ''), true)['iban'] ?? null, 'with the IBAN it was made with');
+foreach (['currency', 'qr_template', 'note'] as $column)
+    ok(history_field_label($column) !== $column, 'its '.$column.' is named in words in the change log');
+run('UPDATE payment_profiles SET iban=? WHERE id=?', ['AT055100080513176900', $profileId]);
+payment_cache_clear();
+
 case_('Above 400 € the recipient’s address has to be on it');
 /* § 11 Abs 1 Z 3 lit b UStG wants the recipient's name and address; Abs 6 lets
    a Kleinbetragsrechnung up to 400 € gross leave both out, which is most of a

@@ -194,8 +194,15 @@ function dispatch_config(string $action): array {
         $currency=strtoupper(post('currency','EUR'));
         if(!preg_match('/^[A-Z]{3}$/D',$currency)) throw new UserError(t('Währung als dreistelliger Code, z. B. EUR.','Currency as a three-letter code, e.g. EUR.'));
         $args=[required_text('name',120),text_limit('recipient',140),$iban,$bic,$currency,text_limit('qr_template',2000),text_limit('note',255),post('archived')?1:0];
-        if($id) run('UPDATE payment_profiles SET name=?,recipient=?,iban=?,bic=?,currency=?,qr_template=?,note=?,archived=? WHERE id=?',[...$args,$id]);
-        else { run('INSERT INTO payment_profiles (name,recipient,iban,bic,currency,qr_template,note,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
+        // Every change is kept in „Änderungen", with what it was before and who
+        // changed it (ADR 0025): an IBAN decides where the families' money goes,
+        // and a trainer may change it, so its old value is the one most worth
+        // being able to read back.
+        if($id) tracked('payment_profiles',$id,$args[0],fn()=>run('UPDATE payment_profiles SET name=?,recipient=?,iban=?,bic=?,currency=?,qr_template=?,note=?,archived=? WHERE id=?',[...$args,$id]));
+        else $id=tracked_insert('payment_profiles',$args[0],function() use ($args): int {
+            run('INSERT INTO payment_profiles (name,recipient,iban,bic,currency,qr_template,note,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+            return (int)db()->lastInsertId();
+        });
         audit('profile.saved','payment_profile',$id); flash(t('Zahlungsempfänger gespeichert.','Payment profile saved.'));
         return ['manage',['tab'=>'payments','edit'=>$id]];
 

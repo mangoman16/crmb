@@ -2203,6 +2203,21 @@ trainers, with a message each that you, the administrator, have not written.
   and takes messages; as a family, the old chat with another family is under
   „Frühere Unterhaltungen" and takes none.
 
+### Every change to a payment recipient's Kontoverbindung is kept (ADR 0025)
+
+- [ ] **K.1** As the trainer, **Verwaltung** → „Zahlungsempfänger" → the
+  recipient in use: change the IBAN to another valid one and save. As the
+  administrator, **Einstellungen** → **Änderungen**: a line for that
+  „Zahlungsempfänger", made by the trainer, with „IBAN" from the old number to
+  the new one, and nothing else changed.
+- [ ] **K.2** An invoice issued before K.1, downloaded again, still shows the old
+  IBAN. A charge still open shows the new one on the family's **Beiträge**, and
+  its QR code, scanned with a banking app, fills in the new one.
+- [ ] **K.3** „+ Neu" makes a second recipient: **Änderungen** has a line saying
+  it was made, with its IBAN. Change its „Hinweis für Eltern" and its „Inhalt
+  des QR-Codes": the line names them „Notiz" and „Inhalt des QR-Codes", never a
+  column's name.
+
 ---
 
 ## What none of this proves

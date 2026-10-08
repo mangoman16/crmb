@@ -1994,6 +1994,60 @@ ok(str_contains(defined_functions_in(APP_ROOT.'/app/auth.php')['refuse_username_
    'and the read is username_for_new_account()’s, which holds what it reads');
 throws(fn() => username_for_new_account('lena.hofer'), 'username_for_new_account() refuses outside a transaction, where it would hold nothing', 'outside a transaction');
 
+/**
+ * Every statement in a stretch of PHP that writes $table, each with the calls
+ * that enclose it, outermost first: the walk of enclosing_calls_of(), stopped at
+ * a literal rather than at a name. Literals joined with '.' are read as one
+ * statement, the way the database receives them.
+ */
+function enclosed_writes_of(string $php, string $table): array {
+    $tokens = array_values(array_filter(token_get_all("<?php\n".$php),
+        fn($t) => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)));
+    $open = []; $found = []; $literal = null; $inside = null;
+    foreach ($tokens as $i => $token) {
+        if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING) {
+            $literal = ($literal ?? '').substr($token[1], 1, -1);
+            $inside ??= array_values(array_filter($open, fn($n) => $n !== null));
+            continue;
+        }
+        if ($token === '.') continue;
+        if ($literal !== null) {
+            if (preg_match('/^(?:INSERT INTO|REPLACE INTO|UPDATE|DELETE FROM)\s+`?'.preg_quote($table, '/').'`?\b/i', trim($literal)))
+                $found[] = ['sql' => (string)preg_replace('/\s+/', ' ', $literal), 'inside' => $inside];
+            $literal = null; $inside = null;
+        }
+        if ($token === '(') {
+            $before = $tokens[$i - 1] ?? null;
+            $open[] = (is_array($before) && $before[0] === T_STRING) ? $before[1] : null;
+        } elseif ($token === ')') array_pop($open);
+    }
+    return $found;
+}
+
+case_('Every write of a payment recipient is inside tracked() or tracked_insert() [ADR 0025]');
+/* The owner: "trainer should be able to change iban". An IBAN decides where the
+   families' money goes, and profile_save wrote it with a plain UPDATE, so the
+   change log never saw what it had been: who changed it was in the audit log,
+   what it was before was nowhere. Read in the SQL each block hands over and the
+   calls around it, so a second place that writes the table - a save from another
+   page, a delete - fails here by name until it is tracked too. The seed in
+   database/defaults.php is the install's, made by nobody, and stays as it is.
+   ADR 0025 excepted duplicate_record() as well; it went with app/duplicate.php
+   (ADR 0026 §8), so nothing is excepted now. */
+is_same(['app/actions_config.php profile_save', 'database/defaults.php defaults.php (file)'],
+        $blocksSending(fn($sql) => preg_match('/^(?:INSERT INTO|REPLACE INTO|UPDATE|DELETE FROM) `?payment_profiles`?\b/i', $sql) === 1),
+        'payment_profiles is written by profile_save and by the install’s seed, and nowhere else');
+$recipientWrites = 0;
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/views/*.php')) as $path)
+    foreach (named_blocks_of($path) as $name => $block)
+        foreach (enclosed_writes_of($block, 'payment_profiles') as $write) {
+            $recipientWrites++;
+            ok(array_intersect($write['inside'], ['tracked', 'tracked_insert']) !== [],
+               substr($path, strlen(APP_ROOT) + 1).' '.$name.' runs its '.strtok($write['sql'], ' ').' of payment_profiles inside tracked() or tracked_insert()'
+               .' (found inside '.(implode(' > ', $write['inside']) ?: 'no call').')');
+        }
+ok($recipientWrites >= 2, 'profile_save’s UPDATE and INSERT were found and followed ('.$recipientWrites.'), so a pass here is not an empty search');
+
 case_('A sign-in link is never mailed, and only make_signin_link() makes one [ADR 0023 §6]');
 $signinMakers = []; $mailedSignin = [];
 foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $path)

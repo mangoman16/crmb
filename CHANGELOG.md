@@ -401,6 +401,18 @@ I.1–I.11 walk.
 - Refusals that were English only are German and English now, and the mail page
   no longer tells her to run a command she cannot run.
 
+### A trainer's change to the IBAN is kept
+
+- **Every change to a payment recipient is in „Änderungen"**: who made it,
+  when, and each field from its old value to its new one — Empfänger, IBAN,
+  BIC, Währung, Inhalt des QR-Codes, Notiz and Archiviert, named as the form
+  names them. A new recipient leaves a line with what it was made with. Before,
+  saving a recipient left only an audit line saying that it was saved: who had
+  changed the account was there, what it had been was nowhere (ADR 0025).
+- Nothing else changes. Trainers may still edit recipients, an invoice issued
+  before keeps the IBAN it was issued with, and an open charge's QR code shows
+  the new one.
+
 ### Setup cannot be taken over, and an https portal stays on https
 
 - **Setup no longer mistakes a database that is down for an unfinished

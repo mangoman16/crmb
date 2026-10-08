@@ -90,7 +90,12 @@ function history_field_label(string $column): string {
         'is_default' => t('Standard', 'Default'),
         'min_age' => t('Ab Alter', 'From age'),
         'max_age' => t('Bis Alter', 'To age'),
+        // A payment recipient's (ADR 0025). 'note' is a payment's as well, so
+        // it keeps the plain word rather than either form's.
         'iban' => 'IBAN', 'bic' => 'BIC', 'recipient' => t('Empfänger', 'Recipient'),
+        'currency' => t('Währung', 'Currency'),
+        'qr_template' => t('Inhalt des QR-Codes', 'QR code contents'),
+        'note' => t('Notiz', 'Note'),
         // What a family writes on its own page (ADR 0020, §7). 'phone' is the
         // student's and a contact's alike.
         'address' => t('Anschrift', 'Postal address'),
