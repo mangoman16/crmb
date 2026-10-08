@@ -17,7 +17,7 @@ Nachrichten: Jeder Kurs hat einen Gruppenchat. Seine Nachrichten lesen alle, die
 
 4. Rechtsgrundlagen
 [Für Training und Mitgliedschaft die einschlägige Vertragsgrundlage nach Art. 6 Abs. 1 lit. b DSGVO prüfen und benennen; konkrete gesetzliche Pflichten nach lit. c und berechtigte Interessen nach lit. f, soweit tatsächlich einschlägig, ergänzen. Für besondere Datenkategorien zusätzliche Voraussetzungen festlegen.]
-Neuigkeiten des Vereins werden als Vereinsinformation per E-Mail verschickt, etwa wenn sich eine Trainingszeit ändert oder die Halle geschlossen ist. Bei neuen Konten ist das eingeschaltet. Abschalten lässt es sich schon beim Aktivieren des Kontos, jederzeit später in „Mein Konto“ und über den Link in jeder dieser E-Mails; im Portal bleiben die Neuigkeiten lesbar.
+Neuigkeiten des Vereins werden als Vereinsinformation per E-Mail verschickt, etwa wenn sich eine Trainingszeit ändert oder die Halle geschlossen ist. Bei neuen Konten ist das eingeschaltet. Abschalten lässt es sich schon beim Aktivieren des Kontos, jederzeit später in „Mein Konto“ und über den Link in jeder dieser E-Mails, der 90 Tage ab dem Versand gilt; im Portal bleiben die Neuigkeiten lesbar.
 [Rechtsgrundlage ergänzen – z. B. berechtigtes Interesse]
 E-Mail-Hinweise auf private Nachrichten haben eine eigene Einstellung. Sicherheitsmails wie Einladungen und Passwortlinks dienen der Bereitstellung des Zugangs.
 

@@ -190,7 +190,9 @@ function notify_class_change(array $class, string $date, ?array $entry, string $
             .$class['name'].' '.($en?'on ':'am ').fmt_date($date).' '.$what.".\n"
             .($entry?session_label($entry)."\n":'')
             .($note!==''?"\n".$note."\n":'')
-            ."\n".($en?'All dates are in the portal:':'Alle Termine stehen im Portal:')."\n".url('classes',['id'=>$class['id']]);
+            // The overview, where a family's dates are: the course's own page
+            // is staff's, and a family is refused it.
+            ."\n".($en?'All dates are in the portal:':'Alle Termine stehen im Portal:')."\n".url('dashboard');
         queue_mail((int)$account['id'],$account['email'],
             ($en?'Change to ':'Änderung: ').$class['name'].' – '.fmt_date($date),$body,'notifications');
         $sent++;

@@ -17,7 +17,7 @@ Messages: every course has a group chat. Its messages are read by everyone curre
 
 4. Legal bases
 [Review and identify the applicable Article 6(1)(b) GDPR contractual basis for training and membership, any specific legal duties under (c), and legitimate interests under (f), where actually applicable. Establish additional conditions for special-category information.]
-Club news is sent by email as information from the club, for example when a training time changes or the hall is closed. It is switched on for new accounts. It can be switched off while activating the account, at any time afterwards under “My account”, and through the link in every such email; the news remains readable in the portal.
+Club news is sent by email as information from the club, for example when a training time changes or the hall is closed. It is switched on for new accounts. It can be switched off while activating the account, at any time afterwards under “My account”, and through the link in every such email, which works for 90 days from the day it was sent; the news remains readable in the portal.
 [Add the legal basis – e.g. legitimate interest]
 Email notifications for private messages have a separate preference. Security emails such as invitations and password links provide account access.
 

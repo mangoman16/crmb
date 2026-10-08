@@ -413,6 +413,40 @@ I.1–I.11 walk.
   before keeps the IBAN it was issued with, and an open charge's QR code shows
   the new one.
 
+### What the security review of the beta found
+
+- **An unsubscribe link works for 90 days from the mail it came in.** Before,
+  it worked for ever, so a link that had travelled on — in a forwarded mail, a
+  screenshot — could switch somebody's mail off years later. **Links in mail
+  sent before this update stop working the moment the new files are opened**,
+  the owner's own test mails included; anybody still getting such mail has a
+  working link in the next one. A link past its day shows „Dieser Abmeldelink
+  gilt nicht mehr. Melde dich an und schalte die E-Mails unter „Mein Konto“
+  ab." and no button, and switches nothing.
+- **The unsubscribe page says what it stops.** A payment reminder's link
+  reads „Keine E-Mails mehr zu Beiträgen erhalten: keine Erinnerung an offene
+  Beiträge und keine Rechnungen." — it used to offer to stop „Hinweise für
+  private Nachrichten". A chat notice's link names messages, changed training
+  dates and answers to requests; a news mail's names the news.
+- **An invoice is made out to the student**, by the name staff entered, never
+  to the name of the login, which its holder can type under **Mein Konto** and
+  which could have put „Muster GmbH" on a document under § 11 UStG. An invoice
+  issued before is reprinted as it was, and says whom it is for where the two
+  names differ.
+- **A changed training date leads a family to their overview**, in the bell
+  and at the end of the mail. Both led to the course's page, which is staff's,
+  so a family landed on „Kein Zugriff".
+- **A family can send twenty receipts an hour.** The twenty-first is refused
+  with „Zu viele Versuche. Bitte später erneut versuchen." before the file is
+  looked at. There was no limit: one login could have filled the disk.
+- **A logo photographed on a phone held upright is accepted and stands
+  upright.** Such a JPEG is stored sideways with a note saying which way is
+  up; the portal used to measure it as stored and refused it as too tall, or
+  drew it into a box of the wrong shape. It now reads that note itself —
+  PHP's exif extension is not needed — and measures the picture as a browser
+  draws it. Only the first 64 KB are read for the note, which is where the
+  portal's own cleaned copy keeps it.
+
 ### Setup cannot be taken over, and an https portal stays on https
 
 - **Setup no longer mistakes a database that is down for an unfinished
@@ -497,11 +531,9 @@ I.1–I.11 walk.
   is tall or twice as tall as it is wide. Two switches on
   „Aussehen" hide the portal's name and the „Verwaltung" line beside it.
   Removing the logo brings back the portal icon, or else the „B". (ADR 0014.)
-- A portal with no colours set looks exactly as before and loads nothing extra.
-- **Known limit**: a photo taken on a phone is often stored sideways with a
-  note telling the viewer to turn it. The portal measures the picture as stored,
-  so such a logo can be refused as too tall when it looks wide. Saving it again
-  from an image editor, or as a screenshot, fixes that.
+- A portal with no colours set loads nothing extra. A logo photographed on a
+  phone held upright is measured the way it is shown (see „What the security
+  review of the beta found", above).
 
 ### One login is one student
 
@@ -1136,9 +1168,11 @@ thirty-three migrations; at `aa5b1b7`, with the robustness suite, 7608 passed,
 walk 377 checks, 0 failed, in Chromium; at `883be4d`, with „Mehr" as a page, 7915
 passed, 0 failed, and the walk 381 checks, 0 failed; and with round two of the
 removals, on the working tree before it was committed, 7762 passed, 0 failed,
-with all thirty-seven migrations, and the walk 381 checks, 0 failed. Since `1ad0488` the suite can make a
-file the portal cannot delete even as root, which the earlier runs could not; in
-the run at `f5d3c28` both refusals for such a file ran and passed. The refused
+with all thirty-seven migrations, and the walk 381 checks, 0 failed; and with
+the chat's reading rules, the kept IBAN changes and the security batch applied
+to `ead038a`, 7857 passed, 0 failed. Since `1ad0488` the suite can make a file
+the portal cannot delete even as root, which the earlier runs could not; in the
+run at `f5d3c28` both refusals for such a file ran and passed. The refused
 update with its restore in phpMyAdmin (TESTING.md G.1–G.9) has not been walked,
 and the new look has not been seen in Safari or on an iPhone (TESTING.md
 I.1–I.11).

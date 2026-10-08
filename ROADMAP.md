@@ -52,28 +52,26 @@ In this order.
    — with an audit of every screen; frontend-dev applies it globally (app.css, layout.php, the
    helpers in app/ui.php) after the removals, and the owner sees screenshots before the
    screens below are built in it.
-5. **Screens.** Not started.
+5. **Screens.**
    - ADR 0023, as specified in
      [docs/design/2026-10-05-accounts-and-chat-screens.md](docs/design/2026-10-05-accounts-and-chat-screens.md).
    - ADR 0022 §11, the chat cut to its basics. Built with round 2 (`8e5ce48`): a message is
      text and photos (a student's from the camera, JPEG; staff JPEG, PNG or WebP), and no new
-     chat between two students — old ones are readable and closed. Being built now: §11.1 and
-     §11.2, administrators read every chat with nothing recorded about their reading, and
-     „Alle Einzelchats"; the chat paragraph of both privacy drafts changes in the same commit.
+     chat between two students — old ones are readable and closed. §11.1 and §11.2 built:
+     administrators read every chat with nothing recorded about their reading, „Alle
+     Einzelchats", and a chat between two is closed once no member of staff is in it; the
+     chat paragraph of both privacy drafts changed with it, and an operator with a released
+     notice re-releases it (UPDATING.md).
    - ADR 0024, taking a child out of a course and back in. Migration 031 is in; nothing
      writes `removed_on` yet.
-   - ADR 0025, every change to a payment profile kept in „Änderungen": being built now.
-6. **Security batch.** Not started.
-   - The example trainer login: a high-entropy password, and an expiry.
-   - A throttle on `proof_upload`.
-   - Unsubscribe links never expire (`valid_unsubscribe()`, `app/auth.php`), and their
-     „payments" wording.
-   - An invoice's recipient: the student, or the billing name.
-   - A family's notice and e-mail about a changed training date link to `?page=classes`, which
-     only staff may open; they should lead to the dashboard (`class_session_save` in
-     `app/actions_config.php`, near line 77; `notify_class_change()` in `app/mail.php`, near
-     line 192).
-   - A logo photo stored sideways (EXIF orientation) is measured unrotated and can be refused.
+   - ADR 0025, every change to a payment profile kept in „Änderungen": built, with the
+     structure check that no write to `payment_profiles` happens outside the change log.
+6. **Security batch.** Built: a throttle on `proof_upload` (20 an hour per login);
+   unsubscribe links last 90 days from the mail, and links sent before stop at once; each
+   kind of mail's unsubscribe page says what it stops; an invoice is made out to the
+   student's name; a changed training date's notice and mail lead to the overview; a logo
+   photo stored sideways is measured upright. Still open:
+   - The example trainer login: a high-entropy password, and an expiry (round 3).
    - Targets below the minimum on a desktop screen: the help button's summary (36 px),
      „Alle ansehen" (21 px).
 7. **A refused update stays refused (ADR 0027): done** (`bfeb592`, `1ad0488`). The counts from
@@ -141,6 +139,10 @@ In their words.
 ## Decided
 
 - **2026-10-08** — the project manager:
+  - An invoice is made out to the student's name, never to the login's freely typed name. A
+    billing name of the family's own (the paying parent, for an invoice over 400 €) needs a
+    column the schema does not have; it is built only if a real family or the owner's tax
+    adviser asks for it.
   - The students list's rows show the band and the level instead of the price, which wrapped
     every row at 320 px; a child in no current course gets an „Ohne Kurs" badge. Prices stay
     on the child's page and on Geld. It is cheap to put back if the owner misses it.
@@ -222,6 +224,12 @@ For the owner to do:
 
 ## For the owner to test or deploy
 
+- **Unsubscribe links in your own test mails stop working** with the next update: they now
+  carry an expiry, and links made before have none. The next mail carries a working link,
+  and the page says where the switches are.
+- **The privacy notice's chat paragraph changed:** administrators can read every chat, and
+  nothing records their reading. If your beta portal's notice is released, replace the
+  paragraph under Einstellungen → Datenschutz and release it again (UPDATING.md says how).
 - **The new iOS look on your iPhone** (from `f5d3c28`). On the beta install, with test data
   only: walk TESTING.md I.1–I.11 as the trainer and as a family — the font and your text
   size, the bars around the notch, the home-screen app's status bar, pressed states, the

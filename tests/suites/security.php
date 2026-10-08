@@ -200,6 +200,58 @@ ok(!valid_unsubscribe($parentA, 'newsletter', 'deadbeef'), 'a made-up signature 
 ok(!valid_unsubscribe($parentA, 'password_hash', unsubscribe_signature($parentA, 'password_hash')),
    'a category that is not a subscription is refused even with a matching signature');
 
+case_('An unsubscribe link works for 90 days after its mail, then says where the switches are instead');
+/* It never expired: a link in a forwarded mail or a screenshot switched a
+   family's mail off for ever (security batch). The day it stops travels inside
+   its signature, which covers it, so nobody can move it on. */
+$fresh = unsubscribe_signature($parentA, 'payments');
+ok(abs((int)strtok($fresh, '.') - (time() + 90 * 86400)) <= 5, 'a link made now works for 90 days');
+ok(valid_unsubscribe($parentA, 'payments', $fresh), 'and works today');
+$lapsed = unsubscribe_signature($parentA, 'payments', time() - 1);
+ok(!valid_unsubscribe($parentA, 'payments', $lapsed), 'one whose day has passed does not');
+ok(!valid_unsubscribe($parentA, 'payments', (string)preg_replace('/^[0-9]+/', (string)(time() + 999 * 86400), $lapsed)),
+   'nor one whose day was moved on by hand');
+ok(!valid_unsubscribe($parentA, 'payments', hash_hmac('sha256', $parentA.'|payments', base64_decode(config('app_key')))),
+   'nor one from before links had a day, which would have worked for ever');
+sign_out();
+$expired = render_view('unsubscribe', ['account'=>(string)$parentA, 'category'=>'payments', 'signature'=>$lapsed]);
+ok(str_contains($expired, e(unsubscribe_refusal())) && !str_contains($expired, 'value="unsubscribe"'),
+   'an old link’s page says where the switches are, and offers nothing to confirm');
+throws(fn() => act('unsubscribe', ['account'=>(string)$parentA, 'category'=>'payments', 'signature'=>$lapsed]),
+       'sent anyway, it is refused in the same words', unsubscribe_refusal());
+is_same(1, (int)scalar('SELECT payment_notices FROM accounts WHERE id=?', [$parentA]), 'and the reminders stay on');
+act('unsubscribe', ['account'=>(string)$parentA, 'category'=>'payments', 'signature'=>$fresh]);
+is_same(0, (int)scalar('SELECT payment_notices FROM accounts WHERE id=?', [$parentA]), 'while the link from a recent mail switches them off');
+run('UPDATE accounts SET payment_notices=1 WHERE id=?', [$parentA]);
+
+case_('The unsubscribe page says what each kind of mail is about, and a payment reminder’s says payments');
+/* For everything but news it said „Keine E-Mail-Hinweise für private
+   Nachrichten mehr erhalten", so a payment reminder's link offered to stop the
+   notices of new messages. */
+foreach (array_keys(unsubscribe_categories()) as $category)
+    does_not_throw(fn() => unsubscribe_stops($category), '„'.$category.'“ has words of its own');
+is_same(count(unsubscribe_categories()), count(array_unique(array_map('unsubscribe_stops', array_keys(unsubscribe_categories())))),
+        'and no two have the same');
+$reminderPage = render_view('unsubscribe', ['account'=>(string)$parentA, 'category'=>'payments', 'signature'=>$fresh]);
+ok(str_contains($reminderPage, e(unsubscribe_stops('payments'))) && str_contains($reminderPage, 'Beiträgen') && !str_contains($reminderPage, 'Nachrichten'),
+   'a payment reminder’s link says it stops the mails about payments, and nothing about messages');
+sign_in_as($trainerId);
+
+case_('A family sends twenty receipts an hour, and the twenty-first is refused before anything is looked at');
+/* proof_upload stored a file for every request and counted none of them: a
+   thousand receipts are a full disk. */
+sign_in_as($parentA);
+$_FILES = [];
+$answers = [];
+for ($i = 0; $i < 21; $i++) {
+    try { act('proof_upload', ['student_id'=>(string)$kidA]); $answers[] = 'stored'; }
+    catch (UserError $e) { $answers[] = $e->getMessage(); }
+}
+is_same(array_fill(0, 20, 'Es wurde keine Datei ausgewählt.'), array_slice($answers, 0, 20), 'twenty are each answered for what they carry');
+ok(str_starts_with((string)($answers[20] ?? ''), 'Zu viele Versuche'), 'the twenty-first is told to wait');
+throttle_clear('proof', (string)$parentA);
+sign_in_as($trainerId);
+
 case_('Rate limiting actually stops');
 throws(function () { for ($i = 0; $i < 6; $i++) throttle('suite-limit', 'someone', 5); },
        'the sixth attempt over a limit of five is refused');

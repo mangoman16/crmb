@@ -801,7 +801,51 @@ function send_account_token(array $account,string $purpose,?string $email=null):
     };
     queue_mail((int)$account['id'],$email??$account['email'],$subjects[$purpose],$body,'security');
 }
-function unsubscribe_signature(int $id,string $category): string { return hash_hmac('sha256',$id.'|'.$category,base64_decode(config('app_key'))); }
+/**
+ * How long the unsubscribe link in a mail works: 90 days from when the mail was
+ * sent. Every mail that can be switched off carries a fresh one, so whoever
+ * still gets such mail has a working link in the newest, and one read late - a
+ * reminder kept in the inbox, news from a quarter ago - still works. A link that
+ * travelled further, in a forwarded mail or a screenshot, stops switching
+ * somebody's mail off after that; before, it did so for ever. The page then says
+ * where the switches are (unsubscribe_refusal()).
+ */
+const UNSUBSCRIBE_LINK_DAYS = 90;
+/**
+ * What an unsubscribe link carries as its signature: the moment it stops
+ * working, then a MAC over the account, the category and that moment, so none
+ * of the three can be changed. $until exists for a test that needs a link from
+ * the past; a mail never passes it.
+ */
+function unsubscribe_signature(int $id,string $category,?int $until=null): string {
+    $until??=time()+UNSUBSCRIBE_LINK_DAYS*86400;
+    return $until.'.'.hash_hmac('sha256',$id.'|'.$category.'|'.$until,base64_decode(config('app_key')));
+}
 function unsubscribe_categories(): array { return ['newsletter'=>'newsletter','notifications'=>'notifications','payments'=>'payment_notices']; }
-function valid_unsubscribe(int $id,string $category,string $signature): bool { return isset(unsubscribe_categories()[$category]) && hash_equals(unsubscribe_signature($id,$category),$signature); }
+/**
+ * What switching one category off stops, as the unsubscribe page says it: the
+ * mails queued under it, by what they are about. The page once had a sentence
+ * for news and one for everything else, so a payment reminder's link offered to
+ * stop „Hinweise für private Nachrichten". Every category needs its own here.
+ */
+function unsubscribe_stops(string $category): string {
+    return match($category) {
+        'newsletter' => t('Keine Neuigkeiten mehr per E-Mail erhalten. Im Portal bleiben sie lesbar.',
+                          'Stop receiving news by email. News remains available in the portal.'),
+        'notifications' => t('Keine E-Mail-Hinweise mehr zu neuen Nachrichten, geänderten Trainingsterminen und Antworten auf Anfragen. Im Portal steht alles weiter.',
+                             'Stop receiving email notices about new messages, changed training dates and answers to requests. Everything stays in the portal.'),
+        'payments' => t('Keine E-Mails mehr zu Beiträgen erhalten: keine Erinnerung an offene Beiträge und keine Rechnungen. Im Portal stehen sie weiter.',
+                        'Stop receiving emails about payments: no reminders of outstanding payments and no invoices. They stay in the portal.'),
+    };
+}
+/** A link this portal signed, for a category that can be switched off, and not past its day. */
+function valid_unsubscribe(int $id,string $category,string $signature): bool {
+    if(!isset(unsubscribe_categories()[$category]) || !preg_match('/^([0-9]{1,12})\.[0-9a-f]{64}$/D',$signature,$m)) return false;
+    return (int)$m[1]>=time() && hash_equals(unsubscribe_signature($id,$category,(int)$m[1]),$signature);
+}
+/** What a link that no longer works is answered with, on the page and if it is sent anyway. */
+function unsubscribe_refusal(): string {
+    return t('Dieser Abmeldelink gilt nicht mehr. Melde dich an und schalte die E-Mails unter „Mein Konto“ ab.',
+             'This unsubscribe link no longer works. Sign in and switch the emails off under “My account”.');
+}
 function record_consent(int $id,string $purpose,bool $enabled): void { run('INSERT INTO consent_log (account_id,purpose,enabled,notice_version,created_at) VALUES (?,?,?,?,?)',[$id,$purpose,$enabled?1:0,notice_version(),now()]); }

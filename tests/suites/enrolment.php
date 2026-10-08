@@ -77,6 +77,21 @@ is_same(0, (int)scalar('SELECT COUNT(*) FROM class_sessions WHERE class_id=? AND
         'nothing is stored for a day that follows the pattern');
 is_same('planned', class_session($course, '2026-09-14')['status'], 'and it is going ahead again');
 
+case_('A family told of a changed date is sent to its overview, never to the course’s page, which is staff’s');
+/* The notice and the mail linked to ?page=classes, which a family is refused:
+   the one link in the message led to „Kein Zugriff" (security batch). */
+$told = make_account(['role'=>'student', 'name'=>'Familie Termin']);
+make_enrolment($course, make_student(['first_name'=>'Tara', 'last_name'=>'Termin', 'account_id'=>$told]));
+act('class_session_save', ['class_id'=>$course, 'session_on'=>'2026-09-28', 'status'=>'cancelled', 'location'=>'',
+    'note'=>'Halle gesperrt', 'notify'=>'1'] + time_post('starts_at', '') + time_post('ends_at', ''));
+$notice = one("SELECT link_page, link_params FROM notifications WHERE account_id=? AND kind='schedule'", [$told]);
+is_same(['dashboard', ''], [$notice['link_page'] ?? null, $notice['link_params'] ?? null], 'the notice in the bell opens the family’s overview');
+$mail = mail_payload(unseal((string)scalar("SELECT payload FROM mail_jobs WHERE account_id=? AND category='notifications' ORDER BY id DESC LIMIT 1", [$told])))['body'];
+ok(str_contains($mail, 'Halle gesperrt') && str_contains($mail, url('dashboard')) && !str_contains($mail, 'page=classes'),
+   'and so does the link in the mail that spells the change out');
+act('class_session_save', ['class_id'=>$course, 'session_on'=>'2026-09-28', 'status'=>'planned', 'location'=>'', 'note'=>'']
+    + time_post('starts_at', '') + time_post('ends_at', ''));
+
 // ---------------------------------------------------------------------------
 case_('A course carries its own tariffs, and one tariff carries its own prices');
 $rate = fn(array $prices) => ['rate_interval'=>array_map('strval', array_keys($prices)),

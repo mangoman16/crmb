@@ -367,6 +367,34 @@ foreach ([[webp_header(600, 150), 'webp', '600 × 150 WebP'], [png_header(440, 8
     ok(is_file(upload_dir('logo').'/'.$name), 'and kept');
 }
 
+case_('A logo photo stored on its side is measured as it is drawn, upright');
+/* A JPEG keeps which way is up (ADR 0022 §4), and a browser turns it by that.
+   check_portal_logo() measured the file as stored, so a wide logo that a phone
+   had stored on its side was refused as „mehr als doppelt so hoch wie breit"
+   (security batch). */
+$turned = fn(int $width, int $height, int $orientation): string
+    => "\xFF\xD8".jpeg_orientation_segment($orientation).substr(jpeg_header($width, $height), 2);
+is_same([6, 8, 3, 0], array_map('jpeg_orientation', [$turned(100, 400, 6), $turned(100, 400, 8), $turned(100, 400, 3), jpeg_header(100, 400)]),
+        'the fixtures say which way is up, the way the cleaner keeps it, so the lines below prove something');
+/* A crafted file: an APP1 segment whose length (7) is too short for the EXIF
+   header, with the header's last byte and a TIFF saying 6 placed right after
+   it. Read as announced, the reader would take its answer from bytes outside
+   the segment (security review). */
+$tiffSaying6 = substr(jpeg_orientation_segment(6), 10);
+is_same(0, jpeg_orientation("\xFF\xD8\xFF\xE1".pack('n', 7)."Exif\0\0".$tiffSaying6."\xFF\xD9"),
+        'a segment too short to hold an EXIF header says nothing, and nothing past it is read');
+$logoBefore = setting('portal_logo');
+$sideways = logo_file($turned(100, 400, 6), 'jpg');
+does_not_throw(fn() => check_portal_logo($sideways), 'stored 100 × 400 and turned a quarter, it is a logo 400 wide and 100 tall, and accepted');
+set_setting('portal_logo', $sideways);
+is_same([400, 100], portal_logo_size(), 'and the page draws it 400 wide and 100 tall');
+$standing = logo_file($turned(400, 100, 8), 'jpg');
+throws(fn() => check_portal_logo($standing), 'stored 400 × 100 and turned a quarter the other way, it is drawn too tall, and refused in the size it is drawn',
+       '100 × 400 Pixel groß und damit mehr als doppelt so hoch wie breit');
+$upsideDown = logo_file($turned(600, 150, 3), 'jpg');
+does_not_throw(fn() => check_portal_logo($upsideDown), 'upside down is the same shape, and accepted as it is stored');
+set_setting('portal_logo', $logoBefore);
+
 case_('The shape rule is said in words made from the numbers it checks');
 is_same('Höchstens fünfmal so breit wie hoch und höchstens doppelt so hoch wie breit.', portal_logo_shape_hint(),
         'the Logo card’s hint, from PORTAL_LOGO_MAX_RATIO and PORTAL_LOGO_MIN_RATIO');

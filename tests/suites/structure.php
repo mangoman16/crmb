@@ -1214,6 +1214,7 @@ $throttled = [
     'app/actions_messages.php message_send'   => 'a family writing a message',
     'app/actions_config.php payment_remind'   => 'the reminder run, which sends mail',
     'app/actions_config.php feedback_send'    => 'a problem report, which can carry a file',
+    'app/actions_config.php proof_upload'     => 'a receipt, a file kept until staff remove it',
     'app/actions_settings.php smtp_test'      => 'the SMTP test, which talks to the mail server',
     'app/actions_settings.php email_change'   => 'a change of address, which checks a password',
     'app/actions.php signin_link'             => 'a member of staff making sign-in links, each a key to a child’s login (ADR 0023 §6)',

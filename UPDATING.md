@@ -252,10 +252,22 @@ here so that nothing surprises you.
 - **Your club's colours and logo**, under **Einstellungen → Portal**, on the
   cards „Aussehen" and „Logo". Until you set something, the portal keeps its
   built-in colours. A colour too pale or too dark to read text on is used darker
-  or lighter, in the same hue, and the card shows both. A logo can be a PNG, JPEG or WebP
-  of at most 1 MB. A photo taken on a phone can be measured the wrong way round
-  and refused; saving it again from an image editor, or as a screenshot, fixes
-  that.
+  or lighter, in the same hue, and the card shows both. A logo can be a PNG,
+  JPEG or WebP of at most 1 MB; a photo taken on a phone held upright is
+  measured as it is shown and accepted.
+- **Every unsubscribe link in mail sent before this update stops working the
+  moment the new files are opened** — the links in your own test mails too. A
+  family who taps one reads „Dieser Abmeldelink gilt nicht mehr. Melde dich an
+  und schalte die E-Mails unter „Mein Konto“ ab." and nothing is switched for
+  them. The next mail of that kind they receive carries a link that works, for
+  90 days from the day it was sent; that is how long every link lasts from now
+  on. Nothing to do, unless somebody asks: then **Mein Konto** has the
+  switches.
+- **Invoices are made out to the child's name** as you entered it, never to the
+  name on the family's login. Invoices issued before do not change. A changed
+  training date now leads a family to their **Übersicht**, in the bell and in
+  the mail, where before it led to the course's page and „Kein Zugriff". A
+  family can send twenty receipts an hour; the next is told to wait.
 - **No longer in the portal**: custom fields, copying, saved views of the
   **Schüler** list, „An mehrere schreiben" with its e-mail templates,
   „Warteschlange senden", the printed form and data sheet, Verwaltung's „Tarife"

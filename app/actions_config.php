@@ -71,8 +71,10 @@ function dispatch_config(string $action): array {
             $entry=class_session((int)$c['id'],$on);
             foreach(rows('SELECT DISTINCT s.account_id FROM class_students cs JOIN students s ON s.id=cs.student_id'
                 .' WHERE cs.class_id=? AND '.current_enrolment_sql(),[(int)$c['id']]) as $who)
+                // To the overview, where a family's „Termine" are: the course's
+                // own page is staff's, and a family is refused it.
                 notify((int)$who['account_id'],'schedule',$c['name'].' – '.fmt_date($on),
-                    session_statuses()[$entry['status']??'planned']??'','classes',['id'=>(int)$c['id'],'tab'=>'dates']);
+                    session_statuses()[$entry['status']??'planned']??'','dashboard');
             $sent=notify_class_change($c,$on,$entry,text_limit('note',500));
             flash(plural($sent,'Familie informiert','Familien informiert','family notified','families notified').'.');
         }
@@ -403,7 +405,11 @@ function dispatch_config(string $action): array {
         return ['student',['id'=>$inv['student_id'],'tab'=>'invoices']];
 
     case 'proof_upload':
-        $u=require_user(); $s=student((int)post('student_id'));
+        // A receipt is a file, kept until staff remove it, so the limit is the
+        // one a problem report's screenshot has: a family sending several for
+        // several months is well inside it, a thousand is a full disk.
+        $u=require_user(); throttle('proof',(string)$u['id'],20,3600);
+        $s=student((int)post('student_id'));
         $chargeId=post('charge_id')!==''?(int)post('charge_id'):null;
         if($chargeId && !one('SELECT id FROM charges WHERE id=? AND student_id=?',[$chargeId,$s['id']]))
             throw new UserError(t('Dieser Beitrag gehört nicht zu diesem Kind.','That charge does not belong to this child.'));

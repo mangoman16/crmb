@@ -408,10 +408,59 @@ function portal_logo_size(): array {
     $name = portal_logo();
     if ($name === '') return [0, 0];
     if (!isset($sizes[$name])) {
-        $size = @getimagesize(upload_dir('logo') . '/' . $name);
+        $size = portal_logo_measured(upload_dir('logo') . '/' . $name);
         $sizes[$name] = $size ? [(int)$size[0], (int)$size[1]] : [0, 0];
     }
     return $sizes[$name];
+}
+
+/**
+ * getimagesize() of a stored logo, with its width and height as a browser draws
+ * it, or false when it cannot be read.
+ *
+ * A JPEG keeps which way is up (jpeg_segment_cleaned()), and every browser turns
+ * the picture by it. Turned a quarter - EXIF orientations 5 to 8, how a phone
+ * held upright stores its photo - it is drawn as wide as the file is tall.
+ * Measured as stored, a logo photographed that way was refused for a shape it is
+ * never shown in, and drawn into a box of the wrong shape.
+ */
+function portal_logo_measured(string $path): array|false {
+    $size = is_file($path) ? @getimagesize($path) : false;
+    // ponytail: only the first 64 KB are read for which way is up. The cleaned
+    // copy keeps it in its first few hundred bytes; a JPEG stored uncleaned, with
+    // more than 64 KB of other headers before its EXIF, is measured unturned. The
+    // way up is to read segment by segment with fseek().
+    if ($size && ($size[2] ?? null) === IMAGETYPE_JPEG
+        && jpeg_orientation((string)@file_get_contents($path, false, null, 0, 65536)) >= 5)
+        [$size[0], $size[1]] = [$size[1], $size[0]];
+    return $size;
+}
+
+/**
+ * Which way is up in a JPEG (1-8), or 0 when it does not say: the first EXIF
+ * block before the picture data, read by exif_orientation() as the cleaner reads
+ * it. Walked from marker to marker as jpeg_without_metadata() walks; anything
+ * that cannot be read says nothing, so the picture is measured as stored.
+ */
+function jpeg_orientation(string $b): int {
+    $n = strlen($b);
+    if ($n < 4 || substr($b, 0, 2) !== "\xFF\xD8") return 0;
+    for ($i = 2; ($i = strpos($b, "\xFF", $i)) !== false;) {
+        while ($i < $n && $b[$i] === "\xFF") $i++;
+        if ($i >= $n) return 0;
+        $marker = ord($b[$i++]);
+        // A stuffed zero, TEM and a restart stand alone, without a length.
+        if ($marker === 0x00 || $marker === 0x01 || ($marker >= 0xD0 && $marker <= 0xD7)) continue;
+        // The picture data, its end or a second start: no header said it.
+        if ($marker === 0xDA || $marker === 0xD9 || $marker === 0xD8 || $i + 2 > $n) return 0;
+        $length = unpack('n', substr($b, $i, 2))[1];
+        if ($length < 2 || $i + $length > $n) return 0;
+        // A segment too short to hold the six-byte header announces no EXIF,
+        // whatever the bytes after it say: nothing past a segment is read.
+        if ($marker === 0xE1 && $length >= 8 && substr($b, $i + 2, 6) === "Exif\0\0") return exif_orientation(substr($b, $i + 8, $length - 8));
+        $i += $length;
+    }
+    return 0;
 }
 
 /**
@@ -421,11 +470,12 @@ function portal_logo_size(): array {
  * checked against the extension as well, although store_upload() chose the
  * extension from the bytes: a file that reads as one type and is named as
  * another would be served as the wrong one. Each refusal names the size it
- * found and what is needed, because "not accepted" sends her back to guess.
+ * found, as it is drawn (portal_logo_measured()), and what is needed, because
+ * "not accepted" sends her back to guess.
  */
 function check_portal_logo(string $storedName): void {
     $path = upload_dir('logo') . '/' . $storedName;
-    $size = is_file($path) ? @getimagesize($path) : false;
+    $size = portal_logo_measured($path);
     $extension = pathinfo($storedName, PATHINFO_EXTENSION);
     [$width, $height] = $size ? [(int)$size[0], (int)$size[1]] : [0, 0];
     $dimensions = $width . ' × ' . $height;

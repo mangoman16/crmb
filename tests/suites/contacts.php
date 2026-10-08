@@ -112,12 +112,14 @@ run('UPDATE contacts SET email=? WHERE student_id=?', ['opa@beispiel.test', $sid
 is_same('familie.hofer@beispiel.test', invoice_recipient(student($sid))['email'],
         'an address on a contact changes nothing, which is the whole point');
 
-case_('An account of their own wins, because that is who signs in');
+case_('An account of their own decides where the invoice goes, and the child is still who it is made out to');
+/* The login's name is whatever its holder or staff typed, so it no longer
+   names the recipient (security batch); invoices.php has the whole document. */
 $family = make_account(['role'=>'student', 'name'=>'Familie Hofer', 'email'=>'familie@beispiel.test']);
 run('UPDATE students SET account_id=? WHERE id=?', [$family, $sid]);
 $recipient = invoice_recipient(student($sid));
 is_same('familie@beispiel.test', $recipient['email'], 'the account’s address');
-is_same('Familie Hofer', $recipient['name'], 'and the name on the account');
+is_same('Lena Hofer', $recipient['name'], 'made out to the child, not to the name on the account');
 is_same($family, (int)$recipient['account_id'], 'and the account it belongs to');
 
 // ---------------------------------------------------------------------------

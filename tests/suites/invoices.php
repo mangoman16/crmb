@@ -297,6 +297,23 @@ sign_in_as($account);
 does_not_throw(fn() => invoice((int)$invoice['id']), 'their own');
 throws(fn() => invoice($third), 'somebody else’s', 'nicht gefunden');
 
+case_('An invoice is made out to the student, never to whatever the login is called');
+/* invoice_recipient() named the login, whose name its holder types under „Mein
+   Konto" and staff type when inviting: a parent's, a company's, anybody's -
+   on a document a family may hand on (security batch). */
+sign_in_as($trainer);
+$renamed = make_account(['role'=>'student', 'name'=>'Max Mustermann GmbH']);
+$addressed = make_student(['first_name'=>'Lena', 'last_name'=>'Recht', 'account_id'=>$renamed]);
+$addressedCharge = fixture('charges', ['student_id'=>$addressed, 'label'=>'Beitrag November', 'amount_cents'=>4500,
+    'gross_cents'=>4500, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>'2026-11-01', 'period_to'=>'2026-11-30',
+    'due_on'=>'2026-11-01', 'overdue_on'=>'2026-11-08', 'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+$toTheStudent = invoice(create_invoice($addressed, [$addressedCharge]));
+$recipient = json_decode((string)$toTheStudent['snapshot_json'], true)['recipient'] ?? [];
+is_same(['Lena Recht', $renamed], [$recipient['name'] ?? null, (int)($recipient['account_id'] ?? 0)],
+        'it is made out to the student, and still belongs to their login');
+$document = $pdfText(invoice_pdf($toTheStudent));
+ok(str_contains($document, 'Lena Recht') && !str_contains($document, 'Mustermann'), 'and the document names the student and nobody else');
+
 case_('A discount is explained on the document rather than only subtracted');
 sign_in_as($trainer);
 // The year after today's, so no invoice issued today has already started its

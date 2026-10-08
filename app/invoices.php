@@ -93,15 +93,17 @@ function invoice_issuer(): array {
 }
 
 /**
- * Who the invoice is addressed to.
+ * Who the invoice is addressed to: the student, by the name on their record.
  *
- * The account that holds the child's login, because that is the person paying;
- * a child with no account is addressed by their own name, which is what a family
- * who joined before accounts existed has.
+ * Never the name of the login. That is whatever its holder typed under „Mein
+ * Konto", or staff typed when inviting - a parent's name, a company's, anybody's
+ * - and an invoice is a document under § 11 UStG that a family may hand on.
+ * The student's name is the one staff entered, and every change to it is kept
+ * in „Änderungen". The login is still asked for its id and its language.
  */
 function invoice_recipient(array $student): array {
     $account = $student['account_id'] ? one('SELECT * FROM accounts WHERE id=?', [(int)$student['account_id']]) : null;
-    $name = $student['first_name'] . ' ' . $student['last_name'];
+    $name = trim($student['first_name'] . ' ' . $student['last_name']);
     // Not the emergency contact any more: that list is people to ring, and the
     // grandmother at the top of it is not who the invoice is for. The address
     // is the one the family keeps on its own „Profil" tab (ADR 0020, §7),
@@ -109,7 +111,7 @@ function invoice_recipient(array $student): array {
     // into snapshot_json, so a later move changes the next invoice and never
     // an earlier one.
     return [
-        'name'    => $account ? (string)$account['name'] : $name,
+        'name'    => $name,
         'address' => (string)($student['address'] ?? ''),
         'email'   => student_email($student),
         'student' => $name,
@@ -613,6 +615,8 @@ function invoice_document(array $invoice): string {
     // older document reprinted from its snapshot simply has nothing here.
     if (trim((string)($recipient['address'] ?? '')) !== '')
         pdf_text($doc, (string)$recipient['address'], 10);
+    // An invoice issued before invoices were addressed to the student named the
+    // login (invoice_recipient()); reprinted from its snapshot, it says whom for.
     if (($recipient['student'] ?? '') !== '' && $recipient['student'] !== $recipient['name'])
         pdf_text($doc, t('für ', 'for ') . $recipient['student'], 10, false, PDF_MARGIN, 0.35);
     pdf_down($doc, 16);

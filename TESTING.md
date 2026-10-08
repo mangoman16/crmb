@@ -697,14 +697,14 @@ sign-in page, and a family's login at hand. Before you start, note what the
 - [ ] **6.20** „Logo entfernen": the portal icon comes back top left, and after
   removing the icon too, the „B". The message says which.
 
-**Known limit, not a failure:** a photo taken on a phone held upright is often
-stored sideways with a note saying "turn me" (EXIF orientation). The browser
-turns it, but the portal measures the picture as stored, without the turn. Such
-a logo can be refused as "too tall" when it looks wide, or drawn with its width
-and height swapped. Reading that note needs PHP's exif extension, which shared
-hosting does not promise. The way round is to save the logo from an image
-editor or as a screenshot, which stores it the right way up. A logo from a
-designer is not affected.
+**A photo taken on a phone held upright** is often stored sideways with a note
+saying "turn me" (EXIF orientation). The portal reads that note itself, without
+PHP's exif extension, and measures the picture as the browser draws it, so such
+a logo is accepted and drawn upright (S.5). The note is looked for in the first
+64 KB of the file, where the portal's own cleaned copy keeps it; a JPEG whose
+note sits deeper is still measured as stored, and can be refused as "too tall"
+when it looks wide. Saving it from an image editor or as a screenshot fixes
+that.
 
 ---
 
@@ -2217,6 +2217,36 @@ trainers, with a message each that you, the administrator, have not written.
   it was made, with its IBAN. Change its „Hinweis für Eltern" and its „Inhalt
   des QR-Codes": the line names them „Notiz" and „Inhalt des QR-Codes", never a
   column's name.
+
+### The security batch (ROADMAP item 6)
+
+- [ ] **S.1** With mail set up, a payment reminder's „Abmelden" link opens a
+  page saying „Keine E-Mails mehr zu Beiträgen erhalten: keine Erinnerung an
+  offene Beiträge und keine Rechnungen. …" — nothing about messages. Confirm:
+  under **Mein Konto**, „Erinnerung, wenn ein Beitrag offen ist" is off. A news
+  mail's link speaks of news, a chat notice's of messages, dates and requests.
+- [ ] **S.2** In the address of such a link, change the number in front of the
+  dot in `signature=` by one: the page says „Dieser Abmeldelink gilt nicht mehr.
+  Melde dich an und schalte die E-Mails unter „Mein Konto“ ab." and offers no
+  button. **(release)** A link from a mail sent more than 90 days ago says the
+  same.
+- [ ] **S.3** As a family, call yourself „Muster GmbH" under **Mein Konto**. As
+  the trainer, issue an invoice for that child and download it: under
+  „Rechnungsempfänger" stands the child's name, and „Muster GmbH" is nowhere on
+  it.
+- [ ] **S.4** As the trainer, change one date of a course with „Alle
+  Kursteilnehmer per E-Mail informieren" ticked. As a family in that course,
+  the notice in the bell opens **Übersicht**, not „Kein Zugriff"; with mail set
+  up, the link at the end of the mail opens it too.
+- [ ] **S.5** **(release)** A logo stored on its side: from a wide JPEG logo,
+  `jpegtran -rotate 90 -trim logo.jpg > seite.jpg`, then
+  `exiftool -Orientation=8 -n -overwrite_original seite.jpg`. Opened in a
+  browser, `seite.jpg` looks like the logo, upright. Upload it under
+  **Einstellungen → Portal → Logo**: it is accepted, and stands upright and
+  unsqueezed in the bar, on a phone and on a computer.
+- [ ] **S.6** As a family, send a receipt under **Beiträge**: it arrives. The
+  suite checks that the twenty-first within an hour is refused with „Zu viele
+  Versuche"; by hand, only the one that arrives.
 
 ---
 

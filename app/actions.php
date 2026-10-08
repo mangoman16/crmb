@@ -659,9 +659,9 @@ function dispatch_action(string $action): array {
         return landing_after_sign_in($signed);
     case 'unsubscribe':
         $id=(int)post('account');$category=post('category');
-        if(!valid_unsubscribe($id,$category,post('signature'))) throw new UserError(t('Ungültiger Abmeldelink.','Invalid unsubscribe link.'));
+        if(!valid_unsubscribe($id,$category,post('signature'))) throw new UserError(unsubscribe_refusal());
         if(one('SELECT id FROM accounts WHERE id=?',[$id])) {
-            $column=unsubscribe_categories()[$category] ?? throw new UserError(t('Ungültiger Abmeldelink.','Invalid unsubscribe link.'));
+            $column=unsubscribe_categories()[$category] ?? throw new UserError(unsubscribe_refusal());
             run('UPDATE accounts SET '.$column.'=0 WHERE id=?',[$id]); record_consent($id,$category,false);
             run("UPDATE mail_jobs SET status='cancelled',payload='' WHERE account_id=? AND category=? AND status IN ('queued','failed')",[$id,$category]);
         }
