@@ -15,10 +15,16 @@ declare(strict_types=1);
  *                 channel to a child that the club cannot see.
  *   direct        any other two: two members of staff, who write, or two
  *                 students from before their chats closed (ADR 0022 §11.3),
- *                 which the two still read and nobody writes in. Nobody else
- *                 reads it.
+ *                 which the two still read and nobody writes in.
  *   staff         the shared desk from before ADR 0022: a family and every
  *                 member of staff. Kept to read, closed to new messages.
+ *
+ * Whether a chat between two still takes messages is asked of who is in it now
+ * (two_person_chat_open()): with no member of staff left in it, it is closed,
+ * whatever kind it was made as.
+ *
+ * An administrator reads every conversation of every kind, and writes only in
+ * her own (ADR 0022 §11.1). Her reading leaves nothing behind (§11.2).
  *
  * Who sees what is one SQL condition (thread_listed_sql(), thread_readable_sql())
  * used by the list, the unread badge and the page alike: two spellings of one
@@ -26,21 +32,32 @@ declare(strict_types=1);
  */
 
 /**
+ * Whether $user's photo in a chat comes from the camera (ADR 0022 §11.4): a
+ * student's does, and so does that of nobody signed in, who gets no more than a
+ * student; staff may pick one from the gallery too. The one answer for which
+ * photos may be sent (message_upload_types()), for whether the photo button
+ * asks the phone for its camera, and for how a photo that is not a camera's is
+ * refused.
+ */
+function chat_photo_from_camera(?array $user): bool {
+    return $user === null || !is_staff($user);
+}
+
+/**
  * The photos $user may send in a chat (ADR 0022 §11.4), as media type =>
  * extension: what store_upload() checks the bytes against and what the
  * composer offers, so the form never offers what the server refuses.
  *
- * Staff send JPEG, PNG or WebP, from the camera or the gallery. A student sends
- * a JPEG, the one thing a phone's camera hands over - the composer asks for the
- * camera - which keeps out screenshots, animations and documents; nobody signed
- * in gets no more than a student. No GIF for anybody: no camera writes one, and
+ * From the camera, a JPEG, the one thing a phone's camera hands over, which
+ * keeps out screenshots, animations and documents. Staff send JPEG, PNG or WebP,
+ * from the camera or the gallery. No GIF for anybody: no camera writes one, and
  * it is the one picture kept uncleaned. Voice notes and files sent before stay,
  * and are shown as they are; nobody adds a new one.
  */
 function message_upload_types(?array $user): array {
-    return $user !== null && is_staff($user)
-        ? ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp']
-        : ['image/jpeg' => 'jpg'];
+    return chat_photo_from_camera($user)
+        ? ['image/jpeg' => 'jpg']
+        : ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
 }
 
 /**
@@ -62,13 +79,14 @@ function thread_listed_sql(array $user): array {
 
 /**
  * The conversations $user may open: their list, and for staff the group of an
- * archived course as well; an administrator also every chat between a student
- * and a member of staff, which her list leaves out so her badge counts only
- * messages meant for her.
+ * archived course as well. An administrator may open every conversation there
+ * is (ADR 0022 §11.1) - the owner: "chats should be readable by admin if needed
+ * in case there are problems". Her list still leaves out the ones she is not
+ * in, so her badge counts only messages meant for her.
  */
 function thread_readable_sql(array $user): array {
+    if (is_admin($user)) return ['TRUE', []];
     [$sql, $params] = thread_listed_sql($user);
-    if (is_admin($user)) return ["($sql OR t.kind IN ('course','staff_direct'))", $params];
     if (is_staff($user)) return ["($sql OR t.kind='course')", $params];
     return [$sql, $params];
 }
@@ -98,32 +116,72 @@ function thread_seen_sql(array $user, bool $listedOnly): array {
 function thread_record(int $id): array {
     $u = require_user();
     [$readable, $params] = thread_seen_sql($u, false);
-    $row = one('SELECT t.*, a.name AS account_name, c.name AS class_name, c.archived AS class_archived'
+    $row = one('SELECT t.*, a.name AS account_name, c.name AS class_name, c.archived AS class_archived, '
+        .THREAD_HAS_STAFF_SQL.' AS has_staff'
         .' FROM threads t LEFT JOIN accounts a ON a.id=t.account_id LEFT JOIN classes c ON c.id=t.class_id'
         .' WHERE t.id=? AND '.$readable, [$id, ...$params]);
     if (!$row) throw new NotFound(t('Unterhaltung nicht gefunden.', 'Conversation not found.'));
     return $row;
 }
 
+/** Whether a member of staff is in conversation t, as the column two_person_chat_open() reads. */
+const THREAD_HAS_STAFF_SQL = "EXISTS (SELECT 1 FROM thread_participants hs JOIN accounts ha ON ha.id=hs.account_id"
+    ." WHERE hs.thread_id=t.id AND ha.role IN ('admin','trainer','manager'))";
+
+/** Whether a conversation is a chat between two people, of either kind pair_kind() makes. */
+function two_person_chat(array $thread): bool {
+    return in_array($thread['kind'] ?? '', ['staff_direct', 'direct'], true);
+}
+
+/**
+ * Whether a chat between two people takes messages: while a member of staff is
+ * in it. A student writes to staff and staff to anybody (may_message()); two
+ * students have no chat with each other any more, and the ones from before
+ * stay to read, closed (ADR 0022 §11.3).
+ *
+ * Asked of who is in it now, never of what the two were when the chat was made
+ * or of who is asking: roles change. A 'direct' chat between two trainers
+ * stays open while one of them is staff, as a student's chat with staff is; a
+ * 'staff_direct' chat whose trainer was made a student has two students in it
+ * and closes, whatever kind it was made as (security review of round 2). A row
+ * that does not say who is in it is closed.
+ *
+ * The one answer for may_write_thread(), the chat list's „Frühere
+ * Unterhaltungen", „Alle Einzelchats", the line at the top of the chat and
+ * what an administrator reading along is told.
+ */
+function two_person_chat_open(array $thread): bool {
+    return two_person_chat($thread) && (int)($thread['has_staff'] ?? 0) !== 0;
+}
+
+/** The other half: a chat between two people with no member of staff left in it. */
+function two_person_chat_closed(array $thread): bool {
+    return two_person_chat($thread) && !two_person_chat_open($thread);
+}
+
 /**
  * Whether $user may write in a conversation thread_record() gave them: the group
- * of a running course, or a chat they are in - unless it is one between two
- * students, which is closed. Nobody writes into a desk thread any more, an
- * administrator reading somebody else's chat only reads, and nobody writes
- * while viewing the portal as somebody else.
+ * of a running course, or a two-person chat they are in and that is not closed.
+ * Nobody writes into a desk thread any more, an administrator reading somebody
+ * else's chat only reads (ADR 0022 §11.1), and nobody writes while viewing the
+ * portal as somebody else.
  */
 function may_write_thread(array $user, array $thread): bool {
     // Nobody writes under somebody else's name while looking through their eyes.
     if (impersonator()) return false;
     return match ((string)($thread['kind'] ?? '')) {
         'course' => (int)($thread['class_archived'] ?? 1) === 0,
-        'staff_direct' => is_participant((int)$thread['id'], (int)$user['id']),
-        // Between two members of staff, the two write. One between two
-        // students is from before their chats closed (ADR 0022 §11.3): the
-        // two still read it, and nobody writes in it any more.
-        'direct' => is_staff($user) && is_participant((int)$thread['id'], (int)$user['id']),
+        'staff_direct', 'direct' => two_person_chat_open($thread) && is_participant((int)$thread['id'], (int)$user['id']),
         default => false,
     };
+}
+
+/**
+ * What an administrator reading a chat between two others is told, where the
+ * writing box would be and if she sends something anyway (ADR 0022 §11.1).
+ */
+function only_the_two_write(): string {
+    return t('Du liest hier mit. Schreiben können nur die beiden.', 'You are reading along. Only the two of them can write.');
 }
 
 function is_participant(int $threadId, int $accountId): bool {
@@ -186,38 +244,45 @@ function thread_title(array $thread, array $user): string {
 /**
  * $user's chat list, in one query however long it is: the groups, then the
  * chats, then the closed desk threads, each newest first - every row with the
- * other person, the last message, its first file, the number in the course and
- * how many messages are unread. With $allDirect, an administrator's view of the
- * chats between a student and staff that she is not in.
+ * other person, the last message, its first file, the number in the course,
+ * whether a member of staff is in it (two_person_chat_open()) and how many
+ * messages are unread.
+ *
+ * With $allDirect, an administrator's „Alle Einzelchats" (ADR 0022 §11.1): every
+ * chat between two people that she is not in, with nothing unread. She has no
+ * read mark in those (mark_thread_read()), and none of them waits for her.
  */
 function chat_list(array $user, bool $allDirect = false): array {
     $me = (int)$user['id'];
     if ($allDirect) {
         if (!is_admin($user)) throw new UserError(t('Nur für Administratoren.', 'Administrators only.'));
-        // What she may open, narrowed to the chats between a student and staff
-        // that she is not in. Built on the one rule rather than beside it: if
-        // who reads those chats changes, or a view through somebody's eyes
-        // narrows it, this list follows (ADR 0022 §2, §9).
+        // What she may open, narrowed to the two-person chats she is not in.
+        // Built on the one rule rather than beside it: if who reads those chats
+        // changes, or a view through somebody's eyes narrows it, this list
+        // follows (ADR 0022 §2, §9).
         [$readable, $readableParams] = thread_seen_sql($user, false);
-        $where = "($readable) AND t.kind='staff_direct'"
+        $where = "($readable) AND t.kind IN ('staff_direct','direct')"
             .' AND NOT EXISTS (SELECT 1 FROM thread_participants p WHERE p.thread_id=t.id AND p.account_id=?)';
         $whereParams = [...$readableParams, $me];
+        [$unread, $unreadParams] = ['0', []];
     } else {
         [$where, $whereParams] = thread_seen_sql($user, true);
+        [$unread, $unreadParams] = ['(SELECT COUNT(*) FROM messages mu WHERE mu.thread_id=t.id AND NOT (mu.sender_id <=> ?) AND mu.id>COALESCE('
+            .'(SELECT r.last_read_message_id FROM thread_reads r WHERE r.thread_id=t.id AND r.account_id=?),0))', [$me, $me]];
     }
     return rows('SELECT t.*, c.name AS class_name, c.archived AS class_archived, ow.name AS account_name, '
         .chat_person_columns('o', 'other_').','
         .' EXISTS (SELECT 1 FROM thread_participants pm WHERE pm.thread_id=t.id AND pm.account_id=?) AS me_in,'
         ." (SELECT GROUP_CONCAT(pa.name ORDER BY pa.name SEPARATOR ' · ') FROM thread_participants pp"
         .'   JOIN accounts pa ON pa.id=pp.account_id WHERE pp.thread_id=t.id) AS people_names,'
+        .' '.THREAD_HAS_STAFF_SQL.' AS has_staff,'
         .' m.id AS last_id, CASE WHEN m.removed_at IS NULL THEN m.body END AS last_body, m.sender_id AS last_sender_id,'
         .' m.created_at AS last_at,'
         .' m.removed_at AS last_removed_at, ms.name AS last_sender_name,'
         ." (SELECT CONCAT(f.kind,'|',f.seconds,'|',f.original_name) FROM message_files f WHERE f.message_id=m.id"
         .'   AND m.removed_at IS NULL ORDER BY f.id LIMIT 1) AS last_file,'
         .' (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=t.class_id AND '.current_enrolment_sql('cs').') AS members,'
-        .' (SELECT COUNT(*) FROM messages mu WHERE mu.thread_id=t.id AND NOT (mu.sender_id <=> ?) AND mu.id>COALESCE('
-        .'   (SELECT r.last_read_message_id FROM thread_reads r WHERE r.thread_id=t.id AND r.account_id=?),0)) AS unread'
+        .' '.$unread.' AS unread'
         .' FROM threads t LEFT JOIN classes c ON c.id=t.class_id LEFT JOIN accounts ow ON ow.id=t.account_id'
         ." LEFT JOIN accounts o ON t.kind<>'course' AND o.id=(SELECT p2.account_id FROM thread_participants p2"
         .'   WHERE p2.thread_id=t.id AND p2.account_id<>? ORDER BY p2.account_id LIMIT 1)'
@@ -225,7 +290,7 @@ function chat_list(array $user, bool $allDirect = false): array {
         .' LEFT JOIN accounts ms ON ms.id=m.sender_id'
         .' WHERE '.$where
         ." ORDER BY t.kind='course' DESC, t.kind='staff' ASC, m.id IS NULL ASC, m.id DESC, c.name, t.id DESC",
-        [$me, $me, $me, $me, ...$whereParams]);
+        [$me, ...$unreadParams, $me, ...$whereParams]);
 }
 
 /**
@@ -246,15 +311,27 @@ function student_courses_by_account(array $accountIds): array {
 }
 
 /**
- * Remember how far an account has read a conversation. Per account, because
- * staff share the groups: one trainer's reading must not hide a message from
- * another.
+ * Remember how far $reader has read a conversation in their own list. Per
+ * account, because staff share the groups: one trainer's reading must not hide
+ * a message from another.
+ *
+ * Only a chat in their list - thread_seen_sql($reader, true), the rule the list
+ * and the badge use - and never while staff look through somebody's eyes, who
+ * has not read it (ADR 0022 §9). So an administrator opening a chat she is not
+ * in leaves nothing behind: no row, whose updated_at would say when she read
+ * it, and nothing the two in the chat could see. The owner: "it should not be
+ * recorded if an admin does something" (§11.2). One statement, which writes
+ * nothing when the chat is not in the list and only ever moves a mark forward.
  */
-function mark_thread_read(int $threadId, int $accountId): void {
+function mark_thread_read(int $threadId, array $reader): void {
+    if (impersonator()) return;
+    [$listed, $params] = thread_seen_sql($reader, true);
+    // Qualified: an INSERT … SELECT reads threads too, which has an updated_at of its own.
     run('INSERT INTO thread_reads (thread_id,account_id,last_read_message_id,updated_at)'
-        .' VALUES (?,?,COALESCE((SELECT MAX(id) FROM messages WHERE thread_id=?),0),?)'
-        .' ON DUPLICATE KEY UPDATE last_read_message_id=GREATEST(last_read_message_id,VALUES(last_read_message_id)),updated_at=VALUES(updated_at)',
-        [$threadId, $accountId, $threadId, now()]);
+        .' SELECT t.id,?,COALESCE((SELECT MAX(m.id) FROM messages m WHERE m.thread_id=t.id),0),? FROM threads t WHERE t.id=? AND '.$listed
+        .' ON DUPLICATE KEY UPDATE thread_reads.last_read_message_id=GREATEST(thread_reads.last_read_message_id,VALUES(last_read_message_id)),'
+        .'thread_reads.updated_at=VALUES(updated_at)',
+        [(int)$reader['id'], now(), $threadId, ...$params]);
 }
 
 /**
@@ -380,6 +457,18 @@ function may_message(array $from, int $toId): bool {
 }
 
 /**
+ * What $from is told when may_message() says no: a family where to write
+ * instead, staff only that it cannot be done - the coaching team and a course
+ * group are theirs already (code review of round 2).
+ */
+function chat_refusal(array $from): string {
+    return is_staff($from)
+        ? t('Diese Person kannst du hier nicht anschreiben.', 'You cannot write to this person here.')
+        : t('Mit dieser Person lässt sich hier kein Chat beginnen. Schreib dem Trainerteam oder in deine Kursgruppe.',
+            'You cannot start a chat with this person here. Write to the coaching team or in your course group.');
+}
+
+/**
  * Whom „Neue Nachricht" offers: the coaching team, first, because they are the
  * answer to "who can I ask about this" and should never be something to go
  * looking for - and for staff, every family too.
@@ -410,10 +499,12 @@ function pair_thread(int $a, int $b): int {
 
 /**
  * Which kind of chat two accounts make (ADR 0022 §1): a student and a member of
- * staff a 'staff_direct' one, which the club's administrators can read; any
- * other two a 'direct' one. Fixed when the chat is made - a later change of role
- * never changes who reads it - and asked beforehand only by the page that shows
- * the empty chat before its first message, so it says what the chat will be.
+ * staff a 'staff_direct' one; any other two a 'direct' one, which since §11.3
+ * only two members of staff can start. Fixed when the chat is made - a later
+ * change of role never changes who reads it, while whether it still takes
+ * messages is asked of who is in it now (two_person_chat_open()) - and asked
+ * beforehand only by the page that shows the empty chat before its first
+ * message, so it says what the chat will be.
  */
 function pair_kind(array $one, array $other): string {
     return is_staff($one) !== is_staff($other) ? 'staff_direct' : 'direct';
@@ -429,9 +520,7 @@ function pair_kind(array $one, array $other): string {
  * Both accounts are held first, so two taps at once cannot make two.
  */
 function direct_thread(array $from, int $toId): int {
-    if (!may_message($from, $toId))
-        throw new UserError(t('Mit dieser Person lässt sich hier kein Chat beginnen. Schreib dem Trainerteam oder in deine Kursgruppe.',
-                              'You cannot start a chat with this person here. Write to the coaching team or in your course group.'));
+    if (!may_message($from, $toId)) throw new UserError(chat_refusal($from));
     return transactional(function () use ($from, $toId): int {
         $pair = array_column(rows('SELECT id, role FROM accounts WHERE id IN (?,?) ORDER BY id FOR UPDATE',
             [(int)$from['id'], $toId]), null, 'id');

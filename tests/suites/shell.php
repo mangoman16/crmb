@@ -676,7 +676,6 @@ $walk('an administrator', [
     ['messages', ['id'=>$thread], 'Chats', 'messages'],
     ['messages', ['new'=>'1'], 'Chats', 'messages'],
     ['messages', ['with'=>(string)$family], 'Chats', 'messages'],
-    ['messages', ['contacts'=>'1'], 'Chats', 'messages'],
     ['messages', ['id'=>$thread, 'members'=>'1'], 'Chat', 'messages', ['id'=>$thread, '#'=>'chat-end']],
     ['outbox', [], 'Chats', 'messages'],
     ['news', [], 'Chats', 'messages'],

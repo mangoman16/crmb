@@ -13,8 +13,7 @@ $staff=is_staff($user);
 $me=(int)$user['id'];
 $id=(int)($_GET['id']??0);
 $with=(int)($_GET['with']??0);
-// contacts=1 is what links in older notifications say.
-$picking=!empty($_GET['new']) || !empty($_GET['contacts']);
+$picking=!empty($_GET['new']);
 /* While staff look through somebody's eyes nothing can be written (ADR 0022
    §9), so nothing here offers to. „Neue Nachricht" and a chat asked for by who
    it is with both show the one page that says so, whoever is asked for: it lists
@@ -86,24 +85,35 @@ if($staff): ?>
 <nav class="page-links" aria-label="<?=e(t('Mehr zu Nachrichten','More about messages'))?>">
     <a class="chip" href="<?=e(url('news'))?>"><?=e(t('Neuigkeiten','News'))?></a>
     <a class="chip" href="<?=e(url('outbox'))?>"><?=e(t('Postausgang','Outbox'))?></a>
-    <?php if(is_admin($user)): ?><a class="chip" href="<?=e(url('messages',$allDirect?[]:['all'=>1]))?>"><?=e($allDirect?t('Meine Chats','My chats'):t('Alle Direktchats','All direct chats'))?></a><?php endif ?>
+    <?php if(is_admin($user)): ?><a class="chip" href="<?=e(url('messages',$allDirect?[]:['all'=>1]))?>"><?=e($allDirect?t('Meine Chats','My chats'):t('Alle Einzelchats','All direct chats'))?></a><?php endif ?>
 </nav>
 <?php endif ?>
 <div class="messages-grid">
 <aside class="card thread-list">
-<?php if($allDirect): ?>
-    <h2 class="chat-section"><?=e(t('Chats zwischen Schülern und Team','Chats between students and the team'))?></h2>
-    <p class="chat-empty"><?=e(t('Du liest hier mit; schreiben können nur die beiden.','You can read these; only the two of them write.'))?></p>
-    <?php foreach($chats as $c) $row($c); ?>
+<?php if($allDirect):
+    /* „Alle Einzelchats" (ADR 0022 §11.1): every chat between two people the
+       administrator is not in, by who it is between. Each row names both, and
+       none counts anything unread: she only reads along there. */
+    $sections=[
+        [t('Schüler und Team','Students and team'),fn($c)=>$c['kind']==='staff_direct' && two_person_chat_open($c)],
+        [t('Im Team','Within the team'),fn($c)=>$c['kind']==='direct' && two_person_chat_open($c)],
+        [t('Zwischen Schülern (geschlossen)','Between students (closed)'),'two_person_chat_closed'],
+    ];
+    foreach($sections as [$heading,$in]):
+        $inSection=array_filter($chats,$in);
+        if(!$inSection) continue; ?>
+    <h2 class="chat-section"><?=e($heading)?></h2>
+    <?php foreach($inSection as $c) $row($c);
+    endforeach;
+    if(!$chats): ?><p class="chat-empty"><?=e(t('Noch keine Einzelchats.','No direct chats yet.'))?></p><?php endif ?>
 <?php else:
     $groups=array_filter($chats,fn($c)=>$c['kind']==='course');
-    /* A child's chat with another child is from before those chats closed
-       (ADR 0022 §11.3): it stays to read, under „Frühere Unterhaltungen" beside
-       the closed desk threads. A 'direct' chat staff are in is between two of
-       them, and open. */
-    $closed=fn(array $c): bool => $c['kind']==='staff' || ($c['kind']==='direct' && !$staff);
-    $direct=array_filter($chats,fn($c)=>in_array($c['kind'],['direct','staff_direct'],true) && !$closed($c));
-    $desk=array_filter($chats,$closed); ?>
+    /* A chat between two with no member of staff left in it is closed
+       (two_person_chat_open()) - a child's with another child, from before
+       those chats closed (ADR 0022 §11.3) - and stays to read, under „Frühere
+       Unterhaltungen" beside the closed desk threads. */
+    $direct=array_filter($chats,'two_person_chat_open');
+    $earlier=array_filter($chats,fn(array $c): bool => $c['kind']==='staff' || two_person_chat_closed($c)); ?>
     <h2 class="chat-section"><?=e(t('Kursgruppen','Course groups'))?></h2>
     <?php if(!$groups): ?>
     <p class="chat-empty"><?=e($staff?t('Noch keine Kurse. Jeder Kurs bekommt hier automatisch seine Gruppe.','No courses yet. Every course gets its group here by itself.')
@@ -114,9 +124,9 @@ if($staff): ?>
     <?php if(!$direct): ?>
     <p class="chat-empty"><?=e($staff?t('Noch keine Einzelchats.','No direct chats yet.'):t('Noch keine Nachrichten. Schreib deiner Trainerin – sie antwortet hier.','No messages yet. Write to your coach – she answers here.'))?></p>
     <?php endif; foreach($direct as $c) $row($c); ?>
-    <?php if($desk): ?>
+    <?php if($earlier): ?>
     <h2 class="chat-section"><?=e(t('Frühere Unterhaltungen','Earlier conversations'))?></h2>
-    <?php foreach($desk as $c) $row($c); endif ?>
+    <?php foreach($earlier as $c) $row($c); endif ?>
 <?php endif ?>
 </aside>
 
@@ -205,8 +215,10 @@ elseif($showMembers): $thread=thread_record($id);
 // One conversation, or the empty one a first message to somebody makes.
 elseif($id || $with):
     if($id) {
-        // Read for them only by them: while staff look through their eyes, nothing is marked.
-        $thread=thread_record($id); if(!$viewing) mark_thread_read($id,$me);
+        // Marked read only where it is the reader's own (mark_thread_read()):
+        // not for staff looking through somebody's eyes, and not for an
+        // administrator reading a chat she is not in.
+        $thread=thread_record($id); mark_thread_read($id,$user);
         $history=thread_messages($id,$before);
         $people=$thread['kind']==='course'?[]:thread_people($id);
     } else {
@@ -214,15 +226,20 @@ elseif($id || $with):
         // drawn from, and the kind the first message will make it - so the line
         // at the top says who will read it before anything is written.
         $to=one('SELECT '.chat_person_columns('a')." FROM accounts a WHERE a.id=? AND a.state='active'",[$with]);
-        if(!$to || !may_message($user,$with)) throw new NotFound(t('Diese Person kannst du hier nicht anschreiben.','You cannot write to this person here.'));
-        $thread=['id'=>0,'kind'=>pair_kind($user,$to)];
-        $history=['messages'=>[],'more'=>false];
+        if(!$to || !may_message($user,$with)) throw new NotFound(chat_refusal($user));
         $people=[$user,$to];
+        // Who is in it, as thread_record() says it of a chat that exists.
+        $thread=['id'=>0,'kind'=>pair_kind($user,$to),'has_staff'=>(int)(bool)array_filter($people,fn(array $p): bool => is_staff($p))];
+        $history=['messages'=>[],'more'=>false];
     }
     $group=$thread['kind']==='course';
     $others=array_values(array_filter($people,fn($p)=>(int)$p['id']!==$me));
     $other=count($others)===1?$others[0]:null;
-    $writable=$id?may_write_thread($user,$thread):!$viewing; ?>
+    $writable=$id?may_write_thread($user,$thread):!$viewing;
+    // An administrator reading a chat between two others that the two still
+    // write in (ADR 0022 §11.1). She only reads, and is told so where the
+    // writing box would be.
+    $readingAlong=!$writable && !$viewing && two_person_chat_open($thread) && count($others)===count($people); ?>
     <header class="chat-head">
         <?php if($group): $count=count(course_group_people((int)$thread['class_id'])['members']); ?>
         <a class="chat-head-who" href="<?=e(url('messages',['id'=>$id,'members'=>1]))?>">
@@ -239,19 +256,20 @@ elseif($id || $with):
     </header>
     <div class="message-history">
     <?php
-    // Who reads along, said once at the top, in the words the chat is for.
-    $note=match($thread['kind']){
-        'course'=>t('Alle aus diesem Kurs und das Trainerteam lesen hier mit.','Everyone in this course and the coaching team can read this.'),
-        'staff_direct'=>t('Die Administratoren des Vereins können diesen Chat lesen.','The club’s administrators can read this chat.'),
-        // Between two members of staff, theirs; between two children, from
-        // before those chats closed (ADR 0022 §11.3).
-        'direct'=>$staff?t('Diese Unterhaltung ist privat. Auch die Trainerin und der Administrator lesen sie nicht mit.','This conversation is private. Neither the trainer nor the administrator can read it.')
-                        :t('Chats zwischen Schülern sind geschlossen. Was hier steht, bleibt lesbar. Schreib dem Trainerteam oder in deine Kursgruppe.','Chats between students have closed. What is here can still be read. Write to the coaching team or in your course group.'),
+    /* Who reads along, said once at the top, by who the chat is between -
+       never by who is looking, who may be an administrator reading it. Every
+       administrator can read every chat, so none says it is private any more
+       (ADR 0022 §11.1). */
+    $note=match(true){
+        $group=>t('Alle aus diesem Kurs und das Trainerteam lesen hier mit.','Everyone in this course and the coaching team can read this.'),
+        // Between two children, from before those chats closed (ADR 0022 §11.3).
+        two_person_chat_closed($thread)=>t('Chats zwischen Schülern sind geschlossen. Was hier steht, bleibt lesbar. Schreib dem Trainerteam oder in deine Kursgruppe.','Chats between students have closed. What is here can still be read. Write to the coaching team or in your course group.'),
+        two_person_chat_open($thread)=>t('Hier schreibt ihr zu zweit. Die Administratoren des Vereins können mitlesen.','Just the two of you write here. The club’s administrators can read along.'),
         default=>t('Diese frühere Unterhaltung ist geschlossen. Schreib in den Chat mit der Person.','This earlier conversation is closed. Write in the chat with the person.'),
     }; ?>
     <p class="chat-note"><?=e($note)?></p>
     <?php if($history['more']): ?><p class="chat-older"><?=link_button(t('Ältere Nachrichten','Earlier messages'),'messages',['id'=>$id,'before'=>$history['messages'][0]['id']],'secondary')?></p><?php endif ?>
-    <?php if(!$history['messages']): ?><p class="chat-note"><?=e(t('Noch keine Nachrichten. Schreib die erste!','No messages yet. Write the first one!'))?></p><?php endif;
+    <?php if(!$history['messages']): ?><p class="chat-note"><?=e($writable?t('Noch keine Nachrichten. Schreib die erste!','No messages yet. Write the first one!'):t('Noch keine Nachrichten.','No messages yet.'))?></p><?php endif;
     $lastDay=''; $lastSender=null;
     foreach($history['messages'] as $m):
         $mine=(int)$m['sender_id']===$me; $day=local_time((string)$m['created_at'])?->format('Y-m-d') ?? '';
@@ -295,13 +313,14 @@ elseif($id || $with):
     <?php if($writable):
     /* One box, and a paper clip for a photo (ADR 0022 §11.4). The clip is an
        ordinary file input and works with no JavaScript at all. It offers what
-       message_upload_types() lets this person send: a child's photo from the
-       camera, as a JPEG; staff's from the camera or the gallery. */
+       message_upload_types() lets this person send, and asks the phone for its
+       camera where chat_photo_from_camera() says so: a child's photo, as a
+       JPEG; staff's from the camera or the gallery. */
     start_form('message_send',$id?['thread_id'=>$id]:['to'=>$with],'composer',true); ?>
     <div class="composer-row">
         <label class="composer-clip" title="<?=e(t('Foto anhängen','Attach a photo'))?>">
             <?=icon('plus')?><span class="visually-hidden"><?=e(t('Foto anhängen','Attach a photo'))?></span>
-            <input type="file" name="attachment" accept="<?=e(implode(',',array_keys(message_upload_types($user))))?>"<?=$staff?'':' capture="environment"'?>>
+            <input type="file" name="attachment" accept="<?=e(implode(',',array_keys(message_upload_types($user))))?>"<?=chat_photo_from_camera($user)?' capture="environment"':''?>>
         </label>
         <label class="visually-hidden" for="composer-body"><?=e(t('Nachricht','Message'))?></label>
         <textarea id="composer-body" name="body" rows="1" placeholder="<?=e(t('Nachricht schreiben …','Write a message …'))?>"></textarea>
@@ -309,6 +328,8 @@ elseif($id || $with):
     </div>
     <small class="muted"><?=e(t('Fotos bis ','Photos up to ').upload_limit_label().'.')?></small>
     </form>
+    <?php elseif($readingAlong): ?>
+    <p class="chat-note"><?=e(only_the_two_write())?></p>
     <?php endif ?>
 
 <?php else:

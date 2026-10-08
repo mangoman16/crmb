@@ -262,7 +262,9 @@ function may_impersonate(array $actor, array $target): bool {
  *
  * Staff, for a student's login not yet signed in - a placeholder, or a username
  * login waiting: there is nothing private in it. Only an administrator for one
- * already in use: she reads every chat anyway (ADR 0022 §11), while a trainer
+ * already in use: thread_readable_sql() gives her every chat of every kind
+ * (ADR 0022 §11.1), the child's chats with other families from before those
+ * closed included, so the link opens none she cannot already read. A trainer
  * signed in with a link would read the child's chats with other staff,
  * unnarrowed, and could write as the child - which viewing as somebody never
  * lets her do. Which logins can have a link at all is signin_link_possible()'s

@@ -12,9 +12,12 @@ function dispatch_messages(string $action): array {
         elseif(post('to')!=='') $thread=thread_record($id=direct_thread($u,(int)post('to')));
         else throw new UserError(t('An wen geht die Nachricht?','Who is the message for?'));
         if(!may_write_thread($u,$thread))
-            throw new UserError($thread['kind']==='course'
-                ?t('Dieser Kurs ist archiviert. In seiner Gruppe wird nicht mehr geschrieben.','This course is archived. Its group takes no more messages.')
-                :t('In dieser Unterhaltung wird nicht mehr geschrieben.','This conversation takes no more messages.'));
+            throw new UserError(match(true){
+                $thread['kind']==='course'=>t('Dieser Kurs ist archiviert. In seiner Gruppe wird nicht mehr geschrieben.','This course is archived. Its group takes no more messages.'),
+                // An administrator reading a chat between two others (ADR 0022 §11.1).
+                two_person_chat_open($thread)=>only_the_two_write(),
+                default=>t('In dieser Unterhaltung wird nicht mehr geschrieben.','This conversation takes no more messages.'),
+            });
         // A photo is a message on its own; only a bubble with neither text nor
         // a photo is nothing to send.
         $body=text_limit('body',20000);
@@ -36,7 +39,7 @@ function dispatch_messages(string $action): array {
                 notify((int)$person['id'],'message',t('Neue Nachricht von ','New message from ').$u['name'],$summary,'messages',['id'=>$id]);
             }
         }
-        mark_thread_read($id,(int)$u['id']);
+        mark_thread_read($id,$u);
         audit('message.sent','thread',$id);return ['messages',['id'=>$id,'#'=>'chat-end']];
 
     case 'message_remove':

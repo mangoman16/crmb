@@ -42,9 +42,10 @@ with MariaDB; MySQL is meant to work but has never been run.
 - **Contacts** are the people to ring about a child. The portal writes to the child's own
   login.
 - **A chat**: a group for every course, whose children are whoever is enrolled now, and a
-  chat between a child and one member of staff, which the administrators can read too. A
-  family writes to the coaching team only; a chat two children had earlier stays, for the
-  two of them to read, and takes no new messages. A message is text and photos; voice notes
+  chat between a child and one member of staff. The administrators can read every chat and
+  write only in their own; nothing records their reading. A family writes to the coaching
+  team only; a chat two children had earlier stays to read and takes no new messages. A
+  message is text and photos; voice notes
   and files sent earlier stay. A photo is stored without where, when and with what it was
   taken. Everybody appears by name and initials.
 - **News**, and club news by e-mail, which starts switched on and can be switched off in

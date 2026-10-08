@@ -1003,12 +1003,13 @@ designer is not affected.
 - [ ] **14.5** As a family, „Neue Nachricht" lists the **Trainerteam** and
   nobody else: no „Kinder", no „Jemand anderen fragen". A family can no longer
   ask to write to another family.
-- [ ] **14.7** **(release)** **The private one, and check it from every side:**
+- [ ] **14.7** **(release)** **A chat between two children, from every side:**
   on a copy that has a chat between two children from before such chats
   closed, open it as one of the two: it reads, and has no writing box (R.15).
   The trainer cannot see it in her list, in her unread count, or by opening its
-  address. Neither can the administrator. Nor can either of them open its
-  attachments.
+  address, and cannot open its attachments. The administrator finds it under
+  „Alle Einzelchats", reads it and opens its attachments, and has no writing
+  box there (E.1–E.4).
 - [ ] **14.8** A chat with the trainer is read by the trainer and the child, and
   by the administrators — not by a second trainer (ADR 0022). The old shared
   conversations from before stay readable under „Frühere Unterhaltungen" and take
@@ -1406,7 +1407,7 @@ Rückmeldungen**, „Technische Einzelheiten"
   not among them — it is under Nachrichten (U.50).
 - [ ] **U.50** At the top of **Nachrichten**: **„Neuigkeiten"** and
   **„Postausgang"**, each opening its page with **Nachrichten** still marked. An
-  administrator also has „Alle Direktchats" there.
+  administrator also has „Alle Einzelchats" there.
 - [ ] **U.51** At the top of **Beiträge** and of **Rechnungen**, a switch
   **Beiträge · Rechnungen** takes you from one to the other; **Geld** stays marked
   on both.
@@ -1594,10 +1595,10 @@ where it says so
   entfernen": everybody sees „Nachricht entfernt", its photo no longer opens. The
   same „⋯" → „Wiederherstellen" brings it back.
 - [ ] **C.6** As a child, „Neue Nachricht" → the trainer: the chat opens, the
-  first message makes it, and it says the administrators can read it. As the
-  administrator, it is not in your list and not in your badge, but under „Alle
-  Direktchats"; you can read it and cannot write in it. A second trainer cannot
-  open it.
+  first message makes it, and it says „Hier schreibt ihr zu zweit. Die
+  Administratoren des Vereins können mitlesen." As the administrator, it is not
+  in your list and not in your badge, but under „Alle Einzelchats"; you can read
+  it and cannot write in it. A second trainer cannot open it.
 - [ ] **C.10** On a Mac, pick a photo whose Preview → Werkzeuge → Informationen
   has a GPS tab, and send it into a group. Save it back from the chat and open
   it in Preview: no GPS tab, no camera, and it stands the same way up. On the
@@ -2172,6 +2173,35 @@ suite posts such values to every form; these are the ones worth seeing by hand.
   „Geändert: Frühere E-Mail-Vorlage · …", not by a table's name.
 - [ ] **V.11** An old bookmark to the students filtered by tariff,
   `?page=students&tariff=3`, shows all children.
+
+### An administrator reads every chat (ADR 0022 §11.1, §11.2)
+
+The owner's rule: administrators can read every chat, and nothing records that
+they did. Have a chat between a child and the trainer and one between two
+trainers, with a message each that you, the administrator, have not written.
+
+- [ ] **E.1** As the administrator, **Nachrichten** → „Alle Einzelchats": the
+  chats you are not in, under „Schüler und Team", „Im Team" and, on a copy that
+  has one, „Zwischen Schülern (geschlossen)". Every row names both people and
+  shows no unread number. „Meine Chats" leads back, and your own list and badge
+  are as before.
+- [ ] **E.2** Open the chat between the child and the trainer from there: you
+  read it, it says „Hier schreibt ihr zu zweit. Die Administratoren des Vereins
+  können mitlesen." at the top, and „Du liest hier mit. Schreiben können nur die
+  beiden." where the writing box would be. The chat between two trainers says
+  the same. Neither says anywhere that it is private.
+- [ ] **E.3** On a copy that has a chat between two children: opened from
+  „Zwischen Schülern (geschlossen)", it says „Chats zwischen Schülern sind
+  geschlossen. …" at the top, and there is no writing box and no „Du liest hier
+  mit".
+- [ ] **E.4** Nothing records your reading: signed in as the trainer of E.2, the
+  chat is as unread for her as before you opened it, and nothing in her bell
+  says you looked. In phpMyAdmin, `thread_reads` has no row with your
+  account's id for the chats of E.2 and E.3, and `audit_log` no line from those
+  minutes.
+- [ ] **E.5** As a trainer, a chat with a second trainer is under „Einzelchats"
+  and takes messages; as a family, the old chat with another family is under
+  „Frühere Unterhaltungen" and takes none.
 
 ---
 

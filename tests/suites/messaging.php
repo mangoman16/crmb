@@ -43,7 +43,7 @@ $seen = thread_record((int)$thread['id']);
 ok(!may_write_thread(current_user(), $seen), 'an administrator reads it too, and only reads');
 ok(!in_array((int)$thread['id'], array_map('intval', array_column(chat_list(current_user()), 'id')), true)
    && !in_array((int)$thread['id'], unread_thread_ids(current_user()), true), 'it is not in her own list or her unread count');
-ok(in_array((int)$thread['id'], array_map('intval', array_column(chat_list(current_user(), true), 'id')), true), 'but under „Alle Direktchats“');
+ok(in_array((int)$thread['id'], array_map('intval', array_column(chat_list(current_user(), true), 'id')), true), 'but under „Alle Einzelchats“');
 sign_in_as($trainer2);
 throws(fn() => thread_record((int)$thread['id']), 'another trainer cannot read it', 'nicht gefunden');
 throws(fn() => chat_list(current_user(), true), 'nor list everybody’s', 'Nur für Administratoren');
@@ -79,7 +79,7 @@ ok(may_write_thread(current_user(), thread_record($staffChat)), 'between two mem
 sign_in_as($trainer2);
 ok(may_write_thread(current_user(), thread_record($staffChat)), 'either of them');
 
-case_('A chat between two families from before is private, from both sides');
+case_('A chat between two families from before is read by the two and the administrators, nobody else [ADR 0022 §11.1]');
 sign_in_as($hofer);
 does_not_throw(fn() => thread_record($direct), 'the one who wrote it');
 sign_in_as($berger);
@@ -87,14 +87,16 @@ does_not_throw(fn() => thread_record($direct), 'and the one it went to');
 sign_in_as($trainer);
 throws(fn() => thread_record($direct), 'the trainer cannot read it', 'nicht gefunden');
 sign_in_as($admin);
-throws(fn() => thread_record($direct), 'nor can the administrator', 'nicht gefunden');
+does_not_throw(fn() => thread_record($direct), 'the administrator can, as she reads every chat');
 sign_in_as($gruber);
 throws(fn() => thread_record($direct), 'nor anybody else', 'nicht gefunden');
 
 case_('And it does not turn up in anybody else’s list or unread count');
-sign_in_as($trainer);
-is_same(0, count(array_filter(chat_list(current_user()), fn($t) => (int)$t['id'] === $direct)), 'not in the list');
-is_same(false, in_array($direct, unread_thread_ids(current_user()), true), 'and not in the unread count');
+foreach ([$trainer => 'the trainer’s', $admin => 'the administrator’s, who reads it'] as $who => $whose) {
+    sign_in_as($who);
+    is_same(0, count(array_filter(chat_list(current_user()), fn($t) => (int)$t['id'] === $direct)), 'not in '.$whose.' list');
+    is_same(false, in_array($direct, unread_thread_ids(current_user()), true), 'and not in '.$whose.' unread count');
+}
 sign_in_as($berger);
 run('DELETE FROM thread_reads WHERE thread_id=?', [$direct]);   // as before the two opened it above
 is_same(true, in_array($direct, unread_thread_ids(current_user()), true), 'while the person it was sent to does see it');
@@ -122,6 +124,9 @@ is_same(['image/jpeg'=>'jpg', 'image/png'=>'png', 'image/webp'=>'webp'], message
         'a trainer a JPEG, a PNG or a WebP');
 is_same(message_upload_types($as($trainer)), message_upload_types($as($admin)), 'and so does an administrator');
 is_same(['image/jpeg'=>'jpg'], message_upload_types(null), 'nobody signed in is allowed no more than a child');
+is_same([true, false, false, true], [chat_photo_from_camera($as($hofer)), chat_photo_from_camera($as($trainer)),
+        chat_photo_from_camera($as($admin)), chat_photo_from_camera(null)],
+        'one rule says whose photo comes from the camera: a child’s and nobody signed in’s, never staff’s');
 foreach ([$hofer => 'the child', $trainer => 'the trainer'] as $who => $whom) {
     sign_in_as($who);
     is_same(message_upload_types(current_user()), upload_types('message'), 'store_upload() checks '.$whom.'’s upload against that list');
@@ -233,7 +238,7 @@ is_same([null, null], [$listed['last_body'], $listed['last_file']], 'and the cha
 act('message_remove', ['id'=>(string)$said, 'restore'=>'1']);
 is_same(false, array_values(array_filter(thread_messages($group)['messages'], fn($m) => (int)$m['id'] === $said))[0]['removed'], 'restoring brings it back');
 $private = (int)scalar('SELECT id FROM messages WHERE thread_id=? LIMIT 1', [$direct]);
-throws(fn() => act('message_remove', ['id'=>(string)$private]), 'a message in a family’s private chat is not staff’s to remove', 'Kursgruppen');
+throws(fn() => act('message_remove', ['id'=>(string)$private]), 'a message in a chat between two families is not staff’s to remove', 'Kursgruppen');
 
 case_('The old shared desk is kept to read and closed to new messages');
 $desk = make_thread([$gruber], ['subject'=>'Frage von früher']);
@@ -241,6 +246,9 @@ sign_in_as($trainer);
 $seen = thread_record($desk);
 ok(!may_write_thread(current_user(), $seen), 'staff read it and cannot write in it');
 throws(fn() => act('message_send', ['thread_id'=>(string)$desk, 'body'=>'Antwort']), 'a message into it is refused', 'nicht mehr geschrieben');
+$deskPage = render_view('messages', ['id'=>(string)$desk]);
+ok(str_contains($deskPage, e('Diese frühere Unterhaltung ist geschlossen.')) && !str_contains($deskPage, e('Hier schreibt ihr zu zweit.'))
+   && !str_contains($deskPage, e(only_the_two_write())), 'it says it is closed, and nothing about two who write in it');
 sign_in_as($gruber);
 does_not_throw(fn() => thread_record($desk), 'the family reads it too');
 is_same('Trainerteam', thread_title(thread_record($desk), current_user()), 'titled with who they talked to');
@@ -269,8 +277,8 @@ foreach ([['message_send', ['thread_id'=>(string)$group, 'body'=>'Hallo']], ['me
 render_view('messages', ['id'=>(string)$group]);
 ok(in_array($group, unread_thread_ids(current_user()), true), 'opening the group does not mark it read for the child');
 view_as($admin, $hofer);
-does_not_throw(fn() => thread_record($withOther), 'an administrator, who reads every chat between a child and staff, sees that one');
-throws(fn() => thread_record($direct), 'but not the one between two families', 'nicht gefunden');
+does_not_throw(fn() => thread_record($withOther), 'an administrator, who reads every chat, sees that one');
+does_not_throw(fn() => thread_record($direct), 'and the one between two families: the view narrows by both rules, and both read it [ADR 0022 §11.1]');
 unset($_SESSION['impersonator_id']);
 render_view('messages', ['id'=>(string)$group]);
 ok(!in_array($group, unread_thread_ids(current_user()), true), 'the child opening it does');
@@ -311,7 +319,7 @@ ok(str_contains($conversationOf($pickerViewed), '<h2>'.e('Neue Nachricht').'</h2
    && str_contains($conversationOf($pickerViewed), e(viewing_refusal())),
    'viewed by the trainer, „Neue Nachricht" says that only the child can write');
 foreach ([...$families, 'Zweite Trainerin'] as $said) ok(!str_contains($pickerViewed, e($said)), 'and nothing on the page shows „'.$said.'“');
-foreach (['new'=>['new'=>'1'], 'contacts, as older notifications link'=>['contacts'=>'1'],
+foreach (['new'=>['new'=>'1'],
           'with the family they have a chat with'=>['with'=>(string)$berger],
           'with the family they have none with'=>['with'=>(string)$wagner],
           'with another family they have none with'=>['with'=>(string)$stern],
@@ -447,9 +455,9 @@ foreach ([['message_send', ['thread_id'=>(string)$thread['id'], 'body'=>'Bitte p
 is_same($writtenBefore, $written(), 'and nothing was written: no message, no news, nothing taken down');
 unset($_SESSION['impersonator_id']);
 
-case_('„Alle Direktchats" holds what the person looking may read, and nothing once she may no longer look');
+case_('„Alle Einzelchats" holds what the person looking may read, and nothing once she may no longer look');
 /* An administrator may view the portal as another administrator, and sees her
-   „Alle Direktchats" as far as she may read them herself (ADR 0022 §2, §9).
+   „Alle Einzelchats" as far as she may read them herself (ADR 0022 §2, §9).
    Made a trainer while that view is open, she may not look at an administrator
    at all: the view is asked of her row on every request, and ends with the
    session it borrowed - the list is handed to nobody (security re-review N1). */
@@ -511,8 +519,8 @@ case_('A chat not started yet looks as it will once the first message makes it')
 $headOf = fn(string $html): string => (string)strstr((string)strstr($html, '<header class="chat-head">'), '</header>', true);
 $notesOf = function (string $html): array { preg_match_all('~<p class="chat-note">(.*?)</p>~', $html, $m); return $m[1]; };
 $admin3 = make_account(['role'=>'admin', 'name'=>'Dritte Admin']);
-foreach ([[$hofer, $admin, 'Die Administratoren des Vereins können diesen Chat lesen.'],
-          [$trainer, $admin3, 'Diese Unterhaltung ist privat. Auch die Trainerin und der Administrator lesen sie nicht mit.']] as [$writer, $person, $note]) {
+foreach ([[$hofer, $admin, 'Hier schreibt ihr zu zweit. Die Administratoren des Vereins können mitlesen.'],
+          [$trainer, $admin3, 'Hier schreibt ihr zu zweit. Die Administratoren des Vereins können mitlesen.']] as [$writer, $person, $note]) {
     sign_in_as($writer);
     $name = (string)scalar('SELECT name FROM accounts WHERE id=?', [$person]);
     is_same(0, pair_thread($writer, $person), current_user()['name'].' has no chat with '.$name.' yet');
@@ -535,6 +543,150 @@ ok(str_contains($listed, avatar($adminRow)) && str_contains($headOf(render_view(
 ok(str_contains(render_view('messages', ['id'=>(string)$group, 'members'=>'1']),
                 '<a class="button secondary" href="'.e(url('messages', ['id'=>$group, '#'=>'chat-end'])).'">'.e('Zurück zur Gruppe').'</a>'),
    '„Zurück zur Gruppe" lands on the end of the chat, through url()');
+
+case_('An administrator reads every chat, of every kind; a trainer and a family no more than before [ADR 0022 §11.1]');
+/* The owner: "administrators can read everything" - "if needed in case there
+   are problems". Her list stays her own; the trainer's and the families' rule
+   does not move. */
+$trainer3 = make_account(['role'=>'trainer', 'name'=>'Dritte Trainerin']);
+sign_in_as($trainer2);
+$teamChat = direct_thread(current_user(), $trainer3);
+act('message_send', ['thread_id'=>(string)$teamChat, 'body'=>'Übernimmst du am Freitag?']);
+run('UPDATE classes SET archived=1 WHERE id=?', [$course]);
+sign_in_as($admin);
+foreach (['the group of an archived course'=>$group, 'a child’s chat with a trainer'=>(int)$thread['id'],
+          'a chat between two trainers'=>$teamChat, 'a chat between two children from before'=>$direct,
+          'a desk thread from before'=>$desk] as $what => $chat)
+    does_not_throw(fn() => thread_record($chat), 'she opens '.$what);
+run('UPDATE classes SET archived=0 WHERE id=?', [$course]);
+sign_in_as($trainer);
+foreach (['a chat between two other trainers'=>$teamChat, 'a chat between two children'=>$direct,
+          'a child’s chat with another trainer'=>$withOther] as $what => $chat)
+    throws(fn() => thread_record($chat), 'the trainer still does not open '.$what, 'nicht gefunden');
+sign_in_as($berger);
+foreach (['a chat between two trainers'=>$teamChat, 'another family’s chat with a trainer'=>(int)$thread['id'],
+          'another family’s desk thread'=>$desk] as $what => $chat)
+    throws(fn() => thread_record($chat), 'a family still does not open '.$what, 'nicht gefunden');
+
+case_('Her reading leaves nothing behind: no read mark, no audit entry, no notice [ADR 0022 §11.2]');
+/* A read mark is a dated row saying that she read it, which is the record the
+   owner declined ("it should not be recorded if an admin does something"). A
+   mark from before that rule stays exactly as it was. */
+$notHers = ['a child’s chat with a trainer'=>(int)$thread['id'], 'a chat between two trainers'=>$teamChat,
+            'a chat between two children'=>$direct];
+fixture('thread_reads', ['thread_id'=>(int)$thread['id'], 'account_id'=>$admin, 'last_read_message_id'=>0, 'updated_at'=>'2026-01-01 00:00:00']);
+$traces = fn(): array => [rows('SELECT thread_id, last_read_message_id, updated_at FROM thread_reads WHERE account_id=? ORDER BY thread_id', [$admin]),
+                          (int)scalar('SELECT COUNT(*) FROM audit_log'), (int)scalar('SELECT COUNT(*) FROM notifications')];
+sign_in_as($admin);
+$before = $traces();
+foreach ($notHers as $what => $chat) {
+    $page = render_view('messages', ['id'=>(string)$chat]);
+    ok(str_contains($page, '<div class="prewrap">'), 'she reads '.$what.', its messages and all');
+    ok(!str_contains($page, 'value="message_send"'), 'with no writing box');
+    ok(!in_array($chat, array_map('intval', array_column(chat_list(current_user()), 'id')), true)
+       && !in_array($chat, unread_thread_ids(current_user()), true), 'and it is neither in her list nor in her badge');
+}
+is_same($before, $traces(), 'opening the three wrote no read mark, changed none from before, and left no audit entry and no notice');
+render_view('messages', ['id'=>(string)$group]);
+ok(in_array($group, array_map('intval', array_column(rows('SELECT thread_id FROM thread_reads WHERE account_id=?', [$admin]), 'thread_id')), true),
+   'while a chat in her own list is marked read as she opens it, so the line above proves something');
+$messages = (int)scalar('SELECT COUNT(*) FROM messages');
+throws(fn() => act('message_send', ['thread_id'=>(string)$thread['id'], 'body'=>'Ich lese mit.']),
+       'a message she sends into a chat she reads along is refused, in the words the chat shows her', only_the_two_write());
+is_same($messages, (int)scalar('SELECT COUNT(*) FROM messages'), 'and nothing is written');
+foreach (['a child’s chat with a trainer'=>(int)$thread['id'], 'a chat between two trainers'=>$teamChat] as $what => $chat)
+    ok(str_contains(render_view('messages', ['id'=>(string)$chat]), e(only_the_two_write())),
+       'where the writing box would be, '.$what.' says „'.only_the_two_write().'"');
+ok(!str_contains(render_view('messages', ['id'=>(string)$direct]), e(only_the_two_write())),
+   'one between two children does not: nobody writes there');
+
+/** The heading of the section of the chat list that $chat is listed under, or 'not listed'. */
+$sectionOf = function (string $html, int $chat): string {
+    $list = (string)strstr((string)strstr($html, '<aside class="card thread-list">'), '</aside>', true);
+    $at = strpos($list, 'href="'.e(url('messages', ['id'=>$chat, '#'=>'chat-end'])).'"');
+    if ($at === false) return 'not listed';
+    preg_match_all('~<h2 class="chat-section">(.*?)</h2>~', substr($list, 0, $at), $m);
+    return html_entity_decode((string)(end($m[1]) ?: 'no heading'));
+};
+
+case_('„Alle Einzelchats": every chat between two others, by who it is between, both named, nothing unread [ADR 0022 §11.1]');
+sign_in_as($admin);
+ok(str_contains(render_view('messages'), '>'.e('Alle Einzelchats').'</a>'), 'her chat list leads there, under the new name');
+$all = render_view('messages', ['all'=>'1']);
+foreach (['a child’s chat with a trainer'=>[(int)$thread['id'], 'Schüler und Team'], 'one with the second trainer'=>[$withOther, 'Schüler und Team'],
+          'a chat between two trainers'=>[$teamChat, 'Im Team'], 'the first two trainers’ chat'=>[$staffChat, 'Im Team'],
+          'a chat between two children from before'=>[$direct, 'Zwischen Schülern (geschlossen)']] as $what => [$chat, $section])
+    is_same($section, $sectionOf($all, $chat), $what.' is under „'.$section.'"');
+is_same('not listed', $sectionOf($all, $group), 'a course group is not a chat between two');
+is_same('not listed', $sectionOf($all, pair_thread($hofer, $admin)), 'and a chat she is in is in her own list, not here');
+ok(str_contains($rowOf($all, $direct), e('Familie Berger · Familie Hofer')), 'a row names both people');
+$listOf = fn(string $html): string => (string)strstr((string)strstr($html, '<aside class="card thread-list">'), '</aside>', true);
+ok(!str_contains($listOf($all), 'class="count"'), 'and none counts anything unread, though she has marked none of them read');
+
+case_('What a chat says at the top follows who it is between, never who is looking [ADR 0022 §11.1]');
+/* A chat between two trainers told them it was private, which an
+   administrator reading it made untrue, and the line asked whether the person
+   looking was staff (code review of round 2). */
+$both = 'Hier schreibt ihr zu zweit. Die Administratoren des Vereins können mitlesen.';
+$closedNote = 'Chats zwischen Schülern sind geschlossen. Was hier steht, bleibt lesbar. Schreib dem Trainerteam oder in deine Kursgruppe.';
+foreach ([[$trainer, $staffChat, $both, 'two trainers, to one of them'],
+          [$admin, $teamChat, $both, 'two trainers, to an administrator reading along'],
+          [$admin, (int)$thread['id'], $both, 'a child and a trainer, to an administrator reading along'],
+          [$admin, $direct, $closedNote, 'two children, to an administrator reading along'],
+          [$hofer, $direct, $closedNote, 'two children, to one of them']] as [$who, $chat, $note, $what]) {
+    sign_in_as($who);
+    $notes = $notesOf(render_view('messages', ['id'=>(string)$chat]));
+    is_same(e($note), $notes[0] ?? '', $what.': „'.$note.'"');
+    ok(!preg_grep('/privat/', $notes), 'and nothing on it says it is private');
+}
+
+case_('A family’s chat with another family is an earlier one; a trainer’s with a trainer is one of her chats');
+sign_in_as($hofer);
+$list = render_view('messages');
+is_same('Frühere Unterhaltungen', $sectionOf($list, $direct), 'the child’s closed chat with another child is under „Frühere Unterhaltungen"');
+is_same('Einzelchats', $sectionOf($list, (int)$thread['id']), 'and their chat with the trainer under „Einzelchats"');
+sign_in_as($trainer);
+is_same('Einzelchats', $sectionOf(render_view('messages'), $staffChat), 'a trainer’s chat with another trainer is under „Einzelchats"');
+
+case_('A chat between two takes messages while a member of staff is in it, whatever it was made as [security review of round 2]');
+/* Who writes was asked of the kind the chat was made as and of the writer's
+   role: a 'staff_direct' chat whose trainer was later made a student had two
+   students in it and still took messages from both. One rule, asked of who is
+   in the chat now: no member of staff left in it, closed. */
+sign_in_as($trainer);
+ok(may_write_thread(current_user(), thread_record($staffChat)), 'the trainer writes to the second trainer, so the lines below prove something');
+run("UPDATE accounts SET role='student' WHERE id=?", [$trainer2]);
+sign_in_as($trainer);
+ok(may_write_thread(current_user(), thread_record($staffChat)), 'with the second trainer made a student, their chat stays open: a member of staff is still in it, as in a child’s chat with staff');
+sign_in_as($trainer2);
+ok(may_write_thread(current_user(), thread_record($staffChat)), 'and the second trainer, now a student, still writes to her, as any student writes to staff');
+run("UPDATE accounts SET role='trainer' WHERE id=?", [$trainer2]);
+sign_in_as($hofer);
+ok(may_write_thread(current_user(), thread_record((int)$thread['id'])), 'the child writes to the trainer, so the lines below prove something');
+run("UPDATE accounts SET role='student' WHERE id=?", [$trainer]);
+foreach ([$hofer => 'the child', $trainer => 'the trainer, now a student'] as $who => $whom) {
+    sign_in_as($who);
+    ok(!may_write_thread(current_user(), thread_record((int)$thread['id'])), 'with the trainer made a student, '.$whom.' may not write in their chat any more');
+    throws(fn() => act('message_send', ['thread_id'=>(string)$thread['id'], 'body'=>'Noch da?']), 'a message from '.$whom.' is refused', 'nicht mehr geschrieben');
+}
+sign_in_as($hofer);
+$closedNow = render_view('messages', ['id'=>(string)$thread['id']]);
+ok(!str_contains($closedNow, 'value="message_send"') && str_contains($closedNow, e($closedNote)), 'it has no writing box, and says why');
+is_same('Frühere Unterhaltungen', $sectionOf(render_view('messages'), (int)$thread['id']), 'and the child’s list has it among the earlier conversations');
+sign_in_as($admin);
+is_same('Zwischen Schülern (geschlossen)', $sectionOf(render_view('messages', ['all'=>'1']), (int)$thread['id']),
+        'while „Alle Einzelchats" has it between students, closed');
+run("UPDATE accounts SET role='trainer' WHERE id=?", [$trainer]);
+
+case_('Who cannot start a chat is told what fits them; an old notice’s ?contacts=1 opens the chat list');
+sign_in_as($trainer);
+$refusal = '';
+try { direct_thread(current_user(), 999999); } catch (UserError $e) { $refusal = $e->getMessage(); }
+is_same('Diese Person kannst du hier nicht anschreiben.', $refusal, 'staff are not sent to the coaching team or to a course group');
+sign_in_as($hofer);
+throws(fn() => direct_thread(current_user(), $berger), 'a family is', 'Schreib dem Trainerteam oder in deine Kursgruppe.');
+ok(str_contains(render_view('messages', ['new'=>'1']), e('An wen?')), 'a family’s „Neue Nachricht" asks whom to write to');
+ok(!str_contains(render_view('messages', ['contacts'=>'1']), e('An wen?')), 'while ?contacts=1, which older notices link to, is the list');
 
 case_('The chat list is one query, however many chats there are');
 sign_in_as($trainer);

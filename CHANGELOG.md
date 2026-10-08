@@ -306,11 +306,32 @@ I.1–I.11 walk.
   send no e-mail. Staff can take a message down from „⋯" and put it back from
   the same place.
 - **Chats with one person.** A child writes to a trainer or an administrator by
-  name, and staff to any child. The administrators can read chats between a
-  child and a trainer; a second trainer cannot. A family writes to the
-  coaching team only and can no longer ask to write to another family. A chat
-  between two children from before stays for the two of them to read, says
-  that chats between children have closed, and takes no new messages.
+  name, and staff to any child. A family writes to the coaching team only and
+  can no longer ask to write to another family. A chat between two children
+  from before stays to read, says that chats between children have closed, and
+  takes no new messages.
+- **The administrators can read every chat** — a child's with a trainer, one
+  between two trainers, and the chats between two children from before — and
+  write only in their own: where the writing box would be, an administrator
+  reading along reads „Du liest hier mit. Schreiben können nur die beiden."
+  Every open chat between two people says „Hier schreibt ihr zu zweit. Die
+  Administratoren des Vereins können mitlesen." at the top, and no chat says
+  it is private any more. A second trainer reads what she did before: her own
+  chats and the groups (ADR 0022 §11.1).
+- **Nothing records that an administrator read a chat**: no read mark, so the
+  two in it see it as unread as before, no line under „Änderungen" or in the
+  audit log, and no notice (ADR 0022 §11.2). What the hosting provider's web
+  server writes into its access log is outside the portal, and the privacy
+  drafts say so.
+- **„Alle Einzelchats"**, which was „Alle Direktchats", lists for an
+  administrator every chat between two people that she is not in, under
+  „Schüler und Team", „Im Team" and „Zwischen Schülern (geschlossen)", with
+  both names on each row and nothing counted as unread. Her own list and her
+  badge are as they were.
+- A chat between two members of staff closes once one of them has become a
+  student, so no chat stays open between an adult and a child. A family told
+  they cannot write to somebody is pointed to the coaching team and their
+  course group; staff are told only that it cannot be done.
 - **A message is text and photos.** A child's „+" asks the phone to open its
   camera and takes only a JPEG, which keeps out screenshots, animations and
   documents; staff can also send a PNG or a WebP from the phone's photos. No
@@ -1066,9 +1087,10 @@ open it.
 - **Messages in the shape people already know one.** Conversations down one
   side, bubbles down the other, one box with a „+" for a photo. Text and
   photos, within a size limit that is never higher than what PHP itself
-  accepts. Writing to the trainer needs nobody's permission. **A chat between
-  two children from before is private to the two: neither the trainer nor the
-  administrator can read it.**
+  accepts. Writing to the trainer needs nobody's permission. A chat between
+  two children from before stays readable for the two of them and for the
+  administrators, who can read every chat (ADR 0022 §11.1), and takes no new
+  messages.
 - **The change log informs.** It says what changed, field by field, in the words
   she uses, storing only what actually differed. The undo is gone: a page that
   can put a record back is a page that can put a record back by accident, and

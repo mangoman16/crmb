@@ -579,7 +579,7 @@ function nav_back(string $page,?array $user=null,?array $query=null): ?array {
             break;
         case 'messages':
             if($id && !empty($query['members'])) return $to(t('Chat','Chat'),'messages',['id'=>$id,'#'=>'chat-end']);
-            if($id || !empty($query['with']) || !empty($query['new']) || !empty($query['contacts'])) return $toEntry('messages');
+            if($id || !empty($query['with']) || !empty($query['new'])) return $toEntry('messages');
             break;
         case 'news':
             if($id || !empty($query['new'])) return $to(t('Neuigkeiten','News'),'news');

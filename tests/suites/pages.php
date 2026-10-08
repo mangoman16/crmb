@@ -82,7 +82,7 @@ $pages = [
     'student'    => [['id'=>$lena], ['id'=>$lena,'tab'=>'contacts'], ['id'=>$lena,'tab'=>'absence'],
                      ['id'=>$lena,'tab'=>'attendance'], ['id'=>$lena,'tab'=>'classes'],
                      ['id'=>$lena,'tab'=>'invoices'], ['id'=>$lena,'tab'=>'payments']],
-    'messages'   => [[], ['id'=>$thread], ['contacts'=>1], ['new'=>1]],
+    'messages'   => [[], ['id'=>$thread], ['new'=>1]],
     'news'       => [[]],
     'profile'    => [[]],
 ];

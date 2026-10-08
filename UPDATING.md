@@ -45,11 +45,11 @@ mention it. Open **Einstellungen → Datenschutz**, and in the German text:
    the note „[Zweck und Rechtsgrundlage ergänzen]" after it. It is in
    `docs/privacy-draft-de.txt` in the download, beginning „Nachrichten: Jeder
    Kurs hat einen Gruppenchat". It says that a course's children and the
-   coaching team read its group, that the administrators can read chats
-   between a child and a trainer, that a message is text and photos, that the
-   chats between two children from before stay for the two of them to read and
-   take no new messages, and that an uploaded photo is stored without where it
-   was taken.
+   coaching team read its group, that the administrators can read every chat
+   and write only in their own, that nothing records their reading, that a
+   message is text and photos, that the chats between two children from before
+   stay to read and take no new messages, and that an uploaded photo is stored
+   without where it was taken.
 
 3. After the sentence „SMTP-Passwörter und versandbereite E-Mail-Inhalte sind
    in der Anwendungsdatenbank verschlüsselt.", add the paragraph from
@@ -61,6 +61,19 @@ mention it. Open **Einstellungen → Datenschutz**, and in the German text:
    Schüler hat ein eigenes Konto".
 
 4. Replace each line in square brackets with your own words, then save.
+
+**If your notice already has the chat paragraph**, from an earlier package of
+this version, what it told the families is no longer true: it said the
+administrators read the chats between a child and a trainer, and that an old
+chat between two children is read by the two alone. Now the administrators can
+read every chat, those included, and nothing records their reading. Replace
+that paragraph under **Einstellungen → Datenschutz** with the one in
+`docs/privacy-draft-de.txt`, beginning „Nachrichten: Jeder Kurs hat einen
+Gruppenchat", in English too if you keep an English notice, and save with „…
+zur Verwendung freigegeben" still ticked, so the notice is released again as
+you saved it. Do it before the upload, like the rest, so that no family reads a
+chat under the old sentence. Saving changes the **Fassung** number; nobody is
+asked to acknowledge the notice again.
 
 The old paragraph called club news voluntary and based on consent. That is no
 longer true: you decided that club news is information every member needs,
@@ -218,6 +231,13 @@ here so that nothing surprises you.
   (`Permissions-Policy: microphone=()`), as it already did for the camera. A
   chat between two children from before reads as it did, says that chats between
   children have closed, and takes no new messages.
+- **Administrators can read every chat**, a trainer's with a second trainer and
+  the old chats between two children included, under „Alle Einzelchats" at the
+  top of **Nachrichten**. They write only in their own chats, and every chat
+  between two people says at the top that the administrators can read along.
+  Nothing records that an administrator read a chat: the two in it see nothing,
+  and their unread marks stay. Tell the trainers; the families read it in
+  every chat.
 - **Signing in is by address, or for a student by username.** „Schüler
   anlegen" is a wizard in two steps: who is joining and into which course, then
   how they sign in — an invitation by e-mail, a username with a sign-in link
