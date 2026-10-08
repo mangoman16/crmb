@@ -769,6 +769,21 @@ function appearance(?array $user): array {
     ];
 }
 function maintenance_file(): string { return config('maintenance_file') ?: ROOT.'/storage/maintenance.flag'; }
+/**
+ * The names in a folder that end in $suffix, sorted: files, folders and links
+ * alike, without . and .., and without a hidden name - a host's .htaccess, or
+ * the deny file the backups' folder carries - which is never the portal's to
+ * list or to delete. None for a folder that is not there or cannot be read.
+ *
+ * Listed, never globbed: glob() reads [, *, ? and \ in a path as a pattern,
+ * and the portal does not choose where it is installed or keeps storage/. With
+ * storage/ in „ablage[1]" beside an „ablage1", glob() listed the neighbour's
+ * files, and the portal pruned those and never its own.
+ */
+function dir_entries(string $dir, string $suffix = ''): array {
+    $names = is_dir($dir) ? (@scandir($dir) ?: []) : [];
+    return array_values(array_filter($names, fn(string $name): bool => $name[0] !== '.' && str_ends_with($name, $suffix)));
+}
 // Split a migration file into statements on semicolons that are not inside a string
 // literal, a quoted identifier or a comment. Splitting on every semicolon breaks any
 // migration that carries one in a default value, an enum or a trigger body.

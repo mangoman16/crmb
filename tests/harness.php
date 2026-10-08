@@ -570,6 +570,27 @@ function draw_in_one_scope(string $page, bool $public, ?array $user, bool $frame
 }
 
 /**
+ * How deep forms nest in $html: 1 for forms side by side, 99 for a form opened
+ * and never closed.
+ *
+ * A form inside a form is markup the browser throws away: it keeps the outer
+ * one and drops the inner, so the inner form's button quietly submits the
+ * outer record instead - the student page's „Bild speichern" once sent the
+ * whole student record. Nothing on the page looks wrong, which is why it
+ * survived until somebody counted the tags. Counted rather than parsed, because
+ * the rule is about the tags themselves: a form opened and not closed is the
+ * same bug seen from the other side.
+ */
+function deepest_form_nesting(string $html): int {
+    $depth = 0; $deepest = 0;
+    foreach (preg_split('/(<form\b[^>]*>|<\/form\s*>)/i', $html, -1, PREG_SPLIT_DELIM_CAPTURE) as $piece) {
+        if (preg_match('/^<form\b/i', $piece)) { $depth++; $deepest = max($deepest, $depth); }
+        elseif (preg_match('/^<\/form/i', $piece)) $depth--;
+    }
+    return $depth === 0 ? $deepest : 99;   // 99: unbalanced, which is worse
+}
+
+/**
  * The fields one time box posts, written as the time a person would say.
  *
  * The form posts an hour and a minute separately, because <input type="time">

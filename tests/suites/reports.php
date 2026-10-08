@@ -96,12 +96,12 @@ is_same(8, count($steps), 'the last eight are kept');
 is_same('/index.php?page=student&id=4', $steps[0]['url'], 'the oldest first');
 is_same('/index.php?page=student&id=11', $steps[7]['url'], 'the newest last');
 
-case_('Not recorded: pictures, the icon, the manifest, the club’s colours and logo');
-/* An avatar loads through download on every page, and so do the club's
-   stylesheet and logo once she has set them; recorded, they would push the
-   steps that matter out of the trail. */
+case_('Not recorded: a chat’s photos, the icon, the manifest, the club’s colours and logo');
+/* A chat's photos load through download, one request each, and every page
+   fetches the club's stylesheet and logo once she has set them; recorded, they
+   would push the steps that matter out of the trail. */
 $before = recent_steps();
-visit('download', ['what'=>'avatar', 'kind'=>'account', 'id'=>1]);
+visit('download', ['what'=>'attachment', 'id'=>1]);
 visit('icon', ['v'=>'abcdef123456']);
 visit('manifest');
 visit('brand', ['v'=>'abcdef123456']);

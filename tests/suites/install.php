@@ -165,6 +165,61 @@ is_same($fingerprint, schema_fingerprint($copy), 'removing it again restores the
 foreach (glob($copy . '/*.sql') ?: [] as $file) @unlink($file);
 @rmdir($copy);
 
+case_('The migrations are listed from their folder as it is named, a [ in it included [code review]');
+/* glob() read a [ in where the portal sits as a pattern: installed in
+   „portal[1]" beside a „portal1", it listed the neighbour's migrations, and an
+   update would have applied those. */
+$own = test_run_dir() . '/portal[1]/database/migrations';
+$neighbour = test_run_dir() . '/portal1/database/migrations';
+foreach ([$own, $neighbour] as $dir) @mkdir($dir, 0750, true);
+foreach ($shipped as $file) copy($file, $own . '/' . basename($file));
+file_put_contents($neighbour . '/' . basename($shipped[0]), "-- the neighbour's\n");
+is_same(array_map(fn(string $file): string => $own . '/' . basename($file), $shipped), migration_files($own),
+        'in „portal[1]" every shipped migration is listed, by its path there, in name order, and nothing from „portal1"');
+is_same($fingerprint, schema_fingerprint($own), 'so the fingerprint is the shipped one');
+foreach ([$own, $neighbour] as $dir) {
+    foreach (dir_entries($dir) as $name) unlink($dir . '/' . $name);
+    rmdir($dir);
+    rmdir(dirname($dir));
+    rmdir(dirname($dir, 2));
+}
+
+case_('The copy an unfinished update names is found as named, whatever its folder or its name holds [code review]');
+/* glob() read the copy's name, which comes from storage/update-unfinished.json,
+   and the folder storage/ sits in as a pattern: a [ in either found a
+   neighbour's copy or missed its own, so the closed page said a copy was there
+   when it was not, or the other way round. */
+$storage = $GLOBALS['config']['maintenance_file'];
+$copyIn = function (string $folder, string $name): void {
+    @mkdir(test_run_dir() . '/' . $folder . '/backups', 0750, true);
+    file_put_contents(test_run_dir() . '/' . $folder . '/backups/' . $name, '-- copy');
+};
+$named = '2026-10-08-120000-vor-update';
+try {
+    $GLOBALS['config']['maintenance_file'] = test_run_dir() . '/ablage[2]/maintenance.flag';
+    $copyIn('ablage2', $named . '-0000000a.sql');
+    is_same(false, schema_copy_exists($named), 'with storage/ in „ablage[2]", the copy in „ablage2" beside it is not taken for its own');
+    unlink(test_run_dir() . '/ablage2/backups/' . $named . '-0000000a.sql');
+    $copyIn('ablage[2]', $named . '-0000000b.sql');
+    is_same(true, schema_copy_exists($named), 'and its own copy is found');
+    $GLOBALS['config']['maintenance_file'] = test_run_dir() . '/ablage/maintenance.flag';
+    $copyIn('ablage', 'kopie1-0000000c.sql');
+    is_same(false, schema_copy_exists('kopie[1]'), 'a record naming „kopie[1]" does not find „kopie1-…"');
+    is_same(false, schema_copy_exists('*'), 'nor does one naming „*" find every copy');
+    $copyIn('ablage', 'kopie[1]-0000000d.sql');
+    is_same(true, schema_copy_exists('kopie[1]'), 'and „kopie[1]" finds „kopie[1]-…" once it is there');
+    is_same([false, false], [schema_copy_exists('kopie'), schema_copy_exists(null)],
+            'while „kopie", which names neither, finds nothing, and no name at all - an update run with skip-backup - finds nothing');
+} finally {
+    $GLOBALS['config']['maintenance_file'] = $storage;
+}
+foreach (['ablage[2]', 'ablage2', 'ablage'] as $folder) {
+    $dir = test_run_dir() . '/' . $folder . '/backups';
+    foreach (dir_entries($dir) as $name) unlink($dir . '/' . $name);
+    @rmdir($dir);
+    @rmdir(dirname($dir));
+}
+
 case_('Migration files are applied in name order');
 $names = array_map('basename', migration_files());
 $sorted = $names; sort($sorted);
@@ -467,6 +522,20 @@ try {
 if ($unprotected)
     test_unsupported(array_merge(test_unsupported(), [implode(' and ', $unprotected).' (this run can make no file undeletable: root, and no chattr)']));
 
+case_('A copy names the release whose database it holds, not the one about to replace it [devops review]');
+/* The copy before an update holds the previous release's tables; its first
+   line named the release about to replace them, and a restore went looking for
+   the wrong files. */
+$writtenBy = (string)setting('schema_written_by');
+foreach (['0.5.9-beta.1' => 'the release that wrote the database', '' => 'and a database no release has written yet, this one'] as $wrote => $what) {
+    set_setting('schema_written_by', $wrote);
+    $copy = backup_database('vor-update');
+    is_same('-- Badminton CRM '.($wrote !== '' ? $wrote : app_version()).' — vor-update', strtok((string)file_get_contents($copy), "\n"),
+            'the first line names '.$what);
+    unlink($copy);
+}
+set_setting('schema_written_by', $writtenBy);
+
 case_('The backup is real SQL carrying the real data');
 /* The proof that it imports again lives outside this suite, because importing
    needs a second database; see VALIDATION.md. */
@@ -504,6 +573,45 @@ is_same(basename($newest), backups()[0]['name'], 'it is listed first, because th
 ok(backups()[0]['bytes'] > 0, 'with something in it');
 foreach (backups() as $copy) @unlink($copy['path']);
 run('DELETE FROM students');
+
+case_('The copies are listed and pruned in their own folder, whatever it is called [code review]');
+/* glob() read a [ in where storage/ sits as a pattern: with storage/ in
+   „sicherung[1]" beside a „sicherung1", backups() listed the neighbour's copies,
+   backup_prune() deleted those beyond five and never its own, and a stale
+   half-written copy stayed. dir_entries() lists the folder as it is named. */
+$storage = $GLOBALS['config']['maintenance_file'];
+$own = test_run_dir().'/sicherung[1]/backups';
+$neighbour = test_run_dir().'/sicherung1/backups';
+// The neighbour's copies have names of their own, so a listing of the wrong
+// folder cannot pass for the right one by finding the same names there.
+foreach ([$own => 'kopie', $neighbour => 'nachbar'] as $dir => $slug) {
+    @mkdir($dir, 0750, true);
+    for ($i = 0; $i <= BACKUP_KEEP; $i++) {
+        file_put_contents($dir.'/2026-01-0'.($i + 1).'-000000-'.$slug.'-0000000'.$i.'.sql', '-- copy '.$i);
+        touch($dir.'/2026-01-0'.($i + 1).'-000000-'.$slug.'-0000000'.$i.'.sql', time() - 3600 * (10 - $i));
+    }
+    file_put_contents($dir.'/2026-01-01-000000-'.$slug.'-halb.sql.part', '--');
+    touch($dir.'/2026-01-01-000000-'.$slug.'-halb.sql.part', time() - 7200);
+}
+$GLOBALS['config']['maintenance_file'] = test_run_dir().'/sicherung[1]/maintenance.flag';
+try {
+    is_same(BACKUP_KEEP + 1, count(backups()), 'with storage/ in „sicherung[1]", its own copies are listed');
+    is_same('2026-01-0'.(BACKUP_KEEP + 1).'-000000-kopie-0000000'.BACKUP_KEEP.'.sql', backups()[0]['name'] ?? null, 'the newest first');
+    backup_prune();
+    is_same(BACKUP_KEEP, count(backups()), 'and its own are pruned to the newest '.BACKUP_KEEP);
+} finally {
+    $GLOBALS['config']['maintenance_file'] = $storage;
+}
+clearstatcache();
+ok(!is_file($own.'/2026-01-01-000000-kopie-00000000.sql') && !is_file($own.'/2026-01-01-000000-kopie-halb.sql.part'),
+   'the oldest copy and the stale half-written one in its own folder went');
+is_same(BACKUP_KEEP + 1, count(dir_entries($neighbour, '.sql')), 'while every copy in „sicherung1" beside it is still there');
+ok(is_file($neighbour.'/2026-01-01-000000-nachbar-halb.sql.part'), 'and so is its half-written one');
+foreach ([$own, $neighbour] as $dir) {
+    foreach (dir_entries($dir) as $name) unlink($dir.'/'.$name);
+    rmdir($dir);
+    rmdir(dirname($dir));
+}
 
 case_('A backup that cannot reach the database leaves nothing behind');
 /* Its connection is opened before its file. The other way round, every attempt

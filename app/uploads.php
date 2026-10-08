@@ -110,6 +110,42 @@ function upload_types(string $kind): array {
 }
 
 /**
+ * The type of an uploaded file, read from its bytes, never from what the
+ * browser said it was - or a refusal when this PHP cannot read a type at all.
+ * Without the fileinfo extension (extension_checks()) every upload would be
+ * refused with a sentence about the sender's file that is not true, so they are
+ * told it is the portal's: an administrator where to look, anybody else to tell
+ * the club. $readable is whether a type can be read; the suite passes false,
+ * to watch the refusal without taking anything away from the PHP it runs on.
+ */
+function uploaded_file_type(string $path, ?bool $readable = null): string {
+    if (!($readable ?? function_exists('mime_content_type')))
+        throw new UserError(is_admin()
+            ? t('Das Portal kann gerade keine Dateien annehmen; unter Einstellungen → System steht, was dem Server fehlt.',
+                'The portal cannot take files right now; Einstellungen → System says what the server is missing.')
+            : t('Das Portal kann gerade keine Dateien annehmen. Bitte gib dem Verein Bescheid.',
+                'The portal cannot take files right now. Please let the club know.'));
+    return (string)@mime_content_type($path);
+}
+
+/**
+ * The extension a file of $mime is stored under as $kind, or the refusal, in
+ * words the person sending it can act on.
+ *
+ * A child's photo in the chat comes from the camera (message_upload_types()),
+ * so a list of file types tells them nothing; what to do instead does. Staff,
+ * who may pick from the gallery, are told which kinds are possible.
+ */
+function upload_extension(string $kind, string $mime): string {
+    $allowed = upload_types($kind);
+    if (isset($allowed[$mime])) return $allowed[$mime];
+    if ($kind === 'message' && !is_staff())
+        throw new UserError(t('Bitte nimm das Foto mit der Kamera auf.', 'Please take the photo with the camera.'));
+    throw new UserError(t('Dieser Dateityp ist hier nicht erlaubt. Möglich sind: ', 'That kind of file is not allowed here. Allowed: ')
+        . implode(', ', array_unique(array_values($allowed))) . '.');
+}
+
+/**
  * Why an upload did not arrive, in words rather than a PHP constant.
  *
  * UPLOAD_ERR_INI_SIZE is the one worth naming exactly: it means the server said
@@ -144,18 +180,14 @@ function store_upload(string $field, string $kind): array {
     if ((int)$file['size'] > upload_limit())
         throw new UserError(t('Die Datei ist zu groß. Erlaubt sind ', 'That file is too big. The limit is ') . upload_limit_label() . '.');
 
-    // The type comes from the bytes, never from what the browser said it was.
-    $mime = function_exists('mime_content_type') ? (string)@mime_content_type((string)$file['tmp_name']) : '';
-    $allowed = upload_types($kind);
-    if (!isset($allowed[$mime]))
-        throw new UserError(t('Dieser Dateityp ist hier nicht erlaubt. Möglich sind: ', 'That kind of file is not allowed here. Allowed: ')
-            . implode(', ', array_unique(array_values($allowed))) . '.');
+    $mime = uploaded_file_type((string)$file['tmp_name']);
+    $extension = upload_extension($kind, $mime);
 
     $dir = upload_dir($kind);
     if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir))
         throw new UserError(t('Der Ordner für Uploads lässt sich nicht anlegen. Bitte Schreibrechte für storage/ prüfen.',
                               'The upload folder cannot be created. Check that storage/ is writable.'));
-    $stored = bin2hex(random_bytes(16)) . '.' . $allowed[$mime];
+    $stored = bin2hex(random_bytes(16)) . '.' . $extension;
     $path = $dir . '/' . $stored;
     // A photo can carry where it was taken - a family's home - and a picture
     // posted to a course's group reaches every child in it (ADR 0022). So a
@@ -392,6 +424,21 @@ function webp_without_metadata(string $b): string {
 /** The shape of every name store_upload() gives a file: nothing a person typed. */
 const STORED_UPLOAD_NAME = '/^[a-f0-9]{32}\.[a-z0-9]{2,5}$/D';
 
+/**
+ * Whether $name is one store_upload() could have given a file of $kind: its
+ * shape, and an extension that kind takes. What a setting names is served only
+ * if it is, so a route serves from its own folder whatever ends up in it.
+ *
+ * For a name a setting holds, the icon's and the logo's. Not for the download
+ * route's files, whose names come from their rows: it judges by the types a
+ * kind takes today, and would refuse the voice notes and files sent before a
+ * message became text and photos (ADR 0022 §11.4).
+ */
+function is_stored_upload(mixed $name, string $kind): bool {
+    return is_string($name) && preg_match(STORED_UPLOAD_NAME, $name) === 1
+        && in_array(pathinfo($name, PATHINFO_EXTENSION), upload_types($kind), true);
+}
+
 /** Remove a stored file. Missing is not an error; the row is going either way. */
 function delete_upload(string $kind, string $storedName): void {
     if (!preg_match(STORED_UPLOAD_NAME, $storedName)) return;
@@ -425,12 +472,23 @@ function upload_references(): array {
 /**
  * Remove uploaded files that no record points at any more.
  *
- * A deleted account takes its conversations with it, a removed message its
- * photo, and a database row can go without anything touching the disk - so
+ * A deleted account takes its conversations with it, a deleted child their
+ * receipts, and a database row can go without anything touching the disk - so
  * without this, a family who asked to be forgotten leaves their photographs
- * behind in storage, and the folder only ever grows. The nightly prune runs it,
- * and so does every update's step after the files (database/defaults.php),
- * which is how the profile pictures left the disk with their columns.
+ * behind in storage, and the folder only ever grows. A message taken down keeps
+ * its photo: its row stays, because putting the message back is the way back
+ * (moderate_message()). The nightly prune runs it, and so does every update's
+ * step after the files (database/defaults.php), which is how the profile
+ * pictures left the disk with their columns.
+ *
+ * Nothing at all while the database has nobody in it. Then it is not the one
+ * these files belong to: restoring a backup the way INSTALL.md says - every
+ * table deleted, then the copy imported - leaves a moment in which the next
+ * request makes the tables afresh and runs the update, and its sweep found no
+ * row naming any file and deleted every receipt, chat photo, screenshot, icon
+ * and logo. The backup holds the rows, never the files. A portal anybody uses
+ * has an administrator, and setup.php makes the first one only after the
+ * migrations.
  *
  * Deliberately conservative: a file younger than the grace period is left
  * alone, because it may belong to a row being written in another request right
@@ -440,16 +498,23 @@ function upload_references(): array {
  * gives (STORED_UPLOAD_NAME): whatever else somebody put there is theirs.
  */
 function prune_uploads(int $graceSeconds = 3600): int {
+    // ponytail: a database caught halfway through an import - its accounts in,
+    // the rows that name the files not yet - still looks like the portal's own.
+    // backup_tables() writes the tables in name order, so accounts is the second
+    // a restore imports, and that gap is most of an import. The way up is a
+    // restore that keeps the portal closed until the import is done.
+    if (!(int)scalar('SELECT COUNT(*) FROM accounts')) return 0;
     $removed = 0;
     $cutoff = time() - max(60, $graceSeconds);
     foreach (upload_references() as $kind => $queries) {
-        $files = glob(upload_dir($kind) . '/*') ?: [];
-        if (!$files) continue;
+        $dir = upload_dir($kind);
+        $names = dir_entries($dir);
+        if (!$names) continue;
         $kept = [];
         foreach ($queries as $sql)
             foreach (rows($sql) as $row) $kept[(string)$row['name']] = true;
-        foreach ($files as $path) {
-            $name = basename($path);
+        foreach ($names as $name) {
+            $path = $dir . '/' . $name;
             if (isset($kept[$name]) || is_link($path) || !is_file($path) || !preg_match(STORED_UPLOAD_NAME, $name)) continue;
             if ((int)@filemtime($path) > $cutoff) continue;
             if (@unlink($path)) $removed++;
@@ -468,13 +533,27 @@ function prune_uploads(int $graceSeconds = 3600): int {
 const DOWNLOAD_CACHE_CONTROL = 'private, no-store';
 
 /**
+ * The name a stored file is handed over under: the one its sender gave it, with
+ * the extension it was stored under. store_upload() read the bytes and chose
+ * that extension, so a photo a family called „spiel.apk" leaves as spiel.jpg -
+ * as spiel.apk, a phone offers to install it. No usable name given, the stored
+ * one.
+ */
+function upload_download_name(string $storedName, string $givenName): string {
+    $base = pathinfo($givenName, PATHINFO_FILENAME);
+    if (trim($base, '. ') === '') $base = pathinfo($storedName, PATHINFO_FILENAME);
+    return $base . '.' . pathinfo($storedName, PATHINFO_EXTENSION);
+}
+
+/**
  * Send a stored file to the browser, having decided the caller may have it.
  *
  * Content-Disposition is attachment for everything except images, and the type
  * is the one recorded at upload rather than guessed again, so a file cannot be
- * served as something it is not.
+ * served as something it is not - nor named as something it is not
+ * (upload_download_name()).
  */
-function send_upload(string $kind, string $storedName, string $mime, string $downloadName = ''): never {
+function send_upload(string $kind, string $storedName, string $mime, string $givenName = ''): never {
     $path = upload_dir($kind) . '/' . $storedName;
     if (!preg_match(STORED_UPLOAD_NAME, $storedName) || !is_file($path)) {
         http_response_code(404);
@@ -485,7 +564,7 @@ function send_upload(string $kind, string $storedName, string $mime, string $dow
     // memory_limit as low as 64 MB, and a voice note plus whatever else the
     // request is holding should not be what decides whether a file can be
     // downloaded at all.
-    send_download_headers($mime, $downloadName !== '' ? $downloadName : $storedName,
+    send_download_headers($mime, upload_download_name($storedName, $givenName),
                           !str_starts_with($mime, 'image/'), (int)filesize($path));
     readfile($path);
     exit;
@@ -595,8 +674,7 @@ function serve_download(): void {
         // and a removed message's file is served to nobody, staff included.
         if ($file) {
             thread_record((int)$file['thread_id']);
-            send_upload('message', (string)$file['stored_name'], (string)$file['mime'],
-                        (string)($file['original_name'] ?: $file['stored_name']));
+            send_upload('message', (string)$file['stored_name'], (string)$file['mime'], (string)$file['original_name']);
         }
     }
     if ($what === 'proof') {
@@ -604,8 +682,7 @@ function serve_download(): void {
         if ($proof) {
             // student() refuses a child that does not belong to the caller.
             student((int)$proof['student_id']);
-            send_upload('proof', (string)$proof['stored_name'], (string)$proof['mime'],
-                        (string)($proof['original_name'] ?: $proof['stored_name']));
+            send_upload('proof', (string)$proof['stored_name'], (string)$proof['mime'], (string)$proof['original_name']);
         }
     }
 }

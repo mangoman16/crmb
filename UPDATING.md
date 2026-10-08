@@ -323,11 +323,13 @@ left to do. Then, inside that lock and **before the database is touched at all**
    lists it needs, a group chat for every course, a login for every student.
    Every stored upload that no record names any more and that is more than ten
    minutes old is deleted, as the nightly cleanup does with an hour's grace: in
-   this version, the profile pictures (see
-   [Updating an existing portal to 0.6.0](#updating-an-existing-portal-to-060)),
-   and any receipt or chat photo
-   whose record went before the nightly cleanup found it. Then the file from
-   step 4 is deleted, and the page is served.
+   this version, the profile pictures (see [Updating an existing portal to
+   0.6.0](#updating-an-existing-portal-to-060)), and any receipt or chat photo
+   whose record went before the nightly cleanup found it. While the database has
+   no login in it, neither sweep deletes anything: it is not yet the database
+   those files belong to, as in a restore between deleting the tables and
+   importing the copy ([INSTALL.md](INSTALL.md#wiederherstellen)). Then the file
+   from step 4 is deleted, and the page is served.
 
 If any step fails the portal answers 503 and stays closed. The page tells a
 family there is nothing for them to do, and tells whoever looks after the portal,

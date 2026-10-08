@@ -763,6 +763,42 @@ foreach (['the administrator' => $admin, 'a family' => $family] as $who => $acco
     is_same(1, $menus[0]['count'] ?? null, 'the bell drawn for '.$who.' carries its number');
 }
 
+case_('The account menu holds „Mein Konto" and „Abmelden", and nothing else, whoever it is drawn for');
+/* What is in it was checked with the presence, and the check went with it
+   (ADR 0026). The status and the emoji grid it held are gone; what stays is a
+   way to the account and a way out, each in no form but its own. */
+$accountMenu = function (string $html): array {
+    $dom = new DOMDocument();
+    $quiet = libxml_use_internal_errors(true);
+    $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
+    libxml_clear_errors(); libxml_use_internal_errors($quiet);
+    $x = new DOMXPath($dom);
+    $menus = $x->query("//header//details[contains(concat(' ', normalize-space(@class), ' '), ' account-menu ')]");
+    if ($menus->length !== 1) return ['menus' => $menus->length];
+    $menu = $menus->item(0);
+    $posted = [];
+    foreach ($x->query('.//form', $menu) as $form)
+        foreach ($x->query('.//input[@name="action"]', $form) as $action) $posted[] = $action->getAttribute('value');
+    return ['menus'   => 1,
+            'label'   => (string)$x->query('summary', $menu)->item(0)?->getAttribute('aria-label'),
+            'profile' => $x->query('.//a[@href="'.url('profile').'"]', $menu)->length,
+            'links'   => $x->query('.//a', $menu)->length,
+            'posted'  => $posted];
+};
+foreach (['a family' => [$family, null], 'a trainer' => [$trainer, null], 'an administrator' => [$admin, null],
+          'a trainer looking through a family’s eyes' => [$family, $trainer]] as $who => [$shown, $looking]) {
+    $looking === null ? sign_in_as($shown) : view_as($looking, $shown);
+    $page = render_page('dashboard');
+    $menu = $accountMenu($page);
+    $name = (string)scalar('SELECT name FROM accounts WHERE id=?', [$shown]);
+    is_same(1, $menu['menus'], 'the top bar drawn for '.$who.' has one account menu');
+    is_same('Konto-Menü: '.$name, $menu['label'] ?? null, 'its button says whose it is');
+    is_same([1, 1], [$menu['profile'] ?? 0, $menu['links'] ?? 0], 'it has one link, and it is „Mein Konto"');
+    is_same(['logout'], $menu['posted'] ?? null, 'and one form, which signs out');
+    is_same(1, deepest_form_nesting($page), 'and no form on the page is inside another');
+    unset($_SESSION['impersonator_id']);
+}
+
 case_('The stylesheet reader counts as a browser does');
 /* tests/css.php decides which rule wins below, so it is held to known answers
    first: a reader that miscounted would pass an override that loses. */

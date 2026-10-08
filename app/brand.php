@@ -337,9 +337,9 @@ const PORTAL_LOGO_MIN_HEIGHT = 88;
 const PORTAL_LOGO_MAX_SIDE = 2048;
 /**
  * The largest file accepted: 1 MB. Every sign-in page loads the logo, often on
- * a phone on mobile data, so it gets a cap of its own below the general
- * upload limit, which is sized for payment proofs and voice notes. A logo
- * drawn for the web is a few kilobytes; a megabyte is a photograph.
+ * a phone on mobile data, so it gets a cap of its own below the general upload
+ * limit, which is sized for payment proofs and photos in the chat. A logo drawn
+ * for the web is a few kilobytes; a megabyte is a photograph.
  */
 const PORTAL_LOGO_MAX_BYTES = 1048576;
 /**
@@ -381,13 +381,12 @@ function portal_logo_types(): array {
  * The stored name of the logo in use, or '' for none.
  *
  * '' as well when the file is missing, so a database restored without
- * storage/ falls back to the icon, or the „B", rather than a broken picture.
- * The shape store_upload() gives a name is required, so the route serves from
- * this one folder whatever ends up in the setting.
+ * storage/ falls back to the icon, or the „B", rather than a broken picture,
+ * and for a name store_upload() could not have given a logo (is_stored_upload()).
  */
 function portal_logo(): string {
     $name = setting('portal_logo');
-    if (!is_string($name) || !preg_match('/^[a-f0-9]{32}\.(png|jpg|webp)$/D', $name)) return '';
+    if (!is_stored_upload($name, 'logo')) return '';
     return is_file(upload_dir('logo') . '/' . $name) ? $name : '';
 }
 

@@ -34,13 +34,12 @@ const PORTAL_ICON_MAX_SIZE = 2048;
  * The stored name of the icon in use, or '' for the one that ships.
  *
  * '' as well when the file is missing: a database restored without storage/
- * must fall back to the built-in icon rather than link every page to a 404.
+ * must fall back to the built-in icon rather than link every page to a 404. And
+ * for a name store_upload() could not have given an icon (is_stored_upload()).
  */
 function portal_icon(): string {
     $name = setting('portal_icon');
-    // The shape store_upload() gives a name, so the route can only ever serve a
-    // file from this one folder, whatever ends up in the setting.
-    if (!is_string($name) || !preg_match('/^[a-f0-9]{32}\.png$/D', $name)) return '';
+    if (!is_stored_upload($name, 'icon')) return '';
     return is_file(upload_dir('icon') . '/' . $name) ? $name : '';
 }
 

@@ -883,6 +883,16 @@ is_same(['eine Stunde', 'one hour', '48 Stunden', '48 hours'],
         [token_lifetime_words('reset', false), token_lifetime_words('email', true), token_lifetime_words('invite', false), token_lifetime_words('signin', true)],
         'and says one hour, or a number of hours, in either language');
 
+case_('Every page switches the camera, the microphone and the location off [ADR 0022 §11.4]');
+/* Nothing asks a browser for any of them: a child's photo comes through the
+   file input, which hands the camera to the phone. The microphone was on while
+   voice notes were recorded in the page, and a policy left open outlives the
+   reason for it. One header, sent by boot_http() for every page. */
+$boot = defined_functions_in(APP_ROOT.'/app/bootstrap.php')['boot_http'] ?? '';
+is_same(1, substr_count($boot, "header ( 'Permissions-Policy: camera=(), microphone=(), geolocation=()' )"),
+        'boot_http() sends Permissions-Policy: camera=(), microphone=(), geolocation=()');
+is_same(1, substr_count($boot, 'Permissions-Policy'), 'and no second policy after it');
+
 case_('The address reaches every page as text: public/index.php drops every list from it first');
 /* ?tab[]=x is something anybody can type. Read as text it warned „Array to
    string conversion", and the pages were guarded one read at a time - and a

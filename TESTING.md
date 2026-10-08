@@ -106,6 +106,7 @@ release and emptied again for the next.
 - A view through somebody's eyes ends with the viewer's own login — deleted, suspended or given a new password, the browser looking is signed out on its next tap; a sign-in link's page asks what the link may still do before it shows anything of the login; a trainer is told an administrator releases the privacy notice; a stale „Einladung senden" says the child has a login: [5.11c](#the-shell-the-bar-notifications-feedback-impersonation), [L.20a, L.20d, L.21b](#every-student-has-a-login-the-wizard-and-sign-in-links-adr-0023)
 - What ADR 0026 takes out, round one: custom fields with what was typed into them, copying, saved views, writing to many with its templates, „Warteschlange senden", the printed form and data sheet, and Verwaltung's „Tarife" tab: [R.1–R.8](#what-adr-0026-removes-round-one)
 - What ADR 0026 takes out, round two: the online dots, the status and when somebody was online; the status emoji; profile pictures, whose files the update deletes for good; asking to write to another family; voice notes and files in new messages, which are text and photos, a family's from the camera: [R.9–R.17](#what-adr-0026-removes-round-two), and 5.3i, 5.3j, 14.1–14.7, 20.4, 21.7
+- After the review of round two: a backup restored with a page opened halfway keeps every upload; a chat photo or a receipt downloads under the type it really is, whatever its name said; a family sending anything but a JPEG is asked to take the photo with the camera: [21.8](#data-safety), [12.9](#payments-and-proof), [14.12](#messages), 14.2, R.12
 - An update that lost records keeps the portal closed, for everybody, on every page view, until the rows are back; the way back is the previous version's files, then the copy from before, in phpMyAdmin (ADR 0027): [G.1–G.9](#an-update-that-lost-records-stays-closed-adr-0027)
 - Any value from anyone is answered with one sentence on the same page: numbers, dates and pages held to their range, a family writes only to the trainer team, and nothing reaches the error log: [V.1–V.11](#any-value-from-anyone-adr-0026-5), 14.5, 14.7
 - The portal looks and behaves like an iPhone app: the phone's own font, grouped lists, a tab bar (Übersicht · Schüler · Anwesend · Chats · Mehr for staff, Übersicht · Beiträge · Chats · Profil for a family), red counts, switches, sheets, a back button, pages that fade; „Mehr" as a page; Mein Konto for a family through Profil, the language in Mein Konto — on a real iPhone: [I.1–I.11](#the-portal-as-an-iphone-app-design-language-phase-1), and 1.6, 5.0a, 5.1b, 5.3c, 6.10, U.46, U.47, U.48, U.52, U.56
@@ -928,6 +929,14 @@ that.
   limit, and the limit shown is never higher than what PHP itself accepts.
 - [ ] **12.8** The transfer QR code on a family's page carries the right amount
   and reference.
+- [ ] **12.9** A receipt downloads under the type it really is. On a computer,
+  copy a PDF and rename the copy `beleg.exe`. As the trainer, on a child's
+  **Beiträge**, card „Zahlungsbeleg", choose it under „Beleg als Foto oder PDF"
+  and tap „Beleg hochladen". If the file dialog will not offer it, look for a
+  way to make it show all files, or try dragging the file onto the field; if
+  neither works, write down the browser and that the check could not be done.
+  The link in the card still reads `beleg.exe`; clicking it downloads
+  `beleg.pdf`.
 
 ---
 
@@ -995,9 +1004,11 @@ that.
   („Foto anhängen"), a send arrow, and no microphone. Under the box: „Fotos bis
   …" with the size. Write to the trainer without asking anybody's permission.
 - [ ] **14.2** Attach a photo — it shows as a picture in the bubble. As a family,
-  a PDF, a PNG screenshot or a GIF is refused in a sentence; as the trainer, a
-  PNG and a WebP are taken, a PDF is refused. (R.12 and R.13 walk the same on an
-  iPhone.)
+  anything but a JPEG — a PNG screenshot, a GIF, a PDF — is refused with „Bitte
+  nimm das Foto mit der Kamera auf.", not with a list of file types. As the
+  trainer, a PNG and a WebP are taken, and a PDF is refused with „Dieser
+  Dateityp ist hier nicht erlaubt. Möglich sind: jpg, png, webp." (R.12 and R.13
+  walk the same on an iPhone.)
 - [ ] **14.4** With JavaScript switched off, the „+" is an ordinary file field
   and the message still sends.
 - [ ] **14.5** As a family, „Neue Nachricht" lists the **Trainerteam** and
@@ -1017,6 +1028,13 @@ that.
 - [ ] **14.9** Unread markers clear when a conversation is opened, and the count
   in the menu agrees with the list.
 - [ ] **14.11** An empty message is refused.
+- [ ] **14.12** A chat photo downloads under the type it really is. On a
+  computer, copy a photo from a camera, a JPEG, and rename the copy `x.apk`. As
+  the trainer, attach it in a chat with „+" and send it. If the file dialog will
+  not offer it, look for a way to make it show all files; do not drag it onto
+  the page, which opens the file instead. If it cannot be chosen, write down the
+  browser and that the check could not be done. Open the photo from the chat and
+  save it: the name the browser offers is `x.jpg`.
 
 ---
 
@@ -1137,8 +1155,27 @@ that.
   version for the files and for the database.
 - [ ] **21.7** After deleting an account whose chats had photos, or a child
   with a payment proof, the file goes too — the nightly maintenance, and every
-  update, sweep any upload no record points at. `storage/uploads` should not
-  grow for ever.
+  update, sweep any upload no record points at, though never while the database
+  has no login in it (21.8). `storage/uploads` should not grow for ever.
+- [ ] **21.8** **(release)** A restore with a page opened halfway keeps every
+  upload. On a test install, never the families' portal. It needs a receipt on a
+  child's **Beiträge**, a photo in a chat, a problem report with a screenshot,
+  and the portal's own icon and logo, each uploaded at least ten minutes before:
+  anything younger is never swept, so it would prove nothing. Note how many
+  files each folder in `storage/uploads` holds. In phpMyAdmin, **Exportieren**
+  the database to your computer, then delete every table. In the file manager,
+  delete `storage/schema.stamp` as well: with the files unchanged the portal
+  still takes itself to be up to date and does not run the update at all, and
+  the moment this check is about is the one after the files of another version
+  were uploaded, when the stamp no longer matches. Now open the portal once. It
+  makes the tables afresh, as an update does, and writes a new copy into
+  `storage/backups`, of the empty database, which pushes out the oldest if there
+  are more than five — never import the new one. Delete every table again, since
+  that page made them, then **Importieren** your export. Afterwards each folder
+  in `storage/uploads` holds as many files as before, and the receipt, the photo
+  in the chat, the screenshot under **Einstellungen → Rückmeldungen**, the icon
+  and the logo all open or show as before. The version before this fix deleted
+  every one of those files at that page.
 
 ---
 
@@ -2018,10 +2055,13 @@ the families use.
 - [ ] **R.12** On an iPhone, signed in as a family, open the chat with the
   trainer and tap „+" („Foto anhängen"). Write down what opens: the camera, or
   the photo library, or a choice between them. Take or choose a photo and send
-  it: it shows in the bubble, for the family and for the trainer. A screenshot,
-  which an iPhone stores as a PNG, is refused in a sentence. Whether the camera
-  opens here has not been measured on any phone yet: the portal asks for it
-  with `capture="environment"`, and also tells the browser
+  it: it shows in the bubble, for the family and for the trainer. Then, if the
+  phone lets you choose from the library, choose a screenshot, which an iPhone
+  stores as a PNG: it is refused with „Bitte nimm das Foto mit der Kamera auf.",
+  not with a list of file types. If it is sent instead, the iPhone handed it
+  over as a JPEG; write that down, because then a screenshot gets through.
+  Whether the camera opens here has not been measured on any phone yet: the
+  portal asks for it with `capture="environment"`, and also tells the browser
   `Permissions-Policy: camera=()`.
 - [ ] **R.13** As the trainer, in a chat, tap „+": choose a PNG screenshot from
   the phone's photos, send it, then a WebP if you have one. Both show in the

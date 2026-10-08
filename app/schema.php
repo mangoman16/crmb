@@ -26,7 +26,8 @@ declare(strict_types=1);
  * have and the portal stays closed.
  */
 function migration_files(?string $dir = null): array {
-    $files = glob(($dir ?? ROOT . '/database/migrations') . '/*.sql') ?: [];
+    $dir ??= ROOT . '/database/migrations';
+    $files = array_map(fn(string $name): string => $dir . '/' . $name, dir_entries($dir, '.sql'));
     sort($files);
     return $files;
 }
@@ -197,6 +198,19 @@ function schema_record_stop(?array &$unfinished, string $version, int $statement
     $unfinished['stopped'] = ['migration' => $version, 'statement' => $statement, 'statements' => $statements];
     schema_unfinished_write($unfinished);
     return $statement;
+}
+
+/**
+ * Whether the copy an unfinished update took is still among the copies: one
+ * named as its record names it, then a hyphen and the random part
+ * (schema_mark_unfinished()). Compared as text, never as a pattern: the name
+ * is read from a file a person may have edited.
+ */
+function schema_copy_exists(?string $backup): bool {
+    if ($backup === null || $backup === '') return false;
+    foreach (backups() as $copy)
+        if (str_starts_with($copy['name'], $backup . '-')) return true;
+    return false;
 }
 
 /**
@@ -433,7 +447,7 @@ function schema_apply(?callable $log = null, bool $safeguards = true): array {
                 try { run_migration_statement($statement); }
                 catch (Throwable $e) {
                     $reached = schema_record_stop($unfinished, $version, $i + 1, count($statements));
-                    $copied = is_string($unfinished['backup'] ?? null) && glob(backup_dir() . '/' . $unfinished['backup'] . '-*.sql');
+                    $copied = schema_copy_exists($unfinished['backup'] ?? null);
                     throw new SchemaError($version, $i + 1, count($statements), $statement, $e->getMessage(), $reached, $copied);
                 }
             }

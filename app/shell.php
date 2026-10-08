@@ -332,9 +332,10 @@ function stop_impersonation(): void {
 /** How many steps a report carries, oldest first. */
 const REPORT_STEPS = 8;
 /**
- * Pages that are not somewhere a person went: pictures, the icon, the manifest,
- * the club's stylesheet and logo. Every page fetches the last two, so recorded
- * they would push the steps she actually took out of the trail.
+ * Pages that are not somewhere a person went: downloads - a chat fetches every
+ * photo in it through one - the icon, the manifest, the club's stylesheet and
+ * logo, which every page fetches. Recorded, they would push the steps she
+ * actually took out of the trail.
  */
 const REPORT_UNRECORDED_PAGES = ['download', 'icon', 'manifest', 'brand', 'logo'];
 

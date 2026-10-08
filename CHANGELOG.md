@@ -185,6 +185,34 @@ I.1–I.11 walk.
 - UPDATING.md's new „A refused update" says what to do, including the last way
   out and what it costs.
 
+### A restore keeps the uploads, and a file downloads as what it is
+
+- **Restoring a backup no longer costs the uploads.** INSTALL.md restores a
+  copy by deleting every table, then importing it. Before this fix, a page
+  opened in between, once the files of another version had been uploaded, made
+  the tables afresh and ran the update, and the update's sweep for files no row
+  names found no row at all: it deleted every receipt, chat photo,
+  problem-report screenshot, icon and logo older than ten minutes. A copy holds
+  the rows, never the files. The sweep, after an update and at night, now does
+  nothing while the database has no login in it. It cannot tell a database
+  halfway through its import from the portal's own, so open the portal once the
+  import has finished, as INSTALL.md says.
+- **A chat photo or a receipt downloads as what it is.** The name the browser
+  is given ends in the type the portal read from the file's bytes when it
+  stored it: a photo sent as `x.apk` downloads as `x.jpg`, a receipt sent as
+  `beleg.exe` as `beleg.pdf`. The receipt's link still reads the name it was
+  sent with.
+- **A child who sends anything but a JPEG**, which is what a phone's camera
+  hands over, reads „Bitte nimm das Foto mit der Kamera auf." instead of a list
+  of file types. Staff are still told which types are possible.
+- Smaller: the sweep finds its folders when the path to `storage/` holds a `[`,
+  `*` or `?`, which it used to read as a pattern, missing the folder's own files
+  and sweeping another folder's that matched. The icon and the logo are checked
+  by the same rule as every other stored file, and accept the same files as
+  before. What the account menu holds and the number of queries the page
+  listing the team makes lost their tests when the online status went, and have
+  them again; the `Permissions-Policy` header has one for the first time.
+
 ### Any value from anyone is answered in one sentence
 
 - **A new test suite, `robustness`, sends every form nonsense as every kind of
@@ -1168,14 +1196,16 @@ thirty-three migrations; at `aa5b1b7`, with the robustness suite, 7608 passed,
 walk 377 checks, 0 failed, in Chromium; at `883be4d`, with „Mehr" as a page, 7915
 passed, 0 failed, and the walk 381 checks, 0 failed; and with round two of the
 removals, on the working tree before it was committed, 7762 passed, 0 failed,
-with all thirty-seven migrations, and the walk 381 checks, 0 failed; and with
-the chat's reading rules, the kept IBAN changes and the security batch applied
-to `ead038a`, 7857 passed, 0 failed. Since `1ad0488` the suite can make a file
-the portal cannot delete even as root, which the earlier runs could not; in the
-run at `f5d3c28` both refusals for such a file ran and passed. The refused
-update with its restore in phpMyAdmin (TESTING.md G.1–G.9) has not been walked,
-and the new look has not been seen in Safari or on an iPhone (TESTING.md
-I.1–I.11).
+with all thirty-seven migrations, and the walk 381 checks, 0 failed; with round
+two's follow-ups applied to `159de33`, 7812 passed, 0 failed, where a restore
+with a page opened halfway, played through in a scratch check, kept every
+upload, and at `159de33` alone lost all of them; and with the chat's reading
+rules, the kept IBAN changes and the security batch applied to `ead038a`, 7857
+passed, 0 failed. Since `1ad0488` the suite can make a file the portal cannot
+delete even as root, which the earlier runs could not; in the run at `f5d3c28`
+both refusals for such a file ran and passed. The refused update with its
+restore in phpMyAdmin (TESTING.md G.1–G.9) has not been walked, and the new look
+has not been seen in Safari or on an iPhone (TESTING.md I.1–I.11).
 
 ## 0.5.0 — unreleased
 

@@ -54,6 +54,43 @@ foreach (['avatar','proof','message','icon','logo'] as $kind)
         ok(!isset(upload_types($kind)[$mime]), $mime.' is allowed nowhere');
 throws(fn() => upload_types('gibt-es-nicht'), 'a kind nobody declared is a mistake in the code, never a list of nothing', 'No upload kind');
 
+case_('A file of a type the kind does not take is refused in words its sender can act on');
+/* store_upload() reads the type from the bytes and asks upload_extension(),
+   which a test cannot reach through store_upload() itself: is_uploaded_file()
+   is true only for a real upload. A child's photo comes from the camera, so
+   „Möglich sind: jpg." told them nothing; what to do instead does. */
+$child = make_account(['role'=>'student', 'name'=>'Familie Kamera']);
+sign_in_as($child);
+is_same('jpg', upload_extension('message', 'image/jpeg'), 'a child’s photo from the camera is stored as a JPEG');
+foreach (['image/png', 'image/webp', 'application/pdf'] as $mime)
+    throws(fn() => upload_extension('message', $mime), 'a child sending '.$mime.' is asked to take the photo with the camera',
+           'Bitte nimm das Foto mit der Kamera auf.');
+throws(fn() => upload_extension('proof', 'text/html'), 'a receipt of a type no receipt is still says which types are possible',
+       'Möglich sind: jpg, png, webp, gif, pdf.');
+sign_in_as($admin);
+is_same('png', upload_extension('message', 'image/png'), 'staff may send a PNG from the gallery');
+throws(fn() => upload_extension('message', 'image/gif'), 'and are told which types are possible when it is not one of them',
+       'Möglich sind: jpg, png, webp.');
+$stores = new ReflectionFunction('store_upload');
+$storing = implode('', array_slice(file($stores->getFileName()), $stores->getStartLine() - 1, $stores->getEndLine() - $stores->getStartLine() + 1));
+ok(str_contains($storing, '$mime = uploaded_file_type((string)$file[\'tmp_name\']);') && str_contains($storing, '$extension = upload_extension($kind, $mime);'),
+   'and store_upload() asks it of every file, with the type read from its bytes, for the extension it stores the file under');
+
+case_('Without PHP’s fileinfo, an upload is refused as the portal’s problem, not the file’s [devops review]');
+/* Only fileinfo reads a file's type from its bytes. Without it every upload was
+   refused, and a family read „Dieser Dateityp …" or was asked to use the
+   camera, about a photo that was fine. The check is faked here: the PHP this
+   runs on keeps its fileinfo. */
+$png = test_run_dir().'/typ-probe.png';
+file_put_contents($png, png_header(16, 16));
+is_same('image/png', uploaded_file_type($png), 'with fileinfo, the type is read from the bytes');
+sign_in_as($child);
+throws(fn() => uploaded_file_type($png, false), 'without it, a family is told the portal cannot take files and to tell the club',
+       'Das Portal kann gerade keine Dateien annehmen. Bitte gib dem Verein Bescheid.');
+sign_in_as($admin);
+throws(fn() => uploaded_file_type($png, false), 'and an administrator where to look', 'unter Einstellungen → System steht, was dem Server fehlt');
+unlink($png);
+
 case_('A file is stored under a name of the portal’s own choosing');
 foreach (upload_types('message') as $extension)
     ok(preg_match('/^[a-z0-9]{2,5}$/D', $extension) === 1, 'the extension '.$extension.' cannot execute anywhere');
@@ -99,7 +136,8 @@ case_('The sweep deletes only an upload: never a link, a folder, a pipe or a fil
 /* Every update runs it too since the profile pictures went (database/defaults.php),
    on whatever a host has put in those folders. A link is not followed - the file
    it points at may be anywhere - a folder is not a file, and a name
-   store_upload() never gives is not one of the portal's. */
+   store_upload() never gives is not one of the portal's. A hidden file is never
+   listed at all (dir_entries(), below). */
 $outside = test_run_dir().'/outside-the-uploads.jpg';
 file_put_contents($outside, 'x');
 touch($outside, $old);
@@ -110,7 +148,7 @@ $planted = [];
 foreach (array_keys(upload_references()) as $kind) {
     @mkdir(upload_dir($kind), 0775, true);
     $at = fn(string $name): string => upload_dir($kind).'/'.$name;
-    foreach (['kein-upload.txt', str_repeat('A', 32).'.jpg', str_repeat('e', 32).'.jpg.php', '.htaccess', $orphan] as $name) {
+    foreach (['kein-upload.txt', str_repeat('A', 32).'.jpg', str_repeat('e', 32).'.jpg.php', $orphan] as $name) {
         file_put_contents($at($name), 'x');
         touch($at($name), $old);
         if ($name !== $orphan) $planted[] = $at($name);
@@ -130,12 +168,50 @@ clearstatcache();
 is_same([], array_values(array_filter($planted, fn(string $path): bool => !file_exists($path) && !is_link($path))),
         'and every other file, folder and link in them stays');
 ok(is_file($outside), 'as does the file a link points at, outside the uploads');
-foreach (array_keys(upload_references()) as $kind) {
-    foreach (glob(upload_dir($kind).'/*', GLOB_NOSORT) ?: [] as $path)
-        if (in_array($path, $planted, true)) is_dir($path) && !is_link($path) ? rmdir($path) : unlink($path);
-    @unlink(upload_dir($kind).'/.htaccess');
-}
+foreach ($planted as $path) is_dir($path) && !is_link($path) ? rmdir($path) : unlink($path);
 @unlink($outside);
+
+case_('A folder is listed as it is named, brackets included, and without its hidden files [security review, code review]');
+/* glob() read a [, * or ? in where storage/ sits as a pattern: the folder's own
+   files went unfound, and a folder the pattern matched instead was taken for
+   it. dir_entries() lists every folder the portal reads - the uploads'
+   kinds and the backups (the install suite has those) - by scandir(). */
+$listed = test_run_dir().'/liste[1]';
+$neighbour = test_run_dir().'/liste1';
+foreach ([$listed, $neighbour] as $dir) {
+    mkdir($dir.'/unterordner.sql', 0775, true);
+    foreach (['b.sql', 'a.sql', 'c.sql.part', 'notiz.txt', '.htaccess', '.versteckt.sql'] as $name) file_put_contents($dir.'/'.$name, 'x');
+}
+file_put_contents($neighbour.'/nur-nebenan.sql', 'x');
+is_same(['a.sql', 'b.sql', 'c.sql.part', 'notiz.txt', 'unterordner.sql'], dir_entries($listed),
+        'a folder called „liste[1]" lists its own names, sorted, files and folders alike, and no hidden one');
+is_same(['a.sql', 'b.sql', 'unterordner.sql'], dir_entries($listed, '.sql'), 'with a suffix, only the names that end in it');
+is_same(['c.sql.part'], dir_entries($listed, '.sql.part'), 'and a longer one is a suffix of its own');
+is_same([], dir_entries(test_run_dir().'/gibt-es-nicht[1]'), 'a folder that is not there lists nothing, and says nothing');
+foreach ([$listed, $neighbour] as $dir) {
+    foreach (scandir($dir) as $name) if (is_file($dir.'/'.$name)) unlink($dir.'/'.$name);
+    rmdir($dir.'/unterordner.sql');
+    rmdir($dir);
+}
+
+case_('The sweep looks in its folders as they are named, brackets included [security review]');
+$storage = $GLOBALS['config']['maintenance_file'];
+$inBrackets = test_run_dir().'/ablage[1]/uploads/avatar/'.str_repeat('05', 16).'.jpg';
+$lookalike = test_run_dir().'/ablage1/uploads/avatar/'.str_repeat('04', 16).'.jpg';
+foreach ([$inBrackets, $lookalike] as $path) {
+    @mkdir(dirname($path), 0775, true);
+    file_put_contents($path, 'x');
+    touch($path, $old);
+}
+$GLOBALS['config']['maintenance_file'] = test_run_dir().'/ablage[1]/maintenance.flag';
+try {
+    is_same(1, prune_uploads(), 'with storage in a folder called „ablage[1]", the one file left behind there is found');
+} finally {
+    $GLOBALS['config']['maintenance_file'] = $storage;
+}
+clearstatcache();
+ok(!is_file($inBrackets) && is_file($lookalike), 'and it is the one that went: the file in „ablage1" is still there');
+unlink($lookalike);
 
 case_('A file uploaded moments ago is left alone');
 // Its row may be being written in another request right now, and deleting
@@ -162,6 +238,23 @@ is_same('private, no-store', (new ReflectionFunction('send_download_headers'))->
         'send_download_headers() keeps a download out of every cache unless told otherwise, as only the icon and the logo are');
 is_same(4, (new ReflectionFunction('send_upload'))->getNumberOfParameters(),
         'and send_upload() cannot be told otherwise: an invoice, a receipt, a chat’s photo or a screenshot is never kept');
+
+case_('A download leaves under the extension its bytes were stored as, whatever its sender called it [security review]');
+/* store_upload() read the bytes and chose the extension; the name the sender
+   gave is kept for people to read. A JPEG a family called „spiel.apk" left as
+   spiel.apk, and a phone offers to install that. The route ends with exit and
+   its headers cannot be read on the command line, so the name is asked of
+   upload_download_name(), and send_upload() is held to asking it. */
+$photo = str_repeat('a', 32).'.jpg';
+foreach (['spiel.apk' => 'spiel.jpg', 'Urlaub am See.jpeg' => 'Urlaub am See.jpg', 'foto.tar.gz' => 'foto.tar.jpg',
+          'Spielfeld-Größe' => 'Spielfeld-Größe.jpg', 'Überweisung.pdf' => 'Überweisung.jpg', '../../spiel.apk' => 'spiel.jpg',
+          '' => $photo, '.apk' => $photo, '..' => $photo] as $given => $leaves)
+    is_same($leaves, upload_download_name($photo, (string)$given), '„'.$given.'" leaves as „'.$leaves.'"');
+is_same('beleg.pdf', upload_download_name(str_repeat('b', 32).'.pdf', 'beleg.exe'), 'a receipt the same way');
+$sends = new ReflectionFunction('send_upload');
+ok(str_contains(implode('', array_slice(file($sends->getFileName()), $sends->getStartLine() - 1, $sends->getEndLine() - $sends->getStartLine() + 1)),
+                'upload_download_name($storedName, $givenName)'),
+   'and send_upload() hands every stored file over under that name');
 
 // ---------------------------------------------------------------------------
 // The portal's own icon (ADR 0008)
@@ -239,6 +332,11 @@ is_same('', portal_icon(), 'a database restored without storage/ falls back rath
 is_same('', portal_icon_url(), 'so no page links to a 404');
 set_setting('portal_icon', '../../config/config.php');
 is_same('', portal_icon(), 'and a setting that does not look like a stored name is never served');
+$notAnIcon = str_repeat('d', 32).'.jpg';
+file_put_contents(upload_dir('icon').'/'.$notAnIcon, 'x');
+set_setting('portal_icon', $notAnIcon);
+is_same('', portal_icon(), 'nor one of a type the icon cannot be, though the file is there');
+unlink(upload_dir('icon').'/'.$notAnIcon);
 
 case_('The icon is kept for a year only at the address of the icon in use');
 is_same('public, max-age=31536000, immutable', portal_icon_cache_control($live, substr($live, 0, 12)),
@@ -419,8 +517,10 @@ ok(!str_contains($logoUrl, $liveLogo), 'but never the whole stored name');
 is_same([600, 150], portal_logo_size(), 'its real size, for the width and height attributes');
 set_setting('portal_logo', '../../config/config.php');
 is_same('', portal_logo(), 'a setting that does not look like a stored name is never served');
+file_put_contents(upload_dir('logo').'/'.str_repeat('c', 32).'.gif', 'x');
 set_setting('portal_logo', str_repeat('c', 32).'.gif');
-is_same('', portal_logo(), 'nor one of a type the logo cannot be');
+is_same('', portal_logo(), 'nor one of a type the logo cannot be, though the file is there');
+unlink(upload_dir('logo').'/'.str_repeat('c', 32).'.gif');
 set_setting('portal_logo', str_repeat('c', 32).'.png');
 is_same('', portal_logo(), 'and a file that is not there falls back rather than linking to a 404');
 is_same('', portal_logo_url(), 'so no page links to one');
@@ -669,3 +769,33 @@ $huge = substr(png_header(600, 150), 0, -12) . pack('N', 0xFFFFFFFF) . 'tEXt' . 
 is_same($huge, image_without_metadata($huge, 'image/png'), 'a PNG whose chunk says 2^32 - 1 bytes is kept as it came');
 $hugeWebp = 'RIFF' . pack('V', 0xFFFFFFF0) . 'WEBP' . substr($webpIn, 12);
 is_same($hugeWebp, image_without_metadata($hugeWebp, 'image/webp'), 'and so is a WebP whose RIFF header says as much');
+
+// ---------------------------------------------------------------------------
+case_('With nobody in the database nothing is swept: those files are not its rows’ to judge [security review]');
+/* INSTALL.md restores a backup by deleting every table and importing the copy.
+   A request between the two made the tables afresh and ran the update's step
+   after the files (database/defaults.php), whose sweep found no row naming any
+   file and deleted every receipt, chat photo, screenshot, icon and logo older
+   than ten minutes; the nightly prune would have done the same. The backup
+   holds the rows, never the files. Last in this suite, because it empties every
+   table the way that window does: test_reset() deletes every row and runs that
+   step. */
+$stranded = [];
+foreach (array_keys(upload_references()) as $kind) {
+    @mkdir(upload_dir($kind), 0775, true);
+    $stranded[$kind] = upload_dir($kind).'/'.str_repeat('06', 16).'.jpg';
+    file_put_contents($stranded[$kind], 'x');
+    touch($stranded[$kind], time() - 86400);
+}
+test_reset();
+is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts'), 'the database has nobody in it');
+clearstatcache();
+is_same(array_keys($stranded), array_keys(array_filter($stranded, 'is_file')),
+        'the update’s step deleted none of the files, a day old and named by no row as they are');
+is_same(0, prune_uploads(), 'and the nightly prune deletes none either');
+clearstatcache();
+is_same(array_keys($stranded), array_keys(array_filter($stranded, 'is_file')), 'every one is still there');
+make_account(['role'=>'admin']);
+prune_uploads();
+clearstatcache();
+is_same([], array_keys(array_filter($stranded, 'is_file')), 'with an administrator in it, the same files are left behind, and go');

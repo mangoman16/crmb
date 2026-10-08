@@ -90,7 +90,11 @@ function backup_write($handle, PDO $reader, string $reason): void {
         if ($written === false || $written !== strlen($text))
             throw new RuntimeException('Writing the backup failed; the disk may be full.');
     };
-    $put("-- Badminton CRM " . trim((string)file_get_contents(ROOT . '/VERSION')) . " — " . $reason . "\n"
+    // The release whose database this is. A copy taken before an update holds
+    // the previous release's tables, and naming the release about to replace
+    // them sent a restore to the wrong files. A database no release has
+    // written yet is this release's.
+    $put("-- Badminton CRM " . (database_version() !== '' ? database_version() : app_version()) . " — " . $reason . "\n"
        . "-- " . gmdate('Y-m-d H:i:s') . " UTC\n"
        . "-- Restore by importing this file into an EMPTY database in the hosting panel.\n"
        . "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\nSET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';\n\n");
@@ -131,7 +135,8 @@ function backup_tables(PDO $reader): array {
  * toss, including the copy that was just taken before a migration.
  */
 function backups(): array {
-    $files = glob(backup_dir() . '/*.sql') ?: [];
+    $dir = backup_dir();
+    $files = array_filter(array_map(fn(string $name): string => $dir . '/' . $name, dir_entries($dir, '.sql')), 'is_file');
     usort($files, fn($a, $b) => [(int)@filemtime($b), basename($b)] <=> [(int)@filemtime($a), basename($a)]);
     return array_map(fn($f) => ['path' => $f, 'name' => basename($f), 'bytes' => (int)@filesize($f),
                                 'made_at' => gmdate('Y-m-d H:i:s', (int)@filemtime($f))], $files);
@@ -145,8 +150,9 @@ function backups(): array {
  */
 function backup_prune(int $keep = BACKUP_KEEP): void {
     foreach (array_slice(backups(), max(1, $keep)) as $old) @unlink($old['path']);
-    foreach (glob(backup_dir() . '/*.sql.part') ?: [] as $stale)
-        if (@filemtime($stale) < time() - 3600) @unlink($stale);
+    $dir = backup_dir();
+    foreach (dir_entries($dir, '.sql.part') as $stale)
+        if (@filemtime($dir . '/' . $stale) < time() - 3600) @unlink($dir . '/' . $stale);
 }
 
 /**

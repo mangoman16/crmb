@@ -144,3 +144,20 @@ is_same($few, $many, 'three charges and thirty-six cost the same ('.$few.')');
 ok($many < 13, 'and that is a flat handful, not one per charge (took '.$many.')');
 ok(str_contains(render_view('student', ['id'=>$billed,'tab'=>'payments']), 'Beitrag 35'), 'the last charge really is on the page');
 
+case_('The team page does not grow a query per person');
+/* Held with the presence until it went (ADR 0026): a row of „Konten" is drawn
+   from what the page has already read, and a query per person would grow with
+   every trainer the club takes on. */
+$teamAdmin = make_account(['role'=>'admin', 'name'=>'Team Leitung']);
+sign_in_as($teamAdmin);
+render_view('accounts');                       // the settings cache fills once per process, not per person
+$queries = fn() => query_count(fn() => render_view('accounts'));
+$before = $queries();
+$added = [];
+for ($i = 1; $i <= 5; $i++) $added[] = 'Teammitglied '.$i;
+foreach ($added as $name) make_account(['role'=>'trainer', 'name'=>$name]);
+$grown = $queries() - $before;
+ok($grown < 5, 'five more team members cost fewer than five more queries ('.$grown.')');
+$team = render_view('accounts');
+is_same($added, array_values(array_filter($added, fn(string $name): bool => str_contains($team, e($name)))),
+        'and all five are on the page');
