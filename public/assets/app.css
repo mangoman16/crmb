@@ -1359,19 +1359,41 @@ details.account-row[open]>summary{margin-bottom:0}
 }
 @keyframes nav-title-in{from{opacity:0}to{opacity:1}}
 
-/* --- Waiting for a page (Part 0.4a) ---------------------------------------------
-   A page slow to come gets a shuttle flying along the bottom edge of the bar:
-   half in the bar, half over the page's top margin, so it covers nothing.
-   Without the bar it flies along the top of the screen. */
-.page-wait{display:none;position:fixed;inset:env(safe-area-inset-top) 0 auto;z-index:31;height:12px;overflow:hidden;pointer-events:none}
-.topbar>.page-wait{position:absolute;inset:auto 0 -6px}
-.page-wait.is-on{display:block;animation:wait-in .2s ease-out}
-.page-wait-flight{position:absolute;inset:0;animation:rally 2.4s infinite}
-.page-wait-flight svg{position:absolute;top:-4px;right:0;width:20px;height:20px;color:var(--teal);transform:rotate(45deg);animation:turn 2.4s step-end infinite}
+/* --- The waiting page (Part 0.4b) ------------------------------------------------
+   Over the whole screen on the page's own ground, so dark stays dark: a net and the
+   shuttle rallying over it, the club's name under them. Shown on the old page
+   (is-waiting) and carried on by the new one (is-arriving, wait.js) at the same
+   moment of its animations, then faded out (is-arrived). [hidden] is !important for
+   every other element; these two classes are the only way past it, and only on a
+   screen: this rule outranks any print rule that could hide it again, so a page
+   printed while waiting would have the waiting page over every sheet. */
+@media screen{html:is(.is-waiting,.is-arriving) .wait-page[hidden]{display:flex!important}}
+.wait-page{position:fixed;inset:0;z-index:300;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  padding:env(safe-area-inset-top) 24px env(safe-area-inset-bottom);background:var(--bg);color:var(--muted);text-align:center;
+  animation:wait-in .2s ease-out calc(-1 * var(--wait-elapsed,0ms)) both}
+/* Carried on: and, should app.js never come, gone by itself after 2 s. */
+html.is-arriving .wait-page{animation:wait-in .2s ease-out calc(-1 * var(--wait-elapsed,0ms)) both,wait-out-anyway .25s ease-in 2s forwards}
+html.is-arrived .wait-page{animation:wait-out .25s ease-in both}
+.wait-stage{position:relative;width:220px;height:120px;animation:wait-settle .2s ease-out calc(-1 * var(--wait-elapsed,0ms)) both}
+.wait-net{position:absolute;left:109px;top:62px;width:2px;height:50px;border-radius:1px;background:var(--muted-2)}
+.wait-net::before{content:"";position:absolute;left:-7px;top:-2px;width:16px;height:3px;border-radius:2px;background:var(--muted-2)}
+.wait-stage .glyph-shuttle{position:absolute;left:0;top:0;width:32px;height:32px;color:var(--teal);
+  offset-path:path("M24 92 Q110 -28 196 92 Q110 20 24 92");offset-rotate:auto 45deg;
+  animation:rally 1.6s infinite calc(-1 * var(--wait-elapsed,0ms))}
+.wait-name{margin:0;font-size:var(--t-headline);font-weight:600;color:var(--muted)}
+.wait-slow{position:absolute;left:24px;right:24px;bottom:calc(32px + env(safe-area-inset-bottom));display:none;flex-direction:column;align-items:center;gap:8px;margin:0;font-size:var(--t-sub)}
+.wait-page.is-slow .wait-slow{display:flex;animation:wait-in .3s ease-out both}
 @keyframes wait-in{from{opacity:0}}
-/* Off the racket fast and slowing, as a shuttle does; hit back at each end. */
-@keyframes rally{0%,100%{transform:translateX(calc(20px - 100%));animation-timing-function:cubic-bezier(.15,.7,.35,1)}50%{transform:translateX(0);animation-timing-function:cubic-bezier(.15,.7,.35,1)}}
-@keyframes turn{0%{transform:rotate(45deg)}50%{transform:scaleX(-1) rotate(45deg)}}
+@keyframes wait-out{to{opacity:0;visibility:hidden}}
+/* wait-out again, under a name of its own. A running animation keeps its clock when
+   only its delay changes: had the 2 s one been wait-out too, is-arrived would just
+   have shortened its delay, and a fade already some way into its 2 s would have
+   jumped to its end - a cut, where the page should come out from under a fade. */
+@keyframes wait-out-anyway{to{opacity:0;visibility:hidden}}
+@keyframes wait-settle{from{transform:scale(.94)}}
+/* A clear over the net (the first 53 % of the path, in 60 % of the time), then a flat
+   drive back that just clears the tape: off the racket fast, slowing as a shuttle does. */
+@keyframes rally{0%{offset-distance:0%;animation-timing-function:cubic-bezier(.25,.6,.45,1)}60%{offset-distance:53.3%;animation-timing-function:cubic-bezier(.3,.5,.5,1)}100%{offset-distance:100%}}
 @keyframes wait-pulse{from{opacity:.35}}
 @media(prefers-reduced-motion:reduce){
   @view-transition{navigation:none}
@@ -1379,14 +1401,16 @@ details.account-row[open]>summary{margin-bottom:0}
   *{transition:none!important}
   .sheet-dialog[open]{animation:none}
   .button[aria-busy=true]::after{animation-duration:2s}
-  /* The shuttle stays in the middle of the lane and only brightens and fades. */
-  .page-wait-flight{animation:none;transform:translateX(calc(10px - 50%))}
-  .page-wait-flight svg{animation:wait-pulse 1s ease-in-out infinite alternate}
+  /* The shuttle rests at the top of the clear and only brightens and fades, from
+     where the page before had got to, as the rally does; the scene does not
+     settle. The fades stay: they change brightness, not place. */
+  .wait-stage{animation:none}
+  .wait-stage .glyph-shuttle{offset-distance:26.6%;animation:wait-pulse 1s ease-in-out calc(-1 * var(--wait-elapsed,0ms)) infinite alternate}
 }
 
 /* --- Paper -------------------------------------------------------------------------- */
 @media print{
-  .sidebar,.topbar,.mobile-nav,.form-footer,.button,.saved-filters,.filters,.skip-link,.tabs,.feedback,.impersonation-bar,.flash,.page-wait{display:none!important}
+  .sidebar,.topbar,.mobile-nav,.form-footer,.button,.saved-filters,.filters,.skip-link,.tabs,.feedback,.impersonation-bar,.flash{display:none!important}
   .app-shell{margin:0}
   .main-content{padding:0}
   body{background:#fff}

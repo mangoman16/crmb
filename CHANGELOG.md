@@ -163,14 +163,20 @@ This is the first phase of the design language in
   paint it dark from the first moment instead of white until the colours
   arrive. The installer and the page saying the portal is not available do the
   same.
-- **A page that is slow to come says so.** The row, button or tab tapped keeps
-  its pressed look until the next page is there, and if it has not come after
-  0.7 s a small shuttlecock flies back and forth along the bottom of the top
-  bar — the app on the home screen has no browser bar to show that a page is
-  loading. A form that sends shows its button's spinner instead, never both.
-  With less motion asked for, the shuttlecock stays in place and only pulses,
-  and a screen reader hears „Wird geladen …" once. Nothing waits for it, so no
-  page is slower; without JavaScript nothing changes.
+- **A page that is slow to come gets a waiting page.** The row, button or tab
+  tapped keeps its pressed look, and if the next page has not come after half a
+  second, a waiting page fades in over the whole screen, on the page's own
+  background, light or dark: the portal's name under a net, with a shuttlecock
+  rallying over it. The next page carries it on from the same point and fades
+  it out, so a slow change of page is one movement, not a cut. Once shown it
+  stays at least half a second, so it never blinks; a page that comes just after
+  half a second therefore appears about half a second later than it would have.
+  After 6 s it says „Dauert länger als sonst." and offers „Abbrechen", which
+  stops the page that has not come — in the app on the home screen nothing else
+  can. A form that sends shows its button's spinner instead, never both. With
+  less motion asked for, the shuttlecock rests and only pulses; a screen reader
+  hears „Wird geladen …" once, and the longer wait when it is said, with the
+  focus on „Abbrechen". Without JavaScript nothing changes.
 - **The portal's own mark is a shuttlecock**, where the club has set no logo
   or icon of its own: top left, in the installer, in the browser tab and on
   the home screen. An iPhone's home-screen icon is square now, without the

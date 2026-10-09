@@ -37,7 +37,8 @@ function icon(string $name): string {
         // A banner that says something went wrong; 'check' says it went right.
         'alert'=>'<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/>',
         // A shuttlecock flying up to the right, cork first: the club's mark when it
-        // has none of its own, and what flies while a page is slow (Part 0.4a).
+        // has none of its own, and what rallies over the net while a page is slow
+        // (Part 0.4b).
         // Filled, unlike the rest of the set: drawn small, an outline of it blurs.
         // public/assets/favicon.svg is the same drawing.
         'shuttle'=>'<g fill="currentColor" stroke="none"><path d="M12.75 6.87L13.99 8.12L4.78 15.49Q3.44 13.75 2.42 11.68ZM14.42 8.54L15.46 9.58L8.03 18.84Q6.45 17.55 5.16 15.97ZM15.88 10.01L17.13 11.25L12.32 21.58Q10.25 20.56 8.51 19.22Z"/><circle cx="17.98" cy="6.02" r="3.6"/></g>',

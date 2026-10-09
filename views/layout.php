@@ -50,14 +50,24 @@ $viewed=$realUser?($user??current_user()):null;
     <?php /* The club's colours, after app.css so they win at equal specificity;
              no request at all while none is set (ADR 0013). */
     if(($brandCss=brand_css_url())!==''): ?><link rel="stylesheet" href="<?=e($brandCss)?>"><?php endif ?>
+    <?php /* Whether the page before this one was showing the waiting page, so this
+             one carries it on instead of cutting it off (Part 0.4b). Not deferred,
+             on purpose: it has to run before the first paint. A few lines, cached. */ ?>
+    <script src="<?=e(asset_url('wait.js'))?>"></script>
     <script defer src="<?=e(asset_url('app.js'))?>"></script>
 </head>
 <?php /* data-sheet-cancel: the word under a sheet (app.js), in the page's language. */ ?>
 <body class="<?=$public?'public-page':'app-page'?>" data-sheet-cancel="<?=e(t('Abbrechen','Cancel'))?>">
-<?php /* What flies along the bar while the next page is slow to come (Part 0.4a).
-         A template: without JavaScript nothing of it is drawn. The status line is
-         beside the lane, not in it, so it is always there to be heard. */ ?>
-<template id="page-wait"><div class="page-wait"><span class="page-wait-flight"><?=icon('shuttle')?></span></div><span class="visually-hidden" role="status" data-text="<?=e(t('Wird geladen …','Loading …'))?>"></span></template>
+<?php /* The waiting page (Part 0.4b): shown by app.js when the next page is slow to
+         come, and carried on by that page until it fades out. hidden, so without
+         JavaScript - or without the stylesheet - nothing of it shows. The status
+         line is outside it, so it is there to be heard before it says anything. */ ?>
+<div class="wait-page" hidden>
+    <div class="wait-stage" aria-hidden="true"><span class="wait-net"></span><?=icon('shuttle')?></div>
+    <p class="wait-name" aria-hidden="true"><?=e((string)setting('club_name'))?></p>
+    <p class="wait-slow"><span><?=e(t('Dauert länger als sonst.','Taking longer than usual.'))?></span><button type="button" class="button secondary wait-cancel"><?=e(t('Abbrechen','Cancel'))?></button></p>
+</div>
+<span class="visually-hidden wait-said" role="status" data-text="<?=e(t('Wird geladen …','Loading …'))?>" data-slow="<?=e(t('Dauert länger als sonst.','Taking longer than usual.'))?>"></span>
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
 <?php if(!$public):
 $unreadNotes=unread_notifications((int)$user['id']);

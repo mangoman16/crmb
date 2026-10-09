@@ -14,20 +14,25 @@
  * until settle().
  *
  * The page also holds one form sent by POST, with two buttons, one that only
- * looks something up (GET), and links of every kind a tap can leave by. A timer
- * the script sets runs when runTimers() says so, and is kept with its delay
- * until then; the window's listeners (pageshow) are kept to be sent like the
- * document's. A click or a submit reaches the element's own listeners first and
- * the document's after, as it bubbles.
+ * looks something up (GET), links of every kind a tap can leave by, and the
+ * waiting page with its status line (Part 0.4b). A timer the script sets runs
+ * when runTimers() says so, and is kept with its delay until then; the window's
+ * listeners (pageshow) are kept to be sent like the document's. A click or a
+ * submit reaches the element's own listeners first and the document's after, as
+ * it bubbles. The clock (Date.now) moves only when a check moves it,
+ * sessionStorage is a map, and window.stop() is counted.
+ *
+ * The page that comes next is a page of its own: app.js is loaded again into one
+ * whose <html> wait.js has marked as carrying the waiting page on, and wait.js
+ * itself runs in an empty head, with and without a time left for it.
  *
  * What the stand-in page does not do: document.querySelectorAll() answers only
  * the selectors in `answered` (anything else finds nothing, so the rest of
  * app.js stays out of the way - and so would a script that looked for its menus
- * or forms another way); getElementById() finds only the template of the
- * waiting shuttle (Part 0.4a), and querySelector() only the top bar. On the
- * stand-in elements, closest(), matches() and querySelector() understand a tag,
- * classes and attributes - [open], [name] and [name="value"] - and throw on any
- * other selector rather than guess.
+ * or forms another way); querySelector() finds only the top bar, the waiting
+ * page and its status line. On the stand-in elements, closest(), matches() and
+ * querySelector() understand a tag, classes and attributes - [open], [name] and
+ * [name="value"] - and throw on any other selector rather than guess.
  */
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -59,7 +64,13 @@ class FakeElement {
   removeAttribute(name) { delete this.attributes[name]; }
   get classList() {
     const classes = this.classes;
-    return { add: name => { classes.add(name); }, remove: name => { classes.delete(name); }, contains: name => classes.has(name) };
+    return { add: (...names) => { names.forEach(name => classes.add(name)); }, remove: (...names) => { names.forEach(name => classes.delete(name)); },
+             contains: name => classes.has(name) };
+  }
+  // Custom properties only, which is all the scripts set.
+  get style() {
+    const properties = (this._style ??= {});
+    return { setProperty: (name, value) => { properties[name] = String(value); }, getPropertyValue: name => properties[name] ?? '' };
   }
   append(...nodes) {
     for (const node of nodes) {
@@ -137,20 +148,30 @@ const link = (href, classes = [], attributes = {}) => {
   const address = new URL(href, pageAddress);
   return Object.assign(a, { href: address.href, protocol: address.protocol, hash: address.hash, search: address.search, target: attributes.target ?? '' });
 };
-// The template of the waiting shuttle, as views/layout.php draws it.
-const waitTemplate = {
-  content: {
-    cloneNode() {
-      const parts = new FakeElement('template-content');
-      const lane = new FakeElement('div', ['page-wait'], parts);
-      new FakeElement('span', ['page-wait-flight'], lane);
-      const said = new FakeElement('span', ['visually-hidden'], parts);
-      said.setAttribute('role', 'status');
-      said.setAttribute('data-text', 'Wird geladen …');
-      return parts;
-    },
-  },
+// The waiting page and its status line, as views/layout.php draws them.
+const waitPageIn = (parent, { withCancel = true } = {}) => {
+  const wait = new FakeElement('div', ['wait-page'], parent);
+  wait.setAttribute('hidden', '');
+  const cancel = withCancel ? new FakeElement('button', ['button', 'secondary', 'wait-cancel'], wait) : null;
+  cancel?.setAttribute('type', 'button');
+  const said = new FakeElement('span', ['visually-hidden', 'wait-said'], parent);
+  said.setAttribute('role', 'status');
+  said.setAttribute('data-text', 'Wird geladen …');
+  said.setAttribute('data-slow', 'Dauert länger als sonst.');
+  return { wait, cancel, said };
 };
+const waitParts = waitPageIn(body);
+// The page's <html>, outside the body as in a browser.
+const root = new FakeElement('html');
+// The clock, sessionStorage and window.stop(), as the scripts use them.
+let clock = 1800000000000;
+class FakeDate extends Date { static now() { return clock; } }
+const storage = () => {
+  const items = new Map();
+  return { items, getItem: key => (items.has(key) ? items.get(key) : null), setItem: (key, value) => { items.set(key, String(value)); }, removeItem: key => { items.delete(key); } };
+};
+const stored = storage();
+let stops = 0;
 const answered = new Set(['.topbar-menu', 'form[method="post"]', 'form[data-submitted]', 'dialog.sheet-dialog[open]', '.is-pending']);
 
 const documentListeners = {};
@@ -162,10 +183,9 @@ const waiting = delay => [...timers.values()].some(timer => timer.ms === delay);
 const page = {
   activeElement: body,
   body,
-  // app.js marks the page as scripted ("js" on <html>), which is all it asks of it.
-  documentElement: { classList: { add() {} } },
-  getElementById: id => (id === 'page-wait' ? waitTemplate : null),
-  querySelector: selector => (selector === '.topbar' ? topbar : null),
+  // app.js marks the page as scripted ("js" on <html>), and shows the waiting page by a class on it.
+  documentElement: root,
+  querySelector: selector => (['.topbar', '.wait-page', '.wait-said'].includes(selector) ? body.querySelector(selector) : null),
   // Only the menus and the form are on this page: every other feature of app.js
   // finds nothing to attach to and stays out of the way.
   querySelectorAll: selector => (answered.has(selector) ? body.querySelectorAll(selector) : []),
@@ -184,6 +204,9 @@ const context = vm.createContext({
   addEventListener: (type, fn) => { (windowListeners[type] ??= []).push(fn); },
   setTimeout: (fn, ms = 0) => { timers.set(++timerCount, { fn, ms }); return timerCount; },
   clearTimeout: id => { timers.delete(id); },
+  Date: FakeDate,
+  sessionStorage: stored,
+  stop: () => { stops++; },
 });
 context.window = context;
 vm.runInContext(readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8'), context,
@@ -309,13 +332,14 @@ try {
         && pressed.dataset.sendingOff === undefined && beside.dataset.sendingOff === undefined, formState());
   check('so it can be sent again', !submit().defaultPrevented, formState());
 
-  // Waiting for the next page (Part 0.4a): the tapped link stays pressed, and a
-  // shuttle flies only if the page has not come after 0.7 s.
-  const lane = topbar.children.find(el => el.classes.has('page-wait'));
-  const said = body.children.find(el => el.getAttribute('role') === 'status');
+  // Waiting for the next page (Part 0.4b): the tapped link stays pressed, and the
+  // waiting page shows only if the page has not come after 0.5 s.
+  const { wait, cancel, said } = waitParts;
   const pending = () => body.querySelectorAll('.is-pending');
-  const waitState = () => JSON.stringify({ lane: lane && [...lane.classes], said: said?.textContent ?? null,
+  const waitState = () => JSON.stringify({ html: [...root.classes], wait: [...wait.classes], said: said.textContent ?? '', stored: stored.getItem('crmb-wait'),
+    elapsed: root.style.getPropertyValue('--wait-elapsed'), stops,
     pending: pending().map(el => el.tagName + '.' + [...el.classes].join('.')), timers: [...timers.values()].map(t => t.ms) });
+  const shown = () => root.classes.has('is-waiting');
   const back = () => { for (const fn of windowListeners.pageshow ?? []) fn({ persisted: true }); };
   const click = (target, extra = {}) => {
     const event = { target, button: 0, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...extra };
@@ -329,24 +353,71 @@ try {
     send('submit', event);
     return event;
   };
-  check('the shuttle\'s lane goes into the top bar, and the line a screen reader hears into the page',
-        Boolean(lane) && Boolean(said) && said.parent === body, waitState());
+  // Only the timers with this delay, as the browser would run them when their time comes.
+  const runTimersOf = delay => { for (const [id, timer] of [...timers]) if (timer.ms === delay) { timers.delete(id); timer.fn(); } };
   back(); timers.clear();
-  check('and nothing shows before anything is tapped', lane && !lane.classes.has('is-on') && !said?.textContent && pending().length === 0, waitState());
+  check('the page is marked as scripted, and nothing waits before anything is tapped',
+        root.classes.has('js') && !shown() && !said.textContent && stored.getItem('crmb-wait') === null && pending().length === 0, waitState());
 
   const row = link('index.php?page=student&id=7', ['student-card']);
   const rowText = new FakeElement('span', [], row);
+  // Reached by the keyboard, so it has focus when it is tapped.
+  row.focus();
   click(rowText);
   check('a tap on a row keeps it pressed at once', row.classes.has('is-pending'), waitState());
-  check('and the shuttle waits 0.7 s', !lane.classes.has('is-on') && waiting(700), waitState());
-  runTimers();
-  check('then flies, and the page says it is loading', lane.classes.has('is-on') && said.textContent === 'Wird geladen …', waitState());
+  check('and the waiting page waits 0.5 s', !shown() && waiting(500) && stored.getItem('crmb-wait') === null, waitState());
+  clock += 500;
+  runTimersOf(500);
+  check('then it shows, and the page says it is loading', shown() && said.textContent === 'Wird geladen …', waitState());
+  check('without taking focus from what was tapped', page.activeElement === row, 'focus on ' + page.activeElement.tagName + '.' + [...page.activeElement.classes].join('.'));
+  check('it keeps the moment it appeared for the next page, which carries it on from there',
+        stored.getItem('crmb-wait') === String(clock) && root.style.getPropertyValue('--wait-elapsed') === '0ms', waitState());
+  check('nothing more is said before 6 s', !wait.classes.has('is-slow') && waiting(6000), waitState());
+  clock += 6000;
+  runTimersOf(6000);
+  check('after 6 s it says it is taking longer, and offers „Abbrechen"', wait.classes.has('is-slow') && said.textContent === 'Dauert länger als sonst.', waitState());
+  check('with focus on „Abbrechen", the one thing left to do', page.activeElement === cancel, 'focus on ' + page.activeElement.tagName + '.' + [...page.activeElement.classes].join('.'));
+  for (const fn of cancel.listeners.click ?? []) fn({ target: cancel });
+  check('„Abbrechen" stops the page that has not come', stops === 1, waitState());
+  check('and gives focus back to what was tapped', page.activeElement === row, 'focus on ' + page.activeElement.tagName + '.' + [...page.activeElement.classes].join('.'));
+  check('and puts this one back as it was: nothing shown, said, kept or pressed, nothing left to come',
+        !shown() && !wait.classes.has('is-slow') && said.textContent === '' && stored.getItem('crmb-wait') === null
+        && pending().length === 0 && !waiting(500) && !waiting(6000), waitState());
+
+  // A second way out while the waiting page is up - a link reached behind it with
+  // the keyboard, or a second Enter in a search field - carries it on. Two slow
+  // timers lost the first one's handle, and the second took „Abbrechen", focused
+  // by the first, for where focus was: it gave focus back to itself (code review).
+  click(rowText);
+  clock += 500;
+  runTimersOf(500);
+  const second = link('index.php?page=student&id=8', ['student-card']);
+  second.focus();
+  click(second);
+  clock += 500;
+  runTimersOf(500);
+  check('a second way out while it is up carries it on, with one slow line still to come',
+        shown() && second.classes.has('is-pending') && [...timers.values()].filter(t => t.ms === 6000).length === 1, waitState());
+  clock += 5500;
+  runTimersOf(6000);
+  for (const fn of cancel.listeners.click ?? []) fn({ target: cancel });
+  check('and „Abbrechen" gives focus back to what was activated last, not to itself', page.activeElement === second,
+        'focus on ' + page.activeElement.tagName + '.' + [...page.activeElement.classes].join('.'));
+  check('leaving nothing shown or left to come', !shown() && !waiting(500) && !waiting(6000), waitState());
+
+  click(rowText);
   const tab = link('index.php?page=student&id=7&tab=payments', ['chip']);
   click(tab);
   check('a second tap moves the pressed look to what was tapped last', tab.classes.has('is-pending') && pending().length === 1, waitState());
+  check('and waits 0.5 s from that tap, with one timer, not two', [...timers.values()].filter(t => t.ms === 500).length === 1, waitState());
+  clock += 500;
+  runTimersOf(500);
+  clock += 6000;
+  runTimersOf(6000);
   back();
-  check('back to the page as it was left, nothing is pressed and nothing flies',
-        pending().length === 0 && !lane.classes.has('is-on') && said.textContent === '' && !waiting(700), waitState());
+  check('back to the page as it was left, nothing is pressed, shown, said or kept',
+        pending().length === 0 && !shown() && !wait.classes.has('is-slow') && said.textContent === '' && stored.getItem('crmb-wait') === null, waitState());
+  check('and nothing is left to come', !waiting(500) && !waiting(6000), waitState());
 
   // Taps that leave the page standing start nothing.
   const standing = [
@@ -364,29 +435,103 @@ try {
   for (const [what, target, extra] of standing) {
     back(); timers.clear();
     click(target, extra);
-    check(what + ' starts nothing', pending().length === 0 && !waiting(700), waitState());
+    check(what + ' starts nothing', pending().length === 0 && !waiting(500), waitState());
   }
   back(); timers.clear();
   const stopped = link('index.php?page=classes', ['text-link']);
   click(stopped, { defaultPrevented: true });
-  check('nor does a tap something else has already handled', pending().length === 0 && !waiting(700), waitState());
+  check('nor does a tap something else has already handled', pending().length === 0 && !waiting(500), waitState());
 
-  // A form that sends has its button's spinner, never the shuttle as well.
+  // A form that sends has its button's spinner, never the waiting page as well.
   back(); timers.clear();
   sendForm(form, pressed);
+  clock += 500;
   runTimers();
-  check('a form that sends shows its spinner and no shuttle', pressed.getAttribute('aria-busy') === 'true'
-        && !lane.classes.has('is-on') && pending().length === 0, waitState());
-  check('and its second send starts nothing either', sendForm(form, pressed).defaultPrevented && !waiting(700), waitState());
+  check('a form that sends shows its spinner and no waiting page', pressed.getAttribute('aria-busy') === 'true'
+        && !shown() && stored.getItem('crmb-wait') === null && pending().length === 0, waitState());
+  check('and its second send starts nothing either', sendForm(form, pressed).defaultPrevented && !waiting(500), waitState());
   // A form that only looks something up is a tap that leaves, like a link.
   back(); timers.clear();
   sendForm(lookup, lookupButton);
-  check('a form that looks something up keeps its button pressed', lookupButton.classes.has('is-pending') && waiting(700), waitState());
-  runTimers();
-  check('and the shuttle flies if its page is slow', lane.classes.has('is-on'), waitState());
+  check('a form that looks something up keeps its button pressed', lookupButton.classes.has('is-pending') && waiting(500), waitState());
+  clock += 500;
+  runTimersOf(500);
+  check('and the waiting page shows if its page is slow', shown(), waitState());
   back();
+  check('a page that came the usual way is never faded out', !root.classes.has('is-arrived'), waitState());
+
+  // The page that comes next, in a page of its own: wait.js has run in its head.
+  const arriving = (sinceAgo, now = clock, { withCancel = true } = {}) => {
+    const html = new FakeElement('html', ['is-arriving']);
+    html.dataset.waitSince = String(now - sinceAgo);
+    const own = new FakeElement('body');
+    waitPageIn(own, { withCancel });
+    const ownTimers = new Map();
+    let count = 0;
+    const doc = { activeElement: own, body: own, documentElement: html, addEventListener() {}, createElement: tag => new FakeElement(tag),
+                  querySelector: selector => (['.wait-page', '.wait-said'].includes(selector) ? own.querySelector(selector) : null),
+                  querySelectorAll: () => [] };
+    const ctx = vm.createContext({ document: doc, Element: FakeElement, location: { href: pageAddress }, history: { replaceState() {} }, navigator: {},
+                                   URLSearchParams, console, addEventListener() {}, Date: FakeDate, sessionStorage: storage(), stop() {},
+                                   setTimeout: (fn, ms = 0) => { ownTimers.set(++count, { fn, ms }); return count; }, clearTimeout: id => { ownTimers.delete(id); } });
+    ctx.window = ctx;
+    vm.runInContext(readFileSync(new URL('../public/assets/app.js', import.meta.url), 'utf8'), ctx, { filename: 'public/assets/app.js' });
+    const next = () => { const [id, timer] = [...ownTimers][0] ?? []; if (id === undefined) return null; ownTimers.delete(id); timer.fn(); return timer.ms; };
+    return { html, ownTimers, next, state: () => JSON.stringify({ html: [...html.classes], timers: [...ownTimers.values()].map(t => t.ms) }) };
+  };
+  const soon = arriving(100);
+  check('a page that comes 0.1 s after the waiting page appeared keeps it 0.4 s more, so it is up 0.5 s',
+        [...soon.ownTimers.values()].map(t => t.ms).join() === '400' && !soon.html.classes.has('is-arrived'), soon.state());
+  soon.next();
+  check('then fades it out', soon.html.classes.has('is-arrived') && soon.html.classes.has('is-arriving'), soon.state());
+  check('and takes it away once the fade is over, 0.25 s later', soon.next() === 250 && !soon.html.classes.has('is-arrived') && !soon.html.classes.has('is-arriving'), soon.state());
+  const late = arriving(1500);
+  check('a page that comes after more than 0.5 s fades it out at once', [...late.ownTimers.values()].map(t => t.ms).join() === '0', late.state());
+  // A waiting page drawn without its button must not stop the rest of app.js:
+  // the fade above is set up after the button is looked for.
+  let buttonless;
+  try { buttonless = arriving(1500, clock, { withCancel: false }); } catch (error) { buttonless = { error: String(error) }; }
+  check('a waiting page without „Abbrechen" stops nothing else the script does', !buttonless.error && buttonless.ownTimers.size === 1,
+        buttonless.error ?? buttonless.state());
 } catch (error) {
   check('the menu code ran against the stand-in page', false, String(error && error.stack || error));
+}
+
+// wait.js, in the head of the next page: whether it carries the waiting page on.
+const runWaitJs = (item, { broken = false } = {}) => {
+  const html = new FakeElement('html');
+  const listeners = {};
+  const kept = storage();
+  if (item !== undefined) kept.setItem('crmb-wait', item);
+  const sessionStorage = broken ? { getItem() { throw new Error('SecurityError'); }, setItem() { throw new Error('SecurityError'); }, removeItem() { throw new Error('SecurityError'); } } : kept;
+  const ctx = vm.createContext({ document: { documentElement: html }, Date: FakeDate, sessionStorage,
+                                 addEventListener: (type, fn) => { (listeners[type] ??= []).push(fn); } });
+  let threw = null;
+  try { vm.runInContext(readFileSync(new URL('../public/assets/wait.js', import.meta.url), 'utf8'), ctx, { filename: 'public/assets/wait.js' }); }
+  catch (error) { threw = String(error); }
+  return { html, listeners, kept, threw,
+           state: () => JSON.stringify({ html: [...html.classes], since: html.dataset.waitSince ?? null, elapsed: html.style.getPropertyValue('--wait-elapsed'),
+                                         kept: kept.getItem('crmb-wait'), listens: Object.keys(listeners), threw }) };
+};
+try {
+  const carried = runWaitJs(String(clock - 300));
+  check('wait.js: a page whose waiting page appeared 0.3 s ago is carried on from that moment',
+        carried.html.classes.has('is-arriving') && carried.html.dataset.waitSince === String(clock - 300)
+        && carried.html.style.getPropertyValue('--wait-elapsed') === '300ms', carried.state());
+  check('wait.js: and the time is used once', carried.kept.getItem('crmb-wait') === null, carried.state());
+  let skipped = 0;
+  for (const fn of carried.listeners.pagereveal ?? []) { fn({ viewTransition: { skipTransition() { skipped++; } } }); fn({ viewTransition: null }); }
+  check('wait.js: the browser\'s own cross-fade is skipped for this change, and its absence is no error', skipped === 1, carried.state());
+  const none = runWaitJs(undefined);
+  check('wait.js: with nothing kept the page simply appears', none.html.classes.size === 0 && !none.listeners.pagereveal && !none.threw, none.state());
+  for (const [what, item] of [['a time older than 15 s', String(clock - 15000)], ['a time in the future', String(clock + 1000)], ['something that is not a time', 'x']]) {
+    const odd = runWaitJs(item);
+    check(`wait.js: ${what} is not carried on, and is forgotten`, odd.html.classes.size === 0 && odd.kept.getItem('crmb-wait') === null && !odd.threw, odd.state());
+  }
+  const blocked = runWaitJs(String(clock - 300), { broken: true });
+  check('wait.js: without sessionStorage the page simply appears, and nothing is thrown', blocked.html.classes.size === 0 && !blocked.threw, blocked.state());
+} catch (error) {
+  check('wait.js ran against the stand-in head', false, String(error && error.stack || error));
 }
 
 process.stdout.write(JSON.stringify(results));

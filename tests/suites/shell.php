@@ -910,7 +910,9 @@ case_('A tap elsewhere, a swipe and Escape do what they should to an open menu, 
 /* The behaviour itself, run against the real app.js in tests/topbar-menus.mjs:
    the stylesheet can keep the bell still, but only the script closes it. The
    same stand-in page sends a form twice and comes back to it with Back, and
-   taps links of every kind while the next page is slow to come (Part 0.4a). */
+   taps links of every kind while the next page is slow to come (Part 0.4b); a
+   second page and an empty head for wait.js are the next page, carrying the
+   waiting page on. */
 $appJs = (string)file_get_contents(APP_ROOT.'/public/assets/app.js');
 ok(preg_match('/querySelectorAll\(\s*([\'"])\.topbar-menu\1\s*\)/', $appJs) === 1,
    'app.js finds the top bar\'s menus by the class the layout gives them');
@@ -923,7 +925,7 @@ if ($node === '') {
     exec(escapeshellarg($node).' '.escapeshellarg(TEST_ROOT.'/topbar-menus.mjs').' 2>&1', $output, $status);
     $results = json_decode(implode("\n", $output), true);
     ok($status === 0 && is_array($results), 'tests/topbar-menus.mjs ran'.($status === 0 && is_array($results) ? '' : ': '.implode("\n", $output)));
-    ok(is_array($results) && count($results) >= 46, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
+    ok(is_array($results) && count($results) >= 72, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
     foreach (is_array($results) ? $results : [] as $result)
         ok($result['pass'] === true, $result['what'].($result['pass'] ? '' : ' — '.$result['detail']));
 }
@@ -966,7 +968,7 @@ foreach (['the administrator' => $admin, 'a family' => $family] as $who => $acco
     sign_in_as($accountId);
     preg_match_all('~\b(?:href|src)="([^"]*/assets/([^"?]+)[^"]*)"~', shell_page('dashboard'), $linked, PREG_SET_ORDER);
     $names = array_column($linked, 2);
-    foreach (['app.css', 'app.js'] as $needed) ok(in_array($needed, $names, true), 'the page drawn for '.$who.' links '.$needed);
+    foreach (['app.css', 'wait.js', 'app.js'] as $needed) ok(in_array($needed, $names, true), 'the page drawn for '.$who.' links '.$needed);
     foreach ($linked as [, $address, $name])
         is_same(e(asset_url($name)), $address, $name.' is linked for '.$who.' at the address of its bytes');
 }
@@ -1019,30 +1021,57 @@ run('UPDATE accounts SET theme=? WHERE id=?', ['auto', $family]);
 sign_out();
 is_same(['light dark'], $declared(render_page('login')), 'signed out, the sign-in page follows the device');
 
-case_('A slow page keeps the tap pressed and shows a shuttle on the bar, never in the way');
-/* Part 0.4a. What app.js does with it is checked against the stand-in page
-   above (tests/topbar-menus.mjs); here, what it reaches for in the layout and
-   what the stylesheet draws. The template is inert, so without JavaScript
-   nothing of it is drawn; the status line is beside the lane, not in it, so a
-   screen reader has it before it has anything to say. */
-$waitTemplate = function (string $html): array {
+case_('A slow page keeps the tap pressed and shows the waiting page, which the next page carries on');
+/* Part 0.4b. What app.js and wait.js do is checked against the stand-in page
+   above (tests/topbar-menus.mjs), and in a real browser by tests/e2e.sh; here,
+   what they reach for in the layout and what the stylesheet draws. The waiting
+   page is hidden, so without JavaScript - or without the stylesheet - nothing of
+   it shows; the status line is outside it, so a screen reader has it before it
+   has anything to say. */
+$waitParts = function (string $html): array {
     $dom = new DOMDocument();
     $quiet = libxml_use_internal_errors(true);
     $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
     libxml_clear_errors(); libxml_use_internal_errors($quiet);
     $x = new DOMXPath($dom);
-    $templates = $x->query('//body/template[@id="page-wait"]');
-    $template = $templates->item(0);
-    $said = $template ? $x->query('./span[@role="status"]', $template)->item(0) : null;
-    return ['count' => $templates->length,
-            'shuttle' => $template ? $x->query('./div[@class="page-wait"]/span[@class="page-wait-flight"]/*[local-name()="svg" and @class="glyph-shuttle"]', $template)->length : 0,
-            'said' => $said ? [$said->getAttribute('class'), $said->getAttribute('data-text'), trim($said->textContent)] : null];
+    $has = fn(string $class) => 'contains(concat(" ", normalize-space(@class), " "), " '.$class.' ")';
+    $pages = $x->query('//*['.$has('wait-page').']');
+    $wait = $pages->item(0);
+    // Without a waiting page, asked of <html>, whose children are only head and body.
+    $in = fn(string $path) => $x->query($path, $wait ?? $dom->documentElement);
+    $button = $in('./p['.$has('wait-slow').']/button['.$has('wait-cancel').']')->item(0);
+    $said = $x->query('//*['.$has('wait-said').']')->item(0);
+    return [
+        'count' => $pages->length,
+        'where' => $wait ? $wait->parentNode->nodeName.($wait->hasAttribute('hidden') ? ', hidden' : ', shown') : null,
+        'stage' => $in('./div['.$has('wait-stage').' and @aria-hidden="true"]/span['.$has('wait-net').']/following-sibling::*[local-name()="svg" and @class="glyph-shuttle"]')->length,
+        'name' => trim((string)$in('./p['.$has('wait-name').' and @aria-hidden="true"]')->item(0)?->textContent),
+        'slow' => [trim((string)$in('./p['.$has('wait-slow').']/span')->item(0)?->textContent), $button?->getAttribute('type'), trim((string)$button?->textContent)],
+        'said' => $said ? [$said->parentNode->nodeName, $said->getAttribute('role'), $said->getAttribute('class'), $said->getAttribute('data-text'), $said->getAttribute('data-slow'), trim($said->textContent)] : null,
+    ];
+};
+set_setting('club_name', 'Badmintonschule Probe');
+sign_in_as($family);
+$expected = ['count' => 1, 'where' => 'body, hidden', 'stage' => 1, 'name' => 'Badmintonschule Probe',
+             'slow' => ['Dauert länger als sonst.', 'button', 'Abbrechen'],
+             'said' => ['body', 'status', 'visually-hidden wait-said', 'Wird geladen …', 'Dauert länger als sonst.', '']];
+is_same($expected, $waitParts(render_page('dashboard')), 'a signed-in page carries the waiting page once, hidden, with the club\'s name, and its status line beside it');
+sign_out();
+is_same($expected, $waitParts(render_page('login')), 'and so does the sign-in page');
+
+/* wait.js marks <html> before the first paint, so it is in <head> and runs
+   where it stands: deferred, or run whenever it arrives, the page would be drawn
+   once without the waiting page and then with it - the cut it is there to
+   prevent. app.js, which reads the mark, comes after it. */
+$headScripts = function (string $html): array {
+    preg_match_all('~<script\b([^>]*)>~', explode('</head>', $html, 2)[0], $tags, PREG_SET_ORDER);
+    return array_map(fn(array $tag) => (preg_match('~\bsrc="[^"]*/assets/([^"?]+)~', $tag[1], $m) ? $m[1] : '?')
+        .(preg_match('~\s(defer|async)\b|type="module"~', $tag[1], $late) ? ' '.trim($late[0]) : ''), $tags);
 };
 sign_in_as($family);
-$expected = ['count' => 1, 'shuttle' => 1, 'said' => ['visually-hidden', 'Wird geladen …', '']];
-is_same($expected, $waitTemplate(render_page('dashboard')), 'a signed-in page carries the shuttle and its status line once, as a template');
+is_same(['wait.js', 'app.js defer'], $headScripts(render_page('dashboard')), 'wait.js is in the head and runs where it stands, before app.js');
 sign_out();
-is_same($expected, $waitTemplate(render_page('login')), 'and so does the sign-in page');
+is_same(['wait.js', 'app.js defer'], $headScripts(render_page('login')), 'on the sign-in page too');
 
 $css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
 /* Every pressed look has a twin that holds it until the next page is there,
@@ -1059,8 +1088,78 @@ ok(count($pressed) >= 19, 'the pressed looks are read ('.count($pressed).')');
 is_same([], $untwinned, 'and each is held by .is-pending in the same rule');
 $at = fn(string $selector, string $property, string $media = '') => array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'),
     fn($r) => $r['property'] === $property && $r['media'] === $media), 'value');
-is_same(['none'], $at('.page-wait', 'display'), 'the lane is not drawn until the script turns it on');
-is_same(['block'], $at('.page-wait.is-on', 'display'), 'and is drawn once it is');
-is_same(['none'], $at('.page-wait', 'pointer-events'), 'nothing under it is ever kept from a tap');
-is_same(['none'], $at('.page-wait-flight', 'animation', '@media(prefers-reduced-motion:reduce)'), 'with reduced motion the shuttle does not fly');
-is_same(['none'], $at('.page-wait', 'display', '@media print'), 'and it is never printed');
+
+/* [hidden] is display:none!important; one rule gets past it, and only on a
+   screen: it outranks the print list, so a page printed while waiting would
+   have had the waiting page over every sheet. */
+$shownBy = array_map(fn($r) => [$r['media'], $r['selector'], $r['value'], $r['important']],
+    array_filter(css_matching($css, '/\.wait-page(\[hidden\])?$/'), fn($r) => $r['property'] === 'display'));
+is_same([['@media screen', 'html:is(.is-waiting,.is-arriving) .wait-page[hidden]', 'flex', true]], array_values($shownBy),
+        'the waiting page is drawn only while a page is awaited or carried on, and only on a screen');
+is_same([['fixed', '0', 'var(--bg)']], [[...$at('.wait-page', 'position'), ...$at('.wait-page', 'inset'), ...$at('.wait-page', 'background')]],
+        'over the whole screen, on the page\'s own ground');
+$layers = array_map('intval', array_column(array_filter($css, fn($r) => $r['property'] === 'z-index' && $r['selector'] !== '.wait-page'), 'value'));
+ok(count($layers) > 3 && (int)($at('.wait-page', 'z-index')[0] ?? 0) > max($layers), 'and above every bar and panel ('.implode(', ', $at('.wait-page', 'z-index')).' over at most '.max($layers ?: [0]).')');
+
+/* The animations, one by one: name, duration and delay as written. Split at
+   the spaces outside brackets, so a delay of calc(-1 * var(…)) stays one. */
+$animation = function (string $one): array {
+    $parts = css_split_top(trim($one), ' ');
+    $times = array_values(array_filter($parts, fn($p) => preg_match('/^(-?[\d.]+m?s|calc\(.*\))$/', $p)));
+    $name = array_values(array_filter($parts, fn($p) => !in_array($p, $times, true) && !preg_match('/^(ease(-in|-out|-in-out)?|linear|both|forwards|backwards|none|infinite|alternate|cubic-bezier\(.*\))$/', $p)))[0] ?? '';
+    return ['name' => $name, 'duration' => $times[0] ?? '', 'delay' => $times[1] ?? '', 'fill' => array_values(array_intersect($parts, ['both', 'forwards']))[0] ?? ''];
+};
+$animations = fn(string $selector, string $media = '') => array_map($animation, css_split_top(implode(',', $at($selector, 'animation', $media)), ','));
+$ms = fn(string $time) => (int)round(str_ends_with($time, 'ms') ? (float)$time : (float)$time * 1000);
+$ends = fn(string $keyframes) => array_column(array_filter($css, fn($r) => $r['media'] === '@keyframes '.$keyframes && $r['selector'] === 'to'), 'value', 'property');
+$arriving = $animations('html.is-arriving .wait-page');
+$arrived = $animations('html.is-arrived .wait-page');
+$fadeIn = $animations('.wait-page')[0] ?? [];
+
+/* Should app.js never come, the next page takes it away by itself: a waiting
+   page that stayed would hold the whole screen, and every tap with it. */
+$byItself = array_values(array_filter($arriving, fn($a) => $a['delay'] === '2s'))[0] ?? null;
+ok($byItself !== null && in_array($byItself['fill'], ['forwards', 'both'], true), 'carried on, it fades out by itself 2 s after the page is drawn, and stays faded ('.json_encode($arriving).')');
+is_same(['opacity' => '0', 'visibility' => 'hidden'], $byItself ? $ends($byItself['name']) : [], 'ending invisible, and letting every tap through to the page');
+/* The fade once app.js says the page is ready has a name of its own: a
+   running animation keeps its clock when only its delay changes, so the same
+   name would have jumped to the end of a fade already some way into its 2 s. */
+$ready = $arrived[0] ?? null;
+ok($ready !== null && count($arrived) === 1 && !in_array($ready['name'], array_column($arriving, 'name'), true),
+   'once the page is ready it fades out under a name the carried-on page does not already run ('.json_encode($arrived).')');
+is_same(['opacity' => '0', 'visibility' => 'hidden'], $ready ? $ends($ready['name']) : [], 'and ends invisible too');
+
+/* app.js times what the stylesheet animates: the two must stay in step. */
+$appJs = (string)file_get_contents(APP_ROOT.'/public/assets/app.js');
+$constant = fn(string $name) => preg_match('/\b'.$name.'\s*=\s*(\d+)/', $appJs, $m) ? (int)$m[1] : null;
+is_same(500, $constant('WAIT_AFTER'), 'it waits 0.5 s for the page before it shows');
+is_same($ready ? $ms($ready['duration']) : null, $constant('WAIT_FADE_OUT'), 'app.js takes it away when its fade-out is over');
+is_same('wait-in', $fadeIn['name'] ?? null, 'it fades in');
+ok(($constant('WAIT_SHOWN_AT_LEAST') ?? 0) - $ms($fadeIn['duration'] ?? '0s') >= 300,
+   'and is fully there at least 0.3 s, so it never blinks ('.$constant('WAIT_SHOWN_AT_LEAST').' ms in all, '.($fadeIn['duration'] ?? '?').' of it fading in)');
+ok(($constant('WAIT_SHOWN_AT_LEAST') ?? 0) + ($constant('WAIT_FADE_OUT') ?? 0) >= 750, 'so it is never on screen under 0.75 s, its fade-out included');
+
+/* Reduce Motion: the shuttle rests and only brightens and fades. */
+$still = '@media(prefers-reduced-motion:reduce)';
+is_same(['none'], $at('.wait-stage', 'animation', $still), 'with Reduce Motion the scene does not settle');
+$resting = $at('.wait-stage .glyph-shuttle', 'animation', $still);
+ok(count($resting) === 1 && !str_contains($resting[0], 'rally') && $at('.wait-stage .glyph-shuttle', 'offset-distance', $still) !== [],
+   'and the shuttle does not fly: it rests on its path ('.implode(' ', $resting).')');
+
+/* The next page carries the scene on from where it had got to, so nothing in it
+   starts again at the change of page: every animation of the waiting page, the
+   stage and the shuttle - with Reduce Motion too - is delayed by the time already
+   waited, which wait.js hands on. The pulse was not, and with Reduce Motion the
+   shuttle jumped from bright to faint in one frame (mobile-tester, 2026-10-08).
+   The fades that end it invisible are the next page's own, from when it is ready. */
+$scene = array_filter($css, fn($r) => $r['property'] === 'animation' && preg_match('/(^|\s)\.wait-(page|stage)( \.glyph-shuttle)?$/', $r['selector']) === 1);
+$carried = []; $startingOver = [];
+foreach ($scene as $r)
+    foreach (css_split_top($r['value'], ',') as $one) {
+        $a = $animation($one);
+        if ($a['name'] === '' || ($ends($a['name'])['visibility'] ?? '') === 'hidden') continue;
+        $carried[$a['name']] = true;
+        if ($a['delay'] !== 'calc(-1 * var(--wait-elapsed,0ms))') $startingOver[] = $r['selector'].($r['media'] !== '' ? ' '.$r['media'] : '').': '.trim($one);
+    }
+ok(count($carried) >= 4, 'the scene\'s animations are read ('.implode(', ', array_keys($carried)).')');
+is_same([], $startingOver, 'and each goes on from the moment the waiting page appeared, Reduce Motion\'s pulse included');

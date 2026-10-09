@@ -9,7 +9,9 @@
  * CRM_E2E_* variables. On its own this file has nothing to talk to.
  *
  * What it walks, through the real forms and buttons, as she and a family would:
- *   1. public/setup.php, then signing in lands on „Dein Portal einrichten“, 0 of 9
+ *   1. public/setup.php, then signing in lands on „Dein Portal einrichten“, 0 of 9;
+ *      then a page held back on its way: the waiting page, carried on by the next
+ *      page without a gap, „Abbrechen“, Reduce Motion, no app.js (Part 0.4b)
  *   2. each of the nine steps from its own button, back via „Zurück zur
  *      Einrichtung“, and the tick after each, up to 9 of 9 and „Alles eingerichtet“
  *   3. the family: invitation link from the captured mail, password, dashboard,
@@ -361,6 +363,207 @@ step('admin signs in', async ({ browser }) => {
     await signOut(page);
     await signIn(page, ADMIN);
     ok(label(page.url()) === '?page=start', 'signing in again lands on the checklist again', page.url());
+});
+
+/* What every page of the slow-page step records from its first moment, kept in
+   sessionStorage so it outlives the change of page: at each animation frame the
+   waiting page's display, visibility and opacity, the classes on <html>, where
+   the shuttle is and what is pressed; and when the tap came, when the page went,
+   and whether the browser's own cross-fade ran. */
+const WAIT_PROBE = `(() => {
+    const now = () => performance.timeOrigin + performance.now();
+    const page = new URLSearchParams(location.search).get('page') || '';
+    const log = e => { try { const a = JSON.parse(sessionStorage.getItem('e2e-probe') || '[]'); a.push(Object.assign({ t: now(), page }, e)); sessionStorage.setItem('e2e-probe', JSON.stringify(a)); } catch (x) {} };
+    let last = '';
+    const frame = () => {
+        const w = document.querySelector('.wait-page');
+        if (w) {
+            const s = getComputedStyle(w), r = w.querySelector('.glyph-shuttle')?.getBoundingClientRect();
+            const focused = document.activeElement;
+            const e = { o: +s.opacity, d: s.display, v: s.visibility, c: document.documentElement.className, slow: w.classList.contains('is-slow'),
+                        pending: document.querySelectorAll('.is-pending').length, at: r ? Math.round(r.left) + ',' + Math.round(r.top) : '',
+                        said: document.querySelector('.wait-said')?.textContent || '',
+                        focus: !focused ? '' : focused.classList.contains('wait-cancel') ? 'Abbrechen' : focused.tagName + (focused.getAttribute('href') || '') };
+            const sig = [e.d, e.v, e.o, e.c, e.pending, e.said, e.focus].join('|');
+            if (e.d !== 'none' || sig !== last) log(e);
+            last = sig;
+        }
+        requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+    addEventListener('click', () => log({ ev: 'tap' }), true);
+    addEventListener('pagehide', () => log({ ev: 'gone' }));
+    addEventListener('pagereveal', e => { if (e.viewTransition) e.viewTransition.ready.then(() => log({ ev: 'cross-fade ran' }), () => log({ ev: 'cross-fade skipped' })); });
+})();`;
+
+step('a slow page', async ({ browser }) => {
+    /* Part 0.4b, on the trainer's own sign-in in sessions of its own: the next
+       page held back on its way (CDP, documents only, so the cache stays on), the
+       tap a real touch, and every frame the screen shows read at two points - on
+       the net, and in the page's margin, where a white frame would show. */
+    const state = await S.admin.ctx.storageState();
+    const decoder = await (await browser.newContext()).newPage();
+    const pixels = (frames, points) => decoder.evaluate(async ({ frames, points }) => {
+        const out = [];
+        for (const data of frames) {
+            const img = new Image(); img.src = 'data:image/png;base64,' + data; await img.decode();
+            const canvas = new OffscreenCanvas(img.width, img.height), g = canvas.getContext('2d');
+            g.drawImage(img, 0, 0);
+            out.push(points.map(([x, y]) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]));
+        }
+        return out;
+    }, { frames, points });
+    const near = (a, b, d) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) <= d;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    /** Students, tapped in the bar, held back `hold` ms; what the pages recorded and the screen showed. */
+    const slowTap = async ({ hold, motion = 'no-preference', cancelAt = 0, withoutAppJs = false, after = 2600, keyboard = false }) => {
+        const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true,
+                                               locale: 'de-AT', reducedMotion: motion, storageState: state });
+        await ctx.addInitScript(WAIT_PROBE);
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(20000);
+        await page.goto(BASE + '/index.php?page=start', { waitUntil: 'load' });
+        await sleep(300);
+        // Where the net, the margin and „Abbrechen" are, and their colours: the waiting page shown for a moment by its classes alone.
+        const spots = await page.evaluate(() => {
+            const html = document.documentElement, wait = document.querySelector('.wait-page');
+            html.classList.add('is-waiting'); wait.classList.add('is-slow');
+            const net = document.querySelector('.wait-net').getBoundingClientRect(), cancel = document.querySelector('.wait-cancel').getBoundingClientRect();
+            const spots = { net: [Math.round(net.left + net.width / 2 - 0.5), Math.round(net.top + net.height / 2)], margin: [3, 600],
+                            netColour: getComputedStyle(document.querySelector('.wait-net')).backgroundColor, ground: getComputedStyle(document.body).backgroundColor,
+                            cancel: { x: cancel.left + cancel.width / 2, y: cancel.top + cancel.height / 2 } };
+            html.classList.remove('is-waiting'); wait.classList.remove('is-slow'); sessionStorage.clear();
+            return spots;
+        });
+        const cdp = await ctx.newCDPSession(page);
+        const frames = [];
+        cdp.on('Page.screencastFrame', f => { frames.push({ t: f.metadata.timestamp * 1000, data: f.data }); cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {}); });
+        const patterns = [{ urlPattern: '*page=students*', resourceType: 'Document', requestStage: 'Request' }];
+        if (withoutAppJs) { await cdp.send('Network.enable'); await cdp.send('Network.setCacheDisabled', { cacheDisabled: true }); patterns.push({ urlPattern: '*/assets/app.js*', resourceType: 'Script', requestStage: 'Request' }); }
+        await cdp.send('Fetch.enable', { patterns });
+        cdp.on('Fetch.requestPaused', async e => {
+            if (e.resourceType === 'Script') return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'BlockedByClient' }).catch(() => {});
+            await sleep(hold);
+            await cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {});   // refused once „Abbrechen" has stopped it
+        });
+        await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
+        const link = page.locator('.mobile-nav a[href*="page=students"]').first();
+        const box = await link.boundingBox();
+        const touch = async (x, y) => {
+            await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+            await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        };
+        // Enter on whatever has focus, as a keyboard or VoiceOver acts.
+        const enter = async () => {
+            for (const type of ['keyDown', 'keyUp'])
+                await cdp.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
+        };
+        if (keyboard) { await link.focus(); await enter(); }
+        else await touch(box.x + box.width / 2, box.y + box.height / 2);
+        // Only a touch or a key while the page is on its way: evaluate() waits for a pending navigation.
+        if (cancelAt) { await sleep(cancelAt); if (keyboard) await enter(); else await touch(spots.cancel.x, spots.cancel.y); }
+        await sleep(cancelAt ? after : hold + after);
+        await cdp.send('Page.stopScreencast').catch(() => {});
+        await page.waitForLoadState('load').catch(() => {});
+        const end = await page.evaluate(() => {
+            const wait = document.querySelector('.wait-page'), s = getComputedStyle(wait), mid = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+            const focused = document.activeElement;
+            return { page: new URLSearchParams(location.search).get('page'), html: document.documentElement.className, stored: sessionStorage.getItem('crmb-wait'),
+                     pending: document.querySelectorAll('.is-pending').length, said: document.querySelector('.wait-said').textContent,
+                     focus: !focused ? '' : focused.classList.contains('wait-cancel') ? 'Abbrechen' : focused.tagName + (focused.getAttribute('href') || ''),
+                     d: s.display, o: +s.opacity, v: s.visibility, tapReachesPage: !!mid && !wait.contains(mid), probe: JSON.parse(sessionStorage.getItem('e2e-probe') || '[]') };
+        });
+        await ctx.close();
+        const probe = end.probe, tap = probe.find(e => e.ev === 'tap')?.t ?? 0, since = t => Math.round(t - tap);
+        const samples = probe.filter(e => e.d !== undefined && e.t >= tap);
+        const shown = samples.find(e => e.d !== 'none' && e.o > 0);
+        const gone = probe.find(e => e.ev === 'gone');
+        const firstNew = samples.find(e => e.page === 'students');
+        const fading = samples.find(e => /\bis-arrived\b/.test(e.c));
+        const hidden = shown && samples.find(e => e.t > shown.t && (e.d === 'none' || e.o === 0 || e.v === 'hidden'));
+        const seen = frames.filter(f => f.t >= tap);
+        const read = seen.length ? await pixels(seen.map(f => f.data), [spots.net, spots.margin]) : [];
+        const netColour = spots.netColour.match(/\d+/g).slice(0, 3).map(Number), ground = spots.ground.match(/\d+/g).slice(0, 3).map(Number);
+        // Up to its fade-out; without one, until the next page has been there 0.2 s, or „Abbrechen“.
+        const until = fading ? fading.t : Math.min(firstNew ? firstNew.t + 200 : Infinity, cancelAt ? tap + cancelAt : Infinity);
+        const gaps = [], white = [];
+        seen.forEach((f, i) => {
+            if (shown && f.t > shown.t + 300 && f.t < until && !near(read[i][0], netColour, 30)) gaps.push(since(f.t));
+            if (!near(read[i][1], ground, 24)) white.push(since(f.t) + ' ms: ' + read[i][1].join(','));
+        });
+        return { end, samples, shown: shown && since(shown.t), gone: gone && since(gone.t), firstNew, fading: fading && since(fading.t), fadeFrom: fading?.o,
+                 hidden: hidden && since(hidden.t), onScreen: shown && hidden ? Math.round(hidden.t - shown.t) : null, frames: seen.length, gaps, white,
+                 slowLine: samples.find(e => e.slow) && since(samples.find(e => e.slow).t), said: [...new Set(samples.map(e => e.said).filter(Boolean))],
+                 pressedAtOnce: samples.some(e => e.pending > 0 && e.t - tap < 400), places: new Set(samples.filter(e => e.d !== 'none' && e.at).map(e => e.at)).size,
+                 focusedAbbrechen: samples.find(e => e.focus === 'Abbrechen') && since(samples.find(e => e.focus === 'Abbrechen').t),
+                 focusBefore: [...samples].reverse().find(e => e.focus !== 'Abbrechen' && samples.some(f => f.focus === 'Abbrechen' && f.t > e.t))?.focus,
+                 crossFade: probe.filter(e => /^cross-fade/.test(e.ev || '')).map(e => e.ev.slice(11)) };
+    };
+    const say = (what, r) => console.log(`   ${what}: shown ${r.shown ?? 'never'}${r.firstNew ? `, next page's first frame at ${r.firstNew.o.toFixed(2)}` : ''}`
+        + `${r.fading != null ? `, faded from ${r.fadeFrom?.toFixed(2)} at ${r.fading}` : ''}${r.onScreen != null ? `, ${r.onScreen} ms on screen` : ''}`
+        + `, ${r.gaps.length} gaps and ${r.white.length} white in ${r.frames} frames${r.crossFade.length ? ', cross-fade ' + r.crossFade[0] : ''}`);
+    const brief = r => JSON.stringify({ shown: r.shown, gone: r.gone, firstNew: r.firstNew && [Math.round(r.firstNew.o * 100) / 100, r.firstNew.d, r.firstNew.c],
+                                        fading: r.fading, fadeFrom: r.fadeFrom, hidden: r.hidden, onScreen: r.onScreen, frames: r.frames, gaps: r.gaps.slice(0, 5),
+                                        white: r.white.slice(0, 3), crossFade: r.crossFade, end: { ...r.end, probe: undefined } });
+
+    // A page that comes at once: as before, with the browser's own cross-fade.
+    const fast = await slowTap({ hold: 0, after: 1200 });
+    say('held 0 s', fast);
+    if (fast.gone !== undefined && fast.gone < 450) {
+        ok(fast.shown === null || fast.shown === undefined, 'a page that comes within 0.5 s shows no waiting page', brief(fast));
+        if (fast.crossFade.length) ok(fast.crossFade[0] === 'ran', 'and keeps the browser\'s own cross-fade', brief(fast));
+    } else note(false, 'the page held back 0 ms came within 0.45 s, so a quick page could be judged', brief(fast));
+
+    // Held 1.2 s: pressed at once, the waiting page after 0.5 s, carried on by the next page and faded out by it.
+    const slow = await slowTap({ hold: 1200 });
+    say('held 1.2 s', slow);
+    ok(slow.pressedAtOnce, 'a slow page: the tapped link is pressed at once', brief(slow));
+    ok(slow.shown >= 480 && slow.shown <= 900, 'the waiting page shows once the page has not come after 0.5 s', brief(slow));
+    ok(slow.said[0] === 'Wird geladen …', 'and says „Wird geladen …“', brief(slow));
+    ok(slow.firstNew && slow.firstNew.d === 'flex' && slow.firstNew.o >= 0.95 && /\bis-arriving\b/.test(slow.firstNew.c),
+       'the next page carries it on: its first frame shows the waiting page, fully there', brief(slow));
+    ok(slow.frames > 10 && slow.gaps.length === 0, 'no frame across the change of page is without it', brief(slow));
+    ok(slow.white.length === 0, 'and no frame is anything but the page\'s own ground in its margin', brief(slow));
+    ok(slow.fadeFrom >= 0.9 && slow.hidden - slow.fading >= 150, 'it fades out from fully there, not cut', brief(slow));
+    ok(slow.end.page === 'students' && slow.end.d === 'none' && !/\bis-(waiting|arriving|arrived)\b/.test(slow.end.html) && slow.end.stored === null && slow.end.pending === 0,
+       'and then nothing of it is left: not shown, not kept, nothing pressed', brief(slow));
+    if (slow.crossFade.length) ok(slow.crossFade[0] === 'skipped', 'the browser\'s own cross-fade is skipped, so no second shuttle fades in', brief(slow));
+    ok(slow.places > 5, 'the shuttle flies', brief(slow) + ' places ' + slow.places);
+
+    // Held just past the 0.5 s: never on screen for less than about 0.75 s, and still a fade.
+    const justSlow = await slowTap({ hold: 650 });
+    say('held 0.65 s', justSlow);
+    ok(justSlow.onScreen >= 700, 'a page that comes just after 0.5 s keeps the waiting page up 0.5 s and fades it, about 0.75 s in all', brief(justSlow));
+    ok(justSlow.fadeFrom >= 0.9 && justSlow.hidden - justSlow.fading >= 150, 'its fade-out starts from fully there too', brief(justSlow));
+
+    // Reduce Motion: the shuttle rests; the page is carried on all the same.
+    const still = await slowTap({ hold: 1200, motion: 'reduce' });
+    say('Reduce Motion', still);
+    ok(still.shown >= 480 && still.places === 1, 'with Reduce Motion the shuttle does not fly', brief(still) + ' places ' + still.places);
+    ok(still.firstNew && still.firstNew.o >= 0.95 && still.gaps.length === 0, 'and the waiting page is carried on all the same', brief(still));
+
+    // Without app.js on the next page, the waiting page goes by itself and lets every tap through.
+    const stuck = await slowTap({ hold: 600, withoutAppJs: true, after: 3200 });
+    say('without app.js', stuck);
+    ok(stuck.firstNew && /\bis-arriving\b/.test(stuck.firstNew.c) && stuck.end.page === 'students' && !/\bjs\b/.test(stuck.end.html),
+       'a next page whose app.js never comes still carries the waiting page on', brief(stuck));
+    ok(stuck.end.o === 0 && stuck.end.v === 'hidden' && stuck.end.tapReachesPage, 'and within 2.3 s it is gone by itself, a tap reaching the page under it', brief(stuck));
+
+    // Held 10 s: 6 s after it appeared it says so and offers „Abbrechen“, which stops the page and leaves this one as it was.
+    // By the keyboard, as VoiceOver goes: Enter on the link, and Enter again once focus is on „Abbrechen“ - so focus
+    // was somewhere before, and has somewhere to come back to.
+    const cancelled = await slowTap({ hold: 10000, cancelAt: 7500, after: 3200, keyboard: true });
+    say('„Abbrechen“ at 7.5 s', cancelled);
+    ok(cancelled.slowLine >= cancelled.shown + 5950 && cancelled.slowLine < 7500 && cancelled.said.includes('Dauert länger als sonst.'),
+       'a page that takes over 6 s more: „Dauert länger als sonst.“ and „Abbrechen“', brief(cancelled) + ' line at ' + cancelled.slowLine);
+    ok(cancelled.focusedAbbrechen >= cancelled.slowLine && cancelled.focusedAbbrechen < cancelled.slowLine + 200,
+       'focus goes to „Abbrechen“ with the line, and not before', brief(cancelled) + ` focus at ${cancelled.focusedAbbrechen}, line at ${cancelled.slowLine}`);
+    ok(cancelled.end.page === 'start' && cancelled.end.d === 'none' && !/\bis-waiting\b/.test(cancelled.end.html) && cancelled.end.stored === null
+       && cancelled.end.pending === 0 && cancelled.end.said === '', '„Abbrechen“ stops it and puts the page back as it was, for good', brief(cancelled));
+    ok(cancelled.focusBefore !== undefined && cancelled.focusBefore !== 'BODY' && cancelled.end.focus === cancelled.focusBefore,
+       'with focus back where it was, on the link activated', `before ${cancelled.focusBefore}, after ${cancelled.end.focus}`);
+    await decoder.context().close();
 });
 
 step('1 organisation', async () => {

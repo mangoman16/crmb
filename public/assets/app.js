@@ -64,27 +64,66 @@ document.querySelectorAll('form[method="post"]').forEach(form => {
     }, 0);
   });
 });
-// A page that is slow to come (Part 0.4a): the link that was tapped stays
-// pressed, as an iPhone keeps a tapped row lit until the next screen is in, and
-// if the page has not come after 0.7 s a shuttle flies along the bottom of the
-// bar - in the home-screen app no browser bar says a page is loading. Nothing
-// waits for it, so no page is slower. A form that sends has its button's
-// spinner instead (above): the two never show for one tap.
-const waitParts = document.getElementById('page-wait')?.content.cloneNode(true);
-const wait = waitParts?.querySelector('.page-wait');
-const waitSaid = waitParts?.querySelector('[role="status"]');
-if (wait) { (document.querySelector('.topbar') || document.body).append(wait); document.body.append(waitSaid); }
-let waitTimer = 0;
+// The waiting page (Part 0.4b). A tap that leaves for another page keeps its pressed
+// look, as an iPhone keeps a tapped row lit until the next screen is in; if the page
+// has not come after 0.5 s, the waiting page fades in - the club's name, and a
+// shuttle rallying over a net - and stays at least 0.5 s, its fade-in included, so
+// it never blinks. The next page carries it on (wait.js) and fades it out. After 6 s
+// it says it is taking longer and offers „Abbrechen": in the home-screen app nothing
+// else stops a page that does not come. A form that sends has its button's spinner
+// instead (above): the two never show for one tap.
+// In step with app.css: WAIT_SHOWN_AT_LEAST is wait-in's 0.2 s and 0.3 s fully
+// shown; WAIT_FADE_OUT is wait-out's 0.25 s.
+const WAIT_AFTER = 500, WAIT_SHOWN_AT_LEAST = 500, WAIT_FADE_OUT = 250, WAIT_SLOW = 6000;
+const root = document.documentElement;
+const waitPage = document.querySelector('.wait-page');
+const waitSaid = document.querySelector('.wait-said');
+const waitCancel = waitPage?.querySelector('.wait-cancel');
+let waitTimer = 0, slowTimer = 0, focusBefore = null;
+const showWait = () => {
+  // A waiting page that is up carries on - past a second Enter in a search field,
+  // or a link reached behind it - with its one slow line 6 s after it appeared. A
+  // second would take „Abbrechen", by then focused, for where focus was.
+  if (!waitPage || root.classList.contains('is-waiting')) return;
+  try { sessionStorage.setItem('crmb-wait', String(Date.now())); } catch (error) { /* the next page appears as usual */ }
+  root.style.setProperty('--wait-elapsed', '0ms');
+  root.classList.add('is-waiting');
+  waitSaid.textContent = waitSaid.dataset.text;
+  slowTimer = window.setTimeout(() => {
+    waitPage.classList.add('is-slow');
+    waitSaid.textContent = waitSaid.dataset.slow;
+    // „Abbrechen" is all there is to do now, so focus goes to it, and a keyboard
+    // or VoiceOver need not look for it behind the whole page. Only then, never
+    // sooner; „Abbrechen" gives focus back to where it was.
+    focusBefore = document.activeElement;
+    waitCancel?.focus();
+  }, WAIT_SLOW);
+};
 const leaving = pressed => {
   document.querySelectorAll('.is-pending').forEach(el => el.classList.remove('is-pending'));
   pressed?.classList.add('is-pending');
   window.clearTimeout(waitTimer);
-  waitTimer = window.setTimeout(() => {
-    if (!wait) return;
-    wait.classList.add('is-on');
-    waitSaid.textContent = waitSaid.dataset.text;
-  }, 700);
+  waitTimer = window.setTimeout(showWait, WAIT_AFTER);
 };
+const stay = () => {
+  const hadFocus = waitPage?.contains(document.activeElement);
+  window.clearTimeout(waitTimer); window.clearTimeout(slowTimer);
+  if (hadFocus) focusBefore?.focus?.();
+  focusBefore = null;
+  root.classList.remove('is-waiting');
+  waitPage?.classList.remove('is-slow');
+  if (waitSaid) waitSaid.textContent = '';
+  try { sessionStorage.removeItem('crmb-wait'); } catch (error) { /* nothing was stored */ }
+  document.querySelectorAll('.is-pending').forEach(el => el.classList.remove('is-pending'));
+};
+waitCancel?.addEventListener('click', () => { window.stop(); stay(); });
+if (root.classList.contains('is-arriving')) {
+  const rest = Math.max(0, Number(root.dataset.waitSince) + WAIT_SHOWN_AT_LEAST - Date.now());
+  window.setTimeout(() => {
+    root.classList.add('is-arrived');
+    window.setTimeout(() => root.classList.remove('is-arriving', 'is-arrived'), WAIT_FADE_OUT);
+  }, rest);
+}
 document.addEventListener('click', event => {
   const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
   if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -109,10 +148,7 @@ document.addEventListener('submit', event => {
 // sending or leaving.
 window.addEventListener('pageshow', event => {
   if (!event.persisted) return;
-  window.clearTimeout(waitTimer);
-  wait?.classList.remove('is-on');
-  if (waitSaid) waitSaid.textContent = '';
-  document.querySelectorAll('.is-pending').forEach(el => el.classList.remove('is-pending'));
+  stay();
   document.querySelectorAll('form[data-submitted]').forEach(form => {
     delete form.dataset.submitted;
     form.querySelectorAll('[data-sending-off]').forEach(button => { button.disabled = false; delete button.dataset.sendingOff; });

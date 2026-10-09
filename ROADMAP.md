@@ -107,15 +107,13 @@ In this order.
 9. **Pictures and a calmer start (owner, 2026-10-08).**
    - **No white flash in dark mode: built.** Every page, the installer and the error page say
      light or dark before their stylesheet; not yet seen on an iPhone (TESTING.md I.12).
-   - **Waiting for a page, and the shuttlecock mark: built.** A slow page keeps the tapped
-     link pressed, and after 0.7 s a shuttlecock flies along the bar; the shuttlecock is the
-     mark and the home-screen icon where a club has uploaded none (design document, „Part 0,
-     continued"). Not yet seen on an iPhone or an Android phone (TESTING.md W.1–W.5).
-   - **A full waiting page instead of the shuttle along the bar** (owner, later on
-     2026-10-08): specified by ui-ux-designer (Part 0.4b), being built. A page slower than
-     0.5 s gets the whole screen with a shuttlecock rallying over a net and the club's name,
-     shown at least 0.5 s, carried on by the next page and faded out; after 6 s „Dauert
-     länger als sonst." with „Abbrechen".
+   - **Waiting for a page, and the shuttlecock mark: built.** A page slower than 0.5 s gets
+     a waiting page over the whole screen, the portal's name under a net with a shuttlecock
+     rallying over it, shown at least 0.5 s, carried on by the next page and faded out; after
+     6 s „Dauert länger als sonst." with „Abbrechen". It replaces the shuttle along the bar
+     (owner, later on 2026-10-08; design document, Part 0.4b). The shuttlecock is the mark
+     and the home-screen icon where a club has uploaded none (C16a). Measured in Chromium
+     only; not yet seen on an iPhone or an Android phone (TESTING.md W.1–W.5).
    - **Profile pictures come back** (ADR 0031, decided): faces for the trainer on
      Anwesenheit, the lists and the child's page, and for the children to make their profile
      their own; visible to the course with each family's consent; the family and the trainer
@@ -340,7 +338,9 @@ For the owner to do:
   dark mode on, close the app in the app switcher, open it from the home screen, and note the
   colour shown before the first page appears. Dark launch images are built only if it is
   white. Then walk TESTING.md W.1–W.3 on the iPhone, and W.4 on an Android phone if you have
-  one.
+  one. W.1 is the waiting page: say whether it comes too soon, stays too long or feels right.
+  A page that comes just after half a second now shows at about one second, so that the
+  waiting page never blinks.
 - **No white flash in dark mode, on your iPhone** (TESTING.md I.12, test data only): in dark
   mode, and once with „Immer dunkel" under Mein Konto on a phone in light mode, open the
   home-screen app, tap through several pages, go Back, reload, open a link from Mail, and

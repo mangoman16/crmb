@@ -2221,7 +2221,7 @@ ok(call_index_in(defined_functions_in(APP_ROOT.'/app/shell.php')['impersonator']
 ok(call_index_in(named_blocks_of(APP_ROOT.'/app/actions.php')['activate'] ?? '', 'forget_session_leftovers') === null,
    'activate leaves what the session holds to sign_in(), so a failed write keeps the link being opened');
 
-case_('A file opens in the tab it was tapped in, and the waiting code leaves its link alone [Part 0.4a]');
+case_('A file opens in the tab it was tapped in, and the waiting code leaves its link alone [Part 0.4b]');
 /* serve_download() answers with the file and no page. In the iPhone's
    home-screen app a link that opens a new tab opens a browser view with
    Safari's cookies, not the app's: a family tapping a PDF, a receipt or a
@@ -2229,7 +2229,7 @@ case_('A file opens in the tab it was tapped in, and the waiting code leaves its
    time on a shared phone (security review, 2026-10-08). So a file opens where
    it is tapped, as it always did, and app.js knows the router's download page
    by its name: for a page that never comes it neither holds the link pressed
-   nor starts the shuttle. Read from where links are drawn: an <a> whose address
+   nor starts the waiting page. Read from where links are drawn: an <a> whose address
    is that page, written in place or through a variable that holds it. */
 $download = preg_match('~if\(\$page===\'(\w+)\'\)serve_download\(\);~', (string)file_get_contents(APP_ROOT.'/public/index.php'), $served) ? $served[1] : '';
 ok($download !== '', 'the router answers one page with a file ('.$download.')');

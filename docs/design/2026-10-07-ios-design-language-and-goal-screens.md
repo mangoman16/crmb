@@ -1,6 +1,6 @@
 # UI spec: the portal's design language (Part 0), age on the students list, and the gaps G1–G8 (ui-ux-designer, 2026-10-07)
 
-**Status.** Built so far: Part 0's restyle, its phase 1 (`f5d3c28`, with the review's fixes in `883be4d`); the students list, Part 1 as revised (`b4e457e`); and 0.4a and C16a, the waiting shuttle and the mark, in the commit that adds them to this document. 0.5a waits for a two-minute test on an iPhone (ROADMAP.md). Everything else is still specification.
+**Status.** Built so far: Part 0's restyle, its phase 1 (`f5d3c28`, with the review's fixes in `883be4d`); the students list, Part 1 as revised (`b4e457e`); 0.4a and C16a, the waiting shuttle and the mark, in the commit that adds them to this document; and 0.4b, the waiting page that replaces 0.4a's shuttle, in the commit that adds it here. 0.5a waits for a two-minute test on an iPhone (ROADMAP.md). Everything else is still specification.
 
 **What was measured.**
 - Measured on commit `1b32834`, the HEAD when this work started, exported with `git archive` into the scratchpad.
@@ -12,7 +12,7 @@
 - The system font stack resolved to DejaVu Sans on the test machine. DejaVu is about 15 % wider than Liberation Sans, which has Arial metrics close to San Francisco. So every width and wrap below is an upper bound for an iPhone.
 
 **How to read it.**
-- Part 0 is the reference the whole portal is restyled from. It continues after 0.7 with 0.4a, 0.5a and C16a (2026-10-08): waiting for a page, the first start of the home-screen app, and the shuttlecock mark.
+- Part 0 is the reference the whole portal is restyled from. It continues after 0.7 with 0.4b (which replaced 0.4a), 0.5a and C16a (2026-10-08): waiting for a page, the first start of the home-screen app, and the shuttlecock mark.
 - Parts 1–10 specify the age list and G1–G8 in Part 0's terms; Part 1 is revised by „Part 1, revised 2026-10-08".
 - Part 11 ranks the gaps and groups the builds.
 - Where something somebody asked for would go, it is marked (owner).
@@ -485,81 +485,78 @@ Owner, 2026-10-08: "implement a custom loading screen, should not be too slow, b
 
 It adds to Part 0's sections 0.4, 0.5 and C16.
 
+Owner, later the same day, on 0.4a's shuttle along the bar: "I want a full waiting page with nice animations and transitions, it should not be too long to annoy and not too short to be even weird to be there / smooth". 0.4b is that page, and replaces 0.4a.
+
 **Who, where, in their words.**
 - The trainer in the hall, on weak 4G, taps a child: „Hat es das jetzt genommen?" In the home-screen app there is no browser bar to say a page is coming, so she taps again.
 - A parent opens the app at night in dark mode: „Warum blitzt das so hell?"
 
-### 0.4a Waiting for the next page
+### 0.4b Waiting for the next page: the waiting page
 
-**After a tap, with JavaScript:**
+Replaces 0.4a, a shuttle flying along the bottom edge of the bar after 0.7 s (built in `4b41c1b`, taken out when 0.4b was built). 0.4a advised against a full waiting page, because a screen put up for a tenth of a second is itself a flash; 0.4b answers that with a minimum time on screen, and by having the next page carry the waiting page on rather than cut it off.
 
-| When | What shows |
-| --- | --- |
-| at once | The tapped link keeps its pressed look until the new page is there: a row stays `--pressed`; a button, tab, segment, chip, text link or „‹ Zurück" stays at `opacity:.7`. An iPhone keeps a tapped row lit the same way until the next screen is in. |
-| after 0.7 s without the new page | A shuttle (`icon('shuttle')`, 20 px, `--teal`) flies along the bottom edge of the navigation bar, cork first, back and forth like a rally. Each crossing takes 1.2 s: fast off the racket, then slowing (`cubic-bezier(.15,.7,.35,1)`), and it turns at each end. It fades in over 0.2 s. A screen reader hears „Wird geladen …" once. |
-| the new page arrives | The shuttle goes with the old page. Where view transitions run, it fades out with the old bar in 0.2 s. |
+**What people see.**
+1. **At the tap:** the tapped row, button, tab, segment, chip, text link or „‹ Zurück" keeps its pressed look (`.is-pending`): a row stays `--pressed`, the rest stay at `opacity:.7`. An iPhone keeps a tapped row lit the same way until the next screen is in.
+2. **After 0.5 s without the new page,** the waiting page fades in over the whole screen, bars included, on the page's own background (`--bg`: light grey, black in dark mode):
+   - a small court: a net, 50 px high with its tape, in `--muted-2`;
+   - the shuttlecock (`icon('shuttle')`, 32 px, the club's tint) playing a rally over the net: a high clear to the right, then a flat drive back that just clears the tape, cork first all the way (`offset-path` with `offset-rotate`). One rally takes 1.6 s;
+   - the portal's name (`club_name`, „Name des Portals") under the net, in Headline, `--muted`.
 
-**Why 0.7 s.**
-- The tap has already answered at 0 s, with the pressed look.
-- The shuttle answers a later question, „kommt da noch was?", which people start asking near one second. It is fully visible at 0.9 s.
-- A page that arrives within 0.7 s shows only the pressed look; one that arrives between 0.7 and 0.9 s shows a faint shuttle at most.
-- Nothing waits for the shuttle: no `preventDefault()`, no minimum time on screen. So no page gets slower.
+   The scene settles from 94 % to full size as it fades in.
+3. **The new page carries the waiting page on,** at the same point of its fade and of its rally, and fades it out. The change of page is one movement, not a cut.
+4. **After 6 s** a line appears at the bottom: „Dauert länger als sonst.", with the tinted button „Abbrechen". It stops the page that has not come (`window.stop()`) and leaves the old page as it was. In the home-screen app nothing else stops a page that never comes.
 
-**Where, at 320.**
-- **Signed in:** a 12 px lane the full width of the bar, centred on its bottom edge. 6 px of it are inside the bar, below the back label, the bell and the avatar, which sit higher. The other 6 px lie over the page's 8 px top margin.
-- **Pages without the bar** (sign-in, „Passwort vergessen", the link pages): the top 12 px of the screen, under the status bar.
-- The lane has `pointer-events:none`, so nothing can be tapped there and nothing is blocked.
-- It never covers a refusal or a message. Those arrive on the new page, and on the old page the lane lies over margin (measured: nothing under it).
+**Timing, and why.**
 
-**Not a full waiting page, although the owner said "a short waiting page".**
-- A screen between two pages is one more change of the whole screen. A page arriving at 0.8 s would put up a waiting screen for a tenth of a second, which is exactly the flash the owner wants gone. It would also hide the page being read.
-- Keeping the old page until the new one paints, with the shuttle on its bar, is what iOS itself does (Safari's progress line, a native app's lit row).
-- If the owner still wants a full screen, it is the same shuttle centred on `--bg` over `<main>`, a few lines more. I advise against it (open issue 1).
-
-**The button spinner and the shuttle never show for the same tap:**
-
-| Tapped | At once | After 0.7 s |
+| What | Value | Why |
 | --- | --- | --- |
-| a link: row, tab, „‹ Zurück", chip, segment, text link, an entry under the bell | pressed look | the shuttle |
-| a form that only looks something up (GET: the search, „Anwenden" in the filter) | its button's pressed look | the shuttle |
-| a form that sends (POST) | its button's spinner (already built) | nothing more |
-| a link tapped while a form is still sending | that link's pressed look | the shuttle beside the spinner; the second tap has replaced the first request |
+| Shown after | 0.5 s | Below about half a second a change of page reads as immediate, and the pressed row has already answered the tap. By 0.7 s the waiting page is fully there, before the one second at which people start to doubt the tap. |
+| Fade in | 0.2 s, ease-out, with the 0.94 → 1 settle | The length of an iOS transition. |
+| On screen at least | 0.5 s from the start of the fade-in (0.2 s in, 0.3 s fully shown) | So it never blinks: with the fade-out it is never on screen for less than 0.75 s, which reads as a deliberate screen rather than a flicker. The cost: a page that comes just after 0.5 s is shown at about 1.0 s, at most 0.5 s later than without it. |
+| Fade out | 0.25 s, ease-in, on the new page | The new page appears from under it. |
+| Slow line | 6 s after it appeared | Long enough that a normal slow connection never sees it; soon enough that nobody is left stuck in the home-screen app. |
+| Stuck page safety | the new page fades it out by itself after 2 s, in CSS, even if `app.js` never loads | A full-screen page must never stay up. It ends invisible and lets taps through. |
 
-**When nothing starts:**
-- A link that leaves the page standing:
-  - `target` other than `_self`;
-  - a `download` attribute;
-  - `mailto:` or `tel:`;
-  - a modifier key or a middle click;
-  - a `#place` on the same page.
-- A submit that the browser or app.js stopped: a required field left empty, or a second tap.
-- **A link to a file**: the portal's own download page (`?page=download`), which answers with the file and no page. A PDF that downloads leaves the page standing, so a shuttle started for it would fly on and on. The file links stay in the same tab:
-  - `views/student.php` (an invoice PDF, a receipt);
-  - `views/invoices.php` (an invoice PDF);
-  - `views/messages.php` (a photo);
-  - `views/_feedback.php` (a screenshot).
+The two clocks are kept in step by hand: `app.js`'s minimum is `wait-in`'s 0.2 s and 0.3 s fully shown, and its fade-out time is `wait-out`'s 0.25 s. `app.js` says so beside them.
 
-  **Changed on 2026-10-08.** This bullet said the file links must open in a new tab, with `target="_blank"`, in the same build. They stay in the same tab: inside the iPhone home-screen app a new tab likely opens without the app's sign-in. Security's point; the project manager decided it. `app.js` leaves links to the download page alone instead (see 0.5).
-- **Back to a page the browser kept** (bfcache): the existing `pageshow` handler also clears the pressed look and the shuttle.
+**How it carries on across the change of page.**
+- When the old page shows the waiting page, it writes the time it started into `sessionStorage`.
+- `public/assets/wait.js`, a few lines in `<head>`, **not deferred**, runs before the first paint of the next page: it reads that time, marks `<html>` with `is-arriving`, sets `--wait-elapsed` so that the CSS starts the fade and the rally at the same point, and skips the browser's own cross-fade for this one change (`pagereveal` → `skipTransition()`), which would fade the waiting page into itself, with two shuttles. It cannot be inline: the content security policy refuses inline scripts. It is tiny and cached.
+- `app.js` fades the waiting page out once the minimum has passed.
+- A page that comes within 0.5 s keeps the 0.2 s cross-fade of 0.4.
 
-**Reduced motion.** The shuttle does not fly. It sits in the middle of the lane and fades between 35 % and 100 % every second: a change of brightness, no movement. This follows the button spinner, which slows down under reduced motion rather than stopping.
+**Two corrections made while building it** (frontend-dev):
+- **The 2 s safety fades with keyframes of its own, `wait-out-anyway`,** not with `wait-out`. A running animation keeps its clock when only its delay changes: had the safety been `wait-out` too, `is-arrived` would only have shortened its delay, and a fade already some way into its 2 s would have jumped to its end — a cut, where the page should come out from under a fade.
+- **The rule that shows the waiting page past `[hidden]` applies on screens only** (`@media screen`). It outranks any print rule that could hide it again, so a page printed while waiting would have had the waiting page over every sheet. Kept off paper this way, the waiting page needs no place in the print list.
 
-**Light, dark and the club's colour.** `--teal` on the bar's material:
-- default tint: 5.43:1 in light, 9.53 in dark;
-- the seven built-in accents: 4.98–7.21 in light, 7.72–9.72 in dark.
+**What stays from 0.4a.**
+- **A form that sends** (POST) shows its button's spinner, never the waiting page. A form that only looks something up (GET: the search, „Anwenden" in the filter) is a change of page like a link.
+- **When nothing starts:** a link that leaves the page standing — `target` other than `_self`, a `download` attribute, `mailto:` or `tel:`, a modifier key or a middle click, a `#place` on the same page — and the portal's own download page (`?page=download`), which answers with a file and no page. A submit the browser or `app.js` stopped starts nothing either: a required field left empty, or a second tap.
+- **The file links stay in the same tab.** 0.4a first had them open in a new tab, with `target="_blank"`; inside the iPhone home-screen app a new tab likely opens without the app's sign-in. Security's point; the project manager decided it on 2026-10-08 (see 0.5).
+- **Back to a page the browser kept** (bfcache): the `pageshow` handler clears the waiting page, the pressed look and the stored time.
 
-A graphic needs 3:1. A club's own colour already passes 4.5 against the page background (`app/brand.php`).
+**Without JavaScript.** Nothing. The element carries `hidden`, so without the stylesheet nothing of it shows either; a tap shows the system's own grey flash.
 
-**Without JavaScript.** Nothing changes. The `<template>` stays inert, and a tap shows the system's own grey flash, as today.
+**Reduced motion.** The shuttle does not fly: it rests at the top of the clear and fades between 35 % and 100 % every second. There is no settle. The fades stay: they change brightness, not place.
 
-**Text.** `t('Wird geladen …','Loading …')`, for screen readers only. Nothing is written on the screen.
+**Screen readers.** One „Wird geladen …" when it appears, and „Dauert länger als sonst." when the line appears, from a status line outside the waiting page, so it is there to be heard before it says anything. The court and the name are `aria-hidden`; „Abbrechen" is a real button. When the line appears, the focus moves to „Abbrechen", which is then all there is to do, so a keyboard or VoiceOver need not look for it; never sooner. „Abbrechen" gives the focus back to where it was (frontend-dev, while building).
 
-**What a family sees.** The same as the trainer: the pressed row or tab, and on a slow page the shuttle.
+**Text.**
+
+| Where | German | English |
+| --- | --- | --- |
+| status, for screen readers | `t('Wird geladen …','Loading …')` | Loading … |
+| slow line | `t('Dauert länger als sonst.','Taking longer than usual.')` | Taking longer than usual. |
+| button | `t('Abbrechen','Cancel')` | Cancel |
+
+**What a family sees.** The same as the trainer: the pressed row or tab, and on a slow page the waiting page.
 
 **Built (2026-10-08)**, and kept in one place each, so this document holds no second copy of the code:
-- `views/layout.php`: the `<template id="page-wait">` right after `<body>`, the lane with the shuttle and, beside it, the status line a screen reader hears.
-- `public/assets/app.js`: after the form handler, the block that keeps a tapped link or button pressed and starts the shuttle after 0.7 s. It starts nothing for a link that leaves the page standing, or for the portal's download page. The `pageshow` handler clears both on the way Back.
-- `public/assets/app.css`: the `.is-pending` twins of the two `:active` lists, the `.page-wait` rules and their keyframes, the shuttle held in place under reduced motion, and `.page-wait` in the print list.
+- `views/layout.php`: `wait.js` in `<head>`, after the stylesheets and before `app.js`; right after `<body>`, the waiting page (`.wait-page`, `hidden`) and, beside it, the status line a screen reader hears.
+- `public/assets/wait.js`: the waiting page carried on into the next page.
+- `public/assets/app.js`: after the form handler, the block that keeps a tapped link or button pressed, shows the waiting page after 0.5 s, keeps it at least 0.5 s, adds the slow line after 6 s and stops the page for „Abbrechen"; the `pageshow` handler clears it on the way Back.
+- `public/assets/app.css`: the `.is-pending` twins of the two `:active` lists, the `.wait-page` rules and their keyframes, and the shuttle at rest under reduced motion.
+- `tests/topbar-menus.mjs` and `tests/e2e.mjs` check it, as `tests/README.md` describes.
 
 ### 0.5a The first start of the home-screen app
 
@@ -654,15 +651,19 @@ The phone's top bar keeps showing the club's name, as today: `brand_block()` dra
 - `b4e457e` was committed meanwhile. Its diff touches none of what the prototypes relied on: the bar, the brand mark, the `:active` lists, view transitions, reduced motion, main's padding. `icon()` only gained `'search'`.
 - MariaDB 10.11.14, PHP 8.4.26, Chromium 141 (Playwright 1.56.1). No iPhone.
 
-**The waiting shuttle** (the spec's CSS and JS injected into the real pages):
-- **Cases:** 320 and 390, light and dark, motion and reduced motion. Trainer: Übersicht → Schüler. Family: Übersicht → Chats. Signed out: Anmelden → „Passwort vergessen".
-- **Checks:** 0 problems under `tests/mobile.mjs`'s own rules while the shuttle shows. Nothing under the lane, checked against every text and image in `<main>`, the bar and the public header.
-- **Positions:** the bar spans 0–45 px and the lane 38–50 (signed in); signed out, the lane spans 0–12.
-- **Timing, with a real navigation held 2.5 s:**
-  - at 0.3 s, only the tapped link shows pressed;
-  - at 1.0 s, the shuttle is on and the status line reads „Wird geladen …".
-- **A sending form** (Mein Konto, „Speichern"): at 0.3 s and at 1.0 s the button spins and the shuttle stays off.
-- **Frames:** the cork leads both ways and the shuttle turns at each end.
+**The waiting page (0.4b)**, measured by ui-ux-designer before it was built, on `4b41c1b` with the specified CSS, `wait.js`, markup and `app.js` part injected into every page from document start and 0.4a's lane removed; the next page was held back by the test. The screen was sampled through CDP about every 70 ms at two points while the navigation was pending — the net, to see the waiting page, and the page margin, to see any white — and the pages' own clocks recorded when the waiting page was shown, arrived, faded and was gone.
+- **Timeline**, trainer at 320, Übersicht → Schüler, every value in seconds after the tap:
+
+  | Page held | Page arrived | Shown | Fade-out starts | Gone |
+  | --- | --- | --- | --- | --- |
+  | 0.3 s | 0.39–0.41 | never | — | — |
+  | 0.7 s | 0.78–0.81 | 0.51–0.52 | 1.01–1.02 | 1.26–1.28 |
+  | 1.2 s | 1.27–1.34 | 0.52 | 1.29–1.39 | 1.54–1.64 |
+  | 2.5 s | 2.60 | 0.53 | 2.63 | 2.88 |
+- **Across the change of page** the net stayed drawn without a gap in every run, and the margin pixel never left the background colour (0 in dark, 242 in light) at this sampling rate.
+- **Also run:** 390 light and dark, the family (Übersicht → Chats, dark), signed out (Anmelden → „Passwort vergessen", dark) and reduced motion (light): the same timeline, the shuttle at rest at the top of the clear under reduced motion, and 0 problems under `tests/mobile.mjs`'s own rules.
+- **A page held 10 s:** the line and „Abbrechen" (143 × 44) appeared at 6.5 s; „Abbrechen" at 7.0 s left the overview standing, with the waiting page gone, nothing pressed and the stored time cleared. Back after a slow change brought the overview back clean.
+- **A sending form** (Mein Konto, „Speichern", held 2 s): at 1.2 s the button spun and no waiting page showed. A link to the download page started nothing; an ordinary link at 0.9 s was pressed with the waiting page showing.
 - **Method note for qa-tester:** while a navigation is pending, Chromium answers no `evaluate` and no CDP call on the old page. So the old page writes what it shows into `sessionStorage`, and the next page reads it.
 
 **The mark:**
@@ -674,12 +675,14 @@ The phone's top bar keeps showing the club's name, as today: `brand_block()` dra
 **Launch images:** not measured. The 95 KB is a calculation, not a test.
 
 **Not measured at all:**
-- the shuttle on a computer (same rule as on a phone);
-- VoiceOver hearing „Wird geladen …".
+- an iPhone: WebKit's `pagereveal` and its cross-fade (Safari 18.2 and later), `window.stop()` in the home-screen app, and VoiceOver hearing „Wird geladen …";
+- a single white frame shorter than the ~70 ms sampling;
+- the waiting page on a computer (same rule as on a phone).
 
 **Files in `/tmp/claude-0/-home-user-crmb/8858533c-add6-5b5d-86fd-9a8a9c5649af/scratchpad/`:**
 - `ux-shuttle/`: `geometry.py`, `geometry.json`, `final-favicon.svg`, `final-*.png` (reference renders), `sheet-light.png`, `sheet-dark.png`, `fav-blowup.png`, `final-masks.png`;
-- `ux-wait/`: `proto-wait.mjs`, `proto-mark.mjs`, `frames.mjs`, `wait-*.png`, `mark-*.png`, `frames.png`.
+- `ux-wait/`: `proto-wait.mjs`, `proto-mark.mjs`, `frames.mjs`, `wait-*.png`, `mark-*.png`, `frames.png` (0.4a);
+- `ux-wp/`: `spec.mjs` (0.4b as injected), `harness.mjs`, `behaviour.mjs`, `png.mjs`, and `wp-*.png`, among them `wp-slow-320-dark.png`.
 
 The throwaway servers are stopped.
 

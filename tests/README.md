@@ -140,9 +140,11 @@ Most cover a part of the domain — `billing`, `attendance`, `settings`,
 
 `shell` also runs `topbar-menus.mjs` with `node`, which loads the real
 `public/assets/app.js` into a page of stand-in elements and taps, swipes and
-presses Escape on the top bar's menus. No browser and no Playwright: only
-`node`. Without it those checks are listed at the end of the run as not
-covered, rather than passed.
+presses Escape on the top bar's menus, sends a form twice, and taps links while
+the next page is slow to come; a second page and an empty head for
+`public/assets/wait.js` are the next page carrying the waiting page on (Part
+0.4b). No browser and no Playwright: only `node`. Without it those checks are
+listed at the end of the run as not covered, rather than passed.
 
 ## The first evening, end to end, in a browser
 
@@ -162,7 +164,13 @@ calls an action directly, and there is no fallback: a form without a visible
 button stops the walk there, as it would stop her. That is how it found the
 tariff form of fd0d179 that every suite here passed.
 
-It walks `setup.php`, signing in to „Dein Portal einrichten“ at 0 of 9, each of
+It walks `setup.php`, signing in to „Dein Portal einrichten“ at 0 of 9, and a
+slow connection: the trainer's next page is held back on its way (CDP, which
+also sends every frame the screen shows), and the waiting page must show only
+after 0.5 s, be carried on by the next page with no frame without it and none
+white, fade out rather than be cut, never be up for less than about 0.75 s, keep
+the shuttle still with Reduce Motion, go by itself when the next page's `app.js`
+never comes, and „Abbrechen“ must stop a page held back 10 s for good. Then each of
 the nine steps from its own button and back through „Zurück zur Einrichtung“
 with the tick checked every time, up to 9 of 9 and „Alles eingerichtet“. The
 children are added through the wizard, „Schüler anlegen“, and one more person
