@@ -60,11 +60,13 @@ composer install --no-dev --prefer-dist --optimize-autoloader --ignore-platform-
 ```
 
 `bin/update.sh --clone /pfad/zum/webverzeichnis` erledigt beides in einem
-Schritt, mit demselben Schalter. Ohne `composer install` läuft das Portal zwar,
-kann aber keine E-Mails verschicken und keinen Zahlungs-QR-Code zeichnen.
-`--ignore-platform-req=ext-gd` lässt Composer auch dort installieren, wo PHPs
-`gd` fehlt: Nur Profilbilder brauchen sie, alles andere läuft ohne. Ausgenommen
-ist damit nur `gd`; der Schalter braucht Composer 2.0 oder neuer.
+Schritt, mit demselben Schalter. Aus einer eigenen Kopie des Repositorys, etwa
+der des Vereins: `bin/update.sh --clone /pfad/zum/webverzeichnis --repo URL`;
+jede spätere Aktualisierung holt dann von dort. Ohne `composer install` läuft
+das Portal zwar, kann aber keine E-Mails verschicken und keinen Zahlungs-QR-Code
+zeichnen. `--ignore-platform-req=ext-gd` lässt Composer auch dort installieren,
+wo PHPs `gd` fehlt: Nur Profilbilder brauchen sie, alles andere läuft ohne.
+Ausgenommen ist damit nur `gd`; der Schalter braucht Composer 2.0 oder neuer.
 
 ### Ohne Shell-Zugang: ZIP-Datei
 

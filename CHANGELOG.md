@@ -937,6 +937,22 @@ These are the first fixes, the audit's N1, N6 and N7.
   anything `bin/release.sh` leaves out, read from that script's own list, or
   anything in `config/` or `storage/` beyond what ships there.
 
+### `bin/update.sh` says where it fetches from
+
+For whoever updates a portal from Git with `bin/update.sh`:
+
+- **The fetch line names the checkout's own origin**, „Fetching from origin, …",
+  without a user name or token written into the address, since the output can
+  end up in a cron job's mail. It used to name this project's address whatever
+  the checkout fetched from.
+- **`--repo` is only for `--clone`**: a first install from another copy of the
+  repository, a club's own for instance, which the clone keeps as its origin. On
+  an update it is refused, with a sentence saying how to change the origin.
+- **`--help` shows only the comment at the top**, not the code after it, and an
+  option whose value is missing — `--clone`, `--ref` or `--repo` followed by
+  nothing or by the next option — is refused with one sentence instead of taking
+  that option as its value.
+
 ### After an update, the browser fetches what changed
 
 - The stylesheet and script were linked with the version number, which did not

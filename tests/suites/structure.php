@@ -881,6 +881,62 @@ sort($waived); sort($optional);
 is_same($optional, $waived, 'update.sh waives exactly what setup installs without: '.(implode(', ', $optional) ?: 'nothing'));
 ok(!preg_match('/--ignore-platform-req(s\b|\s)|COMPOSER_IGNORE_PLATFORM_REQ/', $commands), 'and in no other form Composer takes: not the name after a space, not all at once, not through the environment');
 
+case_('bin/update.sh refuses a wrong argument before anything runs, and prints an address without its password');
+/* Run as a shell runs it. A value that starts with '-' is the next option, not
+   this one's: with the tag forgotten, "--ref --check" took --check as the tag,
+   skipped the dry run and handed it to git checkout. --repo goes with --clone
+   only, as an update fetches from the checkout's own origin. The address a first
+   install clones from is printed without a user name or password, which would
+   otherwise reach a cron job's mail - up to the last '@' before the path, as a
+   password may hold one. --help is the comment at the top and none of the code
+   after it. Each case ends before git, php or composer would do anything; should
+   one stop doing so, the three found on PATH here are stand-ins that only say
+   they were called, so a broken check cannot fetch, clone or migrate from a test. */
+$bash = array_values(array_filter(array_map(fn(string $dir): string => $dir.'/bash', explode(':', (string)getenv('PATH'))), 'is_executable'))[0] ?? null;
+$work = test_run_dir().'/update-sh-'.bin2hex(random_bytes(4));
+$cannot = !function_exists('proc_open') ? 'this PHP disables proc_open' : ($bash === null ? 'no bash on PATH' : null);
+if ($cannot === null) {
+    mkdir($work.'/stand-ins', 0700, true);
+    foreach (['git', 'php', 'composer'] as $tool) {
+        file_put_contents($work.'/stand-ins/'.$tool, "#!/bin/sh\necho \"$tool was called: \$*\" >&2\nexit 97\n");
+        chmod($work.'/stand-ins/'.$tool, 0700);
+    }
+    // Linux runs nothing from a folder mounted noexec: bash would pass over the
+    // stand-ins to the real git on PATH, so then nothing here is run at all.
+    if (!is_executable($work.'/stand-ins/git')) $cannot = 'the temporary folder does not let programs run';
+}
+if ($cannot !== null) {
+    test_unsupported(array_merge(test_unsupported(), ['bin/update.sh refusing wrong arguments ('.$cannot.')']));
+} else {
+    $updateSh = function (string ...$arguments) use ($bash, $work): array {
+        $process = proc_open(array_merge([$bash, APP_ROOT.'/bin/update.sh'], $arguments), [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                             $pipes, $work, ['PATH' => $work.'/stand-ins:'.getenv('PATH')] + getenv());
+        fclose($pipes[0]);
+        $said = (string)stream_get_contents($pipes[1]).(string)stream_get_contents($pipes[2]);
+        fclose($pipes[1]); fclose($pipes[2]);
+        return ['code' => proc_close($process), 'said' => $said];
+    };
+    foreach ([[['--ref', '--check'], '--ref needs a tag or branch.'],
+              [['--clone', '--check'], '--clone needs a directory.'],
+              [['--clone', 'd', '--repo', '-x'], '--repo needs a URL.'],
+              [['--repo', 'https://example.test/x'], '--repo goes with --clone']] as [$arguments, $sentence]) {
+        $run = $updateSh(...$arguments);
+        $right = $run['code'] === 1 && str_contains($run['said'], $sentence) && !str_contains($run['said'], ' was called');
+        ok($right, 'update.sh '.implode(' ', $arguments).' stops with exit code 1: "'.$sentence.'"'.($right ? '' : ' - it ended '.$run['code'].': '.trim($run['said'])));
+    }
+    $folder = $work.'/new-portal';
+    mkdir($folder, 0700);
+    $clone = $updateSh('--clone', $folder, '--repo', 'https://user:p@ss@example.test/club/crmb.git', '--check');
+    is_same(0, $clone['code'], 'a first install with --check stops before it clones, with exit code 0'.($clone['code'] !== 0 ? ': '.trim($clone['said']) : ''));
+    $named = str_contains($clone['said'], 'Cloning https://example.test/club/crmb.git into '.$folder);
+    ok($named, 'it names the address without its user name and password'.($named ? '' : ': '.trim($clone['said'])));
+    ok(!str_contains($clone['said'], 'user:') && !str_contains($clone['said'], 'p@ss'), 'and prints no part of either');
+    ok(!str_contains($clone['said'], ' was called') && array_diff(scandir($folder) ?: [], ['.', '..']) === [], 'git, php and composer did nothing, and the folder is still empty');
+    $help = $updateSh('--help');
+    ok($help['code'] === 0 && str_starts_with($help['said'], 'Install or update the portal from Git'), '--help starts with what the script does');
+    ok(!str_contains($help['said'], 'set -euo pipefail'), 'and ends with the comment, before the first line of code');
+}
+
 case_('The rule for what counts as paid is written once');
 /* Every balance, the overdue filter and the payments screen depend on it. A
    second copy is the one that gets forgotten when the rule changes, and the
