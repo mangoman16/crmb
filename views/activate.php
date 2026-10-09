@@ -54,7 +54,8 @@ if($r['purpose']!=='email'){
           t('Mindestens 12 Zeichen. Am besten lässt du es dein Handy speichern.','At least 12 characters. Best let your phone save it.'));
     input('password_confirm',t('Passwort wiederholen','Repeat password'),'','password',true);
 }else echo '<p>'.e($r['target_email']).'</p>';
-if($invite): ?>
+if($invite): /* The page's one link to the notice: the footer leaves its own out ($privacyLinked, as on sign-in). */
+    $privacyLinked=true; ?>
 <p><a class="text-link" href="<?=e(url('privacy'))?>" target="_blank" rel="noopener"><?=e(privacy_in_german_only()?t('Datenschutzerklärung lesen','Read the privacy notice (in German)'):t('Datenschutzerklärung lesen','Read the privacy notice'))?></a></p>
 <?php check_field('privacy_seen',t('Ich habe die Datenschutzhinweise gelesen.','I have read the privacy notice.'));
 check_field('newsletter',t('Neuigkeiten des Vereins per E-Mail erhalten. Jederzeit abbestellbar.','Receive club news by email. You can stop them at any time.'),true,'',false,true);

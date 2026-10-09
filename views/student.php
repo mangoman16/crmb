@@ -6,7 +6,9 @@ $s=student($id);
 $tab=$_GET['tab']??'details';
 $tabsAllowed=$staff?['details','contacts','payments','invoices','absence','classes','attendance']:['details','contacts','payments','invoices','absence','classes'];
 if(!in_array($tab,$tabsAllowed,true))$tab='details';
-page_head($s['first_name'].' '.$s['last_name'],status_label($s['status']),
+// The status under the name; for a family only when it is not „Aktiv", which
+// says nothing to them (the audit, N6).
+page_head($s['first_name'].' '.$s['last_name'],$staff || $s['status']!=='active'?status_label($s['status']):'',
     // A family has one student and this is their page (ADR 0010): a list of one
     // is not somewhere to go back to.
     // up-link: on a phone the bar's „‹ Schüler" is this way back.
@@ -71,8 +73,7 @@ if($tab==='details'):
     start_form('student_save',['id'=>$id,'revision'=>$s['revision']??0],'form'); ?>
 <section class="card" id="personal"><h2><?=e(t('Persönliche Daten','Personal details'))?></h2>
 <?php if(!$staff): ?>
-<p class="muted"><?=e(t('Hier ergänzt oder korrigierst du deine Angaben. Felder mit * bitte ausfüllen. Deine Trainerin sieht, was du änderst.',
-                        'Fill in or correct your details here. Please fill in the fields marked *. Your coach can see what you change.'))?></p>
+<p class="muted"><?=e(t('Deine Trainerin sieht, was du änderst.','Your coach can see what you change.'))?></p>
 <?php endif ?>
 <div class="grid two"><?php
 input('first_name',t('Vorname','First name'),$s['first_name'],'text',true,'','',['maxlength'=>'100']);
@@ -96,8 +97,7 @@ if($staff):
     $signsInWithAddress=(string)($login['email']??'')!=='';
     if($signsInWithAddress && $login['state']!=='invited') {
         echo '<div class="field"><label>'.e(t('E-Mail-Adresse','Email address')).'</label><div class="readonly">'.e($login['email']).'</div><small>'
-            .e($firstName.t(' meldet sich damit an und ändert sie selbst unter „Mein Konto“ – mit Bestätigung aus dem neuen Postfach. Dorthin gehen auch Rechnungen und Erinnerungen.',
-                            ' signs in with it and changes it themselves under “My account” – confirmed from the new mailbox. Invoices and reminders go there too.'))
+            .e(strtr(t('Ändert {first} selbst unter „Mein Konto“.','{first} changes it under “My account”.'),['{first}'=>$firstName]))
             .'</small></div>';
     } elseif($signsInWithAddress) {
         input('email',t('E-Mail-Adresse','Email address'),$login['email'],'email',true,
@@ -133,22 +133,16 @@ echo '</div>';
          contact, and listing yourself as who to ring is not a record anybody
          should have to keep. A family writes both too (ADR 0020, §7): the
          address is the one their next invoice is made out to. One block for
-         both roles, inside the form so one save carries them; only the hints
-         are said to each in their own words. */
+         both roles, inside the form so one save carries them; only the
+         address's hint is said to each in their own words. */
 echo '<div id="address">';
 input('address',t('Anschrift','Postal address'),$s['address']??'','text',false,
-      $staff?t('Straße, PLZ und Ort in einer Zeile. Gehört ab 400 € Rechnungsbetrag auf die Rechnung.',
-               'Street, postcode and town on one line. Required on an invoice above 400 €.')
-            :t('Straße, Hausnummer, PLZ und Ort in einer Zeile. Sie steht auf deinen Rechnungen; eine Rechnung über 400 € braucht sie.',
-               'Street, number, postcode and town on one line. It goes on your invoices, and an invoice over 400 € needs it.'),
+      $staff?t('Straße, PLZ und Ort in einer Zeile.','Street, postcode and town on one line.')
+            :t('Straße, Nummer, PLZ und Ort. Steht auf deinen Rechnungen.','Street, number, postcode and town. It goes on your invoices.'),
       '',['autocomplete'=>'street-address']);
 echo '</div>';
 input('phone',t('Telefonnummer','Telephone number'),$s['phone']??'','tel',false,
-      $staff?t('Die eigene Nummer. Wen wir im Notfall anrufen, steht unter „Kontakte“.',
-               'Their own number. Who to ring in an emergency is under “Contacts”.')
-            :t('Deine eigene Nummer. Wer im Notfall angerufen wird, steht unter „Kontakte“.',
-               'Your own number. Who is rung in an emergency is under “Contacts”.'),
-      '',['autocomplete'=>'tel']);
+      t('Notfallkontakte stehen unter „Kontakte“.','Emergency contacts are under “Contacts”.'),'',['autocomplete'=>'tel']);
 ?>
 </section>
 
@@ -161,16 +155,14 @@ input('phone',t('Telefonnummer','Telephone number'),$s['phone']??'','tel',false,
    Inside the student form, so „Schüler speichern" keeps saving them. */ ?>
 <section class="card"><h2><?=e(t('Einteilung','Grouping'))?></h2>
 <div class="grid three"><?php
-select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$s['status'],true,false,
-    t('Probetraining, aktiv, pausiert oder beendet.','On trial, active, paused or ended.'));
-input('joined_on',t('Dabei seit','Member since'),$s['joined_on'],'date',false,
-    t('Im Verein. Wann das Kind in einen Kurs kam, steht beim Kurs.','In the club. When the child joined a course is shown with the course.'));
-input('ended_on',t('Mitgliedschaft bis','Membership until'),$s['ended_on'],'date',false,
-    t('Leer lassen, solange kein Ende feststeht.','Leave it empty while no end is fixed.'));
-select_field('level_id',t('Leistungsgruppe','Level'),array_column(rows('SELECT id,name FROM levels WHERE archived=0 OR id=? ORDER BY sort_order,name',[$s['level_id']??0]),'name','id'),$s['level_id'],false,false,
-    t('Du wählst sie. Neue Kinder starten in ','You choose it. New children start in ').(level_default()['name']??'–').'.');
+/* No hints (the audit, N6): the options say the statuses, and „Im Verein seit"
+   says what „Dabei seit" needed a sentence for - in the club, not a course. */
+select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$s['status'],true);
+input('joined_on',t('Im Verein seit','In the club since'),$s['joined_on'],'date');
+input('ended_on',t('Mitgliedschaft bis','Membership until'),$s['ended_on'],'date');
+select_field('level_id',t('Leistungsgruppe','Level'),array_column(rows('SELECT id,name FROM levels WHERE archived=0 OR id=? ORDER BY sort_order,name',[$s['level_id']??0]),'name','id'),$s['level_id']);
 ?></div></section>
-<?php else:?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Dabei seit','Member since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div></dl></section><?php endif ?>
+<?php else: /* „Im Verein seit", the word staff read for the same date, and „Mitgliedschaft bis" only with a date: a dash reads as something missing (the audit, N6). */ ?><section class="card"><h2><?=e(t('Mitgliedschaft','Membership'))?></h2><dl class="facts"><div><dt><?=e(t('Im Verein seit','In the club since'))?></dt><dd><?=e(fmt_date($s['joined_on']))?></dd></div><?php if(($s['ended_on']??'')!==''): ?><div><dt><?=e(t('Mitgliedschaft bis','Membership until'))?></dt><dd><?=e(fmt_date($s['ended_on']))?></dd></div><?php endif ?></dl></section><?php endif ?>
 <?php if($staff):?><section class="card"><details <?=$s['internal_notes']?'open':''?>><summary><?=e(t('Interne Notizen','Internal notes'))?></summary><?php input('internal_notes',t('Nur für die Verwaltung sichtbar','Visible to management only'),$s['internal_notes'],'textarea');?></details></section><?php endif ?>
 <div class="form-footer"><?php submit_button($staff?t('Schüler speichern','Save student'):t('Angaben speichern','Save the details'));?></div></form>
 <?php if(!$staff): /* Mein Konto, for a family: the login rather than the
@@ -374,7 +366,8 @@ if($loginState==='placeholder'):
 <?php elseif($tab==='classes'): $mine=student_enrolments($id); $requests=student_requests($id); $open=courses_open_to($id); ?>
 <section class="card" id="courses">
     <h2><?=e(t('Kurse','Courses'))?></h2>
-    <p class="muted"><?=e(t('Jede Kursteilnahme hat ihren eigenen Tarif. Ein Kind kann in mehreren Kursen sein und in jedem etwas anderes zahlen.','Each enrolment has its own tariff. A child can be in several courses and pay something different for each.'))?></p>
+    <?php /* How tariffs work is staff's to know (the audit, N6). */
+    if($staff): ?><p class="muted"><?=e(t('Jede Kursteilnahme hat ihren eigenen Tarif. Ein Kind kann in mehreren Kursen sein und in jedem etwas anderes zahlen.','Each enrolment has its own tariff. A child can be in several courses and pay something different for each.'))?></p><?php endif ?>
     <?php if(!$mine)echo '<p class="muted">'.e(t('Noch in keinem Kurs.','Not in any course yet.')).'</p>';
     /* Where „Kurs wählen" leads a family when there is nothing to choose (ADR
        0021, §3): said, with the way to the trainer, rather than an empty list.
@@ -625,7 +618,8 @@ if($loginState==='placeholder'):
     submit_button((int)($s['billing_paused']??0)===1?t('Beiträge wieder starten','Resume billing'):t('Beiträge pausieren','Pause billing'),'secondary'); ?></form>
 </section>
 <?php endif ?>
-<div class="stats-grid compact"><div class="stat"><span><?=e(t('Offen','Outstanding'))?></span><strong><?=e(money(balance($id)))?></strong></div><div class="stat"><span><?=e(t('Überfällig','Overdue'))?></span><strong class="due"><?=e(money(balance($id,true)))?></strong></div></div>
+<?php /* Red only once something is late (the audit, N1): „Überfällig 0,00 €" is in ink. */ $overdueNow=balance($id,true); ?>
+<div class="stats-grid compact"><div class="stat"><span><?=e(t('Offen','Outstanding'))?></span><strong><?=e(money(balance($id)))?></strong></div><div class="stat"><span><?=e(t('Überfällig','Overdue'))?></span><strong class="<?=$overdueNow>0?'due':''?>"><?=e(money($overdueNow))?></strong></div></div>
 <?php $charges=student_charges($id);$paymentsOf=payments_by_charge(array_column($charges,'id'));
 /* Which charges a live invoice holds, asked once for all of them: such a charge
    is not offered „Beitrag stornieren", because the invoice would go on asking

@@ -152,6 +152,100 @@ ok(str_contains($html, 'Freiwillig'), 'and says it is voluntary, because it is')
 sign_in_as($trainer);
 ok(!str_contains(render_view('dashboard'), 'Schon überwiesen'), 'the trainer is not the one uploading it');
 
+case_('Red only once something is late, on a family\'s overview and on a child\'s Beiträge [the audit, N1]');
+/* „Warum ist das rot? Fällig ist es erst am 15." Open is not late: an amount is
+   in ink until a charge is past its due date, and „Überfällig 0,00 €" is never
+   red. Nina's one charge is due today: open, and not late. */
+$dom = function (string $html): DOMXPath {
+    $document = new DOMDocument();
+    $quiet = libxml_use_internal_errors(true);
+    $document->loadHTML('<?xml encoding="UTF-8">'.$html);
+    libxml_clear_errors(); libxml_use_internal_errors($quiet);
+    return new DOMXPath($document);
+};
+$classed = fn(string $name): string => 'contains(concat(" ", normalize-space(@class), " "), " '.$name.' ")';
+/** A tile's figure as [what it says, whether it is red, the line under it]. */
+$tile = function (string $html, string $label) use ($dom, $classed): array {
+    $x = $dom($html);
+    $stat = $x->query('//div['.$classed('stat').'][span[normalize-space()="'.$label.'"]]')->item(0);
+    if (!$stat) return ['no tile „'.$label.'"'];
+    $figure = $x->query('./strong', $stat)->item(0);
+    return [trim((string)$figure?->textContent), str_contains(' '.$figure?->getAttribute('class').' ', ' due '), trim((string)$x->query('./small', $stat)->item(0)?->textContent)];
+};
+sign_in_as($family);
+is_same([money(4500), false, 'Einzeln unter „Beiträge“'], $tile(render_view('dashboard'), 'Offen'),
+        'open and not late: the overview\'s amount is in ink, itemised under „Beiträge" - the family\'s bar has it');
+is_same([money(0), false, ''], $tile(render_view('student', ['id'=>(string)$kid, 'tab'=>'payments']), 'Überfällig'), 'and a child\'s „Überfällig 0,00 €" is in ink');
+run('UPDATE charges SET due_on=? WHERE student_id=?', ['2020-01-10', $kid]);
+is_same([money(4500), true, 'Einzeln unter „Beiträge“'], $tile(render_view('dashboard'), 'Offen'), 'once it is late, the amount is red');
+is_same([money(4500), true, ''], $tile(render_view('student', ['id'=>(string)$kid, 'tab'=>'payments']), 'Überfällig'), 'and so is the overdue amount');
+run('UPDATE charges SET due_on=? WHERE student_id=?', [today(), $kid]);
+
+case_('The overviews keep to the greeting and what comes next [the audit, N7]');
+/* Part 2's removals, before its groups exist: no line under the greeting, no
+   „Nachricht schreiben" (the Chats tab), no card of the family's own (the name
+   is the greeting, the amount is „Offen"), and „Termine" as dates alone. A
+   family sees no past dates, the next three, and any later one in the five
+   weeks that is changed or carries a note: the bell hears of a change only
+   when the trainer ticks „informieren". */
+$daily = make_class(['name'=>'Jeden Tag', 'location'=>'Halle B',
+                     'days'=>array_map(fn(int $day) => ['weekday'=>$day, 'starts_at'=>'16:00:00', 'ends_at'=>'17:30:00'], range(1, 7))]);
+make_enrolment($daily, $kid);
+$inDays = fn(int $days): string => (new DateTimeImmutable(today()))->modify('+'.$days.' days')->format('Y-m-d');
+fixture('class_sessions', ['class_id'=>$daily, 'session_on'=>$inDays(10), 'starts_at'=>null, 'ends_at'=>null,
+    'location'=>'', 'status'=>'cancelled', 'note'=>'', 'created_by'=>$trainer, 'created_at'=>now()]);
+fixture('class_sessions', ['class_id'=>$daily, 'session_on'=>$inDays(20), 'starts_at'=>null, 'ends_at'=>null,
+    'location'=>'', 'status'=>'planned', 'note'=>'In der Halle Süd', 'created_by'=>$trainer, 'created_at'=>now()]);
+$heading = '//div['.$classed('page-heading').']';
+/** The timeline's rows as [when, past or not]. */
+$dates = fn(DOMXPath $x): array => array_map(fn(DOMElement $row) => [trim((string)$x->query('./span['.$classed('timeline-when').']', $row)->item(0)?->textContent),
+    str_contains(' '.$row->getAttribute('class').' ', ' is-past ')], iterator_to_array($x->query('//ol['.$classed('timeline').']/li')));
+sign_in_as($family);
+$html = render_view('dashboard');
+$x = $dom($html);
+is_same([0, 0, 1], [$x->query($heading.'//p')->length, $x->query($heading.'//a[contains(@href,"new=1")]')->length, $x->query($heading.'//a['.$classed('page-face').']')->length],
+        'a family is greeted with no line under it and no „Nachricht schreiben", only the child\'s face beside it');
+is_same(0, $x->query('//*['.$classed('student-card').']')->length, 'and no card of their own');
+ok($tile($html, 'Offen') !== ['no tile „Offen"'] && str_contains($html, e('Schon überwiesen?')), 'the „Offen" tile and „Schon überwiesen?" stay until build 4');
+is_same([[t('Heute','Today'), false], [fmt_date($inDays(1)), false], [fmt_date($inDays(2)), false], [fmt_date($inDays(3)), false],
+         [fmt_date($inDays(10)), false], [fmt_date($inDays(20)), false]], $dates($x),
+        'no past dates: today, the next three, and the two later ones that are not as planned');
+sign_in_as($trainer);
+$html = render_view('dashboard');
+$x = $dom($html);
+is_same(0, $x->query($heading.'//p')->length, 'staff are greeted with no line under it either');
+ok(!str_contains($html, e('Aus den Wochenplänen der Kurse.')) && !str_contains($html, e('Termin ändern')), 'and „Termine" is the dates alone, with no sentence and no „Termin ändern" (a course has it)');
+is_same([3, 6], [count(array_filter($dates($x), fn(array $date) => $date[1])), count(array_filter($dates($x), fn(array $date) => !$date[1] && $date[0] !== t('Heute','Today')))],
+        'staff keep the last three dates and the next six');
+is_same(4, $x->query('//div['.$classed('stats-grid').']/div['.$classed('stat').']')->length, 'and the four tiles, until build 3');
+
+case_('A child\'s Profil says what is needed and no more [the audit, N6]');
+sign_in_as($trainer);
+$profil = render_view('student', ['id'=>(string)$kid]);
+foreach (['Probetraining, aktiv, pausiert oder beendet.', 'Leer lassen, solange kein Ende feststeht.', 'Neue Kinder starten in',
+          'Im Verein. Wann das Kind in einen Kurs kam', 'Dabei seit', 'Gehört ab 400 € Rechnungsbetrag', 'Wen wir im Notfall anrufen',
+          'Dorthin gehen auch Rechnungen und Erinnerungen.'] as $gone)
+    ok(!str_contains($profil, e($gone)), 'staff no longer read „'.$gone.'"');
+foreach (['Im Verein seit', 'Straße, PLZ und Ort in einer Zeile.', 'Notfallkontakte stehen unter „Kontakte“.', 'Ändert Nina selbst unter „Mein Konto“.'] as $said)
+    ok(str_contains($profil, e($said)), 'staff read „'.$said.'"');
+ok(str_contains(render_view('student', ['id'=>(string)$kid, 'tab'=>'classes']), e('Jede Kursteilnahme hat ihren eigenen Tarif.')), 'and how tariffs work, under Kurse');
+sign_in_as($family);
+$profil = render_view('student', ['id'=>(string)$kid]);
+ok(str_contains($profil, e('Deine Trainerin sieht, was du änderst.')) && !str_contains($profil, e('Hier ergänzt oder korrigierst du deine Angaben.')),
+   'a family\'s Profil opens with one sentence');
+foreach (['Straße, Nummer, PLZ und Ort. Steht auf deinen Rechnungen.', 'Notfallkontakte stehen unter „Kontakte“.'] as $said)
+    ok(str_contains($profil, e($said)), 'and reads „'.$said.'"');
+ok(!str_contains($profil, e('eine Rechnung über 400 € braucht sie')), 'without the rule about 400 €');
+ok(str_contains($profil, '<dt>'.e('Im Verein seit').'</dt>') && !str_contains($profil, e('Dabei seit')), 'the date is „Im Verein seit", the word staff read for it: one word per place');
+is_same(0, $dom($profil)->query($heading.'//p')->length, '„Aktiv" is not said under the name: it says nothing');
+ok(!str_contains($profil, e('Mitgliedschaft bis')), 'nor „Mitgliedschaft bis" without a date, where a dash reads as something missing');
+run('UPDATE students SET status=?, ended_on=? WHERE id=?', ['paused', '2027-06-30', $kid]);
+$profil = render_view('student', ['id'=>(string)$kid]);
+is_same(status_label('paused'), trim((string)$dom($profil)->query($heading.'//p')->item(0)?->textContent), 'another status is said under the name');
+ok(str_contains($profil, e('Mitgliedschaft bis')) && str_contains($profil, e(fmt_date('2027-06-30'))), 'and „Mitgliedschaft bis" with its date');
+run('UPDATE students SET status=?, ended_on=NULL WHERE id=?', ['active', $kid]);
+ok(!str_contains(render_view('student', ['id'=>(string)$kid, 'tab'=>'classes']), e('Jede Kursteilnahme hat ihren eigenen Tarif.')), 'how tariffs work is staff\'s to know');
+
 // ---------------------------------------------------------------------------
 case_('A problem report shows the way there, in both shapes it can be stored in');
 /* Einstellungen → Rückmeldungen reads each report through report_trail() in

@@ -53,7 +53,7 @@ case_('And on the full form, which has the boxes the short one leaves out');
 $existing = make_student(['first_name'=>'Tobias', 'last_name'=>'Hofer']);
 // The refused value used to be a price with a euro sign. The price box is gone
 // from this form (ADR 0011), so it is a date typed the way it is said instead -
-// „Dabei seit“ stays on the form, wherever on it it ends up.
+// „Im Verein seit“ stays on the form, wherever on it it ends up.
 $reject('student_save', ['return_page'=>'student','return_id'=>(string)$existing,'return_tab'=>'',
     'id'=>(string)$existing, 'revision'=>'1',
     'first_name'=>'Tobias','last_name'=>'Hofer','birth_date'=>'','status'=>'active',
@@ -345,7 +345,7 @@ $after = one('SELECT * FROM students WHERE id=?', [$kept]);
 is_same([$priced, 4200, 'Vereinbart 2024'], [(int)$after['tariff_id'], (int)$after['price_cents'], (string)$after['price_note']],
         'and a page from before that posts other values changes none of the three');
 is_same(['2024-10-01', '2027-06-30'], [$after['joined_on'], $after['ended_on']],
-        'while „Dabei seit“ and „Mitgliedschaft bis“ are still saved');
+        'while „Im Verein seit“ and „Mitgliedschaft bis“ are still saved');
 is_same(9900, tariff_price($priced), 'what a tariff costs is still read from its rate at the usual interval');
 is_same(null, tariff_price(null), 'and no tariff is no price');
 is_same(null, tariff_price(999999), 'as is a tariff that is not there');

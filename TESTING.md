@@ -70,9 +70,9 @@ nothing to read first. Only 1.4 changes anything, and you put it back.
   selben Version."**, and **Version der Dateien** and **Version in der
   Datenbank** show the same number — the one at the top of the release notes.
   A yellow box, or any other sentence, fails this check.
-- [ ] **1.6** Tap **Chats** in the bar at the bottom. **Nachrichten** opens with
-  its list of **Unterhaltungen**; tap one and its messages appear. With none yet
-  it says „Noch keine Nachrichten.", and that passes too.
+- [ ] **1.6** Tap **Chats** in the bar at the bottom. The page **Chats** opens
+  with its list of **Unterhaltungen**; tap one and its messages appear. With
+  none yet it says „Noch keine Nachrichten.", and that passes too.
 
 ---
 
@@ -84,7 +84,7 @@ not marked **(release)**, straight after the five-minute sweep. Filled in for ea
 release and emptied again for the next.
 
 - Setup needs PHP's `fileinfo` extension, and **Einstellungen → System** names any required extension a portal has lost: [3.1a](#installation-and-update)
-- A shorter menu of seven, a hub at the top of **Einstellungen**, links at the top of **Nachrichten** and **Geld**: U.45–U.52
+- A shorter menu of seven, a hub at the top of **Einstellungen**, links at the top of **Chats** and **Geld**: U.45–U.52
 - A start checklist, **„Einrichtung"**, until the portal is ready: U.31–U.39
 - The rarely needed fields wait under **„Mehr Möglichkeiten"**, VAT fields only with VAT: U.53–U.55
 - One login is one student; invitations need a passing mail test: U.20–U.28b, U.57
@@ -119,6 +119,7 @@ release and emptied again for the next.
 - How long the portal keeps what it holds: ten periods under **Einstellungen → System**, the daily cleanup deletes what is past them with their files, and never an invoice, a charge or a payment: [D.1–D.7](#how-long-the-portal-keeps-what-it-holds-adr-0032)
 - The security review of 2026-10-08: a family's login is called what the child is, and Mein Konto no longer renames it; a chat mails once until it is read; twenty chat photos an hour per family's login, staff not counted; administrators hear of every change to where the money goes; the QR code is a SEPA transfer into the account shown; a changed address or password is told by mail; a chat photo keeps no file name; the outbox forgets what a sent mail said after 90 days: [S.7–S.14](#the-security-batch-roadmap-item-6), S.3
 - The portal looks and behaves like an iPhone app: the phone's own font, grouped lists, a tab bar (Übersicht · Schüler · Anwesend · Chats · Mehr for staff, Übersicht · Beiträge · Chats · Profil for a family), red counts, switches, sheets, a back button, pages that fade; „Mehr" as a page; Mein Konto for a family through Profil, the language in Mein Konto — on a real iPhone: [I.1–I.11](#the-portal-as-an-iphone-app-design-language-phase-1), and 1.6, 5.0a, 5.1b, 5.3c, 6.10, U.46, U.47, U.48, U.52, U.56
+- The design audit's first fixes: red only once a charge is late; less to read on a child's Profil, and „Im Verein seit"; a family's overview opens with the greeting and the face, and shows no past dates; the chat page is „Chats"; the sign-in page says where to read about your data, with one link: [M.1–M.5](#the-design-audits-first-fixes-n1-n6-n7), 4.7a, U.1
 - Pictures come back (ADR 0031): a child's, added by the family or the trainer, also from **Anwesenheit**; the team's own on **Mein Konto**; the course sees a child's once the family says yes, a parent's under 14; „Dein Foto" once, after the first password; JPEG and PNG only, up to 24 megapixels; at **Anwesenheit** „Mehr" for the rarer marks and Enter that saves; the child's face beside the greeting: [P.1–P.20](#pictures-adr-0031)
 
 ---
@@ -463,15 +464,15 @@ Skip on an ordinary code change; do all of it before a release.
 ## Sign in, roles and access
 
 - [ ] **4.1** Sign in as the trainer. The menu reads Übersicht, Schüler, Kurse,
-  Anwesenheit, Geld, Nachrichten and **Verwaltung**. **Rechnungen** is the
+  Anwesenheit, Geld, Chats and **Verwaltung**. **Rechnungen** is the
   switch at the top of **Geld**, **Postausgang** is at the top of
-  **Nachrichten** (U.45–U.51).
+  **Chats** (U.45–U.51).
 - [ ] **4.2** As the trainer, **Einstellungen** and **Änderungen** are *not* in
   the menu, and typing their addresses by hand is refused.
 - [ ] **4.3** As the administrator, everything the trainer can reach, you can
   reach too. There is no screen she has and you do not.
 - [ ] **4.4** Sign in as a family. They see the overview, **Profil** — their one
-  child's page, since one login is one child — **Nachrichten** and
+  child's page, since one login is one child — **Chats** and
   **Neuigkeiten**, and no other child.
 - [ ] **4.5** As a family, open another family's child by editing the address.
   Refused, in words, not with a blank page.
@@ -494,11 +495,12 @@ Skip on an ordinary code change; do all of it before a release.
   login's own address; the link sets a new password once and not twice. Asking
   four times in an hour is refused the fourth time — that counter is never
   cleared, because typing an address proves nothing about who typed it.
-- [ ] **4.7a** The sign-in page carries one small line under the form, „Mit der
-  Anmeldung akzeptierst du die Datenschutzerklärung.", the last word a link to the
-  notice. Every signed-out page — sign in, forgotten password, invitation, the
-  notice itself — ends with the link to the Datenschutzerklärung and the version,
-  and nothing longer. At 320px no page scrolls sideways.
+- [ ] **4.7a** The sign-in page carries one small line under the form, „Deine
+  Daten: Datenschutzerklärung", the last word the page's one link to the notice,
+  and its footer shows only the version; an invitation's page links the notice
+  once too (M.5). Every other signed-out page — forgotten password, the notice
+  itself — ends with the link to the Datenschutzerklärung and the version, and
+  nothing longer. At 320px no page scrolls sideways.
 - [ ] **4.8** **Zugänge** offers **„+ Teammitglied einladen"** and nothing that
   makes a login with a password (ADR 0020, §5). Invite a trainer: **Postausgang**
   holds the invitation, whose text you cannot read there; the new login is
@@ -613,18 +615,18 @@ Skip on an ordinary code change; do all of it before a release.
   save; „Etwas funktioniert hier nicht", a sentence, „Absenden"; on a child's
   page, change a detail and save; on a child whose login is in use, „Portal als
   … ansehen". Each is refused with „Beim Ansehen als jemand anderer lässt sich
-  nichts schreiben oder ändern. Beende zuerst die Ansicht." In **Nachrichten** a
+  nichts schreiben oder ändern. Beende zuerst die Ansicht." In **Chats** a
   chat opens without a writing box. „Ansicht beenden" gives you yourself back,
   and nothing you tried happened: **Zugänge** shows the trainer's name as
   before, the child's detail is unchanged, and **Einstellungen → Rückmeldungen**
   has no new report.
 - [ ] **5.11a** The same as the trainer, viewing a family as in 5.9: a change on
   their child's „Profil" tab, on their **Mein Konto**, and through „Etwas
-  funktioniert hier nicht" is each refused with the same sentence. On
-  **Übersicht**, „Nachricht schreiben" opens „Neue Nachricht", which shows that
-  sentence and lists nobody (C.18). Then, still viewing, „Abmelden" in the
-  account menu: you are signed out, and signed in again you are yourself, with
-  no bar about viewing anybody.
+  funktioniert hier nicht" is each refused with the same sentence. Opened by its
+  address, `?page=messages&new=1`, „Neue Nachricht" shows that sentence and
+  lists nobody (C.18). Then, still viewing, „Abmelden" in the account menu: you
+  are signed out, and signed in again you are yourself, with no bar about
+  viewing anybody.
 - [ ] **5.11b** What a view does not draw is refused all the same. As the
   administrator, before starting a view, open two more tabs of your own: one
   where the bell shows a number, one on a course's group with its writing box.
@@ -634,7 +636,7 @@ Skip on an ordinary code change; do all of it before a release.
   its number and the group has no new message.
 - [ ] **5.11c** A view ends with the viewer's own login, and signs the browser
   out. Two browsers. In the first, as the trainer, „Portal als … ansehen" on a
-  child whose login is in use, and open the child's **Nachrichten**. In the
+  child whose login is in use, and open the child's **Chats**. In the
   second, as the administrator, **Zugänge** → that trainer's row → „Zugang
   sperren". Back in the first, tap anything — a chat, **Übersicht**, „Ansicht
   beenden": the sign-in page, with nobody signed in, and no page of the
@@ -1046,7 +1048,7 @@ that.
 
 ## Messages
 
-- [ ] **14.1** **Nachrichten** as a family: one box, a „+" to attach a photo
+- [ ] **14.1** **Chats** as a family: one box, a „+" to attach a photo
   („Foto anhängen"), a send arrow, and no microphone. Under the box: „Fotos bis
   …" with the size. Write to the trainer without asking anybody's permission.
 - [ ] **14.2** Attach a photo — it shows as a picture in the bubble. As a family,
@@ -1326,11 +1328,11 @@ yours.
 **The sign-in page**
 
 - [ ] **U.1** Open the portal signed out. Under the sign-in form there is one
-  small line, „Mit der Anmeldung akzeptierst du die Datenschutzerklärung." —
-  the last word a link that opens the notice. The long paragraph about cookies
-  is gone, and at the bottom of every signed-out page there is only the link to
-  the Datenschutzerklärung and the version number. At 320px nothing scrolls
-  sideways.
+  small line, „Deine Daten: Datenschutzerklärung" — the last word a link that
+  opens the notice, and the page's only one: its footer shows just the version
+  number (M.5). The long paragraph about cookies is gone, and the other
+  signed-out pages end with the link to the Datenschutzerklärung and the version
+  number. At 320px nothing scrolls sideways.
 
 **The portal's own icon** — **Einstellungen → Portal**, card **„Symbol des Portals"**
 
@@ -1364,7 +1366,7 @@ yours.
 - [ ] **U.10** On a desktop screen at 1280, scroll to the end of a long page
   (a child's **Profil** with every card open): the last button or field is not
   covered by the pinned „Etwas funktioniert hier nicht" button.
-- [ ] **U.11** A long conversation under **Nachrichten**, on a screen at least
+- [ ] **U.11** A long conversation under **Chats**, on a screen at least
   761 pixels wide: the help button sits at the end of the page rather than over
   the message box, and the send arrow beside the box can be clicked. The same in
   a chat with nothing in it yet, opened as the trainer from „Neue Nachricht" →
@@ -1533,7 +1535,7 @@ Rückmeldungen**, „Technische Einzelheiten"
 **The menu and where things went** (see `docs/decisions/0011-the-start-checklist-and-a-seven-entry-menu.md`)
 
 - [ ] **U.45** On a laptop, as yourself: the menu on the left is one list —
-  Übersicht, Schüler, Kurse, Anwesenheit, Geld, Nachrichten, Einstellungen, with
+  Übersicht, Schüler, Kurse, Anwesenheit, Geld, Chats, Einstellungen, with
   **„Einrichtung"** above them while the checklist is unfinished. Nothing in it
   folds open or shut. Open **Rechnungen** or a single child: **Geld** or
   **Schüler** stays marked, so you always see where you are.
@@ -1553,9 +1555,9 @@ Rückmeldungen**, „Technische Einzelheiten"
 - [ ] **U.49** **Einstellungen** opens with cards above the tabs: **Verwaltung**,
   **Zugänge**, **Änderungen**, **Einrichtung ansehen** and **Erweitert**. Each card
   opens its page, and **Einstellungen** stays marked in the menu. Postausgang is
-  not among them — it is under Nachrichten (U.50).
-- [ ] **U.50** At the top of **Nachrichten**: **„Neuigkeiten"** and
-  **„Postausgang"**, each opening its page with **Nachrichten** still marked. An
+  not among them — it is under Chats (U.50).
+- [ ] **U.50** At the top of **Chats**: **„Neuigkeiten"** and
+  **„Postausgang"**, each opening its page with **Chats** still marked. An
   administrator also has „Alle Einzelchats" there.
 - [ ] **U.51** At the top of **Beiträge** and of **Rechnungen**, a switch
   **Beiträge · Rechnungen** takes you from one to the other; **Geld** stays marked
@@ -1732,7 +1734,7 @@ where it says so
 
 **The chat, like a messenger** (ADR 0022) — on the iPhone where it says so
 
-- [ ] **C.1** As the trainer, **Nachrichten**: „Kursgruppen" lists a group for
+- [ ] **C.1** As the trainer, **Chats**: „Kursgruppen" lists a group for
   every running course, then „Einzelchats". A course made today has its group
   straight away; an archived course's group is gone from the list.
 - [ ] **C.2** As a child enrolled in one course, on the iPhone at 320 px: the
@@ -1778,7 +1780,7 @@ where it says so
   other notices, and there is no „Alle gelesen" in it. „Ansicht beenden", then
   sign in as the child: both notices are there, and unread.
 - [ ] **C.15** As the administrator, **Einstellungen → Zugänge**, a trainer's
-  row tapped open, „Portal als diese Person ansehen". **Nachrichten →
+  row tapped open, „Portal als diese Person ansehen". **Chats →
   Neuigkeiten → + Neuigkeit**, a title and some text, „Speichern": refused with
   „Beim Ansehen als jemand anderer lässt sich nichts schreiben oder ändern.
   Beende zuerst die Ansicht." Open a course's group: no writing box, and no „⋯"
@@ -1795,12 +1797,12 @@ where it says so
   both open and look as they did.
 - [ ] **C.18** As the trainer, **Schüler** → a child whose login is in use →
   „Portal als … ansehen" on the card „Zugang zum Portal". The view opens on
-  **Übersicht**: tap „Nachricht schreiben". The page „Neue Nachricht" says
-  „Beim Ansehen als jemand anderer lässt sich nichts schreiben oder ändern.
-  Beende zuerst die Ansicht." and lists nobody — not even the „Trainerteam".
-  **Nachrichten** has no „Neue Nachricht" button. In the child's group, the
-  people symbol in the top bar lists the members, and tapping a trainer there
-  opens nothing.
+  **Übersicht**, which has no „Nachricht schreiben" any more: open
+  `?page=messages&new=1` by hand. The page „Neue Nachricht" says „Beim Ansehen
+  als jemand anderer lässt sich nichts schreiben oder ändern. Beende zuerst die
+  Ansicht." and lists nobody — not even the „Trainerteam". **Chats** has no
+  „Neue Nachricht" button. In the child's group, the people symbol in the top
+  bar lists the members, and tapping a trainer there opens nothing.
 - [ ] **C.19** A photo can carry a small preview of itself inside the file,
   and after cropping, an editor can leave that preview showing the whole photo
   from before. Crop a photo in an editor, save it as a JPEG with the option
@@ -2051,7 +2053,7 @@ own address.
 - [ ] **L.21** On a child whose login is in use, **„Anmeldung löschen"** asks
   for the address typed; typed in other capitals, it deletes.
   The child stays, „Ohne Anmeldung", with courses, charges and invoices; the
-  child's chat with you is gone from **Nachrichten**. The address is still on
+  child's chat with you is gone from **Chats**. The address is still on
   the record, so „Einladung senden" is offered again.
 - [ ] **L.21a** **(release)** A team member's login left on a child's record,
   as a portal from before ADR 0010 can have. On a copy, in the database, point
@@ -2159,7 +2161,7 @@ On the example data or a copy.
 - [ ] **R.4** **Schüler** has no „Diese Auswahl als Ansicht speichern"; above
   the list stand „Alle | Überfällig | Krank" and „Filter", nothing to save. A
   saved view's old address, `?page=students&saved=1`, shows all children.
-- [ ] **R.5** No „An mehrere schreiben", at the top of **Nachrichten** or on
+- [ ] **R.5** No „An mehrere schreiben", at the top of **Chats** or on
   **Übersicht**; no „Auswahl anschreiben" under the **Schüler** filter; no
   „Zahlungserinnerung schreiben" on **Geld**, where „Alle überfälligen per
   E-Mail erinnern" stays. `?page=compose` answers „Seite nicht gefunden.".
@@ -2230,7 +2232,7 @@ the families use.
   the top and no writing box. „Neue Nachricht" lists the coaching team only
   (14.5).
 - [ ] **R.16** **(release)** On the copy, as a family who had a request to write
-  to them waiting before the update: **Nachrichten** has no „Möchte dir
+  to them waiting before the update: **Chats** has no „Möchte dir
   schreiben" and nothing to agree to.
 - [ ] **R.17** **(release)** In a desktop browser's developer tools
   (**Netzwerk** / **Network**), open any page: its response carries
@@ -2535,7 +2537,7 @@ The owner's rule: administrators can read every chat, and nothing records that
 they did. Have a chat between a child and the trainer and one between two
 trainers, with a message each that you, the administrator, have not written.
 
-- [ ] **E.1** As the administrator, **Nachrichten** → „Alle Einzelchats": the
+- [ ] **E.1** As the administrator, **Chats** → „Alle Einzelchats": the
   chats you are not in, under „Schüler und Team", „Im Team" and, on a copy that
   has one, „Zwischen Schülern (geschlossen)". Every row names both people and
   shows no unread number. „Meine Chats" leads back, and your own list and badge
@@ -2620,7 +2622,7 @@ The security review of 2026-10-08:
   administrator's „Administrator"; a child's never has one, whatever the child
   is called. As that family, change the last name to „· Trainerin" and write in
   the group: the line reads „… · Trainerin" in the child's colour, with no pill,
-  and does not look like the trainer's. Put the name back. In **Nachrichten**
+  and does not look like the trainer's. Put the name back. In **Chats**
   the list names whoever wrote last in the group the same way: after the
   trainer writes, the group's line reads her first name, the pill „Trainerin",
   then her message, on one line at 320 px with the pill whole. As that family,
@@ -2912,6 +2914,40 @@ what could not be checked rather than ticking it. The screens are specified in
   Mein Konto, the face on **Übersicht**, the sheet at **Anwesenheit** and „Dein
   Foto". Put the text size back.
 
+
+
+### The design audit's first fixes (N1, N6, N7)
+
+What the designer found walking the owner's goals at phone width, the first
+batch. Test data only; on a phone at 320 px where it says so.
+
+- [ ] **M.1** **(release)** As a family whose child has a charge due in a few
+  days and nothing late: on **Übersicht**, „Offen" is in black, with „Einzeln
+  unter „Beiträge“" under it, and on **Beiträge** „Überfällig 0,00 €" is black
+  too. In phpMyAdmin, set that charge's `overdue_on` to yesterday — its
+  `due_on`, where `overdue_on` is empty: both are red.
+- [ ] **M.2** As the trainer, a child's **Profil**: the card „Einteilung" has no
+  hints under its fields, and its date reads „Im Verein seit". Under „Anschrift"
+  the hint is „Straße, PLZ und Ort in einer Zeile.", under „Telefonnummer"
+  „Notfallkontakte stehen unter „Kontakte“."; a course's own „Dabei seit", on
+  the child's **Kurse**, is unchanged.
+- [ ] **M.3** As a family, the child's **Profil**: one sentence above the form,
+  „Deine Trainerin sieht, was du änderst."; no „Aktiv" under the name; under
+  „Mitgliedschaft", „Im Verein seit" with its date, and „Mitgliedschaft bis"
+  only when it has one; and no sentence about tariffs. Under „Anschrift":
+  „Straße, Nummer, PLZ und Ort. Steht auf deinen Rechnungen."
+- [ ] **M.4** **(iPhone)** As a family, **Übersicht** starts with „Hallo
+  {Vorname}" and the child's face, with no line under it, no „Nachricht
+  schreiben" and no card for the child. „Termine" shows today, the next three
+  dates, and any later date in the next five weeks that is changed or has a
+  note — never a past one. As the trainer, **Übersicht** has no line under
+  „Hallo …" and no „Termin ändern", the tiles are as before, and „Termine" still
+  shows the last three dates and the next six.
+- [ ] **M.5** **(iPhone)** Signed out, at 320 px: the sign-in page's line „Deine
+  Daten: Datenschutzerklärung" is one line, and the page links the notice once.
+  Open an invitation's link: „Datenschutzerklärung lesen" above the box to tick
+  is that page's one link, and its footer shows only the version. „Passwort
+  vergessen?" still has the footer's link.
 
 ---
 

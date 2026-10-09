@@ -8,11 +8,16 @@
 input('login',t('E-Mail-Adresse','Email address'),'','email',true,'','',sign_in_address_attributes());
 input('password',t('Passwort','Password'),'','password',true,'','',current_password_attributes());
 submit_button(t('Anmelden','Sign in')); ?></form>
-<?php /* Said where it applies: under the button that signs you in. Setting up an
-         account asks the same thing its own way, with a link and a box to tick
-         (activate.php); the forgotten-password and unsubscribe pages sign nobody
-         in, so they do not carry it. The noun alone is the link, so the sentence
-         still reads as a sentence. No sign-up is offered anywhere: only people
-         who were invited get in (ADR 0021, §3). */ ?>
-<p class="signin-consent"><?=e(t('Mit der Anmeldung akzeptierst du die ','By signing in you accept the '))?><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','privacy notice'))?></a>.</p>
+<?php /* Where to read about your data, under the button that signs you in. The
+         notice informs; signing in is not agreeing to it (the coordinator,
+         2026-10-09), so the line asks nothing and says where it is - one line
+         at 320 px, so the link is not left alone on a line of its own: „Wie das
+         Portal mit deinen Daten umgeht, steht in der Datenschutzerklärung." took
+         three there. Setting up an account has its own sentence and box
+         (activate.php). The noun alone is the link, and it is the page's one link
+         to the notice: the footer leaves its own out ($privacyLinked, read by
+         views/layout.php). No sign-up is offered anywhere: only people who were
+         invited get in (ADR 0021, §3). */
+$privacyLinked=true; ?>
+<p class="signin-privacy"><?=e(t('Deine Daten: ','About your data: '))?><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','privacy notice'))?></a></p>
 <a class="text-link" href="<?=e(url('forgot'))?>"><?=e(t('Passwort vergessen?','Forgot your password?'))?></a></div>

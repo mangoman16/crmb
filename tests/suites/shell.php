@@ -346,7 +346,7 @@ $setupShown(false);
 is_same(['dashboard','students','classes','attendance','payments','messages','settings'], menu_routes($adminUser),
         'and the seven alone once it is hidden');
 is_same([t('Übersicht','Overview'), t('Schüler','Students'), t('Kurse','Courses'), t('Anwesenheit','Attendance'),
-         t('Geld','Money'), t('Nachrichten','Messages'), t('Einstellungen','Settings')],
+         t('Geld','Money'), t('Chats','Chats'), t('Einstellungen','Settings')],
         array_column(nav_entries($adminUser), 'label'), 'named the way the portal names them');
 is_same(['dashboard','students','classes','attendance','payments','messages','manage'], menu_routes($trainerUser),
         'a trainer\'s seventh is Verwaltung, the page she can open, not Einstellungen');
@@ -370,7 +370,7 @@ $ownLogin = make_account(['role'=>'student', 'name'=>'Familie Profil']);
 $ownStudent = make_student(['first_name'=>'Pia', 'last_name'=>'Profil', 'account_id'=>$ownLogin, 'email'=>'profil@example.test']);
 $otherStudent = make_student(['first_name'=>'Nicht', 'last_name'=>'Ihres']);
 $ownUser = one('SELECT * FROM accounts WHERE id=?', [$ownLogin]);
-is_same(['dashboard','student','messages','student'], menu_routes($ownUser), 'a family with a student sees four: Übersicht, Beiträge, Nachrichten, Profil');
+is_same(['dashboard','student','messages','student'], menu_routes($ownUser), 'a family with a student sees four: Übersicht, Beiträge, Chats, Profil');
 is_same([['id'=>$ownStudent,'tab'=>'payments'], ['id'=>$ownStudent]], array_values(array_column(array_filter(nav_entries($ownUser), fn($e) => $e['route'] === 'student'), 'params')),
         'Beiträge is their student\'s money tab, Profil the page itself');
 $profile = family_nav_entries($ownUser)['profile'] ?? [];
@@ -392,8 +392,13 @@ is_same([['dashboard','student','messages','student'], ['Übersicht','Beiträge'
         'a family: Übersicht, Beiträge, Chats, Profil');
 is_same(['dashboard','messages'], array_column(mobile_nav_entries($familyUser), 'route'),
         'and a login with no student simply has no Beiträge and no Profil');
-is_same('Nachrichten', array_column(mobile_nav_entries($ownUser), 'label', 'route')['messages'] ?? null,
-        '„Chats" is read out as „Nachrichten"');
+/* One word per place (the audit, N6): the menu, the bar, what a screen reader
+   says and the page's title all call it „Chats". */
+is_same(['Chats', 'Chats'], [array_column(mobile_nav_entries($ownUser), 'label', 'route')['messages'] ?? null, array_column(nav_entries($ownUser), 'label', 'route')['messages'] ?? null],
+        '„Chats" is read out as „Chats", and the menu says it too');
+sign_in_as($ownLogin);
+ok(str_contains(render_view('messages'), '<h1>'.e(t('Chats','Chats')).'</h1>'), 'as the page\'s title does');
+sign_out();
 // Both of a family's entries lead to the same page; the tab decides which one is lit.
 [$money, $record] = array_values(array_filter(mobile_nav_entries($ownUser), fn($e) => $e['route'] === 'student'));
 foreach (['payments' => 'Beiträge', 'invoices' => 'Beiträge', 'details' => 'Profil', 'contacts' => 'Profil', '' => 'Profil'] as $tab => $lit)

@@ -695,7 +695,6 @@ html.js .picture-save{display:none}
 .stat>small{display:block}
 .stat>svg{position:absolute;right:14px;top:16px;color:var(--muted-2)}
 .dashboard-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(290px,1fr);gap:24px}
-.own-student{padding-block:4px}
 .student-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;column-gap:12px;padding-block:10px;color:inherit}
 .student-card-name p{margin-top:2px;font-size:var(--t-sub);color:var(--muted);overflow-wrap:anywhere}
 .student-card-status{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:var(--t-foot)}
@@ -1079,8 +1078,8 @@ details.account-row[open]>summary{margin-bottom:0}
    information rather than a step. Its link is a 44pt target all the same:
    one sentence with one link in it, between the button and „Passwort
    vergessen?", which a thumb aims at as it aims at those two. */
-.signin-consent{margin:10px 0 0;font-size:var(--t-foot);line-height:1.5;color:var(--muted)}
-.signin-consent a{display:inline-flex;align-items:center;min-height:44px}
+.signin-privacy{margin:10px 0 0;font-size:var(--t-foot);line-height:1.5;color:var(--muted)}
+.signin-privacy a{display:inline-flex;align-items:center;min-height:44px}
 
 /* --- Chats (ADR 0022) ------------------------------------------------------------
    The chats down one side and the open one beside them - on a phone one at a

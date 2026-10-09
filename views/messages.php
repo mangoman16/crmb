@@ -78,11 +78,11 @@ $row=function(array $c) use ($user,$id,$preview,$when): void {
 <?php };
 ?>
 <div class="messages-page<?=$open?' is-open':''?>">
-<?php page_head(t('Nachrichten','Messages'),'',$viewing?'':link_button(t('Neue Nachricht','New message'),'messages',['new'=>1]));
-/* The pages that belong to Nachrichten without a menu entry of their own
+<?php page_head(t('Chats','Chats'),'',$viewing?'':link_button(t('Neue Nachricht','New message'),'messages',['new'=>1]));
+/* The pages that belong to Chats without a menu entry of their own
    (nav_owner()): the news, and what went out by email. */
 if($staff): ?>
-<nav class="page-links" aria-label="<?=e(t('Mehr zu Nachrichten','More about messages'))?>">
+<nav class="page-links" aria-label="<?=e(t('Mehr zu Chats','More about chats'))?>">
     <a class="chip" href="<?=e(url('news'))?>"><?=e(t('Neuigkeiten','News'))?></a>
     <a class="chip" href="<?=e(url('outbox'))?>"><?=e(t('Postausgang','Outbox'))?></a>
     <?php if(is_admin($user)): ?><a class="chip" href="<?=e(url('messages',$allDirect?[]:['all'=>1]))?>"><?=e($allDirect?t('Meine Chats','My chats'):t('Alle Einzelchats','All direct chats'))?></a><?php endif ?>

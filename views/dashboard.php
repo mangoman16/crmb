@@ -22,16 +22,19 @@ $mine=$staff?null:($students[0]??null);
 // nothing to put a child into; the first step there is the course. The same
 // question the checklist's „Ersten Kurs anlegen" asks, through the same function.
 $hasCourse=$staff && real_course_exists();
-/* The child's own face greets them, and leads to their photo at the top of
-   their page (the audit, N7): where one is added or changed. */
-page_head(t('Hallo ','Hello ').greeting_first_name($user),
-    $staff?t('Übersicht über Schüler, Beiträge und Abwesenheiten.','Students, charges and absences at a glance.'):t('Deine Termine, Beiträge und Nachrichten.','Your dates, payments and messages.'),
-    $staff?($hasCourse?link_button(t('+ Schüler anlegen','+ Add student'),'student_new',['from'=>'dashboard']):''):($mine?link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]):''),
+/* The greeting alone (the audit, N7; Part 2): no line under it, and for a
+   family no „Nachricht schreiben" - the Chats tab is that. The child's own face
+   greets them, and leads to their photo at the top of their page: where one is
+   added or changed. */
+page_head(t('Hallo ','Hello ').greeting_first_name($user),'',
+    $hasCourse?link_button(t('+ Schüler anlegen','+ Add student'),'student_new',['from'=>'dashboard']):'',
     $mine?'<a class="page-face" href="'.e(url('student',['id'=>$mine['id'],'#'=>'picture'])).'" aria-label="'.e(t('Dein Profil','Your profile')).'">'.avatar($mine,'large').'</a>':'');
 if(!$staff):
-    /* The family's page, in the order they read it: who, what is owed, when is
+    /* The family's page, in the order they read it: what is owed, when is
        training, what is new. Every part the full width - there is one of
-       each, and nothing to put beside it. */
+       each, and nothing to put beside it. Their own card went (the audit,
+       N7): the name is the greeting, the amount is „Offen", the status is on
+       Profil. */
     if(!$mine) {
         empty_state(t('Hier ist noch nichts','Nothing here yet'),
             t('Zu diesem Zugang gehört gerade keine Mitgliedschaft. Schreib deiner Trainerin, wenn das nicht stimmt.','No membership belongs to this login at the moment. Write to your coach if that is not right.'),
@@ -40,9 +43,10 @@ if(!$staff):
         /* What the family still has to fill in, first: the same list as on
            their Profil tab (ADR 0020, §7), each step a way to where it is
            done. It disappears once nothing is left. */
-        next_steps_card(family_next_steps((int)$mine['id']),t('Noch zu ergänzen','Still to fill in')); ?>
-<div class="card own-student"><?php student_card($mine+['due_cents'=>$overdueBy[(int)$mine['id']]??0]); ?></div>
-<div class="stats-grid single"><div class="stat"><span><?=e(t('Offen','Outstanding'))?></span><strong class="<?=$open?'due':''?>"><?=e(money($open))?></strong><small><?=e($open?t('Einzeln unter „Beiträge“ in deinem Profil','Itemised under “Payments” in your profile'):t('Alles bezahlt','All paid'))?></small><?=icon('wallet')?></div></div>
+        next_steps_card(family_next_steps((int)$mine['id']),t('Noch zu ergänzen','Still to fill in'));
+        /* Red only once something is late (the audit, N1): open but not yet
+           due is the ink every amount is in. */ ?>
+<div class="stats-grid single"><div class="stat"><span><?=e(t('Offen','Outstanding'))?></span><strong class="<?=($overdueBy[(int)$mine['id']]??0)>0?'due':''?>"><?=e(money($open))?></strong><small><?=e($open?t('Einzeln unter „Beiträge“','Itemised under “Payments”'):t('Alles bezahlt','All paid'))?></small><?=icon('wallet')?></div></div>
 <?php /* Uploading the proof is voluntary and nobody will chase it, so it has to
          be offered at the moment it is easy - under the amount, on the page
          the family lands on - rather than waiting on a tab they never open. */
@@ -95,13 +99,20 @@ if($staff || $myClasses) {
 $past=array_values(array_filter($timeline,fn($e)=>$e['date']<today()));
 $todayEntries=array_values(array_filter($timeline,fn($e)=>$e['date']===today()));
 $upcoming=array_values(array_filter($timeline,fn($e)=>$e['date']>today()));
+/* A family is shown no past dates and the next three (the audit, N7; Part
+   2.1), and any later date in the five weeks that is not as planned or carries
+   a note: the bell hears of a change only when the trainer ticks „informieren",
+   so a changed date beyond the third stays in view. Staff keep the last three
+   and the next six. */
+if(!$staff) {
+    $past=[];
+    $upcoming=array_values(array_filter($upcoming,fn(array $e,int $i): bool => $i<3 || $e['status']!=='planned' || trim((string)$e['note'])!=='',ARRAY_FILTER_USE_BOTH));
+} else $upcoming=array_slice($upcoming,0,6);
 if($timeline): ?>
 <section class="card timeline-card">
-    <div class="section-heading">
-        <div><h2><?=e(t('Termine','What is on'))?></h2>
-        <p class="muted"><?=e(t('Aus den Wochenplänen der Kurse. Änderungen für einzelne Tage stehen mit dabei.','From the courses’ weekly patterns. Changes to single days are shown with them.'))?></p></div>
-        <?php if($staff)echo link_button(t('Termin ändern','Change a date'),'classes',[],'secondary');?>
-    </div>
+    <?php /* The dates alone (the audit, N7): where they come from needs no
+             sentence, and a date is changed on its course, under Kurse. */ ?>
+    <h2><?=e(t('Termine','What is on'))?></h2>
     <ol class="timeline">
     <?php /* Only the last three that have been, because the useful part of the
              past is "did Monday happen", not a term's worth of history. */
@@ -125,7 +136,7 @@ if($timeline): ?>
                   elseif($staff)echo link_button(t('Anwesenheit','Attendance'),'attendance',['id'=>$entry['class_id'],'on'=>$entry['date']],'secondary');?>
         </li>
     <?php endforeach ?>
-    <?php foreach(array_slice($upcoming,0,6) as $entry): ?>
+    <?php foreach($upcoming as $entry): ?>
         <li class="timeline-item">
             <span class="timeline-when"><?=e(fmt_date($entry['date']))?></span>
             <span class="timeline-what"><strong><?=e($entry['class_name'])?></strong><small><?=e(session_label($entry))?></small>

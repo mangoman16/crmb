@@ -130,6 +130,10 @@ In this order.
    2026-10-08 as a design audit against the owner's words: "something schick, modern and
    minimalistic and well made and intuitive and easy to use without too much reading but
    visual signs".
+   - **The audit's N1, N6 and N7: built.** Red only once a charge is late; less to read on a
+     child's Profil, with „Im Verein seit"; a family's overview opens with the greeting and
+     the face and shows no past dates; the chat page is „Chats"; the sign-in line says where
+     to read about your data, with one link. Not walked by hand yet: TESTING.md M.1–M.5.
 12. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
 
 ## The owner's goals
@@ -330,6 +334,8 @@ For the owner to do:
 
 ## For the owner to test or deploy
 
+- **Calmer family screens** (the audit's N1, N6, N7; test data only): on your iPhone, open a
+  test family's overview and the child's Profil, then walk TESTING.md M.1–M.5.
 - **The first cleanup after the update** (ADR 0032, test data only): within a day of the
   upload, or with the first page if nobody opened the portal the day before, it deletes what
   is past its period — chat messages older than a year, absences that ended more than three

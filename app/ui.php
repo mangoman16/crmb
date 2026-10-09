@@ -439,11 +439,14 @@ function filter_summary(array $f,array $choices): string {
  * (nav_owner()), and that entry is the one highlighted there.
  *
  *   administrator  (Einrichtung, while unfinished) · Übersicht · Schüler · Kurse
- *                  · Anwesenheit · Geld · Nachrichten · Einstellungen
+ *                  · Anwesenheit · Geld · Chats · Einstellungen
  *   trainer        the same, with Verwaltung last: Einstellungen is an
  *                  administrator's page, Verwaltung is what she can open
- *   family         Übersicht · Beiträge · Nachrichten · Profil, the same four as
+ *   family         Übersicht · Beiträge · Chats · Profil, the same four as
  *                  on the bar at the bottom of a phone
+ *
+ * One word per place (the audit, N6): „Chats" here, on the bar and as the
+ * page's title.
  *
  * Each entry is ['route'=>…, 'params'=>[…], 'icon'=>…, 'label'=>…, 'count'=>int].
  * $counted=false leaves every count at 0, for a question about which entries
@@ -457,7 +460,7 @@ function nav_entries(array $user,bool $counted=true): array {
     if(!is_staff($user)) {
         $own=family_nav_entries($user);
         return array_values(array_filter([$entry('dashboard','home',t('Übersicht','Overview')),$own['payments']??null,
-            $entry('messages','chat',t('Nachrichten','Messages'),$unread),$own['profile']??null]));
+            $entry('messages','chat',t('Chats','Chats'),$unread),$own['profile']??null]));
     }
     $admin=is_admin($user);
     $out=[];
@@ -467,7 +470,7 @@ function nav_entries(array $user,bool $counted=true): array {
     $out[]=$entry('classes','calendar',t('Kurse','Courses'),$counted?pending_request_count():0);
     $out[]=$entry('attendance','check',t('Anwesenheit','Attendance'));
     $out[]=$entry('payments','wallet',t('Geld','Money'));
-    $out[]=$entry('messages','chat',t('Nachrichten','Messages'),$unread);
+    $out[]=$entry('messages','chat',t('Chats','Chats'),$unread);
     $out[]=$admin?$entry('settings','settings',t('Einstellungen','Settings'))
                  :$entry('manage','settings',t('Verwaltung','Management'));
     return $out;
@@ -577,12 +580,13 @@ function family_nav_entries(array $user): array {
  * the bar already, news reaches them on the overview, and the privacy notice and
  * the version are on Mein Konto, a row on Profil. „Mehr" carries no count.
  * 'short' is the label the bar prints, 'label' the full name a screen reader
- * says: „Chats" on the bar, „Nachrichten" read out. $counted as for nav_entries().
+ * says: „Anwesend" on the bar, „Anwesenheit" read out. $counted as for
+ * nav_entries().
  */
 function mobile_nav_entries(array $user,bool $counted=true): array {
     $entry=fn(string $route,string $symbol,string $label,string $short='',int $count=0)=>
         ['route'=>$route,'params'=>[],'icon'=>$symbol,'label'=>$label,'short'=>$short!==''?$short:$label,'count'=>$count];
-    $messages=$entry('messages','chat',t('Nachrichten','Messages'),t('Chats','Chats'),$counted?unread_count($user):0);
+    $messages=$entry('messages','chat',t('Chats','Chats'),'',$counted?unread_count($user):0);
     if(is_staff($user))
         return [$entry('dashboard','home',t('Übersicht','Overview')),
                 $entry('students','users',t('Schüler','Students')),

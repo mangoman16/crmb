@@ -283,6 +283,23 @@ ok(!str_contains($tag($signIn, 'password'), 'minlength'), 'without asking an exi
 ok(str_contains($signIn, e('Passwort vergessen?')), 'the way to a forgotten password is on it');
 ok(!str_contains($signIn, 'class="notice'), 'and nothing else is said before anybody typed anything');
 
+case_('Signing in says where the privacy notice is, and asks nothing [the coordinator, 2026-10-09]');
+/* The notice informs; signing in is not agreeing to it, so „… akzeptierst …"
+   went. The sentence links it, and the footer leaves its own link out on this
+   page: one on a page, where it was twice (the audit, 17). */
+sign_out();
+$signInPage = render_page('login');
+ok(str_contains($signInPage, e('Deine Daten: ').'<a href="'.e(url('privacy')).'">'.e('Datenschutzerklärung').'</a>') && !str_contains($signInPage, 'akzeptierst'),
+   'where to read about your data is said, not agreed to: „Deine Daten: Datenschutzerklärung"');
+is_same(1, substr_count($signInPage, 'href="'.e(url('privacy')).'"'), 'and the page links the notice once');
+is_same(1, substr_count(render_page('forgot'), 'href="'.e(url('privacy')).'"'), 'while a public page without the sentence keeps the footer\'s link');
+/* Setting up a login from an invitation links the notice above its box to tick,
+   so its footer leaves the second link out too. */
+$invitedOnce = make_account(['role'=>'student', 'email'=>'einmal.verlinkt@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+$_SESSION['activation_hash'] = hash('sha256', make_token($invitedOnce, 'invite'));
+is_same(1, substr_count(render_page('activate'), 'href="'.e(url('privacy')).'"'), 'and so does setting up a login from an invitation');
+unset($_SESSION['activation_hash']);
+
 case_('A refused sign-in brings back what was typed, and says nothing about it');
 /* One refusal for every failure (ADR 0020, §3), so the page cannot add a word
    of its own about what kind of thing was typed. */
@@ -548,7 +565,7 @@ ok(str_contains($profil, e(url('student', ['id'=>$lena])).'#address"'), 'with a 
 ok(str_contains($profil, 'id="address"') && str_contains($profil, 'id="personal"'), 'and the boxes it leads to carry those anchors');
 $studentForm = $formOf($profil, 'student_save');
 ok(str_contains($studentForm, 'name="address"') && str_contains($studentForm, 'name="phone"'), 'the address and phone are in the student form, so one save carries them');
-ok(str_contains($studentForm, e('eine Rechnung über 400 € braucht sie')), 'with the family’s own hint about invoices');
+ok(str_contains($studentForm, e('Steht auf deinen Rechnungen.')), 'with the family’s own hint about invoices');
 ok(!str_contains($studentForm, 'name="email"') && !str_contains($profil, 'id="access"'), 'and no address box or access card of the login’s');
 ok(str_contains($studentForm, e('Angaben speichern')), 'the button says what it saves');
 ok(!str_contains($profil, 'avatar_save') && !str_contains($studentForm, 'type="file"'),

@@ -194,8 +194,9 @@ $pinnedHelp=!($page==='messages' && $writable); ?>
 <?php /* Only the way to the privacy notice and the version. The paragraph that
          stood here was repeated at the foot of every public page, which is where
          nobody reads a paragraph; the one thing it had to say is now a sentence
-         on the sign-in card. */ ?>
-<footer class="public-footer"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><span>v<?=e(app_version())?></span></footer>
+         on the sign-in card. A page whose own sentence links the notice says so
+         ($privacyLinked), and the footer leaves its link out: one on a page. */ ?>
+<footer class="public-footer"><?php if(empty($privacyLinked)): ?><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><?php endif ?><span>v<?=e(app_version())?></span></footer>
 <?php endif ?>
 </body>
 </html>

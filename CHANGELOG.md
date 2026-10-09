@@ -205,6 +205,35 @@ pixels, as each role, light and dark; not yet on a real iPhone, which TESTING.md
 I.1–I.12 and W.1–W.3 walk, with W.4 on an Android phone. Chromium cannot show
 whether Safari still flashes white.
 
+### The design audit's first fixes: less to read on a family's screens
+
+The designer walked the owner's goals at phone width (ROADMAP.md, item 11).
+These are the first fixes, the audit's N1, N6 and N7.
+
+- **Red only once something is late.** „Offen" on a family's overview and
+  „Überfällig" on Beiträge are black until a charge is overdue, and red from
+  then on. Before, any open amount was red, „Überfällig 0,00 €" too.
+- **A child's Profil says less.** For staff, the card „Einteilung" has no hints,
+  and its date reads „Im Verein seit", where it said „Dabei seit": in the club,
+  not in a course, whose own „Dabei seit" stays. The address and the phone
+  number have one short hint each. A family sees one sentence above the form,
+  „Deine Trainerin sieht, was du änderst.", no „Aktiv" under the name,
+  „Mitgliedschaft bis" only when it has a date, and no sentence about tariffs.
+- **A family's overview starts with the greeting and the child's face**, with no
+  line under it, no „Nachricht schreiben" — the **Chats** tab is that — and no
+  card for the child: the name is the greeting, the amount is „Offen", the
+  status is on **Profil**. „Termine" shows today, the next three dates and any
+  later one in the next five weeks that is changed or has a note, never a past
+  one. The trainer's overview loses its line and „Termin ändern"; a date is
+  changed on its course.
+- **The chat page is called „Chats"**, as on the bar; a message is still a
+  „Nachricht".
+- **The sign-in page says where to read about your data**: „Deine Daten:
+  Datenschutzerklärung", one line, with the page's only link to the notice. It
+  no longer says that signing in accepts the notice: the notice informs, and
+  signing in is not agreeing to it. An invitation's page links the notice once
+  too.
+
 ### Pictures, for the children and the team (ADR 0031)
 
 - **A child can have a profile picture again.** The family adds, replaces and
@@ -1017,10 +1046,10 @@ whether Safari still flashes white.
   Konto**, under „Datenschutz und Hilfe“.
 - **The price box on a child's page is gone.** Its tariff and agreed price
   billed nobody: what bills is the price of the course the child is in. The
-  stored values are kept and a save no longer changes them. „Dabei seit“ and
-  „Mitgliedschaft bis“ moved to „Einteilung“.
-  Automatic monthly charges are switched on and off on the **Beiträge** page,
-  by an administrator.
+  stored values are kept and a save no longer changes them. „Mitgliedschaft bis“
+  and the date now called „Im Verein seit“ moved to „Einteilung“. Automatic
+  monthly charges are switched on and off on the **Beiträge** page, by an
+  administrator.
 - **Forms ask for less before they are saved.** A course's price form shows the
   name and the amounts; everything else waits under „Mehr Möglichkeiten“, as
   do the rarer course fields on a child's page. The default payment recipient
