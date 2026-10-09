@@ -20,10 +20,13 @@ Auf einem normalen Webhosting-Paket, ohne Kommandozeile, in drei Schritten.
 - Apache oder LiteSpeed mit `.htaccess`, oder Nginx (Beispiel in `docs/nginx.conf.example`).
 - HTTPS. Bei den meisten Anbietern ist ein Let's-Encrypt-Zertifikat im Panel enthalten.
 
-Die Einrichtungsseite prüft HTTPS, die PHP-Version, die Erweiterungen und ob
-`config/` und `storage/` beschreibbar sind, und sagt, was fehlt. Die Version der
-Datenbank und den Webserver prüft sie nicht. Wenn PHP zu alt ist, lässt sich die
-Version im Hosting-Panel meist selbst umstellen.
+Die Einrichtungsseite prüft HTTPS, die PHP-Version, die Erweiterungen, ob
+`config/` und `storage/` beschreibbar sind und ob die E-Mail- und
+QR-Bibliotheken im Ordner `vendor/` da sind, und sagt, was fehlt. Fehlen nur
+`gd` oder diese Bibliotheken, installiert sie trotzdem und zeigt die Zeile als
+„eingeschränkt“. Die Version der Datenbank und den Webserver prüft sie nicht.
+Wenn PHP zu alt ist, lässt sich die Version im Hosting-Panel meist selbst
+umstellen.
 
 Ein Cronjob wird **nicht** benötigt. Das Portal erledigt Versand und
 Aufräumarbeiten selbst; siehe [Cronjob statt Seitenaufruf](#optional-cronjob-statt-seitenaufruf).
@@ -390,19 +393,22 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 
 ## Was geprüft wurde
 
-Die Einrichtung über den Browser, das Anwenden neuer Migrationen beim
-Seitenaufruf und jede der vier Prüfungen vor einem Update sind gegen
-**MariaDB 10.11.14** mit echten HTTP-Anfragen durchgespielt worden – samt einer
-Sicherung, die anschließend in eine zweite Datenbank zurückgespielt wurde und
-dort vollständig ankam. Die gesamte Testsuite läuft dort ebenfalls durch, mit
-allen 33 Datenbankänderungen, zuletzt am 7. Oktober 2026.
+Die gesamte Testsuite läuft gegen **MariaDB 10.11.14** mit PHP 8.4.26 durch, mit
+allen 41 Datenbankänderungen, zuletzt am 9. Oktober 2026; sie prüft auch die
+Einrichtung, das Anwenden neuer Migrationen beim Seitenaufruf und jede der vier
+Prüfungen vor einem Update. Am selben Tag ist das Paket 0.6.0-beta.2 so
+durchgespielt worden, wie es hier steht: neu eingerichtet über die
+Einrichtungsseite, mit allen 14 Prüfungen und allen 41 Datenbankänderungen, auch
+auf einem PHP ohne `gd`; und als Aktualisierung über das erste Beta-Paket, samt
+der Sicherung, die das Portal davor schreibt und die anschließend wieder
+eingespielt wurde und Tabelle für Tabelle vollständig ankam.
 
-Für Version 0.6.0 wurde außerdem der erste Abend von Anfang bis Ende in einem
-echten Browser in Telefonbreite durchgespielt, gegen MariaDB 10.11.14: die
+Auf dem Paket wurde außerdem der erste Abend von Anfang bis Ende in einem echten
+Browser in Telefonbreite durchgespielt, gegen MariaDB 10.11.14: die
 Einrichtungsseite, alle neun Schritte von „Dein Portal einrichten“ über ihre
 eigenen Knöpfe, eine Einladung über einen Mailserver auf demselben Rechner, die
-Anmeldung als Familie, ein Zahlungsbeleg, eine Problemmeldung, eine Rechnung
-und ein absichtlich ausgelöster Fehler. Das war Chromium, kein iPhone, und kein
+Anmeldung als Familie, ein Zahlungsbeleg, eine Problemmeldung, eine Rechnung und
+ein absichtlich ausgelöster Fehler. Das war Chromium, kein iPhone, und kein
 echter E-Mail-Anbieter.
 
 **MySQL 8.0 selbst ist nicht geprüft**, und auf einem konkreten Hosting-Paket

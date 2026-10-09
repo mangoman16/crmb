@@ -6,6 +6,32 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
+## 0.6.0-beta.2 — the package built from `03f50df`
+
+Recorded 2026-10-09 by docs-writer, as reported by devops-engineer, who built
+and ran it the same day on MariaDB 10.11.14 with PHP 8.4.26; nothing here was
+watched by the writer. `bin/release.sh` built it from `03f50df` with `VERSION`
+at `0.6.0-beta.2`: 412 files, sha256 `27695edb…c557`. The package handed to the
+owner is rebuilt from the commit that adds this record with the `VERSION` line;
+besides `VERSION`, it changes only INSTALL.md, UPDATING.md and VALIDATION.md.
+
+- **A fresh install through `setup.php`**: its 14 rows in order, all 41
+  database changes, the example data as INSTALL.md describes it, and signing in
+  as the owner and as a family.
+- **The browser walk on the ZIP**: 413 passed, 0 failed, `RESULT: PASS`, no PHP
+  warnings.
+- **An update over the first beta's ZIP**: the first request ran the database
+  from 33 to 41 changes with nothing on the screen; **Einstellungen → System**
+  showed both versions and „0.6.0 → 0.6.0-beta.2"; the backup was written and,
+  imported back, every table was equal; the 18 guarded tables were equal; only
+  the child whose login signed in with a username was signed out.
+- **The first daily cleanup** came a simulated day later and deleted nothing,
+  as nothing was old enough.
+- **Without gd**: setup showed „eingeschränkt" and installed, **Einstellungen →
+  System** named gd, and no photo was offered.
+- **Not run**: Apache with its `.htaccess`, MySQL 8.0, a real hosting account,
+  an iPhone.
+
 ## 0.6.0, unreleased — pictures (ADR 0031)
 
 Recorded 2026-10-09 by docs-writer. The gate run is the project manager's, as

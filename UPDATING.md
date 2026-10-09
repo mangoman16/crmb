@@ -17,6 +17,19 @@ drafts. A portal that already has families in it needs one thing done
 **before** the upload — two, if anything in its custom fields is worth keeping —
 and then changes in the ways below the moment the new files are opened.
 
+**Coming from the first beta package**, the ZIP built from `00dc020`, whose
+**Einstellungen → System** says 0.6.0: that package already ran migrations 019
+to 033, so only 034 to 041 run now, and what this section says about the earlier
+ones, the custom fields among them, has already happened. Nobody with an address
+is signed out: that package already kept sign-ins in `storage/sessions`, so
+„Everybody is signed out once" below does not apply. Only a login that signed in
+with a username is signed out, by 039; it is „Ohne Anmeldung" afterwards, with
+its password cleared. For such a child, enter the child's own address on the
+card „Zugang zum Portal" and send the invitation. Three things from that package
+stay on the server after the upload, because this version no longer has them:
+the folder `.claude`, `app/presence.php` and `views/_signin_link.php`. The
+portal never loads them; delete them in the file manager if you like.
+
 **Before you upload: add four paragraphs to your privacy notice, and replace
 its „6.".** This version switches club news by email on for new accounts, it
 gives every course a group chat, a child can be in the portal before anybody
@@ -694,8 +707,11 @@ Each release can contain a symlink `config/config.php` to the shared configurati
 - A release is numbered like `0.6.0`. A package handed to the owner before the
   release is `0.6.0-beta.N`, counting from 2, because the ZIP built from
   `00dc020` was the first. The portal compares two versions only to see whether
-  they are the same, and tells newer from older by the migrations, so the
-  suffix needs nothing else.
+  they are the same, and tells newer from older by the migrations, so the suffix
+  needs nothing else. For such a package, `VERSION` and the ZIP's name say
+  `0.6.0-beta.N`, while the README line keeps „Version 0.6.0, in beta"; it has
+  no Git tag, and the commit that sets `VERSION` is on the branch, named by the
+  package's `BUILD.txt`.
 - To build a package, commit `VERSION` first, then run `bin/release.sh <folder>`
   on a machine whose PHP has gd: `composer.json` names `ext-gd`, and composer
   installs nothing without it. The script writes `badminton-crm-<version>.zip`
