@@ -1,9 +1,41 @@
 ---
-status: accepted, amended by 0019, 0020
-date: 2026-09-24
+status: accepted, amended by 0019, 0020, 0021, 0023, 0030
+date: 2026-09-28
 ---
 
 # 0010. One account is one student
+
+> **Amended a fifth time by ADR 0030 (2026-10-08).** Usernames are gone again, for every role. In
+> the 0023 note below, "Until it is given an address or a username" reads "until it is given an
+> address": a placeholder becomes a login only by an invitation to its address. Everything else in
+> that note, and in the ones below it, stands.
+
+> **Amended a fourth time by ADR 0023 (2026-10-06, proposed until the owner approves migrations
+> 028–030).** The owner: "there should be no student ever in a course without an account".
+>
+> - **Every student has a login from the moment the student exists.** Until it is given an address
+>   or a username, it is a placeholder, which cannot sign in. The update gives every older student
+>   without a login one.
+> - **`students.account_id`'s foreign key becomes `ON DELETE RESTRICT`** (migrations 029 and 030). A
+>   login a student points to cannot be deleted. „Zugang löschen" on the access card gives the
+>   student a fresh placeholder in the same transaction, then deletes the old login and its private
+>   conversations.
+> - **`students.account_id` is written** when the student is made (`create_student()`,
+>   `create_own_student()`, `demo_fill()`), by the update for older students, and when a login is
+>   replaced. It is no longer written by `invite_student()`, which now turns the placeholder into an
+>   invited login.
+> - **„Before an account exists, `students.email` is the address"** now reads "while the login has no
+>   address". Nothing is mailed to `students.email`, as before.
+> - **The Konten page („Zugänge") lists students too**, in a third card. Each row leads to the
+>   student's access card, where every action on that login is.
+>
+> Everything else stands as the notes below leave it.
+
+> **Amended a third time by ADR 0021 (2026-10-01).** Sign-in is by the address only; usernames
+> are gone. `students.account_id` is also written by `create_own_student()`, when somebody invited
+> by address alone sets up their own record. „Zugänge ohne Schüler" on Konten lists only logins
+> that were set up; open invitations are listed apart, and `student_delete` removes a login that
+> was never set up. Everything else stands as the notes below leave it.
 
 > **Amended by ADR 0019 (2026-09-29).** The owner reversed one half of this record. Several
 > accounts may now share one email address; siblings use a parent's. Sign-in is by username.

@@ -4,8 +4,11 @@ description: Measures the crmb badminton CRM as a phone actually renders it — 
 tools: Read, Grep, Glob, Bash
 ---
 
-You measure **crmb** on a phone, because the person who uses it is on one. A middle-aged
-badminton trainer, iOS user, standing in a hall with one hand free.
+Read `CLAUDE.md` and `ROADMAP.md` before you start. The first holds the conventions this prompt does not repeat, who uses the portal and which document to read when; the second is the plan.
+
+You measure **crmb** on a phone, because the people who use it are on one: the trainer,
+on an iPhone, standing in a hall with one hand free, and children and families on
+theirs.
 
 ## You are read-only
 
@@ -19,8 +22,7 @@ node tests/mobile.mjs --base=http://127.0.0.1:8099/index.php \
 ```
 
 Chromium via Playwright against a **real installed copy**, at **320 and 390 CSS pixels**,
-in light and dark, as the trainer, as a family and signed out. The last full sweep was 120
-screens. `--family-password` exists because the example accounts have a password of their
+in light and dark, as the trainer, as a family and signed out. `--family-password` exists because the example accounts have a password of their
 own; without it only one of the two roles is ever really swept.
 
 Each screen is checked for: nothing wider than the viewport, no page that has to zoom out

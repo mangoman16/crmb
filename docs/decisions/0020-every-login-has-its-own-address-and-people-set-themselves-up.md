@@ -1,9 +1,75 @@
 ---
-status: accepted
+status: accepted, amended by 0021, 0023, 0026, 0030, 0031
 date: 2026-09-30
 ---
 
 # 0020. Every login has its own address, and people set themselves up
+
+> **Amended by ADR 0031 (2026-10-08).** A child's profile picture is back. In §7's table, a family
+> adds, replaces and removes its child's picture, and so do staff (0031 §7). The family also answers
+> whether the children in the child's courses see it (`students.course_sees_picture`, 0031 §8): the
+> one value a family writes that staff can switch off and never on, because nobody says yes in a
+> family's place. "Must not"'s "Make any field a family can write read-only for staff" holds but for
+> that one. Where the picture card sits is `ui-ux-designer`'s to specify anew; §10e, which the 0026
+> note took away, does not come back. Everything else stands.
+
+> **Amended by ADR 0030 (2026-10-08).** Usernames are gone again, for every role, and so are the
+> one-time sign-in links. Where the 0023 note below brought usernames back it no longer holds: §3
+> and §4 hold for the address alone, with one throttle bucket per login, as the 0021 note says, and
+> §2 stays gone. The 0023 note's placeholder, wizard and RESTRICT key stand; its sentence on
+> copyable links no longer holds, so "Letting staff copy a reset or invitation link to send another
+> way" is rejected again in full. §1, every login has its own address, is the whole rule.
+> Everything else stands.
+
+> **Superseded in part by ADR 0026 (2026-10-07).** Custom fields, the printed data sheet and profile
+> pictures are gone. These parts no longer hold:
+>
+> - in Context, the bullets "Custom fields", "Custom-field history" and "Required fields";
+> - in §7, the custom fields among what a family writes and is asked for, the three "Custom field"
+>   rows of the table, all of "Schema: none" but its last bullet, "Required custom fields" whole,
+>   and the custom-field parts of "Every change is `tracked()`";
+> - §10e, the picture card, and `frontend-dev`'s line that moves it;
+> - in §11, the `custom_field_required_of()` row;
+> - in Rejected, `family_editable`, "Tracking `field_values` as an entity of its own" and "Logging
+>   custom fields from inside `save_custom_fields()`";
+> - everything said about `views/print.php` and the data sheet;
+> - every custom-field item in Consequences, "Must not" and "In plain words".
+>
+> Change-log lines written before keep their `field:<id>` keys, under a fixed label that needs no
+> query (0026 §7). With the owner's word on 0026's †, levels and age groups go too, and the lines
+> here that name them describe nothing. Everything else stands.
+>
+> *Later answer, 2026-10-07:* levels and age groups stay (0026, the note at the top), so the lines
+> here that name them hold again, but for the pin, which goes with 038: "pinned age group" in §7's
+> table, and "It cannot move a pinned age group." A child's age group is worked out from the birth
+> date alone, so a new birth date moves it; a family still writes no level.
+
+> **Amended by ADR 0023 (2026-10-06).** This note and the status line were added on 2026-10-07;
+> until then 0021's note carried the change. These parts no longer hold as written:
+>
+> - §3 and §4 hold again, as 0023 §7 adjusts them, for a student's login with a username; it has a
+>   bucket of its own beside the address's. §2 does not come back: staff give the username, and
+>   nobody changes it once the login is in use (0023 §1);
+> - in §5, "Logins are made only by invitation", and the four ways "Must not" allows a login to be
+>   made: a student's login starts as a placeholder, and a username login is set up through a
+>   sign-in link (0023 §3, §6);
+> - in §6, §11 and "Must not", `invite_student()` as the only writer of `students.account_id`, and
+>   the key's `ON DELETE SET NULL`. Every student has a login from the moment they exist, and the
+>   key is `ON DELETE RESTRICT` (0023 §4);
+> - in §6, „Gleich einladen" on the create form: the wizard is the one way staff make a student
+>   (0023 §5);
+> - in §7, landing on the student page only while the list is not empty: after the first set-up the
+>   person always lands there (0023 §5);
+> - in Rejected, "Letting staff copy a reset or invitation link to send another way", for the one
+>   kind of link the owner asked for, the one-time sign-in link (0023 §6).
+>
+> Everything else stands as the 0021 note below leaves it.
+
+> **Amended by ADR 0021 (2026-10-01).** Usernames are gone; the address is the only sign-in. No
+> longer hold: §2; the username halves of §3, §4 and §8; the username in §6's mail and flashes;
+> the editable username on the activation page, whose explicit actor now names the person
+> creating their own student record (0021 §3). §3 and §4 hold for the address alone, with one
+> throttle bucket per login. Everything else stands.
 
 *Amended on 2026-09-30, after commit `7f891a5`, from the designer's revised screen specification:*
 

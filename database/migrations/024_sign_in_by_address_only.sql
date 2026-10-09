@@ -1,0 +1,11 @@
+-- Everybody signs in with their own e-mail address, and usernames are gone
+-- (docs/decisions/0021-sign-in-by-address-and-two-ways-to-add-a-person.md).
+--
+-- The address, which 001 already keeps to one login, is the only name a login
+-- has. The column cannot be left unused: it is unique with a default of '', so
+-- the second login made without a username would be refused.
+--
+-- One statement, because it cannot run twice: MySQL 8.0 has no DROP COLUMN IF
+-- EXISTS, and split in two, an update that stopped between them would leave a
+-- file that can no longer start again from its first statement.
+ALTER TABLE accounts DROP INDEX account_username, DROP COLUMN username;

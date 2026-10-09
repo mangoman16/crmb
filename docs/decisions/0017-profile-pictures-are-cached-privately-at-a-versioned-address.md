@@ -1,9 +1,26 @@
 ---
-status: accepted
+status: superseded by 0026
 date: 2026-09-29
 ---
 
 # 0017. Profile pictures are cached privately for a week, at a versioned address, and only for people who may see them
+
+> **ADR 0031 (2026-10-08) brings children's pictures back, with a rule of its own.** Nothing in
+> this record becomes a rule again: who sees a picture is 0031 §5's, under which a family sees
+> another child's picture where that child's family has said yes and the two are in a course
+> together, and the team has no pictures. What 0031 takes from here it restates (§6): the versioned
+> address; `private, max-age=604800` for the picture in use and `private, no-store` for any other,
+> never `public` or `immutable`; `Clear-Site-Data` at sign-out; one rule that the route and the
+> drawing both ask; and the same 404 for nobody and for not allowed.
+>
+> *Owner, 2026-10-08:* the team has pictures too, and every signed-in person sees them (0031's note
+> at the top). That rule is 0031's as well; nothing here becomes one again.
+
+> **Superseded by ADR 0026 (2026-10-07).** Profile pictures go, for accounts and students alike;
+> everybody is shown by their initials. With them go `may_see_account_picture()`,
+> `avatar_for_download()`, `avatar_cache_control()` and the download route's picture branch, so
+> nothing is left for this record to rule. `upload_version_current()` stays for the icon and the logo
+> (ADRs 0008 and 0014), and the problem report's screenshot keeps `no-store`.
 
 ## Context
 

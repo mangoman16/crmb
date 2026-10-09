@@ -1,0 +1,18 @@
+-- A child no longer has a profile picture
+-- (docs/decisions/0026-who-the-portal-is-for-the-beta-and-what-it-no-longer-carries.md,
+-- §8 and §11).
+--
+-- avatar_name was the stored name of the child's photo (011). The club does not
+-- need photos of children, and every child is shown by their initials. What the
+-- column held goes; every other value of every child stays, and no child is
+-- lost, so the update's guard, which counts the rows of students, has nothing to
+-- refuse. The photos' files are deleted by the update's step after the files
+-- (database/defaults.php), once no column names them. Lines in the change log
+-- that mention a picture keep it as written.
+--
+-- No key, index, check, view or trigger uses the column (information_schema,
+-- MariaDB 10.11.14). One statement, because it cannot run twice: MySQL 8.0 has
+-- no DROP COLUMN IF EXISTS. Run a second time after it finished, as the next
+-- page view would if the update stopped before the ledger recorded it, the
+-- engine refuses it and nothing changes, as with 024 and 035.
+ALTER TABLE students DROP COLUMN avatar_name;

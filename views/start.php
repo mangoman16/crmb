@@ -64,7 +64,7 @@ $optional[]=[t('Eine zweite Trainerin einladen','Invite a second trainer'),'acco
     <h2><?=e(t('Wenn du magst','If you like'))?></h2>
     <ul class="link-list">
     <?php foreach($optional as [$label,$target,$params,$anchor]): ?>
-        <li><a href="<?=e(url($target,$params+['from'=>'start']).($anchor!==''?'#'.$anchor:''))?>"><?=e($label)?><?=icon('arrow')?></a></li>
+        <li><a href="<?=e(url($target,$params+['from'=>'start','#'=>$anchor]))?>"><?=e($label)?><?=icon('chevron')?></a></li>
     <?php endforeach ?>
     </ul>
 </section>

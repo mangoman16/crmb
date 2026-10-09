@@ -29,25 +29,26 @@ declare(strict_types=1);
  * log is worth keeping at all.
  */
 function history_field_label(string $column): string {
-    // A custom field's value, recorded with the student it belongs to
-    // (entity_snapshot()), is named as the settings page names the field. That
-    // reads field_definitions through app/domain.php, which is loaded after
-    // this file - safe, because this runs only while a page is drawn, never
-    // while files load. The same arrangement as avatar() calling
-    // upload_version().
-    if (preg_match('/^field:([0-9]+)$/D', $column, $m)) {
-        $field = one('SELECT label,label_en FROM field_definitions WHERE id=?', [(int)$m[1]]);
-        return $field ? field_label($field) : t('Gelöschtes eigenes Feld', 'Deleted custom field');
-    }
+    // A custom field's value, kept with the student it belonged to on lines
+    // written before custom fields went (ADR 0026 §7). Their definitions went
+    // with them, so every such key reads the same, and nothing is looked up.
+    if (preg_match('/^field:[0-9]+$/D', $column)) return t('Früheres eigenes Feld', 'Former custom field');
     return match ($column) {
         'first_name' => t('Vorname', 'First name'),
         'last_name' => t('Nachname', 'Last name'),
         'birth_date' => t('Geburtsdatum', 'Date of birth'),
+        // A picture - a child's, or a team member's own - and the family's yes
+        // for the course (ADR 0031 §7, §8). The picture reads as „Bild" or „—",
+        // never as its file's name.
+        'picture_name' => t('Profilbild', 'Profile picture'),
+        'course_sees_picture' => t('Im Kurs-Chat sichtbar', 'Shown in the course chat'),
         'joined_on' => t('Dabei seit', 'Member since'),
         'left_on' => t('Ausgetreten am', 'Left on'),
         'ended_on' => t('Mitgliedschaft bis', 'Membership until'),
         'status' => t('Mitgliedschaft', 'Membership'),
         'level_id' => t('Leistungsgruppe', 'Level'),
+        // A band a child was pinned to, on lines written before 038 took the
+        // pin away (ADR 0026): kept, so those lines still read „Altersgruppe".
         'age_group_id' => t('Altersgruppe', 'Age group'),
         'tariff_id' => t('Tarif', 'Tariff'),
         'class_id' => t('Kurs', 'Course'),
@@ -68,6 +69,8 @@ function history_field_label(string $column): string {
         'internal_notes' => t('Interne Notizen', 'Internal notes'),
         'name' => t('Name', 'Name'),
         'email' => t('E-Mail-Adresse', 'Email address'),
+        // For change-log lines written while a login could sign in by a name of
+        // its own, 022 to 024 and 028 to 039; nothing does now (ADR 0030 §7).
         'username' => t('Benutzername', 'Username'),
         'role' => t('Rolle', 'Role'),
         'state' => t('Zustand', 'State'),
@@ -95,7 +98,12 @@ function history_field_label(string $column): string {
         'is_default' => t('Standard', 'Default'),
         'min_age' => t('Ab Alter', 'From age'),
         'max_age' => t('Bis Alter', 'To age'),
+        // A payment recipient's (ADR 0025). 'note' is a payment's as well, so
+        // it keeps the plain word rather than either form's.
         'iban' => 'IBAN', 'bic' => 'BIC', 'recipient' => t('Empfänger', 'Recipient'),
+        'currency' => t('Währung', 'Currency'),
+        'qr_template' => t('Inhalt des QR-Codes', 'QR code contents'),
+        'note' => t('Notiz', 'Note'),
         // What a family writes on its own page (ADR 0020, §7). 'phone' is the
         // student's and a contact's alike.
         'address' => t('Anschrift', 'Postal address'),
@@ -121,19 +129,19 @@ function history_field_label(string $column): string {
  */
 function tracked_entities(): array {
     return [
-        'students'         => ['label' => ['Schüler', 'Student'],            'title' => ['first_name', 'last_name']],
-        'charges'          => ['label' => ['Beitrag', 'Charge'],             'title' => ['label']],
-        'payments'         => ['label' => ['Zahlung', 'Payment'],            'title' => ['method']],
-        'classes'          => ['label' => ['Kurs', 'Class'],                 'title' => ['name']],
-        'tariffs'          => ['label' => ['Tarif', 'Tariff'],               'title' => ['name']],
-        'payment_profiles' => ['label' => ['Zahlungsempfänger', 'Payment profile'], 'title' => ['name']],
-        'levels'           => ['label' => ['Leistungsgruppe', 'Level'],      'title' => ['name']],
-        'age_groups'       => ['label' => ['Altersgruppe', 'Age group'],     'title' => ['name']],
-        'contacts'         => ['label' => ['Kontakt', 'Contact'],            'title' => ['owner_name'], 'hidden' => ['student_id']],
-        'accounts'         => ['label' => ['Konto', 'Account'],              'title' => ['name']],
-        'news'             => ['label' => ['Neuigkeit', 'News'],             'title' => ['title']],
-        'message_templates'=> ['label' => ['Vorlage', 'Template'],           'title' => ['name']],
-        'field_definitions'=> ['label' => ['Eigenes Feld', 'Custom field'],  'title' => ['label']],
+        'students'         => ['label' => ['Schüler', 'Student']],
+        // billing_key is bookkeeping - which period a charge stands for - and
+        // reads as a column name; cancelling gives it up (cancel_charge()).
+        'charges'          => ['label' => ['Beitrag', 'Charge'], 'hidden' => ['billing_key']],
+        'payments'         => ['label' => ['Zahlung', 'Payment']],
+        'classes'          => ['label' => ['Kurs', 'Class']],
+        'tariffs'          => ['label' => ['Tarif', 'Tariff']],
+        'payment_profiles' => ['label' => ['Zahlungsempfänger', 'Payment profile']],
+        'levels'           => ['label' => ['Leistungsgruppe', 'Level']],
+        'age_groups'       => ['label' => ['Altersgruppe', 'Age group']],
+        'contacts'         => ['label' => ['Kontakt', 'Contact'], 'hidden' => ['student_id']],
+        'accounts'         => ['label' => ['Konto', 'Account']],
+        'news'             => ['label' => ['Neuigkeit', 'News']],
     ];
 }
 
@@ -143,59 +151,46 @@ function tracked_entity(string $entity): array {
     return $all[$entity];
 }
 
-function entity_label(string $entity): string {
-    $e = tracked_entity($entity);
-    return t($e['label'][0], $e['label'][1]);
-}
-
-/** A short human name for a stored row, from whichever columns identify it. */
-function entity_title(string $entity, ?array $row): string {
-    if (!$row) return '';
-    $parts = [];
-    foreach (tracked_entity($entity)['title'] as $column)
-        if (($row[$column] ?? '') !== '') $parts[] = (string)$row[$column];
-    return implode(' ', $parts);
-}
-
 /**
- * The current state of a row, or null when it does not exist.
+ * What an entity is called in the change log.
  *
- * A student's custom fields are part of the student (ADR 0020, §7):
- * field_values has no id of its own to be tracked by, so each of its rows for
- * this student is added as a pseudo-column field:<field_id> holding its
- * value_json. A save of the student and its fields is then one line, and a
- * deleted student's line keeps their custom values. A value that is not filled
- * in, by custom_value_empty() - the rule a required field is refused by, in
- * app/domain.php, called only while a request runs, as history_field_label()
- * calls field_label() - is
- * left out, so a save that merely wrote empty rows for fields nobody filled in
- * is no change. An unticked box is one of those: unticking reads „ja → —“, not
- * „ja → nein“. These keys never reach SQL: there is no undo to write them back.
+ * One no longer in tracked_entities() is a feature that has gone, whose lines
+ * stay until the horizon removes them (ADR 0026 §7). Each of those is named as
+ * it was, marked as former - a table's name reads as machine-written - and a
+ * name nobody wrote here is shown as it was stored rather than refusing to draw
+ * the page, so the log outlives any feature.
  */
+function entity_label(string $entity): string {
+    $former = [
+        'field_definitions' => ['Früheres eigenes Feld', 'Former custom field'],
+        'message_templates' => ['Frühere E-Mail-Vorlage', 'Former email template'],
+        'skills'            => ['Frühere Fähigkeit', 'Former skill'],
+        'skill_areas'       => ['Früherer Bereich', 'Former skill area'],
+        'rating_scales'     => ['Frühere Skala', 'Former rating scale'],
+    ];
+    $label = tracked_entities()[$entity]['label'] ?? $former[$entity] ?? null;
+    return $label ? t($label[0], $label[1]) : $entity;
+}
+
+/** The current state of a row, or null when it does not exist. */
 function entity_snapshot(string $entity, int $id): ?array {
     tracked_entity($entity);
-    $row = one('SELECT * FROM '.$entity.' WHERE id=?', [$id]);
-    if ($row === null || $entity !== 'students') return $row;
-    foreach (rows('SELECT field_id,value_json FROM field_values WHERE student_id=? ORDER BY field_id', [$id]) as $value)
-        if (!custom_value_empty(json_decode((string)$value['value_json'], true)))
-            $row['field:'.(int)$value['field_id']] = (string)$value['value_json'];
-    return $row;
+    return one('SELECT * FROM '.$entity.' WHERE id=?', [$id]);
 }
 
 /**
  * Columns of a table that the change log never holds, whatever the operation.
  *
  * A password hash is a secret, and a copy in record_versions would outlive every
- * change of password; auth_version and last_seen_at change without anybody
- * editing anything and say nothing she could act on. Stripped from both sides
- * of an insert, an update and a delete alike (ADR 0019, S6 and R5): stripping
- * them on update only would still write the hash with every new or deleted
- * login, and a future tracked('accounts', …) around a password write would
- * put it in the log.
+ * change of password; auth_version changes without anybody editing anything
+ * and says nothing she could act on. Stripped from both sides of an insert, an
+ * update and a delete alike (ADR 0019, S6 and R5): stripping them on update
+ * only would still write the hash with every new or deleted login, and a future
+ * tracked('accounts', …) around a password write would put it in the log.
  */
 function history_never_recorded(string $entity): array {
     return match ($entity) {
-        'accounts' => ['password_hash', 'auth_version', 'last_seen_at'],
+        'accounts' => ['password_hash', 'auth_version'],
         default => [],
     };
 }
@@ -213,8 +208,8 @@ function history_never_recorded(string $entity): array {
  *
  * The actor is who is really signed in (audit()'s rule), unless the caller
  * names one: $actor exists for the one change made before anybody is signed in
- * - the username chosen while accepting an invitation, whose actor is the
- * holder of the link (change_own_username()). Nothing else passes it.
+ * - the student an invitation's holder makes for themselves, whose actor is the
+ * holder of the link (create_own_student()). Nothing else passes it.
  */
 function history_record(string $entity, int $id, string $operation, string $label, ?array $before, ?array $after, ?int $actor = null): int {
     tracked_entity($entity);
@@ -223,8 +218,6 @@ function history_record(string $entity, int $id, string $operation, string $labe
     if ($after !== null) $after = array_diff_key($after, $never);
     if ($operation === 'update' && $before !== null && $after !== null) {
         $differing = [];
-        // Both sides' columns: a custom field filled in for the first time is
-        // on the after side only (entity_snapshot()).
         foreach (array_keys($before + $after) as $column)
             if ((string)($before[$column] ?? null) !== (string)($after[$column] ?? null)) $differing[$column] = true;
         $before = array_intersect_key($before, $differing);
@@ -247,15 +240,14 @@ function history_record(string $entity, int $id, string $operation, string $labe
  * happen.
  *
  * $operation is 'update' normally, or 'delete' when $mutate removes the row.
- * $actor is history_record()'s, for the one caller that has to name it.
  */
-function tracked(string $entity, int $id, string $label, callable $mutate, string $operation = 'update', ?int $actor = null): mixed {
+function tracked(string $entity, int $id, string $label, callable $mutate, string $operation = 'update'): mixed {
     tracked_entity($entity);
-    return transactional(function () use ($entity, $id, $label, $mutate, $operation, $actor) {
+    return transactional(function () use ($entity, $id, $label, $mutate, $operation) {
         $before = entity_snapshot($entity, $id);
         $result = $mutate();
         $after = $operation === 'delete' ? null : entity_snapshot($entity, $id);
-        history_record($entity, $id, $operation, $label, $before, $after, $actor);
+        history_record($entity, $id, $operation, $label, $before, $after);
         return $result;
     });
 }
@@ -264,12 +256,13 @@ function tracked(string $entity, int $id, string $label, callable $mutate, strin
  * Run a change that creates a row and record it.
  *
  * $create must return the new id, since there is nothing to snapshot first.
+ * $actor is history_record()'s, for the one caller that has to name it.
  */
-function tracked_insert(string $entity, string $label, callable $create): int {
+function tracked_insert(string $entity, string $label, callable $create, ?int $actor = null): int {
     tracked_entity($entity);
-    return transactional(function () use ($entity, $label, $create) {
+    return transactional(function () use ($entity, $label, $create, $actor) {
         $id = (int)$create();
-        history_record($entity, $id, 'insert', $label, null, entity_snapshot($entity, $id));
+        history_record($entity, $id, 'insert', $label, null, entity_snapshot($entity, $id), $actor);
         return $id;
     });
 }
@@ -329,12 +322,15 @@ function version_changes(array $version): array {
  * A stored column value as a short readable string.
  *
  * $column is the field it came from, for the values whose raw form means
- * nothing to her: a login is stored as a number and read as its username, and
- * a custom field (field:<id>) as JSON, read as its text, its options joined with
- * commas, or ja / nein for a box. A calendar date - a value shaped exactly
- * YYYY-MM-DD, a custom date field's included - reads as she writes one;
- * fmt_date() does not shift a DATE, so it stays the day it was. A DATETIME has
- * a time part and is left alone (ADR 0020, §10b).
+ * nothing to her: a login is stored as a number and read as its holder, a
+ * picture as a file's name and read as „Bild", the family's yes as 0 or
+ * 1 and read as nein or ja, and a
+ * custom field's (field:<id>), on a line from before they went, as JSON - read
+ * as its text, its options joined with commas, or ja / nein for a box. A
+ * calendar date - a value shaped exactly YYYY-MM-DD, a former custom date
+ * field's included - reads as she writes one; fmt_date() does not shift a DATE,
+ * so it stays the day it was. A DATETIME has a time part and is left alone
+ * (ADR 0020, §10b).
  */
 function history_value(mixed $v, string $column = ''): string {
     if (str_starts_with($column, 'field:') && is_string($v)) {
@@ -343,6 +339,8 @@ function history_value(mixed $v, string $column = ''): string {
     }
     if ($v === null || $v === '') return '—';
     if ($column === 'account_id') return history_login((int)$v);
+    if ($column === 'picture_name') return t('Bild', 'Picture');
+    if ($column === 'course_sees_picture') return (int)$v === 1 ? t('ja', 'yes') : t('nein', 'no');
     if (is_bool($v)) return $v ? t('ja', 'yes') : t('nein', 'no');
     $s = (string)$v;
     if (preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/D', $s) && local_time($s)) return fmt_date($s);
@@ -350,18 +348,16 @@ function history_value(mixed $v, string $column = ''): string {
 }
 
 /**
- * A login as the change log names it: its username, or that it no longer exists.
+ * A login as the change log names it: its name, its address while it has none
+ * (login_holder_name()), or that it no longer exists.
  *
- * The username, because that is what the login is called wherever staff see it
- * (ADR 0019, §8); the address would say as much now that none is shared (ADR
- * 0020), but two names for one thing in one log is churn. Looked up when the page is
- * read rather than stored with the change, because its holder can change it
- * and the line should name the login as it is now. Not memoised: a login in the
- * log is rare, and a memo would outlive a language switch.
+ * Looked up when the page is read rather than stored with the change, so the
+ * line names the login as it is now. Not memoised: a login in the log is rare,
+ * and a memo would outlive a language switch.
  */
 function history_login(int $accountId): string {
-    $username = scalar('SELECT username FROM accounts WHERE id=?', [$accountId]);
-    return $username !== false && $username !== null ? (string)$username : t('gelöschter Zugang', 'deleted login');
+    $account = one('SELECT id,role,name,email FROM accounts WHERE id=?', [$accountId]);
+    return $account ? login_holder_name($account) : t('gelöschter Zugang', 'deleted login');
 }
 
 /**
@@ -372,6 +368,5 @@ function history_login(int $accountId): string {
  * quiet record because a busy one filled the table.
  */
 function history_prune(int $months = 24): int {
-    $before = (new DateTimeImmutable(now()))->modify('-' . max(1, $months) . ' months')->format('Y-m-d H:i:s');
-    return run('DELETE FROM record_versions WHERE created_at < ?', [$before])->rowCount();
+    return run('DELETE FROM record_versions WHERE created_at < ?', [months_ago($months)])->rowCount();
 }

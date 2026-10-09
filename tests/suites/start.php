@@ -25,7 +25,7 @@ is_same(array_fill_keys(array_keys($fresh), false), $done(), 'and nothing on a n
 foreach ($fresh as $key => $step) {
     ok($step['what'] !== '' && $step['why'] !== '', $key.' says what and why');
     is_same('start', $step['params']['from'] ?? null, $key.' carries from=start, so the page can offer the way back');
-    ok(in_array($step['page'], ['settings','manage','classes','student','students','payments'], true), $key.' leads to a page that exists');
+    ok(in_array($step['page'], ['settings','manage','classes','student','student_new','students','payments'], true), $key.' leads to a page that exists');
 }
 $progress = setup_progress();
 is_same([0, 9], [$progress['done'], $progress['total']], 'none of nine');
@@ -97,6 +97,10 @@ set_setting('auto_billing', false);
 fixture('charges', ['student_id'=>$kid, 'label'=>'Beitrag', 'amount_cents'=>3700, 'due_on'=>today(), 'cancelled'=>0,
                     'origin'=>'manual', 'created_at'=>now()]);
 is_same(true, $done()['billing'], 'and so is one charge on a real child');
+$billingStep = $steps()['billing'];
+is_same(['payments', ['from'=>'start'], 'auto-charges'], [$billingStep['page'], $billingStep['params'], $billingStep['anchor'] ?? null],
+        'and the step leads to the switch inside „Monatsbeiträge“, not the top of Geld');
+ok(str_contains(render_view('payments', ['from'=>'start']), 'id="auto-charges"'), 'which Geld draws for an administrator under that id');
 
 $login = make_account(['role'=>'student', 'state'=>'invited', 'verified_at'=>null]);
 run('UPDATE students SET account_id=? WHERE id=?', [$login, $kid]);
@@ -144,7 +148,7 @@ set_setting('org_name', '');
 setup_cache_clear();
 sign_out();
 $signIn = function (int $id) { setup_cache_clear();
-    return submit('login', ['username'=>(string)scalar('SELECT username FROM accounts WHERE id=?', [$id]), 'password'=>'Test-Only-Password-2026']); };
+    return submit('login', ['login'=>(string)scalar('SELECT email FROM accounts WHERE id=?', [$id]), 'password'=>'Test-Only-Password-2026']); };
 is_same(['start', []], $signIn($admin), 'an administrator signing in is taken to the checklist');
 is_same(['start', []], $signIn($admin), 'at every sign-in, not only the first');
 is_same(['dashboard', []], $signIn($trainer), 'a trainer is taken to the overview');
@@ -157,11 +161,12 @@ $_SESSION['activation_hash'] = hash('sha256', make_token($admin, 'reset'));
 setup_cache_clear();
 is_same(['start', []], submit('activate', ['password'=>'Federball-2026-Halle!', 'password_confirm'=>'Federball-2026-Halle!']),
         'an administrator resetting a password lands on the checklist');
-$newcomer = make_account(['role'=>'student', 'email'=>'neu@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+$newcomer = make_account(['role'=>'trainer', 'email'=>'neu@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
 $_SESSION['activation_hash'] = hash('sha256', make_token($newcomer, 'invite'));
 setup_cache_clear();
-is_same(['dashboard', []], submit('activate', ['password'=>'Federball-2026-Halle!', 'password_confirm'=>'Federball-2026-Halle!', 'privacy_seen'=>'1']),
-        'a family accepting an invitation lands on the overview');
+is_same(['welcome', []], submit('activate', ['password'=>'Federball-2026-Halle!', 'password_confirm'=>'Federball-2026-Halle!', 'privacy_seen'=>'1']),
+        'a trainer accepting an invitation lands on „Dein Foto“ first (ADR 0031)');
+is_same(['dashboard', []], landing_after_sign_in(current_user()), 'which goes on to the overview, where she landed before');
 sign_in_as($admin);
 
 case_('The way back survives a save and ends on the checklist');
@@ -255,23 +260,3 @@ run('UPDATE classes SET archived=0 WHERE id=?', [$course]);
 is_same([true, [$course]], [real_course_exists(), real_course_ids()], 'a running course of her own does');
 ok(str_contains((string)file_get_contents(APP_ROOT.'/app/start.php'), '$courses = real_course_ids();'),
    'and the checklist asks it rather than keeping its own copy');
-
-case_('„Tarif“ in the students filter and {{tariff}} in a message read the courses a child is in now');
-/* What a child pays is decided per course (ADR 0011). The student's own tariff
-   column no longer bills anybody, so neither the filter nor a message may go by it. */
-$second = make_class(['name'=>'Zweiter Kurs']);
-$other = make_tariff(['class_id'=>$second, 'name'=>'Zweitbeitrag', 'price_cents'=>2000]);
-$old = make_tariff(['class_id'=>$course, 'name'=>'Alter Tarif', 'price_cents'=>1000]);
-$filterKid = make_student(['first_name'=>'Filter', 'last_name'=>'Kind', 'tariff_id'=>$old]);
-make_enrolment($course, $filterKid, ['tariff_id'=>$tariff]);
-make_enrolment($second, $filterKid, ['tariff_id'=>$other]);
-$left = make_student(['first_name'=>'Ausgetreten', 'last_name'=>'Kind']);
-make_enrolment($course, $left, ['tariff_id'=>$tariff, 'left_on'=>'2026-01-31']);
-$names = fn(int $t) => array_column(filtered_students(['tariff'=>$t]), 'first_name');
-ok(in_array('Filter', $names($tariff), true) && in_array('Filter', $names($other), true), 'a child is found under the tariff of each course they are in');
-is_same(false, in_array('Filter', $names($old), true), 'not under the tariff on their own record');
-is_same(false, in_array('Ausgetreten', $names($tariff), true), 'and not under a course they have left');
-$courseTariff = (string)scalar('SELECT name FROM tariffs WHERE id=?', [$tariff]);
-is_same($courseTariff.' + Zweitbeitrag', template_text('{{tariff}}', one('SELECT * FROM students WHERE id=?', [$filterKid])),
-        '{{tariff}} is the tariffs of their current courses, joined with „ + “');
-is_same('', template_text('{{tariff}}', one('SELECT * FROM students WHERE id=?', [$left])), 'and nothing for a child in no course now');

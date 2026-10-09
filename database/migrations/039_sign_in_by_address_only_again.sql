@@ -1,0 +1,63 @@
+-- Everybody signs in with their own e-mail address again, and usernames are gone
+-- (docs/decisions/0030-one-person-one-address-usernames-and-sign-in-links-go.md,
+-- §1 and §2).
+--
+-- The owner, 2026-10-08: "Drop once again the username support, mainly email
+-- login support / 1 admin 1 email / 1 person 1 email / 1 trainer 1 email / 1
+-- student 1 email". 028 had given every login a username column, VARCHAR(30)
+-- NULL under the unique index account_username, so that a student without an
+-- address could sign in by one (ADR 0023), after 024 had dropped the column 022
+-- added. This file drops it a second time, and account_username with it. The
+-- address, which 028 let be NULL for a placeholder, stays as it is: a
+-- placeholder still has none.
+--
+-- 1. The UPDATE. A login with no address that is not a placeholder is one that
+-- signed in by a username: invited, active or suspended. From now on such a
+-- login is exactly what a placeholder is, a student's login that cannot sign in
+-- until staff give it an address and send the invitation (ADR 0030 §3). Its
+-- password went with the username that set it, and verified_at means "set up by
+-- its holder", which login_goes_with_student() and the badges read, so both are
+-- cleared and the row says what it is; its sessions end, because only an active
+-- login that was set up stays signed in. Every login with an address - every
+-- administrator, trainer and family that signs in - keeps every value, byte for
+-- byte. No row is deleted: accounts is guarded, and every one of these logins is
+-- a student's, behind the key 030 made.
+--
+-- 2. The three DELETEs. A login that just became a placeholder must hold nothing
+-- a placeholder made any other way could not (security finding F1): staff who
+-- invited an address into it would otherwise hand its new holder the child's
+-- old chats and notices, and a course group that starts out read. So its places
+-- in chats go, its notices, and its read marks. A placeholder made any other way
+-- holds none of them, and the code keeps it so: a chat is started only with an
+-- active login (may_message()), notify() writes nothing for a placeholder,
+-- mark_thread_read() marks only for the reader signed in, which a placeholder
+-- never is, and nothing else turns a login with a history into a placeholder
+-- (replace_login_with_placeholder() makes a new one, and the old login's rows go
+-- with it). Keyed on the state, the three statements therefore find exactly the
+-- logins the UPDATE converted. The chats stay, every message
+-- in them, and the member of staff in each still has it: threads and messages
+-- are guarded. A chat's owner (threads.account_id) grants nothing: no rule of
+-- who may read or list a chat asks for it, and pair_thread() finds a pair's
+-- chat by its two participants, so a new holder who writes to the trainer gets
+-- a new chat. None of thread_participants, notifications and thread_reads is
+-- guarded, so the update's counts are what they were. What stays with such a
+-- login, and why: its sign-in and reset links (auth_tokens), which ADR 0030 §2
+-- leaves to link_usable(), refusing a link whose login is in another state;
+-- consent_log, which is guarded and which nothing reads; and the messages it
+-- sent, which keep their sender as every message does.
+--
+-- 3. The ALTER, last, one statement that cannot run twice: MySQL 8.0 has neither
+-- DROP INDEX IF EXISTS nor DROP COLUMN IF EXISTS. A run that stops before it
+-- starts the file again at the UPDATE, and each of the first four statements
+-- then finds nothing left to change. Run a second time after it finished, as
+-- the next page view would if the update stopped before the ledger recorded it,
+-- the engine refuses the ALTER (1091, SQLSTATE 42000, on MariaDB 10.11.14) and
+-- nothing changes, as with 024, 035, 036 and 038. The index is dropped by the
+-- name 028 gave it, read back from information_schema; no key, check, view or
+-- trigger uses the column. The multi-table DELETE and an index and a column
+-- dropped in one ALTER, as 024 did, have not been run on MySQL 8.0.
+UPDATE accounts SET state='placeholder', password_hash=NULL, verified_at=NULL WHERE email IS NULL AND state<>'placeholder';
+DELETE p FROM thread_participants p JOIN accounts a ON a.id=p.account_id WHERE a.state='placeholder';
+DELETE n FROM notifications n JOIN accounts a ON a.id=n.account_id WHERE a.state='placeholder';
+DELETE r FROM thread_reads r JOIN accounts a ON a.id=r.account_id WHERE a.state='placeholder';
+ALTER TABLE accounts DROP INDEX account_username, DROP COLUMN username;

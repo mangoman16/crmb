@@ -5,6 +5,12 @@ date: 2026-09-29
 
 # 0014. The portal logo is a second upload beside the icon
 
+> **Amended on 2026-10-08: the built-in mark is a shuttlecock.** Where this record says „B" (the
+> mark the logo replaces, the last step of the fallback, and the walk in `TESTING.md`), read the
+> shuttlecock that the design document's Part 0, C16a, makes the portal's own mark, drawn by
+> `icon('shuttle')` and `favicon.svg`. A club's own logo or icon still replaces it, in the same
+> order: logo, then icon, then the built-in mark. Everything else stands.
+
 ## Context
 
 The owner wants her own logo top left, replacing the „B" mark in `.brand`. The mark appears

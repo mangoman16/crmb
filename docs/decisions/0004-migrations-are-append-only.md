@@ -1,9 +1,19 @@
 ---
-status: accepted
+status: accepted, amended by 0027
 date: 2026-09-22
 ---
 
 # 0004. Migrations are append-only, and an update refuses rather than guesses
+
+> **Amended by ADR 0027 (2026-10-07).** „Refuses and keeps the portal closed“ held for one request
+> only: each migration is recorded in the ledger as it runs, so the next request found nothing
+> pending, counted after the loss and opened the portal. Since 0027 the counts from before an update
+> are kept in `storage/update-unfinished.json` from its first migration until a run passes. While
+> that file exists, every run compares first and runs nothing on top of a loss; no page is served,
+> nobody is let in, maintenance mode included, and the console runs nothing that writes; and no
+> further backup is taken, so the one from before is never pruned. The portal reopens by itself when
+> every table still in `schema_guarded_tables()` has its rows back, or when a release takes the table
+> off that list. Everything else here stands.
 
 ## Context
 

@@ -80,6 +80,11 @@ is_same($admins, $told(), 'and every administrator is told, once');
 $router = (string)file_get_contents(APP_ROOT.'/public/index.php');
 ok(preg_match('/\} catch\(Throwable \$ex\) \{.*?http_response_code\(503\);.*?if\(function_exists\(\'capture_error\'\)\)capture_error\(\$ex\);.*?echo \'<!doctype html>.*?vorübergehend nicht verfügbar/s', $router) === 1,
    'the router captures in its last catch and still sends the friendly page after it');
+/* The page itself is reached by the browser walk, which takes a table away from
+   under a signed-in family (tests/e2e.sh, „an unexpected error"); here it is
+   read where it is written. */
+ok(preg_match('/http_response_code\(503\);.*?echo \'<!doctype html>[^\']*<meta name="color-scheme" content="light dark">[^\']*<title>/s', $router) === 1,
+   'and that page is drawn for light and dark alike, before its title, so it is not white on a phone in dark mode');
 
 case_('A second error in the same request is not written down');
 // Nearly always the first one's consequence, and the first is the one to read.
@@ -138,8 +143,8 @@ $token = bin2hex(random_bytes(32));
 claim_request($token);
 $capture(fn() => claim_request($token));
 is_same($before, count($automatic()), 'nor a form sent twice, which is handled');
-ok(preg_match("/if\(\\\$ex->getCode\(\)==='23000' && str_contains\(\\\$ex->getMessage\(\),'form_requests'\)\)\s*flash\([^;]*;\s*else \{\s*capture_error\(\\\$ex\);/", $router) === 1,
-   'and the router’s database catch leaves the double tap out too');
+ok(!str_contains($router, 'form_requests'),
+   'and the router’s database catch keeps no second copy of it: claim_request() answers a form sent twice before the database error could reach it');
 
 case_('A database error keeps its codes and never its message');
 sign_in_as($family);
@@ -156,19 +161,10 @@ is_same(false, str_contains($stored, 'doppelt.familie@beispiel.test'), 'the addr
 is_same(false, str_contains($stored, json_encode(mb_substr($raised?->getMessage() ?? 'x', 0, 40), JSON_UNESCAPED_UNICODE) ?: 'x')
                || str_contains($stored, 'constraint') || str_contains($stored, 'Duplicate'), 'nor any of its message');
 is_same(['23000', ''], [$c['sqlstate'] ?? null, $c['message'] ?? null], 'the SQLSTATE is, and the message is empty');
-ok(is_int($c['code'] ?? null) && $c['code'] > 0, 'and the driver’s own code ('.test_show($c['code'] ?? null).')');
-// SQLite says "UNIQUE constraint failed" and names no value, so the wording
-// MariaDB uses is thrown as well: that is the one that carries the address.
-run('DELETE FROM feedback WHERE account_id IS NULL');
-error_capture_reset();
-$maria = new PDOException("SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'doppelt.familie@beispiel.test' for key 'email'");
-$maria->errorInfo = ['23000', 1062, "Duplicate entry 'doppelt.familie@beispiel.test' for key 'email'"];
-capture_error($maria);
-$stored = (string)(one('SELECT context_json FROM feedback WHERE account_id IS NULL')['context_json'] ?? '');
-is_same(false, str_contains($stored, 'doppelt.familie@beispiel.test') || str_contains($stored, 'Duplicate'),
-        'MariaDB’s wording, address and all, is not kept either');
-is_same(['23000', 1062], [json_decode($stored, true)['sqlstate'] ?? null, json_decode($stored, true)['code'] ?? null],
-        'only its SQLSTATE and code');
+is_same(1062, $c['code'] ?? null, 'and the driver’s own code, 1062 for a duplicate');
+// The control: the message really did carry the address, so leaving it out
+// above is something the capture did and not something the engine spared it.
+ok(str_contains($raised?->getMessage() ?? '', 'doppelt.familie@beispiel.test'), 'the database’s message named the address');
 
 case_('A password posted at the moment of the error is kept nowhere');
 run('DELETE FROM feedback WHERE account_id IS NULL');
@@ -290,14 +286,16 @@ $personGone = $filed('new', 40, null, ['page'=>'students', 'steps'=>[]]);   // a
 is_same(3, prune_quiet_errors(), 'three quiet errors are deleted');
 $left = array_map('intval', array_column(rows('SELECT id FROM feedback ORDER BY id'), 'id'));
 is_same([$recent, $person, $personGone], $left, 'new, seen and done alike, while one seen 29 days ago stays, and so does every report a person wrote');
-ok(preg_match('/function prune_expired\(\): void \{[^}]*prune_quiet_errors\(\);/s', (string)file_get_contents(APP_ROOT.'/app/tick.php')) === 1,
-   'and the nightly clean-up runs it');
+ok(preg_match('/function prune_expired\(\): bool \{[^}]*prune_quiet_errors\(\);/s', (string)file_get_contents(APP_ROOT.'/app/tick.php')) === 1,
+   'and the daily clean-up runs it');
 
 case_('The background work is captured as such, with no steps');
 run('DELETE FROM feedback');
 sign_in_as($admin);
 $request('dashboard');
 set_setting('prune_last_run', '');
+// As on a live portal: the cleanup runs only on a database as current as the files.
+schema_made_current();
 run('ALTER TABLE form_requests RENAME TO form_requests_away');
 try { tick_work(); } finally { run('ALTER TABLE form_requests_away RENAME TO form_requests'); }
 $entry = one('SELECT * FROM feedback WHERE account_id IS NULL');

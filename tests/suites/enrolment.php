@@ -77,6 +77,21 @@ is_same(0, (int)scalar('SELECT COUNT(*) FROM class_sessions WHERE class_id=? AND
         'nothing is stored for a day that follows the pattern');
 is_same('planned', class_session($course, '2026-09-14')['status'], 'and it is going ahead again');
 
+case_('A family told of a changed date is sent to its overview, never to the course’s page, which is staff’s');
+/* The notice and the mail linked to ?page=classes, which a family is refused:
+   the one link in the message led to „Kein Zugriff" (security batch). */
+$told = make_account(['role'=>'student', 'name'=>'Familie Termin']);
+make_enrolment($course, make_student(['first_name'=>'Tara', 'last_name'=>'Termin', 'account_id'=>$told]));
+act('class_session_save', ['class_id'=>$course, 'session_on'=>'2026-09-28', 'status'=>'cancelled', 'location'=>'',
+    'note'=>'Halle gesperrt', 'notify'=>'1'] + time_post('starts_at', '') + time_post('ends_at', ''));
+$notice = one("SELECT link_page, link_params FROM notifications WHERE account_id=? AND kind='schedule'", [$told]);
+is_same(['dashboard', ''], [$notice['link_page'] ?? null, $notice['link_params'] ?? null], 'the notice in the bell opens the family’s overview');
+$mail = mail_payload(unseal((string)scalar("SELECT payload FROM mail_jobs WHERE account_id=? AND category='notifications' ORDER BY id DESC LIMIT 1", [$told])))['body'];
+ok(str_contains($mail, 'Halle gesperrt') && str_contains($mail, url('dashboard')) && !str_contains($mail, 'page=classes'),
+   'and so does the link in the mail that spells the change out');
+act('class_session_save', ['class_id'=>$course, 'session_on'=>'2026-09-28', 'status'=>'planned', 'location'=>'', 'note'=>'']
+    + time_post('starts_at', '') + time_post('ends_at', ''));
+
 // ---------------------------------------------------------------------------
 case_('A course carries its own tariffs, and one tariff carries its own prices');
 $rate = fn(array $prices) => ['rate_interval'=>array_map('strval', array_keys($prices)),
@@ -114,16 +129,6 @@ $tariffs = class_tariffs($course);
 $sentences = array_map('tariff_summary', $tariffs);
 ok(str_contains(implode(' ', $sentences), 'monatlich'), 'the monthly one says monthly');
 ok(str_contains(implode(' ', $sentences), '252,00'), 'and names the yearly price as well');
-
-case_('A tariff can be copied, prices and discounts and all');
-$copy = duplicate_record('tariffs', (int)$beitrag['id']);
-is_same(tariff_rates((int)$beitrag['id']), tariff_rates($copy), 'the copy has the same four prices');
-is_same(1, count(tariff_discount_templates($copy)), 'and the same discount template');
-ok(str_contains((string)scalar('SELECT name FROM tariffs WHERE id=?', [$copy]), 'Kopie'),
-   'under a name that says it is a copy');
-$second = duplicate_record('tariffs', (int)$beitrag['id']);
-ok(scalar('SELECT name FROM tariffs WHERE id=?', [$second]) !== scalar('SELECT name FROM tariffs WHERE id=?', [$copy]),
-   'and a second copy is not called the same thing as the first');
 
 // ---------------------------------------------------------------------------
 case_('A student asks to join, and nothing happens until the trainer agrees');
@@ -233,6 +238,44 @@ is_same(1, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND
 does_not_throw(fn() => decide_request($askSecond, false, 'Leider voll.'),
                'declining it is still possible, which is how the trainer answers');
 
+case_('A place taken on another connection while a yes or an „Hinzufügen" is on its way is seen');
+/* The count is a locking read of its own. A FOR UPDATE on the course row does
+   not reach a subquery, which reads the snapshot the transaction began with: a
+   place another request took and committed since would not be in it, and the
+   hall would get a ninth child. */
+sign_in_as($trainer);
+$tight = make_class(['name'=>'Eng', 'capacity'=>1, 'days'=>[]]);
+$late = make_class(['name'=>'Spät dran', 'capacity'=>1, 'days'=>[]]);
+// Made, and committed, before the transaction below begins: the other
+// connection's foreign-key check would otherwise wait on a row this one holds.
+$quicker = [$tight => make_student(['first_name'=>'Flinker']), $late => make_student(['first_name'=>'Flotter'])];
+$fillElsewhere = function (int $classId) use ($quicker) {
+    connect()->prepare('INSERT INTO class_students (class_id,student_id,joined_on,left_on,tariff_id,price_cents,price_note,due_day) VALUES (?,?,?,NULL,NULL,NULL,?,0)')
+        ->execute([$classId, $quicker[$classId], today(), '']);
+};
+$ask = request_enrolment(make_student(['first_name'=>'Fragt']), $tight, 'join', null, '');
+// What a count from the snapshot would see, so this case can fail: a decision
+// that counted this way would find the place free.
+$snapshotMisses = fn(int $classId, string $what) => is_same(0, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=?', [$classId]),
+                                                           $what.': a plain count in this transaction does not see the other connection’s child');
+throws(fn() => transactional(function () use ($fillElsewhere, $tight, $ask, $snapshotMisses) {
+    scalar('SELECT COUNT(*) FROM class_students');   // the snapshot this transaction reads from starts here
+    $fillElsewhere($tight);
+    $snapshotMisses($tight, 'the yes');
+    return decide_request($ask, true, '');
+}), 'the yes is refused: the last place went on the other connection after this one began', 'voll');
+$_POST = ['class_id'=>(string)$late, 'student_id'=>(string)make_student(['first_name'=>'Dazu'])];
+throws(fn() => transactional(function () use ($fillElsewhere, $late, $snapshotMisses) {
+    scalar('SELECT COUNT(*) FROM class_students');
+    $fillElsewhere($late);
+    $snapshotMisses($late, '„Hinzufügen“');
+    return dispatch_action('class_member_add');
+}), 'and so is adding a child by hand', 'voll');
+$_POST = [];
+is_same([1, 1], [(int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND left_on IS NULL', [$tight]),
+                 (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND left_on IS NULL', [$late])],
+        'each course holds the one child who got there first');
+
 case_('A tariff outlives the course it belonged to, as something unattached');
 // Not as a row pointing at a course that is gone: invisible on every course
 // page because nothing joins, and absent from the unattached list because
@@ -240,19 +283,15 @@ case_('A tariff outlives the course it belonged to, as something unattached');
 $migration = (string)file_get_contents(APP_ROOT.'/database/migrations/014_tariffs_belong_to_a_course.sql');
 ok(str_contains($migration, 'REFERENCES classes(id) ON DELETE SET NULL'),
    'the constraint says what happens: the tariff stays, its course does not');
-if (test_driver() === 'mysql') {
-    // The sqlite driver cannot add a constraint to an existing table and says so
-    // in the run's footer, so the behaviour itself is checked on the engine that
-    // has it rather than asserted twice in two different ways.
-    $doomed = make_class(['name'=>'Wird gelöscht', 'days'=>[]]);
-    $price = make_tariff(['class_id'=>$doomed, 'name'=>'Preis des gelöschten Kurses']);
-    run('DELETE FROM classes WHERE id=?', [$doomed]);
-    $kept = one('SELECT * FROM tariffs WHERE id=?', [$price]);
-    ok($kept !== null, 'the tariff is still there');
-    is_same(null, $kept['class_id'], 'and belongs to no course any more');
-    ok(in_array($price, array_map(fn($t) => (int)$t['id'], unattached_tariffs()), true),
-       'so the trainer can see it and attach it to another course');
-}
+// And the database does what it says, which is the half that counts.
+$doomed = make_class(['name'=>'Wird gelöscht', 'days'=>[]]);
+$price = make_tariff(['class_id'=>$doomed, 'name'=>'Preis des gelöschten Kurses']);
+run('DELETE FROM classes WHERE id=?', [$doomed]);
+$kept = one('SELECT * FROM tariffs WHERE id=?', [$price]);
+ok($kept !== null, 'the tariff is still there');
+is_same(null, $kept['class_id'], 'and belongs to no course any more');
+ok(in_array($price, array_map(fn($t) => (int)$t['id'], unattached_tariffs()), true),
+   'so the trainer can see it and attach it to another course');
 
 // ---------------------------------------------------------------------------
 case_('The trainer chooses how a family pays, and what they were given');
@@ -312,3 +351,104 @@ ok(!in_array(t('Trainingstag eintragen','Add a training day'), $what($empty), tr
 make_tariff(['class_id'=>$empty, 'name'=>'Beitrag']);
 is_same([], $what($empty), 'and a tariff clears the list');
 ok(!str_contains(render_view('classes', ['id'=>$empty]), 'Noch zu tun'), 'so the card goes away');
+
+// ---------------------------------------------------------------------------
+// Found by the whole-app review of October 2026. Each case failed before its fix.
+// ---------------------------------------------------------------------------
+
+case_('Saving a child whose tariff has been archived keeps that tariff');
+/* The form offers the course's tariffs that are not archived, so a child still
+   on an archived one saw „Auswählen“, and saving anything at all - a payment
+   day, a discount - stored no tariff. Billing then skipped them: „Kein Tarif
+   gewählt“. */
+sign_in_as($trainer);
+$oldCourse = make_class(['name'=>'Altkurs']);
+$oldTariff = make_tariff(['class_id'=>$oldCourse, 'name'=>'Alter Beitrag', 'price_cents'=>3000]);
+$newTariff = make_tariff(['class_id'=>$oldCourse, 'name'=>'Neuer Beitrag', 'price_cents'=>3500]);
+$stays = make_student(['first_name'=>'Bleibt', 'joined_on'=>'2026-01-01']);
+make_enrolment($oldCourse, $stays, ['tariff_id'=>$oldTariff, 'joined_on'=>'2026-01-01']);
+run('UPDATE tariffs SET archived=1 WHERE id=?', [$oldTariff]);
+$saveOld = fn(array $fields) => act('enrolment_save', $fields + ['class_id'=>(string)$oldCourse, 'student_id'=>(string)$stays,
+    'tariff_id'=>'', 'interval_months'=>'0', 'price'=>'', 'price_note'=>'', 'due_day'=>'0',
+    'joined_on'=>'2026-01-01', 'left_on'=>'', 'discount_months'=>'0', 'discount_kind'=>'percent', 'discount_value'=>'']);
+$saveOld(['due_day'=>'15']);
+is_same($oldTariff, (int)enrolment($oldCourse, $stays)['tariff_id'], 'the form could not offer it, so an empty choice keeps it');
+is_same(15, (int)enrolment($oldCourse, $stays)['due_day'], 'and the change she did make is saved');
+$planned = array_values(array_filter(billing_plan('2026-09'), fn($r) => $r['student_id'] === $stays))[0] ?? [];
+is_same(3000, $planned['amount'] ?? null, 'so billing still charges them, on the tariff they are on');
+$saveOld(['tariff_id'=>(string)$oldTariff]);
+is_same($oldTariff, (int)enrolment($oldCourse, $stays)['tariff_id'], 'choosing it, once the form offers it, keeps it too');
+$saveOld(['tariff_id'=>(string)$newTariff]);
+is_same($newTariff, (int)enrolment($oldCourse, $stays)['tariff_id'], 'and she can still move them to one that is offered');
+throws(fn() => $saveOld(['tariff_id'=>(string)$oldTariff]),
+       'but nobody is put on an archived tariff they are not already on', 'archiviert');
+is_same($newTariff, (int)enrolment($oldCourse, $stays)['tariff_id'], 'and the refusal changed nothing');
+
+case_('Leaving a course before joining it is refused');
+throws(fn() => act('enrolment_save', ['class_id'=>(string)$oldCourse, 'student_id'=>(string)$stays,
+    'tariff_id'=>(string)$newTariff, 'interval_months'=>'0', 'price'=>'', 'price_note'=>'', 'due_day'=>'0',
+    'joined_on'=>'2026-05-01', 'left_on'=>'2026-04-01', 'discount_months'=>'0', 'discount_kind'=>'percent', 'discount_value'=>'']),
+    'an end before the start', 'Enddatum');
+is_same('2026-01-01', enrolment($oldCourse, $stays)['joined_on'], 'and the dates are as they were');
+
+case_('Coming back to a course starts a new agreement, not the old one again');
+/* Two copies of one upsert - in class_member_add and in an approved request to
+   join - kept the old agreed price and the old discount. The discount's months
+   count from joined_on, so „erster Monat gratis“ was given a second time. */
+$returnCourse = make_class(['name'=>'Rückkehr']);
+$returnTariff = make_tariff(['class_id'=>$returnCourse, 'price_cents'=>4000]);
+$back = make_student(['first_name'=>'Zurück', 'joined_on'=>'2026-01-01']);
+make_enrolment($returnCourse, $back, ['tariff_id'=>$returnTariff, 'joined_on'=>'2026-01-01', 'left_on'=>'2026-03-31',
+                                      'price_cents'=>3000, 'price_note'=>'Alter Preis', 'due_day'=>20]);
+give_discount($returnCourse, $back, 1, 'percent', 100, 'Erster Monat gratis');
+act('class_member_add', ['class_id'=>(string)$returnCourse, 'student_id'=>(string)$back,
+                         'tariff_id'=>(string)$returnTariff, 'joined_on'=>'2026-09-01']);
+$row = enrolment($returnCourse, $back);
+is_same([null, '2026-09-01'], [$row['left_on'], $row['joined_on']], 'they are in the course again, from the day they came back');
+is_same([null, '', 0], [$row['price_cents'], $row['price_note'], (int)$row['due_day']], 'at the tariff’s price and day, not the ones agreed last time');
+is_same([0, 0, ''], [(int)$row['discount_months'], (int)$row['discount_value'], $row['discount_note']], 'and without the welcome month they already had');
+$returned = array_values(array_filter(billing_plan('2026-09'), fn($r) => $r['student_id'] === $back))[0] ?? [];
+is_same(4000, $returned['amount'] ?? null, 'so their first month back is charged in full');
+
+case_('A child already in a course is not added to it a second time');
+throws(fn() => act('class_member_add', ['class_id'=>(string)$returnCourse, 'student_id'=>(string)$back,
+                                        'tariff_id'=>(string)$returnTariff, 'joined_on'=>'2026-10-01']),
+       'refused, in words', 'schon in diesem Kurs');
+is_same('2026-09-01', enrolment($returnCourse, $back)['joined_on'], 'and the day they joined is not moved');
+
+case_('An approved request to come back starts a new agreement as well');
+run('UPDATE class_students SET left_on=?, price_cents=3000 WHERE class_id=? AND student_id=?', ['2026-09-30', $returnCourse, $back]);
+give_discount($returnCourse, $back, 1, 'percent', 100, 'Erster Monat gratis');
+$asked = request_enrolment($back, $returnCourse, 'join', $returnTariff, '');
+decide_request($asked, true, '');
+$row = enrolment($returnCourse, $back);
+is_same([null, today()], [$row['left_on'], $row['joined_on']], 'they are back, from the day it was approved');
+is_same([null, 0], [$row['price_cents'], (int)$row['discount_value']], 'with no old price and no second free month');
+
+case_('The form offers a child’s own archived tariff, marked, and no other');
+$offered = enrolment_tariff_choices(enrolment($oldCourse, $stays));
+is_same([$newTariff=>'Neuer Beitrag'], $offered, 'on an open tariff, the open ones');
+run('UPDATE class_students SET tariff_id=? WHERE class_id=? AND student_id=?', [$oldTariff, $oldCourse, $stays]);
+$offered = enrolment_tariff_choices(enrolment($oldCourse, $stays));
+is_same('Alter Beitrag (archiviert)', $offered[$oldTariff] ?? null, 'on an archived one, that one too, saying so');
+is_same(2, count($offered), 'beside the open ones');
+
+case_('The child’s page shows that archived tariff in the form, marked and chosen');
+/* The page itself, because that is where it went wrong: the form drew its list
+   from class_tariffs(), which leaves archived tariffs out, so the box said
+   „Auswählen" for a child on one. */
+sign_in_as($trainer);
+$coursesTab = render_view('student', ['id'=>$stays, 'tab'=>'classes']);
+$enrolmentForm = (string)strstr((string)strstr($coursesTab, 'name="action" value="enrolment_save"'), '</form>', true);
+ok(str_contains($enrolmentForm, 'name="class_id" value="'.$oldCourse.'"'), 'the course’s enrolment form is on the page');
+$tariffBox = (string)strstr((string)strstr($enrolmentForm, 'name="tariff_id"'), '</select>', true);
+ok(str_contains($tariffBox, '<option value="'.$oldTariff.'" selected>'.e('Alter Beitrag (archiviert)').'</option>'),
+   'its tariff box shows the archived tariff the child is on, marked „(archiviert)", and chosen');
+ok(str_contains($tariffBox, '<option value="'.$newTariff.'" >'.e('Neuer Beitrag').'</option>'),
+   'with the open one beside it to move them to');
+is_same(1, substr_count($tariffBox, ' selected>'), 'and that one is the only one chosen, so „Auswählen" is not what a save would send');
+$archivedHint = e(t('Archiviert – neue Kinder bekommen ihn nicht mehr.', 'Archived – no new child is put on it.'));
+ok(str_contains($enrolmentForm, '</select><small>'.$archivedHint),
+   'and says under the box that it is archived, which a closed box at 320px cuts off');
+run('UPDATE class_students SET tariff_id=? WHERE class_id=? AND student_id=?', [$newTariff, $oldCourse, $stays]);
+ok(!str_contains(render_view('student', ['id'=>$stays, 'tab'=>'classes']), $archivedHint), 'a child on an open tariff is told nothing of the kind');

@@ -96,6 +96,9 @@ function billing_current_period(): string { return date('Y-m'); }
 function billing_valid_period(string $period): string {
     if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/D', $period))
         throw new UserError(t('Bitte einen Monat im Format JJJJ-MM angeben.', 'Please give a month as YYYY-MM.'));
+    // In the years every date is held to (date_value()): the charges of 9999-12
+    // would fall due in a year the database cannot store.
+    date_value($period . '-01');
     return $period;
 }
 
@@ -116,8 +119,14 @@ function billing_overdue_date(string $due, int $graceDays): string {
     return (new DateTimeImmutable($due))->modify('+' . max(0, min(365, $graceDays)) . ' days')->format('Y-m-d');
 }
 
-/** Whole days from $from to $to, both counted. */
+/**
+ * Whole days from $from to $to, both counted; none when $to is before $from.
+ *
+ * diff()->days has no sign, so a span written backwards - left before joining -
+ * counted as many days as the right way round and was charged for them.
+ */
 function billing_days(string $from, string $to): int {
+    if ($to < $from) return 0;
     return (int)(new DateTimeImmutable($from))->diff(new DateTimeImmutable($to))->days + 1;
 }
 
@@ -145,6 +154,19 @@ function billing_start(array $enrolment): ?string {
 }
 
 /**
+ * The last day this enrolment is billed for, or null while it runs on.
+ *
+ * Whichever comes first of the day they left this course and the day their
+ * membership ends („Mitgliedschaft bis“ on the child). The plan used to ask both
+ * and the amount only the first, so a membership ending on the 15th was charged
+ * the whole month.
+ */
+function billing_end(array $enrolment): ?string {
+    $ends = array_filter([$enrolment['left_on'] ?? null, $enrolment['ended_on'] ?? null]);
+    return $ends ? min($ends) : null;
+}
+
+/**
  * What one charge comes to, and why.
  *
  * Returns the gross before the gift, what the gift takes off, a sentence saying
@@ -156,7 +178,7 @@ function billing_amount_for(array $enrolment, array $tariff, array $period): arr
     $price = $enrolment['price_cents'] !== null ? (int)$enrolment['price_cents'] : (int)$tariff['price_cents'];
     $months = billing_valid_interval((int)$tariff['interval_months']);
     $start = billing_start($enrolment);
-    $end = $enrolment['left_on'] ?: null;
+    $end = billing_end($enrolment);
 
     $coverFrom = $start !== null && $start > $period['from'] ? $start : $period['from'];
     $coverTo   = $end !== null && $end < $period['to'] ? $end : $period['to'];
@@ -417,7 +439,7 @@ function billing_plan(string $period): array {
         $entry['tariff_name'] = $tariff['name'];
 
         $start = billing_start($enrolment);
-        $end = $enrolment['left_on'] ?: $enrolment['ended_on'] ?: null;
+        $end = billing_end($enrolment);
 
         // A period is billed in its first month. A child who joins part-way
         // through one is billed in the month they join, because otherwise their
@@ -429,6 +451,7 @@ function billing_plan(string $period): array {
                                                    $entry['skip'] = t('Bereits abgerechnet', 'Already charged');
         elseif ((int)$enrolment['billing_paused'] === 1) $entry['skip'] = t('Beiträge pausiert', 'Billing paused');
         elseif ($start === null)                   $entry['skip'] = t('Kein Beitrittsdatum', 'No joining date');
+        elseif ($end !== null && $end < $start)    $entry['skip'] = t('Austritt vor dem Beitritt – Daten prüfen', 'Left before joining – check the dates');
         elseif ($start > $bounds['to'])            $entry['skip'] = t('Noch nicht dabei', 'Not a member yet');
         elseif ($end !== null && $end < $bounds['from']) $entry['skip'] = t('Nicht mehr dabei', 'No longer a member');
         elseif (!$firstMonthOfPeriod && !$joinsThisMonth) $entry['skip'] = t('Zeitraum beginnt in einem anderen Monat', 'This period starts in another month');
@@ -480,8 +503,24 @@ function billing_plan(string $period): array {
  */
 function billing_run(string $period): array {
     $period = billing_valid_period($period);
+    // In the portal's language, whoever runs it: the label and the note on a
+    // discount are kept on every family's charge and printed on their invoice,
+    // and the label's template is one German sentence. A run started from an
+    // English page wrote „Beitrag March“ for everybody. And in one transaction,
+    // whoever calls it: run by the background work after a page view it was in
+    // none, and a step that failed left the charges written before it.
+    return in_locale(PORTAL_LOCALE, fn(): array => transactional(fn(): array => billing_run_now($period)));
+}
+
+/** billing_run(), inside its transaction and its language. */
+function billing_run_now(string $period): array {
     $label = (string)setting('billing_label');
     $created = 0; $skipped = 0; $total = 0;
+    // A charge cancelled by a version from before cancel_charge() gave its key
+    // up still holds it, and the unique index then refused the corrected charge
+    // for ever: „Nichts zu tun“. The plan counts only charges that are not
+    // cancelled, so only a cancelled one's key is given up here.
+    run('UPDATE charges SET billing_key=NULL WHERE cancelled=1 AND billing_key IS NOT NULL');
     foreach (billing_plan($period) as $entry) {
         if ($entry['skip'] !== null) { $skipped++; continue; }
         // A charge is never due before the day it is written: a month run late,
@@ -625,7 +664,7 @@ function discount_summary(int $months, string $kind, int $value): string {
         : plural($months, 'Monat', 'Monate', 'month', 'months') . ' ' . $how;
 }
 
-/** Month name in the current interface language, for the charge label. */
+/** Month name in the current language - the portal's, while billing_run() writes a label. */
 function billing_month_name(string $period): string {
     $months = locale() === 'en'
         ? ['January','February','March','April','May','June','July','August','September','October','November','December']

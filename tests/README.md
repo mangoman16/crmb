@@ -1,31 +1,23 @@
 # Tests
 
 ```bash
-php tests/run.php            # every suite
-php tests/run.php billing    # one suite
-```
-
-No database server is needed. The suite builds a disposable SQLite database from
-the real files in `database/migrations/` and boots the real application against
-it, so a test exercises the code that ships rather than a copy of it.
-
-## What the default driver does and does not prove
-
-The application is written for MySQL. `tests/harness.php` translates the dialect
-on the way in — upserts, `FOR UPDATE`, `IF()` — by rewriting statements as they
-are prepared, so the application's own SQL strings are what run. That proves the
-PHP logic and the shape of the data. It does **not** prove the SQL runs on MySQL.
-
-Anything the translation cannot represent is printed at the end of a run rather
-than skipped quietly, so coverage cannot silently shrink.
-
-To prove the SQL, run against a real engine. On a machine with no database
-server, this starts a throwaway one, runs the suite and stops it again:
-
-```bash
-tests/mariadb-local.sh            # the whole suite
+tests/mariadb-local.sh            # the whole suite, on a throwaway MariaDB
 tests/mariadb-local.sh billing    # one suite
+tests/mariadb-local.sh robustness # every action, every role, unexpected values
 ```
+
+The suite runs on MariaDB, the engine the portal's server runs. It builds the schema from
+the real files in `database/migrations/` and boots the real application against
+it, so a test exercises the code and the SQL that ship rather than a copy of
+them. There is no SQLite translation any more: `php tests/run.php` on its own
+refuses to start without a `*_test` database to run on, and says which of the
+two scripts below to use. Anything a run could not cover is printed at its end
+rather than skipped quietly, so coverage cannot silently shrink.
+
+`tests/mariadb-local.sh`, on a machine that has `mariadbd` but no server for
+this, starts a throwaway one, runs the suite and stops it again. It also makes a
+second, empty `_test` database, on which the data migrations carry across is
+checked from one version to the next.
 
 It keeps its data in a temporary directory and never touches an existing
 installation.
@@ -67,25 +59,33 @@ databases: a user that can reach only the test database is safer.
 Against a database you manage yourself:
 
 ```bash
-CRM_TEST_DRIVER=mysql CRM_CONFIG=/path/to/test-config.php php tests/run.php
+CRM_CONFIG=/path/to/test-config.php php tests/run.php
 ```
 
 The harness drops and recreates every table in that database on each run. It
-refuses to start unless `CRM_TEST_DRIVER` is exactly `mysql` (or `sqlite`), the
-name is letters, digits and underscores ending in `_test`, and it is not the
+refuses to start unless the name is letters, digits and underscores ending in
+`_test`, and it is not the
 database `config/config.php` gives the portal. Whatever that configuration says
 about `maintenance_file`, a run writes its uploads, backups and flags into a
 folder of its own under the system temp directory, prints it on its second line,
 and removes it at the end.
 
-The suite has been run against **MariaDB 10.11.14** with everything passing.
+The suite has been run against **MariaDB 10.11.14** with PHP 8.4.26, everything
+passing; [VALIDATION.md](../VALIDATION.md) has the latest run and its date.
 **MySQL 8.0 has not been tried**, so do not claim it.
 
 ## Writing a test
 
 Suites are plain PHP files in `tests/suites/`, run in alphabetical order with a
-freshly emptied database and the seeded defaults. Group related assertions with
-`case_()` and describe the behaviour, not the mechanics:
+freshly emptied database and the seeded defaults. Each starts with nobody signed
+in and with `$_SERVER` as the run found it, a command-line run with no request
+in it: a case that needs one sets `REQUEST_METHOD`, `HTTPS` and whatever else it
+reads itself, so a suite counts the same checks alone as in a whole run.
+`$_GET`, `$_POST` and `$_FILES` are not reset. `$_POST` still holds the fields
+of the last `act()` or `submit()`, this suite's or the one before's, and what a
+suite wrote into `$_GET` or `$_FILES` itself stays there (`render_view()` puts
+`$_GET` back on its own), so a case that reads them sets them first. Group
+related assertions with `case_()` and describe the behaviour, not the mechanics:
 
 ```php
 case_('A parent reaches only their own children');
@@ -97,7 +97,11 @@ throws(fn() => student($kidB), 'another parent\'s child is not');
 Assertions: `ok`, `is_same`, `is_equal`, `throws`, `does_not_throw`.
 
 Fixtures: `fixture`, `make_account`, `make_student`, `make_tariff`,
-`make_class`, `sign_in_as`, `sign_out`, `test_reset`.
+`make_class`, `make_enrolment`, `make_thread`, `create_through_wizard`,
+`sign_in_as`, `sign_out`, `test_reset`. `act('action', [...])` dispatches an
+action inside one transaction, as a request does; `submit()` also goes through
+`handle_post()`, so the CSRF check, the rate limits and the duplicate-submission
+claim apply.
 
 Two more are worth knowing about:
 
@@ -120,7 +124,7 @@ what those functions get wrong.
 ## The suites
 
 Most cover a part of the domain — `billing`, `attendance`, `settings`,
-`security`, `dates`, `history`, `transactions`. Three are different in kind:
+`security`, `dates`, `history`, `transactions`. Four are different in kind:
 
 - `views` renders the real pages and reads what came out.
 - `performance` counts queries, so a page that grows a query per row fails.
@@ -129,38 +133,61 @@ Most cover a part of the domain — `billing`, `attendance`, `settings`,
   unescaped, and no file has been truncated. That last one exists because a bad
   edit once reduced a dispatch file to 36 bytes while every other test stayed
   green — nothing else was reading it.
+- `robustness` sends unexpected values to every action, as every role — signed
+  out, a family, the trainer, an administrator, and an administrator viewing the
+  family — and draws every page with them in the address: lists where a word
+  belongs, 100,000 characters, text that is not UTF-8, huge and negative
+  numbers, impossible dates, another family's ids, a form sent twice. It fails
+  on a 500, a blank page, a PHP warning, SQL text on the page, a transaction
+  left open, or a write to somebody else's rows (ADR 0026 §5). It reads the
+  actions, their fields and the pages from the code, so an action added later is
+  covered without being listed here. On its own it takes about 45 seconds, and
+  what it could not reach — a form no page draws, an upload, which only a real
+  request can carry — it lists at the end of the run.
 
 `shell` also runs `topbar-menus.mjs` with `node`, which loads the real
 `public/assets/app.js` into a page of stand-in elements and taps, swipes and
-presses Escape on the top bar's menus. No browser and no Playwright: only
-`node`. Without it those checks are listed at the end of the run as not
-covered, rather than passed.
+presses Escape on the top bar's menus, sends a form twice, and taps links while
+the next page is slow to come; a second page and an empty head for
+`public/assets/wait.js` are the next page carrying the waiting page on (Part
+0.4b). No browser and no Playwright: only `node`. Without it those checks are
+listed at the end of the run as not covered, rather than passed.
 
 ## The first evening, end to end, in a browser
 
 ```bash
 tests/e2e.sh                          # the working tree as it is now
 CRM_E2E_REF=HEAD tests/e2e.sh         # exactly one commit, whatever the tree holds
+CRM_E2E_ZIP=../badminton-crm-0.6.0.zip tests/e2e.sh   # a package from bin/release.sh, as it is handed out
 CRM_E2E_PHP=php8.5 tests/e2e.sh       # another PHP on the same machine
 tests/e2e.sh --stop-after "7 mail"    # stop once that step has run
 CRM_E2E_VERBOSE=1 tests/e2e.sh        # list every check that passed, not only the failures
 ```
 
-What the owner does on her first evening and what a family does the next
+What an administrator does on the first evening and what a family does the next
 morning, pressed through the real forms in Chromium at 390px, against a real
 MariaDB, with nothing reaching into the application from the side. No step
 calls an action directly, and there is no fallback: a form without a visible
 button stops the walk there, as it would stop her. That is how it found the
 tariff form of fd0d179 that every suite here passed.
 
-It walks `setup.php`, signing in to „Dein Portal einrichten“ at 0 of 9, each of
+It walks `setup.php`, signing in to „Dein Portal einrichten“ at 0 of 9, and a
+slow connection: the trainer's next page is held back on its way (CDP, which
+also sends every frame the screen shows), and the waiting page must show only
+after 0.5 s, be carried on by the next page with no frame without it and none
+white, fade out rather than be cut, never be up for less than about 0.75 s, keep
+the shuttle still with Reduce Motion, go by itself when the next page's `app.js`
+never comes, and „Abbrechen“ must stop a page held back 10 s for good. Then each of
 the nine steps from its own button and back through „Zurück zur Einrichtung“
-with the tick checked every time, up to 9 of 9 and „Alles eingerichtet“. One
+with the tick checked every time, up to 9 of 9 and „Alles eingerichtet“. The
+children are added through the wizard, „Schüler anlegen“, and one more person
+is invited by address alone („Per E-Mail einladen“). One
 child joins the course on the day of the run and the other part-way through
 the month (its „Dabei seit“ set to a day before today); both charges must cover
 from the day they joined, be due no earlier than that day or the day they were
 written, and not be overdue on the day they appear, and the family's card must
-name the same period as the invoice. Then the family opens the invitation link out of the captured mail, sets a password,
+name the same period as the invoice. Then the family opens the invitation link out of the captured mail, sets a password, skips „Dein Foto“
+(the person invited by address adds one there, and sees it on their page),
 sees their child under „Profil“ and the charge under „Beiträge“, uploads a
 payment proof and sends „Etwas funktioniert hier nicht“. Then the trainer sees
 the charge and the proof, records the payment as confirmed, issues an invoice
@@ -171,8 +198,8 @@ only the friendly page, Rückmeldungen must show it once with „3×“, one
 notification and a support text holding no name, address or IP; marked
 „Erledigt“ and broken once more it must be new again at „4×“, with a second
 notification. The table is put back each time. Every page a role opened is then opened again at
-320px. The checks that stand for a numbered one in `TESTING.md` (U.20, U.31,
-U.33, U.34, U.39–U.43, U.46, U.52, U.53, U.56) say so there.
+320px. A check that stands for a numbered one in `TESTING.md` names it in a
+comment in `e2e.mjs`, such as U.20 or U.46.
 
 On every page it records, and fails on: an HTTP 5xx the walk did not provoke,
 a JavaScript error or failed request, a warning, notice or deprecation in PHP's
@@ -183,13 +210,28 @@ that the design intends but that are worth a decision are printed as **Notes**
 and do not fail the run.
 
 It needs `mariadbd`, `python3`, `openssl`, `node` and Playwright's Chromium
-(`PLAYWRIGHT_PATH`, as for `mobile.mjs`). Each run copies the portal into a
-fresh `$TMPDIR/crm-e2e-<port>` - what an upload does - and starts its own
-MariaDB, an SMTP sink (`e2e_smtp.py`, STARTTLS with a certificate made for the
-run) and `php -S` on ports `CRM_E2E_PORT` (8765), +1 and +2. It refuses to start
-if any of them is taken: a server left from an earlier run would answer instead
-of this one's, about files this run has replaced. `CRM_E2E_KEEP=1` leaves all
-three running afterwards to look around; stop them before the next run.
+(`PLAYWRIGHT_PATH`, as for `mobile.mjs`), and `unzip` for a package. Each run
+copies the portal into a fresh `$TMPDIR/crm-e2e-<port>` - what an upload does -
+and starts its own MariaDB, an SMTP sink (`e2e_smtp.py`, STARTTLS with a
+certificate made for the run) and `php -S` on ports `CRM_E2E_PORT` (8765), +1
+and +2, or for the MariaDB `CRM_E2E_DB_PORT` where that is set. It refuses to
+start if any of them is taken: a server left from an earlier run would answer
+instead of this one's, about files this run has replaced. `CRM_E2E_KEEP=1`
+leaves all three running afterwards to look around; stop them before the next
+run.
+
+`CRM_E2E_ZIP` walks a package instead of the checkout: it unpacks it the way the
+owner does, `vendor/` and all, and the first line names the package, its
+`VERSION`, the commit it was built from — out of `BUILD.txt`, which
+`bin/release.sh` writes into every package — and the start of its SHA-256. It
+stops before starting any server if the package holds anything that script
+leaves out (`.claude`, `tests`, `CLAUDE.md`, `ROADMAP.md`, `.gitignore`, read
+from the script's own list, so a package built some other way is not walked as
+one of its), or anything in `config/` or `storage/` beyond their deny files and
+`config.example.php`; and it takes `CRM_E2E_ZIP` or `CRM_E2E_REF`, not both. A
+package built from a commit and that commit walked with `CRM_E2E_REF` can still
+differ: the package has `vendor/` from its own `composer install`, and leaves
+out what `bin/release.sh` does not ship.
 
 Mail is not sent by a command. Like on her host, the queue is worked by the
 background task after page views, at most once a minute, so the invitation takes
@@ -206,9 +248,18 @@ What it does not prove: Safari (it is Chromium with an iPhone's size and user
 agent), a real mail provider, the PDF in a reader other than a parser, Apache or
 a host's PHP settings (it is `php -S`), and MySQL.
 
-## The other two suites
+## The layout check, in a browser
 
-`integration.py` and `smtp_integration.py` drive a running server over HTTP and
-need a live database and a local SMTP capture server. See the instructions at
-the top of each. They are slower and cover the request path; the PHP suite here
-covers the rules.
+```bash
+node tests/mobile.mjs --admin <email> --password '<password>' \
+     [--family <email>] [--family-password '<password>'] [--base <url>]
+```
+
+It opens every page for both roles at 320 and 390 px, light and dark, and fails
+on what [TESTING.md](../TESTING.md#the-layout-check-in-a-real-browser) lists
+under „The layout check, in a real browser". Its arguments
+are a name and a value with a space between them, `--admin x`. Written
+`--admin=x` they are not read: without `--admin` and `--password` it stops with
+its usage line, and a `--family=…` or `--base=…` written that way is skipped
+without a word — the family's pages go unchecked, or the default address is
+used.

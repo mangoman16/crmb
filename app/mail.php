@@ -22,22 +22,36 @@ const MAIL_STRUCTURED = "\x01crm-mail\n";
  * passed the first; a legacy one may fail the second, and a throw here rolls
  * back the whole action - a newsletter to every other family with it (ADR 0019,
  * R2).
+ *
+ * A login without an address has $recipient null: then nothing is queued and
+ * nothing thrown, for the same reason - one login without a mailbox must not
+ * roll back a newsletter to everybody else. The portal makes none that signs in
+ * (ADR 0030), and a placeholder takes no mail (account_takes_mail()), so what
+ * reaches this is a login edited by hand in the database - an active one
+ * without an address.
+ *
+ * $notice marks a security mail that carries no link: a notice that how
+ * somebody signs in has changed (notify_sign_in_changed()). The sender lets
+ * only such a one go without a link; any other security mail goes only with a
+ * live link in it (security_mail_links_live()).
  */
-function queue_mail(?int $accountId,string $recipient,string $subject,string $body,string $category,array $attach=[]): void {
+function queue_mail(?int $accountId,?string $recipient,string $subject,string $body,string $category,array $attach=[],bool $notice=false): void {
+    if($recipient===null) return;
     if(!email_deliverable(email_normalised($recipient))) throw new UserError(t('Ungültige E-Mail-Adresse.','Invalid email address.'));
     if(preg_match('/[\r\n]/',$subject) || mb_strlen($subject)>255) throw new UserError(t('Ungültiger Betreff.','Invalid subject.'));
-    $payload=$attach
-        ? MAIL_STRUCTURED.json_encode(['body'=>$body,'attach'=>$attach],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)
+    $payload=$attach || $notice
+        ? MAIL_STRUCTURED.json_encode(['body'=>$body,'attach'=>$attach]+($notice?['notice'=>true]:[]),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)
         : $body;
     run('INSERT INTO mail_jobs (account_id,recipient,subject,payload,category,created_at) VALUES (?,?,?,?,?,?)',[$accountId,$recipient,$subject,seal($payload),$category,now()]);
 }
 
-/** A stored payload, as message text and the files to build. */
+/** A stored payload, as message text, the files to build and whether it is a notice (queue_mail()). */
 function mail_payload(string $stored): array {
-    if(!str_starts_with($stored,MAIL_STRUCTURED)) return ['body'=>$stored,'attach'=>[]];
+    if(!str_starts_with($stored,MAIL_STRUCTURED)) return ['body'=>$stored,'attach'=>[],'notice'=>false];
     $decoded=json_decode(substr($stored,strlen(MAIL_STRUCTURED)),true);
-    if(!is_array($decoded)) return ['body'=>$stored,'attach'=>[]];
-    return ['body'=>(string)($decoded['body']??''),'attach'=>is_array($decoded['attach']??null)?$decoded['attach']:[]];
+    if(!is_array($decoded)) return ['body'=>$stored,'attach'=>[],'notice'=>false];
+    return ['body'=>(string)($decoded['body']??''),'attach'=>is_array($decoded['attach']??null)?$decoded['attach']:[],
+            'notice'=>($decoded['notice']??false)===true];
 }
 
 /**
@@ -62,33 +76,91 @@ function mail_attachment(array $described): ?array {
 function same_address(string $a, string $b): bool { return email_normalised($a)===email_normalised($b); }
 
 /**
+ * An address as a mail to another mailbox may show it: the first letter of the
+ * name and of the domain, and its ending - „l***@b***.test". Enough for its
+ * holder to know it, too little for whoever reads the other mailbox to write to.
+ */
+function masked_address(string $email): string {
+    [$local,$domain]=explode('@',$email,2)+['',''];
+    $dot=strrpos($domain,'.');
+    return mb_substr($local,0,1).'***@'.mb_substr($domain,0,1).'***'.($dot===false?'':substr($domain,$dot));
+}
+
+/**
  * Whether every sign-in link in a security mail may still go to $recipient.
  *
  * Asked by the sender at the moment of sending, because a lot can happen while a
  * mail waits: a link replaced, a login suspended, an address moved. Every mail
  * send_account_token() writes carries one link today; every link found is still
  * checked, not the first, so a body that ever carries more cannot let a stale
- * one through [S1]. A mail with no link in it is not a security mail and is not
- * sent.
- * Each link must be live, belong to a login that is not suspended, and belong to
- * this recipient: the login's own address, or for a changed address the new one
- * it is confirming.
+ * one through [S1]. A mail with no link in it fails here, and is not sent unless
+ * it was queued as a notice (queue_mail()'s $notice).
+ * Each link must still open what it was made for - link_usable(), the rule the
+ * page and the action ask, so a mail never carries a link that would only say
+ * „Link nicht mehr gültig" - and belong to this recipient: the login's own
+ * address, or for a changed address the new one it is confirming.
  */
 function security_mail_links_live(string $body, string $recipient): bool {
     if(!preg_match_all('/[?&]token=([a-f0-9]{64})\b/',$body,$found)) return false;
     foreach($found[1] as $token) {
         $record=token_record(hash('sha256',$token));
-        if(!$record || $record['state']==='suspended') return false;
+        if(!link_usable($record)) return false;
         $address=$record['purpose']==='email' ? (string)$record['target_email'] : (string)$record['email'];
         if(!same_address($address,$recipient)) return false;
     }
     return true;
+}
+/** Whether a login is in use: its holder has set it up, and it is not suspended. */
+function account_in_use(array $account): bool { return ($account['state']??'')==='active' && !empty($account['verified_at']); }
+/**
+ * Whether an account takes mail of one category: set up, not suspended, and not
+ * switched off by its holder (unsubscribe_categories() names each switch; mail
+ * that has none, a security mail, cannot be switched off).
+ *
+ * One rule for the queue, which drops what this refuses, and for everything
+ * that writes to a family: notify_invoice() asked the first two and never the
+ * third, so an invoice was queued, dropped, and marked as e-mailed.
+ */
+function account_takes_mail(array $account, string $category): bool {
+    // A login in use without an address - only a row edited by hand, since
+    // the portal makes none (ADR 0030) - has nowhere to take it.
+    if(!account_in_use($account) || (string)($account['email']??'')==='') return false;
+    $switch=unsubscribe_categories()[$category]??null;
+    return $switch===null || (bool)($account[$switch]??1);
 }
 function cancel_account_mail(int $id): void { run("UPDATE mail_jobs SET status='cancelled',payload='',error=NULL WHERE account_id=? AND status IN ('queued','failed')",[$id]); }
 function notify_thread(array $account,int $threadId,string $subject): void {
     if($account['state']!=='active' || !$account['verified_at'] || !$account['notifications']) return;
     $en=$account['locale']==='en';
     queue_mail((int)$account['id'],$account['email'],$en?'New message in your badminton portal':'Neue Nachricht im Badminton-Portal',($en?'A new message is waiting for you. Open your conversation:':'Du hast eine neue Nachricht. Öffne deine Unterhaltung:')."\n".url('messages',['id'=>$threadId]),'notifications');
+}
+/**
+ * Tell a login's holder that how they sign in has changed, so a change made by
+ * somebody else - in a session left open, or with the password - does not go
+ * unnoticed (security review, 2026-10-08): a new address to the old one, with
+ * the new one masked (masked_address()), a new password to the address the
+ * login has. $account is the login as it was before the change.
+ *
+ * Only for a login that was set up: nobody signs in yet with an invitation's
+ * address, which staff correct when it was mistyped - a stranger's mailbox.
+ * A security mail, so no switch stops it, the queue never tries it again by
+ * itself and its body is cleared once it is sent; it is a notice, with no link
+ * (queue_mail()). Nothing without a deliverable address: a notice is never the
+ * reason a change fails.
+ */
+function notify_sign_in_changed(array $account, string $to, ?string $newAddress = null): void {
+    if(empty($account['verified_at']) || !email_deliverable(email_normalised($to))) return;
+    if($newAddress!==null && same_address($to,$newAddress)) return;
+    $en=($account['locale']??'')==='en';
+    $what=$newAddress!==null
+        ? strtr($en?'the address you sign in with has been changed to {address}.':'die Adresse, mit der du dich anmeldest, wurde auf {address} geändert.',
+                ['{address}'=>masked_address($newAddress)])
+        : ($en?'the password you sign in with has been changed.':'das Passwort, mit dem du dich anmeldest, wurde geändert.');
+    queue_mail((int)$account['id'],$to,
+        $newAddress!==null ? ($en?'Your sign-in address was changed':'Deine Anmeldeadresse wurde geändert')
+                           : ($en?'Your password was changed':'Dein Passwort wurde geändert'),
+        mail_greeting($account).$what."\n\n".($en?'Wasn’t that you? Get in touch with the club.':'Warst du das nicht? Melde dich beim Verein.'),
+        'security',notice:true);
 }
 const MAIL_MAX_ATTEMPTS = 5;
 // Backoff per attempt number, in seconds: ~1min, 5min, 15min, 1h.
@@ -110,25 +182,134 @@ function greeting_name(array $account): string {
     return (string)($account['name']??'');
 }
 /**
- * Queue a payment reminder for a student's own login.
+ * The line every mail opens with, and the empty line after it: „Hallo Lena,“,
+ * or „Hallo,“ for a login nobody has named yet - an invitation by address
+ * (ADR 0021, §3) - never „Hallo ,“.
+ */
+function mail_greeting(array $account): string {
+    $name=trim(greeting_name($account));
+    return (($account['locale']??'')==='en'?'Hello':'Hallo').($name!==''?' '.$name:'').",\n\n";
+}
+/**
+ * Who „Jetzt schicken" on Geld reminds of overdue charges, and who it cannot
+ * (design N5): one reminder per login with an overdue charge, listing all of
+ * them, oldest first. One login is one child (ADR 0030), so brothers and
+ * sisters get one each. None for a child with no login or one whose login takes
+ * no payments mail, and none for a login reminded already today, the club's
+ * date, so that a second tap or a page left open sends nobody a second mail.
+ * The sheet on Geld counts with this and payment_remind sends to it, so the
+ * number on the button is the number that goes out. $studentId narrows it to
+ * one child.
+ *
+ * 'send' holds, per login, the account, the child and its overdue charges with
+ * 'paid'; 'none' and 'today' count the children left out, for each reason.
+ */
+function payment_reminders(?int $studentId = null): array {
+    $byChild = [];
+    foreach (rows('SELECT c.*, s.first_name, s.last_name, s.account_id, '.charge_paid_sql().' AS paid'
+        .' FROM charges c JOIN students s ON s.id=c.student_id'
+        .' WHERE '.charge_is_overdue_sql().($studentId ? ' AND s.id=?' : '')
+        .' ORDER BY s.id, c.due_on, c.id', $studentId ? [today(), $studentId] : [today()]) as $charge)
+        $byChild[(int)$charge['student_id']][] = $charge;
+    $accountIds = array_values(array_filter(array_map(fn(array $charges) => (int)$charges[0]['account_id'], $byChild)));
+    $accounts = $accountIds
+        ? array_column(rows('SELECT * FROM accounts WHERE id IN ('.implode(',', array_fill(0, count($accountIds), '?')).')', $accountIds), null, 'id')
+        : [];
+    $remindedToday = array_flip(logins_reminded_today());
+    $reminders = ['send' => [], 'none' => 0, 'today' => 0];
+    foreach ($byChild as $childId => $charges) {
+        $account = $accounts[(int)$charges[0]['account_id']] ?? null;
+        if (!$account || !account_takes_mail($account, 'payments')) { $reminders['none']++; continue; }
+        if (isset($remindedToday[(int)$account['id']])) { $reminders['today']++; continue; }
+        $reminders['send'][] = ['account' => $account, 'charges' => $charges,
+            'student' => ['id' => $childId, 'first_name' => $charges[0]['first_name'], 'last_name' => $charges[0]['last_name']]];
+    }
+    return $reminders;
+}
+
+/**
+ * The logins a payment reminder went to today, the club's calendar date, as the
+ * outbox has them. An invoice goes under the same category, and what a mail
+ * says is sealed, so a reminder is told from it by how its subject begins
+ * (payment_reminder_subject_start()), in either language. One taken back from
+ * the outbox does not count.
+ */
+function logins_reminded_today(): array {
+    $since = (new DateTimeImmutable(today().' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+    $begins = fn(string $locale): string => addcslashes(in_locale($locale, payment_reminder_subject_start(...)), '%_\\').'%';
+    return array_map('intval', array_column(rows("SELECT DISTINCT account_id FROM mail_jobs WHERE category='payments' AND status<>'cancelled'"
+        .' AND account_id IS NOT NULL AND created_at>=? AND (subject LIKE ? OR subject LIKE ?)', [$since, $begins('de'), $begins('en')]), 'account_id'));
+}
+
+/** How a payment reminder's subject begins: the one place it is worded, and how the outbox finds it again. */
+function payment_reminder_subject_start(): string { return t('Noch offen: ', 'Still to pay: '); }
+
+/**
+ * Who a reminder run leaves out, and why, as said on the sheet before „Jetzt
+ * schicken" and in the banner after it: '' when it leaves out nobody.
+ */
+function payment_reminders_left_out(array $reminders): string {
+    return trim(($reminders['today'] ? t('Heute schon erinnert: ', 'Already reminded today: ').plural($reminders['today'], 'Kind', 'Kinder', 'child', 'children').'.' : '')
+        .($reminders['none'] ? ' '.plural($reminders['none'], 'Kind bekommt keine', 'Kinder bekommen keine', 'child gets none', 'children get none')
+            .t(': ohne Anmeldung oder abbestellt.', ': no sign-in, or unsubscribed.') : ''));
+}
+
+/**
+ * Why the children overdue cannot be reminded at all: they have no login, or
+ * have unsubscribed from these mails. One reason for the sheet on Geld before
+ * the tap („Keine Erinnerung möglich: …“) and the banner after it („Keine
+ * Erinnerung verschickt: …“), each with its own opening.
+ */
+function payment_reminders_unreachable(): string {
+    return t('Diese Kinder melden sich nicht an oder haben Erinnerungen abbestellt.', 'these children don’t sign in, or have unsubscribed from reminders.');
+}
+
+/**
+ * Queue one payment reminder for a login: every overdue charge of its child,
+ * oldest first, in the family's language - amounts and dates too - and signed
+ * by the club, not by whoever sent it. No bank details: „Beiträge" has each
+ * charge's own account and QR code, and where money goes can change (ADR
+ * 0025), which an IBAN in an old mail never does.
  *
  * Returns false when nothing was queued, so the caller can report how many
- * parents will actually hear about it rather than implying every selected
- * student produced an email.
+ * families will actually hear about it.
  */
-function notify_payment(array $account, array $student, int $amountCents, string $dueOn): bool {
-    if($account['state']!=='active' || !$account['verified_at'] || empty($account['payment_notices'])) return false;
-    $en=$account['locale']==='en';
-    $name=$student['first_name'].' '.$student['last_name'];
-    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
-        .($en?'There is an outstanding amount for ':'Für ').$name
-        .($en?' of ':' ist noch ein Betrag von ').money($amountCents)
-        .($en?', due ':' offen, fällig am ').fmt_date($dueOn).".\n\n"
-        .($en?'You can see the amount and the transfer details, including a QR code for your banking app, in the portal:'
-             :'Betrag und Bankverbindung samt QR-Code für die Bank-App findest du im Portal:')."\n"
-        .url('student',['id'=>$student['id'],'tab'=>'payments']);
-    queue_mail((int)$account['id'],$account['email'],
-        $en?'Outstanding badminton payment':'Offener Badminton-Beitrag',$body,'payments');
+function notify_payment(array $account, array $student, array $charges): bool {
+    if (!$charges || !account_takes_mail($account, 'payments')) return false;
+    [$subject, $body] = in_locale((string)$account['locale'], function () use ($account, $student, $charges): array {
+        $several = count($charges) > 1;
+        $lines = []; $labels = []; $total = 0;
+        // The mail promises bank details only when „Beiträge" shows them for
+        // every charge it lists (charge_bank_details()).
+        $details = true;
+        foreach ($charges as $charge) {
+            $amount = (int)$charge['amount_cents'];
+            $open = $amount - (int)$charge['paid'];
+            $total += $open;
+            if (!charge_bank_details($charge)) $details = false;
+            // A label is one line in a form, but nothing stops a line break
+            // sent by hand, and a subject must not carry one (queue_mail()).
+            $labels[] = $label = preg_replace('/\s+/u', ' ', (string)$charge['label']);
+            $lines[] = ($several ? '• ' : '').$label.': '
+                .($open < $amount ? strtr(t('noch {open} von {amount}', '{open} of {amount} still to pay'), ['{open}' => money($open), '{amount}' => money($amount)]) : money($open))
+                .strtr(t(', fällig seit {due}', ', due {due}'), ['{due}' => fmt_date((string)$charge['due_on'])]);
+        }
+        $subject = payment_reminder_subject_start()
+            .($several ? plural(count($charges), 'Beitrag', 'Beiträge', 'charge', 'charges') : mb_substr($labels[0], 0, 200));
+        $paying = !$details ? t('Alles Weitere findest du unter „Beiträge“:', 'You’ll find the details under “Payments”:')
+            : ($several ? t('Bankverbindung und für jeden Beitrag einen QR-Code findest du unter „Beiträge“:', 'You’ll find the bank details, and a QR code for each charge, under “Payments”:')
+                        : t('Bankverbindung und QR-Code für die Bank-App findest du unter „Beiträge“:', 'You’ll find the bank details and a QR code for your banking app under “Payments”:'));
+        $body = mail_greeting($account)
+            .($several ? plural(count($charges), 'Beitrag ist', 'Beiträge sind', 'charge is', 'charges are').t(' noch offen:', ' still outstanding:')
+                       : t('ein Beitrag ist noch offen:', 'One charge is still outstanding:'))."\n\n"
+            .implode("\n", $lines)."\n\n"
+            .($several ? t('Zusammen: ', 'Total: ').money($total)."\n\n" : '')
+            .$paying."\n".url('student', ['id' => $student['id'], 'tab' => 'payments'])."\n\n"
+            .t('Schon überwiesen? Dann passt alles – danke!', 'Already paid? Then all is well – thank you!')."\n\n"
+            .t('Viele Grüße', 'Best wishes,')."\n".setting('club_name');
+        return [$subject, $body];
+    });
+    queue_mail((int)$account['id'], $account['email'], $subject, $body, 'payments');
     return true;
 }
 /**
@@ -145,8 +326,8 @@ function notify_class_change(array $class, string $date, ?array $entry, string $
     $sent=0;
     foreach(rows('SELECT DISTINCT a.* FROM class_students cs'
         .' JOIN students s ON s.id=cs.student_id JOIN accounts a ON a.id=s.account_id'
-        .' WHERE cs.class_id=? AND cs.left_on IS NULL', [(int)$class['id']]) as $account) {
-        if($account['state']!=='active' || !$account['verified_at'] || empty($account['notifications'])) continue;
+        .' WHERE cs.class_id=? AND '.current_enrolment_sql(), [(int)$class['id']]) as $account) {
+        if(!account_takes_mail($account,'notifications')) continue;
         $en=$account['locale']==='en';
         $what=match($entry['status']??'planned') {
             'cancelled' => $en?'is cancelled':'entfällt',
@@ -154,11 +335,13 @@ function notify_class_change(array $class, string $date, ?array $entry, string $
             'changed'   => $en?'has changed':'hat sich geändert',
             default     => $en?'is going ahead':'findet statt',
         };
-        $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
+        $body=mail_greeting($account)
             .$class['name'].' '.($en?'on ':'am ').fmt_date($date).' '.$what.".\n"
             .($entry?session_label($entry)."\n":'')
             .($note!==''?"\n".$note."\n":'')
-            ."\n".($en?'All dates are in the portal:':'Alle Termine stehen im Portal:')."\n".url('classes',['id'=>$class['id']]);
+            // The overview, where a family's dates are: the course's own page
+            // is staff's, and a family is refused it.
+            ."\n".($en?'All dates are in the portal:':'Alle Termine stehen im Portal:')."\n".url('dashboard');
         queue_mail((int)$account['id'],$account['email'],
             ($en?'Change to ':'Änderung: ').$class['name'].' – '.fmt_date($date),$body,'notifications');
         $sent++;
@@ -169,11 +352,11 @@ function notify_class_change(array $class, string $date, ?array $entry, string $
 /** Tell one family what the trainer decided about their request. */
 function notify_enrolment_decision(array $request, bool $approved, string $note): bool {
     $account=one('SELECT a.* FROM students s JOIN accounts a ON a.id=s.account_id WHERE s.id=?', [(int)$request['student_id']]);
-    if(!$account || $account['state']!=='active' || !$account['verified_at'] || empty($account['notifications'])) return false;
+    if(!$account || !account_takes_mail($account,'notifications')) return false;
     $student=one('SELECT first_name,last_name FROM students WHERE id=?',[(int)$request['student_id']]);
     $class=one('SELECT name FROM classes WHERE id=?',[(int)$request['class_id']]);
     $en=$account['locale']==='en';
-    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
+    $body=mail_greeting($account)
         .request_kind_label((string)$request['kind']).' – '.$student['first_name'].' '.$student['last_name']
         .' · '.$class['name'].":\n"
         .($approved?($en?'Approved.':'Angenommen.'):($en?'Not approved.':'Leider nicht angenommen.'))."\n"
@@ -185,17 +368,40 @@ function notify_enrolment_decision(array $request, bool $approved, string $note)
 }
 
 /**
- * Send one invoice to the family, with the PDF attached.
+ * Why an invoice cannot be e-mailed to its family, in a sentence, or null when
+ * it can. Asked before anything is queued, so she hears it on the page rather
+ * than finding the mail cancelled in Postausgang - and so the invoice never says
+ * „per E-Mail geschickt“ about a mail the queue was always going to drop.
+ */
+function invoice_mail_refusal(array $invoice): ?string {
+    $account=$invoice['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$invoice['account_id']]):null;
+    if(!$account)
+        return t('Für dieses Kind ist kein Konto hinterlegt, an das die Rechnung gehen könnte.','This child has no account for the invoice to go to.');
+    if(!account_in_use($account))
+        return t('Der Zugang dieses Kindes ist noch nicht eingerichtet oder gesperrt. Lade die Rechnung herunter und gib sie anders weiter.',
+                 'This child’s login is not set up yet, or is suspended. Download the invoice and pass it on another way.');
+    if((string)($account['email']??'')==='')
+        return t('Dieses Kind meldet sich ohne E-Mail-Adresse an, also gibt es keine, an die die Rechnung gehen könnte. Lade sie herunter und gib sie anders weiter.',
+                 'This child signs in without an email address, so there is none for the invoice to go to. Download it and pass it on another way.');
+    if(!account_takes_mail($account,'payments'))
+        return t('Diese Familie hat E-Mails zu Beiträgen abbestellt („Erinnerung, wenn ein Beitrag offen ist“ unter „Mein Konto“). Lade die Rechnung herunter und gib sie anders weiter.',
+                 'This family has switched off emails about payments (“Remind me when a payment is outstanding” under “My account”). Download the invoice and pass it on another way.');
+    return null;
+}
+
+/**
+ * Send one invoice to the family, with the PDF attached. False, and nothing
+ * queued, when invoice_mail_refusal() has a reason.
  *
  * The amount, the number and the due date are in the body as well, because an
  * attachment on a phone is a tap away and a parent reading this on the bus
  * should already know what it says.
  */
 function notify_invoice(array $invoice): bool {
-    $account=$invoice['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$invoice['account_id']]):null;
-    if(!$account || $account['state']!=='active' || !$account['verified_at']) return false;
+    if(invoice_mail_refusal($invoice)!==null) return false;
+    $account=one('SELECT * FROM accounts WHERE id=?',[(int)$invoice['account_id']]);
     $en=$account['locale']==='en';
-    $body=($en?'Hello ':'Hallo ').greeting_name($account).",\n\n"
+    $body=mail_greeting($account)
         .($en?'Invoice ':'Rechnung ').$invoice['number'].' '.($en?'over':'über').' '.money((int)$invoice['gross_cents'])
         .', '.($en?'payable by ':'zahlbar bis ').fmt_date((string)$invoice['due_on']).".\n\n"
         .($en?'The invoice is attached as a PDF and is also in the portal:':'Die Rechnung hängt als PDF an und steht auch im Portal:')."\n"
@@ -227,6 +433,20 @@ function smtp_mailer(array $s, ?callable $debug=null): \PHPMailer\PHPMailer\PHPM
         ?\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS
         :\PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
     $m->Timeout=15; $m->CharSet='UTF-8';
+    // And fifteen seconds for each answer, which PHPMailer otherwise waits 300
+    // for - twice that after the message itself: a server that took the
+    // connection and then said nothing held one send, the background run it
+    // was part of and the account row it locks, for five minutes and more.
+    // Timeout above is the connection's. A send that runs out is a failed
+    // attempt like any other: process_mail() writes it down, and tries again
+    // later all but a security mail, whose link may have lapsed by then.
+    // The cost, accepted because the bound matters more: RFC 5321 gives a
+    // server ten minutes to answer the end of the message, so a slow provider
+    // may have taken an ordinary mail that is then sent a second time (a
+    // security mail never is); without the bound, one background run - which
+    // no visitor waits for, since the session is let go first - holds the
+    // queue and that row lock for many minutes a mail.
+    $m->getSMTPInstance()->Timelimit=15;
     $m->SMTPDebug=$debug?\PHPMailer\PHPMailer\SMTP::DEBUG_SERVER:\PHPMailer\PHPMailer\SMTP::DEBUG_OFF;
     if($debug) $m->Debugoutput=static function(string $line,int $level) use ($debug): void { $debug($line); };
     return $m;
@@ -333,8 +553,7 @@ function smtp_check(?string $recipient=null): array {
         ?t('als ','as ').$s['username'].(empty($s['password'])?' '.t('(ohne gespeichertes Passwort)','(no password saved)'):'')
         :t('ohne Benutzernamen','without a user name'));
     try {
-        if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class))
-            throw new UserError(t('PHPMailer fehlt. Der Ordner vendor/ wurde nicht mit hochgeladen.','PHPMailer is missing. The vendor/ folder was not uploaded.'));
+        if($missing=mail_library_missing()) throw new UserError($missing);
         if($host===''||$port<1||empty($s['from_email']))
             throw new UserError(t('Server, Port und Absenderadresse müssen zuerst gespeichert werden.','Save the server, the port and the sender address first.'));
         if(!extension_loaded('openssl'))
@@ -408,9 +627,20 @@ function smtp_settings_changed(array $old, array $new): bool {
     return $plain($old) != $plain($new);
 }
 
+/**
+ * Why mail cannot be sent from this copy of the portal at all, or null. The
+ * library comes in the release ZIP's vendor/ folder; she has no shell, so the
+ * answer is to upload it, never a command to run.
+ */
+function mail_library_missing(): ?string {
+    if(class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) return null;
+    return t('Das Programm zum Versenden (PHPMailer) fehlt: Der Ordner vendor/ ist nicht auf dem Server. Er ist im Release-ZIP enthalten – lade den ganzen Inhalt des ZIP noch einmal hoch.',
+             'The program that sends email (PHPMailer) is missing: the vendor/ folder is not on the server. It is in the release ZIP – upload the whole content of the ZIP again.');
+}
+
 function process_mail(int $limit=25, float $budget=0.0): array {
-    if(is_file(maintenance_file()))throw new UserError('Maintenance mode is active.');
-    if(!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) throw new UserError('PHPMailer fehlt. composer install ausführen.');
+    if(is_file(maintenance_file()))throw new UserError(t('Im Wartungsmodus werden keine E-Mails verschickt. Sobald er aus ist, geht der Versand weiter.','No email is sent while maintenance mode is on. Sending carries on once it is off.'));
+    if($missing=mail_library_missing()) throw new UserError($missing);
     // An advisory database lock works across cron processes and hosts.
     if((int)scalar("SELECT GET_LOCK('badminton_crm_mail',0)")!==1) return ['sent'=>0,'failed'=>0,'skipped'=>0,'deferred'=>0];
     $count=['sent'=>0,'failed'=>0,'skipped'=>0,'deferred'=>0];
@@ -433,12 +663,12 @@ function process_mail(int $limit=25, float $budget=0.0): array {
                 // Hold the account lock during send: suspension/deletion cannot race this check.
                 $a=$job['account_id']?one('SELECT * FROM accounts WHERE id=? FOR UPDATE',[$job['account_id']]):null;
                 $eligible=$a && $a['state']!=='suspended';
-                $stored=$job['payload']!==''?mail_payload(unseal($job['payload'])):['body'=>'','attach'=>[]];
+                $stored=$job['payload']!==''?mail_payload(unseal($job['payload'])):['body'=>'','attach'=>[],'notice'=>false];
                 $plainBody=$stored['body'];
-                if($eligible && $job['category']==='security') $eligible=security_mail_links_live($plainBody,(string)$job['recipient']);
-                if($eligible && $job['category']!=='security') $eligible=$a['state']==='active' && $a['verified_at'] && same_address((string)$a['email'],(string)$job['recipient']);
-                $switch=['newsletter'=>'newsletter','notifications'=>'notifications','payments'=>'payment_notices'][$job['category']]??null;
-                if($eligible && $switch!==null) $eligible=(bool)($a[$switch]??1);
+                // A notice has no link to check, and goes to the address it
+                // names, which for a moved login is the old one (notify_sign_in_changed()).
+                if($eligible && $job['category']==='security') $eligible=$stored['notice'] || security_mail_links_live($plainBody,(string)$job['recipient']);
+                if($eligible && $job['category']!=='security') $eligible=account_takes_mail($a,(string)$job['category']) && same_address((string)$a['email'],(string)$job['recipient']);
                 if(!$eligible) {run("UPDATE mail_jobs SET status='cancelled',payload='',retry_after=NULL WHERE id=?",[$job['id']]);db()->commit();$count['skipped']++;continue;}
                 $m=smtp_mailer($s);
                 $m->setFrom($s['from_email'],$s['from_name']); $m->addAddress($job['recipient']);

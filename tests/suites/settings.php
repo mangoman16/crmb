@@ -12,7 +12,7 @@ case_('A key with no stored row reads as its declared default');
 run('DELETE FROM settings');
 setting_cache_clear();
 is_same('Badminton', setting('club_name'), 'falls back to the declared value');
-is_same(14, setting('billing_due_days'), 'an integer default keeps its type');
+is_same(14, setting('invoice_terms_days'), 'an integer default keeps its type');
 is_same(false, setting('privacy_ready'), 'a boolean default keeps its type');
 ok(is_array(setting('statuses')), 'a map default is an array');
 throws(fn() => setting_default('no_such_setting'), 'an undeclared key is an error, not a silent empty string');
@@ -20,17 +20,17 @@ throws(fn() => setting_default('no_such_setting'), 'an undeclared key is an erro
 case_('A stored value wins, including a falsy one');
 set_setting('club_name', 'Verein X');
 is_same('Verein X', setting('club_name'), 'the stored value is returned');
-set_setting('billing_due_days', 0);
-is_same(0, setting('billing_due_days'), 'zero is a real value, not treated as absent');
+set_setting('invoice_terms_days', 0);
+is_same(0, setting('invoice_terms_days'), 'zero is a real value, not treated as absent');
 set_setting('portal_tagline', '');
 is_same('', setting('portal_tagline'), 'an empty string is a real value too');
 
 case_('Validation matches what each kind promises');
-$int = setting_schema()['billing_due_days'];
-is_same(30, setting_validate('billing_due_days', $int, '30'), 'an integer parses');
-throws(fn() => setting_validate('billing_due_days', $int, 'x'), 'rejects non-numeric');
-throws(fn() => setting_validate('billing_due_days', $int, '-1'), 'rejects below the minimum');
-throws(fn() => setting_validate('billing_due_days', $int, '999'), 'rejects above the maximum');
+$int = setting_schema()['invoice_terms_days'];
+is_same(30, setting_validate('invoice_terms_days', $int, '30'), 'an integer parses');
+throws(fn() => setting_validate('invoice_terms_days', $int, 'x'), 'rejects non-numeric');
+throws(fn() => setting_validate('invoice_terms_days', $int, '-1'), 'rejects below the minimum');
+throws(fn() => setting_validate('invoice_terms_days', $int, '999'), 'rejects above the maximum');
 $text = setting_schema()['club_name'];
 is_same('Verein', setting_validate('club_name', $text, '  Verein  '), 'text is trimmed');
 throws(fn() => setting_validate('club_name', $text, ''), 'a required field rejects empty');
@@ -61,6 +61,11 @@ throws(fn() => $save('kurz', $long, true), 'a version that is too short is named
 throws(fn() => $save($long, 'short', true), 'and so is the other one', 'English');
 throws(fn() => $save($long.'[Name des Betreibers]', $long, true), 'a leftover placeholder is quoted back', '[Name des Betreibers]');
 throws(fn() => $save($long, $long.'[operator name]', true), 'in either version', '[operator name]');
+$longPlaceholder = '['.str_repeat('Name und Anschrift des Betreibers ', 4).']';
+$said = '';
+try { $save($long.$longPlaceholder, $long, true); } catch (UserError $e) { $said = $e->getMessage(); }
+ok(str_contains($said, mb_substr($longPlaceholder, 0, 40)) && !str_contains($said, mb_substr($longPlaceholder, 0, 61)),
+   'a long one by its start, never more than 60 characters of what was typed (ADR 0026 §5): '.$said);
 does_not_throw(fn() => $save($long, $long, true), 'two complete versions are accepted');
 is_same(true, (bool)setting('privacy_ready'), 'and the notice is released');
 // Saving a draft must work even while it is incomplete, or there is nowhere to
@@ -234,6 +239,58 @@ ok($stored['at'] !== '', 'with the time it was run');
 is_same(0, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE category='test'"),
         'and nothing was queued: the test is the connection, not a message in a list');
 
+case_('A mail server that takes the connection and then says nothing costs one send fifteen seconds, not five minutes');
+/* PHPMailer waits 300 seconds for each answer unless told otherwise, and twice
+   that after the message: a server that stalled held the background run, and the
+   account row the send locks, for five minutes and more. The queue and the
+   connection test build their mailer in one place (smtp_mailer()). */
+$mailer = smtp_mailer(['host'=>'mail.example.test', 'port'=>587, 'encryption'=>'tls']);
+is_same([15, 15], [$mailer->Timeout, $mailer->getSMTPInstance()->Timelimit], 'fifteen seconds to connect, and fifteen for each answer');
+
+case_('A send that fails is a failed attempt, tried again later, and never lost');
+/* Whatever ends a send - a refusal, or a server that ran out its fifteen seconds
+   - it is one attempt, written down with why, and the queue tries it again after
+   a while. A security mail is not tried again by itself: its link may have
+   lapsed by then. It stays in the outbox, failed, for staff to send again. */
+run('DELETE FROM mail_jobs');
+set_setting('smtp', ['host'=>'127.0.0.1', 'port'=>1, 'encryption'=>'tls', 'from_email'=>'portal@example.test', 'from_name'=>'B']);   // nothing listens there
+$reader = make_account(['email'=>'leserin@beispiel.test']);
+queue_mail($reader, 'leserin@beispiel.test', 'Neuigkeit', 'Hallo', 'newsletter');
+$resetFor = make_account(['email'=>'vergessen@beispiel.test']);
+queue_mail($resetFor, 'vergessen@beispiel.test', 'Passwort zurücksetzen', url('activate', ['token'=>make_token($resetFor, 'reset')]), 'security');
+process_mail();
+$jobOf = fn(int $id): array => one('SELECT status,attempts,error,retry_after FROM mail_jobs WHERE account_id=?', [$id]) ?? [];
+$news = $jobOf($reader);
+is_same(['failed', 1], [$news['status'] ?? null, (int)($news['attempts'] ?? 0)], 'a send that fails is written down as one failed attempt');
+ok((string)($news['error'] ?? '') !== '' && (string)($news['retry_after'] ?? '') > now(), 'with why, and when to try again');
+run('UPDATE mail_jobs SET retry_after=? WHERE account_id IN (?,?)', [gmdate('Y-m-d H:i:s', time() - 1), $reader, $resetFor]);
+process_mail();
+is_same(['failed', 2], [$jobOf($reader)['status'] ?? null, (int)($jobOf($reader)['attempts'] ?? 0)], 'once its time has come it is tried again, and counted again');
+is_same(['failed', 1], [$jobOf($resetFor)['status'] ?? null, (int)($jobOf($resetFor)['attempts'] ?? 0)],
+        'a security mail is not tried again by itself, and stays in the outbox for staff to send again');
+run('DELETE FROM mail_jobs');
+set_setting('smtp', []);
+
+case_('The outbox keeps what a sent mail said for 90 days, then only that it went [security review 2026-10-08]');
+/* Every member of staff reads the outbox, and it kept the words of every
+   invoice, reminder and chat notice for ever. Driven through prune_expired(),
+   which the background work and the console's nightly job both call. */
+$kept = make_account(['email'=>'leserin.alt@beispiel.test']);
+$mailed = fn(string $status, ?int $sentDaysAgo) => fixture('mail_jobs', ['account_id'=>$kept, 'recipient'=>'leserin.alt@beispiel.test',
+    'subject'=>'Offener Beitrag', 'payload'=>seal('Bitte 45,00 € an den Verein überweisen.'), 'category'=>'payments', 'status'=>$status,
+    'attempts'=>1, 'created_at'=>gmdate('Y-m-d H:i:s', time() - 120 * 86400),
+    'sent_at'=>$sentDaysAgo === null ? null : gmdate('Y-m-d H:i:s', time() - $sentDaysAgo * 86400)]);
+$long = $mailed('sent', 91); $lately = $mailed('sent', 89); $waiting = $mailed('queued', null); $stuck = $mailed('failed', null);
+schema_made_current();
+prune_expired();
+$row = fn(int $id): array => one('SELECT recipient,subject,status,payload FROM mail_jobs WHERE id=?', [$id]) ?? [];
+is_same(['leserin.alt@beispiel.test', 'Offener Beitrag', 'sent', ''], array_values($row($long)),
+        'a mail sent 91 days ago keeps to whom, about what and that it went, and nothing of what it said');
+is_same('Bitte 45,00 € an den Verein überweisen.', unseal((string)($row($lately)['payload'] ?? '')), 'one sent 89 days ago keeps its words');
+ok(($row($waiting)['payload'] ?? '') !== '' && ($row($stuck)['payload'] ?? '') !== '', 'and a mail not sent yet keeps what it is to say');
+is_same(90, MAIL_BODY_KEEP_DAYS, 'the 90 days are the one rule the privacy notice can name');
+run('DELETE FROM mail_jobs');
+
 case_('Nothing in a transcript is a password');
 /* The transcript is shown on a screen, stored in the settings table and copied
    into support emails. AUTH LOGIN sends the user name and the password as two
@@ -274,3 +331,15 @@ ok(str_contains(smtp_explain('SMTP Error: Could not connect to SMTP host.'), 'Po
    'a silent server sends her to the port');
 ok(str_contains(smtp_explain('550 5.7.1 Relay access denied'), 'Absender'), 'a refused relay is the sender address');
 is_same('Etwas ganz anderes', smtp_explain('Etwas ganz anderes'), 'and anything unrecognised is passed through unchanged');
+
+case_('Every setting on a card is one the portal reads');
+/* Found by the whole-app review of October 2026: „Zahlungsziel für
+   Monatsbeiträge“ sat on the Vorgaben card and nothing read it - a charge's due
+   day comes from its tariff. A box that changes nothing is worse than none: she
+   believes she has set something. Internal settings are read by name in the
+   declarations themselves ('options'), so only the ones on a card are asked. */
+$code = '';
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $file)
+    if (basename($file) !== 'defaults.php') $code .= (string)file_get_contents($file);
+foreach (setting_schema() as $key => $spec)
+    if (empty($spec['internal'])) ok(str_contains($code, "'".$key."'"), $key.' is read somewhere besides its declaration');

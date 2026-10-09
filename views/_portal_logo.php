@@ -12,8 +12,8 @@ $logoUrl=portal_logo_url();
 ?>
 <section class="card" id="logo">
     <h2><?=e(t('Logo','Logo'))?></h2>
-    <p class="muted icon-intro"><?=e(t('Erscheint oben links im Menü, auf der Anmeldeseite und auf dem Handy oben in der Leiste. Ohne Logo steht dort das Symbol des Portals, ohne Symbol ein „B“.',
-        'Shown top left in the menu, on the sign-in page and in the bar at the top on a phone. Without a logo the portal icon is shown there, without an icon a “B”.'))?></p>
+    <p class="muted icon-intro"><?=e(t('Erscheint oben links im Menü, auf der Anmeldeseite und auf dem Handy oben in der Leiste. Ohne Logo steht dort das Symbol des Portals, ohne Symbol ein Federball.',
+        'Shown top left in the menu, on the sign-in page and in the bar at the top on a phone. Without a logo the portal icon is shown there, without an icon a shuttlecock.'))?></p>
     <div class="avatar-editor">
         <figure class="logo-preview">
             <?php if($logoUrl!==''): /* The same plate as brand_block() draws top left, at its 48px. */ ?>

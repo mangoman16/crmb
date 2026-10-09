@@ -1,309 +1,467 @@
 # Validation
 
-## 0.6.0 — the top bar, online status, news by email, the club's colours and logo
+What was verified, on what, and what was not, newest first. A figure in a record was run
+and watched by whoever wrote the record, unless the record says it was reported. The
+records from before the suite ran on MariaDB only — until commit `f82289c` on 2026-10-01,
+when it also ran on a SQLite translation — are in git history; they describe code that has
+changed since.
 
-Recorded 2026-09-30 against commit `dda5db0`, whose code is that of `3b4c4c8`
-(`dda5db0` changed decision records only). The two whole-suite runs below were
-made on a copy exported with `git archive`, so the documents being edited in
-the working tree at the time could not affect them. Every figure here was run
-and watched for this record, not taken from a commit message.
+## 0.6.0-beta.2 — the package built from `03f50df`
 
-- **The whole suite on the SQLite translation: 4840 assertions, 0 failed**, in
-  51.2 seconds on PHP 8.4.19. Its closing list names what that driver cannot
-  cover: the foreign keys on `charges`, `students`, `class_students` and
-  `tariffs`, the MySQL-dialect backup, two spellings of one address sharing a
-  sign-in count, and the SMTP test naming a missing sender address, because
-  `vendor/` was not installed.
-- **The whole suite against MariaDB 10.11.14
-  (`10.11.14-MariaDB-0ubuntu0.24.04.1`), started by `tests/mariadb-local.sh`
-  with a private `CRM_MARIADB_WORK` and `CRM_MARIADB_PORT`: 4851 assertions, 0
-  failed**, in 58.1 seconds on PHP 8.4.19. The harness builds that database from
-  every statement of all twenty-one migration files, so all twenty-one apply
-  there. Its closing list says the data that migrations 015, 016, 019, 020 and
-  021 carry across was checked on SQLite only, and names the same SMTP test.
-- **That gap was then closed for MariaDB.** The `migrations` suite was run
-  again against the same server with `CRM_MIGRATION_CONFIG` naming a second,
-  empty `_test` database: **166 assertions, 0 failed**, and nothing listed as
-  uncovered. This run was on the working tree, where only documents had
-  changed. So the rows that 020 and 021 find already in place are checked on
-  MariaDB too: every existing account starts on „Automatisch", and one that had
-  news by email off still has it off.
-- The top-bar menus were exercised by `tests/topbar-menus.mjs` under `node`
-  as part of the `shell` suite in both runs: taps, a swipe and Escape against
-  the real `app.js` in a page of stand-in elements, not in a browser.
+Recorded 2026-10-09 by docs-writer, as reported by devops-engineer, who built
+and ran it the same day on MariaDB 10.11.14 with PHP 8.4.26; nothing here was
+watched by the writer. `bin/release.sh` built it from `03f50df` with `VERSION`
+at `0.6.0-beta.2`: 412 files, sha256 `27695edb…c557`. The package handed to the
+owner is rebuilt from the commit that adds this record with the `VERSION` line;
+besides `VERSION`, it changes only INSTALL.md, UPDATING.md and VALIDATION.md.
 
-- **The drafts' own count of notes had to change.** This change added two
-  bracketed notes to each privacy draft, one after the paragraph on online
-  times and one for the legal basis of news by email. The `settings` suite
-  counted exactly eight per draft, so with these documents it first gave 4837
-  passed, 4 failed on SQLite and 4848 passed, 4 failed on MariaDB 10.11.14, all
-  four being that count. The test now counts the notes in the drafts
-  themselves and checks that both languages have the same number. With it, the
-  whole suite on the working tree gave **4842 passed, 0 failed** on SQLite (PHP
-  8.4.19). It has not been run on MariaDB since that change.
+- **A fresh install through `setup.php`**: its 14 rows in order, all 41
+  database changes, the example data as INSTALL.md describes it, and signing in
+  as the owner and as a family.
+- **The browser walk on the ZIP**: 413 passed, 0 failed, `RESULT: PASS`, no PHP
+  warnings.
+- **An update over the first beta's ZIP**: the first request ran the database
+  from 33 to 41 changes with nothing on the screen; **Einstellungen → System**
+  showed both versions and „0.6.0 → 0.6.0-beta.2"; the backup was written and,
+  imported back, every table was equal; the 18 guarded tables were equal; only
+  the child whose login signed in with a username was signed out.
+- **The first daily cleanup** came a simulated day later and deleted nothing,
+  as nothing was old enough.
+- **Without gd**: setup showed „eingeschränkt" and installed, **Einstellungen →
+  System** named gd, and no photo was offered.
+- **Not run**: Apache with its `.htaccess`, MySQL 8.0, a real hosting account,
+  an iPhone.
 
-Reported by the implementers and **not** reproduced here: the security review
-of the colours and logo (PASS, commit `667367a`), the code review of the bell,
-the account menu and online status, and the code re-review of the colours and
-logo, which `667367a` gives as still in progress.
+## 0.6.0, unreleased — pictures (ADR 0031)
 
-**Known limits, accepted.**
+Recorded 2026-10-09 by docs-writer. The gate run is the project manager's, as
+reported to the writer; the writer watched only the Composer record below.
 
-- **The sign-in throttle still tells whoever tries that an address is
-  registered**, as described under „the sign-in counter" below. ADR 0019
-  supersedes ADR 0007 with sign-in by username, which would close it, but
-  username sign-in is not built yet: there are no migrations 022–024. Until it
-  is built and measured on MariaDB, the weakness stands.
-- **A logo photo marked as rotated is measured unrotated.** A phone often
-  stores a photo sideways, with a note in the file telling the viewer to turn it
-  (EXIF orientation). The browser turns it, but `getimagesize()` reports the
-  width and height as stored, so such a logo can be refused as too tall when it
-  looks wide. Reading the note would need PHP's `exif` extension, which shared
-  hosting does not promise. Saving the picture again from an image editor, or as
-  a screenshot, fixes it. TESTING.md says so under 6.20.
-**Not covered here.** **MySQL 8.0 remains unverified.** The browser walk,
-`tests/e2e.sh`, was not run for this round: Playwright's Chromium is not
-installed on the machine that made this record, so the account menu, the dot,
-the history and the colours have not been walked end to end in any browser
-here. Nothing was looked at on a real iPhone, including P.14 („Abmelden" above
-the bar at 320 px) and 6.10 (Safari's bar in the menu colour). The removal of
-online periods after 30 days is tested by ageing the stored dates; nobody has
-waited 30 days (TESTING.md P.10). No real mail provider and no real hosting
-account were used.
+- **The project manager's gate run**, 2026-10-09, on a clean worktree of
+  `1bc2573` with adr0031-db.patch (md5 `5f4bfd8b…`),
+  adr0031-server-rebased.patch (`22aa817e…`), adr0031-views-rebased.patch
+  (`c2149382…`), update-gd.patch (`a28695e5…`), the documents patch and
+  records-pictures.patch (`5413a364…`), which is the pictures commit's tree:
+  `tests/mariadb-local.sh` 9271 passed, 0 failed, in 300 s; `tests/e2e.sh` 413
+  checks passed, 0 failed, `RESULT: PASS`, no PHP warnings, no layout findings.
+- **The machine**: PHP 8.4.26 with gd 2.3.3, and MariaDB
+  10.11.14-MariaDB-0ubuntu0.24.04.1.
+- **mobile-tester**, as reported, 2026-10-09, on its own copy of the same tree:
+  Chromium 141 at 320, 360 and 390 px, light and dark, normal to 200 % text. In
+  99 card rows „Foto hinzufügen" and „Foto ändern" wrap and are never cut;
+  Zugänge shows the team's photos; initials stay inside the 72 and 120 px faces;
+  in 24 cases a row keeps its exact size while a photo is sent, the spinner
+  centred over the face; a 48-megapixel photo without JavaScript is answered on
+  its own page; the Reduce Motion pulse runs on across the change of page. Of
+  210 screens in common with `1bc2573`, with the same data, none is newly
+  broken. Not seen on an iPhone.
+- **Composer on a PHP without gd**, watched by docs-writer on 2026-10-09: PHP
+  8.4.26 with every extension of this machine loaded except gd, Composer 2.8.12
+  and this version's `composer.lock`. Run as
+  `composer install --no-dev --prefer-dist --optimize-autoloader --dry-run`, it
+  stops on `ext-gd` (exit 2) and names `--ignore-platform-req=ext-gd`; with that
+  flag added, it would install the three locked packages (exit 0). The
+  `vendor/composer/platform_check.php` this Composer writes for this
+  `composer.json` tests the PHP version alone, so a package built with gd starts
+  without it.
+- **Not run**: MySQL 8.0, where neither 040 nor 041 has been tried; Safari, an
+  iPhone and an Android phone, so the picture walks P.1–P.20 are not walked.
 
-## 0.6.0 — one login per student, the start checklist, errors that report themselves
+## 0.6.0, unreleased — at `76cc959` with the ADR 0030 patches: one person, one address
 
-Recorded 2026-09-28 against commit `645b059`. Every figure in this list was run
-and watched for this record, not taken from a commit message. All ran on a
-clean working tree except the MariaDB run on PHP 8.5.11, which ran after the
-documents in this change had been edited — including the two privacy drafts,
-which every suite seeds its database from.
+Recorded 2026-10-08 by docs-writer, from the project manager's run, the implementers' and
+mobile-tester's reports and the reviews; nothing here was watched by the writer, who ran no
+suite and no walk on this change. MariaDB 10.11.14 with PHP 8.4.26, the walk in Chromium.
+MySQL 8.0 was not run, and neither was Safari.
 
-- **The whole suite on the SQLite translation: 3813 assertions, 0 failed** —
-  39.4 seconds on PHP 8.4.19 and 39.9 seconds on PHP 8.5.11. Its closing list
-  names what that driver cannot cover: the foreign keys on `charges`,
-  `students`, `class_students` and `tariffs`, the MySQL-dialect backup, and two
-  spellings of one address sharing a sign-in count.
-- **The whole suite against MariaDB 10.11.14 (`10.11.14-MariaDB-0ubuntu0.24.04.1`),
-  started by `tests/mariadb-local.sh`: 3832 assertions, 0 failed**, in 45.9
-  seconds on PHP 8.4.19 and 44.8 seconds on PHP 8.5.11. The harness builds
-  that database by running every
-  statement of all nineteen migration files, so all nineteen apply there. The
-  run's own closing line says what it did not reach: **the data that
-  migrations 015, 016 and 019 carry across is checked on SQLite only.** For 019
-  that is the separation of shared logins — nobody deleted, a change-log line
-  per child, the address copied byte for byte — so its SQL is proven on
-  MariaDB and its effect on rows is not.
-- **The browser walk, `tests/e2e.sh` with `CRM_E2E_REF=HEAD`: `RESULT: PASS`,
-  279 checks, 0 failed**, on PHP 8.4.19 (104 seconds) and again on PHP 8.5.11
-  (105 seconds), both against MariaDB 10.11.14 under `php -S`, in Chromium at
-  390px with a 320px pass over every page each role opened (31 for the
-  administrator, 7 for the family). Both runs reported no PHP warning, notice
-  or deprecation; no JavaScript error, failed request or unexpected 4xx/5xx;
-  no layout failure; four 503s, all four provoked on purpose; two mails
-  captured — the SMTP test and the family's invitation; and no notes.
-- Each suite run printed its own work folder under `/tmp` on its second line.
-  After all of them the checkout held nothing new: `git status --ignored`
-  listed only the documents edited for this record, plus `vendor/` and
-  `tests/__pycache__/`, which were there before the first run.
+- **The project manager's final run, on a clean worktree of `76cc959`** with
+  adr0030-db.patch (md5 `e2ee9369…`), adr0030-server.patch (`43534e8d…`),
+  adr0030-views.patch (`9154821c…`), adr0030-record-quote.patch and the documents patch:
+  the whole suite 8364 passed, 0 failed — a worktree runs one structure check fewer than a
+  checkout, because its `.git` is a file; the browser walk 382 passed, 0 failed, no PHP
+  warnings, no layout findings, `RESULT: PASS`. The documents patch was the one before its
+  last three fixes, which change only Markdown text that no suite reads.
+- **The implementers' final runs, on checkouts**: frontend-dev 8365 passed, walk 382 PASS;
+  backend-dev 8309 passed; database-engineer's earlier run, 8268 passed on `7b98be7` with
+  the server patches.
+- **mobile-tester**, on the views patch before its last change, which only adds the
+  card's note for a refused „Portal als … ansehen": 208 screens of ADR 0030 at 320 and 390
+  px, light and dark, at 100 % and 200 % text, with no problem; every page of the portal
+  before and after the patches, 0 of 256 worse and 14 better.
+- **frontend-dev's measurements, reported**, in Chromium: in a window 320 by 780 px the
+  wizard's second card, „Ohne Anmeldung", starts at 716 px of a 1,253 px page, on the first
+  screen, and at 390 px wide at 647 px — Safari on a phone, whose window is shorter, was not
+  measured.
+- **Reviews**: the security review passed all four patches; the code review passed the
+  code.
+- Not walked by anybody, as far as reported: TESTING.md L.2a, L.2b, L.9a, L.9b and
+  Z.1–Z.6. 039 has run on the `migrations` suite's own username logins only, and never on
+  MySQL 8.0, where neither its multi-table `DELETE` nor its one `ALTER` that drops an index
+  and a column has been tried.
 
-Reported by the implementers and **not** reproduced here: that each rule added
-in this round was broken on purpose and watched to fail, and the layout
-measurements at 1280px named in commit `77b406a`.
+## 0.6.0, unreleased — at `7b98be7` with the students-list patch: the list built for a phone
 
-**Not covered here.** **MySQL 8.0 remains unverified.** The browser walk is
-Chromium with an iPhone's size and user agent, not Safari on an iPhone; its
-mail server is a sink on the same machine, not a real provider; its invoice
-PDF was read by a parser, not opened in a reader; its web server is `php -S`,
-which reads no `.htaccess` — so the new rule that answers 404 for hidden
-folders such as `.git` is checked only by the structure suite reading the
-file, not by any Apache. `tests/existing-database.sh` was not run: it asks for
-its database interactively, and no hosting-panel database was available. Both
-30-day deletions — a problem report after it is done, an automatic error after
-it last happened — are tested by ageing the stored dates; nobody has waited 30
-days (TESTING.md U.19, U.44). No real hosting account has been used.
+Recorded 2026-10-08 by docs-writer. The two runs are reported, the project manager's and
+frontend-dev's; the writer watched only the scratch check below. MariaDB 10.11.14 with PHP
+8.4.26, the walk in Chromium. MySQL 8.0 was not run, and neither was Safari.
 
-## 0.6.0 — the sign-in counter, and the collation underneath it
+- **The project manager's run, on a clean worktree of `7b98be7` with the patch as
+  committed**: the whole suite 8249 passed, 0 failed; the browser walk 384 passed, 0 failed,
+  no PHP warnings, no layout findings, `RESULT: PASS`. A worktree runs one structure check
+  fewer than a checkout, because its `.git` is a file. Two earlier versions of the patch gave
+  8247 and 8248 passed, 0 failed, walk PASS.
+- **frontend-dev's own runs**: 8082 passed, 0 failed, walk PASS, on `2f633c4` with the first
+  version; 8250 passed, 0 failed on `7b98be7` with the patch as committed. frontend-dev
+  reports TESTING.md N.4 passing now, and qa-tester walks it again.
+- **Watched by the writer**, on `7b98be7` with the same patch: a scratch suite, not in the
+  repository, filled the example data and drew the list as the trainer. „Nach Alter" showed
+  „Unter 12" („bis 11") with 2, „Jugend" („12 bis 17") with 1 and „Ohne Geburtsdatum" with
+  1. „Überfällig" and „Krank" each listed Mia alone. The course chosen and „a" searched
+  listed three. With „Unter 12" chosen the list said „1 Kind ohne Geburtsdatum ist nicht
+  dabei.". A 19-year-old went under „Erwachsene" („18 und älter"), and under „Ohne
+  Altersgruppe" once „Erwachsene" started at 21; with every group archived the list said
+  „Es gibt noch keine Altersgruppen.". The overview's rows showed no price either. The check
+  read HTML and saw no screen; the values TESTING.md 17.1–17.7 expect are taken from it.
+- Not reported walked or measured by anybody: TESTING.md 17.1–17.8 on a phone, and the new
+  list at 320 and 390 px.
 
-Recorded 2026-09-22, after the change that counts a sign-in attempt against the
-account an address resolves to rather than against the address as it was typed.
+## 0.6.0, unreleased — at `2f633c4`, and ADR 0029 on top of it: age groups from the birth date, the small example data, a restore that keeps the portal closed
 
-- **The whole suite passes on the SQLite translation: 2491 assertions, 0 failed,
-  in 26 seconds** — run and watched here, against commit `bcfa796`, which is the
-  state this section records. A second run a few minutes later, with the test
-  work still in flight in the same tree, gave 2505 assertions and 0 failed; both
-  runs were watched. That proves the PHP and not the dialect, and the run says
-  as much itself: its closing list names the four foreign keys, the
-  MySQL-dialect database copy, and "two spellings of one address sharing a
-  throttle bucket (needs the MySQL collation)" as things it could not cover.
-  The half of this change that the fix is about is therefore **not covered by
-  that number at all**.
-- **The collation itself was measured on MariaDB 10.11.14** by the implementer,
-  not reproduced independently here: `accounts.email` is compared under
-  `utf8mb4_unicode_ci`, which folds case, accents, ß against ss, ligatures and
-  full-width letters, so one account row answers to any number of typed
-  spellings and each used to get its own ten attempts. A first measurement said
-  the opposite and was discarded — the client had mangled the character — and
-  the result stated here is the one taken with the client character set right.
-- **2511 assertions, 0 failed against MariaDB 10.11.14**, reported by the
-  implementer and not independently reproduced. The security suite runs 111
-  assertions there against 107 on SQLite; the four extra ones are the collation
-  half. `tests/mariadb-local.sh` repeats the run from nothing.
-- **Every rule added in this round was broken on purpose and watched to fail**
-  before it was trusted, per the implementer's report. One of those breaks did
-  not fail at first, because the test typed no address at all; it was corrected
-  rather than counted.
+Recorded 2026-10-08 by docs-writer, from the project manager's and qa-tester's runs; nothing
+here was watched by the writer, who ran no suite and no walk on either change. MariaDB
+10.11.14 with PHP 8.4.26, the walks in Chromium at 390 px. MySQL 8.0 was not run, and
+neither was Safari.
 
-**Not covered here.** **MySQL 8.0 remains unverified**, as in every round before
-this one. No PDF was opened in a real reader, no mail went through a real
-provider, nothing was rendered on a real iPhone, and no real hosting account was
-used. The only figure on this page that was observed rather than reported is the
-SQLite one. One weakness is knowingly left open: ten refused attempts on one
-spelling followed by one on another are refused immediately, which tells whoever
-is trying that both spellings are the same account — eleven requests to learn
-that an address is registered. Closing it needs a key derived from the engine's
-own collation, which the test translation cannot express.
+- **Round 3, `2f633c4`, on a clean worktree of `005eb4e`**: the whole suite 8042 passed,
+  0 failed; the browser walk 381 passed, 0 failed.
+- **qa-tester's walk of TESTING.md N.1–N.7 at `2f633c4`**, in Chromium at 390 px: N.1, N.2,
+  N.3, N.5, N.6 and N.7 passed. **N.4 failed** there: the students list's screen did not
+  draw the „Nach Alter" headers yet. The list screen that does is recorded above.
+- **ADR 0029, on a worktree of `2f633c4` with both code patches**: the whole suite 8195
+  passed, 0 failed; the browser walk `RESULT: PASS`. The implementers' run of the same with
+  their later additions — the console refusing `backup` on a database that holds nothing,
+  the background work staying out during a restore: 8205 passed, 0 failed, walk 381 passed,
+  0 failed. The project manager's run of exactly that state was still going when this was
+  written.
+- Not walked by anybody: TESTING.md H.1–H.5, 21.8 as now written, and G.1–G.9.
 
-## 0.6.0 — on a phone, in a browser
+## 0.6.0, unreleased — at `65ca0f1` and `005eb4e`: the round-2 follow-ups and the delivery batch, on clean worktrees
 
-Executed with Chromium 141 driven by Playwright against a real installed copy,
-at **320 and 390 CSS pixels**, in light and dark, as the trainer, as a family
-and signed out — 120 screens in all.
+Recorded 2026-10-08 by docs-writer, from the project manager's runs; nothing here was
+watched by the writer. Both on MariaDB 10.11.14 with PHP 8.4.26, the walk in Chromium.
+MySQL 8.0 was not run, and neither was Safari.
 
-- Every page was measured as rendered: nothing is wider than the screen, no page
-  has to zoom out to fit, no link, button, tab or chip is shorter than 44pt, no
-  text is under 12px, and no page raised a JavaScript error or asked for a
-  resource it did not get.
-- The check that says so is `tests/mobile.mjs`, kept in the repository. Its own
-  measurement was verified by breaking the stylesheet on purpose — a 30px chip
-  and an over-wide card — and watching it report both.
-- Against the code as it stood before this pass, the same check reports eight
-  screens with something to fix. The defects it found, and the ones only a pair
-  of eyes could find, are listed in the changelog.
-- Dark mode was checked with computed colours rather than by eye: no text token
-  on the screens examined falls below 4.5:1 against what it sits on.
+- **The round-2 follow-ups**, committed as `65ca0f1`, on a clean worktree of `7e40ffc`: the
+  whole suite 7942 passed, 0 failed; the browser walk 381 passed, 0 failed.
+- **The delivery batch**, `005eb4e` on a worktree of `7e40ffc`, still being verified when
+  this was written: the whole suite 7904 passed, 0 failed; the browser walk `RESULT: PASS`.
 
-**Not covered here.** Chromium is not Safari: the layout engine differs in
-places that matter (form controls, `backdrop-filter`, date pickers), and nothing
-here was opened on a real iPhone. TESTING.md still asks for that walk.
+What the writer watched of the same code before it was committed: for the follow-ups,
+7812 passed, 0 failed on `159de33` and the restore played through in a scratch check
+(CHANGELOG.md, „What this was checked on"); for the delivery batch, the record below.
 
-## 0.6.0 — the update path, drilled
+## 0.6.0, unreleased — at `7e40ffc`: administrators read every chat, IBAN changes are kept, the security batch
 
-Executed against PHP **8.4.19** and MariaDB **10.11.14**, on a real installed
-copy rather than the test harness: a database created the way a hosting panel
-creates one, the portal installed into it, filled with example data, and then
-put through the update path step by step.
+Recorded 2026-10-08 by docs-writer, from the project manager's run; nothing here was watched
+by the writer. The three commits `549f313`, `ebb1cd5` and `7e40ffc`, applied together on a
+clean worktree of `ead038a`, on MariaDB 10.11.14 with PHP 8.4.26: the whole suite 7864
+passed, 0 failed; the browser walk 381 passed, 0 failed, in Chromium. MySQL 8.0 was not
+run, and neither was Safari.
 
-- **A real update.** A new migration arrived; `php bin/console.php update`
-  switched maintenance mode on, wrote a copy, applied it, compared the row
-  counts of all seventeen guarded tables and opened the portal again.
-- **The copy is restorable, and was restored.** The dump written before that
-  migration was imported into a second, empty database: **39 of 42 tables came
-  back byte-identical**, the three that differed being the ones the migration
-  itself changed afterwards (the new table, the migration ledger and the
-  settings row). Umlauts and the privacy text survived intact.
-- **Each refusal was triggered on purpose.** An applied migration edited after
-  the fact, an older release put back over a newer database, a copy that could
-  not be written: each one stopped the update, left the portal closed, and
-  recorded nothing as applied. `storage/skip-backup` let one through and was
-  consumed.
-- **The row-count guard was proven by breaking something.** A migration that
-  deletes every attendance row was written and run: the update stopped with
-  "attendance 64 → 0", the portal stayed closed, and the copy taken moments
-  earlier had all 64 rows. Before this release, `attendance` was not on the
-  guarded list and the same migration passed silently.
-- **Two updates at once.** Two processes ran the migration simultaneously: one
-  applied it, the other waited on the advisory lock and found nothing left to
-  do. The table was created once and recorded once.
-- **The whole suite** passes on both engines: **1915 assertions on SQLite, 1931
-  against MariaDB 10.11.14**, with all fourteen migrations applying there.
+What the writer did watch, before the commits: the three patches applied to an export of
+`ead038a`, the whole suite 7857 passed, 0 failed, in 270 seconds, and after the documents
+were written the `settings`, `install` and `migrations` suites, which read the privacy
+drafts, 1470 passed, 0 failed. TESTING.md E.1–E.5, K.1–K.3 and S.1–S.6 have not been
+walked by anybody.
 
-**Not covered here.** No PDF was opened in Adobe Reader, no mail was sent
-through a real provider, and nothing was rendered on a real iPhone;
-[TESTING.md](TESTING.md) is the list of checks that exist for exactly that
-reason. **MySQL 8.0 itself remains unverified.** No real hosting account has
-been used.
+## 0.6.0, unreleased — the delivery batch on `ead038a`: setup checks the PHP extensions, the package carries only the portal
 
-## 0.6.0 — the trainer's half of the portal
+Recorded 2026-10-08 by docs-writer. MariaDB 10.11.14 (`10.11.14-MariaDB-0ubuntu0.24.04.1`)
+with PHP 8.4.26, the walk on web port 3431 and database port 3434 (`CRM_E2E_DB_PORT`), in
+Chromium. MySQL 8.0 was not run, and neither was Safari.
 
-Executed against PHP **8.4.19** and MariaDB **10.11.14-MariaDB-0ubuntu0.24.04.1**.
+- **A package built by the new `bin/release.sh` and walked**: built from a scratch commit
+  holding `ead038a`, the batch's four patches and these documents, 402 files, with a
+  `BUILD.txt` naming that commit and the minute it was built. `tests/e2e.sh` with
+  `CRM_E2E_ZIP` on it: `RESULT: PASS`, 381 checks, 0 failed, in 183 seconds; its first line
+  named the package, `VERSION 0.6.0`, the commit and the first twelve characters of the
+  SHA-256. No PHP warning, notice or deprecation; no JavaScript error, failed request or
+  unexpected 4xx/5xx; no overflow and no tap target under 44px; four 503s, all provoked on
+  purpose; four mails captured; the 320px pass over 39, 6 and 3 pages.
+- **The refusals, each watched once.** `tests/e2e.sh` refused a copy of that package with a
+  `tests/` folder added („holds tests, which bin/release.sh leaves out: this is not a
+  package it builds", exit 1) and one with `config/config.php` added („carries
+  config/config.php, and config/ and storage/ ship with nothing but their deny files and
+  config.example.php", exit 1). `bin/release.sh` refused to build while git tracked
+  `storage/secret.sql` (exit 2, naming the file and `git rm --cached`). With the batch's
+  first version of the script, before `BUILD.txt`: a `VERSION` changed but not committed,
+  an unknown top-level `NOTES.md` and `VERSION` „0.6.0-rc1" were each refused with exit 2,
+  a committed `0.6.0-beta.2` built `badminton-crm-0.6.0-beta.2.zip` into the folder given,
+  `CRM_E2E_ZIP` together with `CRM_E2E_REF` was refused with exit 2, a package with a file
+  under `storage/backups` with exit 1, and a package built from `ead038a` by that script
+  walked with `RESULT: PASS`, 381 checks, 0 failed, in 180 seconds.
+- **Reported and not reproduced here**, by devops-engineer: the whole suite on a clone of
+  `ead038a` with the batch, 7799 passed, 0 failed, on the same MariaDB and PHP; the package
+  built from `ead038a` (402 files, `BUILD.txt`) walked with `CRM_E2E_ZIP`, 381 passed,
+  0 failed; each refusal of `bin/release.sh` and `tests/e2e.sh` watched once.
+- **What none of this shows.** No PHP without one of the eight extensions was tried: the
+  refusal of a PHP without `fileinfo`, and the row on **Einstellungen → System**, were seen
+  only through the suite's stand-in answer to which extensions are loaded. TESTING.md 3.1a
+  has not been walked.
 
-- The whole suite passes on both engines: **1621 assertions on SQLite, 1634
-  against MariaDB** (the extra ones being the foreign keys and the MySQL-dialect
-  backup that the SQLite translation cannot express), with all thirteen
-  migrations applying on MariaDB — including `013_standard_contact.sql`, whose
-  back-fill updates `contacts` from a derived table because MySQL will not read
-  from the table it is updating.
-- Each new rule was verified by breaking what it guards and watching the test
-  fail: the first contact no longer becoming the standard one, the standard
-  contact no longer needing an email address, the last contact becoming
-  removable, and the reported-absence note disappearing from the attendance
-  screen. Each was restored and re-run green.
-- The invoice PDF was parsed with an **independent** library (pypdf) rather than
-  with the code that wrote it: one page, readable metadata, and the text
-  extracted with umlauts and the euro sign intact.
-- A conversation between two families was checked from five sides — both
-  participants, the trainer, the administrator and an unrelated family — through
-  the thread, the conversation list, the unread count and the attachment
-  download route. Only the participants can reach any of them.
+## 0.6.0, unreleased — round two of ADR 0026's removals, on the working tree at `883be4d`
 
-**Not covered here.** No PDF was opened in Adobe Reader, no mail was sent
-through a real provider, and nothing was rendered on a real iPhone;
-[TESTING.md](TESTING.md) is the list of checks that exist for exactly that
-reason. **MySQL 8.0 itself remains unverified** — MariaDB is one of the two
-supported engines, not both. No real hosting account has been used.
+Recorded 2026-10-07 by docs-writer, before round two was committed: the code of
+backend-dev and database-engineer as it stood in the checkout, migrations 034 to 037
+included. Both runs on MariaDB 10.11.14 (`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP
+8.4.26, on port 3431 with a work folder of their own. MySQL 8.0 was not run, and neither
+was Safari. The commit that holds this code should be named here once it exists.
 
-## 0.5.0 — installing and updating
+- **The whole suite: 7762 passed, 0 failed**, in 245 seconds, on a copy of the working
+  tree (every file git tracks or would track, `vendor/` copied in, no `.git/`). All
+  thirty-seven migrations apply, `migrations` with 698 passed. The `presence` and
+  `presence_pages` suites are gone with what they tested. After the run, the code in the
+  checkout was compared with the copy and was the same. The run listed as not covered the
+  three robustness gaps, now with six actions no page draws a form for and 23 actions and
+  roles where the form as drawn is refused.
+- **The browser walk, `tests/e2e.sh` on the working tree**: `RESULT: PASS`, 381 checks, 0
+  failed, in 125 seconds, under `php -S`, in Chromium at 390px with a 320px pass over every
+  page each role opened (39, 6 and 3). No PHP warning, notice or deprecation; no
+  JavaScript error, failed request or unexpected 4xx/5xx; no overflow and no tap target
+  under 44px; four 503s, all provoked on purpose; four mails captured.
+- **What neither run can see.** The `migrations` suite checks, in a test folder, that the
+  update's step deletes a day-old picture no report names and keeps a problem report's
+  screenshot and a file saved a moment before, and that running it again deletes nothing
+  more. A hosting account's folder is another matter. The same on a copy of a real portal (TESTING.md R.9), an old voice note
+  playing in a browser (R.14), and whether a family's „+" opens an iPhone's camera under
+  `Permissions-Policy: camera=()` (R.12) are by hand, and none has been walked.
 
-Executed against PHP **8.4.19** and MariaDB **10.11.14**.
+## 0.6.0, unreleased — at `883be4d`: „Mehr" is a page
 
-- The whole test suite — **1003 assertions on SQLite, 1016 against MariaDB
-  10.11.14** (the extra ones being the dump, whose dialect SQLite cannot run) —
-  passes on both, with all six migrations applying on MariaDB.
-- The browser installer was driven with real HTTP requests against a real,
-  empty MariaDB database created the way a hosting panel creates one:
-  a fresh upload redirects to setup; a wrong database password, an unassigned
-  database and mismatched account passwords are each reported in words and write
-  nothing; the correct details write `config/config.php`, record all six
-  migrations, seed the example defaults and create exactly one administrator;
-  the portal then serves its sign-in page; and setup afterwards answers 403 to
-  both GET and POST, creating no second account and leaving `app_url` untouched.
-- A migration file added after installation applied itself on the next page view
-  and was recorded, with the encryption key unchanged.
-- A migration edited after it ran, and a migration containing a broken statement,
-  each left the portal closed with 503. The failing one was not recorded as done,
-  and the page named the file and statement without printing the SQL. Removing
-  the file reopened the portal.
-- Maintenance mode still holds the portal closed, and suppresses the automatic
-  migration rather than racing it.
-- The distribution ZIP built by `bin/release.sh` (about 540 KB, 306 files) was
-  unpacked into a web directory and installed from there, using nothing from the
-  source tree: the bundled PHPMailer and BaconQrCode were found, the install
-  completed, the administrator signed in through the real form with cookies and
-  a CSRF token, the settings screen reported the database version with nothing
-  pending, and an expired token was cleaned up by the background worker with no
-  cron job configured.
-- Every safeguard on the update path was exercised against MariaDB over real
-  HTTP: a new migration wrote exactly one backup before it applied; that backup
-  imported into a second, empty database **with no errors and every table, row,
-  setting, apostrophe, umlaut and backslash intact**; an older release was
-  refused and did not mark itself current; a single altered byte in `app/domain.php`
-  against the shipped manifest was refused and named; a backup that could not be
-  written left the migration unapplied; `storage/skip-backup` let it through once
-  and was consumed; and a seventh copy pruned the folder back to five without
-  removing the one just written.
-- Each new structural rule was verified by breaking what it guards: a directory
-  losing its deny file, a new unguarded top-level directory, the rewrite loop
-  guard being dropped, an unescaped value on the setup page, a truncated module,
-  a trusted `Host` header, a replaced `app_key`, a second administrator, the
-  downgrade guard, the row-count check, a manifest that stopped comparing
-  contents, a manifest path allowed to leave the release, a `skip-backup` file
-  that was not consumed, guessable backup file names, a backup folder moved into
-  the web directory, and pruning by name instead of by age.
+Recorded 2026-10-07 by docs-writer. Both runs on MariaDB 10.11.14
+(`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP 8.4.26, on port 3431 with a work folder of
+their own. MySQL 8.0 was not run, and neither was Safari.
 
-Not covered: a real hosting account. The layouts, the `.htaccess` rewrite and the
-LiteSpeed-specific `litespeed_finish_request()` path have not been exercised on
-ecomDATA or any other shared host. **MySQL 8.0 itself remains unverified.**
+- **The whole suite: 7915 passed, 0 failed**, in 250 seconds, on a copy exported with
+  `git archive 883be4d` and `vendor/` copied in; the commit reports 7916 from a checkout,
+  which is the one check for `.git/`. All thirty-three migrations apply. The run listed as
+  not covered the same three robustness gaps as at `f5d3c28`, and nothing else.
+- **The browser walk, `tests/e2e.sh` with `CRM_E2E_REF=883be4d`**: `RESULT: PASS`, 381
+  checks, 0 failed, in 126 seconds, under `php -S`, in Chromium at 390px with a 320px pass
+  over every page each role opened (39, 6 and 3). No PHP warning, notice or deprecation;
+  no JavaScript error, failed request or unexpected 4xx/5xx; no overflow and no tap target
+  under 44px; four 503s, all provoked on purpose; four mails captured. The walk reads the
+  bar but does not open „Mehr"; what „Mehr" holds and where each „‹ Mehr" leads are checked
+  in the `shell` suite.
+
+Reported and **not** reproduced here, from the commit message: each new check broken once
+and watched to fail (26 sabotages), and the „Mehr" page and every „‹ Mehr" measured at 320
+and 390px, both staff roles, light and dark, with JavaScript off.
+
+## 0.6.0, unreleased — at `f5d3c28`: the look of an iPhone app, and a refused update that costs no backup
+
+Recorded 2026-10-07 by docs-writer. `f5d3c28` holds `1ad0488` before it. Both runs on
+MariaDB 10.11.14 (`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP 8.4.26, on port 3431 with
+a work folder of their own. MySQL 8.0 was not run, and neither was Safari.
+
+- **The whole suite: 7665 passed, 0 failed**, in 244 seconds, on a copy exported with
+  `git archive f5d3c28` and `vendor/` copied in; all thirty-three migrations apply. The
+  two refusals for a file the portal cannot delete ran this time and passed: since
+  `1ad0488` the `install` suite makes the file immutable with `chattr +i` where the file
+  system allows, and the run no longer lists them as not covered. It still lists the
+  three robustness gaps of `aa5b1b7` below: the seven actions no page draws a form for,
+  a form sent twice where the form as drawn is refused (28 actions and roles), and what an
+  action does with an uploaded file.
+- **The browser walk, `tests/e2e.sh` with `CRM_E2E_REF=f5d3c28`**: `RESULT: PASS`, 377
+  checks, 0 failed, in 123 seconds, under `php -S`, in Chromium at 390px with a 320px pass
+  over every page each role opened: 39 for the administrator, 6 for the family, 3 for the
+  person invited by address alone. No PHP warning, notice or deprecation; no JavaScript
+  error, failed request or unexpected 4xx/5xx; no overflow and no tap target under 44px;
+  four 503s, all provoked on purpose; four mails captured. Among the checks: the staff
+  bar, and the family's bar with the row „Anmeldung und Darstellung" on Profil, read
+  signed in as the family.
+- **What neither run can see.** Neither uses Safari. The system font, the sheets, the
+  pressed states, the page fades, the back button in the home-screen app and its status
+  bar have not been seen in Safari or on an iPhone; TESTING.md I.1–I.11 are those checks,
+  and none has been walked.
+
+Reported and **not** reproduced here, from the commit message of `f5d3c28`: every text at
+least 4.5:1 against its background in both themes (lowest 4.59 light, 5.38 dark), and
+`tests/mobile.mjs` clean on every screen at 320 and 390px, as administrator, trainer and
+family, light and dark, with nothing wider than the screen at 200 % text.
+
+## 0.6.0, unreleased — at `bfeb592` and `aa5b1b7`: a refused update stays refused, and any value from anyone
+
+Recorded 2026-10-07 by docs-writer. Both runs on MariaDB 10.11.14
+(`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP 8.4.26, started by `tests/mariadb-local.sh`
+with a work folder of its own on port 3431, each on a copy exported with `git archive` and
+`vendor/` copied in, so the `structure` suite counts one check fewer than in a checkout.
+MySQL 8.0 was not run.
+
+- **At `bfeb592`, ADR 0027 built: 6835 passed, 0 failed**, in 208 seconds. The commit
+  reports 6836 from its own run in a checkout, which is the one check for `.git/`. The run
+  listed one thing as not covered: *a skip-backup and a record the portal cannot delete
+  (this run is root, whom a read-only folder does not stop)*. So the two refusals for a
+  file the portal cannot delete — a `skip-backup` left in `storage`, and
+  `update-unfinished.json` after a run that passed — have not run here; they were read in
+  `app/schema.php`, not watched.
+- **What it fixes was watched before the fix.** On a copy of `c77348b`, a migration that
+  deleted every `news` row was refused on the first `schema_apply()`, and the second, with
+  nothing left pending, opened the portal with the rows still missing (a scratch check of
+  ten assertions; with the deletion taken out, five of them failed).
+- **At `aa5b1b7`, the robustness batch: 7608 passed, 0 failed**, in 250 seconds, the
+  `robustness` suite among them with 751 passed; on its own it passed 751 in 41 seconds.
+  The run was made on `21f02c8`, which was amended into `aa5b1b7` before it was pushed:
+  the two have the same tree, and only the message changed, to the count above. The run
+  listed as not covered: the same file the portal cannot delete; actions no
+  page draws a form for (`login`, `activate`, `unsubscribe`, `student_invite`,
+  `attendance_clear`, `contact_decide`, `setup_visibility`), which get every value but no
+  form sent twice; a form sent twice where the form as drawn is refused (28 actions and
+  roles, `avatar_save` as a family first); and what an action does with an uploaded file,
+  because only a real upload passes `is_uploaded_file()`.
+
+Reported and **not** reproduced here: `tests/e2e.sh` passed for each commit; each of ADR
+0027's thirteen tests and each new robustness guard was broken once and watched to fail.
+Not walked by anybody yet: TESTING.md G.1–G.9, the refused update and its restore with
+phpMyAdmin on a test install, which is the only check of the import as a hosting panel
+does it — the suite drops every table and replays the copy statement by statement.
+
+## 0.6.0, unreleased — at `d095ca4`: every student has a login, a wizard, sign-in links
+
+Recorded 2026-10-07 by docs-writer.
+
+- **The whole suite: 6702 passed, 0 failed**, in 191 seconds, on MariaDB 10.11.14
+  (`10.11.14-MariaDB-0ubuntu0.24.04.1`) with PHP 8.4.26, started by
+  `tests/mariadb-local.sh` with a work folder and port of its own, on a copy exported with
+  `git archive d095ca4` and `vendor/` copied in. All thirty-one migrations apply. The run
+  listed nothing as not covered: the data the migrations carry across was checked on the
+  second, empty `_test` database, and the top-bar menus under `node`. The same run on a
+  copy of the working tree with this change's documents — every suite seeds its database
+  from the privacy drafts — gave 6702 passed, 0 failed too.
+- **In a git checkout the same commit gives 6703.** The `structure` suite checks that every
+  top-level folder is refused over the web, `.git/` included, and an exported copy has no
+  `.git/`: 936 passed in the checkout, 935 in the copy, both watched.
+- **The browser walk, `tests/e2e.sh`, on the working tree at `d095ca4`** (no code changed,
+  documents edited): `RESULT: PASS`, 372 checks, 0 failed, in 122 seconds, against MariaDB
+  10.11.14 under `php -S` with PHP 8.4.26, in Chromium at 390px, with a 320px pass over
+  every page each role opened: 39 for the administrator, 6 for the family, 3 for the person
+  invited by address alone. No PHP warning, notice or deprecation; no JavaScript error,
+  failed request or unexpected 4xx/5xx; no layout failure; four 503s, all provoked on
+  purpose; four mails captured — the SMTP test and three invitations, one of them in
+  English. The children were added through the wizard. The invoice's Leistungszeitraum and
+  the family's charge card both read „04.10.2026 – 31.10.2026".
+
+Reported and **not** reproduced here: the project manager's walk with `CRM_E2E_REF=d095ca4`
+passed, with no PHP warning, no console error, no layout problem and only the four
+provoked 503s; backend-dev's whole-suite run in the checkout gave 6703 passed, 0 failed,
+and each fix in `d095ca4` was reverted once and watched to fail.
+
+**Accepted risks**, from the security review of ADR 0023 (reported by the project
+manager; how each comes about was read in the code).
+
+- **A login with two names has two counts.** A login that has both a username and an
+  address can be guessed at under each: ten attempts a quarter of an hour under the
+  username and ten under the address, twenty against one password, still inside the sixty
+  a quarter of an hour allowed from one internet connection. The count follows what was
+  typed, never the login it names (`sign_in_identity()`, `app/actions.php`), which is what
+  keeps the form from telling anybody whether a login exists.
+- **S3: somebody else can lock a username.** Ten wrong passwords for `lena.hofer` block
+  signing in as `lena.hofer` for a quarter of an hour, whoever typed them — accepted by the
+  owner under ADR 0019 and again in ADR 0023 §7. `lena.hofer` and `lena-hofer` are two
+  different usernames that can both exist.
+- **A sign-in link is a key.** Whoever holds it can sign in once within 48 hours and choose
+  the password, and staff share it through a messenger by design. The card warns not to
+  send it to a group; it can be withdrawn; who made it, and when it was used, is kept.
+  Until it is used, withdrawn, replaced or lapsed, the readable link is held in its maker's
+  session on the server, where whoever can read the session store could already take over
+  sessions (ADR 0023 §6).
+
+**All three are gone again.** ADR 0030 (2026-10-08) takes usernames and one-time sign-in
+links out, and migration 039 drops the username column; the three bullets stay as the
+record of what was accepted while the feature existed, and no longer describe the portal.
+
+**Known limit.** A logo photo that a phone stored sideways, with a note telling the viewer
+to turn it (EXIF orientation), is measured as stored and can be refused as too tall.
+Saving it again from an image editor, or as a screenshot, fixes it. TESTING.md says so
+under 6.20; ROADMAP.md has it in the security batch.
+
+**Not covered here.** **MySQL 8.0 has never been run.** The phone sweep,
+`tests/mobile.mjs`, has not been run on this change. The browser walk is Chromium with an
+iPhone's size and user agent, not Safari on an iPhone; its mail server is a sink on the
+same machine, not a real provider; its invoice PDF was read by a parser, not opened in a
+reader; and `php -S` reads no `.htaccess`, so the rules there are checked only by the
+`structure` suite reading the file. The deletions after 30 days are tested by ageing the
+stored dates; nobody has waited. No real hosting account has been used.
+
+## 0.6.0 — runs reported since the suite became MariaDB-only
+
+From the commit messages; none was reproduced for this file. All on MariaDB 10.11.14 with
+PHP 8.4.26.
+
+- `6a5cfc6`, signing in by address and the chat: whole suite 5882 passed, 0 failed; the
+  browser walk passed, 361 checks. Neither run opens the chat; its checks by hand are C.1
+  to C.20 in TESTING.md.
+- `cb164a8`: whole suite 5911 passed, 0 failed, and the browser walk passed (project
+  manager).
+- `d38713f`, the billing review: whole suite 6256 passed, 0 failed (backend-dev).
+- `f70f8ce`, setup and https: whole suite 6281 passed, 0 failed, and the browser walk passed
+  (devops-engineer); the redirect to https was also checked with real requests. Not
+  verified: nginx itself, and a real Apache or LiteSpeed behind a proxy.
+- `9a71675`, the invoices page: whole suite 6283 passed, 0 failed, and the screens swept at
+  320, 390 and 1280 pixels in light and dark, with nothing to fix below 761 pixels
+  (frontend-dev). This is the most recent sweep at phone width on record; the wizard and
+  the sign-in screens of `e9aff6e` came after it, and only the browser walk's 320px pass has
+  looked at them since.
+
+## The install and update paths, drilled on MariaDB
+
+The most recent drills of their kind, from September 2026. The code has changed since —
+`setup.php` and the migration runner in `f70f8ce` — and neither drill has been repeated.
+
+**Updating** (0.6.0 work in progress), on PHP 8.4.19 and MariaDB 10.11.14, on a real
+installed copy rather than the test harness: a database created the way a hosting panel
+creates one, the portal installed into it, filled with example data, then put through the
+update path step by step.
+
+- **A real update.** A new migration arrived; `php bin/console.php update` switched
+  maintenance mode on, wrote a copy, applied it, compared the row counts of the guarded
+  tables and opened the portal again.
+- **The copy is restorable, and was restored.** The dump written before that migration was
+  imported into a second, empty database: 39 of 42 tables came back byte-identical, the
+  three that differed being the ones the migration itself changed afterwards. Umlauts and
+  the privacy text survived intact.
+- **Each refusal was triggered on purpose.** An applied migration edited after the fact, an
+  older release put back over a newer database, a copy that could not be written: each one
+  stopped the update, left the portal closed, and recorded nothing as applied.
+  `storage/skip-backup` let one through and was consumed.
+- **The row-count guard was proven by breaking something.** A migration that deletes every
+  attendance row stopped the update with "attendance 64 → 0", the portal stayed closed, and
+  the copy taken moments earlier had all 64 rows.
+- **Two updates at once.** Two processes ran the migration simultaneously: one applied it,
+  the other waited on the advisory lock and found nothing left to do.
+
+**Installing** (0.5.0), on PHP 8.4.19 and MariaDB 10.11.14, with real HTTP requests against
+an empty database created the way a hosting panel creates one.
+
+- A fresh upload redirects to setup. A wrong database password, an unassigned database and
+  mismatched account passwords are each reported in words and write nothing. The correct
+  details write `config/config.php`, record the migrations, seed the defaults and create
+  exactly one administrator; setup afterwards answers 403 and creates nothing.
+- A migration added after installation applied itself on the next page view. One edited
+  after it ran, and one with a broken statement, each left the portal closed with 503; the
+  failing one was not recorded, and the page named the file and the statement without
+  printing the SQL.
+- The ZIP built by `bin/release.sh` was unpacked into a web directory and installed from
+  there, using nothing from the source tree: the bundled PHPMailer and BaconQrCode were
+  found, the administrator signed in through the real form, and an expired token was
+  cleaned up by the background work with no cron job.
+- A backup written before a migration imported into a second, empty database with every
+  table, row, setting, apostrophe, umlaut and backslash intact; a single altered byte in
+  `app/domain.php` against the shipped manifest was refused and named; a seventh copy pruned
+  the folder back to five without removing the one just written.
+
+Not covered by either: a real hosting account. The `.htaccess` rewrite and LiteSpeed's
+`litespeed_finish_request()` path have not run on any shared host.
 
 ## 0.1.0
 

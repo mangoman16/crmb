@@ -1,0 +1,27 @@
+-- A login a student points to cannot be deleted: the second half
+-- (docs/decisions/0023-every-student-has-a-login-a-wizard-adds-one-and-one-time-sign-in-links.md, §4).
+--
+-- 029 dropped the key that emptied students.account_id when a login was
+-- deleted. This adds it back as ON DELETE RESTRICT, named student_login, so the
+-- database refuses to delete a student's login (error 1451) rather than leave
+-- the student without one. The portal replaces a student's login with a fresh
+-- placeholder instead of deleting it. A login nobody points to can still be
+-- deleted, and deleting the student first still lets their login go after them.
+--
+-- RESTRICT rather than CASCADE, which would delete the child - attendance,
+-- contacts, absences - with a login whenever no charge happened to stop it.
+-- Charges stay RESTRICT on the student, as they were.
+--
+-- The key uses student_one_account (019) as its index, so no index is added.
+-- Every row written by the previous version points at a login that exists, or
+-- at none: the key 029 dropped saw to the first, and nothing writes in between,
+-- because the update holds the migration lock. So the key refuses no existing
+-- row. account_id stays nullable: the students the previous version left
+-- without a login are given one by the runner's step after the files
+-- (give_every_student_a_login(), from database/defaults.php), and NOT NULL here
+-- would meet them before that step had run, and stop the update.
+--
+-- No row is deleted or changed. One statement, so an interrupted update has
+-- nothing half done. It cannot run twice - the name would be taken - and
+-- nothing follows it in this file.
+ALTER TABLE students ADD CONSTRAINT student_login FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE RESTRICT;

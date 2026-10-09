@@ -1,9 +1,13 @@
 ---
-status: accepted
+status: accepted, amended by 0026
 date: 2026-09-29
 ---
 
 # 0018. Club news by email is on by default
+
+> **Superseded in part by ADR 0026 (2026-10-07).** The printed form and data sheet (`views/print.php`)
+> are gone. Decision 5, and the `qa-tester` and `TESTING.md` items about the paper, no longer hold.
+> Decisions 1 to 4 stand.
 
 > **Amended 2026-09-29.**
 >

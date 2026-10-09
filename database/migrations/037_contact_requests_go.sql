@@ -1,0 +1,19 @@
+-- Asking to write to another family is gone, with every request ever asked
+-- (docs/decisions/0022-course-groups-direct-messages-and-a-status-emoji.md,
+-- §11.3; ADR 0026 §8). The project manager decided on 2026-10-07 that the old
+-- requests are deleted rather than kept unused: in the beta they are test data
+-- (ROADMAP.md, „Decided“).
+--
+-- A request was one family asking another, waiting, agreed to or declined. No
+-- family can ask any more and nothing reads the answers, so the table goes with
+-- every row, whatever its state. The chats that agreed requests led to are
+-- threads and messages, which stay, closed, as 0022 §11.3 says; so do the audit
+-- log's entries about each answer. The copy the update takes beforehand, in
+-- storage/backups, holds the requests as they were.
+--
+-- contact_requests was never in schema_guarded_tables(). Nothing points at it,
+-- and its two keys, to accounts, go with it (read from information_schema on
+-- MariaDB 10.11.14), so no other table loses a row or a key. It can run twice:
+-- an update that stopped after it starts the file again, which then does
+-- nothing.
+DROP TABLE IF EXISTS contact_requests;

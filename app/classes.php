@@ -29,9 +29,14 @@ function weekdays(): array {
     ];
 }
 
+/**
+ * The courses with how many children are in each now. current_enrolment_sql()
+ * is in app/enrolment.php, loaded after this file: safe, because this runs only
+ * while a request runs, never while files load.
+ */
 function training_classes(bool $archived=false): array {
     return rows('SELECT c.*, p.name AS profile_name, a.name AS trainer_name,'
-        .' (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL) AS member_count,'
+        .' (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND '.current_enrolment_sql().') AS member_count,'
         .' (SELECT COUNT(*) FROM tariffs t WHERE t.class_id=c.id AND t.archived=0) AS tariff_count'
         .' FROM classes c'
         .' LEFT JOIN payment_profiles p ON p.id=c.payment_profile_id'
@@ -120,14 +125,14 @@ function class_day_label(array $day, array $class=[]): string {
 function class_members(int $classId): array {
     return rows('SELECT s.*, cs.joined_on, cs.left_on FROM class_students cs'
         .' JOIN students s ON s.id=cs.student_id WHERE cs.class_id=?'
-        .' ORDER BY cs.left_on IS NOT NULL, s.last_name, s.first_name, s.id', [$classId]);
+        .' ORDER BY NOT ('.current_enrolment_sql().'), s.last_name, s.first_name, s.id', [$classId]);
 }
 
 /** Classes one student belongs to. */
 function student_classes(int $studentId): array {
     return rows('SELECT c.*, cs.joined_on, cs.left_on FROM class_students cs'
         .' JOIN classes c ON c.id=cs.class_id WHERE cs.student_id=?'
-        .' ORDER BY cs.left_on IS NOT NULL, c.sort_order, c.name', [$studentId]);
+        .' ORDER BY NOT ('.current_enrolment_sql().'), c.sort_order, c.name', [$studentId]);
 }
 
 /**
@@ -164,6 +169,19 @@ function charge_payment_profile(array $charge): ?array {
 }
 
 /**
+ * The bank details „Beiträge" shows for a charge: its payment recipient, when
+ * the QR codes are switched on and the recipient has an IBAN to pay into, and
+ * otherwise null. One rule for the pay box on a child's page and for what a
+ * payment reminder promises (notify_payment()), so a mail never sends a family
+ * looking for bank details the page does not show.
+ */
+function charge_bank_details(array $charge): ?array {
+    if (!setting('show_payment_qr')) return null;
+    $profile = charge_payment_profile($charge);
+    return $profile && $profile['iban'] !== '' ? $profile : null;
+}
+
+/**
  * The memo behind the two lookups below, by reference so it can be emptied.
  *
  * Follows the shape setting_cache() already uses. Holding it for the length of a
@@ -185,6 +203,15 @@ function payment_profile(int $id): ?array {
     if (!array_key_exists($id, $cache['profile']))
         $cache['profile'][$id] = one('SELECT * FROM payment_profiles WHERE id=? AND archived=0', [$id]);
     return $cache['profile'][$id];
+}
+
+/**
+ * A payment profile's name in quotes, archived or not, or plainly that there is
+ * none: what the notices about where the families' money goes name (ADR 0025).
+ */
+function payment_profile_name(int $id): string {
+    $name = (string)(scalar('SELECT name FROM payment_profiles WHERE id=?', [$id]) ?: '');
+    return $name !== '' ? t('„', '“') . $name . t('“', '”') : t('keinen Zahlungsempfänger', 'no payment recipient');
 }
 
 /** Which profile a class collects into, remembered for the rest of the request. */

@@ -57,6 +57,18 @@ const ENROLMENT_COLUMNS = 'cs.*, cs.interval_months AS enrolment_interval,'
 function enrolment_is_current(array $row): bool { return ($row['left_on'] ?? null) === null; }
 function current_enrolment_sql(string $alias = 'cs'): string { return sql_name($alias, 'alias').'.left_on IS NULL'; }
 
+/**
+ * Whether an enrolment puts its child in a running course now: current, in a
+ * course that is not archived. Who is in a course's group (ADR 0022 §1,
+ * thread_listed_sql()) and whom a child's picture reaches once the family has
+ * said yes (ADR 0031 §5, children_in_course_with()) are this one condition, so a
+ * group's members and a picture's audience cannot come to disagree.
+ */
+function running_enrolment_sql(string $alias = 'cs'): string {
+    $alias = sql_name($alias, 'alias');
+    return '('.current_enrolment_sql($alias).' AND '.$alias.'.class_id IN (SELECT id FROM classes WHERE archived=0))';
+}
+
 /** One enrolment, with the tariff it names and the course it is in. */
 function enrolment(int $classId, int $studentId): ?array {
     $row = one('SELECT '.ENROLMENT_COLUMNS
@@ -71,9 +83,103 @@ function student_enrolments(int $studentId): array {
     $rows = rows('SELECT '.ENROLMENT_COLUMNS.', c.archived'
         .' FROM class_students cs JOIN classes c ON c.id=cs.class_id'
         .' LEFT JOIN tariffs t ON t.id=cs.tariff_id'
-        .' WHERE cs.student_id=? ORDER BY cs.left_on IS NOT NULL, c.sort_order, c.name', [$studentId]);
+        .' WHERE cs.student_id=? ORDER BY NOT ('.current_enrolment_sql().'), c.sort_order, c.name', [$studentId]);
     $rates = tariff_rate_map(array_column($rows, 'tariff_id'));
     return array_map(fn($row) => with_tariff_rate($row, $rates), $rows);
+}
+
+/**
+ * The tariffs the enrolment form offers one child in one course, as id => name:
+ * the course's tariffs that are open for choosing, and the child's own even
+ * when it has been archived since, marked as such. Left out, the form showed
+ * „Auswählen“ for a child on an archived tariff, and saving it dropped the tariff.
+ */
+function enrolment_tariff_choices(array $enrolment): array {
+    $choices = array_column(class_tariffs((int)$enrolment['class_id']), 'name', 'id');
+    $own = $enrolment['tariff_id'] !== null ? (int)$enrolment['tariff_id'] : null;
+    if ($own !== null && !isset($choices[$own]) && ($tariff = one('SELECT name, archived FROM tariffs WHERE id=?', [$own])))
+        $choices[$own] = $tariff['name'] . ((int)$tariff['archived'] ? t(' (archiviert)', ' (archived)') : '');
+    return $choices;
+}
+
+/**
+ * The tariff an enrolment form asks for, checked against what it could offer.
+ *
+ * A tariff no longer open for choosing - archived, or not this course's - was
+ * not in the list before enrolment_tariff_choices() put it there, so a form
+ * from then posts nothing for it. Nothing posted keeps it: the payment day or a
+ * discount she changed is saved, and the child is still billed. A child is put
+ * on such a tariff only if they are on it already.
+ */
+function posted_enrolment_tariff(array $enrolment): ?int {
+    $own = $enrolment['tariff_id'] !== null ? (int)$enrolment['tariff_id'] : null;
+    $posted = (int)post('tariff_id');
+    if ($posted <= 0)
+        return $own !== null && !isset(array_column(class_tariffs((int)$enrolment['class_id']), 'id', 'id')[$own]) ? $own : null;
+    if (isset(enrolment_tariff_choices($enrolment)[$posted])) return $posted;
+    throw new UserError(one('SELECT 1 FROM tariffs WHERE id=? AND class_id=? AND archived=1', [$posted, (int)$enrolment['class_id']])
+        ? t('Dieser Tarif ist archiviert. Bitte einen der anderen wählen.', 'That tariff is archived. Please choose one of the others.')
+        : t('Die Auswahl ist nicht verfügbar.', 'That selection is not available.'));
+}
+
+/**
+ * The terms that make an enrolment this family's agreement rather than the
+ * tariff's - an agreed price, its own interval and payment day, a discount - as
+ * they are before anything is agreed.
+ */
+function fresh_enrolment_terms(): array {
+    return ['price_cents' => null, 'price_note' => '', 'interval_months' => 0, 'due_day' => 0,
+            'discount_months' => 0, 'discount_kind' => 'percent', 'discount_value' => 0, 'discount_note' => ''];
+}
+
+/** Whether an enrolment carries terms of its own, beyond the tariff it names. */
+function enrolment_has_own_terms(array $enrolment): bool {
+    return $enrolment['price_cents'] !== null || (int)$enrolment['interval_months'] !== 0 || (int)$enrolment['due_day'] !== 0
+        || ((int)$enrolment['discount_months'] !== 0 && (int)$enrolment['discount_value'] > 0);
+}
+
+/**
+ * Put a child into a course, on a tariff, from a day. The one copy of the
+ * insert (ADR 0023): the trainer adding them, and a request to join that she
+ * approves, both come here, and any refusal a later rule adds - a student with
+ * no login, a course they were removed from (ADR 0024) - is added here once.
+ * Returns whether they came back to a course they had left with terms of their
+ * own, which this has not carried over, so the caller can say so.
+ *
+ * Coming back after leaving reuses the row, so their history stays in one
+ * place, and starts it as joining for the first time does: fresh_enrolment_terms().
+ * The old agreement belonged to the old membership. Carried over, its discount
+ * counted its months from the new joined_on, and „erster Monat gratis“ was
+ * given twice. Putting a child back exactly as they were - terms and joined_on
+ * kept - is not this but ADR 0024's „Wieder aufnehmen“ (restore_enrolment()).
+ *
+ * A child who is in the course already is refused rather than re-joined: that
+ * moved the day they joined and, with it, every charge worked out from it.
+ *
+ * No student is ever in a course without a login (ADR 0023 §4). The student and
+ * then their login are locked first, so the login cannot be taken away between
+ * this question and the insert; a placeholder is a login, and a student without
+ * even that stops here (student_login_locked()) rather than being enrolled.
+ * demo_fill() is the one named exception that writes its own enrolments, with
+ * every login already in place.
+ */
+function enrol_student(int $classId, int $studentId, ?int $tariffId, string $joinedOn): bool {
+    return transactional(function () use ($classId, $studentId, $tariffId, $joinedOn): bool {
+        $student = one('SELECT id, account_id FROM students WHERE id=? FOR UPDATE', [$studentId]);
+        if (!$student) throw new NotFound(t('Schüler nicht gefunden.', 'Student not found.'));
+        student_login_locked($student);
+        $before = one('SELECT * FROM class_students WHERE class_id=? AND student_id=? FOR UPDATE', [$classId, $studentId]);
+        if ($before && enrolment_is_current($before))
+            throw new UserError(t('Dieses Kind ist schon in diesem Kurs.', 'This child is already in this course.'));
+        $row = ['class_id' => $classId, 'student_id' => $studentId, 'joined_on' => $joinedOn, 'left_on' => null,
+                'tariff_id' => $tariffId] + fresh_enrolment_terms();
+        $columns = array_map(fn(string $c) => sql_name($c, 'column'), array_keys($row));
+        $renewed = array_slice($columns, 2);   // everything but the key
+        run('INSERT INTO class_students (' . implode(',', $columns) . ') VALUES (' . implode(',', array_fill(0, count($row), '?')) . ')'
+            . ' ON DUPLICATE KEY UPDATE ' . implode(',', array_map(fn(string $c) => $c . '=VALUES(' . $c . ')', $renewed)),
+            array_values($row));
+        return $before !== null && enrolment_has_own_terms($before);
+    });
 }
 
 /** What this enrolment costs per period, and where that number came from. */
@@ -92,14 +198,39 @@ function enrolment_price(array $enrolment): array {
  * leaves behind and what most of her courses actually are.
  */
 function courses_open_to(int $studentId): array {
-    return rows('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL) AS member_count'
+    return rows('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND '.current_enrolment_sql().') AS member_count'
         .' FROM classes c WHERE c.archived=0'
-        .' AND NOT EXISTS (SELECT 1 FROM class_students cs WHERE cs.class_id=c.id AND cs.student_id=? AND cs.left_on IS NULL)'
+        .' AND NOT EXISTS (SELECT 1 FROM class_students cs WHERE cs.class_id=c.id AND cs.student_id=? AND '.current_enrolment_sql().')'
         .' ORDER BY c.sort_order, c.name, c.id', [$studentId]);
 }
 
 function course_is_full(array $class): bool {
     return (int)$class['capacity'] > 0 && (int)($class['member_count'] ?? 0) >= (int)$class['capacity'];
+}
+
+/**
+ * A course held for the rest of the transaction, with member_count: how many
+ * children are in it now. Null when there is no such course. Asked by every
+ * decision that puts one more child in - the trainer's yes (decide_request()),
+ * „Hinzufügen" (class_member_add) and the wizard (student_draft_checked()) -
+ * because two families on one evening can both be given the last place.
+ *
+ * Two statements on purpose. The course row is locked first, so two such
+ * decisions about one course take turns. The count is then a locking read of
+ * its own, which reads what is committed now: a FOR UPDATE on the course does
+ * not reach a subquery, which would read the snapshot this transaction began
+ * with and miss a place another request took since.
+ */
+function course_held(int $classId): ?array {
+    $class = lock_row('classes', $classId);
+    if (!$class) return null;
+    $class['member_count'] = (int)scalar('SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=? AND '.current_enrolment_sql().' FOR UPDATE', [$classId]);
+    return $class;
+}
+
+/** The courses a student could ask to join that still have a place. */
+function free_courses_for(int $studentId): array {
+    return array_values(array_filter(courses_open_to($studentId), fn($c) => !course_is_full($c)));
 }
 
 /** Requests waiting on the trainer, or a student's own history. */
@@ -137,7 +268,7 @@ function request_enrolment(int $studentId, int $classId, string $kind, ?int $tar
                     [$studentId, $classId]);
         if ($open) throw new UserError(t('Für diesen Kurs wartet schon eine Anfrage auf eine Entscheidung.',
                                          'A request for this course is already waiting for a decision.'));
-        $enrolled = (bool)one('SELECT 1 FROM class_students WHERE class_id=? AND student_id=? AND left_on IS NULL',
+        $enrolled = (bool)one('SELECT 1 FROM class_students cs WHERE cs.class_id=? AND cs.student_id=? AND '.current_enrolment_sql(),
                               [$classId, $studentId]);
         if ($kind === 'join' && $enrolled)
             throw new UserError(t('Dieses Kind ist schon in diesem Kurs.', 'This child is already in this course.'));
@@ -177,18 +308,13 @@ function decide_request(int $requestId, bool $approve, string $note): array {
                 // families can ask for the last place on the same evening, and
                 // the second yes would otherwise put a ninth child into an
                 // eight-place hall without anybody being told.
-                $class = one('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL)'
-                    .' AS member_count FROM classes c WHERE c.id=? FOR UPDATE', [$classId]);
+                $class = course_held($classId);
                 if ($class && course_is_full($class))
                     throw new UserError(t('Dieser Kurs ist inzwischen voll. Erst einen Platz frei machen oder die Plätze erhöhen.',
                                           'This course has filled up in the meantime. Free a place first, or raise the number of places.'));
-                // A child who left this course before comes back on the same row
-                // rather than a second one, so their history stays in one place.
-                run('INSERT INTO class_students (class_id,student_id,joined_on,left_on,tariff_id)'
-                    .' VALUES (?,?,?,NULL,?) ON DUPLICATE KEY UPDATE joined_on=VALUES(joined_on),left_on=NULL,tariff_id=VALUES(tariff_id)',
-                    [$classId, $studentId, today(), $r['tariff_id']]);
+                enrol_student($classId, $studentId, $r['tariff_id'] !== null ? (int)$r['tariff_id'] : null, today());
             } elseif ($r['kind'] === 'leave') {
-                run('UPDATE class_students SET left_on=? WHERE class_id=? AND student_id=? AND left_on IS NULL',
+                run('UPDATE class_students SET left_on=? WHERE class_id=? AND student_id=? AND '.current_enrolment_sql('class_students'),
                     [today(), $classId, $studentId]);
             } else {
                 run('UPDATE class_students SET tariff_id=? WHERE class_id=? AND student_id=?', [$r['tariff_id'], $classId, $studentId]);

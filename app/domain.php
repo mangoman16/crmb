@@ -86,14 +86,222 @@ function account_with_address(string $email): ?array {
     return $email===''?null:one('SELECT * FROM accounts WHERE email=?',[$email]);
 }
 
+/*
+ * A student login that no student points to is one of two things, and
+ * verified_at says which (ADR 0021, §4): the first activation sets it and
+ * nothing clears it. Never set up, it is an invitation by address still waiting
+ * for its holder to make their student; set up, it was left behind by a deleted
+ * student. That holds only because student_delete takes a never-set-up login
+ * with its student. A suspended invitation is still an open one.
+ */
+function student_login_without_student_sql(string $account = 'a'): string {
+    $a = sql_name($account, 'alias');
+    return $a.".role='student' AND NOT EXISTS (SELECT 1 FROM students s WHERE s.account_id=".$a.'.id)';
+}
+function open_invitation_sql(string $account = 'a'): string {
+    return student_login_without_student_sql($account).' AND '.sql_name($account, 'alias').'.verified_at IS NULL';
+}
+
+/** Invitations by address nobody has taken up yet, newest first, for the students page. */
+function open_invitations(): array {
+    return rows('SELECT a.* FROM accounts a WHERE '.open_invitation_sql().' ORDER BY a.created_at DESC, a.id DESC');
+}
+
+/** Whether a login is one of open_invitations(). */
+function is_open_invitation(int $accountId): bool {
+    return (bool)scalar('SELECT 1 FROM accounts a WHERE a.id=? AND '.open_invitation_sql(), [$accountId]);
+}
+
 /**
- * Student logins that no student points to any more - left behind when the
- * student was deleted before the login was. Without a list of their own on the
- * Konten page they could neither be seen nor switched off (ADR 0010).
+ * Whether deleting a student also deletes their login (ADR 0021, §4): a
+ * student's login nobody ever set up. A staff login on a student's record, left
+ * from before ADR 0010, is never taken with it - a trainer may not touch one.
+ */
+function login_goes_with_student(?array $login): bool {
+    return $login !== null && ($login['role'] ?? '') === 'student' && ($login['verified_at'] ?? null) === null;
+}
+
+/**
+ * Student logins left behind by a deleted student, which was set up and so
+ * stays (ADR 0010). Without a list of their own on the Zugänge page they could
+ * neither be seen nor switched off.
  */
 function orphan_logins(): array {
-    return rows("SELECT a.* FROM accounts a WHERE a.role='student'"
-        .' AND NOT EXISTS (SELECT 1 FROM students s WHERE s.account_id=a.id) ORDER BY a.name,a.id');
+    return rows('SELECT a.* FROM accounts a WHERE '.student_login_without_student_sql()
+        .' AND a.verified_at IS NOT NULL ORDER BY a.name,a.id');
+}
+
+/*
+ * „Zugänge" in three categories (ADR 0023 §8): the trainers, the
+ * administrators, and one row per student, each leading to that student's
+ * access card. The page only reads; every action on a student's login is on
+ * the access card.
+ */
+
+/** The team's logins by role, in the owner's order: trainers, then administrators. */
+function team_logins(): array {
+    $team = ['trainer' => [], 'admin' => []];
+    foreach (rows("SELECT * FROM accounts WHERE role IN ('admin','trainer','manager') ORDER BY name,id") as $a)
+        $team[$a['role'] === 'admin' ? 'admin' : 'trainer'][] = $a;
+    return $team;
+}
+
+/** How many student rows the Schüler card shows at a time. */
+const STUDENT_LOGINS_PER_PAGE = 50;
+
+/**
+ * The Schüler card's filter chips, as key => the condition on the login aliased
+ * a: „Alle", „Eingeladen", „Ohne Anmeldung", „Gesperrt" - one name per state,
+ * the badge's. „Eingeladen" is the project manager's decision of 2026-10-08 in
+ * the addendum to docs/design/2026-10-05-accounts-and-chat-screens.md (§6).
+ */
+function student_login_filters(): array {
+    return [
+        'all'         => '1=1',
+        'invited'     => "a.state='invited'",
+        'placeholder' => "a.state='placeholder'",
+        'suspended'   => "a.state='suspended'",
+    ];
+}
+
+/**
+ * How many students each chip holds, as key => n: one query for all four. The
+ * column aliases are numbered, because a chip's key - „all" - can be a word the
+ * database reserves.
+ */
+function student_login_counts(): array {
+    $filters = student_login_filters();
+    $sums = [];
+    foreach (array_values($filters) as $i => $condition) $sums[] = 'COALESCE(SUM('.$condition.'),0) AS n'.$i;
+    return array_combine(array_keys($filters), array_map('intval', array_values(one('SELECT '.implode(',', $sums).' FROM students s JOIN accounts a ON a.id=s.account_id') ?? [])));
+}
+
+/**
+ * One page of the Schüler card: every student with their login, sorted by last
+ * name, as the login's columns - for login_state_badge() and the address -
+ * plus the student's id, names and picture (CHILD_PICTURE_COLUMNS, for
+ * avatar()), and link_expires_at: when the newest
+ * invitation still waiting runs out, or null when there is none (lapsed links
+ * are pruned once a day). An unknown filter is 'all'. The link's date only,
+ * never its hash.
+ *
+ * The page is held as every pager holds it (page_in_range()): a page number
+ * of twenty nines would otherwise multiply out past the largest integer into a
+ * float, which the database refuses as an OFFSET - a 503 for a typo. Past the
+ * last page, a page is empty.
+ */
+function student_logins(string $filter, int $page): array {
+    $condition = student_login_filters()[$filter] ?? student_login_filters()['all'];
+    $offset = (page_in_range($page) - 1) * STUDENT_LOGINS_PER_PAGE;
+    return rows('SELECT a.*, s.id AS student_id, s.first_name, s.last_name, '.child_picture_columns('a', '', 's').','
+        ." (SELECT MAX(t.expires_at) FROM auth_tokens t WHERE t.account_id=a.id AND t.purpose='invite') AS link_expires_at"
+        .' FROM students s JOIN accounts a ON a.id=s.account_id WHERE '.$condition
+        .' ORDER BY s.last_name, s.first_name, s.id LIMIT '.STUDENT_LOGINS_PER_PAGE.' OFFSET '.$offset);
+}
+
+/*
+ * The wizard's draft (ADR 0023 §5): step 1's details, kept in the session under
+ * a random key between the two steps, so the address carries the key and never
+ * the details; once student_create has made the student, the same slot keeps
+ * which student it became. Only the wizard's two actions write one; a page
+ * reads it and writes nothing (ADR 0003).
+ */
+
+/** How long a draft is kept, and how many one session holds. */
+const STUDENT_DRAFT_SECONDS = 7200;
+const STUDENT_DRAFTS_KEPT = 10;
+
+/** Whether $key is shaped like a draft's key: 32 hex characters, nothing a person typed. */
+function student_draft_key(string $key): bool { return preg_match('/^[a-f0-9]{32}$/D', $key) === 1; }
+
+/**
+ * What the session keeps under $key - a draft, or the student it became - or
+ * null: never made, pushed out by ten newer ones, or older than two hours. The
+ * age is decided here, as it is read, so a stale slot is gone for every page at
+ * the same moment; student_draft removes it from the session the next time it
+ * writes.
+ */
+function student_draft_slot(string $key): ?array {
+    if (!student_draft_key($key)) return null;
+    $slot = $_SESSION['student_drafts'][$key] ?? null;
+    return is_array($slot) && (int)($slot['saved_at'] ?? 0) >= time() - STUDENT_DRAFT_SECONDS ? $slot : null;
+}
+
+/** The draft kept under $key while it is still one, or null - gone, or made into a student already. */
+function student_draft(string $key): ?array {
+    $slot = student_draft_slot($key);
+    return $slot !== null && !isset($slot['made']) ? $slot : null;
+}
+
+/**
+ * The student a draft became, or 0. student_create keeps the slot with the
+ * student's id in it, under the same two hours and ten slots, so Back from the
+ * done page - or a step of it sent again - finds the child made, rather than an
+ * empty form that would make them twice (ADR 0023 §5).
+ */
+function student_made_from_draft(string $key): int {
+    return (int)(student_draft_slot($key)['made'] ?? 0);
+}
+
+/*
+ * "Has a login", in the trainer's sense (ADR 0023 §3): somebody can sign in
+ * with it, or has been asked to. Every student has a login from the moment the
+ * student exists, but a placeholder signs in with nothing - „Ohne Anmeldung" -
+ * and to everything that asks "can we write to them, invite them, is that
+ * done?" it is no login at all. Asked here and nowhere else, in the two forms it
+ * is asked in, written side by side so they cannot drift apart. A student with
+ * no account_id at all can only be one an update has not reached yet; it reads
+ * the same.
+ */
+function login_without_sign_in(?array $account): bool {
+    return $account === null || ($account['state'] ?? '') === 'placeholder';
+}
+function student_without_sign_in_sql(string $student = 's'): string {
+    $s = sql_name($student, 'alias');
+    return '('.$s.'.account_id IS NULL OR EXISTS (SELECT 1 FROM accounts pl WHERE pl.id='.$s.".account_id AND pl.state='placeholder'))";
+}
+
+/**
+ * The student whose login is still a placeholder and whose record carries this
+ * address, or null - leaving out $exceptId, a student asking about the address
+ * on their own record. An invitation to it would make the same person twice, or
+ * give one child the address a brother's or sister's record carries too (ADR
+ * 0030 §5: one person, one address). So email_invite, the wizard and the access
+ * card refuse it and point to that student's own page (ADR 0021 §3, 0023 §3),
+ * and the next steps do not offer the invitation.
+ */
+function student_without_login_at(string $email, int $exceptId = 0): ?array {
+    return one('SELECT s.id,s.first_name,s.last_name FROM students s WHERE s.email=? AND s.id<>? AND '.student_without_sign_in_sql().' ORDER BY s.id LIMIT 1', [$email, $exceptId]);
+}
+
+/**
+ * What a new student starts with that nobody typed. Read by create_student(),
+ * the one insert of a student made in the portal - by the wizard and by an
+ * invitation by address (create_own_student()) alike - so no way in starts
+ * differently.
+ *
+ * level_default() is in app/groups.php, loaded after this file: safe, because
+ * this runs only while a request runs, never while files load.
+ */
+function new_student_defaults(): array {
+    return ['joined_on' => today(), 'status' => (string)setting('default_status', 'active'),
+            'level_id' => level_default()['id'] ?? null,
+            'address' => '', 'phone' => '', 'internal_notes' => ''];
+}
+
+/**
+ * A student's login, held for the rest of the transaction. Every student has
+ * one (ADR 0023 §4): the update gives one to every student it finds without,
+ * every way of making a student makes one, and the key is RESTRICT. A student
+ * without is that promise broken, not something the trainer can put right, so
+ * it stops the request and reports itself (ADR 0012) - it is not a refusal for
+ * her to read. The column itself may be NULL: the update gives the logins only
+ * after the migrations have run, so NOT NULL would stop it (ADR 0023, Rejected).
+ */
+function student_login_locked(array $student): array {
+    $login = $student['account_id'] ? lock_row('accounts', (int)$student['account_id']) : null;
+    if (!$login) throw new LogicException('A student without a login: give_every_student_a_login() gives every student one.');
+    return $login;
 }
 
 /** The student a login belongs to (ADR 0010), or 0 when it belongs to none. */
@@ -149,27 +357,42 @@ function students_missing_contact(): array {
  * link to the page she is already on did nothing she could see.
  */
 function student_next_steps(int $studentId): array {
-    $student = one('SELECT * FROM students WHERE id=?', [$studentId]);
+    // The waiting join request comes with the row, so the page pays nothing
+    // extra for it on every tab.
+    $student = one('SELECT s.*, '.student_without_sign_in_sql().' AS without_sign_in, '.pending_join_sql().' AS pending_join FROM students s WHERE s.id=?', [$studentId]);
     if (!$student) return [];
     $steps = [];
+    $withoutSignIn = (bool)$student['without_sign_in'];
     if (!primary_contact($studentId))
         $steps[] = ['what' => t('Notfallkontakt eintragen', 'Add an emergency contact'),
                     'why'  => t('Wen du anrufst, wenn etwas ist.', 'Who you ring if something happens.'),
                     'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'contacts'], 'anchor' => 'add-contact'];
-    if ((string)$student['email'] === '' && $student['account_id'] === null)
+    // To the access card, whose form takes the address and sends the
+    // invitation in one tap (ADR 0030 §6) - while mail can go out; before that
+    // the card offers no form, and the record's own box is the place to keep it.
+    if ((string)$student['email'] === '' && $withoutSignIn)
         $steps[] = ['what' => t('E-Mail-Adresse eintragen', 'Add an email address'),
                     'why'  => t('Dorthin gehen Einladung, Rechnungen und Erinnerungen.', 'The invitation, the invoices and the reminders go there.'),
-                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
-    // Asked before "invite": an invitation to this address would be refused
-    // (refuse_address_in_use()), and a button that can only fail is not a next
-    // step. Typically a brother's or a parent's address, typed in before the
-    // rule came back; a parent's belongs on the contacts.
-    elseif ($student['account_id'] === null && account_with_address((string)$student['email']))
+                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => account_mail_ready() ? 'access' : 'email'];
+    // Asked before "invite": an invitation to this address would be refused -
+    // it is somebody's login (refuse_address_in_use()), or a brother's or
+    // sister's record without sign-in carries it too
+    // (refuse_address_on_student_without_sign_in(), ADR 0030 §5) - and a button
+    // that can only fail is not a next step. Typically a parent's address, typed
+    // in before the rule came back; it belongs on the contacts. Both lead to the
+    // record's own box, where the address on the record is corrected.
+    elseif ($withoutSignIn && account_with_address((string)$student['email']))
         $steps[] = ['what' => t('Eigene E-Mail-Adresse eintragen', 'Enter an email address of their own'),
                     'why'  => t('Die eingetragene Adresse ist schon der Zugang einer anderen Person. Jede Person braucht ihre eigene; die Adresse der Eltern gehört zu den Kontakten.',
                                 'The address on the record is already somebody else’s login. Everybody needs their own; a parent’s address belongs on the contacts.'),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
-    elseif ($student['account_id'] === null)
+    elseif ($withoutSignIn && ($sharer = student_without_login_at((string)$student['email'], $studentId)))
+        $steps[] = ['what' => t('Eigene E-Mail-Adresse eintragen', 'Enter an email address of their own'),
+                    'why'  => strtr(t('Die eingetragene Adresse steht auch bei {name}. Jede Person braucht ihre eigene; die Adresse der Eltern gehört zu den Kontakten.',
+                                      'The address on the record is on {name}’s record too. Everybody needs their own; a parent’s address belongs on the contacts.'),
+                                    ['{name}' => $sharer['first_name'].' '.$sharer['last_name']]),
+                    'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'email'];
+    elseif ($withoutSignIn)
         $steps[] = ['what' => t('Zugang einladen', 'Invite them in'),
                     'why'  => t('Damit die Familie Termine und Beiträge selbst sieht.', 'So the family can see dates and charges themselves.'),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'access'];
@@ -177,7 +400,12 @@ function student_next_steps(int $studentId): array {
     // needs a course again, and saying otherwise would tick the box for ever on
     // the strength of a membership that ended in March.
     $enrolments = array_filter(student_enrolments($studentId), 'enrolment_is_current');
-    if (!$enrolments)
+    if (!$enrolments && $student['pending_join'] !== null)
+        $steps[] = ['what' => t('Kursanfrage beantworten', 'Answer the course request'),
+                    'why'  => strtr(t('{name} möchte in „{course}“.', '{name} would like to join “{course}”.'),
+                                    ['{name}' => $student['first_name'], '{course}' => $student['pending_join']]),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'requests'];
+    elseif (!$enrolments)
         $steps[] = ['what' => t('In einen Kurs eintragen', 'Put them in a course'),
                     'why'  => t('Ohne Kurs entstehen keine Beiträge.', 'Without a course there are no charges.'),
                     'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => 'add-course'];
@@ -201,11 +429,11 @@ function student_next_steps(int $studentId): array {
  * §7). Shown to the family on their dashboard and their student page; the
  * staff page keeps student_next_steps().
  *
- * Somebody to ring, a birth date, a postal address - every family has one,
- * and an invoice above 400 € needs it (create_invoice()) - and every custom field
- * the family fills in ('edit') that is required and still empty. Not the
- * phone: it is the member's own number, a child may have none, and an item some
- * families can never tick off teaches every family to ignore the card.
+ * A course first, then somebody to ring, a birth date, and a postal address -
+ * every family has one, and an invoice above 400 € needs it (create_invoice()).
+ * Not the phone: it is the member's own number, a child may have none, and an
+ * item some families can never tick off teaches every family to ignore the
+ * card.
  *
  * Each step names the element on the page it is about ('anchor').
  */
@@ -213,9 +441,15 @@ function family_next_steps(int $studentId): array {
     $student = one('SELECT birth_date,address FROM students WHERE id=?', [$studentId]);
     if (!$student) return [];
     $steps = [];
-    // Safety first, then what the age group and the invoices need, then her
-    // own questions; the words are the designer's (spec §6.1). The anchors are
-    // the ids the student page gives those boxes.
+    // First, because it is why they came (ADR 0021, §3).
+    if (wants_a_course($studentId)) {
+        $steps[] = ['what' => t('Kurs wählen', 'Choose a course'),
+                    'why'  => t('Such dir einen Kurs aus. Deine Trainerin bestätigt die Anmeldung.', 'Pick a course. Your coach confirms your place.'),
+                    'page' => 'student', 'params' => ['id' => $studentId, 'tab' => 'classes'], 'anchor' => free_courses_for($studentId) ? 'add-course' : 'courses'];
+    }
+    // Safety first, then what the age group and the invoices need; the words
+    // are the designer's (spec §6.1). The anchors are the ids the student page
+    // gives those boxes.
     if (!primary_contact($studentId))
         $steps[] = ['what' => t('Notfallkontakt eintragen', 'Add an emergency contact'),
                     'why'  => t('Wen die Trainerin anruft, wenn im Training etwas passiert.', 'Who your coach rings if something happens at training.'),
@@ -226,24 +460,40 @@ function family_next_steps(int $studentId): array {
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'birth-date'];
     // postal_address_missing() is in app/invoices.php, which is loaded after
     // this file: safe, because this runs only while a request runs, never while
-    // files load - the same arrangement as avatar() calling upload_version().
+    // files load.
     if (postal_address_missing($student))
         $steps[] = ['what' => t('Anschrift eintragen', 'Add the postal address'),
                     'why'  => t('Sie steht auf deinen Rechnungen.', 'It goes on your invoices.'),
                     'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'address'];
-    // The label alone is the link text, so a yes/no field reads as well as a size.
-    foreach (field_definitions() as $f)
-        if (custom_field_required_of($f, false) && custom_value_empty(field_value($studentId, (int)$f['id'])))
-            $steps[] = ['what' => field_label($f),
-                        'why'  => t('Bitte ausfüllen – deine Trainerin bittet darum.', 'Please fill this in – your coach has asked for it.'),
-                        'page' => 'student', 'params' => ['id' => $studentId], 'anchor' => 'field-'.$f['id']];
     return $steps;
+}
+
+/**
+ * Whether a family still has a course to choose: a membership that has not
+ * ended, no course they are in now, and no request to join one waiting. The
+ * trainer confirms a place, because joining bills (ADR 0021, §3). One rule for
+ * the „Kurs wählen" step and the Kurse tab's word when no course is free.
+ */
+function wants_a_course(int $studentId): bool {
+    $student = one('SELECT s.status, '.pending_join_sql().' AS pending_join FROM students s WHERE s.id=?', [$studentId]);
+    return $student && $student['status'] !== 'ended' && $student['pending_join'] === null
+        && !array_filter(student_enrolments($studentId), 'enrolment_is_current');
+}
+
+/**
+ * SQL for the course of the oldest join request still waiting for the student
+ * aliased $student, by name, or NULL. Both lists of next steps ask it, so a
+ * family who asked is not asked again and the trainer is told to answer.
+ */
+function pending_join_sql(string $student = 's'): string {
+    return "(SELECT c.name FROM enrolment_requests r JOIN classes c ON c.id=r.class_id WHERE r.student_id=".sql_name($student, 'alias')
+        .".id AND r.kind='join' AND r.state='pending' ORDER BY r.created_at, r.id LIMIT 1)";
 }
 
 /** The children with nowhere to send an invitation or an invoice. */
 function students_missing_email(): array {
     return rows('SELECT s.id,s.first_name,s.last_name FROM students s'
-        ." WHERE s.status<>'ended' AND s.email='' AND s.account_id IS NULL"
+        ." WHERE s.status<>'ended' AND s.email='' AND ".student_without_sign_in_sql()
         .' ORDER BY s.first_name,s.last_name');
 }
 
@@ -281,6 +531,49 @@ function charge_paid_sql(string $charge='c'): string {
 function charge_overdue_sql(string $charge='c'): string {
     $a=sql_name($charge,'alias');
     return 'COALESCE('.$a.'.overdue_on, '.$a.'.due_on)';
+}
+
+/**
+ * Whether a charge is overdue: not cancelled, past the day it turns late, and
+ * not paid in full. The one rule for „überfällig“ on a charge, in the two forms
+ * it is asked in - a row already read (it needs 'paid', which student_charges()
+ * gives it) and a condition in a query, which takes today() as its one
+ * parameter - written side by side so they cannot drift apart. A reminder run
+ * that read „past its day“ alone counted every paid charge as one it skipped.
+ */
+function charge_is_overdue(array $charge): bool {
+    return !(int)$charge['cancelled'] && ($charge['overdue_on'] ?: $charge['due_on']) < today()
+        && (int)($charge['paid'] ?? 0) < (int)$charge['amount_cents'];
+}
+function charge_is_overdue_sql(string $charge='c'): string {
+    $a=sql_name($charge,'alias');
+    return $a.'.cancelled=0 AND '.charge_overdue_sql($charge).'<? AND '.$a.'.amount_cents>'.charge_paid_sql($charge);
+}
+
+/**
+ * What has been recorded against a charge: every payment not voided, whether
+ * it has been confirmed yet or not.
+ *
+ * Not what has been received - that is payment_counts_sql(). This is the other
+ * question, „how much of this charge is already accounted for?“, which decides
+ * how much more may be recorded against it. „Zahlung erfassen“ asked it one way
+ * and „Als bezahlt eintragen“ the other, and a transfer recorded but not yet
+ * confirmed was paid a second time.
+ */
+function payment_recorded_sql(string $payment='p'): string { return sql_name($payment,'alias').'.voided=0'; }
+function charge_recorded_sql(string $charge='c'): string {
+    return 'COALESCE((SELECT SUM(r.amount_cents) FROM payments r WHERE r.charge_id='.sql_name($charge,'alias').'.id AND '
+        .payment_recorded_sql('r').'),0)';
+}
+
+/**
+ * Confirm a payment: the money has arrived. Tracked, so the change log says who
+ * confirmed it; a payment already confirmed, or voided, is left as it is.
+ */
+function confirm_payment(array $payment): void {
+    $by=current_user()['id'] ?? null;
+    tracked('payments',(int)$payment['id'],money((int)$payment['amount_cents']),
+        fn()=>run('UPDATE payments SET confirmed_at=?,confirmed_by=? WHERE id=? AND confirmed_at IS NULL AND voided=0',[now(),$by,(int)$payment['id']]));
 }
 
 function balance(int $studentId, bool $overdue=false): int {
@@ -323,174 +616,108 @@ function payments_by_charge(array $chargeIds): array {
 }
 
 function student_charges(int $id): array { return rows('SELECT c.*,'.charge_paid_sql().' AS paid FROM charges c WHERE c.student_id=? ORDER BY c.due_on DESC,c.id DESC',[$id]); }
-function field_definitions(bool $archived=false): array { return rows('SELECT * FROM field_definitions'.($archived?'':' WHERE archived=0').' ORDER BY sort_order,id'); }
-function field_label(array $f): string { return locale()==='en' && $f['label_en']?$f['label_en']:$f['label']; }
-function field_value(int $studentId,int $fieldId): mixed { $v=scalar('SELECT value_json FROM field_values WHERE student_id=? AND field_id=?',[$studentId,$fieldId]); return $v===false?null:json_decode($v,true); }
 /**
- * Whether a custom field's value counts as not filled in: nothing, an empty
- * text, no option chosen, or a box not ticked. One rule for the refusal of a
- * required field and for the family's list of what is still missing, so the two
- * cannot disagree about whether something was done.
+ * The students list's selection, from the address: each value text, trimmed and
+ * at most 200 characters, and an empty one no filter at all. The age group is a
+ * band the list can show - one not archived - or `none`, for the children no
+ * band places; the order is `age` or the default, A–Z. Anything else in either
+ * is ignored, as every value in an address is: a GET filter is never refused
+ * (ADR 0026 §5).
  */
-function custom_value_empty(mixed $v): bool { return $v===null || $v==='' || $v===false || $v===[]; }
-
-/**
- * Whether a required custom field is required of this person: a field the
- * family fills in ('edit') is required of the family, and a 'view' or
- * 'internal' field of staff (ADR 0020, §7). The one answer the save that
- * refuses, the family's list of what is missing and the page that marks the
- * box all ask, so they cannot disagree.
- */
-function custom_field_required_of(array $field, bool $staff): bool {
-    return (bool)$field['required'] && ($field['visibility']==='edit')!==$staff;
-}
-/**
- * A custom field's value, checked and in the shape it is stored, or a refusal.
- *
- * The type checks - a date, a number, an offered option - apply to every value
- * that is not empty, for everybody. Whether an empty one is refused is the
- * caller's to say ($emptyRefused): a required field is required of whoever
- * fills it in, which save_custom_fields() works out (ADR 0020, §7).
- */
-function validate_custom(array $f,mixed $v,mixed $old,bool $emptyRefused): mixed {
-    $opts=json_decode($f['options_json'],true);
-    if($f['field_type']==='multiselect') {
-        if(!is_array($v)) $v=[];
-        if(count($v)>100) throw new UserError(t('Zu viele Optionen.','Too many options.'));
-        foreach($v as $x) if(!is_string($x) || (!in_array($x,$opts,true) && !in_array($x,is_array($old)?$old:[],true))) throw new UserError(t('Ungültige Option.','Invalid option.'));
-        $v=array_values(array_unique($v));
-    } elseif($f['field_type']==='checkbox') { $v=(bool)$v;
-    } else {
-        if(!is_scalar($v) && $v!==null) throw new UserError(t('Ungültiger Feldwert.','Invalid field value.'));
-        $v=trim((string)$v);
-        if(mb_strlen($v)>4000) throw new UserError(t('Feldwert zu lang.','Field value is too long.'));
-        if($v!=='') {
-            if($f['field_type']==='date') date_value($v,true);
-            if($f['field_type']==='number' && !preg_match('/^-?\d+(?:[.,]\d+)?$/D',$v)) throw new UserError(t('Zahl erwartet: ','Number expected: ').$f['label']);
-            if($f['field_type']==='select' && !in_array($v,$opts,true) && $v!==$old) throw new UserError(t('Ungültige Option: ','Invalid option: ').$f['label']);
-        }
-    }
-    if($emptyRefused && custom_value_empty($v)) throw new UserError(t('Pflichtfeld: ','Required field: ').$f['label']);
-    return $v;
-}
-/**
- * Write the custom fields posted with a student's form. Called inside the
- * student's own tracked() or tracked_insert(), so the values are part of that
- * one change-log line (entity_snapshot()).
- *
- * A family writes only the fields at 'edit'; the rest are skipped, whatever is
- * posted. A required field is required of whoever fills it in (ADR 0020, §7):
- * an 'edit' field refuses the family's save while empty and never staff's - she
- * may fill it in and need not - and a 'view' or 'internal' field refuses
- * staff's save of an existing student. Creating a student ($new) refuses none,
- * because the create form carries no custom fields at all.
- */
-function save_custom_fields(int $id,bool $new): void {
-    $input=$_POST['custom']??[]; if(!is_array($input)) throw new UserError('Invalid fields');
-    $staff=is_staff();
-    foreach(field_definitions() as $f) {
-        $families=$f['visibility']==='edit';
-        if(!$staff && !$families) continue;
-        $old=field_value($id,(int)$f['id']);
-        $value=$input[$f['id']]??($f['field_type']==='checkbox'?false:($f['field_type']==='multiselect'?[]:''));
-        $value=validate_custom($f,$value,$old,!$new && custom_field_required_of($f,$staff));
-        run('INSERT INTO field_values (student_id,field_id,value_json) VALUES (?,?,?) ON DUPLICATE KEY UPDATE value_json=VALUES(value_json)',[$id,$f['id'],json_encode($value,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)]);
-    }
-}
 function filters_from(array $data): array {
-    $keys=['q','status','absence','overdue','tariff','level','age_group','course','field','value']; $out=[];
-    foreach($keys as $key) if(isset($data[$key]) && is_scalar($data[$key])) $out[$key]=mb_substr(trim((string)$data[$key]),0,200);
+    $out=[];
+    foreach(['q','status','absence','overdue','level','age_group','course','sort'] as $key)
+        if(isset($data[$key]) && is_scalar($data[$key]) && ($value=mb_substr(trim((string)$data[$key]),0,200))!=='') $out[$key]=$value;
+    if(isset($out['age_group']) && $out['age_group']!=='none'
+       && !in_array($out['age_group'],array_map(fn(array $band): string => (string)$band['id'],age_groups()),true)) unset($out['age_group']);
+    if(isset($out['sort']) && $out['sort']!=='age') unset($out['sort']);
     return $out;
 }
+
+/**
+ * The students in a selection (filters_from()), each with what its row in the
+ * list shows, so that no row asks for it: 'age', in whole years or null;
+ * 'band', the age group student_age_group() gives, or null; 'level_name'; and
+ * 'in_course', whether the child is in a running course now.
+ *
+ * In A–Z order, or with sort=age in the order „Nach Alter" shows them
+ * (student_sections()): the bands in Verwaltung's order, then the children no
+ * band covers, then those without a birth date - within each the youngest
+ * first, then by name. A page cut from it with array_slice() keeps that order.
+ *
+ * The age group is decided by the one rule, in PHP, never by the band's ages in
+ * SQL: that second copy of the rule listed a child under one band while the row
+ * named another, wherever two bands overlap (ADR 0026). The list is read whole
+ * anyway and paged afterwards, so the filter costs no query of its own.
+ */
 function filtered_students(array $f,?int $accountId=null): array {
     $where=['1=1']; $p=[];
     if($accountId!==null){$where[]='s.account_id=?';$p[]=$accountId;}
     if(!empty($f['q'])){$where[]="CONCAT(s.first_name,' ',s.last_name) LIKE ?";$p[]='%'.$f['q'].'%';}
     if(!empty($f['status'])){$where[]='s.status=?';$p[]=$f['status'];}
-    // What a child pays is decided per course (ADR 0011), so "on this tariff"
-    // means a course they are still in names it; students.tariff_id bills nobody.
-    if(!empty($f['tariff'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.tariff_id=? AND '.current_enrolment_sql().')';$p[]=(int)$f['tariff'];}
     if(!empty($f['level'])){$where[]='s.level_id=?';$p[]=(int)$f['level'];}
     // "Who is in Monday's group" is the view she builds most often, so a course
     // is a filter in its own right rather than something to be read off a card.
     if(!empty($f['course'])){$where[]='EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=s.id AND cs.class_id=? AND '.current_enrolment_sql().')';$p[]=(int)$f['course'];}
-    // An age group is usually not stored on the student, so filtering by one has
-    // to cover both the pinned case and the dates that fall into the band. The
-    // bounds become dates once here rather than a function call per row.
-    if(!empty($f['age_group'])){
-        $band=one('SELECT * FROM age_groups WHERE id=?',[(int)$f['age_group']]);
-        if($band){
-            $youngest=(new DateTimeImmutable(today()))->modify('-'.((int)$band['min_age']+1).' years')->modify('+1 day')->format('Y-m-d');
-            $oldest=$band['max_age']===null?null:(new DateTimeImmutable(today()))->modify('-'.((int)$band['max_age']+1).' years')->modify('+1 day')->format('Y-m-d');
-            $clause='s.age_group_id=? OR (s.age_group_id IS NULL AND s.birth_date IS NOT NULL AND s.birth_date<=?';
-            array_push($p,(int)$band['id'],$youngest);
-            if($oldest!==null){$clause.=' AND s.birth_date>?';$p[]=$oldest;}
-            $where[]='('.$clause.'))';
-        }
-    }
     if(!empty($f['absence'])){$where[]='EXISTS (SELECT 1 FROM absences a WHERE a.student_id=s.id AND a.reason=? AND a.starts_on<=? AND a.ends_on>=?)';array_push($p,$f['absence'],today(),today());}
-    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND c.cancelled=0 AND '.charge_overdue_sql().'<? AND c.amount_cents>'.charge_paid_sql().')';$p[]=today();}
-    if(!empty($f['field']) && isset($f['value'])){
-        $def=one('SELECT * FROM field_definitions WHERE id=? AND archived=0',[(int)$f['field']]);
-        if($def && (is_staff() || $def['visibility']!=='internal')) {
-            $where[]='EXISTS (SELECT 1 FROM field_values v WHERE v.student_id=s.id AND v.field_id=? AND JSON_CONTAINS(v.value_json,?))';
-            array_push($p,$def['id'],json_encode($def['field_type']==='checkbox'?in_array($f['value'],['1','true','yes'],true):$f['value'],JSON_UNESCAPED_UNICODE));
-        }
+    if(!empty($f['overdue'])){$where[]='EXISTS (SELECT 1 FROM charges c WHERE c.student_id=s.id AND '.charge_is_overdue_sql().')';$p[]=today();}
+    $byAge=($f['sort']??'')==='age';
+    // One of these two literals, never a value from the address (ADR 0026 §12).
+    $order=$byAge?'s.birth_date IS NULL, s.birth_date DESC, s.last_name, s.first_name, s.id':'s.last_name, s.first_name, s.id';
+    // „Ohne Kurs": in no course that runs, as the course list counts its members.
+    $rows=rows('SELECT s.*,a.name AS account_name,l.name AS level_name,'
+        .' EXISTS (SELECT 1 FROM class_students cs JOIN classes c ON c.id=cs.class_id WHERE cs.student_id=s.id AND c.archived=0 AND '.current_enrolment_sql().') AS in_course'
+        .' FROM students s LEFT JOIN accounts a ON a.id=s.account_id LEFT JOIN levels l ON l.id=s.level_id'
+        .' WHERE '.implode(' AND ',$where).' ORDER BY '.$order,$p);
+    $bands=age_groups();
+    foreach($rows as &$row){
+        $row['age']=student_age($row['birth_date']);
+        $row['band']=student_age_group($row,$bands);
+        $row['in_course']=(bool)$row['in_course'];
     }
-    return rows('SELECT s.*,a.name AS account_name,l.name AS level_name FROM students s'
-        .' LEFT JOIN accounts a ON a.id=s.account_id LEFT JOIN levels l ON l.id=s.level_id'
-        .' WHERE '.implode(' AND ',$where).' ORDER BY s.last_name,s.first_name,s.id',$p);
+    unset($row);
+    $chosen=(string)($f['age_group']??'');
+    if($chosen!=='')
+        $rows=array_values(array_filter($rows,fn(array $s): bool => $chosen==='none'?$s['band']===null:(string)($s['band']['id']??'')===$chosen));
+    return $byAge?array_merge(...array_column(student_sections($rows,$bands),'rows')):$rows;
 }
+
 /**
- * Every placeholder a message template may use, what it means, and an example.
+ * Rows of filtered_students() divided as „Nach Alter" shows them: each band in
+ * Verwaltung's order with the children the rule puts in it, then „Ohne
+ * Altersgruppe" for the children whose age no band covers, then „Ohne
+ * Geburtsdatum". Each section keeps the rows' own order, and one with nobody in
+ * it is left out. A section is ['key' => …, 'band' => ?array, 'rows' => […]],
+ * its key the anchor it is shown under: age-group-{id}, no-age-group or
+ * no-birth-date.
  *
- * One list. template_values() fills them in, template_save() validates against
- * them, and the editor shows them beside the box they go into. The same set used
- * to be written out in three places, so adding one meant remembering all three
- * and a template could be accepted that the sender then could not fill in.
+ * $bands is age_groups(), for a page that has read them already; without it
+ * they are read once here. For a page of a longer list, ask it of the page's
+ * rows for the headers and of the whole list for each section's count.
  */
-function template_placeholders(): array {
-    return [
-        'student_name' => [t('Vollständiger Name','Full name'),                          'Lena Hofer'],
-        'first_name'   => [t('Vorname','First name'),                                    'Lena'],
-        'level'        => [t('Leistungsgruppe','Level'),                                 t('Anfänger','Beginner')],
-        'age_group'    => [t('Altersgruppe','Age group'),                                t('Unter 12','Under 12')],
-        'tariff'       => [t('Tarif','Tariff'),                                          t('Monatsbeitrag','Monthly fee')],
-        'outstanding'  => [t('Offener Gesamtbetrag','Total outstanding'),                money(4500)],
-        'paid_through' => [t('Ende des letzten bezahlten Zeitraums','End of the latest paid period'), fmt_date(today())],
-        'portal_url'   => [t('Link zum Portal','Link to the portal'),                    url('messages')],
-    ];
-}
-
-/** What each placeholder becomes for one student. Keys match template_placeholders(). */
-function template_values(array $s): array {
-    $paidThrough=null;
-    foreach(student_charges((int)$s['id']) as $c) if(!$c['cancelled'] && $c['paid']>=$c['amount_cents'] && $c['period_to'] && (!$paidThrough || $c['period_to']>$paidThrough)) $paidThrough=$c['period_to'];
-    return [
-        'student_name' => $s['first_name'].' '.$s['last_name'],
-        'first_name'   => $s['first_name'],
-        'level'        => level_name(isset($s['level_id'])?(int)$s['level_id']:null),
-        'age_group'    => age_group_name($s),
-        'tariff'       => current_tariff_names((int)$s['id']),
-        'outstanding'  => money(balance((int)$s['id'])),
-        'paid_through' => fmt_date($paidThrough),
-        'portal_url'   => url('messages'),
-    ];
+function student_sections(array $rows,?array $bands=null): array {
+    $bands??=age_groups();
+    $sections=[];
+    foreach($bands as $band) $sections['age-group-'.$band['id']]=['key'=>'age-group-'.$band['id'],'band'=>$band,'rows'=>[]];
+    $sections+=['no-age-group'=>['key'=>'no-age-group','band'=>null,'rows'=>[]],
+                'no-birth-date'=>['key'=>'no-birth-date','band'=>null,'rows'=>[]]];
+    foreach($rows as $row){
+        $band=array_key_exists('band',$row)?$row['band']:student_age_group($row,$bands);
+        $key=$band!==null?'age-group-'.$band['id']:(student_age($row['birth_date']??null)!==null?'no-age-group':'no-birth-date');
+        // A band the rows were placed in that $bands no longer holds is no band of this page's.
+        $sections[isset($sections[$key])?$key:'no-age-group']['rows'][]=$row;
+    }
+    return array_values(array_filter($sections,fn(array $section): bool => $section['rows']!==[]));
 }
 
 /**
- * The tariffs of the courses a child is in now, joined with „ + “, in the
- * order the courses are listed; '' for a child on none. The student's own
- * tariff column bills nobody any more, so it is not what a message may say.
+ * How many children without a birth date the selection leaves out because a
+ * band is chosen: those the rest of it would show. For the line under the
+ * list's controls, „2 Kinder ohne Geburtsdatum sind nicht dabei.". None when no
+ * band is chosen, or `none` is, which shows them.
  */
-function current_tariff_names(int $studentId): string {
-    return implode(' + ', array_column(rows('SELECT t.name FROM class_students cs JOIN tariffs t ON t.id=cs.tariff_id'
-        .' JOIN classes c ON c.id=cs.class_id WHERE cs.student_id=? AND '.current_enrolment_sql()
-        .' ORDER BY c.sort_order, c.name, c.id', [$studentId]), 'name'));
-}
-
-function template_text(string $text,array $s): string {
-    $map=[];
-    foreach(template_values($s) as $key=>$value) $map['{{'.$key.'}}']=$value;
-    return strtr($text,$map);
+function left_out_without_birth_date(array $f,?int $accountId=null): int {
+    if(!ctype_digit((string)($f['age_group']??''))) return 0;
+    unset($f['age_group'],$f['sort']);
+    return count(array_filter(filtered_students($f,$accountId),fn(array $s): bool => $s['age']===null));
 }

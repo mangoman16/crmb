@@ -1,6 +1,14 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * One of the portal's icons: a 24-unit grid, round caps and joins, drawn in the
+ * text colour (Part 0, C16). The class names the icon drawn, so the stylesheet
+ * can size and colour a kind of icon wherever it appears - the chevron that
+ * ends a row. glyph-, not icon-: .icon-home is already the home screen drawn on
+ * Einstellungen → Portal, and took the tab bar's „Übersicht" for itself. An
+ * unknown name draws the arrow rather than nothing.
+ */
 function icon(string $name): string {
     $paths=[
         'home'=>'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M9 21v-8h6v8"/>',
@@ -11,6 +19,7 @@ function icon(string $name): string {
         'wallet'=>'<path d="M20 8V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h15v12H5a3 3 0 0 1-3-3V6"/><path d="M20 12h-5v5h5"/>',
         'arrow'=>'<path d="M5 12h14m-6-6 6 6-6 6"/>',
         'plus'=>'<path d="M12 5v14M5 12h14"/>',
+        'search'=>'<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
         'check'=>'<path d="m5 12 4 4L19 6"/>',
         'lock'=>'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/>',
         'logout'=>'<path d="M9 3H4v18h5m5-14 5 5-5 5M8 12h11"/>',
@@ -19,13 +28,27 @@ function icon(string $name): string {
         'bell'=>'<path d="M18 9a6 6 0 1 0-12 0c0 6-3 7-3 7h18s-3-1-3-7"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/>',
         'camera'=>'<path d="M3 8a2 2 0 0 1 2-2h2l1.4-2h7.2L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.5"/>',
         'eye'=>'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
-        'mic'=>'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
         'help'=>'<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.2-2.8 4"/><path d="M12 17.3v.01"/>',
+        // The end of a row that leads somewhere, and turned round, „Zurück".
+        'chevron'=>'<path d="m9 5 7 7-7 7"/>',
+        // Chats; 'mail' stays for e-mail.
+        'chat'=>'<path d="M20.5 11.5c0 4.1-3.8 7.5-8.5 7.5-1.3 0-2.6-.3-3.7-.8L4 19.5l1.3-3.6A7 7 0 0 1 3.5 11.5C3.5 7.4 7.3 4 12 4s8.5 3.4 8.5 7.5Z"/>',
+        'person'=>'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+        // A banner that says something went wrong; 'check' says it went right.
+        'alert'=>'<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/>',
+        // A shuttlecock flying up to the right, cork first: the club's mark when it
+        // has none of its own, and what rallies over the net while a page is slow
+        // (Part 0.4b).
+        // Filled, unlike the rest of the set: drawn small, an outline of it blurs.
+        // public/assets/favicon.svg is the same drawing.
+        'shuttle'=>'<g fill="currentColor" stroke="none"><path d="M12.75 6.87L13.99 8.12L4.78 15.49Q3.44 13.75 2.42 11.68ZM14.42 8.54L15.46 9.58L8.03 18.84Q6.45 17.55 5.16 15.97ZM15.88 10.01L17.13 11.25L12.32 21.58Q10.25 20.56 8.51 19.22Z"/><circle cx="17.98" cy="6.02" r="3.6"/></g>',
     ];
-    return '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'.($paths[$name]??$paths['arrow']).'</svg>';
+    $drawn=isset($paths[$name])?$name:'arrow';
+    return '<svg class="glyph-'.$drawn.'" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">'.$paths[$drawn].'</svg>';
 }
 function start_form(string $action,array $hidden=[],string $class='form',bool $multipart=false): void {
-    form_open($action,$hidden+['return_page'=>current_page(),'return_id'=>(int)($_GET['id']??0),'return_tab'=>(string)($_GET['tab']??'')],$class,$multipart);
+    $draft=student_draft_key($_GET['draft']??'') ? ['return_draft'=>$_GET['draft']] : [];
+    form_open($action,$hidden+['return_page'=>current_page(),'return_id'=>(int)($_GET['id']??0),'return_tab'=>$_GET['tab']??'']+$draft,$class,$multipart);
 }
 
 /**
@@ -44,25 +67,65 @@ function file_field(string $name,string $label,string $kind='proof',string $hint
     echo '<small>'.e(($hint?$hint.' ':'').t('Höchstens ','At most ').upload_limit_label($maxBytes).'.').'</small></div>';
 }
 /**
- * A saved filter, in the words that made it.
+ * The form that sends a photo (ADR 0031), wherever one is taken: a child's, or a
+ * team member's own.
  *
- * A chip called "Montag" tells her nothing a month later. This says what the
- * view actually selects, which is also how she notices that two of them are the
- * same view under different names.
+ * What is tapped is a label holding the file field, so the whole row or button
+ * opens the phone's own choice of library and camera; $camera opens the rear
+ * camera at once instead, for the trainer photographing the child in front of
+ * her. The form's own button sends it on a page without JavaScript; with it,
+ * the photo goes once chosen, drawn smaller first, and the button is hidden
+ * (app.js, app.css). $inside prints what the label shows, escaping it itself.
  */
-function filter_summary(array $f): string {
-    $parts=[];
-    if(!empty($f['q']))        $parts[]=t('Suche: ','Search: ').$f['q'];
-    if(!empty($f['course']))   $parts[]=(string)(scalar('SELECT name FROM classes WHERE id=?',[(int)$f['course']])?:t('Kurs','Course'));
-    if(!empty($f['level']))    $parts[]=level_name((int)$f['level']);
-    if(!empty($f['age_group']))$parts[]=(string)(scalar('SELECT name FROM age_groups WHERE id=?',[(int)$f['age_group']])?:'');
-    if(!empty($f['status']))   $parts[]=status_label((string)$f['status']);
-    if(!empty($f['absence']))  $parts[]=t('abwesend: ','away: ').reason_label((string)$f['absence']);
-    if(!empty($f['tariff']))   $parts[]=(string)(scalar('SELECT name FROM tariffs WHERE id=?',[(int)$f['tariff']])?:'');
-    if(!empty($f['overdue']))  $parts[]=t('überfällig','overdue');
-    return $parts?implode(' · ',array_filter($parts)):t('alle Schüler','all students');
+function picture_form(array $hidden,string $labelClass,callable $inside,bool $camera=false): void {
+    start_form('picture_save',$hidden,'picture-form auto-submit',true);
+    echo '<label class="'.e($labelClass).'">';
+    $inside();
+    echo '<input type="file" name="picture" accept="'.e(implode(',',array_keys(upload_types('picture')))).'"'.($camera?' capture="environment"':'').'></label>';
+    submit_button(t('Foto speichern','Save the photo'),'secondary picture-save');
+    echo '</form>';
 }
-
+/**
+ * The row a picture is added or changed by, at the top of its card - a child's
+ * on the child's page, a team member's own on Mein Konto (ADR 0031): the face at
+ * its large size, what a tap does, and $hint, who sees it.
+ *
+ * Without a picture the row is the file field's label, so a tap opens the
+ * phone's own menu, camera and library both. With one it opens a sheet titled
+ * $sheetTitle: „Neues Foto", the sentence that says a removal cannot be undone,
+ * „Foto löschen" - the one question before it, as an iOS action sheet asks, and
+ * a new photo is the way back. $hidden tells picture_save whose picture it is.
+ *
+ * Without gd no photo can be made, so instead of a button that could only fail
+ * the row says so, and who sets it up, in the words a refused photo is given
+ * (pictures_unavailable()); a picture there is still shown, and still deleted.
+ * Every form here posts on its own: never inside another.
+ */
+function picture_row(array $who,array $hidden,string $hint,string $sheetTitle): void {
+    $add=fn(string $action) => function() use($who,$action,$hint): void {
+        echo avatar($who,'large').'<span class="member-row-text"><strong>'.e($action).'</strong><small>'.e($hint).'</small></span>';
+    };
+    $remove=function() use($hidden): void {
+        start_form('picture_save',$hidden+['remove'=>1]);
+        submit_button(t('Foto löschen','Delete the photo'),'subtle danger-text');
+        echo '</form>';
+    };
+    if(!pictures_possible()) {
+        [$what,$setUp]=pictures_unavailable();
+        echo '<div class="member-row">'.avatar($who,'large').'<span class="member-row-text"><strong>'.e($what).'</strong><small>'.e($setUp).'</small></span></div>';
+        if(is_admin()) echo '<div class="row-actions">'.link_button(t('Zur Einrichtung','Go to the setup'),'settings',['tab'=>'system'],'secondary').'</div>';
+        if(has_picture($who)) $remove();
+        return;
+    }
+    if(!has_picture($who)) { picture_form($hidden,'member-row',$add(t('Foto hinzufügen','Add a photo'))); return; }
+    echo '<details class="picture-change" data-sheet data-sheet-title="'.e($sheetTitle).'"><summary class="member-row">';
+    $add(t('Foto ändern','Change the photo'))();
+    echo '</summary>';
+    picture_form($hidden,'button picture-pick',function(): void { echo icon('camera').e(t('Neues Foto','New photo')); });
+    echo '<p>'.e(t('Löschen geht sofort und lässt sich nicht zurückholen.','Deleting happens at once and cannot be undone.')).'</p>';
+    $remove();
+    echo '</details>';
+}
 /**
  * A labelled form field.
  *
@@ -106,17 +169,21 @@ function input(string $name,string $label,mixed $value='',string $type='text',bo
 }
 
 /**
- * What every box a username is typed into, or read from, carries - the
- * sign-in and „vergessen" box, which takes a username or an address (ADR
- * 0020, §3), included: the browser's password manager pairs it with the
- * password beside it, and an iPhone neither capitalises the first letter, nor
- * "corrects" lena.mueller into a word, nor underlines it as a spelling mistake.
+ * What every box the sign-in address is typed into, or read from, carries
+ * (ADR 0021, §1): sign-in, „vergessen", the read-only address beside a new
+ * password, the invitation and the delete confirmation.
  *
- * Not inputmode="email": that puts „@" on the first keyboard layer, which the
- * one box that may be given an address wants and a box for a username alone
- * does not. Those two pages add it themselves.
+ * autocomplete="username" although it is an address: that is the word the
+ * password manager pairs with the password beside it, so an iPhone saves the
+ * new password under this address and offers it again at sign-in (ADR 0030
+ * §7). And it neither capitalises the first letter, nor "corrects" lena.hofer
+ * into a word, nor underlines it as a spelling mistake. No inputmode: a box
+ * drawn as type="email" already brings „@" and „." to the first keyboard
+ * layer. Where the browser must not fill in anything - the invitation, the
+ * delete confirmation - the caller puts ['autocomplete'=>'off'] first in the
+ * union, so it wins.
  */
-function username_attributes(): array {
+function sign_in_address_attributes(): array {
     return ['autocomplete'=>'username','autocapitalize'=>'none','autocorrect'=>'off','spellcheck'=>'false'];
 }
 
@@ -142,22 +209,29 @@ function select_field(string $name,string $label,array $options,mixed $value='',
  * it was louder than any hint on the page. $required prints the mark input()
  * prints; the action decides whether an unticked box is refused, so the box
  * itself carries no required attribute.
+ *
+ * $switch draws it as a switch, label left and switch right, as iOS Settings
+ * does (Part 0, C7): for a setting that is on or off - the mail ticks, „Jeden
+ * Monat automatisch anlegen", „Im Portal veröffentlichen", an archive tick.
+ * Never for an acknowledgement („Ich habe die Datenschutzhinweise gelesen"),
+ * which is something one confirms, not something one switches. It is still a
+ * checkbox underneath: without CSS a plain one, and it posts the same.
  */
-function check_field(string $name,string $label,bool $value=false,string $hint='',bool $required=false): void {
+function check_field(string $name,string $label,bool $value=false,string $hint='',bool $required=false,bool $switch=false): void {
     // An unticked box sends nothing at all, so "held, and absent" means unticked
     // rather than "no opinion" - checking holding_input() first is what tells the
     // two apart.
     if(holding_input()) $value=held_input($name,null)!==null;
-    echo '<label class="check"><input type="checkbox" name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label).($required?' <span aria-hidden="true">*</span>':'')
+    echo '<label class="check'.($switch?' switch':'').'"><input type="checkbox"'.($switch?' role="switch"':'').' name="'.e($name).'" value="1" '.($value?'checked':'').'><span>'.e($label).($required?' <span aria-hidden="true">*</span>':'')
         .($hint!==''?'<small>'.e($hint).'</small>':'').'</span></label>';
 }
 
 /**
- * Why an invitation cannot go out yet, in one wording for the three places it
- * can be blocked: the create form, a student's access card and Konten (ADR
- * 0020, §10d). account_mail_missing() names the missing steps. The setup
- * checklist is an administrator's page, so a trainer is told who does it
- * instead of being given a link she cannot open. It only reads.
+ * Why an invitation cannot go out yet, in one wording for the places it can be
+ * blocked: the wizard, a student's access card and Zugänge (ADR 0020, §10d).
+ * account_mail_missing() names the missing steps. The setup checklist is an
+ * administrator's page, so a trainer is told who does it instead of being
+ * given a link she cannot open. It only reads.
  */
 function mail_not_ready_notice(array $user): void {
     $missing=account_mail_missing();
@@ -204,120 +278,214 @@ function submit_button(string $label='',string $class='primary',string $name='',
         .($name!==''?' name="'.e($name).'" value="'.e($value).'"':'').'>'
         .e($label?:t('Speichern','Save')).'</button>';
 }
-function page_head(string $title,string $description='',string $action=''): void { echo '<div class="page-heading"><div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>'; }
-function link_button(string $label,string $page,array $params=[],string $class='primary'): string { return '<a class="button '.e($class).'" href="'.e(url($page,$params)).'">'.e($label).'</a>'; }
-function empty_state(string $title,string $body='',string $action=''): void { echo '<div class="empty"><div class="empty-icon">'.icon('users').'</div><h2>'.e($title).'</h2>'.($body?'<p>'.e($body).'</p>':'').$action.'</div>'; }
+/**
+ * The large title a page opens with, the line under it, and its one action.
+ * The title is also what the bar at the top shows once it has scrolled away
+ * (page_title()).
+ *
+ * $face, drawn already (avatar() inside a link), leads the title, as a family's
+ * overview greets the child by their own face (the audit, N7); the title goes
+ * under it where there is too little room beside it (app.css).
+ */
+function page_head(string $title,string $description='',string $action='',string $face=''): void {
+    page_title($title);
+    echo '<div class="page-heading'.($face!==''?' has-face':'').'">'.$face.'<div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>';
+}
+/**
+ * The name a page greets whoever is signed in by: the overview's „Hallo …" and
+ * „Dein Foto"'s „Willkommen, …!". A family's login by its child's first name, as
+ * a mail greets it (greeting_name()); a team member by the first word of their
+ * own, where a mail uses the whole.
+ */
+function greeting_first_name(array $account): string {
+    return is_staff($account) ? explode(' ',trim((string)($account['name']??'')))[0] : greeting_name($account);
+}
+/**
+ * The title page_head() was given on this request, '' before it was called.
+ * The layout is drawn after the page, so by then it is known. Passing a title
+ * records it.
+ */
+function page_title(?string $title=null): string {
+    static $recorded='';
+    if($title!==null) $recorded=$title;
+    return $recorded;
+}
+/**
+ * A link drawn as a button, to url($page,$params): a '#' among $params is the id
+ * on that page it lands on, as url() takes it everywhere else - one way to say
+ * it, so no address is built two ways that encode it differently.
+ */
+function link_button(string $label,string $page,array $params=[],string $class='primary'): string {
+    return '<a class="button '.e($class).'" href="'.e(url($page,$params)).'">'.e($label).'</a>';
+}
+/** Nothing here yet: an icon for what would be here, a title, one sentence and one way on (Part 0, C13). */
+function empty_state(string $title,string $body='',string $action='',string $icon='users'): void { echo '<div class="empty"><div class="empty-icon">'.icon($icon).'</div><h2>'.e($title).'</h2>'.($body?'<p>'.e($body).'</p>':'').$action.'</div>'; }
 /**
  * A row of tabs. An item is a label, which opens $page with tab=<key>, or
  * ['label'=>…, 'page'=>…, 'params'=>[…]], which opens a page of its own - the
  * „Beiträge · Rechnungen" switch is two pages that read as one.
+ *
+ * Two or three are a segmented control, one choice between equal parts (Part 0,
+ * C8); more scroll sideways, until the pages that have them become lists that
+ * lead to each part. $label is what a screen reader calls the row.
  */
-function tabs(array $items,string $active,string $page,array $params=[]): void {
-    echo '<nav class="tabs" aria-label="'.e(t('Bereiche','Sections')).'">';
+function tabs(array $items,string $active,string $page,array $params=[],string $label=''): void {
+    echo '<nav class="tabs'.(count($items)<=3?' is-segmented':'').'" aria-label="'.e($label!==''?$label:t('Bereiche','Sections')).'">';
     foreach($items as $key=>$item) {
         $href=is_array($item)?url($item['page'],$item['params']??[]):url($page,['tab'=>$key]+$params);
         echo '<a '.($key===$active?'aria-current="page"':'').' href="'.e($href).'">'.e(is_array($item)?$item['label']:$item).'</a>';
     }
     echo '</nav>';
 }
-/** Beiträge and Rechnungen, one of Geld's two pages each (ADR 0011). */
-function money_switch(string $active): void {
+/**
+ * The head of Geld's two pages, Beiträge and Rechnungen (ADR 0011): the
+ * section's title, the word on the bar and in the menu, and the switch that says
+ * which half is open. Drawn here for both, so the two halves cannot be titled
+ * apart again, as Rechnungen was once Beiträge became „Geld" (the audit, N5).
+ */
+function money_head(string $active,string $description=''): void {
+    page_head(t('Geld','Money'),$description);
     tabs(['payments'=>['label'=>t('Beiträge','Payments'),'page'=>'payments'],
           'invoices'=>['label'=>t('Rechnungen','Invoices'),'page'=>'invoices']],$active,$active);
 }
+/**
+ * How far along a wizard is: one capsule per step under its large title, the
+ * steps done and the one open now in the tint (Part 0, C15). Decoration only -
+ * the words „Schritt 2 von 3" stay in page_head()'s description, which is what
+ * a screen reader reads, so the line is hidden from it.
+ */
+function wizard_progress(int $step,int $total): void {
+    echo '<ol class="steps" aria-hidden="true">';
+    for($i=1;$i<=$total;$i++) echo '<li'.($i<=$step?' class="is-done"':'').'></li>';
+    echo '</ol>';
+}
 function badge(string $text,string $style=''): void {echo '<span class="badge '.e($style).'">'.e($text).'</span>';}
 /**
- * One student in a list.
+ * One child in a list (Part 1, revised 2026-10-08): the initials, the name,
+ * and under it what tells her who this is - in A–Z the age group and the level
+ * („Unter 12 · Anfänger"), under a group's own header ($underBand) the age and
+ * the level („9 Jahre · Anfänger"). An age no group covers reads as the age;
+ * no birth date as „Geburtsdatum fehlt". Then where the child stands, and
+ * „Ohne Kurs" when they are in no course that runs - the one thing the price
+ * told a list that matters there. The price itself left the row: beside the
+ * age, the group and the level it wrapped every row at 320 to three lines and
+ * more (the designer's measurement); it stays on the child's page and on Geld.
  *
- * $s['due_cents'] and $s['course_price'] may be supplied by a caller that
- * resolved every card in one query (balances(), course_prices_by_student());
- * without them the card looks up its own, which is correct but costs queries
- * per card.
+ * A row reads 'age', 'band', 'level_name' and 'in_course' as filtered_students()
+ * supplies them, so no row asks for anything; a row from elsewhere works its
+ * own out, and one that does not say whether the child is in a course claims
+ * nothing. $s['due_cents'] is the overdue amount a caller resolved for every
+ * row at once (balances()); without it the row asks for its own.
  */
-function student_card(array $s): void {
+function student_card(array $s,bool $underBand=false): void {
     $due=array_key_exists('due_cents',$s)?(int)$s['due_cents']:balance((int)$s['id'],true);
-    $price=array_key_exists('course_price',$s)?(string)$s['course_price']:course_price_label(student_enrolments((int)$s['id']));
-    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s,'','student').'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$s['level_name']??'',age_group_name($s),$price]))).'</p></div><div class="student-card-status">';
+    $age=array_key_exists('age',$s)?$s['age']:student_age($s['birth_date']??null);
+    $band=array_key_exists('band',$s)?$s['band']:student_age_group($s);
+    $years=$age===null?t('Geburtsdatum fehlt','No date of birth yet'):plural($age,'Jahr','Jahre','year','years');
+    $who=$underBand||$band===null?$years:(string)$band['name'];
+    echo '<a class="student-card" href="'.e(url('student',['id'=>$s['id']])).'">'.avatar($s).'<div class="student-card-name"><h3>'.e($s['first_name'].' '.$s['last_name']).'</h3><p>'.e(implode(' · ',array_filter([$who,(string)($s['level_name']??'')]))).'</p></div><div class="student-card-status">';
     badge(status_label($s['status']),$s['status']==='active'?'green':'');
+    if(array_key_exists('in_course',$s) && !$s['in_course'])badge(t('Ohne Kurs','No course'),'amber');
     if($due)echo '<span class="due">'.e(money($due)).' '.e(t('überfällig','overdue')).'</span>';
-    echo '</div>'.icon('arrow').'</a>';
+    echo '</div>'.icon('chevron').'</a>';
 }
 /**
- * What a child pays, from the courses they are in now: the price is the
- * course's (ADR 0011), so a list that said „Kein Tarif" from the child's own,
- * unused tariff was saying something about nothing. $enrolments are rows as
- * student_enrolments() and billing_enrolments() give them.
+ * A row that opens what it holds under it, in a card of its own, with how things
+ * stand on its right (Part 0's per-screen row): „Filter" over the students list,
+ * „Monatsbeiträge" on Geld. The caller writes what it holds and closes the
+ * </details>. $open opens it as the page arrives; $class is the caller's own.
  */
-function course_price_label(array $enrolments): string {
-    $current=array_filter($enrolments,fn($row)=>$row['left_on']===null);
-    if(!$current) return t('in keinem Kurs','in no course');
-    $prices=[];
-    foreach($current as $row) {
-        $cents=enrolment_price($row)['cents'];
-        if($cents!==null) $prices[]=money($cents).' '.billing_interval_label((int)($row['interval_months']??1));
-    }
-    return $prices?implode(' + ',$prices):t('Kurs ohne Preis','course without a price');
+function fold_row(string $label,string $value='',bool $open=false,string $class=''): void {
+    echo '<details class="card fold-row'.($class!==''?' '.e($class):'').'"'.($open?' open':'').'><summary><span>'.e($label).'</span>'
+        .($value!==''?'<span class="fold-value">'.e($value).'</span>':'').icon('chevron').'</summary>';
 }
-/** course_price_label() for every child at once, id => label: one query for a whole list. */
-function course_prices_by_student(): array {
-    $by=[];
-    foreach(billing_enrolments() as $row) $by[(int)$row['student_id']][]=$row;
-    return array_map('course_price_label',$by);
-}
-function render_filters(array $f,string $target='students'): void {
+/**
+ * The list's filters, folded away under one row, „Filter" (Part 1, revised
+ * 2026-10-08). The row says what is chosen - „Kindertraining · Anfänger ·
+ * Unter 12" (filter_summary()) - and holds the four choices: Kurs,
+ * Mitgliedschaft, Leistungsgruppe and Altersgruppe, with „Ohne Altersgruppe"
+ * for the children no group places, and „Anwenden". A GET form, so nothing
+ * needs JavaScript and nothing is ever refused (filters_from()); what the form
+ * does not ask - the search, the order, the quick selection - travels along
+ * unchanged. Neither the search nor the quick selection is in the row's
+ * summary: both show on their own above it. $bands is age_groups(), for a
+ * page that has read them already.
+ */
+function render_filters(array $f,?array $bands=null): void {
+    $choices=['course'=>array_column(training_classes(),'name','id'),
+              'status'=>array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),
+              'level'=>array_column(levels(),'name','id'),
+              'age_group'=>array_column($bands??age_groups(),'name','id')+['none'=>t('Ohne Altersgruppe','No age group')]];
+    $summary=filter_summary($f,$choices);
     // A GET form is never rejected, so it has no held submission to offer back.
     // Saying so explicitly keeps the fields below from picking up the context of
     // whichever form was written out before them.
     form_context('');
-    echo '<form method="get" class="filters"><input type="hidden" name="page" value="'.e($target).'">';
-    input('q',t('Suche','Search'),$f['q']??'','search');
-    select_field('status',t('Mitgliedschaft','Membership'),array_combine(array_keys(statuses()),array_map('status_label',array_keys(statuses()))),$f['status']??'');
-    select_field('absence',t('Aktuell abwesend','Currently absent'),array_combine(array_keys(reasons()),array_map('reason_label',array_keys(reasons()))),$f['absence']??'');
-    select_field('course',t('Kurs','Course'),array_column(training_classes(),'name','id'),$f['course']??'');
-    select_field('level',t('Leistungsgruppe','Level'),array_column(levels(),'name','id'),$f['level']??'');
-    select_field('age_group',t('Altersgruppe','Age group'),array_column(age_groups(),'name','id'),$f['age_group']??'');
-    echo '<details class="filter-more" '.(!empty($f['tariff'])?'open':'').'><summary>'.e(t('Tarif und eigene Felder','Tariff and custom fields')).'</summary><div class="grid two">';
-    select_field('tariff',t('Tarif','Tariff'),array_column(rows('SELECT id,name FROM tariffs ORDER BY name'),'name','id'),$f['tariff']??'');
-    select_field('field',t('Eigenes Feld','Custom field'),array_column(field_definitions(),'label','id'),$f['field']??'');
-    input('value',t('Wert entspricht','Value equals'),$f['value']??'');echo '</div></details>';
-    check_field('overdue',t('Nur überfällige Beiträge','Overdue charges only'),!empty($f['overdue']));
-    submit_button(t('Filtern','Filter'),'secondary');echo '</form>';
+    fold_row(t('Filter','Filter'),$summary);
+    echo '<form method="get" class="filters"><input type="hidden" name="page" value="students">';
+    foreach(['q','sort','overdue','absence'] as $kept) if(isset($f[$kept])) echo '<input type="hidden" name="'.e($kept).'" value="'.e($f[$kept]).'">';
+    select_field('course',t('Kurs','Course'),$choices['course'],$f['course']??'');
+    select_field('status',t('Mitgliedschaft','Membership'),$choices['status'],$f['status']??'');
+    select_field('level',t('Leistungsgruppe','Level'),$choices['level'],$f['level']??'');
+    select_field('age_group',t('Altersgruppe','Age group'),$choices['age_group'],$f['age_group']??'');
+    submit_button(t('Anwenden','Apply'),'secondary');
+    echo '</form></details>';
 }
 
 /**
- * The main menu: one flat list, no sections (ADR 0011).
+ * What the filter row says is chosen: the chosen values' names in the fields'
+ * order, joined by „ · ", or '' when nothing is. $choices is each field's
+ * options, key => name, as render_filters() draws them; a value the address
+ * names that is no option any more - a course since archived - is not named.
+ */
+function filter_summary(array $f,array $choices): string {
+    $named=[];
+    foreach($choices as $key=>$options)
+        if(isset($f[$key]) && isset($options[$f[$key]])) $named[]=(string)$options[$f[$key]];
+    return implode(' · ',$named);
+}
+
+/**
+ * The main menu: one flat list, no sections (ADR 0011, 0028).
  *
- * Seven entries for staff, because a section hides what it holds and seven fit
- * on a phone. Every page that has no entry of its own is reached from the page
- * that owns it (nav_owner()), and that entry is the one highlighted there.
+ * All of it is the sidebar on a computer. On a phone the bar holds four places
+ * and, for staff, „Mehr", whose page holds the rest (more_entries()). Every
+ * page that has no entry of its own is reached from the page that owns it
+ * (nav_owner()), and that entry is the one highlighted there.
  *
  *   administrator  (Einrichtung, while unfinished) · Übersicht · Schüler · Kurse
- *                  · Anwesenheit · Geld · Nachrichten · Einstellungen
+ *                  · Anwesenheit · Geld · Chats · Einstellungen
  *   trainer        the same, with Verwaltung last: Einstellungen is an
  *                  administrator's page, Verwaltung is what she can open
- *   family         Übersicht · Profil · Nachrichten · Neuigkeiten
+ *   family         Übersicht · Beiträge · Chats · Profil, the same four as
+ *                  on the bar at the bottom of a phone
+ *
+ * One word per place (the audit, N6): „Chats" here, on the bar and as the
+ * page's title.
  *
  * Each entry is ['route'=>…, 'params'=>[…], 'icon'=>…, 'label'=>…, 'count'=>int].
+ * $counted=false leaves every count at 0, for a question about which entries
+ * there are: it is asked on every page, and the unread count is not a small
+ * query to run twice (ADR 0028 §4).
  */
-function nav_entries(array $user): array {
+function nav_entries(array $user,bool $counted=true): array {
     $entry=fn(string $route,string $symbol,string $label,int $count=0)=>
         ['route'=>$route,'params'=>[],'icon'=>$symbol,'label'=>$label,'count'=>$count];
+    $unread=$counted?unread_count($user):0;
     if(!is_staff($user)) {
-        $out=[$entry('dashboard','home',t('Übersicht','Overview'))];
-        if($people=people_nav_entry($user)) $out[]=$people;
-        $out[]=$entry('messages','mail',t('Nachrichten','Messages'),unread_count($user));
-        $out[]=$entry('news','news',t('Neuigkeiten','News'));
-        return $out;
+        $own=family_nav_entries($user);
+        return array_values(array_filter([$entry('dashboard','home',t('Übersicht','Overview')),$own['payments']??null,
+            $entry('messages','chat',t('Chats','Chats'),$unread),$own['profile']??null]));
     }
     $admin=is_admin($user);
     $out=[];
     if($admin && setup_unfinished()) $out[]=$entry('start','check',t('Einrichtung','Setup'));
     $out[]=$entry('dashboard','home',t('Übersicht','Overview'));
-    $out[]=people_nav_entry($user);
-    $out[]=$entry('classes','calendar',t('Kurse','Courses'),pending_request_count());
+    $out[]=$entry('students','users',t('Schüler','Students'));
+    $out[]=$entry('classes','calendar',t('Kurse','Courses'),$counted?pending_request_count():0);
     $out[]=$entry('attendance','check',t('Anwesenheit','Attendance'));
     $out[]=$entry('payments','wallet',t('Geld','Money'));
-    $out[]=$entry('messages','mail',t('Nachrichten','Messages'),unread_count($user));
+    $out[]=$entry('messages','chat',t('Chats','Chats'),$unread);
     $out[]=$admin?$entry('settings','settings',t('Einstellungen','Settings'))
                  :$entry('manage','settings',t('Verwaltung','Management'));
     return $out;
@@ -331,25 +499,28 @@ function nav_entries(array $user): array {
  * and that entry is highlighted while it is open:
  *
  *   invoices                  → payments (Geld): the „Beiträge · Rechnungen" switch
- *   compose, outbox           → messages: the links at the top of Nachrichten
- *   news                      → messages for staff (same links); a family's own entry
+ *   outbox                    → messages: the link at the top of Nachrichten
+ *   news                      → messages for staff (same links); the overview for a
+ *                               family, whose news group links to all of them
  *   manage, accounts, history → settings for an administrator (the hub at the top
  *                               of Einstellungen); manage for a trainer, whose
- *                               Verwaltung links to Team und Zugänge
+ *                               Verwaltung links to Zugänge
  *   start                     → itself while it is in the menu; settings once hidden
  *                               („Einrichtung ansehen" on the hub)
- *   student                   → students for staff (the list); a family's Profil
- *   students                  → itself for staff; a family's Profil, because a
- *                               family's list holds their one child and no menu
+ *   student                   → students for staff (the list); a family's own
+ *                               child's page, whose Beiträge and Profil both lead
+ *                               there (nav_is_current() tells the two apart)
+ *   students                  → itself for staff; a family's child's page, because
+ *                               a family's list holds their one child and no menu
  *                               entry of theirs leads to it (ADR 0010)
- *   print                     → students (the child's page links to it)
  *   download                  → payments for staff (invoices), Profil for a family
+ *   more                      → itself, staff's „Mehr" on a phone (ADR 0028)
+ *   profile                   → more for staff, whose Mehr has the row Mein Konto;
+ *                               for a family their child's page, where Profil has
+ *                               the row „Anmeldung und Darstellung"
  *
- *   profile                   → '' for staff (the account in the top bar); a
- *                               family's „Konto" on the phone bar
- *
- * '' for a page that belongs to no entry: profile for staff, privacy (Mein
- * Konto and the side menu's foot) and the pages shown to nobody signed in.
+ * '' for a page that belongs to no entry: privacy (Mein Konto and the sidebar's
+ * foot) and the pages shown to nobody signed in.
  */
 function nav_owner(string $page,?array $user=null): string {
     $user??=current_user();
@@ -357,75 +528,205 @@ function nav_owner(string $page,?array $user=null): string {
     $staff=is_staff($user); $admin=is_admin($user);
     return match($page) {
         'invoices'                    => 'payments',
-        'compose','outbox'            => 'messages',
-        'news'                        => $staff?'messages':'news',
+        'outbox'                      => 'messages',
+        'news'                        => $staff?'messages':'dashboard',
         'manage','accounts','history' => $admin?'settings':'manage',
         'start'                       => $admin && setup_unfinished()?'start':'settings',
         'student'                     => $staff?'students':'student',
-        'print'                       => 'students',
+        'student_new'                 => 'students',
         'download'                    => $staff?'payments':'student',
         'students'                    => $staff?'students':'student',
         'dashboard','classes','attendance','payments','messages','settings' => $page,
-        'profile'                     => $staff?'':'profile',
+        'more'                        => $staff?'more':'',
+        'profile'                     => $staff?'more':'student',
         default                       => '',
     };
 }
 
-/** Whether a menu entry is the one standing for the page being looked at. */
-function nav_is_current(string $route,string $page,?array $user=null): bool {
-    return $route!=='' && $route===nav_owner($page,$user);
-}
-
 /**
- * The menu's "people" entry, the same in the side menu and the bar at the bottom.
+ * Whether a menu entry is the one standing for the page being looked at.
  *
- * Staff get the list of students. A family has one student and nothing to list
- * (ADR 0010), so theirs goes straight to that student's page and is called
- * "Profil" - the child's record. "Mein Konto" stays what it is, the login: its
- * address, its password, how the portal looks. A login with no student has no
- * record to show, and gets no entry rather than one that leads nowhere.
+ * „Mehr" stands for every page under it (nav_under_more()). A family has two
+ * entries on their own child's page (family_nav_entries()): „Beiträge" stands
+ * for its money tabs, „Profil" for every other one, and for Mein Konto, which is
+ * reached from it. $params are the entry's own and $tab is the tab being looked
+ * at; without a tab the route alone decides.
  */
-function people_nav_entry(array $user): ?array {
-    if(is_staff($user)) return ['route'=>'students','params'=>[],'icon'=>'users','label'=>t('Schüler','Students'),'count'=>0];
-    $id=(int)(scalar('SELECT id FROM students WHERE account_id=?',[(int)$user['id']])?:0);
-    return $id?['route'=>'student','params'=>['id'=>$id],'icon'=>'users','label'=>t('Profil','Profile'),'count'=>0]:null;
+function nav_is_current(string $route,string $page,?array $user=null,array $params=[],?string $tab=null): bool {
+    $user??=current_user();
+    if(!$user || $route==='') return false;
+    if($route==='more') return nav_under_more($page,$user);
+    if($route!==nav_owner($page,$user)) return false;
+    if($route!=='student' || $tab===null) return true;
+    $money=$page==='student' && in_array($tab,family_money_tabs(),true);
+    return isset($params['tab'])===$money;
+}
+
+/** nav_is_current() for a whole entry, on the tab the address asks for. */
+function nav_item_current(array $item,string $page,?array $user=null): bool {
+    return nav_is_current($item['route'],$page,$user,$item['params']??[],(string)($_GET['tab']??''));
+}
+
+/** The tabs of a family's child page that „Beiträge" stands for; Profil is the rest. */
+function family_money_tabs(): array { return ['payments','invoices']; }
+
+/**
+ * A family's two entries, both on their own child's page (ADR 0010): „Beiträge",
+ * its money tabs, and „Profil", the record - the same in the sidebar and on the
+ * bar. "Mein Konto" stays what it is, the login, reached from a row on Profil. A
+ * login no student points to has no page to lead to, and gets neither rather
+ * than two that lead nowhere.
+ */
+function family_nav_entries(array $user): array {
+    $id=login_student_id((int)$user['id']);
+    if(!$id) return [];
+    return ['payments'=>['route'=>'student','params'=>['id'=>$id,'tab'=>'payments'],'icon'=>'wallet','label'=>t('Beiträge','Payments'),'count'=>0],
+            'profile'=>['route'=>'student','params'=>['id'=>$id],'icon'=>'person','label'=>t('Profil','Profile'),'count'=>0]];
 }
 
 /**
- * The bar along the bottom of a phone: four places and, for staff, „Mehr",
- * which the layout adds as the button that opens the side menu.
+ * The bar along the bottom of a phone, as an iOS tab bar: four places and, for
+ * staff, „Mehr", a page holding the rest of the menu (ADR 0028).
  *
- *   staff   Übersicht · Schüler · Nachrichten · Anwesenheit (· Mehr)
- *   family  Übersicht · Profil · Nachrichten · Neues · Konto
+ *   staff   Übersicht · Schüler · Anwesend · Chats · Mehr
+ *   family  Übersicht · Beiträge · Chats · Profil
  *
- * A family has no „Mehr": everything in their side menu is already on the
- * bar, and the privacy notice and the version are on „Mein Konto".
+ * A family has no „Mehr" (the owner, 2026-10-07): everything in their menu is on
+ * the bar already, news reaches them on the overview, and the privacy notice and
+ * the version are on Mein Konto, a row on Profil. „Mehr" carries no count.
  * 'short' is the label the bar prints, 'label' the full name a screen reader
- * says; at five to a 320px screen „Nachrichten" does not fit.
+ * says: „Anwesend" on the bar, „Anwesenheit" read out. $counted as for
+ * nav_entries().
  */
-function mobile_nav_entries(array $user): array {
+function mobile_nav_entries(array $user,bool $counted=true): array {
     $entry=fn(string $route,string $symbol,string $label,string $short='',int $count=0)=>
         ['route'=>$route,'params'=>[],'icon'=>$symbol,'label'=>$label,'short'=>$short!==''?$short:$label,'count'=>$count];
-    $messages=$entry('messages','mail',t('Nachrichten','Messages'),t('Post','Messages'),unread_count($user));
+    $messages=$entry('messages','chat',t('Chats','Chats'),'',$counted?unread_count($user):0);
     if(is_staff($user))
         return [$entry('dashboard','home',t('Übersicht','Overview')),
-                people_nav_entry($user)+['short'=>t('Schüler','Students')],
+                $entry('students','users',t('Schüler','Students')),
+                $entry('attendance','check',t('Anwesenheit','Attendance'),t('Anwesend','Attendance')),
                 $messages,
-                $entry('attendance','check',t('Anwesenheit','Attendance'),t('Anwesend','Attendance'))];
-    $out=[$entry('dashboard','home',t('Übersicht','Overview'))];
-    if($people=people_nav_entry($user)) $out[]=$people+['short'=>$people['label']];
-    $out[]=$messages;
-    $out[]=$entry('news','news',t('Neuigkeiten','News'),t('Neues','News'));
-    $out[]=$entry('profile','lock',t('Mein Konto','My account'),t('Konto','Account'));
-    return $out;
+                $entry('more','more',t('Mehr','More'))];
+    $own=array_map(fn(array $item)=>$item+['short'=>$item['label']],family_nav_entries($user));
+    return array_values(array_filter([$entry('dashboard','home',t('Übersicht','Overview')),$own['payments']??null,
+        $messages,$own['profile']??null]));
 }
 
-/** One menu row: the link, its label, and the number waiting behind it. */
-function nav_link(array $item,string $page,?array $user=null): string {
+/**
+ * The places on staff's „Mehr" (ADR 0028 §2): the full menu without what the bar
+ * holds, in the full menu's order, with their counts - worked out, never written
+ * down a second time, so an entry or a count added to the menu arrives here by
+ * itself. Today: (Einrichtung, while unfinished) · Kurse · Geld · Einstellungen
+ * for an administrator, Kurse · Geld · Verwaltung for a trainer. A family has no
+ * „Mehr", and none.
+ */
+function more_entries(array $user,bool $counted=true): array {
+    if(!is_staff($user)) return [];
+    $onBar=array_column(mobile_nav_entries($user,false),'route');
+    return array_values(array_filter(nav_entries($user,$counted),fn(array $item)=>!in_array($item['route'],$onBar,true)));
+}
+
+/**
+ * Whether $page sits under „Mehr" on a phone (ADR 0028 §4): „Mehr" itself, or a
+ * page whose entry is one of its places - Kurse and a course, Geld and
+ * Rechnungen, Einstellungen and the pages of its hub, Verwaltung and Team und
+ * Zugänge, the checklist - or staff's Mein Konto. The one answer for both the lit
+ * tab and nav_back(), so the bar and the back button cannot disagree. It asks
+ * for routes only, never counts.
+ */
+function nav_under_more(string $page,array $user): bool {
+    $owner=nav_owner($page,$user);
+    return $owner==='more' || in_array($owner,array_column(more_entries($user,false),'route'),true);
+}
+
+/**
+ * Where the bar's back button leads on a phone, and what it says (Part 0, C1):
+ * up to the page above this one, as an iOS navigation stack goes - never back
+ * through the browser's history, which in the home-screen app can lead out of
+ * the portal or nowhere. null on a page nothing is above, which shows the club's
+ * mark there instead.
+ *
+ * Above a page is the menu entry it belongs to (nav_owner()), named as the bar
+ * names it: a child's page → Schüler, news and Postausgang → Chats, Team und
+ * Zugänge → Einstellungen or Verwaltung, a family's Mein Konto → Profil, staff's
+ * Mein Konto → Mehr. An entry's own page has nothing above it - unless it is
+ * under „Mehr" (nav_under_more()), and then „Mehr" is: Kurse, Geld,
+ * Einstellungen, a trainer's Verwaltung, the checklist. These are the rows that
+ * are not that rule:
+ *
+ *   a course, a new course              → Kurse
+ *   a course's form                     → the course
+ *   a chat, „Neue Nachricht"             → Chats
+ *   a group's members                   → the chat
+ *   one news item, or its form          → Neuigkeiten
+ *   one record's changes                → Änderungen
+ *   Rechnungen                          → as Geld: beside it, not below it
+ *   „Schüler anlegen", step 2            → step 1
+ *   „Schüler anlegen", otherwise         → where it was opened from
+ *
+ * ['href', 'label', 'name']: 'name' is the parent's, for „Zurück zu {name}";
+ * 'label' is what the button shows, the name or, past twelve characters,
+ * „Zurück". $query is the address being looked at.
+ */
+function nav_back(string $page,?array $user=null,?array $query=null): ?array {
+    $user??=current_user();
+    if(!$user) return null;
+    $query??=$_GET;
+    $id=(int)($query['id']??0);
+    $to=fn(string $name,string $target,array $params=[])=>
+        ['href'=>url($target,$params),'name'=>$name,'label'=>mb_strlen($name)>12?t('Zurück','Back'):$name];
+    // An entry as the bar shows it on a phone, else as the sidebar does; of a
+    // family's two on their child's page, the one lit on this page.
+    $entry=function(string $route) use ($user,$page,$query): ?array {
+        foreach([mobile_nav_entries($user,false),nav_entries($user,false)] as $menu)
+            foreach($menu as $item)
+                if($item['route']===$route && ($route!==nav_owner($page,$user) || nav_is_current($route,$page,$user,$item['params'],(string)($query['tab']??''))))
+                    return $item;
+        return null;
+    };
+    $toEntry=function(string $route,string $unlisted='') use ($entry,$to): ?array {
+        $item=$entry($route);
+        if(!$item && $unlisted==='') return null;
+        return $item ? $to($item['short']??$item['label'],$item['route'],$item['params']) : $to($unlisted,$route);
+    };
+    switch($page) {
+        case 'classes':
+            if($id && !empty($query['edit'])) return $to((string)(scalar('SELECT name FROM classes WHERE id=?',[$id])?:t('Kurs','Course')),'classes',['id'=>$id]);
+            if($id || !empty($query['new'])) return $toEntry('classes');
+            break;
+        case 'messages':
+            if($id && !empty($query['members'])) return $to(t('Chat','Chat'),'messages',['id'=>$id,'#'=>'chat-end']);
+            if($id || !empty($query['with']) || !empty($query['new'])) return $toEntry('messages');
+            break;
+        case 'news':
+            if($id || !empty($query['new'])) return $to(t('Neuigkeiten','News'),'news');
+            break;
+        case 'history':
+            if(!empty($query['entity']) && !empty($query['record'])) return $to(t('Änderungen','Changes'),'history');
+            break;
+        case 'student_new':
+            $wizard=student_new_state($query);
+            if($wizard['step']==='2') return $to(t('Schritt 1','Step 1'),'student_new',$wizard['again']);
+            // The checklist is no menu entry once it is hidden, so it is named here.
+            return $toEntry($wizard['back'],t('Einrichtung','Setup'));
+        case 'invoices':
+            // Geld's other half, beside it rather than below it: up is where Geld's is.
+            $page='payments';
+            break;
+    }
+    $owner=nav_owner($page,$user);
+    if($owner!=='' && $owner!==$page) return $toEntry($owner);
+    return $page!=='more' && nav_under_more($page,$user) ? $toEntry('more') : null;
+}
+
+/** One menu row: the link, its label, and the number waiting behind it; a row of „Mehr" ($row) ends in a chevron. */
+function nav_link(array $item,string $page,?array $user=null,bool $row=false): string {
     $count=(int)($item['count']??0);
-    return '<a href="'.e(url($item['route'],$item['params']??[])).'" '.(nav_is_current($item['route'],$page,$user)?'aria-current="page"':'').'>'
-        .icon($item['icon']).'<span>'.e($item['label']).'</span>'
+    return '<a '.($row?'class="editor-list-item nav-row" ':'').'href="'.e(url($item['route'],$item['params']??[])).'" '.(nav_item_current($item,$page,$user)?'aria-current="page"':'').'>'
+        .($row?'<span>'.icon($item['icon']).'<strong>'.e($item['label']).'</strong></span><span class="row-actions">':icon($item['icon']).'<span>'.e($item['label']).'</span>')
         .($count?'<span class="count" aria-label="'.e($count.' '.t('wartet','waiting')).'">'.e((string)$count).'</span>':'')
+        .($row?icon('chevron').'</span>':'')
         .'</a>';
 }
 
@@ -434,6 +735,60 @@ function sidebar_nav(array $user,string $page): string {
     $html='<nav aria-label="'.e(t('Hauptmenü','Main menu')).'">';
     foreach(nav_entries($user) as $entry) $html.=nav_link($entry,$page,$user);
     return $html.'</nav>';
+}
+
+/**
+ * Where „Schüler anlegen" stands, read from its address (ADR 0023 §5). One
+ * reading for the wizard's page and for nav_back(), so the bar's back button and
+ * the step it is on cannot disagree. It only reads.
+ *
+ *   step   'done' afterwards; 'made' for a draft that became a child already
+ *          (Back from the done page, or a step sent again), unless that child has
+ *          been deleted since; '2', how they sign in, while a draft is held and
+ *          step 1 is not asked for again or refused; else '1', who is joining
+ *   key    the draft's key, draft its details or null, made the child's row or null
+ *   from   where it was opened: dashboard, students, start, or ''
+ *   back   where „Abbrechen" and the back button lead: from, or the list
+ *   again  step 1 of this draft, for „Ändern" and step 2's back button
+ */
+function student_new_state(array $query): array {
+    $key=is_string($query['draft']??null)?$query['draft']:'';
+    $asked=is_string($query['step']??null)?$query['step']:'';
+    $draft=student_draft($key);
+    $madeId=student_made_from_draft($key);
+    $made=$madeId?(one('SELECT id,first_name,last_name FROM students WHERE id=?',[$madeId])?:null):null;
+    $from=in_array($query['from']??'',['dashboard','students','start'],true)?(string)$query['from']:'';
+    return ['step'=>match(true) {
+                $asked==='done'                                                  => 'done',
+                $made!==null                                                     => 'made',
+                $draft!==null && $asked!=='1' && !held_for('student_draft')      => '2',
+                default                                                          => '1',
+            },
+            'key'=>$key,'draft'=>$draft,'made'=>$made,'from'=>$from,'back'=>$from!==''?$from:'students',
+            'again'=>['draft'=>$key,'step'=>'1']+($from!==''?['from'=>$from]:[])];
+}
+
+/** „Abmelden" at the foot of Mein Konto and of „Mehr": a row of its own, red, as iOS signs out. */
+function sign_out_row(): void {
+    start_form('logout',[],'inline-form sign-out');
+    submit_button(t('Abmelden','Sign out'),'danger-text');
+    echo '</form>';
+}
+
+/** What Mein Konto is for, said the same wherever a row leads to it. */
+function my_account_hint(): string { return t('Passwort, E-Mail-Adresse, Sprache und Farbe','Password, email address, language and colour'); }
+
+/**
+ * „Datenschutz und Hilfe": the privacy notice, „Etwas funktioniert nicht" -
+ * which leads to the form at the end of every page - and the version. On Mein
+ * Konto, and on staff's „Mehr" (ADR 0028 §2); the sidebar's foot holds the same
+ * on a computer.
+ */
+function privacy_and_help_group(): void {
+    echo '<section class="card help-card"><h2>'.e(t('Datenschutz und Hilfe','Privacy and help')).'</h2><ul class="link-list">'
+        .'<li><a href="'.e(url('privacy')).'">'.e(t('Datenschutzerklärung','Privacy notice')).icon('chevron').'</a></li>'
+        .'<li><a href="#feedback">'.e(t('Etwas funktioniert nicht','Something is wrong')).icon('chevron').'</a></li>'
+        .'</ul><p class="muted version-line">'.e(t('Version ','Version ').app_version()).'</p></section>';
 }
 
 /**
@@ -520,42 +875,6 @@ function select_options(array $options,mixed $value): string {
 }
 
 /**
- * One line of a paper form: a label, and either boxes to write in or a value.
- *
- * Boxes, one per character, because that is what a form somebody fills in with a
- * biro looks like: block capitals, one letter per box, legible to whoever types
- * it back in afterwards. The alternative - a ruled line - produces handwriting
- * nobody can read and a date that might be 03/04 or 04/03.
- *
- * $value fills it in instead, for the sheet she prints out and hands back after
- * entering somebody's details herself. Marked aria-hidden because a screen
- * reader reading out twenty-four empty boxes is nobody's idea of a form; the
- * label and the value carry the meaning.
- */
-function print_field(string $label, int $boxes = 18, string $value = '', string $hint = '', bool $wide = false): void {
-    echo '<div class="print-field'.($wide?' print-wide':'').'"><span class="print-label">'.e($label)
-        .($hint!==''?' <small>('.e($hint).')</small>':'').'</span>';
-    if ($value !== '') echo '<span class="print-value">'.e($value).'</span>';
-    else {
-        echo '<span class="print-boxes" aria-hidden="true">';
-        for ($i = 0; $i < max(1, $boxes); $i++) echo '<span></span>';
-        echo '</span>';
-    }
-    echo '</div>';
-}
-
-/** A tick box on a paper form, ticked when the portal already knows the answer. */
-function print_tick(string $label, ?bool $ticked = null): void {
-    echo '<div class="print-tick"><span class="print-box">'.($ticked ? '&#10003;' : '').'</span>'
-        .'<span>'.e($label).'</span></div>';
-}
-
-/** A line to sign on, with what it is for underneath it. */
-function print_signature(string $label): void {
-    echo '<div class="print-sign"><span class="print-rule"></span><small>'.e($label).'</small></div>';
-}
-
-/**
  * A numbered list of things to do, each leading to where it is done.
  *
  * On a record that has just been created it is what is still missing, in the
@@ -580,7 +899,7 @@ function next_steps_card(array $steps, string $heading = '', int $start = 1, arr
     echo '<section class="card next-steps'.($checklist ? ' is-checklist' : '').'"><h2>'.e($heading !== '' ? $heading : t('Noch zu tun','Still to do')).'</h2>'
         .'<ol'.($start !== 1 ? ' start="'.$start.'"' : '').'>';
     foreach (array_values($steps) as $i => $step) {
-        $href = url($step['page'], $step['params']).(!empty($step['anchor']) ? '#'.$step['anchor'] : '');
+        $href = url($step['page'], $step['params'] + ['#' => (string)($step['anchor'] ?? '')]);
         if (!$checklist) {
             echo '<li><a href="'.e($href).'">'.e($step['what']).'</a><small>'.e($step['why']).'</small></li>';
             continue;
@@ -616,31 +935,31 @@ function next_steps_card(array $steps, string $heading = '', int $start = 1, arr
 
 /**
  * The password for the example accounts, just after they were made, and the
- * usernames to type it with.
+ * addresses to sign in with (ADR 0021, §1).
  *
  * Held in the session by demo_data and nowhere else, and shown wherever the
  * fill returns to - the System tab or the checklist - because its message
- * says the password is shown below it. The usernames are read back from the
- * database (demo_logins()), because a fill beside real data may have had to
- * number one: lena.hofer2 rather than lena.hofer.
+ * says the password is shown below it. The addresses are read back from the
+ * database (demo_logins()) rather than written here, so the notice cannot name
+ * a login the fill did not make.
  */
 function demo_password_notice(): void {
     if (empty($_SESSION['demo_password']) || !demo_present()) return;
-    $names = array_map(fn($login) => '<span class="mono">'.e((string)$login['username']).'</span>', demo_logins());
+    $addresses = array_map(fn($login) => '<span class="mono">'.e((string)$login['email']).'</span>', demo_logins());
     echo '<div class="notice">'.e(t('Passwort für alle Beispielkonten','Password for every example account')).': <strong class="mono">'.e((string)$_SESSION['demo_password']).'</strong><br>'
-        .e(t('Es wird nur hier gezeigt und nirgends gespeichert. Benutzernamen: ','Shown only here and stored nowhere. Usernames: '))
-        .implode(', ', $names)
+        .e(t('Es wird nur hier gezeigt und nirgends gespeichert. Anmelden mit: ','Shown only here and stored nowhere. Sign in with: '))
+        .implode(', ', $addresses)
         .'</div>';
 }
 
 /**
  * A notice naming children who still need something, each name a way in.
  *
- * One copy for every such list - nobody to ring, no address - on the students
- * list. Each name is a button rather than a word in a sentence: as a
- * comma-separated list they were 17px tall and touching each other, so on a
- * phone the way to fix one child's record was a target a third of the minimum
- * with another one beside it.
+ * One copy for every such list on the students page - nobody to ring, no
+ * address, an address to invite that a student already carries. Each name is a
+ * button rather than a word in a sentence: as a comma-separated list they were
+ * 17px tall and touching each other, so on a phone the way to fix one child's
+ * record was a target a third of the minimum with another one beside it.
  *
  * $params and $anchor say where on the child's page the name leads. $tone is
  * 'warn' for something that costs somebody something while it waits, and ''
@@ -652,169 +971,146 @@ function students_notice(array $students,string $heading,string $body='',array $
     if ($body !== '') echo '<p>'.e($body).'</p>';
     echo '<p class="gap-names">';
     foreach (array_slice($students,0,6) as $m)
-        echo '<a class="chip" href="'.e(url('student',['id'=>$m['id']]+$params).($anchor!==''?'#'.$anchor:'')).'">'.e($m['first_name'].' '.$m['last_name']).'</a>';
+        echo '<a class="chip" href="'.e(url('student',['id'=>$m['id']]+$params+['#'=>$anchor])).'">'.e($m['first_name'].' '.$m['last_name']).'</a>';
     if (count($students) > 6) echo '<span class="muted">'.e(t('und weitere','and more')).'</span>';
     echo '</p></div>';
 }
 
 /**
- * Where a login stands, as a badge: the same four words and colours on the
- * student page and on the Konten page. $account is null for "no login yet".
+ * Where a login stands, as a badge: the same words and colours on the student
+ * page and on the Zugänge page, one name per state (ADR 0023 §3, 0030 §3): an
+ * invitation waiting at an address is „Eingeladen", a placeholder „Ohne
+ * Anmeldung". $account is null for a student no update has given a login yet
+ * - „Kein Zugang", which should never show.
  */
 function login_state_badge(?array $account): void {
     $state = $account['state'] ?? 'none';
     badge(match ($state) {
-        'active'    => t('Aktiv','Active'),
-        'invited'   => t('Eingeladen','Invited'),
-        'suspended' => t('Gesperrt','Suspended'),
-        default     => t('Kein Zugang','No access'),
+        'active'      => t('Aktiv','Active'),
+        'invited'     => t('Eingeladen','Invited'),
+        'placeholder' => t('Ohne Anmeldung','No sign-in'),
+        'suspended'   => t('Gesperrt','Suspended'),
+        default       => t('Kein Zugang','No access'),
     }, match ($state) { 'active' => 'green', 'invited' => 'amber', 'suspended' => 'red', default => '' });
 }
 
 /**
- * How a login signs in and where its mail goes, as text to read rather than
- * boxes to type in: the username, then the address, either of which signs in
- * (ADR 0020, §3). One copy
- * for Mein Konto and the access card, so the two say it in the same order and
- * the same words. $addressNote follows the address in a lighter weight - „·
- * bestätigt" on Mein Konto - in a <small>, because a plain span took on the
- * bold of the value beside it.
+ * The address a login signs in with and its mail goes to, as text to read
+ * rather than a box to type in (ADR 0021, §1). One copy for Mein Konto and the
+ * access card, so the two say it in the same words. $addressNote follows the
+ * address in a lighter weight - „· bestätigt" on Mein Konto - in a <small>,
+ * because a plain span took on the bold of the value beside it.
  *
  * Only for the login's holder and for staff (ADR 0019, §8).
  */
 function login_facts(array $account,string $addressNote=''): void {
     echo '<dl class="facts login-facts">'
-        .'<div class="fact-wide"><dt>'.e(t('Benutzername','Username')).'</dt><dd class="mono">'.e((string)$account['username']).'</dd></div>'
-        .'<div class="fact-wide"><dt>'.e(t('E-Mail-Adresse','Email address')).'</dt><dd>'.e((string)$account['email'])
+        .'<div class="fact-wide"><dt>'.e(t('E-Mail-Adresse','Email address')).'</dt><dd>'.e((string)($account['email']??''))
         .($addressNote!==''?'<small class="muted">'.e(' · '.$addressNote).'</small>':'').'</dd></div>'
         .'</dl>';
 }
 
-/*
- * Presence, as the pages show it (ADR 0015). Who may see what is decided in
- * app/presence.php and asked here before anything is drawn, so a view that
- * calls these cannot show a family - or anybody presence_visible_to() refuses -
- * more than '' or an empty history.
+/**
+ * A calendar date the way a person says it: „Heute", „Gestern", „Mo 29.09.",
+ * and with the year once it is another year's. One rule for the chat's day
+ * separators and its list.
  */
+function day_label(string $date, ?string $today = null): string {
+    $today ??= today();
+    if ($date === $today) return t('Heute', 'Today');
+    if ($date === date('Y-m-d', (int)strtotime($today.' -1 day'))) return t('Gestern', 'Yesterday');
+    $d = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    if (!$d) return $date;
+    if ($d->format('Y') !== substr($today, 0, 4)) return $d->format(locale() === 'de' ? 'd.m.Y' : 'j M Y');
+    return locale() === 'de' ? mb_substr(weekdays()[(int)$d->format('N')], 0, 2).' '.$d->format('d.m.') : $d->format('D j M');
+}
 
-/** The dot itself, for a state; its label for a screen reader unless the text beside it already says it. */
-function presence_dot_for(string $state, bool $labelled=true): string {
-    $state = in_array($state, ['online','recent','away','offline'], true) ? $state : 'offline';
-    return '<span class="presence-dot is-'.$state.'"'.($labelled ? '' : ' aria-hidden="true"').'>'
-        .($labelled ? '<span class="visually-hidden">'.e(presence_state_label($state)).'</span>' : '').'</span>';
+/** A name as the chat prints it, escaped, or what a deleted login is called. */
+function chat_name(?array $account): string {
+    $name = (string)($account['name'] ?? '');
+    return e($name !== '' ? $name : t('Gelöschtes Konto', 'Deleted account'));
 }
 
 /**
- * Whether a page shows $account's presence to $viewer at all. An invitation
- * nobody has taken up has never been used, so it has nothing to show rather
- * than a grey „Offline"; beyond that it is presence_visible_to()'s answer.
+ * The colour a group's picture or a sender's name is drawn in, the same for
+ * the same id every time: six of the accent colours, not grey, which reads as
+ * faded text.
  */
-function presence_shown_for(array $viewer, ?array $account): bool {
-    return $account !== null && ($account['state'] ?? '') !== 'invited' && presence_visible_to($viewer, $account);
-}
-
-/** $subject's dot as $viewer may see it, or '' - which is what a family always gets. */
-function presence_dot(array $viewer, array $subject): string {
-    return presence_visible_to($viewer, $subject) ? presence_dot_for(presence_state($subject)) : '';
+function chat_hue(int $id): string {
+    return ['blue', 'violet', 'pink', 'red', 'orange', 'green'][$id % 6];
 }
 
 /**
- * $subject's dot and, in words, what it means: „Online“, or the state and when
- * they were last here, as $viewer may know it. '' for a viewer who may not see
- * presence. An administrator looking at somebody who appears offline is told
- * so, because the time shown is then one a trainer does not see.
+ * Who wrote, wherever the chat says so: the name as its holder typed it and,
+ * for staff, their role in a pill beside it. A name is only ever text somebody
+ * typed - a child can call itself „Trainerin" or „Anna · Trainerin" - so the
+ * name cannot be what tells the trainer apart; the pill can, because the page
+ * draws it and no name makes it (security review, 2026-10-08). The bubbles of
+ * a course group and the chat list both draw the sender here, so neither can
+ * show staff without the pill or a child with one.
+ *
+ * Over a bubble, the whole name in the sender's colour. $short is the chat
+ * list's one line: the first word in the line's own grey. It cuts at any space,
+ * a non-breaking one too; the cut only saves room, the pill is what tells, so a
+ * name that keeps more than its first word is longer and never mistaken.
  */
-function presence_line(array $viewer, array $subject): string {
-    if (!presence_visible_to($viewer, $subject)) return '';
-    $state = presence_state($subject);
-    $text = presence_state_label($state);
-    if ($state !== 'online' && ($seen = presence_last_seen_for($viewer, $subject)) !== null)
-        $text .= ' · '.t('zuletzt ', 'last seen ').fmt_datetime($seen);
-    if (is_admin($viewer) && presence_choice($subject) === 'hidden')
-        $text .= t(' (als offline angezeigt)', ' (appearing offline)');
-    return '<span class="presence-line">'.presence_dot_for($state, false).'<span>'.e($text).'</span></span>';
+function chat_sender(array $person, bool $short = false): void {
+    $name = (string)($person['name'] ?? '');
+    if ($short && preg_match('/[^\s\p{Z}]+/u', $name, $word)) $name = $word[0];
+    echo '<span class="sender-name', $short ? '' : ' hue-'.e(chat_hue((int)($person['id'] ?? 0))), '">', chat_name(['name' => $name]), '</span>';
+    if (is_staff($person)) { echo ' '; badge(role_label((string)$person['role'])); }
 }
 
 /**
- * When somebody was online over the days kept, folded away: how many days, a
- * strip of them, and the times, newest first. $periods is this account's entry
- * from presence_history(), which has already left out what $viewer may not see
- * - a trainer gets no hidden periods but her own - so whatever hidden period
- * arrives here is marked rather than dropped. $recordedSince is
- * presence_recorded_since(), which the page asks once for all its people.
- */
-function presence_history_details(array $viewer, array $periods, ?string $recordedSince): void {
-    if (!is_staff($viewer)) return;
-    $n = presence_history_days();
-    $days = presence_days($periods);
-    $today = $days[count($days) - 1]['date'];
-    $yesterday = $days[count($days) - 2]['date'] ?? '';
-    $active = array_values(array_filter(array_reverse($days), fn($d) => $d['state'] !== 'none'));
-    $label = function (string $date) use ($today, $yesterday): string {
-        if ($date === $today) return t('Heute', 'Today');
-        if ($date === $yesterday) return t('Gestern', 'Yesterday');
-        $d = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
-        return locale() === 'de' ? mb_substr(weekdays()[(int)$d->format('N')], 0, 2).' '.$d->format('d.m.') : $d->format('D j M');
-    };
-    echo '<details class="presence-history"><summary>'
-        .e(t('Wann online? Letzte ', 'When online? Last ').plural($n, 'Tag', 'Tage', 'day', 'days')).'</summary>';
-    echo '<p>'.e($active
-        ? t('An ', 'Online on ').count($active).t(' von ', ' of the last ').plural($n, 'Tag', 'Tagen', 'day', 'days').t(' online.', '.')
-        : t('In den letzten ', 'Not online in the last ').plural($n, 'Tag', 'Tagen', 'day', 'days').t(' nicht online.', '.')).'</p>';
-    // For the first weeks after the update the record is shorter than the
-    // window, and "not online in 30 days" would be untrue of somebody who was
-    // simply not recorded yet. presence_recorded_since(), asked once by the
-    // page rather than once per person on a list.
-    if ($recordedSince !== null)
-        echo '<p class="muted">'.e(t('Aufgezeichnet wird seit dem ', 'Recorded since ').fmt_date($recordedSince).'.').'</p>';
-    // The strip repeats the list below at a glance, so it is hidden from a
-    // screen reader, which would otherwise read thirty empty cells.
-    echo '<div class="presence-strip" aria-hidden="true">';
-    foreach ($days as $day) echo '<span class="is-'.($day['state'] === 'on' ? 'on' : ($day['state'] === 'hidden' ? 'hidden' : 'none')).'"></span>';
-    echo '</div><div class="presence-strip-scale" aria-hidden="true">'
-        // The oldest cell is N-1 days back: today is a cell of its own.
-        .($n > 1 ? '<span>'.e(t('vor ', '').plural($n - 1, 'Tag', 'Tagen', 'day', 'days').t('', ' ago')).'</span>' : '<span></span>')
-        .'<span>'.e(t('heute', 'today')).'</span></div>';
-    if ($active) {
-        echo '<dl class="presence-days">';
-        foreach ($active as $day) {
-            // Within a day in the order they happened, as one reads a timetable.
-            $times = array_map(fn($p) => ($p['from'] === $p['to'] ? $p['from'] : $p['from'].'–'.$p['to'])
-                .($p['hidden'] ? t(' (als offline angezeigt)', ' (appearing offline)') : ''), $day['periods']);
-            echo '<div><dt>'.e($label($day['date'])).'</dt><dd>'.e(implode(', ', $times)).'</dd></div>';
-        }
-        echo '</dl>';
-    }
-    echo '</details>';
-}
-
-/**
- * Deleting a login, folded away, with its username typed to confirm.
+ * Deleting a login, folded away, with its address typed to confirm.
  *
  * Its own form and a <details> of its own, so it can sit in a row of buttons
- * without being one: the typed username is what stands between a thumb and a
- * login that cannot be brought back. The username rather than the address
- * (ADR 0019, §9): every login has its own address now (ADR 0020), so either
- * would do, and changing it back would be churn for the same safety.
+ * without being one: the typed address is what stands between a thumb and a
+ * login that cannot be brought back. The action compares both sides after
+ * email_normalised(), so „Lena@Beispiel.test" confirms lena@beispiel.test.
  *
- * The username is said in the sentence above the box, not in its label: the
- * label's <span> is the teal of the required mark, and a name inside it read
- * as part of the asterisk.
+ * The address is said in the sentence above the box, not in its label: the
+ * label's <span> is the teal of the required mark, and an address inside it
+ * read as part of the asterisk. autocomplete="off" first, so the browser does
+ * not fill in the signed-in person's own address and make the typing pointless.
+ *
+ * data-sheet: with JavaScript the fold opens as a sheet from the bottom of the
+ * screen, with „Abbrechen" under it (app.js); without, it opens in place. The
+ * same for every fold that removes or makes something (Part 0, C11).
+ *
+ * $hidden is what the form carries besides its own fields: on the access card,
+ * the card as the place a refusal comes back to (return_anchor).
  */
-function login_delete_details(array $account,string $summary,string $explanation,string $button): void {
-    echo '<details class="account-delete"><summary>'.e($summary).'</summary>'
-        .'<p>'.e($explanation.' '.t('Zur Bestätigung den Benutzernamen eintippen: ','To confirm, type the username: '))
-        .'<strong class="mono">'.e((string)$account['username']).'</strong></p>';
-    start_form('account_state',['id'=>$account['id'],'mode'=>'delete']);
-    input('confirmation',t('Benutzername','Username'),'','text',true,'','',['autocomplete'=>'off']+username_attributes());
+function login_delete_details(array $account,string $summary,string $explanation,string $button,array $hidden=[]): void {
+    echo '<details class="account-delete" data-sheet><summary>'.e($summary).'</summary>'
+        .'<p>'.e($explanation.' '.t('Zur Bestätigung die E-Mail-Adresse eintippen: ','To confirm, type the email address: '))
+        .'<strong class="mono">'.e((string)($account['email']??'')).'</strong></p>';
+    start_form('account_state',['id'=>$account['id'],'mode'=>'delete']+$hidden);
+    input('confirmation',t('E-Mail-Adresse','Email address'),'','email',true,'','',['autocomplete'=>'off']+sign_in_address_attributes());
     submit_button($button,'danger');
     echo '</form></details>';
 }
 
 /**
+ * Withdrawing an invitation nobody has taken up, folded away like deleting a
+ * login but with nothing to type (ADR 0021, §3): nothing is lost - no password
+ * was ever set, and a student stays where they were - and the way back is to
+ * invite again, which the explanation says. One copy for the open invitations
+ * on the students list and for the access card, so the two cannot drift. The
+ * action allows it only for a login never set up (verified_at IS NULL).
+ * $hidden as for login_delete_details().
+ */
+function invitation_withdraw_details(array $account,string $summary,string $explanation,array $hidden=[]): void {
+    echo '<details class="account-delete" data-sheet><summary>'.e($summary).'</summary><p>'.e($explanation).'</p>';
+    start_form('account_state',['id'=>$account['id'],'mode'=>'withdraw']+$hidden);
+    submit_button(t('Einladung zurückziehen','Withdraw the invitation'),'danger');
+    echo '</form></details>';
+}
+
+/**
  * The club's name and mark, top left (ADR 0014): its logo on a white plate,
- * else its icon, else the „B". brand_header() decides which and whether the
- * name and the line under it are shown; this only draws it.
+ * else its icon, else the shuttlecock. brand_header() decides which and
+ * whether the name and the line under it are shown; this only draws it.
  *
  *   $where  'sidebar'  the menu, with the „Verwaltung“ / „Mein Portal“ line
  *           'public'   the sign-in page's header, without that line
@@ -842,7 +1138,7 @@ function brand_block(?array $user, string $where, ?string $href): void {
     elseif ($kind === 'icon')
         echo '<span class="brand-mark brand-icon"><img src="'.e($b['icon']).'" alt="" width="44" height="44"></span>';
     elseif ($kind === 'mark')
-        echo '<span class="brand-mark">B<span></span></span>';
+        echo '<span class="brand-mark">'.icon('shuttle').'</span>';
     if ($bar) {
         // The name only where it is the whole of it; beside a picture it is for
         // a screen reader. Two lines at most, so a long name cannot push the
@@ -854,9 +1150,6 @@ function brand_block(?array $user, string $where, ?string $href): void {
     }
     echo '</'.$tag.'>';
 }
-
-/** The address of a file that ships in public/assets/. */
-function asset_url(string $file): string { return rtrim((string)config('app_url'), '/') . '/assets/' . $file; }
 
 /*
  * A problem report's way there, as Einstellungen → Rückmeldungen shows it
@@ -957,7 +1250,7 @@ function report_step_line(array $step): string {
 }
 
 /**
- * Posted values as name=value, flattened: custom[3]=… for a nested field.
+ * Posted values as name=value, flattened: rate_price[0]=… for a nested field.
  *
  * null is a value deleted when the report was marked done, and says so; a key
  * '…' is where the recorder stopped keeping fields.

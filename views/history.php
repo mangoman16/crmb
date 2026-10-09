@@ -9,7 +9,7 @@
  * left is the thing anybody actually opened it for: what changed, when, who did
  * it, and what it was before.
  */
-$entity=(string)($_GET['entity']??'');
+$entity=$_GET['entity']??'';
 $recordId=(int)($_GET['record']??0);
 $scoped=$entity!=='' && $recordId>0 && isset(tracked_entities()[$entity]);
 /* „Von Familien" (ADR 0020, §10b): what families changed on their own
@@ -22,16 +22,18 @@ page_head(
     t('Änderungen','Changes'),
     $scoped?t('Alle Änderungen an diesem Eintrag.','Every change to this record.')
            :t('Was zuletzt geändert wurde, und von wem.','What changed recently, and who changed it.'),
-    $scoped?link_button(t('Alle Änderungen','All changes'),'history',[],'secondary'):''
+    // up-link: on a phone the bar's „‹ Änderungen" is this way back.
+    $scoped?link_button(t('Alle Änderungen','All changes'),'history',[],'secondary up-link'):''
 );
-if(!$scoped) tabs(['all'=>t('Alle','All'),'family'=>t('Von Familien','By families')],$tab,'history');
+if(!$scoped) tabs(['all'=>t('Alle','All'),'family'=>t('Von Familien','By families')],$tab,'history',[],t('Wessen Änderungen','Whose changes'));
 
 if(!$versions): empty_state(t('Noch keine Änderungen','No changes yet'),
-    t('Sobald jemand etwas ändert, steht hier was es war und was daraus wurde.','Once somebody changes something, this says what it was and what it became.'));
+    t('Sobald jemand etwas ändert, steht hier was es war und was daraus wurde.','Once somebody changes something, this says what it was and what it became.'),'','news');
 else: ?>
 <p class="muted"><?=e(t('Zum Nachlesen, nicht zum Zurücknehmen. Einträge, die älter sind als ','To read, not to undo. Entries older than ')
     .plural((int)setting('history_months'),'Monat','Monate','month','months')
-    .t(', werden nachts entfernt; das Prüfprotokoll bleibt vollständig.',' are removed overnight; the audit log stays complete.'))?></p>
+    .t(', werden beim täglichen Aufräumen entfernt; das Prüfprotokoll nach ',' are removed by the daily cleanup; the audit log after ')
+    .plural((int)setting('audit_months'),'Monat','Monaten','month','months').'.')?></p>
 <div class="card">
 <?php foreach($versions as $v):
     $changes=version_changes($v);

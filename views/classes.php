@@ -16,11 +16,12 @@ $waiting=pending_request_count();
 page_head(
     $id?$form['name']:t('Kurse','Courses'),
     $id?class_schedule($form,$days):t('Wann trainiert wird, was es kostet und wer dabei ist.','When training happens, what it costs and who takes part.'),
-    $id?link_button(t('Alle Kurse','All courses'),'classes',[],'secondary')
+    // up-link: on a phone the bar's „‹ Kurse" is this way back.
+    $id?link_button(t('Alle Kurse','All courses'),'classes',[],'secondary up-link')
        :($mayEdit?link_button(t('+ Kurs anlegen','+ Add a course'),'classes',['new'=>1]):'')
 );
 
-$tab=(string)($_GET['tab']??($id?'members':'list'));
+$tab=$_GET['tab']??($id?'members':'list');
 if($id){
     if(!in_array($tab,['members','tariffs','dates','attendance'],true))$tab='members';
     if(!$edit) tabs(['members'=>t('Teilnehmer','Members'),'tariffs'=>t('Tarife','Tariffs'),
@@ -42,7 +43,7 @@ if(!$id && !$edit && $tab==='list'):
     if(!$list):
         empty_state(t('Noch keine Kurse.','No courses yet.'),
             t('Ein Kurs sagt, wann und wo trainiert wird, welche Tarife es dafür gibt und wer dabei ist.','A course says when and where training happens, which tariffs there are for it, and who takes part.'),
-            $mayEdit?link_button(t('Ersten Kurs anlegen','Add the first course'),'classes',['new'=>1]):'');
+            $mayEdit?link_button(t('Ersten Kurs anlegen','Add the first course'),'classes',['new'=>1]):'','calendar');
     else: ?>
     <div class="card">
     <?php foreach($list as $row): ?>
@@ -53,7 +54,7 @@ if(!$id && !$edit && $tab==='list'):
                 <small><?=e(plural((int)$row['tariff_count'],'Tarif','Tarife','tariff','tariffs'))?><?php if($row['trainer_name'])echo ' · '.e($row['trainer_name']);?></small>
             </div>
             <span class="class-count"><strong><?=(int)$row['member_count']?></strong><small><?=e(t('Schüler','students'))?></small></span>
-            <?=icon('arrow')?>
+            <?=icon('chevron')?>
         </a>
     <?php endforeach ?>
     </div>
@@ -116,8 +117,7 @@ elseif($id && !$edit && $tab==='tariffs'):
         <?php endif ?>
     </section>
     <section class="card">
-        <div class="section-heading"><h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2>
-        <?php if($tariff)duplicate_button('tariffs',$editTariff);?></div>
+        <div class="section-heading"><h2><?=e($tariff?t('Tarif bearbeiten','Edit tariff'):t('Tarif anlegen','Create tariff'))?></h2></div>
         <?php start_form('tariff_save',['id'=>$editTariff,'class_id'=>$id]); ?>
         <?php /* A name and what it costs is all most prices need. Everything else
                  has a sensible default and waits under „Mehr Möglichkeiten" -
@@ -176,7 +176,7 @@ elseif($id && !$edit && $tab==='tariffs'):
         <?php input('description',t('Erklärung für die Familie','Explanation for the family'),$tf['description'],'text');
         input('sort_order',t('Reihenfolge in der Liste','Position in the list'),(int)$tf['sort_order'],'number',false,
               t('Kleine Zahl zuerst. Nur dafür da, in welcher Reihenfolge die Tarife dieses Kurses erscheinen.','Lowest number first. This only decides the order the tariffs of this course are listed in.'));
-        check_field('archived',t('Archivieren (bestehende Anmeldungen bleiben)','Archive (existing enrolments stay)'),(bool)$tf['archived']); ?>
+        check_field('archived',t('Archivieren (bestehende Anmeldungen bleiben)','Archive (existing enrolments stay)'),(bool)$tf['archived'],'',false,true); ?>
         </details>
         <?php submit_button();?></form>
     </section>
@@ -187,8 +187,10 @@ elseif($id && !$edit && $tab==='dates'):
     $from=(new DateTimeImmutable(today()))->modify('-14 days')->format('Y-m-d');
     $to=(new DateTimeImmutable(today()))->modify('+70 days')->format('Y-m-d');
     $calendar=class_calendar($from,$to,$id);
-    $chosen=is_scalar($_GET['on']??'')?(string)($_GET['on']??''):'';
-    $current=$chosen!==''?class_session($id,$chosen):null;
+    // The day being changed: one the list below links to, or today - for an
+    // address with no day, or with anything that is not a date (ADR 0026 §5).
+    $chosen=query_date('on')??today();
+    $current=class_session($id,$chosen);
 ?>
 <div class="settings-grid">
     <section class="card">
@@ -198,7 +200,7 @@ elseif($id && !$edit && $tab==='dates'):
         <?php foreach($calendar as $entry): ?>
         <a class="editor-list-item <?=$chosen===$entry['date']?'selected':''?> <?=$entry['status']==='cancelled'?'is-off':''?>" href="<?=e(url('classes',['id'=>$id,'tab'=>'dates','on'=>$entry['date']]))?>">
             <span><strong class="badge-line"><span><?=e(fmt_date($entry['date']))?></span><?php if($entry['date']===today())badge(t('Heute','Today'),'green');?></strong><small><?=e(session_label($entry))?></small></span>
-            <span><?php if($entry['status']!=='planned')badge(session_statuses()[$entry['status']]??$entry['status'],$entry['status']==='cancelled'?'red':'amber'); echo icon('arrow');?></span>
+            <span><?php if($entry['status']!=='planned')badge(session_statuses()[$entry['status']]??$entry['status'],$entry['status']==='cancelled'?'red':'amber'); echo icon('chevron');?></span>
         </a>
         <?php endforeach ?>
     </section>
@@ -206,7 +208,7 @@ elseif($id && !$edit && $tab==='dates'):
         <h2><?=e(t('Einen Tag ändern','Change one day'))?></h2>
         <?php start_form('class_session_save',['class_id'=>$id]); ?>
         <div class="grid two"><?php
-        input('session_on',t('Datum','Date'),$chosen?:today(),'date',true);
+        input('session_on',t('Datum','Date'),$chosen,'date',true);
         select_field('status',t('Was ist damit','What about it'),session_statuses(),$current['status']??'planned',true);
         time_field('starts_at',t('Beginn (nur wenn anders)','Starts (only if different)'),(string)($current['starts_at']??''));
         time_field('ends_at',t('Ende (nur wenn anders)','Ends (only if different)'),(string)($current['ends_at']??''));
@@ -216,7 +218,7 @@ elseif($id && !$edit && $tab==='dates'):
               t('Leer lassen, wenn der übliche Ort gilt: ','Leave empty for the usual place: ').($form['location']?:t('nicht hinterlegt','not set')));
         input('note',t('Hinweis für die Familien','Note for the families'),$current['note']??'','textarea',false,
               t('Steht in der E-Mail, falls du sie verschickst.','Goes into the email, if you send one.'));
-        check_field('notify',t('Alle Kursteilnehmer per E-Mail informieren','Email everybody in this course'));
+        check_field('notify',t('Alle Kursteilnehmer per E-Mail informieren','Email everybody in this course'),false,'',false,true);
         submit_button(); ?></form>
     </section>
 </div>
@@ -243,13 +245,14 @@ elseif($id && !$edit): $members=class_members($id); ?>
     <?php if(!$members)echo '<p class="muted">'.e(t('Noch keine Schüler in diesem Kurs.','No students in this course yet.')).'</p>';
     foreach($members as $m): $left=$m['left_on']!==null; $en=enrolment($id,(int)$m['id']); ?>
     <div class="record-row<?=$left?' is-past':''?>">
-        <div>
+        <?php /* The face beside the name, so the trainer learns who is who (ADR 0031). */ ?>
+        <div class="record-who"><?=avatar($m)?><div>
             <strong><a href="<?=e(url('student',['id'=>$m['id']]))?>"><?=e($m['first_name'].' '.$m['last_name'])?></a></strong>
             <p><?=e($left
                 ? t('Ausgetreten am ','Left on ').fmt_date($m['left_on'])
                 : t('Dabei seit ','Member since ').fmt_date($m['joined_on']))?>
                · <?=e($en && $en['tariff_name']?$en['tariff_name']:t('Kein Tarif','No tariff'))?></p>
-        </div>
+        </div></div>
         <div class="row-actions">
         <?php if(!$left){ start_form('class_member_remove',['class_id'=>$id,'student_id'=>$m['id'],'mode'=>'leave'],'inline-form');
                           submit_button(t('Austritt eintragen','Record leaving'),'subtle'); echo '</form>'; }
@@ -285,11 +288,7 @@ if($available): ?>
 // ---------------------------------------------------------------------------
 elseif($edit): ?>
 <section class="card">
-    <div class="section-heading"><h2><?=e($id?t('Kurs bearbeiten','Edit course'):t('Kurs anlegen','Create course'))?></h2>
-    <?php /* The copy brings the training days and the whole price list with it,
-             which is what makes "the same course on Wednesday" a one-minute job
-             rather than a twenty-minute one. */
-    if($id)duplicate_button('classes',(int)$id,t('Kurs kopieren','Duplicate course'));?></div>
+    <div class="section-heading"><h2><?=e($id?t('Kurs bearbeiten','Edit course'):t('Kurs anlegen','Create course'))?></h2></div>
     <?php start_form('class_save',['id'=>$id]); ?>
     <div class="grid two">
     <?php
@@ -327,11 +326,11 @@ elseif($edit): ?>
 
     <?php
     input('description',t('Beschreibung','Description'),$form['description'],'textarea');
-    check_field('archived',t('Kurs archivieren','Archive course'),(bool)$form['archived']);
+    check_field('archived',t('Kurs archivieren','Archive course'),(bool)$form['archived'],'',false,true);
     submit_button(); ?></form>
 </section>
 <?php if($id): ?>
-<details class="danger-zone">
+<details class="danger-zone" data-sheet>
     <summary><?=e(t('Kurs löschen','Delete course'))?></summary>
     <p><?=e(t('Der Kurs wird entfernt, mit seinen Terminen und Tarifen. Schüler, Beiträge und Zahlungen bleiben erhalten.','The course is removed, along with its dates and tariffs. Students, charges and payments are kept.'))?></p>
     <?php start_form('class_delete',['id'=>$id]);

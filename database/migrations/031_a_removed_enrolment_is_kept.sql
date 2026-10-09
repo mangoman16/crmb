@@ -1,0 +1,21 @@
+-- A child removed from a course is kept with every term agreed, and can be put
+-- back exactly as before
+-- (docs/decisions/0024-a-child-removed-from-a-course-can-be-put-back.md, §1).
+--
+-- „Aus Kurs entfernen" deleted the enrolment, and with it the tariff, the
+-- agreed price and its note, the interval, the due day, the discount and
+-- joined_on, the day billing counts from. From now on it sets removed_on to the
+-- day instead, and „Wieder aufnehmen" sets it back to NULL with nothing else
+-- changed.
+--
+-- NULL means not removed. Every enrolment written by the previous version was
+-- not removed - removing deleted the row - so that is true of all of them, and
+-- the new code has nothing to guess about. A DATE, like left_on beside it: a
+-- calendar day, deliberately not shifted to UTC. No removed_by column: the
+-- change log and a decided request say who.
+--
+-- No row is deleted or changed. class_students stays in schema_guarded_tables(),
+-- and after this nothing the portal does deletes one of its rows. One statement,
+-- so an interrupted update has nothing half done. It cannot run twice - MySQL
+-- 8.0 has no ADD COLUMN IF NOT EXISTS - and nothing follows it in this file.
+ALTER TABLE class_students ADD COLUMN removed_on DATE NULL DEFAULT NULL AFTER left_on;

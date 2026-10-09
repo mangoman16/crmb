@@ -56,42 +56,18 @@ foreach (accents() as $key => $label) {
 ok(!str_contains((string)file_get_contents(APP_ROOT.'/views/profile.php'), 'style="'),
    'and the picker sets no inline style, which the browser would refuse anyway');
 
-case_('A picture replaces the initials, and initials are never more than two');
+case_('A person is their initials, never more than two, and never a picture');
 is_same('LH', initials('Lena Hofer'), 'two names');
 is_same('L', initials('Lena'), 'one name');
 is_same('LH', initials('Lena Maria Hofer'), 'the first and the last, not all three');
 is_same('?', initials('   '), 'and a blank name still renders something');
-ok(str_contains(avatar(['name'=>'Lena Hofer', 'avatar_name'=>'']), 'LH'), 'no picture, so the initials');
-// A name of the shape store_upload() gives, so the version is what it would be.
-$stored = str_repeat('c0ffee', 5).'ab.jpg';
-$withPhoto = avatar(['id'=>3, 'name'=>'Lena Hofer', 'avatar_name'=>$stored], '', 'student');
-ok(str_contains($withPhoto, '<img'), 'a picture when there is one');
-ok(str_contains($withPhoto, 'what=avatar'), 'served through the download route, not by URL');
-ok(!str_contains($withPhoto, $stored), 'and the stored name is never in the page');
-ok(str_contains($withPhoto, 'v=c0ffeec0ffee'),
-   'the address names the picture, so the browser may keep it until a new one is uploaded');
-$replaced = avatar(['id'=>3, 'name'=>'Lena Hofer', 'avatar_name'=>str_repeat('d', 32).'.jpg'], '', 'student');
-ok(str_contains($replaced, 'v=dddddddddddd'), 'a new picture of the same child gets a new address, so the old one is never shown');
-ok(str_contains($withPhoto, 'loading="lazy"'), 'a picture in a list of people waits until it is scrolled to');
-sign_in_as($family);
-$topBar = avatar(['id'=>$family, 'role'=>'student', 'name'=>'Familie Hofer', 'avatar_name'=>$stored], 'tiny');
-ok(str_contains($topBar, '<img'), 'her own picture in the top bar');
-ok(!str_contains($topBar, 'loading="lazy"'), 'and, in view on every page, fetched at once');
-
-case_('An account’s picture is drawn only for somebody who may see it');
-/* The download route answers 404 to anybody else; drawing the <img> anyway
-   would put a broken picture on the page instead of the initials. */
-$otherFamily = ['id'=>$family + 1000, 'role'=>'student', 'name'=>'Familie Gruber', 'avatar_name'=>$stored];
-$trainerRow = ['id'=>$trainer, 'role'=>'trainer', 'name'=>'Trainerin Beispiel', 'avatar_name'=>$stored];
-sign_in_as($family);
-is_same('<span class="avatar">FG</span>', avatar($otherFamily), 'a family sees another family’s initials, not their photograph');
-ok(str_contains(avatar($trainerRow), '<img'), 'and the trainer’s picture');
-ok(!str_contains(avatar(['role'=>null] + $trainerRow), '<img'), 'but not from a row that does not say it is the trainer’s');
-sign_in_as($trainer);
-ok(str_contains(avatar($otherFamily), '<img'), 'the trainer sees every family’s');
-sign_out();
-ok(!str_contains(avatar($trainerRow), '<img'), 'and nobody signed out sees any');
-sign_in_as($family);
+is_same('<span class="avatar">LH</span>', avatar(['name'=>'Lena Hofer']), 'a login by its name');
+is_same('<span class="avatar small">LH</span>', avatar(['first_name'=>'Lena', 'last_name'=>'Hofer'], 'small'), 'a child by first and last name, in a size');
+// A row from before 035 and 036 still carrying a picture's name shows the
+// initials all the same: the pictures went (ADR 0026 §8).
+is_same('<span class="avatar">LH</span>', avatar(['id'=>3, 'name'=>'Lena Hofer', 'avatar_name'=>str_repeat('c', 32).'.jpg']),
+        'whatever else the row holds');
+is_same('<span class="avatar">&lt;</span>', avatar(['name'=>'<script>']), 'and a name is escaped');
 
 // ---------------------------------------------------------------------------
 case_('Who may look through whose eyes');
@@ -108,6 +84,9 @@ is_same(false, may_impersonate($adminRow, $adminRow),    'and nobody at themselv
 run("UPDATE accounts SET state='suspended' WHERE id=?", [$family]);
 is_same(false, may_impersonate($adminRow, one('SELECT * FROM accounts WHERE id=?', [$family])), 'nor at a suspended account');
 run("UPDATE accounts SET state='active' WHERE id=?", [$family]);
+// Asked of an open view on every request too (impersonator()), where the one
+// looking may have been suspended since.
+is_same(false, may_impersonate(['state'=>'suspended'] + $adminRow, $familyRow), 'and nobody whose own login is suspended looks at anybody');
 
 case_('Looking, and getting back out');
 sign_in_as($trainer);
@@ -137,6 +116,30 @@ is_same($trainer, (int)scalar('SELECT actor_id FROM audit_log ORDER BY id DESC L
         'the trainer, not the account they are borrowing');
 act('impersonate', ['mode'=>'stop']);
 
+case_('Viewing as somebody is looking: nothing goes through but the view’s end');
+/* Every action would speak as the person looked at. An administrator viewing a
+   trainer's portal could save a child, report a problem or give a consent in
+   the trainer's name - or start a view as the trainer, which „Ansicht beenden"
+   then turned into the trainer's own session, without her password. */
+$looked = make_student(['first_name'=>'Angesehen', 'last_name'=>'Kind']);
+sign_in_as($admin);
+act('impersonate', ['id'=>(string)$trainer, 'mode'=>'start']);
+$untouched = fn(): array => [one('SELECT name,newsletter FROM accounts WHERE id=?', [$trainer]), (int)scalar('SELECT COUNT(*) FROM feedback'),
+    (int)scalar('SELECT COUNT(*) FROM consent_log'), (int)scalar('SELECT revision FROM students WHERE id=?', [$looked])];
+$before = $untouched();
+foreach (['preferences_save' => ['name'=>'Anders', 'locale'=>'de', 'newsletter'=>'1'],
+          'feedback_send'    => ['message'=>'Im Namen der Trainerin', 'page'=>'dashboard'],
+          'student_save'     => ['id'=>(string)$looked, 'revision'=>'1', 'first_name'=>'Umbenannt', 'last_name'=>'Kind', 'status'=>'active'],
+          'impersonate'      => ['id'=>(string)$family, 'mode'=>'start']] as $action => $fields)
+    throws(fn() => act($action, $fields), $action.' is refused while viewing, in the one sentence', viewing_refusal());
+is_same($before, $untouched(), 'and nothing was written: no consent, no report, no change to the child');
+is_same([$trainer, $admin], [(int)current_user()['id'], (int)(impersonator()['id'] ?? 0)], 'the view is still the administrator’s, of the trainer');
+act('impersonate', ['mode'=>'stop']);
+is_same([$admin, null], [(int)current_user()['id'], impersonator()], 'stopping it goes through, back to the administrator herself');
+act('impersonate', ['id'=>(string)$trainer, 'mode'=>'start']);
+act('logout', []);
+is_same([null, null], [current_user(), impersonator()], 'and so does signing out');
+
 case_('A view that timed out is not handed to whoever signs in next on that browser');
 /* Security review F1. The trainer's „Portal als … ansehen" session expired; the
    impersonator id was left in the session; the next person to sign in on that
@@ -144,7 +147,7 @@ case_('A view that timed out is not handed to whoever signs in next on that brow
    session - by time, by a changed password, by signing in, by an invitation
    accepted - ends the view with it, and stopping a view needs somebody signed
    in to stop it for. */
-$visitor = make_account(['username'=>'naechste.person', 'email'=>'naechste@beispiel.test',
+$visitor = make_account(['email'=>'naechste@beispiel.test',
                          'password_hash'=>password_hash('Federball-2026-Halle!', PASSWORD_DEFAULT)]);
 sign_in_as($trainer);
 act('impersonate', ['id'=>(string)$family, 'mode'=>'start']);
@@ -175,14 +178,15 @@ throttle_clear('auth-ip', $_SERVER['REMOTE_ADDR'] ?? 'local');
 // Left over in the raw session, where only sign_in() itself can drop it:
 // nothing asks who is signed in before the sign-in does.
 $_SESSION['impersonator_id'] = $trainer;
-submit('login', ['username'=>'naechste.person', 'password'=>'Federball-2026-Halle!']);
+submit('login', ['login'=>'naechste@beispiel.test', 'password'=>'Federball-2026-Halle!']);
 is_same($visitor, (int)(current_user()['id'] ?? 0), 'the next person signs in as themselves');
 ok(!isset($_SESSION['impersonator_id']), 'into a session that carries no view of anybody');
 is_same(null, impersonator(), 'with no view of anybody else’s left over');
 throws(fn() => act('impersonate', ['mode'=>'stop']), 'and „Ansicht beenden“ does not make them the trainer', 'nicht als jemand anderer');
 is_same($visitor, (int)current_user()['id'], 'they are still themselves');
 sign_out();
-$invited = make_account(['username'=>'neu.eingeladen', 'email'=>'neu.eingeladen@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+$invited = make_account(['email'=>'neu.eingeladen@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
+make_student(['first_name'=>'Neu', 'last_name'=>'Eingeladen', 'email'=>'neu.eingeladen@beispiel.test', 'account_id'=>$invited]);
 set_setting('privacy_ready', true);
 $_SESSION['impersonator_id'] = $trainer;
 $_SESSION['activation_hash'] = hash('sha256', make_token($invited, 'invite'));
@@ -199,6 +203,41 @@ act('impersonate', ['id'=>(string)$family, 'mode'=>'start']);
 act('logout', []);
 is_same(null, impersonator(), 'nothing of it survives');
 is_same(null, current_user(), 'and nobody is signed in');
+
+case_('A view lasts as long as the viewer’s own login, and takes its whole session with it');
+/* Security re-review N1. impersonator() answered nobody once the viewer's row
+   was gone, and everything that limits a view asks it - the read-only guard,
+   the chat's narrowing, the bar at the top - so a trainer whose login was
+   deleted while she looked through a child's eyes kept the child's session,
+   with no bar and no limits: the child's private chats to read, and the child's
+   name to act in. Her row is asked on every request now: still there, still
+   allowed to look, and signed in with the auth_version the view began with.
+   Each way her login ends breaks one of those, and ends the session. */
+$looked = make_account(['role'=>'student', 'name'=>'Familie Angesehen']);
+// What another phone does meanwhile, in a session of its own; this phone's is
+// put back afterwards, as the next request finds it.
+$onAnotherPhone = function (int $who, string $action, array $fields): void {
+    $thisPhone = $_SESSION;
+    sign_in_as($who);
+    act($action, $fields);
+    $_SESSION = $thisPhone;
+};
+foreach (['an administrator deletes her login'        => fn(array $viewer) => $onAnotherPhone($admin, 'account_state',
+                                                             ['id'=>(string)$viewer['id'], 'mode'=>'delete', 'confirmation'=>$viewer['email']]),
+          'an administrator suspends it'              => fn(array $viewer) => $onAnotherPhone($admin, 'account_state',
+                                                             ['id'=>(string)$viewer['id'], 'mode'=>'suspend']),
+          'she changes her password on her own phone' => fn(array $viewer) => $onAnotherPhone((int)$viewer['id'], 'password_change',
+                                                             ['current_password'=>'Test-Only-Password-2026', 'password'=>'Neues-Passwort-2026!', 'password_confirm'=>'Neues-Passwort-2026!'])]
+         as $what => $ending) {
+    $viewer = one('SELECT * FROM accounts WHERE id=?', [make_account(['role'=>'trainer', 'name'=>'Trainerin auf Zeit'])]);
+    view_as((int)$viewer['id'], $looked);
+    is_same([$looked, (int)$viewer['id']], [(int)(current_user()['id'] ?? 0), (int)(impersonator()['id'] ?? 0)], $what.': first she looks through the child’s eyes');
+    $ending($viewer);
+    is_same(null, current_user(true), $what.': her phone’s next request finds nobody signed in, so nothing is drawn for the child');
+    ok(!isset($_SESSION['user_id']) && !isset($_SESSION['auth_version']) && !isset($_SESSION['impersonator_id']),
+       $what.': the session holds neither the child nor the view');
+    is_same(null, impersonator(), $what.': and nobody is looking');
+}
 
 // ---------------------------------------------------------------------------
 case_('A report carries what nobody would think to write down');
@@ -235,8 +274,14 @@ is_same('payments', $params['tab'] ?? '', 'and the same tab');
 [$target, $params] = act('feedback_send', ['message'=>'Die Liste ist leer.', 'page'=>'news',
     'return_page'=>'news', 'return_id'=>'0', 'return_tab'=>'']);
 is_same(['news', []], [$target, $params], 'a page without an id gets none made up for it');
+// While the router answers, its own list of pages is the rule (allowed_pages()):
+// shaped like a page and not one of them, it is the overview, as after a refusal.
+$GLOBALS['allowed'] = ['dashboard', 'student', 'news'];
+[$target] = act('feedback_send', ['message'=>'Die Seite gibt es nicht.', 'page'=>'layout', 'return_page'=>'layout']);
+unset($GLOBALS['allowed']);
+is_same('dashboard', $target, 'a page the router does not open leads to the overview');
 sign_in_as($admin);
-run("UPDATE feedback SET state='done' WHERE message IN ('Der Beleg ist weg.','Die Liste ist leer.')");
+run("UPDATE feedback SET state='done' WHERE message IN ('Der Beleg ist weg.','Die Liste ist leer.','Die Seite gibt es nicht.')");
 
 case_('Reports can be worked through');
 is_same(1, unread_feedback(), 'one is new');
@@ -264,19 +309,20 @@ is_same(2 * 1024 ** 3, ini_bytes('2G'), 'in gigabytes');
 is_same(4096, ini_bytes('4096'), 'and plain bytes');
 
 case_('A message to the trainer reaches the trainer');
-// The staff list said role IN ('admin','manager'). 'manager' is what trainers
-// were called before 0.2, so a family writing in reached the administrator and
-// nobody else — on a portal whose whole point is that she reads the messages.
+// The staff list once said role IN ('admin','manager'). 'manager' is what
+// trainers were called before 0.2, so a family writing in reached the
+// administrator and nobody else. Now a family writes to a person (ADR 0022):
+// the one written to is told, and nobody else's bell rings for it.
 sign_in_as($family);
 $beforeTrainer = unread_notifications($trainer);
 $beforeAdmin = unread_notifications($admin);
-act('message_send', ['subject'=>'Frage zum Schläger', 'body'=>'Welchen sollen wir kaufen?']);
+act('message_send', ['to'=>(string)$trainer, 'body'=>'Welchen Schläger sollen wir kaufen?']);
 is_same($beforeTrainer + 1, unread_notifications($trainer), 'the trainer is told');
-is_same($beforeAdmin + 1, unread_notifications($admin), 'and so is the administrator');
+is_same($beforeAdmin, unread_notifications($admin), 'and the administrator is not: it was written to the trainer');
 
 case_('And her reply reaches the family');
 sign_in_as($trainer);
-$thread = (int)scalar('SELECT MAX(id) FROM threads');
+$thread = pair_thread($family, $trainer);
 $beforeFamily = unread_notifications($family);
 act('message_send', ['thread_id'=>(string)$thread, 'body'=>'Ich bringe zwei mit.']);
 is_same($beforeFamily + 1, unread_notifications($family), 'the family is told');
@@ -300,7 +346,7 @@ $setupShown(false);
 is_same(['dashboard','students','classes','attendance','payments','messages','settings'], menu_routes($adminUser),
         'and the seven alone once it is hidden');
 is_same([t('Übersicht','Overview'), t('Schüler','Students'), t('Kurse','Courses'), t('Anwesenheit','Attendance'),
-         t('Geld','Money'), t('Nachrichten','Messages'), t('Einstellungen','Settings')],
+         t('Geld','Money'), t('Chats','Chats'), t('Einstellungen','Settings')],
         array_column(nav_entries($adminUser), 'label'), 'named the way the portal names them');
 is_same(['dashboard','students','classes','attendance','payments','messages','manage'], menu_routes($trainerUser),
         'a trainer\'s seventh is Verwaltung, the page she can open, not Einstellungen');
@@ -312,37 +358,54 @@ foreach ([$adminUser, $trainerUser, $familyUser] as $who)
 ok(!str_contains(sidebar_nav($adminUser, 'attendance'), 'nav-section'), 'and the side menu draws no section at all');
 is_same(array_values(array_unique(menu_routes($adminUser))), menu_routes($adminUser), 'no destination is offered twice');
 
-// One login is one student (ADR 0010): the family's second entry is their own
-// student's page, called „Profil", and a login no student points to has no
-// record to show, so it gets no entry rather than one that leads nowhere.
+// One login is one student (ADR 0010): a family's „Beiträge" and „Profil" are
+// both their own student's page, and a login no student points to has no
+// record to show, so it gets neither rather than two that lead nowhere. News
+// reaches a family through the bell and the overview, not an entry (owner,
+// 2026-10-07).
 is_same(0, (int)scalar('SELECT COUNT(*) FROM students WHERE account_id=?', [$family]), 'this family login has no student');
-is_same(['dashboard','messages','news'], menu_routes($familyUser), 'so it sees three pages');
-is_same(null, people_nav_entry($familyUser), 'and no „Profil" entry that would lead nowhere');
+is_same(['dashboard','messages'], menu_routes($familyUser), 'so it sees two pages');
+is_same([], family_nav_entries($familyUser), 'and no „Beiträge" or „Profil" entry that would lead nowhere');
 $ownLogin = make_account(['role'=>'student', 'name'=>'Familie Profil']);
 $ownStudent = make_student(['first_name'=>'Pia', 'last_name'=>'Profil', 'account_id'=>$ownLogin, 'email'=>'profil@example.test']);
 $otherStudent = make_student(['first_name'=>'Nicht', 'last_name'=>'Ihres']);
 $ownUser = one('SELECT * FROM accounts WHERE id=?', [$ownLogin]);
-is_same(['dashboard','student','messages','news'], menu_routes($ownUser), 'a family with a student sees four pages');
-$profile = people_nav_entry($ownUser);
+is_same(['dashboard','student','messages','student'], menu_routes($ownUser), 'a family with a student sees four: Übersicht, Beiträge, Chats, Profil');
+is_same([['id'=>$ownStudent,'tab'=>'payments'], ['id'=>$ownStudent]], array_values(array_column(array_filter(nav_entries($ownUser), fn($e) => $e['route'] === 'student'), 'params')),
+        'Beiträge is their student\'s money tab, Profil the page itself');
+$profile = family_nav_entries($ownUser)['profile'] ?? [];
 is_same(['student', ['id'=>$ownStudent], 'Profil'], [$profile['route'] ?? null, $profile['params'] ?? null, $profile['label'] ?? null],
-        'the second is „Profil", their own student\'s page');
+        '„Profil" is their own student\'s page');
 ok($ownStudent !== $otherStudent && ($profile['params']['id'] ?? null) !== $otherStudent, 'and never another student\'s');
 ok(str_contains(sidebar_nav($ownUser, 'dashboard'), 'href="'.e(url('student', ['id'=>$ownStudent])).'"'), 'the menu links there');
 
 case_('The bar along the bottom of a phone');
-/* Four places for staff and „Mehr" for the rest; five for a family and no „Mehr",
-   because everything on their side menu is on the bar already. The short word
-   is what fits five to a 320px screen; the full one is what a screen reader says. */
+/* An iOS tab bar (design language, Part 0 C3): four places for staff and „Mehr",
+   a page holding the rest (ADR 0028); four for a family and no „Mehr", because
+   everything on their side menu is on the bar already. The short word is what
+   the bar prints; the full one is what a screen reader says. */
 $bar = fn(array $who) => [array_column(mobile_nav_entries($who), 'route'), array_column(mobile_nav_entries($who), 'short')];
 foreach (['administrator' => $adminUser, 'trainer' => $trainerUser] as $role => $who)
-    is_same([['dashboard','students','messages','attendance'], ['Übersicht','Schüler','Post','Anwesend']], $bar($who),
-            'staff ('.$role.'): Übersicht, Schüler, Post, Anwesend');
-is_same([['dashboard','student','messages','news','profile'], ['Übersicht','Profil','Post','Neues','Konto']], $bar($ownUser),
-        'a family: Übersicht, Profil, Post, Neues, Konto');
-is_same(['dashboard','messages','news','profile'], array_column(mobile_nav_entries($familyUser), 'route'),
-        'and a login with no student simply has no Profil');
-is_same('Mein Konto', array_column(mobile_nav_entries($ownUser), 'label', 'route')['profile'] ?? null,
-        '„Konto" is read out as „Mein Konto"');
+    is_same([['dashboard','students','attendance','messages','more'], ['Übersicht','Schüler','Anwesend','Chats','Mehr']], $bar($who),
+            'staff ('.$role.'): Übersicht, Schüler, Anwesend, Chats, and „Mehr" last');
+is_same([['dashboard','student','messages','student'], ['Übersicht','Beiträge','Chats','Profil']], $bar($ownUser),
+        'a family: Übersicht, Beiträge, Chats, Profil');
+is_same(['dashboard','messages'], array_column(mobile_nav_entries($familyUser), 'route'),
+        'and a login with no student simply has no Beiträge and no Profil');
+/* One word per place (the audit, N6): the menu, the bar, what a screen reader
+   says and the page's title all call it „Chats". */
+is_same(['Chats', 'Chats'], [array_column(mobile_nav_entries($ownUser), 'label', 'route')['messages'] ?? null, array_column(nav_entries($ownUser), 'label', 'route')['messages'] ?? null],
+        '„Chats" is read out as „Chats", and the menu says it too');
+sign_in_as($ownLogin);
+ok(str_contains(render_view('messages'), '<h1>'.e(t('Chats','Chats')).'</h1>'), 'as the page\'s title does');
+sign_out();
+// Both of a family's entries lead to the same page; the tab decides which one is lit.
+[$money, $record] = array_values(array_filter(mobile_nav_entries($ownUser), fn($e) => $e['route'] === 'student'));
+foreach (['payments' => 'Beiträge', 'invoices' => 'Beiträge', 'details' => 'Profil', 'contacts' => 'Profil', '' => 'Profil'] as $tab => $lit)
+    is_same([$lit], array_column(array_filter([$money, $record], fn($e) => nav_is_current($e['route'], 'student', $ownUser, $e['params'], $tab)), 'short'),
+            'on the child\'s page'.($tab !== '' ? ' at tab='.$tab : '').' only „'.$lit.'" is lit');
+is_same(['Profil'], array_column(array_filter([$money, $record], fn($e) => nav_is_current($e['route'], 'profile', $ownUser, $e['params'], '')), 'short'),
+        'and on Mein Konto, reached from Profil, „Profil"');
 /** A whole page as the browser gets it: the view inside the layout. */
 function shell_page(string $page, array $query = []): string {
     $content = render_view($page, $query);
@@ -350,12 +413,28 @@ function shell_page(string $page, array $query = []): string {
     ob_start(); require APP_ROOT.'/views/layout.php'; $html = (string)ob_get_clean(); $_GET = $restore;
     return $html;
 }
+/** The bar as a page draws it: the address of each of its links. */
+$drawnBar = function (string $html): array {
+    preg_match('~<nav class="mobile-nav".*?</nav>~s', $html, $nav);
+    preg_match_all('~href="([^"]*)"~', $nav[0] ?? '', $hrefs);
+    return array_map(fn($href) => html_entity_decode($href, ENT_QUOTES | ENT_HTML5, 'UTF-8'), $hrefs[1]);
+};
 sign_in_as($trainer);
-ok(str_contains(shell_page('dashboard'), 'id="menu-toggle"'), 'staff have „Mehr", which opens the side menu');
+is_same(url('more'), array_slice($drawnBar(shell_page('dashboard')), -1)[0] ?? null, 'staff\'s bar, as drawn, ends in „Mehr", a page');
 sign_in_as($ownLogin);
 $familyFrame = shell_page('dashboard');
-ok(!str_contains($familyFrame, 'id="menu-toggle"'), 'a family has no „Mehr"');
-ok(str_contains($familyFrame, 'href="'.e(url('profile')).'"'), 'their Konto is on the bar instead');
+ok($drawnBar($familyFrame) !== [] && !in_array(url('more'), $drawnBar($familyFrame), true), 'a family\'s bar has no „Mehr"');
+// The side menu that slid in over a phone (ADR 0011) is gone, and with it
+// everything that only it used; on a phone the sidebar is simply not shown.
+$layoutSource = (string)file_get_contents(APP_ROOT.'/views/layout.php');
+$scriptSource = (string)file_get_contents(APP_ROOT.'/public/assets/app.js');
+foreach (['menu-toggle', 'menu-backdrop', 'menu-close', 'menu-open', '#sidebar', 'id="sidebar"'] as $drawer)
+    ok(!str_contains($layoutSource, $drawer) && !str_contains($scriptSource, $drawer), 'nothing of the drawer is left: no '.$drawer.' in the layout or in app.js');
+$sidebarOnPhone = array_filter(css_matching(css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css')), '/^\.sidebar$/'),
+    fn($r) => $r['property'] === 'display' && css_max_width($r['media']) >= 320);
+is_same(['none'], array_values(array_unique(array_column($sidebarOnPhone, 'value'))), 'and on a phone the sidebar is display:none, nothing else');
+ok(str_contains(render_view('student', ['id'=>$ownStudent]), 'href="'.e(url('profile')).'"'),
+   'their Mein Konto is a row on Profil instead, „Anmeldung und Darstellung"');
 
 // ---------------------------------------------------------------------------
 case_('Every page a person may open is on their menu, or reached from the entry it belongs to');
@@ -428,12 +507,18 @@ $reaches = function (array $who, string $owner, array $ownerParams, string $targ
             if ($linked === $target) return true;
             // Only pages that belong to the same entry: the way there has to
             // stay under the entry that is highlighted.
-            if ($depth < 2 && !in_array($linked, ['download', 'print'], true) && nav_owner($linked, $who) === $owner)
+            if ($depth < 2 && $linked !== 'download' && nav_owner($linked, $who) === $owner)
                 $queue[] = [$linked, $linkedQuery, $depth + 1];
         }
     }
     return false;
 };
+/* Reached on purpose from nowhere: „Dein Foto" is asked once, where the first
+   password lands (activate), and never again (ADR 0031). Named with what must
+   stay true of it, so the exemption cannot outlive its reason. */
+$reachedOnce = ['welcome' => "if(\$photo) return ['welcome',[]];"];
+foreach ($reachedOnce as $page => $landing)
+    ok(str_contains((string)file_get_contents(APP_ROOT.'/app/actions.php'), $landing), $page.' is where a first password lands, and only there');
 $people = ['an administrator, setup unfinished' => [$admin, true], 'an administrator, setup hidden' => [$admin, false],
            'a trainer' => [$trainer, false], 'a family' => [$ownLogin, false]];
 $checkedPairs = 0;
@@ -441,11 +526,16 @@ foreach ($people as $who => [$accountId, $setupOpen]) {
     $setupShown($setupOpen);
     sign_in_as($accountId);
     $user = current_user();
-    $entries = [];
-    foreach (array_merge(nav_entries($user), mobile_nav_entries($user)) as $entry) $entries[$entry['route']] ??= $entry['params'] ?? [];
+    // A route can stand for more than one entry: a family's Beiträge and Profil
+    // are both their child's page. $entries keeps the first, $entryParams all.
+    $entries = []; $entryParams = [];
+    foreach (array_merge(nav_entries($user), mobile_nav_entries($user)) as $entry) {
+        $entries[$entry['route']] ??= $entry['params'] ?? [];
+        $entryParams[$entry['route']][] = $entry['params'] ?? [];
+    }
     $frameLinks = array_column($linksOn(shell_page('dashboard')), 0);
     foreach ($allowed as $page) {
-        if (in_array($page, $signedOutOnly, true)) continue;
+        if (in_array($page, $signedOutOnly, true) || isset($reachedOnce[$page])) continue;
         if (in_array($page, $staffOnly, true) && !is_staff($user)) continue;
         if (in_array($page, $adminOnly, true) && !is_admin($user)) continue;
         $checkedPairs++;
@@ -453,7 +543,7 @@ foreach ($people as $who => [$accountId, $setupOpen]) {
         $instead = isset($redirects[$page]) && function_exists($redirects[$page]) ? $redirects[$page]($user) : null;
         if ($instead !== null) {
             [$landing, $landingParams] = $instead;
-            ok(isset($entries[$landing]) && $entries[$landing] == $landingParams,
+            ok(in_array($landingParams, $entryParams[$landing] ?? [], false),
                $page.' sends '.$who.' to '.$landing.' '.json_encode($landingParams).', one of their own entries');
         } elseif (isset($entries[$page])) {
             is_same($page, $owner, $page.' is on the menu of '.$who.', and its own entry is the one highlighted');
@@ -464,9 +554,19 @@ foreach ($people as $who => [$accountId, $setupOpen]) {
             ok(isset($entries[$owner]) && $reaches($user, $owner, $entries[$owner], $page),
                $page.' is linked from '.$owner.' for '.$who.', or from a page that belongs to it');
         }
-        if ($owner !== '')
-            is_same([$owner], array_values(array_filter(array_keys($entries), fn($route) => nav_is_current($route, $page, $user))),
-                    'while '.$page.' is open, only '.$owner.' is highlighted for '.$who);
+        // One entry lit in each menu, checked per menu: the sidebar lights the
+        // page's own entry, and so does the bar, unless the entry is on
+        // „Mehr" - then „Mehr" is lit (ADR 0028 §4), and on a computer the
+        // sidebar has no „Mehr" to light.
+        if ($owner !== '') {
+            $lit = fn(array $menu) => array_values(array_unique(array_column(array_filter($menu, fn($e) => nav_is_current($e['route'], $page, $user)), 'route')));
+            $inSidebar = in_array($owner, array_column(nav_entries($user, false), 'route'), true);
+            $onBar = in_array($owner, array_column(mobile_nav_entries($user, false), 'route'), true);
+            is_same($inSidebar ? [$owner] : [], $lit(nav_entries($user, false)),
+                    'while '.$page.' is open, the side menu lights '.($inSidebar ? 'only '.$owner : 'nothing').' for '.$who);
+            is_same($onBar ? [$owner] : (is_staff($user) ? ['more'] : []), $lit(mobile_nav_entries($user, false)),
+                    'and the bar lights '.($onBar ? 'only '.$owner : '„Mehr"').' for '.$who);
+        }
     }
 }
 ok($checkedPairs >= 50, $checkedPairs.' pages checked across four kinds of person');
@@ -474,10 +574,10 @@ is_same(['student', ['id'=>$ownStudent]], students_list_instead($ownUser), 'a fa
 is_same(['dashboard', []], students_list_instead($familyUser), 'one with no student to the overview');
 foreach ([$adminUser, $trainerUser] as $staffUser)
     is_same(null, students_list_instead($staffUser), 'and staff are not sent anywhere: the list is theirs');
-// A family's phone has no side menu, so its way to the notice is Konto.
+// A family's phone has no side menu, so its way to the notice is Mein Konto.
 sign_in_as($ownLogin);
 ok(in_array('privacy', array_column($linksOn(render_view('profile')), 0), true) && str_contains(render_view('profile'), e('Datenschutz und Hilfe')),
-   'on a family\'s phone the privacy notice is under Konto, in „Datenschutz und Hilfe"');
+   'on a family\'s phone the privacy notice is under Mein Konto, in „Datenschutz und Hilfe"');
 $setupShown(true);
 
 case_('Every menu entry names an icon that exists and a page the router allows');
@@ -503,6 +603,129 @@ $drawn = [];
 foreach ($links as [, $route, $inside])
     $drawn[$route] = preg_match('~<span class="count"[^>]*>(\d+)</span>~', $inside, $n) ? (int)$n[1] : 0;
 is_same(array_column(nav_entries($adminUser), 'count', 'route'), $drawn, 'the side menu draws each number on its own entry and nowhere else');
+// „Mehr" draws the entries the bar has no room for with the same nav_link(),
+// so the number is on Kurse's row there too; „Mehr" itself carries none.
+sign_in_as($admin);
+preg_match_all('~<a class="editor-list-item nav-row" href="[^"]*page=(\w+)[^"]*"[^>]*>(.*?)</a>~s', render_view('more'), $links, PREG_SET_ORDER);
+$drawn = [];
+foreach ($links as [, $route, $inside])
+    $drawn[$route] = preg_match('~<span class="count"[^>]*>(\d+)</span>~', $inside, $n) ? (int)$n[1] : 0;
+is_same(array_column(more_entries($adminUser), 'count', 'route') + ['profile' => 0], $drawn,
+        '„Mehr" draws each number on its own row, and none on Mein Konto');
+is_same(1, $drawn['classes'] ?? null, 'Kurse\'s among them');
+is_same(0, array_column(mobile_nav_entries($adminUser), 'count', 'route')['more'] ?? null, 'and the bar\'s „Mehr" has no number of its own');
+
+case_('On a phone „Mehr" holds what the bar has no room for, worked out from the full menu');
+/* ADR 0028 §2 and §7: the full menu without the bar's routes, in its order, and
+   never listed a second time - so every entry is on the bar or on „Mehr",
+   whatever is added to the menu later. */
+$moreRoutes = fn(array $who) => array_column(more_entries($who), 'route');
+$setupShown(true);
+is_same(['start','classes','payments','settings'], $moreRoutes($adminUser),
+        'an administrator while the checklist is unfinished: Einrichtung, Kurse, Geld, Einstellungen');
+$setupShown(false);
+is_same(['classes','payments','settings'], $moreRoutes($adminUser), 'once it is hidden: Kurse, Geld, Einstellungen');
+is_same(['classes','payments','manage'], $moreRoutes($trainerUser), 'a trainer: Kurse, Geld, Verwaltung');
+is_same([], more_entries($ownUser), 'a family has no „Mehr", and nothing for one');
+foreach (['an administrator, setup unfinished' => [$adminUser, true], 'an administrator, setup hidden' => [$adminUser, false],
+          'a trainer' => [$trainerUser, false], 'a family' => [$ownUser, false]] as $who => [$person, $open]) {
+    $setupShown($open);
+    $onPhone = array_merge(array_column(mobile_nav_entries($person, false), 'route'), $moreRoutes($person));
+    foreach (nav_entries($person, false) as $entry)
+        ok(in_array($entry['route'], $onPhone, true), $entry['label'].' is on the bar or on „Mehr" for '.$who);
+}
+
+case_('On a phone the back button leads up to the page above, named as the bar names it');
+/* nav_back()'s table row by row (ADR 0028 §5), for each kind of person, through
+   its $query parameter as an address would give it. A row is the page and its
+   address, then the name of the page above, where the button leads, and what it
+   says where that is not the name: past twelve characters, „Zurück". No name:
+   nothing is above. Every place it leads is a page the router lets that person
+   open. */
+$walk = function (string $who, array $rows) use ($allowed, $staffOnly, $adminOnly): void {
+    $user = current_user();
+    foreach ($rows as $row) {
+        [$page, $query, $name, $target, $params, $label] = $row + [null, [], null, '', [], null];
+        $up = nav_back($page, $user, $query);
+        $where = $page.($query ? '?'.http_build_query($query) : '').' for '.$who;
+        if ($name === null) { is_same(null, $up, 'nothing is above '.$where); continue; }
+        is_same([$label ?? $name, $name, url($target, $params)], [$up['label'] ?? null, $up['name'] ?? null, $up['href'] ?? null],
+                'above '.$where.': „'.($label ?? $name).'"'.($label !== null ? ', for '.$name : '').', to '.$target);
+        ok(in_array($target, $allowed, true) && (is_staff($user) || !in_array($target, $staffOnly, true))
+           && (is_admin($user) || !in_array($target, $adminOnly, true)), 'and '.$target.' is a page the router lets '.$who.' open');
+    }
+};
+$shortCourse = make_class(['name'=>'Anfänger']);
+$longCourse = make_class(['name'=>'Kindertraining am Mittwoch']);
+sign_in_as($admin);
+$draftKey = (string)act('student_draft', ['first_name'=>'Mia', 'last_name'=>'Oben', 'birth_date'=>'', 'course'=>'none', 'status'=>'active'])[1]['draft'];
+$setupShown(true);
+$walk('an administrator', [
+    ['dashboard', []], ['students', []], ['attendance', []], ['messages', []], ['more', []], ['privacy', []],
+    ['student', ['id'=>$kid], 'Schüler', 'students'],
+    ['student', ['id'=>$kid, 'tab'=>'payments'], 'Schüler', 'students'],
+    ['student_new', [], 'Schüler', 'students'],
+    ['student_new', ['from'=>'dashboard'], 'Übersicht', 'dashboard'],
+    ['student_new', ['from'=>'start'], 'Einrichtung', 'start'],
+    ['student_new', ['draft'=>$draftKey, 'from'=>'dashboard'], 'Schritt 1', 'student_new', ['draft'=>$draftKey, 'step'=>'1', 'from'=>'dashboard']],
+    ['student_new', ['draft'=>$draftKey, 'step'=>'1', 'from'=>'dashboard'], 'Übersicht', 'dashboard'],
+    ['classes', [], 'Mehr', 'more'],
+    ['classes', ['id'=>$shortCourse], 'Kurse', 'classes'],
+    ['classes', ['new'=>'1'], 'Kurse', 'classes'],
+    ['classes', ['id'=>$shortCourse, 'edit'=>'1'], 'Anfänger', 'classes', ['id'=>$shortCourse]],
+    ['classes', ['id'=>$longCourse, 'edit'=>'1'], 'Kindertraining am Mittwoch', 'classes', ['id'=>$longCourse], 'Zurück'],
+    ['payments', [], 'Mehr', 'more'],
+    ['invoices', [], 'Mehr', 'more'],
+    ['download', ['invoice'=>'1'], 'Geld', 'payments'],
+    ['settings', [], 'Mehr', 'more'],
+    ['settings', ['tab'=>'system'], 'Mehr', 'more'],
+    ['start', [], 'Mehr', 'more'],
+    ['manage', [], 'Einstellungen', 'settings', [], 'Zurück'],
+    ['accounts', [], 'Einstellungen', 'settings', [], 'Zurück'],
+    ['history', [], 'Einstellungen', 'settings', [], 'Zurück'],
+    ['history', ['entity'=>'students', 'record'=>(string)$kid], 'Änderungen', 'history'],
+    ['messages', ['id'=>$thread], 'Chats', 'messages'],
+    ['messages', ['new'=>'1'], 'Chats', 'messages'],
+    ['messages', ['with'=>(string)$family], 'Chats', 'messages'],
+    ['messages', ['id'=>$thread, 'members'=>'1'], 'Chat', 'messages', ['id'=>$thread, '#'=>'chat-end']],
+    ['outbox', [], 'Chats', 'messages'],
+    ['news', [], 'Chats', 'messages'],
+    ['news', ['id'=>'1'], 'Neuigkeiten', 'news'],
+    ['news', ['new'=>'1'], 'Neuigkeiten', 'news'],
+    ['profile', [], 'Mehr', 'more'],
+]);
+$setupShown(false);
+$walk('an administrator, setup hidden', [
+    ['start', [], 'Einstellungen', 'settings', [], 'Zurück'],
+    ['student_new', ['from'=>'start'], 'Einrichtung', 'start'],
+]);
+sign_in_as($trainer);
+$walk('a trainer', [
+    ['dashboard', []], ['students', []], ['more', []],
+    ['student', ['id'=>$kid], 'Schüler', 'students'],
+    ['classes', [], 'Mehr', 'more'],
+    ['payments', [], 'Mehr', 'more'],
+    ['invoices', [], 'Mehr', 'more'],
+    ['manage', [], 'Mehr', 'more'],
+    ['accounts', [], 'Verwaltung', 'manage'],
+    ['news', [], 'Chats', 'messages'],
+    ['profile', [], 'Mehr', 'more'],
+]);
+// A family's own child's page is two of their entries, Beiträge and Profil, so
+// nothing is above it on either tab; for staff the same page is below Schüler.
+sign_in_as($ownLogin);
+$walk('a family', [
+    ['dashboard', []], ['messages', []], ['privacy', []],
+    ['student', ['id'=>$ownStudent]],
+    ['student', ['id'=>$ownStudent, 'tab'=>'payments']],
+    ['student', ['id'=>$ownStudent, 'tab'=>'invoices']],
+    ['profile', [], 'Profil', 'student', ['id'=>$ownStudent]],
+    ['download', ['invoice'=>'1'], 'Profil', 'student', ['id'=>$ownStudent]],
+    ['news', [], 'Übersicht', 'dashboard'],
+    ['news', ['id'=>'1'], 'Neuigkeiten', 'news'],
+    ['messages', ['id'=>$thread], 'Chats', 'messages'],
+]);
+$setupShown(true);
 
 // ---------------------------------------------------------------------------
 case_('A menu in the top bar is a <details> of its own kind, with a panel');
@@ -526,7 +749,8 @@ $drawnMenus = function (string $html): array {
     $class = fn(string $name) => "contains(concat(' ', normalize-space(@class), ' '), ' $name ')";
     $xpath = new DOMXPath($dom);
     $menus = [];
-    foreach ($xpath->query('//header['.$class('topbar').']//details') as $details) {
+    // The bar's own menus; a <details> inside a menu's panel would be part of that menu.
+    foreach ($xpath->query('//header['.$class('topbar').']//details[not(ancestor::details)]') as $details) {
         $first = $xpath->query('*[1]', $details)->item(0);
         $menus[] = [
             'menu'    => preg_match('~(^|\s)topbar-menu(\s|$)~', $details->getAttribute('class')) === 1,
@@ -548,6 +772,42 @@ foreach (['the administrator' => $admin, 'a family' => $family] as $who => $acco
         ok($menu['panel'], 'and what it opens is one .topbar-menu-panel directly inside it');
     }
     is_same(1, $menus[0]['count'] ?? null, 'the bell drawn for '.$who.' carries its number');
+}
+
+case_('The account menu holds „Mein Konto" and „Abmelden", and nothing else, whoever it is drawn for');
+/* What is in it was checked with the presence, and the check went with it
+   (ADR 0026). The status and the emoji grid it held are gone; what stays is a
+   way to the account and a way out, each in no form but its own. */
+$accountMenu = function (string $html): array {
+    $dom = new DOMDocument();
+    $quiet = libxml_use_internal_errors(true);
+    $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
+    libxml_clear_errors(); libxml_use_internal_errors($quiet);
+    $x = new DOMXPath($dom);
+    $menus = $x->query("//header//details[contains(concat(' ', normalize-space(@class), ' '), ' account-menu ')]");
+    if ($menus->length !== 1) return ['menus' => $menus->length];
+    $menu = $menus->item(0);
+    $posted = [];
+    foreach ($x->query('.//form', $menu) as $form)
+        foreach ($x->query('.//input[@name="action"]', $form) as $action) $posted[] = $action->getAttribute('value');
+    return ['menus'   => 1,
+            'label'   => (string)$x->query('summary', $menu)->item(0)?->getAttribute('aria-label'),
+            'profile' => $x->query('.//a[@href="'.url('profile').'"]', $menu)->length,
+            'links'   => $x->query('.//a', $menu)->length,
+            'posted'  => $posted];
+};
+foreach (['a family' => [$family, null], 'a trainer' => [$trainer, null], 'an administrator' => [$admin, null],
+          'a trainer looking through a family’s eyes' => [$family, $trainer]] as $who => [$shown, $looking]) {
+    $looking === null ? sign_in_as($shown) : view_as($looking, $shown);
+    $page = render_page('dashboard');
+    $menu = $accountMenu($page);
+    $name = (string)scalar('SELECT name FROM accounts WHERE id=?', [$shown]);
+    is_same(1, $menu['menus'], 'the top bar drawn for '.$who.' has one account menu');
+    is_same('Konto-Menü: '.$name, $menu['label'] ?? null, 'its button says whose it is');
+    is_same([1, 1], [$menu['profile'] ?? 0, $menu['links'] ?? 0], 'it has one link, and it is „Mein Konto"');
+    is_same(['logout'], $menu['posted'] ?? null, 'and one form, which signs out');
+    is_same(1, deepest_form_nesting($page), 'and no form on the page is inside another');
+    unset($_SESSION['impersonator_id']);
 }
 
 case_('The stylesheet reader counts as a browser does');
@@ -635,39 +895,358 @@ $last = end($barPosition) ?: ['value' => 'nothing'];
 ok(in_array($last['value'], ['sticky', 'fixed', 'relative', 'absolute'], true),
    'the bar is positioned, so the panel is measured from it ('.$last['value'].')');
 
-/* The bell's number is a badge like the menu's: the same background, and its
-   figure in --on-accent, the colour made for text on the accent, which the
-   stylesheet sets once for light and once for each way of being dark. A
-   hard-coded colour on a number is how the bell's came to differ before. */
+/* The bell's number is a badge like the menu's: the same red background, and
+   its figure in --badge-ink, the colour made for text on that red in both
+   appearances (design language, Part 0 C12). A hard-coded colour on a number
+   is how the bell's came to differ before. */
 $bellCount = css_matching($css, '/^\.notification-pane>summary \.count$/');
 $menuCount = css_matching($css, '/^\.mobile-nav a \.count$/');
 $value = fn(array $rows, string $property) => array_column(array_filter($rows, fn($r) => $r['media'] === '' && $r['property'] === $property), 'value');
 ok($value($menuCount, 'background') !== [] && $value($bellCount, 'background') === $value($menuCount, 'background'),
    'the bell\'s number has the background of the menu\'s ('.implode(', ', $value($bellCount, 'background')).')');
-is_same(['var(--on-accent)'], $value($bellCount, 'color'), 'and its figure is in var(--on-accent)');
-$hardCoded = array_filter($css, fn($r) => $notPrint($r) && preg_match('/(\.notification-pane>summary|\.mobile-nav a|\.sidebar nav a)\)? \.count$/', $r['selector'])
-    && $r['property'] === 'color' && $r['value'] !== 'var(--on-accent)');
+is_same(['var(--badge-ink)'], $value($bellCount, 'color'), 'and its figure is in var(--badge-ink)');
+$hardCoded = array_filter($css, fn($r) => $notPrint($r) && preg_match('/(\.notification-pane>summary|\.mobile-nav a|\.sidebar nav a|\.nav-row)\)? \.count$/', $r['selector'])
+    && $r['property'] === 'color' && $r['value'] !== 'var(--badge-ink)');
 is_same([], array_map(fn($r) => $r['selector'].' { color: '.$r['value'].' }', array_values($hardCoded)), 'no rule gives a number any other colour');
 foreach ([':root' => 'light', 'html:not([data-theme=light])' => 'dark by the device', 'html[data-theme=dark]' => 'dark by choice'] as $selector => $mode)
     ok(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'), fn($r) => $r['property'] === '--on-accent') !== [],
        '--on-accent is set for '.$mode);
+ok(array_filter(css_matching($css, '/^:root$/'), fn($r) => $r['property'] === '--badge-ink') !== [],
+   '--badge-ink is set once, for both appearances');
+foreach (['html:not([data-theme=light])' => 'dark by the device', 'html[data-theme=dark]' => 'dark by choice'] as $selector => $mode)
+    is_same([], array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'), fn($r) => $r['property'] === '--badge-ink'), 'value'),
+            'and not set again for '.$mode.', where a second value would part the two');
 
-case_('A tap elsewhere, a swipe and Escape do what they should to an open menu');
+case_('A tap elsewhere, a swipe and Escape do what they should to an open menu, and a slow page shows it is coming');
 /* The behaviour itself, run against the real app.js in tests/topbar-menus.mjs:
-   the stylesheet can keep the bell still, but only the script closes it. */
+   the stylesheet can keep the bell still, but only the script closes it. The
+   same stand-in page sends a form twice and comes back to it with Back, and
+   taps links of every kind while the next page is slow to come (Part 0.4b); a
+   second page and an empty head for wait.js are the next page, carrying the
+   waiting page on. */
 $appJs = (string)file_get_contents(APP_ROOT.'/public/assets/app.js');
 ok(preg_match('/querySelectorAll\(\s*([\'"])\.topbar-menu\1\s*\)/', $appJs) === 1,
    'app.js finds the top bar\'s menus by the class the layout gives them');
 $node = function_exists('exec') ? trim((string)exec('command -v node 2>/dev/null')) : '';
 if ($node === '') {
     test_unsupported(array_merge(test_unsupported(),
-        ['what a tap, a swipe and Escape do to a top-bar menu (tests/topbar-menus.mjs needs node)']));
+        ['what a tap, a swipe and Escape do to a top-bar menu, a form sent twice and a slow page (tests/topbar-menus.mjs needs node)']));
 } else {
     $output = [];
     exec(escapeshellarg($node).' '.escapeshellarg(TEST_ROOT.'/topbar-menus.mjs').' 2>&1', $output, $status);
     $results = json_decode(implode("\n", $output), true);
     ok($status === 0 && is_array($results), 'tests/topbar-menus.mjs ran'.($status === 0 && is_array($results) ? '' : ': '.implode("\n", $output)));
-    ok(is_array($results) && count($results) >= 16, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
+    ok(is_array($results) && count($results) >= 87, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
     foreach (is_array($results) ? $results : [] as $result)
         ok($result['pass'] === true, $result['what'].($result['pass'] ? '' : ' — '.$result['detail']));
 }
+
+case_('A file from public/assets/ is linked at an address that changes when its bytes do');
+/* The release that brought the steady bell and the account menu changed app.css
+   and app.js, and VERSION stayed 0.6.0 - which was all their address carried. So
+   after the upload browsers kept the stylesheet they had: the bell jumped as it
+   used to, and the account menu opened unstyled across the page, and both were
+   reported as "still" broken. The address now carries a hash of the file's
+   bytes. Asked of a PHP of its own, because it is worked out once per request:
+   a file rewritten with the same length and the same date - which an FTP client
+   that keeps dates leaves behind - still gets a new address. */
+$tree = test_run_dir().'/asset-tree';
+if (!is_dir($tree.'/public/assets')) mkdir($tree.'/public/assets', 0777, true);
+$probe = $tree.'/public/assets/probe.css';
+$addressFor = function (string $bytes) use ($tree, $probe): string {
+    file_put_contents($probe, $bytes);
+    touch($probe, 1700000000);
+    clearstatcache();
+    $output = [];
+    exec(escapeshellarg(PHP_BINARY).' -r '.escapeshellarg('define("ROOT", $argv[1]); require $argv[2]; echo asset_path("probe.css");')
+        .' '.escapeshellarg($tree).' '.escapeshellarg(APP_ROOT.'/app/install.php').' 2>&1', $output, $status);
+    return $status === 0 ? implode("\n", $output) : 'failed: '.implode("\n", $output);
+};
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['whether an asset\'s address follows its bytes (needs exec)']));
+} else {
+    $first = $addressFor('a{color:red}');
+    $second = $addressFor('b{color:red}');
+    ok(preg_match('~^assets/probe\.css\?v=[0-9a-f]{8,}$~', $first) === 1, 'the address names the file and a hash ('.$first.')');
+    ok($second !== $first, 'the same length and the same date with other bytes is another address ('.$second.')');
+    is_same($first, $addressFor('a{color:red}'), 'and the same bytes again are the same address, so an unchanged file stays cached');
+}
+
+/* What the pages actually link: every file from public/assets/ in the drawn
+   layout is at exactly the address asset_url() gives it, with nothing appended,
+   for staff and for a family. */
+foreach (['the administrator' => $admin, 'a family' => $family] as $who => $accountId) {
+    sign_in_as($accountId);
+    preg_match_all('~\b(?:href|src)="([^"]*/assets/([^"?]+)[^"]*)"~', shell_page('dashboard'), $linked, PREG_SET_ORDER);
+    $names = array_column($linked, 2);
+    foreach (['app.css', 'wait.js', 'app.js'] as $needed) ok(in_array($needed, $names, true), 'the page drawn for '.$who.' links '.$needed);
+    foreach ($linked as [, $address, $name])
+        is_same(e(asset_url($name)), $address, $name.' is linked for '.$who.' at the address of its bytes');
+}
+foreach (glob(APP_ROOT.'/public/assets/*') as $shipped)
+    ok(str_ends_with(asset_url(basename($shipped)), '?v='.substr((string)hash_file('sha256', $shipped), 0, 12)),
+       basename($shipped).' is offered at the hash of its own bytes');
+$manifestIcons = array_column(web_manifest()['icons'], 'src');
+ok(count($manifestIcons) >= 1, 'the manifest offers the built-in icons ('.count($manifestIcons).')');
+foreach ($manifestIcons as $src)
+    is_same(asset_url(basename((string)parse_url($src, PHP_URL_PATH))), $src, 'the manifest offers '.basename((string)parse_url($src, PHP_URL_PATH)).' at the address of its bytes');
+
+/* And nothing builds such an address by hand: an "assets/" or a "?v=" written
+   into the PHP anywhere else - the release number appended in the layout, the
+   setup page's own link - is a second way, and the second way is the one that
+   goes stale. A path on disk (…/public/assets/…) is not an address. */
+$byHand = [];
+$sources = array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php'));
+foreach ($sources as $source) {
+    $relative = substr($source, strlen(APP_ROOT) + 1);
+    foreach (token_get_all((string)file_get_contents($source)) as $token) {
+        if (!is_array($token) || !in_array($token[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE, T_INLINE_HTML], true)) continue;
+        $text = str_replace('public/assets/', '', $token[1]);
+        if ($relative === 'app/install.php' && in_array($token[1], ["'assets/'", "'?v='"], true)) continue;   // asset_path() itself
+        if (str_contains($text, 'assets/') || str_contains($text, '?v='))
+            $byHand[] = $relative.':'.$token[2].' '.trim(substr($token[1], 0, 80));
+    }
+}
+ok(count($sources) > 60, count($sources).' PHP files read');
+is_same([], $byHand, 'no address of a shipped file is built anywhere but asset_path()');
+
+case_('A page says light or dark in its head, before its stylesheet has arrived');
+/* app.css sets the colour scheme too, but only once it applies. Whatever a
+   browser draws of a page before that, or without it when it fails to load,
+   is in the browser's own colours, white unless the head says otherwise (the
+   owner, 2026-10-08: "pages flash into eyes although dark mode is active").
+   A browser reads the tag in <head> only, and the first one only. So what
+   counts is what stands in <head> before the first stylesheet, where the
+   layout says it is. */
+$declared = function (string $html): array {
+    $beforeCss = preg_split('~<link\b[^>]*\brel="stylesheet"~', explode('</head>', $html, 2)[0], 2)[0];
+    preg_match_all('~<meta name="color-scheme" content="([^"]*)">~', $beforeCss, $tags);
+    return $tags[1];
+};
+foreach (['auto' => 'light dark', 'dark' => 'dark', 'light' => 'light'] as $theme => $scheme) {
+    run('UPDATE accounts SET theme=? WHERE id=?', [$theme, $family]);
+    sign_in_as($family);
+    is_same([$scheme], $declared(render_page('dashboard')), 'with „'.$theme.'" chosen, the head says '.$scheme.', once, before its first stylesheet');
+}
+run('UPDATE accounts SET theme=? WHERE id=?', ['auto', $family]);
+sign_out();
+is_same(['light dark'], $declared(render_page('login')), 'signed out, the sign-in page follows the device');
+
+case_('A slow page keeps the tap pressed and shows the waiting page, which the next page carries on');
+/* Part 0.4b. What app.js and wait.js do is checked against the stand-in page
+   above (tests/topbar-menus.mjs), and in a real browser by tests/e2e.sh; here,
+   what they reach for in the layout and what the stylesheet draws. The waiting
+   page is hidden, so without JavaScript - or without the stylesheet - nothing of
+   it shows; the status line is outside it, so a screen reader has it before it
+   has anything to say. */
+$waitParts = function (string $html): array {
+    $dom = new DOMDocument();
+    $quiet = libxml_use_internal_errors(true);
+    $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
+    libxml_clear_errors(); libxml_use_internal_errors($quiet);
+    $x = new DOMXPath($dom);
+    $has = fn(string $class) => 'contains(concat(" ", normalize-space(@class), " "), " '.$class.' ")';
+    $pages = $x->query('//*['.$has('wait-page').']');
+    $wait = $pages->item(0);
+    // Without a waiting page, asked of <html>, whose children are only head and body.
+    $in = fn(string $path) => $x->query($path, $wait ?? $dom->documentElement);
+    $button = $in('./p['.$has('wait-slow').']/button['.$has('wait-cancel').']')->item(0);
+    $said = $x->query('//*['.$has('wait-said').']')->item(0);
+    return [
+        'count' => $pages->length,
+        'where' => $wait ? $wait->parentNode->nodeName.($wait->hasAttribute('hidden') ? ', hidden' : ', shown') : null,
+        'stage' => $in('./div['.$has('wait-stage').' and @aria-hidden="true"]/span['.$has('wait-net').']/following-sibling::*[local-name()="svg" and @class="glyph-shuttle"]')->length,
+        'name' => trim((string)$in('./p['.$has('wait-name').' and @aria-hidden="true"]')->item(0)?->textContent),
+        'slow' => [trim((string)$in('./p['.$has('wait-slow').']/span')->item(0)?->textContent), $button?->getAttribute('type'), trim((string)$button?->textContent)],
+        'said' => $said ? [$said->parentNode->nodeName, $said->getAttribute('role'), $said->getAttribute('class'), $said->getAttribute('data-text'), $said->getAttribute('data-slow'), trim($said->textContent)] : null,
+    ];
+};
+set_setting('club_name', 'Badmintonschule Probe');
+sign_in_as($family);
+$expected = ['count' => 1, 'where' => 'body, hidden', 'stage' => 1, 'name' => 'Badmintonschule Probe',
+             'slow' => ['Dauert länger als sonst.', 'button', 'Abbrechen'],
+             'said' => ['body', 'status', 'visually-hidden wait-said', 'Wird geladen …', 'Dauert länger als sonst.', '']];
+is_same($expected, $waitParts(render_page('dashboard')), 'a signed-in page carries the waiting page once, hidden, with the club\'s name, and its status line beside it');
+sign_out();
+is_same($expected, $waitParts(render_page('login')), 'and so does the sign-in page');
+
+/* wait.js marks <html> before the first paint, so it is in <head> and runs
+   where it stands: deferred, or run whenever it arrives, the page would be drawn
+   once without the waiting page and then with it - the cut it is there to
+   prevent. app.js, which reads the mark, comes after it. */
+$headScripts = function (string $html): array {
+    preg_match_all('~<script\b([^>]*)>~', explode('</head>', $html, 2)[0], $tags, PREG_SET_ORDER);
+    return array_map(fn(array $tag) => (preg_match('~\bsrc="[^"]*/assets/([^"?]+)~', $tag[1], $m) ? $m[1] : '?')
+        .(preg_match('~\s(defer|async)\b|type="module"~', $tag[1], $late) ? ' '.trim($late[0]) : ''), $tags);
+};
+sign_in_as($family);
+is_same(['wait.js', 'app.js defer'], $headScripts(render_page('dashboard')), 'wait.js is in the head and runs where it stands, before app.js');
+sign_out();
+is_same(['wait.js', 'app.js defer'], $headScripts(render_page('login')), 'on the sign-in page too');
+
+$css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
+/* Every pressed look has a twin that holds it until the next page is there,
+   in the same rule, so the two cannot part. */
+$pressed = array_filter($css, fn($r) => str_ends_with($r['selector'], ':active'));
+$untwinned = [];
+foreach ($pressed as $row) {
+    $twin = substr($row['selector'], 0, -strlen(':active')).'.is-pending';
+    if (!array_filter($css, fn($r) => $r['selector'] === $twin && $r['property'] === $row['property'] && $r['value'] === $row['value']
+                                     && $r['media'] === $row['media'] && $r['order'] === $row['order']))
+        $untwinned[] = $row['selector'].' { '.$row['property'].' }';
+}
+ok(count($pressed) >= 19, 'the pressed looks are read ('.count($pressed).')');
+is_same([], $untwinned, 'and each is held by .is-pending in the same rule');
+$at = fn(string $selector, string $property, string $media = '') => array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'),
+    fn($r) => $r['property'] === $property && $r['media'] === $media), 'value');
+
+/* [hidden] is display:none!important; one rule gets past it, and only on a
+   screen: it outranks the print list, so a page printed while waiting would
+   have had the waiting page over every sheet. */
+$shownBy = array_map(fn($r) => [$r['media'], $r['selector'], $r['value'], $r['important']],
+    array_filter(css_matching($css, '/\.wait-page(\[hidden\])?$/'), fn($r) => $r['property'] === 'display'));
+is_same([['@media screen', 'html:is(.is-waiting,.is-arriving) .wait-page[hidden]', 'flex', true]], array_values($shownBy),
+        'the waiting page is drawn only while a page is awaited or carried on, and only on a screen');
+is_same([['fixed', '0', 'var(--bg)']], [[...$at('.wait-page', 'position'), ...$at('.wait-page', 'inset'), ...$at('.wait-page', 'background')]],
+        'over the whole screen, on the page\'s own ground');
+$layers = array_map('intval', array_column(array_filter($css, fn($r) => $r['property'] === 'z-index' && $r['selector'] !== '.wait-page'), 'value'));
+ok(count($layers) > 3 && (int)($at('.wait-page', 'z-index')[0] ?? 0) > max($layers), 'and above every bar and panel ('.implode(', ', $at('.wait-page', 'z-index')).' over at most '.max($layers ?: [0]).')');
+
+/* The animations, one by one: name, duration and delay as written. Split at
+   the spaces outside brackets, so a delay of calc(-1 * var(…)) stays one. */
+$animation = function (string $one): array {
+    $parts = css_split_top(trim($one), ' ');
+    $times = array_values(array_filter($parts, fn($p) => preg_match('/^(-?[\d.]+m?s|calc\(.*\))$/', $p)));
+    $name = array_values(array_filter($parts, fn($p) => !in_array($p, $times, true) && !preg_match('/^(ease(-in|-out|-in-out)?|linear|both|forwards|backwards|none|infinite|alternate|cubic-bezier\(.*\))$/', $p)))[0] ?? '';
+    return ['name' => $name, 'duration' => $times[0] ?? '', 'delay' => $times[1] ?? '', 'fill' => array_values(array_intersect($parts, ['both', 'forwards']))[0] ?? ''];
+};
+$animations = fn(string $selector, string $media = '') => array_map($animation, css_split_top(implode(',', $at($selector, 'animation', $media)), ','));
+$ms = fn(string $time) => (int)round(str_ends_with($time, 'ms') ? (float)$time : (float)$time * 1000);
+$ends = fn(string $keyframes) => array_column(array_filter($css, fn($r) => $r['media'] === '@keyframes '.$keyframes && $r['selector'] === 'to'), 'value', 'property');
+$arriving = $animations('html.is-arriving .wait-page');
+$arrived = $animations('html.is-arrived .wait-page');
+$fadeIn = $animations('.wait-page')[0] ?? [];
+
+/* Should app.js never come, the next page takes it away by itself: a waiting
+   page that stayed would hold the whole screen, and every tap with it. */
+$byItself = array_values(array_filter($arriving, fn($a) => $a['delay'] === '2s'))[0] ?? null;
+ok($byItself !== null && in_array($byItself['fill'], ['forwards', 'both'], true), 'carried on, it fades out by itself 2 s after the page is drawn, and stays faded ('.json_encode($arriving).')');
+is_same(['opacity' => '0', 'visibility' => 'hidden'], $byItself ? $ends($byItself['name']) : [], 'ending invisible, and letting every tap through to the page');
+/* The fade once app.js says the page is ready has a name of its own: a
+   running animation keeps its clock when only its delay changes, so the same
+   name would have jumped to the end of a fade already some way into its 2 s. */
+$ready = $arrived[0] ?? null;
+ok($ready !== null && count($arrived) === 1 && !in_array($ready['name'], array_column($arriving, 'name'), true),
+   'once the page is ready it fades out under a name the carried-on page does not already run ('.json_encode($arrived).')');
+is_same(['opacity' => '0', 'visibility' => 'hidden'], $ready ? $ends($ready['name']) : [], 'and ends invisible too');
+
+/* app.js times what the stylesheet animates: the two must stay in step. */
+$appJs = (string)file_get_contents(APP_ROOT.'/public/assets/app.js');
+$constant = fn(string $name) => preg_match('/\b'.$name.'\s*=\s*(\d+)/', $appJs, $m) ? (int)$m[1] : null;
+is_same(500, $constant('WAIT_AFTER'), 'it waits 0.5 s for the page before it shows');
+is_same($ready ? $ms($ready['duration']) : null, $constant('WAIT_FADE_OUT'), 'app.js takes it away when its fade-out is over');
+is_same('wait-in', $fadeIn['name'] ?? null, 'it fades in');
+ok(($constant('WAIT_SHOWN_AT_LEAST') ?? 0) - $ms($fadeIn['duration'] ?? '0s') >= 300,
+   'and is fully there at least 0.3 s, so it never blinks ('.$constant('WAIT_SHOWN_AT_LEAST').' ms in all, '.($fadeIn['duration'] ?? '?').' of it fading in)');
+ok(($constant('WAIT_SHOWN_AT_LEAST') ?? 0) + ($constant('WAIT_FADE_OUT') ?? 0) >= 750, 'so it is never on screen under 0.75 s, its fade-out included');
+
+/* Reduce Motion: the shuttle rests and only brightens and fades. */
+$still = '@media(prefers-reduced-motion:reduce)';
+is_same(['none'], $at('.wait-stage', 'animation', $still), 'with Reduce Motion the scene does not settle');
+$resting = $at('.wait-stage .glyph-shuttle', 'animation', $still);
+ok(count($resting) === 1 && !str_contains($resting[0], 'rally') && $at('.wait-stage .glyph-shuttle', 'offset-distance', $still) !== [],
+   'and the shuttle does not fly: it rests on its path ('.implode(' ', $resting).')');
+
+/* The next page carries the scene on from where it had got to, so nothing in it
+   starts again at the change of page: every animation of the waiting page, the
+   stage and the shuttle - with Reduce Motion too - is delayed by the time already
+   waited, which wait.js hands on. The pulse was not, and with Reduce Motion the
+   shuttle jumped from bright to faint in one frame (mobile-tester, 2026-10-08).
+   The fades that end it invisible are the next page's own, from when it is ready. */
+$scene = array_filter($css, fn($r) => $r['property'] === 'animation' && preg_match('/(^|\s)\.wait-(page|stage)( \.glyph-shuttle)?$/', $r['selector']) === 1);
+$carried = []; $startingOver = [];
+foreach ($scene as $r)
+    foreach (css_split_top($r['value'], ',') as $one) {
+        $a = $animation($one);
+        if ($a['name'] === '' || ($ends($a['name'])['visibility'] ?? '') === 'hidden') continue;
+        $carried[$a['name']] = true;
+        if ($a['delay'] !== 'calc(-1 * var(--wait-elapsed,0ms))') $startingOver[] = $r['selector'].($r['media'] !== '' ? ' '.$r['media'] : '').': '.trim($one);
+    }
+ok(count($carried) >= 4, 'the scene\'s animations are read ('.implode(', ', array_keys($carried)).')');
+is_same([], $startingOver, 'and each goes on from the moment the waiting page appeared, Reduce Motion\'s pulse included');
+
+case_('A face keeps its size while its photo loads, and a photo form\'s own button is for a page without JavaScript [ADR 0031]');
+/* avatar() gives every picture the width and height of its size from
+   AVATAR_SIDES, so nothing moves when it arrives; app.css draws the circle
+   it sits in. The two agree, size by size. */
+$css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
+$drawn = [];
+foreach (AVATAR_SIDES as $size => $side) {
+    $rows = array_filter(css_matching($css, '/^'.preg_quote('.avatar'.($size !== '' ? '.'.$size : ''), '/').'$/'),
+        fn($r) => $r['media'] === '' && in_array($r['property'], ['width', 'height'], true));
+    $drawn[$size !== '' ? $size : 'default'] = array_values(array_unique(array_column($rows, 'value')));
+}
+$said = [];
+foreach (AVATAR_SIDES as $size => $side) $said[$size !== '' ? $size : 'default'] = [$side.'px'];
+is_same($said, $drawn, 'every size app.css draws a face at is the size avatar() writes on its picture');
+/* A chosen photo and a flipped switch go at once with JavaScript (app.js);
+   without it, each form's own button sends it, so only a page where the
+   script ran may hide that button. */
+is_same(['html.js .picture-save display: none'],
+        array_values(array_map(fn($r) => $r['selector'].' '.$r['property'].': '.$r['value'],
+            array_filter($css, fn($r) => str_ends_with($r['selector'], '.picture-save') && in_array($r['property'], ['display', 'visibility'], true)))),
+        'the photo forms\' own buttons are hidden only where the script has run');
+
+case_('Initials fit their face at any text size, and a photo card\'s row reads in full and shows a photo being sent [mobile-tester, 2026-10-08]');
+/* A face's initials are in pixels, as its circle is. In rem they grew with the
+   reader's text size inside a circle that did not: at 200 % „EW" was cut by
+   21 px in the 72 px faces and the 120 px one (mobile-tester, 2026-10-08). */
+$initials = array_filter($css, fn($r) => $r['property'] === 'font-size' && preg_match('/\.avatar(?![\w-])/', $r['selector']) === 1);
+ok(count($initials) >= 5, 'the faces\' initials are read ('.count($initials).' sizes)');
+is_same([], array_values(array_map(fn($r) => $r['selector'].' '.$r['value'], array_filter($initials, fn($r) => preg_match('/^\d+(\.\d+)?px$/', $r['value']) !== 1))),
+        'and each is drawn in pixels, so no text size pushes them out of their circle');
+/* A photo card's row says what a tap does in full: a list row cuts its name
+   with an ellipsis, and at 125 % „Foto hinzufügen" read „Foto hinzu…" at 320 px
+   (mobile-tester, 2026-10-08; spec-pictures2 §1: it wraps, never cut). */
+$property = fn(string $selector, string $name) => array_values(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'),
+    fn($r) => $r['property'] === $name && $r['media'] === ''))[0] ?? null;
+$cut = $property('.member-row-text strong', 'white-space');
+$wraps = $property('.picture-card .member-row-text strong', 'white-space');
+ok($cut !== null && $wraps !== null && $wraps['value'] === 'normal' && css_wins($wraps, $cut), 'a photo card\'s row wraps what a tap does, over the list row\'s single line');
+is_same('anywhere', $property('.picture-card .member-row-text strong', 'overflow-wrap')['value'] ?? null, 'and breaks a word longer than the line rather than cut it');
+/* While a chosen photo is sent, the row turns the spinner a sending button
+   turns, not only the grey of a pressed row: an upload on a slow network
+   takes seconds (mobile-tester, 2026-10-08). Over the face, out of the row's
+   flow: beside the text it narrowed it, and the row grew by up to 106 px at a
+   large text size (the coordinator, 2026-10-09). */
+$drawn = fn(string $selector, string $media = '') => array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'),
+    fn($r) => $r['media'] === $media), 'value', 'property');
+$still = '@media(prefers-reduced-motion:reduce)';
+$spinner = [$drawn('.button[aria-busy=true]:after'), $drawn('.button[aria-busy=true]:after', $still)];
+ok($spinner[0] !== [] && $spinner[1] !== [], 'a sending button\'s spinner is read');
+$overFace = $drawn('.picture-card .member-row[aria-busy=true]:after');
+is_same('absolute', $overFace['position'] ?? null, 'a photo card\'s row turns it over the face, out of the row\'s flow, so its text and height stay');
+is_same($spinner, [array_diff_key($overFace, array_flip(['position', 'left', 'top'])), $drawn('.picture-card .member-row[aria-busy=true]:after', $still)],
+        'and it is the spinner a sending button turns, with Reduce Motion too');
+is_same('transparent', $drawn('.picture-card .member-row[aria-busy=true] .avatar')['color'] ?? null, 'in place of the initials, not on top of them');
+
+case_('Attendance\'s Enter button is drawn but never seen, and a face beside a title stays beside it on a phone [the audit, N3, N7]');
+/* Enter presses a form's first submit button, and at attendance the faces are
+   submit buttons too, so the first is a copy of „Anwesenheit speichern". A
+   browser takes a button that is not drawn at all - display:none - as no
+   default, and goes on to the next: a face. So the copy is hidden by its
+   visibility, which keeps it from every tap and every screen reader as well. */
+$css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
+$rule = fn(string $selector) => array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'), fn($r) => $r['media'] === ''), 'value', 'property');
+is_same(['position' => 'absolute', 'visibility' => 'hidden'], $rule('.default-submit'), 'the copy takes no room, and nobody sees it');
+is_same([], array_values(array_filter($css, fn($r) => str_contains($r['selector'], 'default-submit') && $r['property'] === 'display')),
+        'and nothing takes it out of the drawing');
+/* A phone stacks the large title over the page's action; a face leads the
+   title instead, beside it while 13rem are left for the name (N7). */
+$face = $rule('.page-heading.has-face');
+is_same(['row', 'wrap'], [$face['flex-direction'] ?? null, $face['flex-wrap'] ?? null], 'a heading with a face is a row that wraps, at every width');
+$direction = fn(string $selector, bool $phone) => array_values(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'),
+    fn($r) => $r['property'] === 'flex-direction' && ($r['media'] !== '') === $phone))[0] ?? null;
+$column = $direction('.page-heading', true);
+ok($column !== null && $column['value'] === 'column' && css_wins($direction('.page-heading.has-face', false) ?? $column, $column), 'over the phone\'s column');
+is_same('1 1 13rem', $rule('.page-heading.has-face>div')['flex'] ?? null, 'the name keeps 13rem beside the face, or goes under it');

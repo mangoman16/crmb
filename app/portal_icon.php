@@ -34,13 +34,12 @@ const PORTAL_ICON_MAX_SIZE = 2048;
  * The stored name of the icon in use, or '' for the one that ships.
  *
  * '' as well when the file is missing: a database restored without storage/
- * must fall back to the built-in icon rather than link every page to a 404.
+ * must fall back to the built-in icon rather than link every page to a 404. And
+ * for a name store_upload() could not have given an icon (is_stored_upload()).
  */
 function portal_icon(): string {
     $name = setting('portal_icon');
-    // The shape store_upload() gives a name, so the route can only ever serve a
-    // file from this one folder, whatever ends up in the setting.
-    if (!is_string($name) || !preg_match('/^[a-f0-9]{32}\.png$/D', $name)) return '';
+    if (!is_stored_upload($name, 'icon')) return '';
     return is_file(upload_dir('icon') . '/' . $name) ? $name : '';
 }
 
@@ -128,10 +127,13 @@ function web_manifest(): array {
                    'type' => 'image/png', 'purpose' => 'any']];
     } else {
         $icons = [
-            ['src' => $base . '/assets/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any'],
-            ['src' => $base . '/assets/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any'],
-            ['src' => $base . '/assets/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
-            ['src' => $base . '/assets/favicon.svg', 'sizes' => 'any', 'type' => 'image/svg+xml'],
+            ['src' => asset_url('icon-192.png'), 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any'],
+            ['src' => asset_url('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any'],
+            // Its own picture, square and opaque, the shuttlecock well inside
+            // the middle: Android cuts a maskable icon into its own shape, and
+            // the rounded one above would lose its corners to the cut (C16a).
+            ['src' => asset_url('icon-maskable.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
+            ['src' => asset_url('favicon.svg'), 'sizes' => 'any', 'type' => 'image/svg+xml'],
         ];
     }
     return [

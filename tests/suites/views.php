@@ -83,37 +83,38 @@ sign_in_as($parent);
 foreach ($pages as $page)
     does_not_throw(fn() => render_view($page), 'parent: '.$page);
 sign_in_as($trainer);
-foreach (array_merge($pages, ['classes','payments','accounts','compose','outbox']) as $page)
+foreach (array_merge($pages, ['classes','payments','accounts','outbox']) as $page)
     does_not_throw(fn() => render_view($page), 'trainer: '.$page);
 
 case_('No page leaks a PHP error or an unrendered escape into its HTML');
 sign_in_as($trainer);
-foreach (array_merge($pages, ['classes','payments','accounts','compose','outbox']) as $page) {
+foreach (array_merge($pages, ['classes','payments','accounts','outbox']) as $page) {
     $out = render_view($page);
     foreach (['Fatal error','Warning:','Deprecated:','Notice:','Undefined ','Uncaught','\u20','Array to string'] as $token)
         is_same(false, str_contains($out, $token), $page.' is free of "'.$token.'"');
 }
 
+case_('An address that names a tariff lists everybody, rather than a selection nobody can see');
+/* The tariff filter went with its fold and the saved views (ADR 0026 §8), so
+   nothing on the page could show that one was on or take it off. An old
+   bookmark that names one is ignored. */
+sign_in_as($trainer);
+$cards = fn(string $html): int => substr_count($html, 'class="student-card"');
+$list = render_view('students', ['tariff'=>(string)$tariff]);
+ok($cards($list) > 0 && $cards($list) === $cards(render_view('students')), 'the whole list is shown: '.$cards($list).' children');
+
 case_('Verwaltung renders every tab for a trainer, without an administrator');
 $trainerView = make_account(['role'=>'trainer']); sign_in_as($trainerView);
-foreach (['levels','ages','members','tariffs','templates','payments'] as $tab) {
+foreach (['levels','ages','members','payments'] as $tab) {
     $html = render_view('manage', ['tab'=>$tab]);
     ok(str_contains($html, 'Verwaltung'), 'manage/'.$tab.' renders');
     ok(str_contains($html, 'Wer gehört wohin?'), 'manage/'.$tab.' explains which grouping is which');
 }
 
-case_('The placeholder list and the placeholders that actually work are the same list');
-$html = render_view('manage', ['tab'=>'templates']);
-foreach (array_keys(template_placeholders()) as $key)
-    ok(str_contains($html, '{{'.$key.'}}'), 'the editor offers {{'.$key.'}}');
-$student = one('SELECT s.*, NULL AS tariff_name FROM students s LIMIT 1') ?: ['id'=>make_student(), 'first_name'=>'Lena', 'last_name'=>'Hofer', 'tariff_name'=>'', 'level_id'=>null, 'birth_date'=>null, 'age_group_id'=>null];
-$filled = template_text(implode(' ', array_map(fn($k) => '{{'.$k.'}}', array_keys(template_placeholders()))), $student);
-ok(!str_contains($filled, '{{'), 'and every one of them is filled in when a message is sent');
-
 case_('Einstellungen keeps only what an administrator has to decide');
 sign_in_as(make_account(['role'=>'admin']));
 $html = render_view('settings', ['tab'=>'portal']);
-foreach (['tab=levels','tab=ages','tab=tariffs','tab=templates'] as $moved)
+foreach (['tab=levels','tab=ages'] as $moved)
     ok(!str_contains($html, $moved), 'Einstellungen no longer offers '.$moved);
 
 case_('The start page says when the next training is');
@@ -137,14 +138,6 @@ $html = render_view('attendance');
 ok(str_contains($html, 'Timeline-Kurs'), 'the course picker is there');
 ok(str_contains($html, 'Anwesenheit'), 'and so is the list');
 
-case_('A saved view says what it selects, not only what it is called');
-$level = (int)levels()[0]['id'];
-fixture('saved_filters', ['name'=>'Montagsgruppe', 'criteria_json'=>json_encode(['course'=>$tlCourse, 'level'=>$level])]);
-$html = render_view('students');
-ok(str_contains($html, 'Montagsgruppe'), 'the view is offered');
-ok(str_contains($html, 'Timeline-Kurs'), 'and says which course it selects');
-ok(str_contains($html, (string)levels()[0]['name']), 'and which level');
-
 case_('The proof upload is offered where a family will see it, and only when something is open');
 $family = make_account(['role'=>'student', 'name'=>'Familie Berger']);
 $kid = make_student(['first_name'=>'Nina', 'last_name'=>'Berger', 'account_id'=>$family]);
@@ -158,6 +151,263 @@ ok(str_contains($html, 'Schon überwiesen'), 'with an open charge the offer is o
 ok(str_contains($html, 'Freiwillig'), 'and says it is voluntary, because it is');
 sign_in_as($trainer);
 ok(!str_contains(render_view('dashboard'), 'Schon überwiesen'), 'the trainer is not the one uploading it');
+
+case_('Red only once something is late, on a family\'s overview and on a child\'s Beiträge [the audit, N1]');
+/* „Warum ist das rot? Fällig ist es erst am 15." Open is not late: an amount is
+   in ink until a charge is past its due date, and „Überfällig 0,00 €" is never
+   red. Nina's one charge is due today: open, and not late. */
+$dom = function (string $html): DOMXPath {
+    $document = new DOMDocument();
+    $quiet = libxml_use_internal_errors(true);
+    $document->loadHTML('<?xml encoding="UTF-8">'.$html);
+    libxml_clear_errors(); libxml_use_internal_errors($quiet);
+    return new DOMXPath($document);
+};
+$classed = fn(string $name): string => 'contains(concat(" ", normalize-space(@class), " "), " '.$name.' ")';
+/** A tile's figure as [what it says, whether it is red, the line under it]. */
+$tile = function (string $html, string $label) use ($dom, $classed): array {
+    $x = $dom($html);
+    $stat = $x->query('//div['.$classed('stat').'][span[normalize-space()="'.$label.'"]]')->item(0);
+    if (!$stat) return ['no tile „'.$label.'"'];
+    $figure = $x->query('./strong', $stat)->item(0);
+    return [trim((string)$figure?->textContent), str_contains(' '.$figure?->getAttribute('class').' ', ' due '), trim((string)$x->query('./small', $stat)->item(0)?->textContent)];
+};
+sign_in_as($family);
+is_same([money(4500), false, 'Einzeln unter „Beiträge“'], $tile(render_view('dashboard'), 'Offen'),
+        'open and not late: the overview\'s amount is in ink, itemised under „Beiträge" - the family\'s bar has it');
+is_same([money(0), false, ''], $tile(render_view('student', ['id'=>(string)$kid, 'tab'=>'payments']), 'Überfällig'), 'and a child\'s „Überfällig 0,00 €" is in ink');
+run('UPDATE charges SET due_on=? WHERE student_id=?', ['2020-01-10', $kid]);
+is_same([money(4500), true, 'Einzeln unter „Beiträge“'], $tile(render_view('dashboard'), 'Offen'), 'once it is late, the amount is red');
+is_same([money(4500), true, ''], $tile(render_view('student', ['id'=>(string)$kid, 'tab'=>'payments']), 'Überfällig'), 'and so is the overdue amount');
+run('UPDATE charges SET due_on=? WHERE student_id=?', [today(), $kid]);
+
+case_('„Beiträge" shows the bank details exactly when a reminder promises them [spec-a3-reminder, charge_bank_details()]');
+/* A payment reminder says „Bankverbindung und QR-Code … findest du unter
+   „Beiträge“" only when charge_bank_details() gives every charge it lists a
+   recipient with an IBAN. The box on the page goes by that same rule, or a family
+   follows the mail to a page without them. As [boxes, what the rule says]. */
+$recipient = fixture('payment_profiles', ['name'=>'Vereinskonto', 'recipient'=>'Badminton Beispiel', 'iban'=>'AT05 5100 0805 1317 6900',
+                                          'bic'=>'', 'currency'=>'EUR', 'note'=>'', 'qr_template'=>'', 'archived'=>0, 'created_at'=>now()]);
+$defaultRecipient = setting('default_payment_profile');
+set_setting('default_payment_profile', $recipient);
+sign_in_as($family);
+$payBox = function () use ($dom, $classed, $kid): array {
+    payment_cache_clear();
+    $boxes = $dom(render_view('student', ['id'=>(string)$kid, 'tab'=>'payments']))->query('//div['.$classed('qr-box').']')->length;
+    payment_cache_clear();
+    return [$boxes, charge_bank_details(one('SELECT * FROM charges WHERE student_id=? AND cancelled=0', [$kid])) !== null];
+};
+is_same([1, true], $payBox(), 'an open charge, the QR codes on and a recipient with an IBAN: the box');
+set_setting('show_payment_qr', false);
+is_same([0, false], $payBox(), 'with the QR codes off, none');
+set_setting('show_payment_qr', true);
+run('UPDATE payment_profiles SET iban=? WHERE id=?', ['', $recipient]);
+is_same([0, false], $payBox(), 'and none for a recipient without an IBAN');
+run('UPDATE payment_profiles SET iban=? WHERE id=?', ['AT05 5100 0805 1317 6900', $recipient]);
+set_setting('default_payment_profile', $defaultRecipient);
+payment_cache_clear();
+
+case_('The overviews keep to the greeting and what comes next [the audit, N7]');
+/* Part 2's removals, before its groups exist: no line under the greeting, no
+   „Nachricht schreiben" (the Chats tab), no card of the family's own (the name
+   is the greeting, the amount is „Offen"), and „Termine" as dates alone. A
+   family sees no past dates, the next three, and any later one in the five
+   weeks that is changed or carries a note: the bell hears of a change only
+   when the trainer ticks „informieren". */
+$daily = make_class(['name'=>'Jeden Tag', 'location'=>'Halle B',
+                     'days'=>array_map(fn(int $day) => ['weekday'=>$day, 'starts_at'=>'16:00:00', 'ends_at'=>'17:30:00'], range(1, 7))]);
+make_enrolment($daily, $kid);
+$inDays = fn(int $days): string => (new DateTimeImmutable(today()))->modify('+'.$days.' days')->format('Y-m-d');
+fixture('class_sessions', ['class_id'=>$daily, 'session_on'=>$inDays(10), 'starts_at'=>null, 'ends_at'=>null,
+    'location'=>'', 'status'=>'cancelled', 'note'=>'', 'created_by'=>$trainer, 'created_at'=>now()]);
+fixture('class_sessions', ['class_id'=>$daily, 'session_on'=>$inDays(20), 'starts_at'=>null, 'ends_at'=>null,
+    'location'=>'', 'status'=>'planned', 'note'=>'In der Halle Süd', 'created_by'=>$trainer, 'created_at'=>now()]);
+$heading = '//div['.$classed('page-heading').']';
+/** The timeline's rows as [when, past or not]. */
+$dates = fn(DOMXPath $x): array => array_map(fn(DOMElement $row) => [trim((string)$x->query('./span['.$classed('timeline-when').']', $row)->item(0)?->textContent),
+    str_contains(' '.$row->getAttribute('class').' ', ' is-past ')], iterator_to_array($x->query('//ol['.$classed('timeline').']/li')));
+sign_in_as($family);
+$html = render_view('dashboard');
+$x = $dom($html);
+is_same([0, 0, 1], [$x->query($heading.'//p')->length, $x->query($heading.'//a[contains(@href,"new=1")]')->length, $x->query($heading.'//a['.$classed('page-face').']')->length],
+        'a family is greeted with no line under it and no „Nachricht schreiben", only the child\'s face beside it');
+is_same(0, $x->query('//*['.$classed('student-card').']')->length, 'and no card of their own');
+ok($tile($html, 'Offen') !== ['no tile „Offen"'] && str_contains($html, e('Schon überwiesen?')), 'the „Offen" tile and „Schon überwiesen?" stay until build 4');
+is_same([[t('Heute','Today'), false], [fmt_date($inDays(1)), false], [fmt_date($inDays(2)), false], [fmt_date($inDays(3)), false],
+         [fmt_date($inDays(10)), false], [fmt_date($inDays(20)), false]], $dates($x),
+        'no past dates: today, the next three, and the two later ones that are not as planned');
+sign_in_as($trainer);
+$html = render_view('dashboard');
+$x = $dom($html);
+is_same(0, $x->query($heading.'//p')->length, 'staff are greeted with no line under it either');
+ok(!str_contains($html, e('Aus den Wochenplänen der Kurse.')) && !str_contains($html, e('Termin ändern')), 'and „Termine" is the dates alone, with no sentence and no „Termin ändern" (a course has it)');
+is_same([3, 6], [count(array_filter($dates($x), fn(array $date) => $date[1])), count(array_filter($dates($x), fn(array $date) => !$date[1] && $date[0] !== t('Heute','Today')))],
+        'staff keep the last three dates and the next six');
+is_same(4, $x->query('//div['.$classed('stats-grid').']/div['.$classed('stat').']')->length, 'and the four tiles, until build 3');
+
+case_('A child\'s Profil says what is needed and no more [the audit, N6]');
+sign_in_as($trainer);
+$profil = render_view('student', ['id'=>(string)$kid]);
+foreach (['Probetraining, aktiv, pausiert oder beendet.', 'Leer lassen, solange kein Ende feststeht.', 'Neue Kinder starten in',
+          'Im Verein. Wann das Kind in einen Kurs kam', 'Dabei seit', 'Gehört ab 400 € Rechnungsbetrag', 'Wen wir im Notfall anrufen',
+          'Dorthin gehen auch Rechnungen und Erinnerungen.'] as $gone)
+    ok(!str_contains($profil, e($gone)), 'staff no longer read „'.$gone.'"');
+foreach (['Im Verein seit', 'Straße, PLZ und Ort in einer Zeile.', 'Notfallkontakte stehen unter „Kontakte“.', 'Ändert Nina selbst unter „Mein Konto“.'] as $said)
+    ok(str_contains($profil, e($said)), 'staff read „'.$said.'"');
+ok(str_contains(render_view('student', ['id'=>(string)$kid, 'tab'=>'classes']), e('Jede Kursteilnahme hat ihren eigenen Tarif.')), 'and how tariffs work, under Kurse');
+sign_in_as($family);
+$profil = render_view('student', ['id'=>(string)$kid]);
+ok(str_contains($profil, e('Deine Trainerin sieht, was du änderst.')) && !str_contains($profil, e('Hier ergänzt oder korrigierst du deine Angaben.')),
+   'a family\'s Profil opens with one sentence');
+foreach (['Straße, Nummer, PLZ und Ort. Steht auf deinen Rechnungen.', 'Notfallkontakte stehen unter „Kontakte“.'] as $said)
+    ok(str_contains($profil, e($said)), 'and reads „'.$said.'"');
+ok(!str_contains($profil, e('eine Rechnung über 400 € braucht sie')), 'without the rule about 400 €');
+ok(str_contains($profil, '<dt>'.e('Im Verein seit').'</dt>') && !str_contains($profil, e('Dabei seit')), 'the date is „Im Verein seit", the word staff read for it: one word per place');
+is_same(0, $dom($profil)->query($heading.'//p')->length, '„Aktiv" is not said under the name: it says nothing');
+ok(!str_contains($profil, e('Mitgliedschaft bis')), 'nor „Mitgliedschaft bis" without a date, where a dash reads as something missing');
+run('UPDATE students SET status=?, ended_on=? WHERE id=?', ['paused', '2027-06-30', $kid]);
+$profil = render_view('student', ['id'=>(string)$kid]);
+is_same(status_label('paused'), trim((string)$dom($profil)->query($heading.'//p')->item(0)?->textContent), 'another status is said under the name');
+ok(str_contains($profil, e('Mitgliedschaft bis')) && str_contains($profil, e(fmt_date('2027-06-30'))), 'and „Mitgliedschaft bis" with its date');
+run('UPDATE students SET status=?, ended_on=NULL WHERE id=?', ['active', $kid]);
+ok(!str_contains(render_view('student', ['id'=>(string)$kid, 'tab'=>'classes']), e('Jede Kursteilnahme hat ihren eigenen Tarif.')), 'how tariffs work is staff\'s to know');
+
+case_('Geld shows who owes first, says which list is on, and folds the month away [the audit, N5]');
+/* „Wer schuldet noch was?" The charges came after the month's whole run and three
+   rows of filters, which never showed which was on. Now the title is the word on
+   the bar, two chips say which list it is, the list follows, and the monthly
+   charges are one row after it. */
+$monthly = make_class(['name'=>'Monatskurs']);
+make_enrolment($monthly, make_student(['first_name'=>'Mona', 'last_name'=>'Monat']), ['tariff_id'=>$tariff]);
+set_setting('auto_billing', false);
+mail_ready(false);
+sign_in_as($trainer);
+$x = $dom(render_view('payments'));
+is_same(['Geld', 0], [trim((string)$x->query('//h1')->item(0)?->textContent), $x->query($heading.'//p')->length], 'the title is „Geld", the word on the bar, with no line under it');
+/** A page of Geld's as [its title, the half its switch says is open]. */
+$half = fn(DOMXPath $x): array => [trim((string)$x->query('//h1')->item(0)?->textContent), trim((string)$x->query('//nav['.$classed('tabs').']/a[@aria-current="page"]')->item(0)?->textContent)];
+is_same([['Geld', 'Beiträge'], ['Geld', 'Rechnungen']], [$half($x), $half($dom(render_view('invoices')))],
+        'and Rechnungen, the other half of its switch, is „Geld" too: the switch says which half is open');
+/** The chips as [what each says, whether it is on, its aria-current]. */
+$chips = fn(DOMXPath $x): array => array_map(fn(DOMElement $a) => [trim($a->textContent), str_contains(' '.$a->getAttribute('class').' ', ' is-on '), $a->getAttribute('aria-current')],
+    iterator_to_array($x->query('//nav['.$classed('saved-filters').']/a')));
+is_same([['Alle', true, 'true'], ['Überfällig', false, '']], $chips($x), 'two chips, „Alle" on, and the page says which');
+is_same(0, $x->query('//input[@name="action" and @value="payment_remind"]')->length, 'and nothing to remind of under „Alle"');
+/** The monthly charges' row as [its label, its value, whether it is open]. */
+$fold = fn(DOMXPath $x): array => ($row = $x->query('//details['.$classed('fold-row').' and '.$classed('billing-card').']')->item(0))
+    ? [trim((string)$x->query('./summary/span[1]', $row)->item(0)?->textContent), trim((string)$x->query('./summary/span['.$classed('fold-value').']', $row)->item(0)?->textContent), $row->hasAttribute('open')]
+    : ['no row'];
+$planned = count(array_filter(billing_plan(billing_current_period()), fn(array $r) => $r['skip'] === null));
+ok($planned > 0, 'this month has charges to make, so the next line can tell that the row opens by itself');
+is_same(['Monatsbeiträge', billing_month_name(billing_current_period()).': '.$planned.' anzulegen', true], $fold($x),
+        'after the list, „Monatsbeiträge" says how many this month would make, and is open while they are not made by themselves');
+$html = render_view('payments');
+ok(str_contains($html, e('Erst die Vorschau – angelegt wird erst mit dem Knopf unten.')) && !str_contains($html, e('Beiträge anlegen')),
+   'it holds the preview, opening with its new first sentence and without its old title');
+/* The switch is an administrator's. To the trainer, „Nicht automatisch – die
+   Beiträge werden unten mit Vorschau angelegt." said again what „Erst die
+   Vorschau" had just said. As [the status block, the switch, that line]. */
+$switch = fn(string $html): array => [$dom($html)->query('//div['.$classed('auto-charges').']')->length,
+                                      $dom($html)->query('//input[@name="action" and @value="auto_billing_save"]')->length, str_contains($html, 'Nicht automatisch')];
+is_same([0, 0, false], $switch($html), 'while they are not automatic, the trainer is not told so twice, and has no switch');
+sign_in_as($geldAdmin = make_account(['role'=>'admin']));
+is_same([1, 1, false], $switch(render_view('payments')), 'an administrator has the switch, with the line that says what switching it on would do');
+sign_in_as($trainer);
+is_same(['Monatsbeiträge', billing_month_name('2020-01').': nichts anzulegen'], array_slice($fold($dom(render_view('payments', ['period'=>'2020-01']))), 0, 2),
+        'for a month with nothing to make, it says so');
+set_setting('auto_billing', true);
+is_same(['Monatsbeiträge', 'Automatisch', false], $fold($dom(render_view('payments'))), 'made by themselves, it says „Automatisch" and stays shut');
+is_same([1, 0, false], $switch(render_view('payments')), 'and inside, the trainer is told when they were last made, still with no switch');
+is_same(['Monatsbeiträge', 'Automatisch', true], $fold($dom(render_view('payments', ['period'=>'2020-01']))),
+        'but a month chosen in it keeps it open, so what that month would make is in view after „Monat wechseln"');
+sign_in_as($geldAdmin);
+is_same(['Monatsbeiträge', 'Automatisch', true], $fold($dom(render_view('payments', ['from'=>'start']))),
+        'and the setup checklist\'s „Beiträge" step opens it too: it sends an administrator here for what it holds');
+/* Switched off, the banner sends her to that row by the label it shows. It
+   said „Beiträge anlegen“, a heading the row replaced (code review of N5). */
+act('auto_billing_save', []);
+$said = (string)($_SESSION['flash']['message'] ?? '');
+$label = $fold($dom(render_view('payments')))[0];
+ok($label !== 'no row' && str_contains($said, '„'.$label.'“'), 'switched off, the banner names the row by the label the page shows: '.$said);
+sign_in_as($trainer);
+set_setting('auto_billing', false);
+/* On a phone the value beside the label was cut to „Auto…" - every value at
+   320 px, every month's at 390 (measured). On Geld it goes under the label
+   instead, and this keeps the rule that does it from going quietly. */
+$css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
+$cut = css_matching($css, '/^\.fold-row>summary>\.fold-value$/');
+$undone = fn(string $property, string $value): bool => array_filter(css_matching($css, '/^\.billing-card>summary>\.fold-value$/'),
+    fn(array $over) => $over['property'] === $property && $over['value'] === $value
+        && array_filter($cut, fn(array $general) => $general['property'] === $property && !css_wins($over, $general)) === []) !== [];
+ok(array_filter($cut, fn(array $row) => $row['property'] === 'white-space' && $row['value'] === 'nowrap') !== [] && $undone('white-space', 'normal') && $undone('overflow', 'visible')
+   && array_filter(css_matching($css, '/^\.billing-card>summary$/'), fn(array $row) => $row['property'] === 'flex-wrap' && $row['value'] === 'wrap') !== [],
+   'and on a narrow phone its value goes under the label rather than being cut');
+$x = $dom(render_view('payments', ['overdue'=>'1']));
+is_same([['Alle', false, ''], ['Überfällig', true, 'true']], $chips($x), 'under „Überfällig" that chip is on');
+/* Past its due date but inside its grace days is open, not late: the rule the
+   reminder sends by (charge_is_overdue_sql()), not the due date alone. */
+$grace = fixture('charges', ['student_id'=>make_student(['first_name'=>'Greta', 'last_name'=>'Gnadenfrist']), 'label'=>'Beitrag in der Gnadenfrist', 'amount_cents'=>2500,
+                             'due_on'=>'2020-03-01', 'overdue_on'=>'2099-03-01', 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+is_same([true, false], [str_contains(render_view('payments'), 'Beitrag in der Gnadenfrist'), str_contains(render_view('payments', ['overdue'=>'1']), 'Beitrag in der Gnadenfrist')],
+        'a charge inside its grace days is under „Alle", and not yet under „Überfällig"');
+run('UPDATE charges SET cancelled=1 WHERE id=?', [$grace]);
+/** What stands where the reminder would: [sheets, buttons, the sentence in its place]. */
+$nobody = fn(DOMXPath $x): array => [$x->query('//details['.$classed('reminder-sheet').']')->length, $x->query('//input[@name="action" and @value="payment_remind"]')->length,
+                                     trim((string)$x->query('//p['.$classed('reminder-none').']')->item(0)?->textContent)];
+/* Reminders go to logins already set up, so they wait for working mail and
+   nothing else (mail_sending_missing(), the rule payment_remind refuses by). */
+is_same([0, 0, mail_sending_missing()], $nobody($x), 'and with mail not tested, the sentence that says so stands where the reminder would, with no button');
+ok(mail_sending_missing() !== '', 'mail is not tested here, so there is a sentence to show');
+
+case_('The reminder says before the tap how many go out, counted by the rule that sends them [spec-a3-reminder, „On Geld"]');
+mail_ready(true);
+sign_in_as($trainer);
+/* A child overdue with no sign-in, beside the ones who can take a mail, so the
+   sheet has somebody to leave out and say so. */
+$noSignIn = fixture('charges', ['student_id'=>make_student(['first_name'=>'Olga', 'last_name'=>'Ohnemail']), 'label'=>'Beitrag Februar', 'amount_cents'=>3500,
+                                'due_on'=>'2020-02-10', 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+$reminders = payment_reminders();
+ok($reminders['send'] !== [] && $reminders['none'] > 0 && $reminders['today'] === 0, 'somebody here is overdue and can take the mail, and somebody cannot');
+set_setting('privacy_ready', false);
+is_same(1, $dom(render_view('payments', ['overdue'=>'1']))->query('//details['.$classed('reminder-sheet').']')->length,
+        'mail that works is all a reminder waits for: no released privacy notice still lets it go');
+set_setting('privacy_ready', true);
+$x = $dom(render_view('payments', ['overdue'=>'1']));
+$sheet = $x->query('//details['.$classed('reminder-sheet').' and @data-sheet]')->item(0);
+is_same(plural(count($reminders['send']), 'Erinnerung schicken', 'Erinnerungen schicken', 'reminder – send', 'reminders – send'),
+        trim((string)($sheet ? $x->query('./summary', $sheet)->item(0)?->textContent : '')), 'a sheet whose row says how many reminders go out');
+is_same(['Pro Kind eine E-Mail mit allen überfälligen Beiträgen und der Summe. Verschickt lässt sie sich nicht zurückholen.', payment_reminders_left_out($reminders), 'Jetzt schicken'],
+        [...($sheet ? array_map(fn(DOMNode $p) => trim($p->textContent), iterator_to_array($x->query('./p', $sheet))) : []),
+         trim((string)($sheet ? $x->query('.//form[.//input[@name="action" and @value="payment_remind"]]//button[@type="submit"]', $sheet)->item(0)?->textContent : ''))],
+        'saying what goes out, that it cannot be called back and who gets none, in the banner\'s words, before „Jetzt schicken"');
+is_same(0, $dom(render_view('payments'))->query('//details['.$classed('reminder-sheet').']')->length, 'never under „Alle"');
+/* Everybody overdue who could take one unsubscribes: the reason, and no button. */
+$overdueLogins = implode(',', array_map(fn(array $r) => (int)$r['account']['id'], $reminders['send']));
+run('UPDATE accounts SET payment_notices=0 WHERE id IN ('.$overdueLogins.')');
+is_same([0, 0, 'Keine Erinnerung möglich: Diese Kinder melden sich nicht an oder haben Erinnerungen abbestellt.'], $nobody($dom(render_view('payments', ['overdue'=>'1']))),
+        'with nobody able to take one, it says why, with no button to press');
+/* The sheet before the tap and the banner after it give that reason in the same
+   words, each with its own opening: one reason, payment_reminders_unreachable(). */
+$sheetSays = $nobody($dom(render_view('payments', ['overdue'=>'1'])))[2];
+act('payment_remind', []);
+is_same(['Keine Erinnerung möglich: '.payment_reminders_unreachable(), 'Keine Erinnerung verschickt: '.payment_reminders_unreachable()],
+        [$sheetSays, (string)($_SESSION['flash']['message'] ?? '')], 'and the banner after „Jetzt schicken" gives the same reason');
+run('UPDATE accounts SET payment_notices=1 WHERE id IN ('.$overdueLogins.')');
+/* Everybody who can take one was reminded today: that is the reason given, not
+   „melden sich nicht an" - the banner's condition, so both say the same. */
+foreach ($reminders['send'] as $reminder) notify_payment($reminder['account'], $reminder['student'], $reminder['charges']);
+$again = payment_reminders();
+is_same([0, 0, payment_reminders_left_out($again)], $nobody($dom(render_view('payments', ['overdue'=>'1']))),
+        'with everybody else reminded today, it says so and who gets none, with no button to press');
+ok($again['today'] === count($reminders['send']) && str_starts_with(payment_reminders_left_out($again), 'Heute schon erinnert: '), 'and that sentence is the one about today');
+run("UPDATE mail_jobs SET status='cancelled' WHERE category='payments' AND account_id IN (".$overdueLogins.')');
+/* Nothing overdue: no row at all. */
+$late = array_map('intval', array_column(rows('SELECT c.id FROM charges c WHERE '.charge_is_overdue_sql(), [today()]), 'id'));
+run('UPDATE charges SET cancelled=1 WHERE id IN ('.implode(',', $late).')');
+is_same([0, 0, ''], $nobody($dom(render_view('payments', ['overdue'=>'1']))), 'and with nothing overdue, no reminder row');
+run('UPDATE charges SET cancelled=0 WHERE id IN ('.implode(',', $late).')');
+run('UPDATE charges SET cancelled=1 WHERE id=?', [$noSignIn]);
+mail_ready(false);
 
 // ---------------------------------------------------------------------------
 case_('A problem report shows the way there, in both shapes it can be stored in');
@@ -252,49 +502,475 @@ ok(!str_contains($donePage, 'Beim Erledigen werden'), 'rather than warning about
 run('DELETE FROM feedback');
 sign_out();
 
-/* A contact request row carries its own id. In both cases below that id is
-   made to equal somebody else's account id, so a page that built the picture
-   address from the row's id instead of the sender's would ask for the wrong
-   person's picture - and the download route would serve it. */
-$requestsBlock = fn(string $html) => (string)strstr((string)strstr($html, 'Möchte dir schreiben'), 'An wen?', true);
-$askedFor = function (string $block): array {
-    preg_match_all('/what=avatar&amp;kind=account&amp;id=(\d+)/', $block, $m);
-    return array_values(array_unique($m[1]));
+case_('The age line under the date of birth says the band, and a gap in the bands only to staff');
+/* Part 1, revised 2026-10-08: a child's band follows from the date of birth
+   alone, and shows once, under the date. When no band covers the age, staff
+   read so - the gap is theirs to close under Verwaltung - and a family reads
+   only the age. */
+$coach = make_account(['role'=>'trainer', 'name'=>'Band Trainerin']);
+$familyLogin = make_account(['role'=>'student', 'name'=>'Familie Lücke']);
+$youth = make_student(['first_name'=>'Jana', 'last_name'=>'Jugend', 'birth_date'=>date('Y-m-d', strtotime('-14 years -10 days'))]);
+$gapChild = make_student(['first_name'=>'Gero', 'last_name'=>'Lücke', 'birth_date'=>date('Y-m-d', strtotime('-19 years -10 days')), 'account_id'=>$familyLogin]);
+$noDate = make_student(['first_name'=>'Ohne', 'last_name'=>'Datum', 'birth_date'=>null]);
+sign_in_as($coach);
+ok(str_contains(render_view('student', ['id'=>$youth]), e('14 Jahre alt · Altersgruppe: Jugend')), 'a covered age names its band');
+ok(str_contains(render_view('student', ['id'=>$noDate]), e('Fehlt noch. Danach richtet sich die Altersgruppe.')), 'no date of birth says it is missing');
+ok(!str_contains(render_view('student', ['id'=>$youth]), 'name="age_group_id"'), 'and nobody pins a band: the select is gone');
+// A gap: adults start at 21, so a nineteen-year-old is in no band.
+run("UPDATE age_groups SET min_age=21 WHERE name='Erwachsene'");
+$staffSees = render_view('student', ['id'=>$gapChild]);
+ok(str_contains($staffSees, e('19 Jahre alt · keine Altersgruppe passt')), 'staff read that no band covers the age');
+sign_in_as($familyLogin);
+$familySees = render_view('student', ['id'=>$gapChild]);
+ok(str_contains($familySees, e('19 Jahre alt')) && !str_contains($familySees, e('keine Altersgruppe passt')) && !str_contains($familySees, e('Altersgruppe:')),
+   'a family reads only the age: the gap is the trainer’s to close');
+run("UPDATE age_groups SET min_age=18 WHERE name='Erwachsene'");
+ok(str_contains(render_view('student', ['id'=>$gapChild]), e('19 Jahre alt · Altersgruppe: Erwachsene')), 'and the band once it covers the age again');
+sign_out();
+
+case_('The students list: the search, the quick selection, the filter fold and the order (Part 1, revised 2026-10-08)');
+/* Staff find a child by name first; the quick selection starts afresh, the
+   fold's row says what is chosen, the order keeps the filters, and a row says
+   the age group and the level - under a group's own header the age. Every
+   control is a GET link or a GET form. */
+test_reset(); sign_in_as($coach = make_account(['role'=>'trainer', 'name'=>'Listen Trainerin']));
+$aged = fn(int $years): string => (new DateTimeImmutable(today()))->modify('-'.$years.' years')->modify('-100 days')->format('Y-m-d');
+$course = make_class(['name'=>'Kindertraining']);
+$level = level_default();
+$unter12 = (int)scalar("SELECT id FROM age_groups WHERE name='Unter 12'");
+$jugend = (int)scalar("SELECT id FROM age_groups WHERE name='Jugend'");
+run("UPDATE age_groups SET min_age=21 WHERE name='Erwachsene'");   // a gap: a nineteen-year-old is in no group
+$anna = make_student(['first_name'=>'Anna', 'last_name'=>'Alt', 'birth_date'=>$aged(9), 'level_id'=>$level['id']]);
+$ben = make_student(['first_name'=>'Ben', 'last_name'=>'Berg', 'birth_date'=>$aged(14), 'level_id'=>$level['id']]);
+$cora = make_student(['first_name'=>'Cora', 'last_name'=>'Clever', 'birth_date'=>null, 'level_id'=>$level['id']]);
+$dan = make_student(['first_name'=>'Dan', 'last_name'=>'Dazwischen', 'birth_date'=>$aged(19), 'level_id'=>$level['id']]);
+make_enrolment($course, $anna);
+$decoded = fn(string $s): string => html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+$subtitleOf = fn(string $html, string $name): string => preg_match('~<h3>'.preg_quote(e($name), '~').'</h3><p>([^<]*)</p>~', $html, $m) ? $decoded($m[1]) : '(no row)';
+$rowOf = fn(string $html, string $name): string => preg_match('~<a class="student-card"[^>]*>(?:(?!</a>).)*<h3>'.preg_quote(e($name), '~').'</h3>.*?</a>~s', $html, $m) ? $m[0] : '';
+$control = fn(string $html, string $label): string => preg_match('~<nav class="tabs is-segmented" aria-label="'.preg_quote(e($label), '~').'">(.*?)</nav>~s', $html, $m) ? $m[1] : '';
+$fold = fn(string $html): string => preg_match('~<details class="card fold-row">(.*?)</details>~s', $html, $m) ? $m[1] : '';
+$sections = fn(string $html): array => preg_match_all('~<section class="card age-section" id="([^"]+)"~', $html, $m) ? $m[1] : [];
+$list = render_view('students');
+ok(str_contains($list, '<form method="get" class="search" role="search">') && str_contains($list, 'type="search" name="q"') && str_contains($list, 'placeholder="'.e('Suchen').'"'),
+   'the search is a form of its own, a box that says „Suchen"');
+$quick = $control($list, 'Auswahl');
+ok(str_contains($quick, 'aria-current="page" href="'.e(url('students')).'"') && str_contains($quick, 'href="'.e(url('students', ['overdue'=>1])).'"') && str_contains($quick, 'href="'.e(url('students', ['absence'=>'sick'])).'"'),
+   '„Alle | Überfällig | Krank" is a segmented control of three plain links, „Alle" lit');
+ok(str_contains($fold($list), '<summary><span>'.e('Filter').'</span><svg'), 'the fold’s row says „Filter", and nothing chosen');
+foreach (['course', 'status', 'level', 'age_group'] as $field) ok(str_contains($fold($list), 'name="'.$field.'"'), 'it asks for '.$field);
+ok(preg_match('~<option value="none"[^>]*>'.preg_quote(e('Ohne Altersgruppe'), '~').'</option>~', $fold($list)) === 1, 'with „Ohne Altersgruppe" among the groups');
+ok(!str_contains($fold($list), 'name="absence"') && !str_contains($fold($list), 'type="checkbox"') && !str_contains($fold($list), 'name="q"'),
+   'and no longer for an absence, the overdue or the search, which stand on their own');
+ok(str_contains($fold($list), e('Anwenden')), 'with „Anwenden"');
+$sorted = render_view('students', ['course'=>(string)$course]);
+$sort = $control($sorted, 'Sortieren');
+ok(str_contains($sort, 'aria-current="page" href="'.e(url('students', ['course'=>(string)$course])).'"') && str_contains($sort, 'href="'.e(url('students', ['course'=>(string)$course, 'sort'=>'age'])).'"'),
+   '„A–Z | Nach Alter" keeps the filters, A–Z lit');
+ok(str_contains($control($sorted, 'Auswahl'), 'href="'.e(url('students', ['overdue'=>1])).'"'), 'while „Überfällig" starts afresh');
+ok(str_contains($sorted, '<input type="hidden" name="course" value="'.$course.'">'), 'and the search keeps the course');
+$chosen = render_view('students', ['course'=>(string)$course, 'level'=>(string)$level['id'], 'age_group'=>(string)$unter12, 'sort'=>'age', 'q'=>'A']);
+ok(str_contains($fold($chosen), '<span class="fold-value">'.e('Kindertraining · '.$level['name'].' · Unter 12').'</span>'), 'chosen, the row names the choices in the fields’ order');
+ok(str_contains($fold($chosen), '<input type="hidden" name="q" value="A">') && str_contains($fold($chosen), '<input type="hidden" name="sort" value="age">'),
+   'and „Anwenden" keeps the search and the order');
+is_same(['Anna Alt', 'Ben Berg', 'Cora Clever', 'Dan Dazwischen'], array_map($decoded, preg_match_all('~<h3>([^<]*)</h3>~', $list, $m) ? $m[1] : []), 'A–Z is by last name');
+is_same('Unter 12 · '.$level['name'], $subtitleOf($list, 'Anna Alt'), 'in A–Z a row says the age group and the level');
+is_same('19 Jahre · '.$level['name'], $subtitleOf($list, 'Dan Dazwischen'), 'an age no group covers says the age');
+is_same('Geburtsdatum fehlt · '.$level['name'], $subtitleOf($list, 'Cora Clever'), 'and no birth date says so');
+ok(!str_contains($list, '€') && !str_contains($list, e('in keinem Kurs')), 'the price left the row');
+$overview = render_view('dashboard');   // the same rows on the overview's Schüler group; nobody here is overdue, so „€" can only be a price
+ok(preg_match_all('~<a class="student-card".*?</a>~s', $overview, $m) >= 1 && !str_contains(implode('', $m[0]), '€'), 'and from the overview’s Schüler rows');
+ok(!str_contains($rowOf($list, 'Anna Alt'), e('Ohne Kurs')) && str_contains($rowOf($list, 'Ben Berg'), '<span class="badge amber">'.e('Ohne Kurs').'</span>'),
+   'a child in no running course wears „Ohne Kurs" instead');
+$byAge = render_view('students', ['sort'=>'age']);
+foreach (['age-group-'.$unter12 => ['Unter 12', 'bis 11'], 'age-group-'.$jugend => ['Jugend', '12 bis 17'], 'no-age-group' => ['Ohne Altersgruppe', ''], 'no-birth-date' => ['Ohne Geburtsdatum', '']] as $key => [$title, $span])
+    ok(preg_match('~<section class="card age-section" id="'.$key.'">\s*<div class="section-heading"><div><h2>'.preg_quote(e($title), '~').'</h2>\s*'
+                  .($span !== '' ? '<small>'.preg_quote(e($span), '~').'</small>' : '').'\s*</div><span class="badge ">1</span></div>~', $byAge) === 1,
+       '„Nach Alter" has the group '.$title.($span !== '' ? ' ('.$span.')' : '').', its count beside it');
+is_same(['age-group-'.$unter12, 'age-group-'.$jugend, 'no-age-group', 'no-birth-date'], $sections($byAge), 'in Verwaltung’s order, then no group, then no birth date');
+ok(!str_contains($list, e('Nach Nachnamen sortiert')) && !str_contains($byAge, e('Nach Nachnamen sortiert')), 'and the line „Nach Nachnamen sortiert" is gone: the control says the order');
+is_same('9 Jahre · '.$level['name'], $subtitleOf($byAge, 'Anna Alt'), 'under a group’s header a row says the age and the level');
+ok(str_contains($byAge, '<p class="section-footer">'.e('Keine deiner Altersgruppen passt.').' <a href="'.e(url('manage', ['tab'=>'ages'])).'">'.e('Altersgruppen ansehen').'</a></p>'),
+   '„Ohne Altersgruppe" says the groups leave a gap, with the way to them');
+$withBand = render_view('students', ['age_group'=>(string)$unter12]);
+ok(str_contains($withBand, e('1 Kind ohne Geburtsdatum ist nicht dabei.')) && str_contains($withBand, 'href="'.e(url('students', ['age_group'=>'none', 'sort'=>'age', '#'=>'no-birth-date'])).'">'.e('Zeigen').'</a>'),
+   'a chosen group says whom it leaves out, with „Zeigen" to them');
+// Rows, not the page: the notices above the list name children too.
+ok($rowOf($withBand, 'Anna Alt') !== '' && $rowOf($withBand, 'Ben Berg') === '', 'and shows only its children');
+$none = render_view('students', ['age_group'=>'none']);
+ok($rowOf($none, 'Cora Clever') !== '' && $rowOf($none, 'Dan Dazwischen') !== '' && $rowOf($none, 'Anna Alt') === '' && !str_contains($none, e('nicht dabei')) && !str_contains($list, e('nicht dabei')),
+   '„Ohne Altersgruppe" is the children no group places - no birth date, or the gap - and neither it nor „Alle" has the line');
+$nobody = render_view('students', ['q'=>'Niemand']);
+ok(str_contains($nobody, '<h2>'.e('Niemand in dieser Auswahl').'</h2>') && str_contains($nobody, e(url('students')).'">'.e('Alle Schüler').'</a>'), 'a selection with nobody in it offers „Alle Schüler"');
+run('DELETE FROM age_groups');
+$noBands = render_view('students', ['sort'=>'age']);
+ok(str_contains($noBands, e('Es gibt noch keine Altersgruppen.')) && str_contains($noBands, e(url('manage', ['tab'=>'ages'])).'">'.e('Altersgruppen anlegen').'</a>'),
+   'without any group, the list says so and leads to Verwaltung');
+is_same(['no-age-group', 'no-birth-date'], $sections($noBands), 'and every child with a birth date is under „Ohne Altersgruppe"');
+ok(!str_contains($noBands, 'class="section-footer"'), 'without a footer saying none of them fits');
+for ($i = 0; $i < 50; $i++) make_student(['first_name'=>'Viele', 'last_name'=>'Kind'.str_pad((string)$i, 2, '0', STR_PAD_LEFT), 'level_id'=>$level['id']]);
+$first = render_view('students', ['sort'=>'age', 'q'=>'e']);
+ok(str_contains($first, 'href="'.e(url('students', ['q'=>'e', 'sort'=>'age', 'p'=>2])).'"'), 'the pager keeps the search and the order');
+ok(substr_count($first, 'class="student-card"') === 50 && preg_match('~id="no-birth-date">.*?<span class="badge ">51</span>~s', $first) === 1,
+   'a group that runs on to the next page keeps the count of the whole group');
+$second = render_view('students', ['q'=>'e', 'sort'=>'age', 'p'=>'2']);
+ok(substr_count($second, 'class="student-card"') === 3 && str_contains($second, '<span class="badge ">51</span>') && $sections($second) === ['no-birth-date'],
+   'and the next page continues it under the same header');
+run('DELETE FROM class_students'); run('DELETE FROM students');
+$empty = render_view('students');
+ok(str_contains($empty, '<h2>'.e('Noch keine Schüler').'</h2>') && str_contains($empty, e(url('student_new', ['from'=>'students']))), 'with no student at all, the list offers the wizard');
+sign_out();
+
+// ---------------------------------------------------------------------------
+// Children's pictures on the pages (ADR 0031; the screens' spec)
+// ---------------------------------------------------------------------------
+$pictureTrainer = make_account(['role'=>'trainer', 'name'=>'Trainerin Foto']);
+$pictureAdmin = make_account(['role'=>'admin', 'name'=>'Admin Foto']);
+$miaLogin = make_account(['role'=>'student', 'name'=>'Mia Berger']);
+$mia = make_student(['first_name'=>'Mia', 'last_name'=>'Berger', 'account_id'=>$miaLogin]);
+$leo = make_student(['first_name'=>'Leo', 'last_name'=>'Platz']);        // a placeholder login: nobody signed in yet
+$pictureCourse = make_class(['name'=>'Foto-Kurs']);
+make_enrolment($pictureCourse, $mia); make_enrolment($pictureCourse, $leo);
+if (!is_dir(upload_dir('picture'))) mkdir(upload_dir('picture'), 0775, true);
+/** A picture on student $id, as has_picture() asks for one: a stored name whose file is there. */
+$givePicture = function (int $id, int $shared = 0): void {
+    $name = bin2hex(random_bytes(16)).'.jpg';
+    file_put_contents(upload_dir('picture').'/'.$name, 'picture');
+    run('UPDATE students SET picture_name=?, course_sees_picture=? WHERE id=?', [$name, $shared, $id]);
 };
+$noPicture = fn(int $id) => run("UPDATE students SET picture_name='', course_sees_picture=0 WHERE id=?", [$id]);
+$xpath = function (string $html): DOMXPath {
+    $dom = new DOMDocument();
+    $quiet = libxml_use_internal_errors(true);
+    $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
+    libxml_clear_errors(); libxml_use_internal_errors($quiet);
+    return new DOMXPath($dom);
+};
+$hasClass = fn(string $name): string => "contains(concat(' ', normalize-space(@class), ' '), ' $name ')";
+$formFor = fn(string $action): string => './/form[.//input[@name="action" and @value="'.$action.'"]]';
+/** What the picture card on the Profil tab shows: the row, its sheet, the switch, staff's button and line. */
+$card = function (string $html) use ($xpath, $hasClass, $formFor): array {
+    $x = $xpath($html);
+    $c = $x->query('//section[@id="picture"]')->item(0);
+    if (!$c) return ['no card'];
+    $text = function (string $q) use ($x, $c): ?string { $n = $x->query($q, $c)->item(0); return $n ? trim((string)preg_replace('/\s+/', ' ', $n->textContent)) : null; };
+    $switch = $x->query('.//input[@type="checkbox" and @name="on"]', $c)->item(0);
+    $sheet = $x->query('.//details[@data-sheet]', $c)->item(0);
+    return ['row' => $text('.//*['.$hasClass('member-row').']//strong').' / '.$text('.//*['.$hasClass('member-row').']//small'),
+            'sheet' => $sheet ? $sheet->getAttribute('data-sheet-title') : null,
+            'switch' => $switch ? ($switch->hasAttribute('checked') ? 'on' : 'off') : null,
+            'hide' => $x->query($formFor('picture_consent').'[.//input[@name="on" and @value="0"]]', $c)->length > 0,
+            'line' => $text('.//*['.$hasClass('picture-state').']/p') ?? $text('.//p['.$hasClass('picture-note').']')];
+};
+$state = fn(string $row, ?string $sheet, ?string $switch, bool $hide, ?string $line) => compact('row', 'sheet', 'switch', 'hide', 'line');
 
-case_('A contact request from another family shows their initials, and asks for nobody’s picture');
-/* Another family's account is a child (ADR 0010), so its picture is not shown
-   to a family. The request's id is the recipient's own account id: the one id
-   whose picture this viewer may see, so the old code would have printed it. */
-$sender    = make_account(['role'=>'student','name'=>'Absender Kontakt','avatar_name'=>str_repeat('a', 32).'.jpg']);
-$recipient = make_account(['role'=>'student','name'=>'Empfängerin Kontakt']);
-$request = fixture('contact_requests', ['id'=>$recipient,'from_account_id'=>$sender,'to_account_id'=>$recipient,
-                                        'state'=>'pending','message'=>'Hallo','created_at'=>now()]);
-is_same($recipient, $request, 'the request’s id is the recipient’s own account id');
-sign_in_as($recipient);
-$block = $requestsBlock(render_view('messages', ['contacts'=>1]));
-ok(str_contains($block, 'Absender Kontakt'), 'the request is on the page');
-ok(str_contains($block, '<span class="avatar">AK</span>'), 'with the sender’s initials');
-is_same([], $askedFor($block), 'and no picture is asked for, by the request’s number or any other');
-run('DELETE FROM contact_requests WHERE id=?', [$request]);
+case_('The picture card says who sees the photo, and only the family can show it to the course [ADR 0031]');
+/* The spec's table of states, one check each. A family gets the switch; staff
+   only ever take the course view away, so they get a line and, while the
+   family's yes stands, a button - never a switch. Nothing about the course
+   while there is no picture or the club shows none in a course. The note
+   shows other families exactly what they see: the child's own initials. */
+set_setting('pictures_in_course', true);
+sign_in_as($miaLogin);
+$profile = fn(int $id) => $card(render_view('student', ['id'=>(string)$id]));
+is_same($state('Foto hinzufügen / Freiwillig. Ohne Foto stehen hier deine Anfangsbuchstaben.', null, null, false, null), $profile($mia),
+        'the family, no photo: the row adds one, and says it is voluntary');
+$givePicture($mia, 0);
+is_same($state('Foto ändern / Dein Trainerteam sieht es.', 'Foto von Mia', 'off', false, 'Die anderen im Kurs sehen nur „MB“.'), $profile($mia),
+        'the family, a photo the course does not see: the switch off, and what the others see instead');
+run('UPDATE students SET course_sees_picture=1 WHERE id=?', [$mia]);
+is_same($state('Foto ändern / Dein Trainerteam und dein Kurs sehen es.', 'Foto von Mia', 'on', false,
+               'Die Kinder in deinem Kurs und ihre Familien sehen es im Kurs-Chat. Ausschalten geht jederzeit.'), $profile($mia),
+        'the family, a photo the course sees: the switch on, and who sees it');
+set_setting('pictures_in_course', false);
+is_same($state('Foto ändern / Dein Trainerteam sieht es.', 'Foto von Mia', null, false, null), $profile($mia),
+        'with the club showing no photos in a course, the family is not asked');
+set_setting('pictures_in_course', true);
+sign_in_as($pictureTrainer);
+is_same($state('Foto ändern / Die Familie sieht es und kann es ändern.', 'Foto von Mia', null, true,
+               'Im Kurs-Chat sichtbar, weil die Familie zugestimmt hat. Wieder einschalten kann dann nur sie.'), $profile($mia),
+        'staff, the family said yes: no switch, a button that only hides it, and why only the family can undo that');
+run('UPDATE students SET course_sees_picture=0 WHERE id=?', [$mia]);
+is_same($state('Foto ändern / Die Familie sieht es und kann es ändern.', 'Foto von Mia', null, false, 'Im Kurs-Chat nicht sichtbar. Das entscheidet die Familie.'),
+        $profile($mia), 'staff, no yes: nothing to press, and who decides');
+$givePicture($leo, 0);
+is_same($state('Foto ändern / Die Familie sieht es und kann es ändern.', 'Foto von Leo', null, false,
+               'Im Kurs-Chat nicht sichtbar. Zustimmen kann die Familie, sobald sie sich angemeldet hat.'), $profile($leo),
+        'staff, a child nobody has signed in for yet: the family can agree once they have');
+$noPicture($leo);
+is_same($state('Foto hinzufügen / Die Familie sieht es, sobald sie sich angemeldet hat.', null, null, false, null), $profile($leo),
+        'staff adding the first photo of such a child: the family sees it once they sign in');
+$noPicture($mia);
+is_same($state('Foto hinzufügen / Die Familie bekommt einen Hinweis und kann es ändern.', null, null, false, null), $profile($mia),
+        'staff adding the first photo of a child whose family has signed in: they are told');
+$page = render_view('student', ['id'=>(string)$mia]);
+$x = $xpath($page);
+ok($x->query('//section[@id="picture"]//label['.$hasClass('member-row').']//input[@type="file" and @name="picture" and not(@capture)]')->length === 1,
+   'the row is the label of the photo field, so the phone offers its library and its camera');
+is_same(1, deepest_form_nesting($page), 'and the card\'s forms stand beside the child\'s form, never inside it');
+
+case_('At attendance a child with no photo is a button that takes one, after saving the marks [ADR 0031]');
+/* The face of a child without a photo submits the attendance form with
+   photo={id}, so what she ticked is saved before the photo; the list then
+   opens the photo sheet for that child, with the rear camera at once. */
+sign_in_as($pictureTrainer);
+$givePicture($mia, 0); $noPicture($leo);
+$list = fn(array $query = []) => $xpath(render_view('attendance', ['id'=>(string)$pictureCourse, 'on'=>today()] + $query));
+$x = $list();
+$takes = $x->query(substr($formFor('attendance_save'), 1).'//button['.$hasClass('avatar-add').' and @type="submit" and @name="photo"]');
+is_same([(string)$leo], array_map(fn($b) => $b->getAttribute('value'), iterator_to_array($takes)),
+        'the child without a photo is a button of the attendance form, the one with a photo is not');
+is_same('Foto von Leo aufnehmen', $takes->item(0)?->getAttribute('aria-label'), 'which says whose photo it takes');
+is_same(1, $x->query('//div['.$hasClass('attendance-name').']//img')->length, 'and the child with a photo shows it');
+is_same(0, $x->query('//details['.$hasClass('picture-sheet').']')->length, 'no sheet until a face is tapped');
+$x = $list(['photo'=>(string)$leo]);
+$sheet = $x->query('//details['.$hasClass('picture-sheet').' and @open]')->item(0);
+ok($sheet && $sheet->getAttribute('data-sheet-title') === 'Foto von Leo'
+   && $x->query($formFor('picture_save').'[.//input[@name="student_id" and @value="'.$leo.'"]][.//input[@name="class_id" and @value="'.$pictureCourse.'"]]'
+                .'//input[@type="file" and @name="picture" and @capture="environment"]', $sheet)->length === 1,
+   'photo={id} opens the sheet for that child: the rear camera, sent back to the same course');
+is_same(0, $x->query('//form//details['.$hasClass('picture-sheet').']')->length, 'the sheet stands outside the attendance form');
+is_same(0, $list(['photo'=>(string)$mia])->query('//details['.$hasClass('picture-sheet').']')->length, 'not for a child who has a photo');
+is_same(0, $list(['photo'=>'999999'])->query('//details['.$hasClass('picture-sheet').']')->length, 'nor for a child not in the list');
+
+case_('Faces in the course\'s list, on Zugänge, and the club\'s setting [ADR 0031]');
+$x = $xpath(render_view('classes', ['id'=>(string)$pictureCourse]));
+is_same([1, 1], [$x->query('//div['.$hasClass('record-who').'][.//a[contains(@href,"id='.$mia.'")]]//img')->length,
+                 $x->query('//div['.$hasClass('record-who').'][.//a[contains(@href,"id='.$leo.'")]]//span['.$hasClass('avatar').']')->length],
+        'the course\'s members each have a face beside the name: the photo, or the initials');
+sign_in_as($pictureAdmin);
+$x = $xpath(render_view('accounts'));
+ok($x->query('//a['.$hasClass('member-row').' and contains(@href,"id='.$mia.'")]//span['.$hasClass('avatar').']/img')->length === 1,
+   'Zugänge draws the child\'s photo on the child\'s row');
+/* A team member's row drew its face from the name alone, so a trainer's photo
+   never showed there (mobile-tester, 2026-10-08). */
+$teamFace = bin2hex(random_bytes(16)).'.jpg';
+file_put_contents(upload_dir('picture').'/'.$teamFace, 'picture');
+run('UPDATE accounts SET picture_name=? WHERE id=?', [$teamFace, $pictureTrainer]);
+$x = $xpath(render_view('accounts'));
+ok($x->query('//*['.$hasClass('member-row').'][.//strong[normalize-space()="Trainerin Foto"]]//span['.$hasClass('avatar').']'
+             .'/img[contains(@src,"kind=account&id='.$pictureTrainer.'&")]')->length === 1,
+   'and a team member\'s own photo on theirs');
+run("UPDATE accounts SET picture_name='' WHERE id=?", [$pictureTrainer]);
+$x = $xpath(render_view('settings', ['tab'=>'privacy']));
+ok($x->query('//section[@id="pictures"]//input[@type="checkbox" and @name="set_pictures_in_course"]')->length === 1,
+   'Einstellungen › Datenschutz has the club\'s switch for photos in a course, above the notice');
+ok($x->query('//section[@id="pictures"]//details['.$hasClass('advanced-settings').']//input[@name="set_consent_age"]')->length === 1,
+   'and, under „Erweitert", the age from which a child agrees alone');
 sign_out();
 
-case_('A contact request from the trainer shows her picture, asked for by her account, not the request');
-/* Families may see staff pictures. Staff do not normally send requests - they
-   may write anyway - but a row like this is what the page is given, and here the
-   request's id is another family's child, who has a photo of their own. */
-$staffSender = make_account(['role'=>'trainer','name'=>'Trainerin Anfrage','avatar_name'=>str_repeat('c', 32).'.jpg']);
-$otherChild  = make_account(['role'=>'student','name'=>'Fremdes Kind','avatar_name'=>str_repeat('d', 32).'.jpg']);
-$recipient   = make_account(['role'=>'student','name'=>'Empfänger Trainerin']);
-$request = fixture('contact_requests', ['id'=>$otherChild,'from_account_id'=>$staffSender,'to_account_id'=>$recipient,
-                                        'state'=>'pending','message'=>'','created_at'=>now()]);
-is_same($otherChild, $request, 'the request’s id is the other child’s account id');
-sign_in_as($recipient);
-$block = $requestsBlock(render_view('messages', ['contacts'=>1]));
-ok(str_contains($block, 'Trainerin Anfrage'), 'the request is on the page');
-ok(str_contains($block, e(url('download', ['what'=>'avatar','kind'=>'account','id'=>$staffSender,
-                                           'v'=>upload_version(str_repeat('c', 32).'.jpg')]))),
-   'with the trainer’s picture, asked for by her account id');
-is_same([(string)$staffSender], $askedFor($block), 'and by no other id - not the request’s, which is the other child’s');
-run('DELETE FROM contact_requests WHERE id=?', [$request]);
+case_('In a course\'s group, a face beside each run of bubbles, and staff named with the pill [ADR 0031; the security review, 2026-10-08]');
+/* The faces came with the pictures and the pill with the security review, on
+   the same line of a group: a writer's face by the rule every face follows
+   (avatar()), their name by chat_sender(), and the role never as words after
+   the name again. */
+$miaBefore = one('SELECT picture_name, course_sees_picture FROM students WHERE id=?', [$mia]);
+$teamFace = bin2hex(random_bytes(16)).'.jpg';
+file_put_contents(upload_dir('picture').'/'.$teamFace, 'picture');
+run('UPDATE accounts SET picture_name=? WHERE id=?', [$teamFace, $pictureTrainer]);
+$givePicture($mia, 1);
+$pictureGroup = course_group_thread($pictureCourse);
+fixture('messages', ['thread_id'=>$pictureGroup, 'sender_id'=>$pictureTrainer, 'body'=>'Morgen fällt das Training aus.', 'created_at'=>now()]);
+fixture('messages', ['thread_id'=>$pictureGroup, 'sender_id'=>$miaLogin, 'body'=>'Schade!', 'created_at'=>now()]);
+sign_in_as($pictureAdmin);
+$page = render_view('messages', ['id'=>(string)$pictureGroup]);
+$x = $xpath($page);
+// Each run of someone else's bubbles as [its face, the name over it, the pill beside the name].
+$runs = array_map(fn(DOMElement $row) => [
+    ($img = $x->query('./span['.$hasClass('avatar').']/img', $row)->item(0)) ? (str_contains($img->getAttribute('src'), 'kind=account') ? 'team photo' : 'child photo') : 'initials',
+    trim((string)$x->query('.//span['.$hasClass('bubble-sender').']/span['.$hasClass('sender-name').']', $row)->item(0)?->textContent),
+    ($pill = $x->query('.//span['.$hasClass('bubble-sender').']/span['.$hasClass('badge').']', $row)->item(0)) ? trim($pill->textContent) : null,
+], iterator_to_array($x->query('//div['.$hasClass('message-row').' and '.$hasClass('run-start').' and not('.$hasClass('mine').')]')));
+is_same([['team photo', 'Trainerin Foto', 'Trainerin'], ['child photo', 'Mia Berger', null]], $runs,
+        'the trainer\'s run has her photo and her name with the pill, the child\'s the child\'s photo and name');
+ok(!str_contains($page, '· '.role_label('trainer')), 'and no role written after a name');
+run('UPDATE accounts SET picture_name=\'\' WHERE id=?', [$pictureTrainer]);
+run('UPDATE students SET picture_name=?, course_sees_picture=? WHERE id=?', [$miaBefore['picture_name'], $miaBefore['course_sees_picture'], $mia]);
 sign_out();
+
+case_('The course switch says whose yes it is, by the child\'s age [ADR 0031, as amended: § 4 Abs. 4 DSG]');
+/* Said inside the switch's own label, read before the tap: under the club's
+   consent_age, or with no birth date, a parent switches it on through the
+   family's login; from that age the child decides. */
+sign_in_as($miaLogin);
+set_setting('pictures_in_course', true);
+$givePicture($mia, 0);
+$hint = function () use ($xpath, $mia): ?string {
+    $x = $xpath(render_view('student', ['id'=>(string)$mia]));
+    $small = $x->query('//section[@id="picture"]//label[contains(concat(" ", normalize-space(@class), " "), " switch ")][.//input[@name="on"]]//small')->item(0);
+    return $small ? trim($small->textContent) : null;
+};
+$born = fn(?int $years) => run('UPDATE students SET birth_date=? WHERE id=?', [$years === null ? null : date('Y-m-d', strtotime('-'.$years.' years -1 day')), $mia]);
+$born(10);
+is_same('Unter 14 schaltet das ein Elternteil ein.', $hint(), 'a child of ten: a parent switches it on, and the switch says so');
+$born(15);
+is_same('Das entscheidest du selbst.', $hint(), 'from fourteen: the child decides');
+set_setting('consent_age', 16);
+is_same('Unter 16 schaltet das ein Elternteil ein.', $hint(), 'the age is the club\'s setting');
+set_setting('consent_age', 14);
+$born(null);
+is_same('Ohne Geburtsdatum schaltet das ein Elternteil ein.', $hint(), 'and without a birth date, a parent');
+$born(10);
+
+case_('Mein Konto: a team member\'s own photo, and none for a family [ADR 0031; the owner, 2026-10-08]');
+$account = function (string $html) use ($xpath, $hasClass, $formFor): array {
+    $x = $xpath($html);
+    $c = $x->query('//section[@id="picture"]')->item(0);
+    if (!$c) return ['no card'];
+    $sheet = $x->query('.//details[@data-sheet]', $c)->item(0);
+    return ['row' => trim((string)$x->query('.//*['.$hasClass('member-row').']//strong', $c)->item(0)?->textContent).' / '
+                    .trim((string)$x->query('.//*['.$hasClass('member-row').']//small', $c)->item(0)?->textContent),
+            'adds' => $x->query($formFor('picture_save').'[.//input[@name="kind" and @value="account"]][not(.//input[@name="remove"])]//input[@type="file" and @name="picture"]', $c)->length,
+            'sheet' => $sheet ? $sheet->getAttribute('data-sheet-title') : null,
+            'removes' => $x->query($formFor('picture_save').'[.//input[@name="kind" and @value="account"]][.//input[@name="remove" and @value="1"]]', $c)->length,
+            'first' => $x->query('//section[@id="picture"]/following-sibling::section[@id="sign-in"]')->length === 1];
+};
+sign_in_as($pictureTrainer);
+is_same(['row'=>'Foto hinzufügen / Das Team und die Familien sehen es.', 'adds'=>1, 'sheet'=>null, 'removes'=>0, 'first'=>true], $account(render_view('profile')),
+        'a trainer without a photo: one row that adds it, before „Anmeldung"');
+$teamName = bin2hex(random_bytes(16)).'.jpg';
+file_put_contents(upload_dir('picture').'/'.$teamName, 'picture');
+run('UPDATE accounts SET picture_name=? WHERE id=?', [$teamName, $pictureTrainer]);
+sign_in_as($pictureTrainer);
+$page = render_view('profile');
+is_same(['row'=>'Foto ändern / Das Team und die Familien sehen es.', 'adds'=>1, 'sheet'=>'Dein Foto', 'removes'=>1, 'first'=>true], $account($page),
+        'with one: the row opens the sheet „Dein Foto", with a new photo and a removal');
+is_same(1, deepest_form_nesting($page), 'every form of it stands on its own');
+sign_in_as($miaLogin);
+is_same(['no card'], $account(render_view('profile')), 'a family\'s Mein Konto has no photo: theirs is the child\'s, on the child\'s page');
+
+case_('„Dein Foto": one question after the first password, three ways [ADR 0031, as amended]');
+/* For a family the child's picture, for a team member their own; never the
+   course switch. Without a photo yet: „Foto hinzufügen" filled, „Überspringen"
+   on. With one the trainer added: „Passt so" is the way on, „Anderes Foto" the
+   way to their own. Both go where the first password landed before. */
+$welcome = function () use ($xpath, $hasClass, $formFor): array {
+    $x = $xpath(render_view('welcome'));
+    $step = $x->query('//section['.$hasClass('photo-step').']')->item(0);
+    if (!$step) return ['no step'];
+    $form = $x->query($formFor('picture_save'), $step)->item(0);
+    $hidden = [];
+    foreach ($form ? $x->query('.//input[@type="hidden"]', $form) : [] as $input)
+        if (in_array($input->getAttribute('name'), ['student_id', 'kind', 'to'], true)) $hidden[$input->getAttribute('name')] = $input->getAttribute('value');
+    ksort($hidden);
+    $pick = $form ? $x->query('.//label['.$hasClass('picture-pick').']', $form)->item(0) : null;
+    $link = fn(string $class) => ($a = $x->query('.//a['.$hasClass($class).']', $step)->item(0)) ? trim($a->textContent).' → '.$a->getAttribute('href') : null;
+    return ['title' => trim((string)$x->query('//h1')->item(0)?->textContent),
+            'line' => trim((string)$x->query('//div['.$hasClass('page-heading').']//p')->item(0)?->textContent),
+            'pick' => $pick ? trim($pick->textContent).($x->query('.//input[@type="file" and @name="picture" and not(@capture)]', $pick)->length ? '' : ' (camera only)')
+                             .(str_contains(' '.$pick->getAttribute('class').' ', ' secondary ') ? ', tinted' : ', filled') : null,
+            'sends' => $hidden, 'done' => $link('photo-done'), 'skip' => $link('photo-skip'),
+            'note' => trim((string)$x->query('.//p['.$hasClass('photo-note').']', $step)->item(0)?->textContent),
+            'switch' => $x->query($formFor('picture_consent'))->length];
+};
+$childPage = e(url('student', ['id'=>$mia]));
+sign_in_as($miaLogin);
+$noPicture($mia);
+is_same(['title'=>'Willkommen, Mia!', 'line'=>'Möchtest du ein Foto? Es ist freiwillig.', 'pick'=>'Foto hinzufügen, filled',
+         'sends'=>['student_id'=>(string)$mia, 'to'=>'landing'], 'done'=>null, 'skip'=>'Überspringen → '.html_entity_decode($childPage),
+         'note'=>'Dein Trainerteam sieht es. Ob auch dein Kurs es sieht, entscheidest du später auf deiner Seite.', 'switch'=>0], $welcome(),
+        'a family: the child\'s photo, voluntary, „Überspringen" to the child\'s page, and no course switch');
+$givePicture($mia, 0);
+is_same(['title'=>'Willkommen, Mia!', 'line'=>'Dein Trainerteam hat schon ein Foto von dir hinzugefügt.', 'pick'=>'Anderes Foto, tinted',
+         'sends'=>['student_id'=>(string)$mia, 'to'=>'landing'], 'done'=>'Passt so → '.html_entity_decode($childPage), 'skip'=>null,
+         'note'=>'Dein Trainerteam sieht es. Ob auch dein Kurs es sieht, entscheidest du später auf deiner Seite.', 'switch'=>0], $welcome(),
+        'a family whose trainer already took one: „Passt so" on, or „Anderes Foto"');
+sign_in_as($pictureTrainer);
+run("UPDATE accounts SET picture_name='' WHERE id=?", [$pictureTrainer]);
+sign_in_as($pictureTrainer);
+[$landPage, $landParams] = landing_after_sign_in(current_user());
+is_same(['title'=>'Willkommen, Trainerin!', 'line'=>'Möchtest du ein Foto? Die Familien sehen es in den Chats.', 'pick'=>'Foto hinzufügen, filled',
+         'sends'=>['kind'=>'account', 'to'=>'landing'], 'done'=>null, 'skip'=>'Überspringen → '.url($landPage, $landParams),
+         'note'=>'Alle im Portal sehen es. Ändern kannst du es unter „Mein Konto“.', 'switch'=>0], $welcome(),
+        'a team member: their own photo, „Überspringen" to where a sign-in lands');
+/* A team login still left on a child's record from before ADR 0010 is where the
+   two part: the server sends its first password on to the child's page, and the
+   step worked the place out a third time and sent it to the overview (code
+   review). Its way on is landing_after_first_password()'s, like the server's. */
+$oldTeam = make_account(['role'=>'trainer', 'name'=>'Trainer Früher']);
+make_student(['first_name'=>'Alt', 'last_name'=>'Eingetragen', 'account_id'=>$oldTeam]);
+sign_in_as($oldTeam);
+[$rulePage, $ruleParams] = landing_after_first_password(current_user());
+ok([$rulePage, $ruleParams] !== landing_after_sign_in(current_user()), 'for such a login the rule and a sign-in land apart, so the next line can tell which one the step asked');
+is_same('Überspringen → '.url($rulePage, $ruleParams), $welcome()['skip'], 'and its „Überspringen" goes on where the rule says, as the server does');
+$childless = make_account(['role'=>'student', 'name'=>'Niemand Hier']);
+sign_in_as($childless);
+$x = $xpath(render_view('welcome'));
+ok($x->query($formFor('picture_save'))->length === 0 && $x->query('//section['.$hasClass('photo-step').']//a['.$hasClass('button').']')->length === 1,
+   'a login with nothing to put a photo on is only shown the way on');
+
+case_('Attendance: Enter saves, „Alle" offers the usual status, „Mehr" the rarer ones [the audit, N3]');
+/* The faces are submit buttons of the attendance form, and Enter in a form
+   presses its first submit button: so the first is a copy of „Anwesenheit
+   speichern". Then one bulk button, for the first of the club's statuses, and
+   the others in a sheet - a whole class away is rare, and deliberate. */
+sign_in_as($pictureTrainer);
+$noPicture($leo);
+set_setting('attendance_statuses', ['present'=>'Anwesend', 'absent'=>'Fehlt', 'excused'=>'Entschuldigt']);
+$x = $list();
+$first = $x->query(substr($formFor('attendance_save'), 1).'//button[@type="submit"]')->item(0);
+is_same(['Anwesenheit speichern', '', true], [trim((string)$first?->textContent), (string)$first?->getAttribute('name'), str_contains(' '.$first?->getAttribute('class').' ', ' default-submit ')],
+        'the attendance form\'s first submit button saves, before any face');
+$tools = $x->query('//div['.$hasClass('attendance-tools').']')->item(0);
+$bulk = fn(string $q) => array_map(fn($b) => $b->getAttribute('data-mark-all').' '.trim($b->textContent), iterator_to_array($x->query($q, $tools)));
+is_same(['present Alle: Anwesend'], $bulk('./button[@data-mark-all]'), 'beside the list: „Alle: Anwesend", the first status');
+is_same(['absent Alle: Fehlt', 'excused Alle: Entschuldigt'], $bulk('./details[@data-sheet]['.$hasClass('attendance-more').'][summary="Mehr"]/button[@data-mark-all]'),
+        'and the others in the sheet behind „Mehr"');
+set_setting('attendance_statuses', ['present'=>'Anwesend']);
+$x = $list();
+is_same([0, 1], [$x->query('//details['.$hasClass('attendance-more').']')->length, $x->query('//div['.$hasClass('attendance-tools').']/button[@data-mark-all]')->length],
+        'a club with one status gets no „Mehr"');
+set_setting('attendance_statuses', ['present'=>'Anwesend', 'absent'=>'Fehlt', 'excused'=>'Entschuldigt']);
+
+case_('The family\'s overview greets the child by their face, which leads to their photo [the audit, N7]');
+$face = function () use ($xpath, $hasClass): ?array {
+    $x = $xpath(render_view('dashboard'));
+    $a = $x->query('//div['.$hasClass('page-heading').' and '.$hasClass('has-face').']/a['.$hasClass('page-face').']')->item(0);
+    return $a ? [$a->getAttribute('href'), $a->getAttribute('aria-label'), $x->query('./span['.$hasClass('avatar').' and '.$hasClass('large').']', $a)->length,
+                 $x->query('.//img', $a)->length] : null;
+};
+sign_in_as($miaLogin);
+$givePicture($mia, 0);
+is_same([html_entity_decode(e(url('student', ['id'=>$mia, '#'=>'picture']))), 'Dein Profil', 1, 1], $face(),
+        'beside „Hallo Mia": the child\'s own photo, large, a link to it at the top of the child\'s page');
+$noPicture($mia);
+is_same(0, $face()[3] ?? null, 'without a photo, the initials, leading to where one is added');
+sign_in_as($childless);
+is_same(null, $face(), 'a login with no child has no face to greet');
+sign_in_as($pictureTrainer);
+is_same(null, $face(), 'and staff\'s overview none');
+sign_out();
+
+case_('A page greets whoever is signed in by one first name, worked out in one place [the code review]');
+/* The overview's „Hallo …" and „Dein Foto"'s „Willkommen, …!" both ask
+   greeting_first_name(): a family by its child's first name, as a mail greets
+   it, a team member by the first word of their own. No view works one out. */
+is_same('Mia', greeting_first_name(one('SELECT * FROM accounts WHERE id=?', [$miaLogin])), 'a family by its child\'s first name');
+is_same('Trainerin', greeting_first_name(['role'=>'trainer', 'name'=>'  Trainerin Foto ']), 'a team member by the first word of their own');
+sign_in_as($pictureTrainer);
+is_same('Hallo Trainerin', trim((string)$xpath(render_view('dashboard'))->query('//h1')->item(0)?->textContent), 'and the overview greets her so');
+$splitting = array_map('basename', array_values(array_filter(glob(APP_ROOT.'/views/*.php'),
+    fn($f) => preg_match("/explode\(\s*'\s'\s*,[^;]*\['name'\]/", (string)file_get_contents($f)) === 1)));
+is_same([], $splitting, 'and no view splits a name into words itself');
+sign_out();
+
+case_('Without gd, a photo\'s row says so in the words a refused photo is given [ADR 0031 §4]');
+/* pictures_possible() asks the PHP this suite runs on, so the row without gd
+   cannot be drawn here; what it says is read from picture_row() instead: the
+   one home of those words, and none of its own beside it. */
+$row = named_blocks_of(APP_ROOT.'/app/ui.php')['picture_row'] ?? '';
+/* Every sentence pictures_unavailable() can give - for an administrator and for
+   anybody else, in German and in English - read from its own source. Two
+   fragments listed by hand let a copy of the third, the administrator's
+   „… steht, was fehlt", pass (code review). */
+$unavailable = array_values(array_filter(array_map(
+    fn($token) => is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING ? stripslashes(substr($token[1], 1, -1)) : '',
+    token_get_all('<?php '.(named_blocks_of(APP_ROOT.'/app/uploads.php')['pictures_unavailable'] ?? ''))), fn(string $s) => mb_strlen($s) >= 8));
+$said = [];
+foreach ([$pictureAdmin, $pictureTrainer] as $reader) { sign_in_as($reader); array_push($said, ...pictures_unavailable()); }
+sign_out();
+is_same([], array_values(array_diff($said, $unavailable)),
+        'what it says to an administrator and to anybody else is read from its source whole, so the next check has something to look for');
+is_same([], array_values(array_filter($unavailable, fn(string $s) => str_contains($row, $s))),
+        'picture_row() writes none of them out itself');
+ok(str_contains($row, '=pictures_unavailable();'), 'it takes what it says, and who sets it up, from pictures_unavailable() alone');

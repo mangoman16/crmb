@@ -4,11 +4,12 @@ declare(strict_types=1);
 /**
  * The configuration file for one suite run.
  *
- * The one writer for all three callers - tests/mariadb-local.sh, tests/
- * existing-database.php (behind existing-database.sh) and tests/harness.php for
- * the sqlite driver - so a key the application starts to require is added once
- * rather than in each, and no value is ever pasted into PHP source without
- * var_export() quoting it.
+ * The one writer for every caller - tests/mariadb-local.sh, for the suite's
+ * database and the empty one tests/migration-data.php builds in, tests/
+ * existing-database.php (behind existing-database.sh), and the structure
+ * suite's runs that must be refused - so a key the
+ * application starts to require is added once rather than in each, and no value
+ * is ever pasted into PHP source without var_export() quoting it.
  *
  * The same keys are written by the installer (install_config_source() in
  * app/install.php, called from public/setup.php) and listed in

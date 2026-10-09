@@ -9,11 +9,14 @@
  * CRM_E2E_* variables. On its own this file has nothing to talk to.
  *
  * What it walks, through the real forms and buttons, as she and a family would:
- *   1. public/setup.php, then signing in lands on „Dein Portal einrichten“, 0 of 9
+ *   1. public/setup.php, then signing in lands on „Dein Portal einrichten“, 0 of 9;
+ *      then a page held back on its way: the waiting page, carried on by the next
+ *      page without a gap, „Abbrechen“, Reduce Motion, no app.js (Part 0.4b)
  *   2. each of the nine steps from its own button, back via „Zurück zur
  *      Einrichtung“, and the tick after each, up to 9 of 9 and „Alles eingerichtet“
- *   3. the family: invitation link from the captured mail, password, dashboard,
- *      Profil, the charge, a payment proof, „Etwas funktioniert nicht“
+ *   3. the family: invitation link from the captured mail, password, „Dein Foto“
+ *      skipped, dashboard, Profil, the charge, a payment proof, „Etwas
+ *      funktioniert nicht“; a person invited by address adds a photo there
  *   4. the trainer: the charge and the payment, confirming it, an invoice PDF,
  *      the problem report with its trail
  *   5. an unexpected error (a table renamed underneath the portal): the family
@@ -51,10 +54,18 @@ const ADMIN = { name: 'Sabine Berger', email: 'trainerin@example.test', password
 const FAMILY = { name: 'Familie Huber', email: 'huber@example.test', password: 'E2e-Family-Pass-2026' };
 const CHILDREN = [{ first: 'Lena', last: 'Huber', born: '2015-04-12' }, { first: 'Jonas', last: 'Huber', born: '2013-09-30' }];
 const COURSE = 'Kinder Anfänger';
+// Invited by address alone („Per E-Mail einladen“, ADR 0021 §3): she types only
+// the address, and the person makes their own record and asks for a course.
+const NEWCOMER = { first: 'Mira', last: 'Novak', born: '2012-05-20', email: 'mira.novak@example.test', password: 'E2e-Newcomer-Pass-2026' };
+// An English invitation, opened and then withdrawn before it is taken up.
+const GUEST_EN = { email: 'guest.en@example.test' };
 // The child the family will be invited for (step 9 picks the first by name)
 // joined part-way through this month; the other one joins on the day of the run.
 const MID_JOINER = 'Jonas';
 const IBAN = 'AT611904300234573201';
+
+// The people whose pages are opened again at 320px, each with its own session.
+const SIGNED_IN_ROLES = ['admin', 'family', 'newcomer'];
 
 // --- results ------------------------------------------------------------------
 const results = [];       // {step, ok, name, detail}
@@ -89,6 +100,8 @@ function decodeBody(raw) {
     if (b64) return Buffer.from(b64[1].replace(/\s/g, ''), 'base64').toString('utf8');
     return qp ? Buffer.from(text.replace(/=([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))), 'latin1').toString('utf8') : text;
 }
+/** A mail's text as a reader sees it: decodeBody() keeps the headers of a quoted-printable mail. */
+const mailText = m => (/^X-E2E-Rcpt:/m.test(m.body) ? m.body.slice(m.body.search(/\r?\n\r?\n/)) : m.body).trimStart();
 const waitFor = async (what, fn, seconds, poke) => {
     const until = Date.now() + seconds * 1000;
     for (;;) {
@@ -150,7 +163,7 @@ async function look(page, role, width = 390) {
     const r = await page.evaluate(inspect, { expected: width });
     const where = label(page.url());
     // Only pages that answered: one that failed is already reported where it failed.
-    if (width === 390 && (role === 'admin' || role === 'family') && (page.__status || 200) < 400) (S.visited[role] ||= new Set()).add(page.url().replace(/#.*/, ''));
+    if (width === 390 && SIGNED_IN_ROLES.includes(role) && (page.__status || 200) < 400) (S.visited[role] ||= new Set()).add(page.url().replace(/#.*/, ''));
     if (!r.styled) ok(false, `app.css applied on ${where}`, 'the stylesheet did not load, so nothing measured on this page means anything');
     if (r.leaked.length && !S.leakSeen?.has(where + width)) (S.leakSeen ||= new Set()).add(where + width) && ok(false, `no PHP source printed on ${where}`, r.leaked.join(' / '));
     for (const f of r.found) {
@@ -212,17 +225,21 @@ const barWords = (page) => page.evaluate(() => [...document.querySelectorAll('.m
 const barLink = (page, word) => page.locator('.mobile-nav a').filter({ has: page.locator('span:not(.visually-hidden):not(.count)', { hasText: new RegExp('^' + word + '$') }) });
 
 /** Sign in on the page that is open, the way she does. */
-async function signIn(page, who) {
+async function signIn(page, who, role = who === ADMIN ? 'admin' : 'family') {
     if (!/page=login/.test(page.url())) await page.goto(BASE + '/index.php?page=login');
-    await look(page, who === ADMIN ? 'admin' : 'family');
-    await page.fill('input[name=email]', who.email); await page.fill('input[name=password]', who.password);
+    await look(page, role);
+    // One box, for the address (ADR 0030 §1), posted as login.
+    await page.fill('input[name=login]', who.email); await page.fill('input[name=password]', who.password);
     await submit(page, page.locator('main form button[type=submit]'));
-    await look(page, who === ADMIN ? 'admin' : 'family');
+    await look(page, role);
 }
-/** Mein Konto → Abmelden. */
+/** Mein Konto → Abmelden: the button at the foot of the page, not the account
+ *  menu's copy in the top bar, which sits folded away on a phone. */
 async function signOut(page) {
     await page.goto(BASE + '/index.php?page=profile');
-    await submit(page, page.locator('form:has(input[name=action][value=logout]) button'));
+    await submit(page, page.locator('main form:has(input[name=action][value=logout]) button'));
+    ok(label(page.url()) === '?page=login' || await page.locator('form:has(input[name=action][value=login])').count() === 1,
+       '„Abmelden“ ends the session', page.url());
 }
 
 /** Press a button and wait for the page it leads to. */
@@ -342,11 +359,212 @@ step('admin signs in', async ({ browser }) => {
     ok(p && p[0] === 0 && p[1] === 9, '0 von 9 erledigt on a fresh portal', JSON.stringify(p));
     ok(await page.locator('li.step.is-done').count() === 0, 'nothing ticked on a fresh portal');
     // U.46: the phone's bar.
-    ok(await barWords(page) === 'Übersicht Schüler Post Anwesend Mehr', 'the phone bar reads Übersicht, Schüler, Post, Anwesend, Mehr', await barWords(page));
+    ok(await barWords(page) === 'Übersicht Schüler Anwesend Chats Mehr', 'the phone bar reads Übersicht, Schüler, Anwesend, Chats, Mehr', await barWords(page));
     // U.31: signing out and in again lands on the checklist again.
     await signOut(page);
     await signIn(page, ADMIN);
     ok(label(page.url()) === '?page=start', 'signing in again lands on the checklist again', page.url());
+});
+
+/* What every page of the slow-page step records from its first moment, kept in
+   sessionStorage so it outlives the change of page: at each animation frame the
+   waiting page's display, visibility and opacity, the classes on <html>, where
+   the shuttle is and what is pressed; and when the tap came, when the page went,
+   and whether the browser's own cross-fade ran. */
+const WAIT_PROBE = `(() => {
+    const now = () => performance.timeOrigin + performance.now();
+    const page = new URLSearchParams(location.search).get('page') || '';
+    const log = e => { try { const a = JSON.parse(sessionStorage.getItem('e2e-probe') || '[]'); a.push(Object.assign({ t: now(), page }, e)); sessionStorage.setItem('e2e-probe', JSON.stringify(a)); } catch (x) {} };
+    let last = '';
+    const frame = () => {
+        const w = document.querySelector('.wait-page');
+        if (w) {
+            const s = getComputedStyle(w), r = w.querySelector('.glyph-shuttle')?.getBoundingClientRect();
+            const focused = document.activeElement;
+            const e = { o: +s.opacity, d: s.display, v: s.visibility, c: document.documentElement.className, slow: w.classList.contains('is-slow'),
+                        pending: document.querySelectorAll('.is-pending').length, at: r ? Math.round(r.left) + ',' + Math.round(r.top) : '',
+                        said: document.querySelector('.wait-said')?.textContent || '',
+                        focus: !focused ? '' : focused.classList.contains('wait-cancel') ? 'Abbrechen' : focused.tagName + (focused.getAttribute('href') || '') };
+            const sig = [e.d, e.v, e.o, e.c, e.pending, e.said, e.focus].join('|');
+            if (e.d !== 'none' || sig !== last) log(e);
+            last = sig;
+        }
+        requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+    addEventListener('click', () => log({ ev: 'tap' }), true);
+    addEventListener('pagehide', () => log({ ev: 'gone' }));
+    addEventListener('pagereveal', e => { if (e.viewTransition) e.viewTransition.ready.then(() => log({ ev: 'cross-fade ran' }), () => log({ ev: 'cross-fade skipped' })); });
+})();`;
+
+step('a slow page', async ({ browser }) => {
+    /* Part 0.4b, on the trainer's own sign-in in sessions of its own: the next
+       page held back on its way (CDP, documents only, so the cache stays on), the
+       tap a real touch, and every frame the screen shows read at two points - on
+       the net, and in the page's margin, where a white frame would show. */
+    const state = await S.admin.ctx.storageState();
+    const decoder = await (await browser.newContext()).newPage();
+    const pixels = (frames, points) => decoder.evaluate(async ({ frames, points }) => {
+        const out = [];
+        for (const data of frames) {
+            const img = new Image(); img.src = 'data:image/png;base64,' + data; await img.decode();
+            const canvas = new OffscreenCanvas(img.width, img.height), g = canvas.getContext('2d');
+            g.drawImage(img, 0, 0);
+            out.push(points.map(([x, y]) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]));
+        }
+        return out;
+    }, { frames, points });
+    const near = (a, b, d) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) <= d;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    /** Students, tapped in the bar, held back `hold` ms; what the pages recorded and the screen showed. */
+    const slowTap = async ({ hold, motion = 'no-preference', cancelAt = 0, withoutAppJs = false, after = 2600, keyboard = false }) => {
+        const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true,
+                                               locale: 'de-AT', reducedMotion: motion, storageState: state });
+        await ctx.addInitScript(WAIT_PROBE);
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(20000);
+        await page.goto(BASE + '/index.php?page=start', { waitUntil: 'load' });
+        await sleep(300);
+        // Where the net, the margin and „Abbrechen" are, and their colours: the waiting page shown for a moment by its classes alone.
+        const spots = await page.evaluate(() => {
+            const html = document.documentElement, wait = document.querySelector('.wait-page');
+            html.classList.add('is-waiting'); wait.classList.add('is-slow');
+            const net = document.querySelector('.wait-net').getBoundingClientRect(), cancel = document.querySelector('.wait-cancel').getBoundingClientRect();
+            const spots = { net: [Math.round(net.left + net.width / 2 - 0.5), Math.round(net.top + net.height / 2)], margin: [3, 600],
+                            netColour: getComputedStyle(document.querySelector('.wait-net')).backgroundColor, ground: getComputedStyle(document.body).backgroundColor,
+                            cancel: { x: cancel.left + cancel.width / 2, y: cancel.top + cancel.height / 2 } };
+            html.classList.remove('is-waiting'); wait.classList.remove('is-slow'); sessionStorage.clear();
+            return spots;
+        });
+        const cdp = await ctx.newCDPSession(page);
+        const frames = [];
+        cdp.on('Page.screencastFrame', f => { frames.push({ t: f.metadata.timestamp * 1000, data: f.data }); cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {}); });
+        const patterns = [{ urlPattern: '*page=students*', resourceType: 'Document', requestStage: 'Request' }];
+        if (withoutAppJs) { await cdp.send('Network.enable'); await cdp.send('Network.setCacheDisabled', { cacheDisabled: true }); patterns.push({ urlPattern: '*/assets/app.js*', resourceType: 'Script', requestStage: 'Request' }); }
+        await cdp.send('Fetch.enable', { patterns });
+        cdp.on('Fetch.requestPaused', async e => {
+            if (e.resourceType === 'Script') return cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: 'BlockedByClient' }).catch(() => {});
+            await sleep(hold);
+            await cdp.send('Fetch.continueRequest', { requestId: e.requestId }).catch(() => {});   // refused once „Abbrechen" has stopped it
+        });
+        await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
+        const link = page.locator('.mobile-nav a[href*="page=students"]').first();
+        const box = await link.boundingBox();
+        const touch = async (x, y) => {
+            await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+            await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        };
+        // Enter on whatever has focus, as a keyboard or VoiceOver acts.
+        const enter = async () => {
+            for (const type of ['keyDown', 'keyUp'])
+                await cdp.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
+        };
+        if (keyboard) { await link.focus(); await enter(); }
+        else await touch(box.x + box.width / 2, box.y + box.height / 2);
+        // Only a touch or a key while the page is on its way: evaluate() waits for a pending navigation.
+        if (cancelAt) { await sleep(cancelAt); if (keyboard) await enter(); else await touch(spots.cancel.x, spots.cancel.y); }
+        await sleep(cancelAt ? after : hold + after);
+        await cdp.send('Page.stopScreencast').catch(() => {});
+        await page.waitForLoadState('load').catch(() => {});
+        const end = await page.evaluate(() => {
+            const wait = document.querySelector('.wait-page'), s = getComputedStyle(wait), mid = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+            const focused = document.activeElement;
+            return { page: new URLSearchParams(location.search).get('page'), html: document.documentElement.className, stored: sessionStorage.getItem('crmb-wait'),
+                     pending: document.querySelectorAll('.is-pending').length, said: document.querySelector('.wait-said').textContent,
+                     focus: !focused ? '' : focused.classList.contains('wait-cancel') ? 'Abbrechen' : focused.tagName + (focused.getAttribute('href') || ''),
+                     d: s.display, o: +s.opacity, v: s.visibility, tapReachesPage: !!mid && !wait.contains(mid), probe: JSON.parse(sessionStorage.getItem('e2e-probe') || '[]') };
+        });
+        await ctx.close();
+        const probe = end.probe, tap = probe.find(e => e.ev === 'tap')?.t ?? 0, since = t => Math.round(t - tap);
+        const samples = probe.filter(e => e.d !== undefined && e.t >= tap);
+        const shown = samples.find(e => e.d !== 'none' && e.o > 0);
+        const gone = probe.find(e => e.ev === 'gone');
+        const firstNew = samples.find(e => e.page === 'students');
+        const fading = samples.find(e => /\bis-arrived\b/.test(e.c));
+        const hidden = shown && samples.find(e => e.t > shown.t && (e.d === 'none' || e.o === 0 || e.v === 'hidden'));
+        const seen = frames.filter(f => f.t >= tap);
+        const read = seen.length ? await pixels(seen.map(f => f.data), [spots.net, spots.margin]) : [];
+        const netColour = spots.netColour.match(/\d+/g).slice(0, 3).map(Number), ground = spots.ground.match(/\d+/g).slice(0, 3).map(Number);
+        // Up to its fade-out; without one, until the next page has been there 0.2 s, or „Abbrechen“.
+        const until = fading ? fading.t : Math.min(firstNew ? firstNew.t + 200 : Infinity, cancelAt ? tap + cancelAt : Infinity);
+        const gaps = [], white = [];
+        seen.forEach((f, i) => {
+            if (shown && f.t > shown.t + 300 && f.t < until && !near(read[i][0], netColour, 30)) gaps.push(since(f.t));
+            if (!near(read[i][1], ground, 24)) white.push(since(f.t) + ' ms: ' + read[i][1].join(','));
+        });
+        return { end, samples, shown: shown && since(shown.t), gone: gone && since(gone.t), firstNew, fading: fading && since(fading.t), fadeFrom: fading?.o,
+                 hidden: hidden && since(hidden.t), onScreen: shown && hidden ? Math.round(hidden.t - shown.t) : null, frames: seen.length, gaps, white,
+                 slowLine: samples.find(e => e.slow) && since(samples.find(e => e.slow).t), said: [...new Set(samples.map(e => e.said).filter(Boolean))],
+                 pressedAtOnce: samples.some(e => e.pending > 0 && e.t - tap < 400), places: new Set(samples.filter(e => e.d !== 'none' && e.at).map(e => e.at)).size,
+                 focusedAbbrechen: samples.find(e => e.focus === 'Abbrechen') && since(samples.find(e => e.focus === 'Abbrechen').t),
+                 focusBefore: [...samples].reverse().find(e => e.focus !== 'Abbrechen' && samples.some(f => f.focus === 'Abbrechen' && f.t > e.t))?.focus,
+                 crossFade: probe.filter(e => /^cross-fade/.test(e.ev || '')).map(e => e.ev.slice(11)) };
+    };
+    const say = (what, r) => console.log(`   ${what}: shown ${r.shown ?? 'never'}${r.firstNew ? `, next page's first frame at ${r.firstNew.o.toFixed(2)}` : ''}`
+        + `${r.fading != null ? `, faded from ${r.fadeFrom?.toFixed(2)} at ${r.fading}` : ''}${r.onScreen != null ? `, ${r.onScreen} ms on screen` : ''}`
+        + `, ${r.gaps.length} gaps and ${r.white.length} white in ${r.frames} frames${r.crossFade.length ? ', cross-fade ' + r.crossFade[0] : ''}`);
+    const brief = r => JSON.stringify({ shown: r.shown, gone: r.gone, firstNew: r.firstNew && [Math.round(r.firstNew.o * 100) / 100, r.firstNew.d, r.firstNew.c],
+                                        fading: r.fading, fadeFrom: r.fadeFrom, hidden: r.hidden, onScreen: r.onScreen, frames: r.frames, gaps: r.gaps.slice(0, 5),
+                                        white: r.white.slice(0, 3), crossFade: r.crossFade, end: { ...r.end, probe: undefined } });
+
+    // A page that comes at once: as before, with the browser's own cross-fade.
+    const fast = await slowTap({ hold: 0, after: 1200 });
+    say('held 0 s', fast);
+    if (fast.gone !== undefined && fast.gone < 450) {
+        ok(fast.shown === null || fast.shown === undefined, 'a page that comes within 0.5 s shows no waiting page', brief(fast));
+        if (fast.crossFade.length) ok(fast.crossFade[0] === 'ran', 'and keeps the browser\'s own cross-fade', brief(fast));
+    } else note(false, 'the page held back 0 ms came within 0.45 s, so a quick page could be judged', brief(fast));
+
+    // Held 1.2 s: pressed at once, the waiting page after 0.5 s, carried on by the next page and faded out by it.
+    const slow = await slowTap({ hold: 1200 });
+    say('held 1.2 s', slow);
+    ok(slow.pressedAtOnce, 'a slow page: the tapped link is pressed at once', brief(slow));
+    ok(slow.shown >= 480 && slow.shown <= 900, 'the waiting page shows once the page has not come after 0.5 s', brief(slow));
+    ok(slow.said[0] === 'Wird geladen …', 'and says „Wird geladen …“', brief(slow));
+    ok(slow.firstNew && slow.firstNew.d === 'flex' && slow.firstNew.o >= 0.95 && /\bis-arriving\b/.test(slow.firstNew.c),
+       'the next page carries it on: its first frame shows the waiting page, fully there', brief(slow));
+    ok(slow.frames > 10 && slow.gaps.length === 0, 'no frame across the change of page is without it', brief(slow));
+    ok(slow.white.length === 0, 'and no frame is anything but the page\'s own ground in its margin', brief(slow));
+    ok(slow.fadeFrom >= 0.9 && slow.hidden - slow.fading >= 150, 'it fades out from fully there, not cut', brief(slow));
+    ok(slow.end.page === 'students' && slow.end.d === 'none' && !/\bis-(waiting|arriving|arrived)\b/.test(slow.end.html) && slow.end.stored === null && slow.end.pending === 0,
+       'and then nothing of it is left: not shown, not kept, nothing pressed', brief(slow));
+    if (slow.crossFade.length) ok(slow.crossFade[0] === 'skipped', 'the browser\'s own cross-fade is skipped, so no second shuttle fades in', brief(slow));
+    ok(slow.places > 5, 'the shuttle flies', brief(slow) + ' places ' + slow.places);
+
+    // Held just past the 0.5 s: never on screen for less than about 0.75 s, and still a fade.
+    const justSlow = await slowTap({ hold: 650 });
+    say('held 0.65 s', justSlow);
+    ok(justSlow.onScreen >= 700, 'a page that comes just after 0.5 s keeps the waiting page up 0.5 s and fades it, about 0.75 s in all', brief(justSlow));
+    ok(justSlow.fadeFrom >= 0.9 && justSlow.hidden - justSlow.fading >= 150, 'its fade-out starts from fully there too', brief(justSlow));
+
+    // Reduce Motion: the shuttle rests; the page is carried on all the same.
+    const still = await slowTap({ hold: 1200, motion: 'reduce' });
+    say('Reduce Motion', still);
+    ok(still.shown >= 480 && still.places === 1, 'with Reduce Motion the shuttle does not fly', brief(still) + ' places ' + still.places);
+    ok(still.firstNew && still.firstNew.o >= 0.95 && still.gaps.length === 0, 'and the waiting page is carried on all the same', brief(still));
+
+    // Without app.js on the next page, the waiting page goes by itself and lets every tap through.
+    const stuck = await slowTap({ hold: 600, withoutAppJs: true, after: 3200 });
+    say('without app.js', stuck);
+    ok(stuck.firstNew && /\bis-arriving\b/.test(stuck.firstNew.c) && stuck.end.page === 'students' && !/\bjs\b/.test(stuck.end.html),
+       'a next page whose app.js never comes still carries the waiting page on', brief(stuck));
+    ok(stuck.end.o === 0 && stuck.end.v === 'hidden' && stuck.end.tapReachesPage, 'and within 2.3 s it is gone by itself, a tap reaching the page under it', brief(stuck));
+
+    // Held 10 s: 6 s after it appeared it says so and offers „Abbrechen“, which stops the page and leaves this one as it was.
+    // By the keyboard, as VoiceOver goes: Enter on the link, and Enter again once focus is on „Abbrechen“ - so focus
+    // was somewhere before, and has somewhere to come back to.
+    const cancelled = await slowTap({ hold: 10000, cancelAt: 7500, after: 3200, keyboard: true });
+    say('„Abbrechen“ at 7.5 s', cancelled);
+    ok(cancelled.slowLine >= cancelled.shown + 5950 && cancelled.slowLine < 7500 && cancelled.said.includes('Dauert länger als sonst.'),
+       'a page that takes over 6 s more: „Dauert länger als sonst.“ and „Abbrechen“', brief(cancelled) + ' line at ' + cancelled.slowLine);
+    ok(cancelled.focusedAbbrechen >= cancelled.slowLine && cancelled.focusedAbbrechen < cancelled.slowLine + 200,
+       'focus goes to „Abbrechen“ with the line, and not before', brief(cancelled) + ` focus at ${cancelled.focusedAbbrechen}, line at ${cancelled.slowLine}`);
+    ok(cancelled.end.page === 'start' && cancelled.end.d === 'none' && !/\bis-waiting\b/.test(cancelled.end.html) && cancelled.end.stored === null
+       && cancelled.end.pending === 0 && cancelled.end.said === '', '„Abbrechen“ stops it and puts the page back as it was, for good', brief(cancelled));
+    ok(cancelled.focusBefore !== undefined && cancelled.focusBefore !== 'BODY' && cancelled.end.focus === cancelled.focusBefore,
+       'with focus back where it was, on the link activated', `before ${cancelled.focusBefore}, after ${cancelled.end.focus}`);
+    await decoder.context().close();
 });
 
 step('1 organisation', async () => {
@@ -458,20 +676,34 @@ step('5 children', async () => {
     for (const [i, child] of CHILDREN.entries()) {
         await openStep(page, 'students');
         // With a child already there, the step leads to the list, and a new
-        // child starts from its „Neu“ link.
+        // child starts from its „+ Schüler anlegen“; with none, the step opens
+        // the wizard itself (ADR 0023 §5, §9).
         if (label(page.url()) === '?page=students') {
-            const add = page.locator('main a[href*="page=student"]:not([href*="id="])').first();
-            must(await add.count() === 1, 'the list of children offers a new one', await mainText(page));
+            // By its words: „Per E-Mail einladen“ beside it is a link to
+            // page=students&invite=1, which an href match would take instead.
+            const add = page.locator('main a[href*="page=student_new"]', { hasText: 'Schüler anlegen' });
+            must(await add.count() === 1, 'the list of children offers „+ Schüler anlegen“', await mainText(page));
             await submit(page, add);
             await look(page, 'admin');
         }
-        const f = page.locator('form:has(input[name=action][value=student_save])');
+        ok(new URL(page.url()).searchParams.get('page') === 'student_new', `${child.first} is added through the wizard`, page.url());
+        // Step 1: who is joining. No course yet, so the checklist below still
+        // leads to the child's „Kurse“ tab as it did.
+        const f = page.locator('form:has(input[name=action][value=student_draft])');
         await f.locator('[name=first_name]').fill(child.first);
         await f.locator('[name=last_name]').fill(child.last);
         await f.locator('[name=birth_date]').fill(child.born);
-        const status = f.locator('[name=status]');
-        if (await status.count()) await status.selectOption('active');
-        await save(page, f, 'the new child form');
+        await f.locator('[name=course]').selectOption('none');
+        await f.locator('[name=status]').selectOption('active');
+        await save(page, f, 'step 1 of the wizard');
+        await look(page, 'admin');
+        ok(sql(`SELECT COUNT(*) FROM students WHERE first_name='${child.first}' AND last_name='${child.last}'`) === '0',
+           `step 1 writes nothing: ${child.first} is not stored yet`, await mainText(page));
+        // Step 2: how they sign in. Mail is not set up yet at this step, so
+        // „Ohne Anmeldung anlegen“; the invitation comes at step 9.
+        const later = page.locator('#later form:has(input[name=action][value=student_create])');
+        must(await later.count() === 1, 'step 2 offers „Ohne Anmeldung anlegen“', await mainText(page));
+        await save(page, later, '„Ohne Anmeldung anlegen“');
         await look(page, 'admin');
         const id = Number(sql(`SELECT id FROM students WHERE first_name='${child.first}' AND last_name='${child.last}'`));
         must(id > 0, `${child.first} is stored`, await flash(page));
@@ -519,6 +751,12 @@ step('5 children', async () => {
 step('6 charges', async () => {
     const page = S.admin.page;
     await openStep(page, 'billing');
+    // The switch is inside „Monatsbeiträge" (the audit, N5), and the step's link
+    // opens that row (from=start), so it is there without a tap. Read as served:
+    // Chromium opens a shut <details> by itself when the link's #auto-charges
+    // points into it, so what this browser shows would pass without the rule.
+    const served = await (await page.request.get(page.url().split('#')[0])).text();
+    must(served.includes('<details class="card fold-row billing-card" open>'), '„Monatsbeiträge“ is served open on arrival from the checklist', page.url());
     const f = page.locator('form:has(input[name=action][value=auto_billing_save])');
     const box = f.locator('[name=auto_billing]');
     await box.check();
@@ -610,24 +848,21 @@ step('9 invite', async () => {
     S.invitedChild = Number(u.searchParams.get('id'));
     must(u.searchParams.get('page') === 'student' && S.invitedChild > 0, 'step 9 leads to a child without access', page.url());
     S.childName = sql(`SELECT first_name FROM students WHERE id=${S.invitedChild}`);
-    // The child has no address yet: the access card says to enter one above first.
+    // U.20: no address yet - „Ohne Anmeldung“ (the placeholder every student
+    // has, ADR 0023 §3), and the card's own form: an empty address box, the
+    // invitation's language and „Einladung senden“ (ADR 0030 §6).
     const card = page.locator('#access');
-    // U.20: no address yet - „Kein Zugang“, the sentence, and no button.
     const empty = (await card.innerText()).replace(/\s+/g, ' ');
-    ok(empty.includes('Kein Zugang') && empty.includes('Trag oben zuerst eine E-Mail-Adresse ein und speichere.')
-       && await card.locator('form:has(input[name=action][value=student_invite])').count() === 0,
-       'with no address the card says „Kein Zugang“ and „Trag oben zuerst eine E-Mail-Adresse ein und speichere.“, with no button', empty);
-    const f = page.locator('form:has(input[name=action][value=student_save])');
-    await f.locator('[name=email]').fill(FAMILY.email);
-    await save(page, f, 'the child form');
-    await look(page, 'admin');
-    const invite = page.locator('#access form:has(input[name=action][value=student_invite]):not(:has(input[name=mode]))');
-    must(await invite.count() === 1, '„Einladung senden“ is offered once the address is saved', await page.locator('#access').innerText());
+    const invite = card.locator('form:has(input[name=action][value=student_invite])');
+    must(empty.includes('Ohne Anmeldung') && await invite.count() === 1 && await invite.locator('input[name=email]').inputValue() === ''
+         && await invite.locator('select[name=locale]').count() === 1,
+         'with no address the card says „Ohne Anmeldung“ and offers its own box for one, the language and „Einladung senden“', empty);
+    await invite.locator('[name=email]').fill(FAMILY.email);
     await save(page, invite, '„Einladung senden“');
     await look(page, 'admin');
     const invited = (await page.locator('#access').innerText()).replace(/\s+/g, ' ');
-    ok(invited.includes('Eingeladen') && invited.includes(`Eingeladen an ${FAMILY.email}, noch nicht angenommen.`),
-       'the card turns to „Eingeladen“: „Eingeladen an …, noch nicht angenommen.“', invited);
+    ok(invited.includes('Eingeladen') && invited.includes(FAMILY.email) && /Eingeladen am .+; der Link gilt bis .+\./.test(invited),
+       'the card turns to „Eingeladen“: the address, „Eingeladen am …; der Link gilt bis …“', invited);
     S.familyId = Number(sql(`SELECT account_id FROM students WHERE id=${S.invitedChild}`));
     ok(S.familyId > 0 && sql(`SELECT state FROM accounts WHERE id=${S.familyId}`) === 'invited', 'an invited account exists for the family');
     // U.20: and the invitation is in Postausgang.
@@ -653,6 +888,60 @@ step('9 invite', async () => {
     ok(!(setting('setup_hidden') === 'true' || setting('setup_hidden') === '1'), '„Wieder anzeigen“ brings it back', setting('setup_hidden'));
 });
 
+/** „Per E-Mail einladen“: an address and a language, reached from the wizard's
+ *  first step - the students page's heading has one button, „+ Schüler
+ *  anlegen“ (Part 1, revised 2026-10-08). */
+async function inviteByAddress(page, email, locale) {
+    await page.goto(BASE + '/index.php?page=dashboard');
+    await submit(page, barLink(page, 'Schüler'));
+    await look(page, 'admin');
+    ok(await page.locator('main a[href*="invite=1"]').count() === 0, 'the students page no longer offers „Per E-Mail einladen“ beside „+ Schüler anlegen“');
+    await submit(page, page.locator('main a[href*="page=student_new"]', { hasText: 'Schüler anlegen' }));
+    await look(page, 'admin');
+    const open = page.locator('main a[href*="invite=1"]', { hasText: 'Ohne Namen einladen' });
+    must(await open.count() === 1, 'step 1 of the wizard offers „Nur die E-Mail-Adresse bekannt? Ohne Namen einladen“', await mainText(page));
+    await submit(page, open);
+    await look(page, 'admin');
+    const f = page.locator('#invite form:has(input[name=action][value=email_invite])');
+    must(await f.count() === 1, '„Per E-Mail einladen“ opens its form', await mainText(page));
+    // Off, so her iPhone does not offer her own address for somebody else's.
+    ok(await f.locator('[name=email]').getAttribute('autocomplete') === 'off' && await f.locator('[name=email]').getAttribute('type') === 'email',
+       'the address box is type="email" with autocomplete="off"', await f.locator('[name=email]').evaluate(el => el.outerHTML));
+    await f.locator('[name=email]').fill(email);
+    await f.locator('[name=locale]').selectOption(locale);
+    await save(page, f, '„Einladung senden“');
+    await look(page, 'admin');
+    return f;
+}
+
+step('invite by address', async () => {
+    const page = S.admin.page;
+    await inviteByAddress(page, NEWCOMER.email, 'de');
+    ok((await flash(page)).includes(`Die Einladung an ${NEWCOMER.email} ist unterwegs.`), '„Die Einladung an … ist unterwegs.“', await flash(page));
+    ok(new URL(page.url()).searchParams.get('invitations') === '1', 'and back on the students page with the invitations', page.url());
+    const list = page.locator('details#invitations');
+    ok(await list.count() === 1 && await list.getAttribute('open') !== null, '„Offene Einladungen“ is there and open');
+    const row = list.locator('.record-row', { hasText: NEWCOMER.email });
+    ok(await row.count() === 1 && await row.locator('button', { hasText: 'Erneut senden' }).count() === 1
+       && await row.locator('summary', { hasText: 'Zurückziehen' }).count() === 1,
+       'it lists the address with „Erneut senden“ and „Zurückziehen“', (await list.innerText().catch(() => '')).replace(/\s+/g, ' '));
+    S.newcomerAccount = Number(sql(`SELECT id FROM accounts WHERE email='${NEWCOMER.email}'`));
+    ok(S.newcomerAccount > 0 && sql(`SELECT CONCAT(role,'|',name,'|',verified_at IS NULL) FROM accounts WHERE id=${S.newcomerAccount}`) === 'student||1',
+       'a student login with no name, not yet set up', sql(`SELECT role,name,verified_at FROM accounts WHERE email='${NEWCOMER.email}'`));
+    ok(sql(`SELECT COUNT(*) FROM students WHERE account_id=${S.newcomerAccount}`) === '0', 'and no student until they set themselves up');
+    // The same address again is refused, and the form comes back with it.
+    const again = await inviteByAddress(page, NEWCOMER.email.toUpperCase(), 'de');
+    ok(await page.locator('.flash.error').count() === 1 && (await flash(page)).includes('schon eine Einladung unterwegs'),
+       'the same address again is refused, pointing to the invitation already on its way', await flash(page));
+    ok(await again.locator('[name=email]').inputValue() === NEWCOMER.email.toUpperCase(), 'and the form comes back with what was typed',
+       await again.locator('[name=email]').inputValue().catch(() => 'no form'));
+    ok(sql(`SELECT COUNT(*) FROM accounts WHERE email='${NEWCOMER.email}'`) === '1', 'no second login is made');
+    // An English one, which the next steps open and then withdraw.
+    await inviteByAddress(page, GUEST_EN.email, 'en');
+    S.guestAccount = Number(sql(`SELECT id FROM accounts WHERE email='${GUEST_EN.email}'`));
+    ok(S.guestAccount > 0 && sql(`SELECT locale FROM accounts WHERE id=${S.guestAccount}`) === 'en', 'the English invitation is stored in English');
+});
+
 step('family accepts the invitation', async ({ browser }) => {
     // She has no shell and no cron: the queue is worked by the background task
     // that runs after page views, at most once a minute. So wait, while she
@@ -673,31 +962,237 @@ step('family accepts the invitation', async ({ browser }) => {
     await look(page, 'family');
     const f = page.locator('form:has(input[name=action][value=activate])');
     must(await f.count() === 1, 'the link opens „Konto einrichten“', await mainText(page));
+    // „Schüler anlegen“ (option 2): the child exists, so only a password is asked.
+    ok(await f.locator('[name=first_name], [name=last_name], [name=birth_date]').count() === 0,
+       'for a child staff entered, the page asks for no name and no birth date', await mainText(page));
+    await addressBesidePassword(f, FAMILY.email, 'the family');
     await f.locator('[name=password]').fill(FAMILY.password);
     await f.locator('[name=password_confirm]').fill(FAMILY.password);
     await f.locator('[name=privacy_seen]').check();
     await save(page, f, '„Konto aktivieren“');
     await look(page, 'family');
-    ok(label(page.url()) === '?page=dashboard', 'the family lands on their dashboard', page.url() + ' ' + await flash(page));
+    ok((await flash(page)).includes(`Dein Konto ist bereit. Du meldest dich ab jetzt mit ${FAMILY.email} an.`),
+       '„Dein Konto ist bereit. Du meldest dich ab jetzt mit … an.“', await flash(page));
+    // „Dein Foto“ (ADR 0031, as amended): asked once, right after the first
+    // password, for the child's picture. This family skips it.
+    ok(label(page.url()) === '?page=welcome', 'the first password leads to „Dein Foto“', page.url());
+    ok((await page.locator('h1').innerText()).trim() === `Willkommen, ${S.childName}!`, `headed „Willkommen, ${S.childName}!“`, await page.locator('h1').innerText());
+    const pick = page.locator('main form:has(input[name=action][value=picture_save]) input[type=file][name=picture]');
+    ok(await pick.count() === 1 && await pick.getAttribute('capture') === null, 'it offers „Foto hinzufügen“, from the camera or the library', await mainText(page));
+    ok(await page.locator('form:has(input[name=action][value=picture_consent])').count() === 0, 'and no course switch: that waits on the child’s page');
+    await submit(page, page.locator('main a.photo-skip', { hasText: 'Überspringen' }));
+    await look(page, 'family');
+    // Something is still missing (no emergency contact yet), so „Überspringen“
+    // goes on to the child's own page with „Noch zu ergänzen“; the child is in a
+    // course already, so choosing one is not among the steps.
+    const u = new URL(page.url());
+    ok(u.searchParams.get('page') === 'student' && u.searchParams.get('id') === String(S.invitedChild),
+       `the family lands on ${S.childName}'s own page`, page.url() + ' ' + await flash(page));
+    const steps = await page.locator('section.next-steps li a').allInnerTexts();
+    ok(steps.includes('Notfallkontakt eintragen') && !steps.includes('Kurs wählen'),
+       '„Noch zu ergänzen“ asks for an emergency contact, and not for a course they are already in', JSON.stringify(steps));
     ok(sql(`SELECT state FROM accounts WHERE id=${S.familyId}`) === 'active', 'the account is active');
-    ok((await mainText(page)).includes(S.childName), `the dashboard names ${S.childName}`, await mainText(page));
+    ok((await mainText(page)).includes(S.childName), `the page names ${S.childName}`, await mainText(page));
+});
+
+/** The read-only address beside the new password, which is what lets a phone
+ *  save the password under it (ADR 0021 §1). */
+async function addressBesidePassword(form, address, who) {
+    const box = form.locator('input[name=email]');
+    must(await box.count() === 1, `the set-up page shows ${who}'s address`);
+    const a = await box.evaluate(el => ({ value: el.value, readOnly: el.readOnly, disabled: el.disabled, type: el.type,
+        autocomplete: el.getAttribute('autocomplete'), visible: el.offsetParent !== null,
+        beforePassword: !!(el.compareDocumentPosition(el.form.querySelector('[name=password]')) & Node.DOCUMENT_POSITION_FOLLOWING) }));
+    ok(a.value === address && a.readOnly && !a.disabled && a.type === 'email' && a.autocomplete === 'username' && a.visible && a.beforePassword,
+       `${who}'s address stands read-only, visible and autocomplete="username" above the new password`, JSON.stringify(a));
+}
+
+step('invited by address: own record and a course', async ({ browser }) => {
+    // „Per E-Mail einladen“ (step „invite by address“) sent this; the person
+    // makes their own record, then asks to join a course.
+    must(S.newcomerAccount > 0, 'the invitation by address was sent');
+    const admin = S.admin.page;
+    const invite = await waitFor('the invitation by address', () => mails().find(m => m.to.includes(NEWCOMER.email)), 150,
+        async () => { await admin.goto(BASE + '/index.php?page=dashboard'); });
+    must(invite, 'the invitation by address arrives within 150 s', JSON.stringify(sql("SELECT id,status,category,attempts,error FROM mail_jobs")));
+    // Nobody has a name yet: „Hallo,“ and not „Hallo ,“.
+    ok(/^Hallo,\r?\n/.test(mailText(invite)), 'the mail opens „Hallo,“ with no name', JSON.stringify(mailText(invite).slice(0, 60)));
+    ok(invite.body.includes('Vorname, Nachname, Geburtsdatum und ein Passwort') && invite.body.includes('Danach wählst du deinen Kurs'),
+       'and says what the page will ask for, and that a course comes next', invite.body.slice(0, 400));
+    const link = (invite.body.match(/https?:\/\/\S+token=[a-f0-9]{64}/) || [])[0];
+    must(link, 'the invitation by address carries a link', invite.body.slice(0, 500));
+    S.newcomer = await newPhone(browser, 'newcomer');
+    const page = S.newcomer.page;
+    await page.goto(link);
+    await look(page, 'newcomer');
+    const f = page.locator('form:has(input[name=action][value=activate])');
+    must(await f.count() === 1, 'the link opens „Konto einrichten“', await mainText(page));
+    ok((await page.locator('h1').innerText()).includes('Konto einrichten'), 'headed „Konto einrichten“');
+    const birth = f.locator('input[name=birth_date]');
+    ok(await f.locator('input[name=first_name][required]').count() === 1 && await f.locator('input[name=last_name][required]').count() === 1
+       && await birth.getAttribute('type') === 'date' && await birth.getAttribute('max') === todayVienna(),
+       'it asks for first name, last name and a birth date no later than today', `max=${await birth.getAttribute('max')}, today ${todayVienna()}`);
+    await addressBesidePassword(f, NEWCOMER.email, 'the newcomer');
+    await f.locator('[name=first_name]').fill(NEWCOMER.first);
+    await f.locator('[name=last_name]').fill(NEWCOMER.last);
+    await birth.fill(NEWCOMER.born);
+    await f.locator('[name=password]').fill(NEWCOMER.password);
+    await f.locator('[name=password_confirm]').fill(NEWCOMER.password);
+    await f.locator('[name=privacy_seen]').check();
+    await save(page, f, '„Konto aktivieren“');
+    await look(page, 'newcomer');
+    // „Dein Foto“: this one adds a photo. Chosen, it goes at once (app.js), and
+    // the step goes on to their own page.
+    ok(label(page.url()) === '?page=welcome', 'their first password leads to „Dein Foto“ too', page.url());
+    const photo = await page.evaluate(() => {
+        const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 300;
+        const g = canvas.getContext('2d'); g.fillStyle = '#c0392b'; g.fillRect(0, 0, 400, 300); g.fillStyle = '#2471a3'; g.fillRect(0, 0, 200, 300);
+        return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }),
+        page.locator('main form:has(input[name=action][value=picture_save]) input[type=file][name=picture]')
+            .setInputFiles({ name: 'ich.png', mimeType: 'image/png', buffer: Buffer.from(photo, 'base64') })]);
+    await look(page, 'newcomer');
+    ok((await flash(page)).includes('Foto gespeichert.'), 'choosing a photo saves it: „Foto gespeichert.“', await flash(page));
+    ok(await page.locator('section#picture .avatar img').count() === 1, 'and their own page shows their face', await page.locator('section#picture').innerHTML().catch(() => ''));
+    const own = sql(`SELECT id, first_name, last_name, birth_date, email FROM students WHERE account_id=${S.newcomerAccount}`).split('\n').filter(Boolean);
+    must(own.length === 1, 'exactly one student is made for the login', JSON.stringify(own));
+    const [id, first, last, born, email] = own[0].split('\t');
+    S.newcomerStudent = Number(id);
+    ok(first === NEWCOMER.first && last === NEWCOMER.last && born === NEWCOMER.born && email === NEWCOMER.email,
+       'with the name and birth date typed, and the address invited', own[0]);
+    ok(sql(`SELECT CONCAT(name,'|',state,'|',verified_at IS NOT NULL) FROM accounts WHERE id=${S.newcomerAccount}`) === `${NEWCOMER.first} ${NEWCOMER.last}|active|1`,
+       'the login is called what its holder is called, and is active', sql(`SELECT name,state,verified_at FROM accounts WHERE id=${S.newcomerAccount}`));
+    ok(sql(`SELECT COUNT(*) FROM class_students WHERE student_id=${S.newcomerStudent}`) === '0', 'and is in no course yet');
+    const u = new URL(page.url());
+    ok(u.searchParams.get('page') === 'student' && u.searchParams.get('id') === id, 'they land on their own page', page.url());
+    let steps = await page.locator('section.next-steps li a').allInnerTexts();
+    ok(steps[0] === 'Kurs wählen', '„Noch zu ergänzen“ starts with „Kurs wählen“', JSON.stringify(steps));
+    // Staff hear about it, by name.
+    const adminId = Number(sql(`SELECT id FROM accounts WHERE email='${ADMIN.email}'`));
+    ok(sql(`SELECT COUNT(*) FROM notifications WHERE account_id=${adminId} AND title='Neu im Portal: ${NEWCOMER.first} ${NEWCOMER.last}'`) === '1',
+       `the administrator is told „Neu im Portal: ${NEWCOMER.first} ${NEWCOMER.last}“ once`, sql(`SELECT kind,title FROM notifications WHERE account_id=${adminId}`));
+
+    // „Kurs wählen“ → the course offered → „Anmeldung anfragen“.
+    await submit(page, page.locator('section.next-steps li a', { hasText: 'Kurs wählen' }));
+    await look(page, 'newcomer');
+    ok(new URL(page.url()).searchParams.get('tab') === 'classes' && new URL(page.url()).hash === '#add-course', '„Kurs wählen“ opens the free courses', page.url());
+    const row = page.locator('#add-course .record-row', { hasText: COURSE });
+    must(await row.count() === 1, `${COURSE} is offered`, await mainText(page));
+    await save(page, row.locator('form'), '„Anmeldung anfragen“');
+    await look(page, 'newcomer');
+    ok((await flash(page)).includes('Deine Anfrage ist unterwegs'), 'the request is on its way', await flash(page));
+    ok(sql(`SELECT COUNT(*) FROM enrolment_requests WHERE student_id=${S.newcomerStudent} AND class_id=${S.classId} AND kind='join' AND state='pending'`) === '1',
+       'one join request waits for the trainer', sql(`SELECT * FROM enrolment_requests WHERE student_id=${S.newcomerStudent}`));
+    ok(sql(`SELECT COUNT(*) FROM class_students WHERE student_id=${S.newcomerStudent}`) === '0' && sql(`SELECT COUNT(*) FROM charges WHERE student_id=${S.newcomerStudent}`) === '0',
+       'and nothing is enrolled or billed until she says yes');
+    await page.goto(BASE + `/index.php?page=student&id=${S.newcomerStudent}`);
+    await look(page, 'newcomer');
+    steps = await page.locator('section.next-steps li a').allInnerTexts();
+    ok(!steps.includes('Kurs wählen'), 'with a request waiting, „Kurs wählen“ is no longer asked', JSON.stringify(steps));
+
+    // The trainer's side: the bell, the student page and the list.
+    await admin.goto(BASE + '/index.php?page=dashboard');
+    await look(admin, 'admin');
+    const bell = (await admin.locator('.notification-list').textContent()).replace(/\s+/g, ' ');
+    ok(bell.includes(`Neu im Portal: ${NEWCOMER.first} ${NEWCOMER.last}`), 'her bell lists „Neu im Portal: …“', bell.slice(0, 300));
+    await admin.goto(BASE + `/index.php?page=student&id=${S.newcomerStudent}`);
+    await look(admin, 'admin');
+    const staffSteps = (await admin.locator('section.next-steps').innerText().catch(() => '')).replace(/\s+/g, ' ');
+    ok(staffSteps.includes('Kursanfrage beantworten') && staffSteps.includes(`${NEWCOMER.first} möchte in „${COURSE}“.`),
+       '„Kursanfrage beantworten“ on the student page, with the course', staffSteps);
+    await admin.locator('section.next-steps a', { hasText: 'Kursanfrage beantworten' }).click();
+    await look(admin, 'admin');
+    ok(await admin.locator('#requests').count() === 1 && (await admin.locator('#requests').innerText()).includes(COURSE),
+       'and its link opens the Anfragen card with the request', label(admin.url()));
+    await admin.goto(BASE + '/index.php?page=students&invitations=1');
+    await look(admin, 'admin');
+    ok(!(await admin.locator('#invitations').innerText().catch(() => '')).includes(NEWCOMER.email), 'the accepted invitation has left „Offene Einladungen“');
+
+    // Signing in again by the address, typed in odd capitals.
+    await signOut(page);
+    await signIn(page, { ...NEWCOMER, email: 'Mira.Novak@EXAMPLE.test' }, 'newcomer');
+    ok(await page.locator('.mobile-nav').count() === 1 && label(page.url()) !== '?page=login',
+       'the address signs in whatever its capitals', page.url() + ' ' + await flash(page));
+});
+
+step('an English invitation, withdrawn', async ({ browser }) => {
+    must(S.guestAccount > 0, 'the English invitation was sent');
+    const admin = S.admin.page;
+    const invite = await waitFor('the English invitation', () => mails().find(m => m.to.includes(GUEST_EN.email)), 150,
+        async () => { await admin.goto(BASE + '/index.php?page=dashboard'); });
+    must(invite, 'the English invitation arrives within 150 s');
+    ok(/^Hello,\r?\n/.test(mailText(invite)), 'in English it opens „Hello,“ with no name', JSON.stringify(mailText(invite).slice(0, 60)));
+    const link = (invite.body.match(/https?:\/\/\S+token=[a-f0-9]{64}/) || [])[0];
+    must(link, 'the English invitation carries a link');
+    // A German phone that never chose a language: the invitation's decides.
+    const guest = await newPhone(browser, 'guest');
+    await guest.page.goto(link);
+    await look(guest.page, 'guest');
+    ok((await guest.page.locator('h1').innerText()).includes('Set up your account'), 'the page opens in English', await guest.page.locator('h1').innerText());
+    // Withdrawn from „Offene Einladungen“, without typing anything.
+    await admin.goto(BASE + '/index.php?page=students&invitations=1');
+    await look(admin, 'admin');
+    const row = admin.locator('#invitations .record-row', { hasText: GUEST_EN.email });
+    must(await row.count() === 1, 'the English invitation is listed', await mainText(admin));
+    // A fold that removes something opens as a sheet from the bottom of the
+    // screen, with what it held moved into it (design language, Part 0 C11).
+    const opener = row.locator('summary', { hasText: 'Zurückziehen' });
+    const withdraw = 'form:has(input[name=mode][value=withdraw])';
+    const sheet = admin.locator('dialog.sheet-dialog[open]');
+    await opener.click();
+    ok(await sheet.count() === 1 && (await sheet.locator('.sheet-title').innerText()).includes('Zurückziehen'),
+       '„Zurückziehen“ opens a sheet titled with it', await sheet.innerText().catch(() => 'no sheet'));
+    ok(await sheet.locator('button.sheet-cancel').count() === 1, 'with „Abbrechen“ under it');
+    // „Abbrechen“ and Escape each shut it and change nothing: the form goes back
+    // into its fold, where it lives without the script, ready to open again.
+    const shutWith = async (how, shut) => {
+        await shut();
+        await admin.locator('dialog.sheet-dialog').waitFor({ state: 'detached', timeout: 3000 }).catch(() => {});
+        ok(await admin.locator('dialog.sheet-dialog').count() === 0, `${how} shuts the sheet`, await admin.locator('dialog.sheet-dialog').count() + ' sheet(s) left');
+        ok(await row.locator('details[data-sheet] ' + withdraw).count() === 1, `and after ${how} the fold holds its form again`,
+           await row.innerHTML().catch(() => 'no row'));
+    };
+    await shutWith('„Abbrechen“', () => sheet.locator('button.sheet-cancel').click());
+    await opener.click();
+    await shutWith('Escape', () => admin.keyboard.press('Escape'));
+    await opener.click();
+    await save(admin, sheet.locator(withdraw), '„Einladung zurückziehen“');
+    await look(admin, 'admin');
+    ok((await flash(admin)).includes(`Die Einladung an ${GUEST_EN.email} ist zurückgezogen.`), '„Die Einladung an … ist zurückgezogen.“', await flash(admin));
+    ok(sql(`SELECT COUNT(*) FROM accounts WHERE email='${GUEST_EN.email}'`) === '0', 'the login is gone');
+    ok(sql(`SELECT COUNT(*) FROM accounts WHERE email='${NEWCOMER.email}'`) === '1' && sql(`SELECT COUNT(*) FROM accounts WHERE id=${S.familyId}`) === '1',
+       'and nobody else\'s');
+    await guest.page.goto(link);
+    await look(guest.page, 'guest');
+    ok(/Link no longer valid|Link nicht mehr gültig/.test(await guest.page.locator('h1').innerText()), 'the old link is dead', await mainText(guest.page));
+    ok(await guest.page.locator('form:has(input[name=action][value=activate])').count() === 0, 'and offers no form');
+    await guest.ctx.close();
 });
 
 step('family: Profil and charges', async () => {
     const page = S.family.page;
     // U.46/U.48: the family's bar.
-    ok(await barWords(page) === 'Übersicht Profil Post Neues Konto', 'the family\'s bar reads Übersicht, Profil, Post, Neues, Konto', await barWords(page));
+    ok(await barWords(page) === 'Übersicht Beiträge Chats Profil', 'the family\'s bar reads Übersicht, Beiträge, Chats, Profil', await barWords(page));
     // U.31: the checklist is the administrator's alone.
     page.__expect4xx = true;
     const start = await page.goto(BASE + '/index.php?page=start');
     ok(start.status() === 403 && (await mainText(page)).includes('Nur für Administratoren'), '?page=start answers „Nur für Administratoren“ to a family',
        `${start.status()} ${(await mainText(page)).slice(0, 120)}`);
     page.__expect4xx = false;
-    // U.52: Mein Konto ends with „Datenschutz und Hilfe“. (The refusal page has
-    // no bar; back to the overview first, as she would.)
+    // U.52: Mein Konto ends with „Datenschutz und Hilfe“. A family reaches it
+    // from Profil, „Anmeldung und Darstellung“. (The refusal page has no bar;
+    // back to the overview first, as she would.)
     await page.goto(BASE + '/index.php?page=dashboard');
-    await submit(page, barLink(page, 'Konto'));
+    await submit(page, barLink(page, 'Profil'));
     await look(page, 'family');
+    const account = page.locator('main a[href*="page=profile"]', { hasText: 'Anmeldung und Darstellung' });
+    must(await account.count() === 1, 'Profil has the row „Anmeldung und Darstellung“', await mainText(page));
+    await submit(page, account);
+    await look(page, 'family');
+    ok(label(page.url()) === '?page=profile', 'and it opens Mein Konto', page.url());
+    ok((await page.locator('.topbar .nav-back').innerText().catch(() => '')).trim() === 'Profil', 'whose bar leads back to „Profil“',
+       await page.locator('.topbar').innerText());
     // The card, and „Abmelden“ straight under it as the last thing on the page.
     const ending = await page.evaluate(() => {
         const cards = [...document.querySelectorAll('main section.card')];
@@ -715,7 +1210,7 @@ step('family: Profil and charges', async () => {
     await page.goto(BASE + '/index.php?page=dashboard&lang=de');
     await look(page, 'family');
     ok((await mainText(page)).includes('Hallo'), 'and back in German', (await mainText(page)).slice(0, 80));
-    // The bottom bar a phone shows; the sidebar copy sits off-canvas at this width.
+    // The bottom bar a phone shows; at this width the sidebar is not shown at all (ADR 0028).
     const profil = barLink(page, 'Profil');
     must(await profil.count() === 1, 'the family menu has „Profil“');
     await submit(page, profil);
@@ -971,7 +1466,7 @@ step('an unexpected error', async () => {
 step('320px spot-check', async ({ browser }) => {
     // Every page either of them opened at 390, once more at 320 with the same
     // session. GET only, so nothing is changed by looking.
-    for (const role of ['admin', 'family']) {
+    for (const role of SIGNED_IN_ROLES) {
         if (!S[role]) continue;
         const state = await S[role].ctx.storageState();
         const ctx = await browser.newContext({ viewport: { width: 320, height: 700 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'de-AT', storageState: state });
@@ -984,6 +1479,9 @@ step('320px spot-check', async ({ browser }) => {
             await look(page, role, 320);
         }
         console.log(`   ${role}: ${urls.length} pages at 320px`);
+        // A sweep that opened nothing has measured nothing; it once printed
+        // „admin: 0 pages at 320px“ and counted as passed.
+        ok(urls.length > 0, `${role}: at least one page measured at 320px`, `${role} took part, but no page of theirs was recorded at 390px to open again`);
         await ctx.close();
     }
 });
@@ -997,7 +1495,7 @@ for (const s of steps) {
     try { await s.fn({ browser }); }
     catch (e) {
         ok(false, `step „${s.name}“ ran to the end`, e.message.split('\n')[0]);
-        for (const who of ['admin', 'family']) if (S[who]) await S[who].page.screenshot({ path: path.join(SHOTS, `${s.name.replace(/\W+/g, '_')}-${who}.png`), fullPage: true }).catch(() => {});
+        for (const who of SIGNED_IN_ROLES) if (S[who]) await S[who].page.screenshot({ path: path.join(SHOTS, `${s.name.replace(/\W+/g, '_')}-${who}.png`), fullPage: true }).catch(() => {});
     }
     if (process.env.CRM_E2E_DUMP && s.name === STOP_AFTER) {
         for (const who of ['admin', 'family']) if (S[who]) {

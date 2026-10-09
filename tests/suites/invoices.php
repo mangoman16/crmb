@@ -160,6 +160,134 @@ $banked = invoice(create_invoice($student, [fixture('charges', ['student_id'=>$s
 ok(str_contains($pdfText(invoice_pdf($banked)), 'AT05 5100 0805 1317 6900'),
    'and the invoice carries it in groups, not as one twenty-character run');
 
+case_('A trainer’s change of the IBAN is kept in „Änderungen“, and an issued invoice keeps its own [ADR 0025]');
+/* The owner: "trainer should be able to change iban". profile_save wrote with a
+   plain UPDATE, so the change log never saw it: who changed the account was in
+   the audit log, what it had been was nowhere. */
+$profileId = (int)$house['id'];
+$asSaved = one('SELECT * FROM payment_profiles WHERE id=?', [$profileId]);
+$asPosted = fn(array $profile): array => array_map('strval', array_intersect_key($profile, array_flip(['name', 'recipient', 'iban', 'bic', 'currency', 'qr_template', 'note'])));
+is_same([], history_for('payment_profiles', $profileId), 'the recipient the invoice was issued with has no line in the change log yet');
+act('profile_save', ['id'=>(string)$profileId, 'iban'=>'AT61 1904 3002 3457 3201'] + $asPosted($asSaved));
+$kept = history_for('payment_profiles', $profileId);
+is_same(1, count($kept), 'the trainer’s new IBAN leaves one line');
+is_same(['update', $trainer], [$kept[0]['operation'] ?? '', (int)($kept[0]['actor_id'] ?? 0)], 'a change, made by the trainer');
+is_same(['iban'=>['from'=>'AT055100080513176900', 'to'=>'AT611904300234573201']], version_changes($kept[0] ?? []),
+        'with the old IBAN and the new one, and nothing else');
+$issued = $pdfText(invoice_pdf(invoice((int)$invoice['id'])));
+ok(str_contains($issued, 'AT05 5100 0805 1317 6900') && !str_contains($issued, 'AT61 1904 3002 3457 3201'),
+   'the invoice issued before still shows the IBAN it was issued with');
+act('profile_save', ['name'=>'Turnierkonto', 'recipient'=>'TSV Beispiel', 'iban'=>'AT022050302101023600', 'bic'=>'',
+                     'currency'=>'EUR', 'qr_template'=>'', 'note'=>'Nur für Turniere']);
+$made = (int)scalar("SELECT id FROM payment_profiles WHERE name='Turnierkonto'");
+$madeLines = history_for('payment_profiles', $made);
+is_same([['insert', $trainer]], array_map(fn($v) => [$v['operation'], (int)$v['actor_id']], $madeLines), 'a new recipient leaves one line, made by the trainer');
+is_same('AT022050302101023600', json_decode((string)($madeLines[0]['after_json'] ?? ''), true)['iban'] ?? null, 'with the IBAN it was made with');
+foreach (['currency', 'qr_template', 'note'] as $column)
+    ok(history_field_label($column) !== $column, 'its '.$column.' is named in words in the change log');
+run('UPDATE payment_profiles SET iban=? WHERE id=?', ['AT055100080513176900', $profileId]);
+payment_cache_clear();
+
+case_('A change to where the money goes is told to every administrator, by whom and which [ADR 0025, amended 2026-10-08]');
+/* Whoever holds the trainer's login may change the IBAN, the name it is paid to
+   and what the QR code says (ADR 0025), make a new recipient, and point a
+   course at it - and nobody heard of any of it. */
+$owner = make_account(['role'=>'admin', 'name'=>'Chefin']);
+$deputy = make_account(['role'=>'admin', 'name'=>'Zweite Chefin']);
+$told = fn(int $admin): array => rows("SELECT title,body,link_page,link_params FROM notifications WHERE account_id=? AND kind='bank' ORDER BY id", [$admin]);
+$saved = fn(): array => one('SELECT * FROM payment_profiles WHERE id=?', [$profileId]);
+$houseName = (string)$saved()['name'];
+act('profile_save', ['id'=>(string)$profileId, 'iban'=>'AT61 1904 3002 3457 3201', 'recipient'=>'Tina Privat'] + $asPosted($saved()));
+$note = $told($owner)[0] ?? [];
+is_same([1, 'Kontoverbindung geändert: '.$houseName], [count($told($owner)), $note['title'] ?? null], 'the administrator is told once that its bank details changed');
+ok(str_contains((string)($note['body'] ?? ''), '(Trainerin): ') && str_contains((string)($note['body'] ?? ''), 'IBAN, Empfänger')
+   && !str_contains((string)($note['body'] ?? ''), 'QR'), 'by the trainer, naming the IBAN and the recipient, and not the QR code she left alone');
+is_same(['history', http_build_query(['entity'=>'payment_profiles', 'record'=>$profileId])], [$note['link_page'] ?? null, $note['link_params'] ?? null],
+        'and it opens what „Änderungen“ says about it');
+is_same(1, count($told($deputy)), 'every administrator is told');
+act('profile_save', ['id'=>(string)$profileId, 'note'=>'Bitte mit Verwendungszweck'] + $asPosted($saved()));
+act('profile_save', ['id'=>(string)$profileId, 'qr_template'=>str_replace("\n", "\r\n", (string)$saved()['qr_template'])] + $asPosted($saved()));
+is_same(1, count($told($owner)), 'a note changes nothing worth telling, and nor does the same QR text with a browser’s line ends');
+sign_in_as($owner);
+act('profile_save', ['id'=>(string)$profileId, 'iban'=>'AT055100080513176900', 'recipient'=>(string)$asSaved['recipient']] + $asPosted($saved()));
+is_same([2, 2], [count($told($owner)), count($told($deputy))], 'an administrator’s own change is told to every administrator, her too');
+sign_in_as($trainer);
+act('profile_save', ['name'=>'Tinas Konto', 'recipient'=>'Tina', 'iban'=>'AT022050302101023600', 'bic'=>'',
+                     'currency'=>'EUR', 'qr_template'=>'', 'note'=>'']);
+$tinas = (int)scalar("SELECT id FROM payment_profiles WHERE name='Tinas Konto'");
+is_same(['Neuer Zahlungsempfänger: Tinas Konto', 3], [(string)(array_slice($told($owner), -1)[0]['title'] ?? ''), count($told($deputy))],
+        'a new recipient counts as a change: it brings an account of its own');
+
+/* A course's charges are paid into its own profile, or the default one. */
+$course = (int)act('class_save', ['name'=>'Kurs auf Vereinskonto', 'capacity'=>'0', 'sort_order'=>'0', 'payment_profile_id'=>(string)$profileId])[1]['id'];
+act('class_save', ['id'=>(string)$course, 'name'=>'Kurs auf Vereinskonto', 'capacity'=>'0', 'sort_order'=>'0', 'payment_profile_id'=>'']);
+is_same(3, count($told($owner)), 'a course made on the default account, or put back on it from there, is no change of account');
+act('class_save', ['id'=>(string)$course, 'name'=>'Kurs auf Vereinskonto', 'capacity'=>'0', 'sort_order'=>'0', 'payment_profile_id'=>(string)$tinas]);
+$note = array_slice($told($owner), -1)[0] ?? [];
+is_same([4, 4, 'Kurs zahlt auf ein anderes Konto: Kurs auf Vereinskonto'], [count($told($owner)), count($told($deputy)), $note['title'] ?? null],
+        'a course pointed at another recipient is told to every administrator');
+ok(str_contains((string)($note['body'] ?? ''), '„Tinas Konto“ statt auf „'.$houseName.'“') && str_contains((string)($note['body'] ?? ''), '(Trainerin)'),
+   'by whom, and from which account to which');
+is_same(['classes', http_build_query(['id'=>$course, 'edit'=>1])], [$note['link_page'] ?? null, $note['link_params'] ?? null], 'and it opens the course');
+act('class_save', ['name'=>'Neuer Kurs auf Tinas Konto', 'capacity'=>'0', 'sort_order'=>'0', 'payment_profile_id'=>(string)$tinas]);
+is_same(5, count($told($owner)), 'and so is a new course made on another account than the default one');
+/* The default recipient is every such course's: the trainer may change it on
+   Verwaltung's „Geld & Zahlungen" card, as she may move a course. */
+$card = [];
+foreach (settings_in_group('payments') as $key => $spec)
+    $card['set_'.$key] = $spec['kind'] === 'list' ? implode("\n", (array)setting($key)) : (is_bool(setting($key)) ? (setting($key) ? '1' : '') : (string)setting($key));
+act('defaults_registry_save', ['group'=>'payments'] + $card);
+is_same(5, count($told($owner)), 'saving the card without changing the default recipient tells nobody');
+act('defaults_registry_save', ['group'=>'payments', 'set_default_payment_profile'=>(string)$tinas] + $card);
+$note = array_slice($told($owner), -1)[0] ?? [];
+is_same([6, 6, 'Standard-Zahlungsempfänger geändert: „Tinas Konto“'], [count($told($owner)), count($told($deputy)), $note['title'] ?? null],
+        'the default recipient changed is told to every administrator');
+ok(str_contains((string)($note['body'] ?? ''), '(Trainerin): ') && str_contains((string)($note['body'] ?? ''), '„Tinas Konto“ statt auf „'.$houseName.'“'),
+   'by whom, and from which account to which');
+is_same(['manage', http_build_query(['tab'=>'payments'])], [$note['link_page'] ?? null, $note['link_params'] ?? null], 'and it opens where the default is chosen');
+act('defaults_registry_save', ['group'=>'payments', 'set_default_payment_profile'=>(string)$profileId] + $card);
+is_same([$profileId, 7], [(int)setting('default_payment_profile'), count($told($owner))], 'and so is putting it back');
+run("UPDATE classes SET archived=1 WHERE id=? OR name='Neuer Kurs auf Tinas Konto'", [$course]);
+run("UPDATE payment_profiles SET archived=1 WHERE id=?", [$tinas]);
+
+case_('The QR code is a transfer into the recipient’s own account, or no code at all [ADR 0025, amended 2026-10-08]');
+/* What it says is a template of up to 2000 characters: made a link, every
+   family's „Beiträge" would carry a code that opens a web page; with an IBAN
+   of its own on the seventh line, the code would pay an account that
+   valid_iban() never saw and no notice named. EPC069-12, the SEPA transfer the
+   banking apps read, begins with the line BCD and has the recipient's name on
+   its sixth line and the IBAN on its seventh. */
+$sepa = (string)$saved()['qr_template'];
+ok(str_starts_with(qr_payload($saved(), 4500, 'Beitrag'), "BCD\n002\n1\nSCT\n"), 'the template the portal starts with makes a SEPA transfer');
+$ownIban = str_replace('{iban}', 'AT022050302101023600', $sepa);
+foreach (['https://zahlen.example.test/?betrag={amount}' => 'a link',
+          'BCD https://zahlen.example.test/' => 'a line that only starts with BCD',
+          "Zahlung\n".$sepa => 'the transfer with a line of its own before it',
+          $ownIban => 'a transfer with an IBAN of its own on the seventh line',
+          str_replace(['{recipient}', '{iban}'], ['{iban}', '{recipient}'], $sepa) => 'the IBAN and the name swapped'] as $template => $what)
+    throws(fn() => act('profile_save', ['id'=>(string)$profileId, 'qr_template'=>$template] + $asPosted($saved())),
+           $what.' is refused in words', 'muss eine SEPA-Überweisung bleiben');
+is_same($sepa, (string)$saved()['qr_template'], 'and the template stays what it was');
+act('profile_save', ['id'=>(string)$profileId, 'qr_template'=>str_replace("\n", "\r\n", $sepa)] + $asPosted($saved()));
+is_same($sepa, (string)$saved()['qr_template'], 'the transfer as a browser sends it is saved, its lines ended the way it is read');
+does_not_throw(fn() => act('profile_save', ['id'=>(string)$profileId, 'qr_template'=>''] + $asPosted($saved())), 'and no template, which is no code, is allowed');
+foreach (['https://zahlen.example.test/?betrag={amount}' => 'a link', $ownIban => 'an IBAN of its own'] as $template => $what) {
+    run('UPDATE payment_profiles SET qr_template=? WHERE id=?', [$template, $profileId]);
+    is_same('', qr_payload($saved(), 4500, 'Beitrag'), 'a template with '.$what.' saved before this rule makes no code at all');
+}
+$form = render_view('manage', ['tab'=>'payments', 'edit'=>(string)$profileId]);
+ok(str_contains($form, e('Dieser Inhalt ergibt keinen QR-Code: Er muss mit „BCD“ beginnen und in der sechsten Zeile {recipient}, in der siebten {iban} haben.')),
+   'and the form says so under its preview, with the rule');
+ok(str_contains($form, e('„BCD“ in der ersten Zeile, {recipient} in der sechsten und {iban} in der siebten')), 'the box’s own hint states the rule the save holds it to');
+run('UPDATE payment_profiles SET qr_template=? WHERE id=?', [$sepa, $profileId]);
+ok(!str_contains(render_view('manage', ['tab'=>'payments', 'edit'=>(string)$profileId]), e('Dieser Inhalt ergibt keinen QR-Code')),
+   'a template that makes a transfer gets its code and no such sentence');
+run('UPDATE payment_profiles SET qr_template=?, recipient=? WHERE id=?', [$sepa, "TSV Beispiel\nAT02 2050 3021 0102 3600", $profileId]);
+is_same([(string)$saved()['iban'], 'TSV Beispiel AT02 2050 3021 0102 3600'], array_reverse(array_slice(explode("\n", qr_payload($saved(), 4500, 'Beitrag')), 5, 2)),
+        'a line break in the recipient’s name moves no line of its own into the IBAN’s place');
+run('UPDATE payment_profiles SET recipient=? WHERE id=?', [(string)$asSaved['recipient'], $profileId]);
+payment_cache_clear();
+
 case_('Above 400 € the recipient’s address has to be on it');
 /* § 11 Abs 1 Z 3 lit b UStG wants the recipient's name and address; Abs 6 lets
    a Kleinbetragsrechnung up to 400 € gross leave both out, which is most of a
@@ -269,18 +397,38 @@ sign_in_as($account);
 does_not_throw(fn() => invoice((int)$invoice['id']), 'their own');
 throws(fn() => invoice($third), 'somebody else’s', 'nicht gefunden');
 
+case_('An invoice is made out to the student, never to whatever the login is called');
+/* invoice_recipient() named the login, whose name its holder types under „Mein
+   Konto" and staff type when inviting: a parent's, a company's, anybody's -
+   on a document a family may hand on (security batch). */
+sign_in_as($trainer);
+$renamed = make_account(['role'=>'student', 'name'=>'Max Mustermann GmbH']);
+$addressed = make_student(['first_name'=>'Lena', 'last_name'=>'Recht', 'account_id'=>$renamed]);
+$addressedCharge = fixture('charges', ['student_id'=>$addressed, 'label'=>'Beitrag November', 'amount_cents'=>4500,
+    'gross_cents'=>4500, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>'2026-11-01', 'period_to'=>'2026-11-30',
+    'due_on'=>'2026-11-01', 'overdue_on'=>'2026-11-08', 'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+$toTheStudent = invoice(create_invoice($addressed, [$addressedCharge]));
+$recipient = json_decode((string)$toTheStudent['snapshot_json'], true)['recipient'] ?? [];
+is_same(['Lena Recht', $renamed], [$recipient['name'] ?? null, (int)($recipient['account_id'] ?? 0)],
+        'it is made out to the student, and still belongs to their login');
+$document = $pdfText(invoice_pdf($toTheStudent));
+ok(str_contains($document, 'Lena Recht') && !str_contains($document, 'Mustermann'), 'and the document names the student and nobody else');
+
 case_('A discount is explained on the document rather than only subtracted');
 sign_in_as($trainer);
+// The year after today's, so no invoice issued today has already started its
+// sequence: written as 2027, this broke on 1 January 2027.
+$nextYear = (string)((int)substr(today(), 0, 4) + 1);
 $discounted = fixture('charges', ['student_id'=>$other, 'label'=>'Beitrag Jänner', 'amount_cents'=>3150,
     'gross_cents'=>4500, 'discount_cents'=>1350, 'discount_note'=>'Willkommensrabatt: 30 %',
-    'period_from'=>'2027-01-01', 'period_to'=>'2027-01-31', 'due_on'=>'2027-01-01', 'overdue_on'=>'2027-01-08',
+    'period_from'=>$nextYear.'-01-01', 'period_to'=>$nextYear.'-01-31', 'due_on'=>$nextYear.'-01-01', 'overdue_on'=>$nextYear.'-01-08',
     'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
-$withDiscount = invoice(create_invoice($other, [$discounted], '2027-01-02'));
+$withDiscount = invoice(create_invoice($other, [$discounted], $nextYear.'-01-02'));
 $discountText = $pdfText(invoice_pdf($withDiscount));
 ok(str_contains($discountText, 'Willkommensrabatt'), 'the reason is on the invoice');
 ok(str_contains($discountText, '45,00'), 'with the price before it');
 ok(str_contains($discountText, '31,50'), 'and the amount actually owed');
-is_same(1, (int)$withDiscount['sequence'], 'and 2027 starts its own sequence at one');
+is_same(1, (int)$withDiscount['sequence'], 'and a new year starts its own sequence at one');
 
 case_('The privacy notice fills itself in from the same details');
 set_setting('privacy_de', 'Verantwortlich ist {{org_name}}, {{org_address}}. Kontakt: {{org_email}}.');
@@ -362,4 +510,258 @@ $line = json_decode((string)$joinerInvoice['snapshot_json'], true)['lines'][0]['
 is_same(charge_period_text($fresh), fmt_date($line[0]).' – '.fmt_date($line[1]), 'the family’s page and the invoice give the same period');
 ok(str_contains(charge_reference($fresh, ['first_name'=>'Neu', 'last_name'=>'Dabei']), fmt_date(today())) || !str_contains((string)setting('payment_reference_template'), '{period}'),
    'and so does the bank reference, where it names one');
+
+
+// ---------------------------------------------------------------------------
+// Found by the whole-app review of October 2026. Each case failed before its fix.
+// ---------------------------------------------------------------------------
+sign_in_as($trainer);
+set_setting('default_payment_profile', $seeded);
+payment_cache_clear();
+$owedCharge = fn(int $studentId, int $cents, string $label = 'Beitrag') => fixture('charges', ['student_id'=>$studentId,
+    'label'=>$label, 'amount_cents'=>$cents, 'gross_cents'=>$cents, 'discount_cents'=>0, 'discount_note'=>'',
+    'period_from'=>null, 'period_to'=>null, 'due_on'=>today(), 'overdue_on'=>today(), 'cancelled'=>0,
+    'origin'=>'manual', 'created_at'=>now()]);
+$recorded = fn(int $chargeId) => rows('SELECT * FROM payments WHERE charge_id=? AND voided=0 ORDER BY id', [$chargeId]);
+$markPaid = fn(int $invoiceId) => act('invoice_state', ['id'=>(string)$invoiceId, 'mode'=>'paid', 'paid_on'=>today(),
+                                                        'method'=>'Überweisung', 'note'=>'']);
+
+case_('Marking an invoice paid confirms a payment already recorded, rather than adding a second');
+/* „Als bezahlt eintragen“ counted only confirmed payments and paid the rest,
+   while „Zahlung erfassen“ counts unconfirmed ones too. A transfer recorded but
+   not yet confirmed was paid a second time, and confirming it made 90 € of 45. */
+$payer = make_student(['first_name'=>'Zahlt', 'last_name'=>'Einmal']);
+$whole = $owedCharge($payer, 4500);
+$wholeInvoice = create_invoice($payer, [$whole]);
+act('payment_add', ['charge_id'=>(string)$whole, 'amount'=>'45,00', 'paid_on'=>today(), 'method'=>'Überweisung', 'note'=>'']);
+throws(fn() => act('payment_add', ['charge_id'=>(string)$whole, 'amount'=>'1,00', 'paid_on'=>today(), 'method'=>'Bar', 'note'=>'']),
+       'with 45 € recorded and not yet confirmed, not one euro more can be recorded', 'unbestätigte');
+$markPaid($wholeInvoice);
+$payments = $recorded($whole);
+is_same([4500], array_map(fn($p) => (int)$p['amount_cents'], $payments), 'the charge holds the one payment of 45 €, not two');
+ok($payments !== [] && $payments[0]['confirmed_at'] !== null, 'and marking the invoice paid confirmed it');
+is_same('paid', invoice_status(invoice($wholeInvoice)), 'so the invoice is paid');
+$part = $owedCharge($payer, 4500);
+$partInvoice = create_invoice($payer, [$part]);
+act('payment_add', ['charge_id'=>(string)$part, 'amount'=>'20,00', 'paid_on'=>today(), 'method'=>'Bar', 'note'=>'']);
+$markPaid($partInvoice);
+$payments = $recorded($part);
+is_same(4500, array_sum(array_map(fn($p) => (int)$p['amount_cents'], $payments)), 'with part of it recorded, only the rest is added');
+is_same(0, count(array_filter($payments, fn($p) => $p['confirmed_at'] === null)), 'and every payment on it is confirmed');
+
+case_('A charge on a live invoice cannot be cancelled from under it');
+/* Cancelling it left the invoice asking for money for something that was no
+   longer owed, and „Als bezahlt eintragen“ then paid the cancelled charge. */
+$onInvoice = $owedCharge($payer, 2500);
+$holding = invoice(create_invoice($payer, [$onInvoice]));
+throws(fn() => act('charge_cancel', ['id'=>(string)$onInvoice]), 'refused, naming the invoice', $holding['number']);
+is_same(0, (int)scalar('SELECT cancelled FROM charges WHERE id=?', [$onInvoice]), 'and the charge is not cancelled');
+invoice_cancel((int)$holding['id'], 'Korrektur');
+does_not_throw(fn() => act('charge_cancel', ['id'=>(string)$onInvoice]), 'once the invoice is cancelled, the charge can be');
+$free = $owedCharge($payer, 500);
+$heldBy = invoice(create_invoice($payer, [$owedCharge($payer, 700)]));
+$heldCharge = (int)scalar('SELECT charge_id FROM invoice_charges WHERE invoice_id=?', [(int)$heldBy['id']]);
+is_same([$heldCharge => ['id'=>(int)$heldBy['id'], 'number'=>$heldBy['number']]],
+        live_invoices_of_charges([$free, $heldCharge, $onInvoice]),
+        'the payments tab can ask which charges a live invoice holds - not the free one, not one whose invoice is cancelled');
+// A charge cancelled before this rule existed may still sit on a live invoice.
+$kept = $owedCharge($payer, 1000);
+$dropped = $owedCharge($payer, 2000);
+$mixed = create_invoice($payer, [$kept, $dropped]);
+run('UPDATE charges SET cancelled=1 WHERE id=?', [$dropped]);
+$markPaid($mixed);
+is_same([], $recorded($dropped), 'marking that invoice paid pays nothing on the cancelled charge');
+is_same(1000, (int)($recorded($kept)[0]['amount_cents'] ?? 0), 'and the live one in full');
+
+case_('An invoice is not e-mailed to a family who turned payment e-mails off, and nothing says it was');
+/* notify_invoice() asked whether the login was set up, never whether it takes
+   payment e-mails. The queue then dropped the mail, while the invoice said
+   „per E-Mail geschickt am …“. */
+mail_ready(true);
+$quiet = make_account(['role'=>'student', 'payment_notices'=>0]);
+$quietKid = make_student(['first_name'=>'Still', 'last_name'=>'Familie', 'account_id'=>$quiet]);
+$quietInvoice = create_invoice($quietKid, [$owedCharge($quietKid, 3000)]);
+throws(fn() => act('invoice_state', ['id'=>(string)$quietInvoice, 'mode'=>'send']), 'refused up front, in words', 'abbestellt');
+is_same(null, invoice($quietInvoice)['sent_at'], 'the invoice does not claim it was e-mailed');
+is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE account_id=?', [$quiet]), 'and nothing was queued');
+run('UPDATE accounts SET payment_notices=1 WHERE id=?', [$quiet]);
+act('invoice_state', ['id'=>(string)$quietInvoice, 'mode'=>'send']);
+ok(invoice($quietInvoice)['sent_at'] !== null, 'with them switched back on it goes, and says so');
+is_same(1, (int)scalar("SELECT COUNT(*) FROM mail_jobs WHERE account_id=? AND status='queued'", [$quiet]), 'one mail in the outbox');
+mail_ready(false);
+
+case_('An invoice is printed in its family’s language, whoever opens it');
+/* invoice_pdf() followed the session. The queue builds the attachment after
+   whoever's page view came last, so an English family's invoice went out in
+   German, or a German family's in English. */
+$english = make_account(['role'=>'student', 'locale'=>'en']);
+$englishKid = make_student(['first_name'=>'Emma', 'last_name'=>'Smith', 'account_id'=>$english]);
+$englishInvoice = invoice(create_invoice($englishKid, [$owedCharge($englishKid, 3000)]));
+$_SESSION['locale'] = 'de';
+$englishPdf = $pdfText(invoice_pdf($englishInvoice));
+ok(str_contains($englishPdf, 'Invoice number'), 'an English family’s invoice is in English for a German-speaking trainer');
+ok(!str_contains($englishPdf, 'Rechnungsnummer'), 'with no German in it');
+$attached = mail_attachment(['kind'=>'invoice', 'id'=>(int)$englishInvoice['id']]);
+ok(str_contains($pdfText((string)($attached['body'] ?? '')), 'Invoice number'), 'and the one attached to the mail is the same');
+$_SESSION['locale'] = 'en';
+try { $germanPdf = $pdfText(invoice_pdf(invoice($wholeInvoice))); } finally { $_SESSION['locale'] = 'de'; }
+ok(str_contains($germanPdf, 'Rechnungsnummer'), 'and a German family’s invoice stays German for an English-speaking one');
+
+case_('A new invoice is told in the bell to a login that signs in, never to a placeholder');
+/* ADR 0023 §3: nobody reads a placeholder's bell, and the invitation that later
+   turns it into a login would hand the family a list of old news. notify()
+   decides it once, for every caller - the invoice, the decided request and the
+   changed date each asked it for themselves, or forgot to. */
+sign_in_as($trainer);
+$unbilled = fn(int $studentId): int => fixture('charges', ['student_id'=>$studentId, 'label'=>'Beitrag Dezember', 'amount_cents'=>4500,
+    'gross_cents'=>4500, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>'2026-12-01', 'period_to'=>'2026-12-31',
+    'due_on'=>'2026-12-01', 'overdue_on'=>'2026-12-08', 'cancelled'=>0, 'origin'=>'auto', 'created_at'=>now()]);
+$told = fn(int $accountId): int => (int)scalar("SELECT COUNT(*) FROM notifications WHERE account_id=? AND kind='payment'", [$accountId]);
+$withoutSignIn = make_student(['first_name'=>'Ohne', 'last_name'=>'Anmeldung']);
+$withSignIn = make_student(['first_name'=>'Mit', 'last_name'=>'Anmeldung', 'account_id'=>$signsIn = make_account()]);
+foreach ([$withoutSignIn, $withSignIn] as $who)
+    act('invoice_create', ['student_id'=>(string)$who, 'charge_ids'=>[(string)$unbilled($who)], 'issued_on'=>today(), 'terms'=>'14']);
+$placeholderLogin = (int)scalar('SELECT account_id FROM students WHERE id=?', [$withoutSignIn]);
+is_same([0, 1], [$told($placeholderLogin), $told($signsIn)], 'the child who signs in hears of it; the placeholder gets nothing written');
+
+case_('The overview counts every invoice, and a part-paid one owes only what is left');
+/* Only the newest 200 invoices were loaded, so one unpaid since 2020 fell out of
+   „Überfällig“, its count and the total, and the total added the whole gross of
+   an invoice half paid. invoice_totals() and invoice_list() ask the database
+   about all of them, and views/invoices.php reads those: the next case reads
+   the page. */
+test_reset();
+sign_in_as(make_account(['role'=>'trainer']));
+$kid = make_student(['first_name'=>'Alt', 'last_name'=>'Offen']);
+$listed = fn(array $over) => fixture('invoices', $over + ['student_id'=>$kid, 'account_id'=>null, 'year'=>2020,
+    'supplied_from'=>null, 'supplied_to'=>null, 'net_cents'=>3000, 'tax_cents'=>0, 'gross_cents'=>3000, 'tax_rate'=>0,
+    'tax_note'=>'', 'snapshot_json'=>'{}', 'created_by'=>null, 'created_at'=>now()]);
+$forgotten = $listed(['number'=>'ALT-0001', 'sequence'=>1, 'issued_on'=>'2020-01-01', 'due_on'=>'2020-01-15', 'overdue_on'=>'2020-01-15']);
+for ($i = 2; $i <= 201; $i++)
+    $listed(['number'=>'ST-'.$i, 'sequence'=>$i, 'issued_on'=>'2021-01-01', 'due_on'=>'2021-01-15', 'overdue_on'=>'2021-01-15',
+             'cancelled_at'=>now(), 'cancel_reason'=>'Versehen']);
+$halfCharge = fixture('charges', ['student_id'=>$kid, 'label'=>'Teil', 'amount_cents'=>4500, 'due_on'=>today(), 'cancelled'=>0,
+                                  'origin'=>'manual', 'created_at'=>now()]);
+$soon = date('Y-m-d', strtotime(today().' +14 days'));
+$half = $listed(['number'=>'TEIL-1', 'sequence'=>500, 'year'=>(int)substr(today(), 0, 4), 'issued_on'=>today(), 'due_on'=>$soon,
+                 'overdue_on'=>$soon, 'gross_cents'=>4500, 'net_cents'=>4500]);
+fixture('invoice_charges', ['invoice_id'=>$half, 'charge_id'=>$halfCharge]);
+fixture('payments', ['charge_id'=>$halfCharge, 'amount_cents'=>2000, 'paid_on'=>today(), 'method'=>'Bar', 'note'=>'',
+                     'confirmed_at'=>now(), 'voided'=>0]);
+$totals = invoice_totals();
+is_same(['open'=>1, 'overdue'=>1, 'paid'=>0, 'cancelled'=>200], $totals['counts'], 'every invoice is counted, the oldest included');
+is_same(2500 + 3000, $totals['outstanding_cents'], 'and they owe 25 € on the part-paid one and 30 € on the old one');
+is_same(['ALT-0001'], array_column(invoice_list('overdue'), 'number'), '„Überfällig“ lists the one unpaid since 2020');
+is_same(['TEIL-1'], array_column(invoice_list('open'), 'number'), '„Offen“ the part-paid one');
+is_same(50, count(invoice_list('cancelled')), 'a page holds fifty');
+is_same(['ST-151'], array_column(array_slice(invoice_list('cancelled', 2), 0, 1), 'number'), 'and the next page carries on from there');
+is_same(202, count(invoice_list('all', 1, 200)) + count(invoice_list('all', 2, 200)), 'all of them, two hundred to a page');
+throws(fn() => invoice_list('vielleicht'), 'a state that is not one is refused');
+$disagree = [];
+foreach (array_merge(invoice_list('all', 1, 200), invoice_list('all', 2, 200)) as $row)
+    if ($row['status'] !== invoice_status(invoice((int)$row['id']))) $disagree[] = $row['number'];
+is_same([], $disagree, 'and the state the list gives each one is the state its own page gives it');
+
+case_('The invoices page shows the oldest overdue invoice, counts it, and pages through the rest');
+/* The page counted and filtered all_invoices(), the newest 200, in PHP: ALT-0001,
+   unpaid since 2020, was not under „Überfällig", not in its count and not in the
+   total, and the total added all of TEIL-1 when half of it was paid. */
+$overdueList = render_view('invoices', ['state'=>'overdue']);
+ok(str_contains($overdueList, '>ALT-0001</a>'), '„Überfällig" lists the invoice unpaid since 2020, older than the newest 200');
+ok(str_contains($overdueList, e(t('Überfällig', 'Overdue')).' (1)</a>'), 'the count beside „Überfällig" includes it');
+ok(str_contains($overdueList, '<strong>'.e(money(2500 + 3000)).'</strong>'),
+   '„Offen und überfällig" adds what is still owed: 30 € on the old one, 25 € of the part-paid one');
+ok(!str_contains($overdueList, 'class="pagination"'), 'one page of them has no pager');
+$cancelledList = render_view('invoices', ['state'=>'cancelled']);
+is_same(50, substr_count($cancelledList, '<div class="record-row">'), 'a page lists fifty');
+ok(str_contains($cancelledList, 'href="'.e(url('invoices', ['state'=>'cancelled', 'p'=>2])).'"'), '„Weitere" leads on, keeping the filter');
+ok(str_contains($cancelledList, e(t('Seite 1 von 4', 'Page 1 of 4'))), 'and the page says where in the list it is');
+ok(!str_contains($cancelledList, e(t('Zurück', 'Previous'))), 'with no way back from the first page');
+$lastCancelled = render_view('invoices', ['state'=>'cancelled', 'p'=>'4']);
+ok(str_contains($lastCancelled, 'href="'.e(url('invoices', ['state'=>'cancelled', 'p'=>3])).'"'), 'the last page leads back');
+ok(!str_contains($lastCancelled, e(url('invoices', ['state'=>'cancelled', 'p'=>5]))), 'and not on, because there is nothing more');
+ok(str_contains(render_view('invoices', ['state'=>'cancelled', 'p'=>'99']), e(t('Seite 4 von 4', 'Page 4 of 4'))),
+   'a page past the end shows the last one');
+ok(!str_contains(render_view('invoices', ['state'=>'all']), '>ALT-0001</a>'), '„Alle" starts with the newest');
+ok(str_contains(render_view('invoices', ['state'=>'all', 'p'=>'5']), '>ALT-0001</a>'), 'and its last page reaches the oldest');
+
+case_('On the child’s page a charge is red only once it is late, and one an invoice holds says so instead of offering to cancel');
+/* The badge compared the due date with today, so a charge inside its grace days
+   was red while the overdue total, the reminders and „Überfällig" said it was
+   not late yet. „Beitrag stornieren" was offered on a charge a live invoice
+   holds, which charge_cancel then refused. And „Per E-Mail schicken" was offered
+   for an invoice nobody could e-mail, refused only after the tap. */
+$quietLogin = make_account(['role'=>'student', 'payment_notices'=>0]);
+$family = make_student(['first_name'=>'Rot', 'last_name'=>'Odernicht', 'account_id'=>$quietLogin]);
+$day = fn(int $days) => date('Y-m-d', strtotime(today().' '.sprintf('%+d', $days).' days'));
+$chargeOn = fn(string $label, string $due, string $overdue) => fixture('charges', ['student_id'=>$family, 'label'=>$label,
+    'amount_cents'=>3000, 'gross_cents'=>3000, 'discount_cents'=>0, 'discount_note'=>'', 'period_from'=>null, 'period_to'=>null,
+    'due_on'=>$due, 'overdue_on'=>$overdue, 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+$chargeOn('In der Frist', $day(-2), $day(5));
+$chargeOn('Zu spät', $day(-20), $day(-13));
+$settled = $chargeOn('Beglichen', $day(-40), $day(-33));
+fixture('payments', ['charge_id'=>$settled, 'amount_cents'=>3000, 'paid_on'=>$day(-35), 'method'=>'Bar', 'note'=>'',
+                     'confirmed_at'=>now(), 'voided'=>0]);
+$held = $chargeOn('Auf Rechnung', today(), $day(7));
+$chargeOn('Ohne Rechnung', today(), $day(7));
+$freed = $chargeOn('Rechnung storniert', today(), $day(7));
+$thisYear = (int)substr(today(), 0, 4);
+$holding = $listed(['student_id'=>$family, 'account_id'=>$quietLogin, 'number'=>'HALT-1', 'sequence'=>600, 'year'=>$thisYear,
+                    'issued_on'=>today(), 'due_on'=>$day(14), 'overdue_on'=>$day(14)]);
+fixture('invoice_charges', ['invoice_id'=>$holding, 'charge_id'=>$held]);
+$withdrawn = $listed(['student_id'=>$family, 'number'=>'WEG-1', 'sequence'=>601, 'year'=>$thisYear, 'issued_on'=>today(),
+                      'due_on'=>$day(14), 'overdue_on'=>$day(14), 'cancelled_at'=>now(), 'cancel_reason'=>'Versehen']);
+fixture('invoice_charges', ['invoice_id'=>$withdrawn, 'charge_id'=>$freed]);
+
+$paymentsTab = render_view('student', ['id'=>$family, 'tab'=>'payments']);
+$card = function (string $label) use ($paymentsTab): string {
+    foreach (array_slice(explode('<section class="card charge-card">', $paymentsTab), 1) as $piece)
+        if (str_contains($piece, '<h2>'.e($label).'</h2>')) return (string)strstr($piece, '</section>', true);
+    return '';
+};
+ok($card('In der Frist') !== '' && str_contains($card('In der Frist'), 'class="badge'), 'the charge inside its grace days is on the page, with its badge');
+ok(!str_contains($card('In der Frist'), 'badge red'), 'past its due date but inside its grace days, it is not red');
+ok(str_contains($card('Zu spät'), 'class="badge red"'), 'past its grace days and unpaid, it is');
+ok(str_contains($card('Beglichen'), 'class="badge green"') && !str_contains($card('Beglichen'), 'badge red'),
+   'paid, however long ago it was due, it is green and not red');
+$heldCard = $card('Auf Rechnung');
+ok(!str_contains($heldCard, 'value="charge_cancel"'), 'a charge a live invoice holds is not offered „Beitrag stornieren"');
+ok(str_contains($heldCard, e(t('Steht auf Rechnung ', 'On invoice '))) && str_contains($heldCard, e(t(' – zuerst die Rechnung stornieren.', ' – cancel the invoice first.'))),
+   'it says which invoice holds it and what to do first');
+ok(str_contains($heldCard, '<a href="'.e(url('student', ['id'=>$family, 'tab'=>'invoices', '#'=>'invoice-'.$holding])).'">HALT-1</a>'),
+   'with the invoice’s number linked to that invoice');
+ok(str_contains($card('Ohne Rechnung'), 'value="charge_cancel"'), 'a charge on no invoice can be cancelled');
+ok(str_contains($card('Rechnung storniert'), 'value="charge_cancel"') && !str_contains($card('Rechnung storniert'), 'WEG-1'),
+   'and so can one whose invoice was cancelled, which names no invoice');
+
+$invoicesTab = render_view('student', ['id'=>$family, 'tab'=>'invoices']);
+ok(str_contains($invoicesTab, 'id="invoice-'.$holding.'"'), 'the link lands on the invoice, on the child’s invoices tab');
+/** One invoice's row on the invoices tab: from its anchor to the next row, or the end of the list. */
+$invoiceRow = function (string $html, int $invoiceId): string {
+    $from = (string)strstr($html, 'id="invoice-'.$invoiceId.'"');
+    $ends = array_filter([strpos($from, 'id="invoice-', 1), strpos($from, '</section>')], fn($at) => $at !== false);
+    return $ends ? substr($from, 0, min($ends)) : $from;
+};
+$heldRow = $invoiceRow($invoicesTab, $holding);
+ok(str_contains($heldRow, e(invoice_mail_refusal(invoice($holding)) ?? 'keine Ablehnung')),
+   'an invoice for a family who turned payment e-mails off says so where „Per E-Mail schicken" would be');
+ok(!str_contains($heldRow, 'name="mode" value="send"'), 'and offers no button that can only be refused');
+ok(str_contains($heldRow, 'name="mode" value="paid"'), 'while „Als bezahlt eintragen" is still offered on that row');
+run('UPDATE accounts SET payment_notices=1 WHERE id=?', [$quietLogin]);
+// Issued before the child had a login, an invoice is addressed to nobody: the
+// page asks once per login, and must not give one invoice another's answer.
+$beforeLogin = $listed(['student_id'=>$family, 'account_id'=>null, 'number'=>'VORHER-1', 'sequence'=>602, 'year'=>$thisYear,
+                        'issued_on'=>$day(-1), 'due_on'=>$day(13), 'overdue_on'=>$day(13)]);
+$invoicesTab = render_view('student', ['id'=>$family, 'tab'=>'invoices']);
+$heldRow = $invoiceRow($invoicesTab, $holding);
+ok(str_contains($heldRow, 'name="mode" value="send"'), 'with them switched back on, the button is there');
+ok(!str_contains($heldRow, e(t('abbestellt', 'switched off'))), 'and the sentence is gone');
+$unaddressedRow = $invoiceRow($invoicesTab, $beforeLogin);
+ok(!str_contains($unaddressedRow, 'name="mode" value="send"')
+   && str_contains($unaddressedRow, e(invoice_mail_refusal(invoice($beforeLogin)) ?? 'keine Ablehnung')),
+   'while the child’s invoice addressed to no login says why it cannot go, on the same page');
+
+sign_in_as($quietLogin);
+ok(!str_contains(render_view('student', ['id'=>$family, 'tab'=>'payments']), e(t('Steht auf Rechnung ', 'On invoice '))),
+   'the family is not told to cancel an invoice, which is not theirs to do');
 

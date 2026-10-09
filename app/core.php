@@ -13,13 +13,19 @@ class UserError extends RuntimeException {}
  * deleted; anything else confirms the record exists.
  */
 class NotFound extends UserError {}
+/**
+ * Nobody is signed in where somebody has to be (require_user()): the router
+ * sends the request to the sign-in page.
+ *
+ * Thrown rather than redirecting on the spot, so a post that needs somebody
+ * unwinds the transaction handle_post() opened around it the ordinary way. A
+ * redirect from inside one is logged as a bug (tx_abandon_open()), and this one
+ * is expected: every bot that posts to the portal signed out would otherwise
+ * write a line into the host's error log.
+ */
+class SignInRequired extends RuntimeException {}
 function config(string $key): mixed { global $config; return $config[$key] ?? null; }
 function connect(): PDO {
-    // Seam for the test harness, which supplies its own connection so the suite
-    // can run without a database server. Nothing in the application sets this;
-    // if it is unset, the normal MySQL connection below is used.
-    $override = $GLOBALS['crm_connect_override'] ?? null;
-    if ($override instanceof Closure) return $override();
     $c = config('db');
     $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};dbname={$c['database']};charset=utf8mb4", $c['username'], $c['password'], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false]);
     $pdo->exec("SET time_zone = '+00:00'");
@@ -49,10 +55,61 @@ function sql_name(string $name, string $kind='identifier'): string {
 }
 function now(): string { return gmdate('Y-m-d H:i:s'); }
 function today(): string { return date('Y-m-d'); }
-function locale(): string { return $_SESSION['locale'] ?? 'de'; }
+/**
+ * The moment $months months before now, as a time is stored (UTC): where a
+ * period of months counted back from now begins - the change log's
+ * (history_prune()) and each retention period's (prune_expired()).
+ */
+function months_ago(int $months): string {
+    return (new DateTimeImmutable(now()))->modify('-' . max(1, $months) . ' months')->format('Y-m-d H:i:s');
+}
+/** The portal's own language: every page before somebody chooses, and everything the portal writes for everybody. */
+const PORTAL_LOCALE = 'de';
+
+/**
+ * Who is speaking, when it is not the person whose session this is.
+ *
+ * Most text follows the signed-in person. Some does not: a charge is written for
+ * every family in the portal's language, an invoice is printed in its family's
+ * whoever downloads it, and the background work after a page view is the
+ * portal's own and nobody's - not the visitor's whose request it happened to
+ * follow. Held here rather than in $_SESSION, because the session is written
+ * back when the request ends and must come out of this unchanged.
+ */
+function &speaking_as(): array { static $as = ['locale' => null, 'nobody' => false]; return $as; }
+
+function locale(): string { return speaking_as()['locale'] ?? $_SESSION['locale'] ?? PORTAL_LOCALE; }
+
+/** Run $fn with every t(), money() and date in one language, and put the session's back afterwards. */
+function in_locale(string $locale, callable $fn): mixed {
+    $as = &speaking_as();
+    $was = $as['locale'];
+    $as['locale'] = $locale === 'en' ? 'en' : PORTAL_LOCALE;
+    try { return $fn(); } finally { $as['locale'] = $was; }
+}
+
+/**
+ * Run $fn as the portal's own work: in its language, and with nobody as the one
+ * who did it. The background work after a page view goes through this
+ * (tick_work()), so the audit and the change log do not name whoever's page view
+ * it followed - a family, as often as not.
+ */
+function as_the_portal(callable $fn): mixed {
+    $as = &speaking_as();
+    $was = $as;
+    $as = ['locale' => PORTAL_LOCALE, 'nobody' => true];
+    try { return $fn(); } finally { $as = $was; }
+}
 function t(string $de, string $en): string { return locale()==='en' ? $en : $de; }
 function e(mixed $value): string { return htmlspecialchars((string)($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
-function url(string $page='', array $params=[]): string { return rtrim(config('app_url'),'/') . '/index.php' . ($page ? '?' . http_build_query(['page'=>$page]+$params) : ''); }
+/** A page's address; a '#' entry in $params is the place on the page, so a redirect can land on it without JavaScript. */
+function url(string $page='', array $params=[]): string {
+    $fragment=(string)($params['#']??''); unset($params['#']);
+    return rtrim(config('app_url'),'/') . '/index.php' . ($page ? '?' . http_build_query(['page'=>$page]+$params) : '')
+        . ($fragment!=='' ? '#'.rawurlencode($fragment) : '');
+}
+/** The address of a file that ships in public/assets/, which changes when its bytes do (asset_path()). */
+function asset_url(string $file): string { return rtrim((string)config('app_url'),'/') . '/' . asset_path($file); }
 function go(string $page, array $params=[]): never {
     tx_abandon_open('redirect to '.$page);
     header('Location: '.url($page,$params),true,303); exit;
@@ -68,6 +125,34 @@ function csrf(): string { return $_SESSION['csrf'] ??= bin2hex(random_bytes(32))
  * than each reaching for the global with its own fallback.
  */
 function current_page(): string { return (string)($GLOBALS['page'] ?? 'dashboard'); }
+
+/**
+ * The pages public/index.php opens, while it answers a request: its own list,
+ * $allowed, read where it is written rather than copied. null where no router
+ * runs - the console, a suite calling an action directly - and a way back is
+ * then held to the shape of a page name only (form_return()).
+ */
+function allowed_pages(): ?array { return is_array($GLOBALS['allowed'] ?? null) ? $GLOBALS['allowed'] : null; }
+
+/**
+ * Which page of a list the address asks for: ?p=, from 1 to PAGE_NUMBER_MAX.
+ *
+ * Every pager reads it here. A value that is not a page number is the first
+ * page, and one past PAGE_NUMBER_MAX is that page - which is empty, or the last
+ * page there is where a pager holds it to its own count. Twenty nines in ?p=
+ * once made one page's slicing a float and another's OFFSET a number the
+ * database refused (ADR 0026 §5).
+ */
+function page_number(): int {
+    $value = $_GET['p'] ?? '';
+    return is_string($value) && ctype_digit(trim($value)) ? page_in_range((int)trim($value)) : 1;
+}
+
+/** A list's page held from 1 to PAGE_NUMBER_MAX, so the offset worked out from it is always a small integer. */
+function page_in_range(int $page): int { return max(1, min(PAGE_NUMBER_MAX, $page)); }
+
+/** Far more pages than any list of a club's will have, and an offset of fifty to a page that fits any integer. */
+const PAGE_NUMBER_MAX = 100000;
 
 /**
  * Which form is being written out right now: its action, and the record it
@@ -100,8 +185,12 @@ function form_record_id(mixed $id): ?int {
 function form_open(string $action, array $hidden=[], string $class='', bool $multipart=false): void {
     form_context($action, form_record_id($hidden['id'] ?? null));
     // A form carrying a file has to say so, or PHP receives an empty $_FILES and
-    // the upload looks to the person like nothing happened.
-    echo '<form method="post" action="'.e(url()).'" class="'.e($class).'"'.($multipart?' enctype="multipart/form-data"':'').'>';
+    // the upload looks to the person like nothing happened. It says where it
+    // came from in its address as well: a post larger than post_max_size
+    // reaches PHP with no fields at all, and the address is then all there is
+    // to answer on the same page by (post_too_large(), form_bookkeeping()).
+    $back=$multipart ? array_filter(array_intersect_key($hidden,array_flip(FORM_RETURN_FIELDS)),fn($v): bool => !in_array((string)$v,['','0'],true)) : [];
+    echo '<form method="post" action="'.e(url().($back?'?'.http_build_query($back):'')).'" class="'.e($class).'"'.($multipart?' enctype="multipart/form-data"':'').'>';
     foreach (['action'=>$action,'csrf'=>csrf(),'request_id'=>bin2hex(random_bytes(32))]+$hidden as $k=>$v) echo '<input type="hidden" name="'.e($k).'" value="'.e($v).'">';
 }
 
@@ -127,6 +216,9 @@ function is_secret_field(string $key): bool {
     return false;
 }
 
+/** The fields that say where a form came from, and so where its answer goes (form_return()). */
+const FORM_RETURN_FIELDS = ['return_page', 'return_id', 'return_tab', 'return_draft', 'return_anchor'];
+
 /**
  * The fields start_form() adds to every form for the portal's own use: which
  * submission this is, what it asks for, and the page to return to. Nobody typed
@@ -135,7 +227,18 @@ function is_secret_field(string $key): bool {
  * confirmation, record_step() also drops csrf, which is_secret_field() would
  * otherwise record as ***.
  */
-const FORM_BOOKKEEPING_FIELDS = ['request_id', 'action', 'return_page', 'return_id', 'return_tab'];
+const FORM_BOOKKEEPING_FIELDS = ['request_id', 'action', ...FORM_RETURN_FIELDS];
+
+/**
+ * The places on a page a form may ask to come back to after a refusal, posted
+ * as return_anchor and added to the address as its fragment (form_return()):
+ * the access card (ADR 0030 §6), the one place a form names so far. A fixed
+ * list, so what the browser is sent to holds nothing a forged form made up; any
+ * other value is ignored and the page opens at its top. A form names its place
+ * in start_form()'s hidden fields, ['return_anchor'=>'access'], and a new place
+ * joins the list with the form that needs it.
+ */
+const FORM_RETURN_ANCHORS = ['access'];
 
 /**
  * Keep what was typed when one value is rejected.
@@ -171,8 +274,24 @@ function remember_input(string $action): void {
     if (!$fields) return;
     // 'id' is the page's record, from return_id; 'record' is the form's own -
     // one contact of several on a student's page, say.
-    $_SESSION['form_input']=['action'=>$action,'page'=>post('return_page'),'id'=>(string)(int)post('return_id'),
-                             'tab'=>post('return_tab'),'record'=>form_record_id($_POST['id'] ?? null),'fields'=>$fields];
+    $_SESSION['form_input']=['action'=>$action,'page'=>form_bookkeeping('return_page'),'id'=>(string)(int)form_bookkeeping('return_id'),
+                             'tab'=>form_bookkeeping('return_tab'),'record'=>form_record_id($_POST['id'] ?? null),'fields'=>$fields];
+}
+
+/**
+ * One of FORM_BOOKKEEPING_FIELDS as text, or '' when it is not text.
+ *
+ * Read on the way back after a refusal - remember_input(), form_return(), the
+ * router's catch - where post()'s own refusal of a list would end the request
+ * in „Kein Zugriff" instead of the page the form came from. Nobody types these
+ * fields, so one that is not text is treated as one that is not there: the way
+ * back falls back to its default page.
+ */
+function form_bookkeeping(string $key): string {
+    if (!in_array($key, FORM_BOOKKEEPING_FIELDS, true)) throw new LogicException('Not one of FORM_BOOKKEEPING_FIELDS: '.$key);
+    // Where the form came from is in a form's address too, where one with a
+    // file puts it (form_open()), for a post that arrived with no fields.
+    return form_text($_POST[$key] ?? (in_array($key, FORM_RETURN_FIELDS, true) ? $_GET[$key] ?? '' : '')) ?? '';
 }
 
 /** Take the held submission out of the session. Called once, before a page renders. */
@@ -192,8 +311,8 @@ function take_held_input(): void {
  * over the wrong person (ADR 0020, §10a). A form with no record of its own - an
  * add form - matches as it always did. The one place that match is made:
  * holding_input() and held_input() ask this for the form being written out, and
- * a view asks it by name to react to a refusal before it opens the form - the
- * username change left open, a refused contact's details opened (ADR 0019, I4).
+ * a view asks it by name to react to a refusal before it opens the form - a
+ * refused invitation's form left open, a refused contact's details opened.
  * It reads the held copy only, so a view that asks still writes nothing.
  * remember_input() never holds an empty set, so [] means nothing is held.
  */
@@ -202,7 +321,7 @@ function held_for(string $action, ?int $record = null): array {
     if ($held===null || $action==='' || $held['action']!==$action
         || (string)$held['page']!==current_page()
         || (string)$held['id']!==(string)(int)($_GET['id'] ?? 0)
-        || (string)$held['tab']!==(string)($_GET['tab'] ?? '')) return [];
+        || (string)$held['tab']!==($_GET['tab'] ?? '')) return [];
     // A submission held before records were stored has none, and matches.
     $heldRecord=$held['record'] ?? null;
     if ($record!==null && $heldRecord!==null && (int)$heldRecord!==$record) return [];
@@ -227,17 +346,28 @@ function held_input(string $name, mixed $fallback): mixed {
  * "page=student" with no student, which is a "Nicht gefunden".
  *
  * Never an open redirect: go() builds the address from url(), so the most a
- * forged value can do is name a page of this portal that does not exist, and a
- * name that is not even shaped like one falls back to $fallback. The router
- * passes its list of pages as $pages, so after a refusal - when the page a
- * person lands on is the one thing they see - it is always one that exists.
+ * forged value can do is name a page of this portal, and a name that is not
+ * shaped like one falls back to $fallback. Held to the router's own list of
+ * pages - $pages, or allowed_pages() while the router runs - so the page a
+ * person lands on, after a refusal or after a report sent from it, is always
+ * one that exists. Read without a refusal of its own (form_bookkeeping()): it
+ * runs inside the router's catch.
  */
 function form_return(string $fallback='dashboard', ?array $pages=null): array {
-    $page=post('return_page',$fallback);
+    $pages??=allowed_pages();
+    $page=form_bookkeeping('return_page');
     if(!preg_match('/^[a-z_]{1,40}$/D',$page) || ($pages!==null && !in_array($page,$pages,true))) $page=$fallback;
     $params=[];
-    if((int)post('return_id')>0) $params['id']=(int)post('return_id');
-    if(post('return_tab')!=='') $params['tab']=post('return_tab');
+    $id=(int)form_bookkeeping('return_id');
+    if($id>0) $params['id']=$id;
+    if(($tab=form_bookkeeping('return_tab'))!=='') $params['tab']=$tab;
+    // The wizard's draft key (ADR 0023 §5), so a refused step 2 comes back to
+    // step 2 with the draft whole - and stays there when the phone reloads the
+    // tab. Only something shaped like a key; never the details.
+    // student_draft_key() is in app/domain.php, loaded after this file: safe,
+    // because a form is only ever returned from while a request runs.
+    if(student_draft_key($draft=form_bookkeeping('return_draft'))) $params['draft']=$draft;
+    if(in_array($anchor=form_bookkeeping('return_anchor'),FORM_RETURN_ANCHORS,true)) $params['#']=$anchor;
     return [$page,$params];
 }
 // form_text() is in app/install.php, so the installer reads its form by the same rule.
@@ -250,11 +380,49 @@ function post(string $key, string $default=''): string { $v=form_text($_POST[$ke
 const TEXT_LINE_MAX = 160;
 function required_text(string $key, int $max=TEXT_LINE_MAX): string { $v=post($key); if($v==='' || mb_strlen($v)>$max) throw new UserError(t('Bitte alle Pflichtfelder korrekt ausfüllen.','Please complete all required fields correctly.')); return $v; }
 function text_limit(string $key, int $max=255): string { $v=post($key); if(mb_strlen($v)>$max) throw new UserError(t('Die Eingabe ist zu lang.','Input is too long.')); return $v; }
+/**
+ * A calendar date from a form, YYYY-MM-DD, or null when it was left empty and
+ * may be. Only from 1900 to 2100 (DATE_YEAR_MIN, DATE_YEAR_MAX): a year outside
+ * them is a slip on a phone's date wheel, not a training or a payment, and the
+ * year 9999 would overflow every date worked out from it - an invoice's due
+ * date, a period's end - where the database stores it (ADR 0026 §5).
+ */
 function date_value(string $value, bool $required=false): ?string {
     if($value==='' && !$required) return null;
     $d=DateTimeImmutable::createFromFormat('!Y-m-d',$value);
     if(!$d || $d->format('Y-m-d')!==$value) throw new UserError(t('Bitte ein gültiges Datum eingeben.','Please enter a valid date.'));
+    $year=(int)substr($value,0,4);
+    if($year<DATE_YEAR_MIN || $year>DATE_YEAR_MAX)
+        throw new UserError(strtr(t('Bitte ein Datum zwischen {from} und {to} eingeben.','Please enter a date between {from} and {to}.'),
+                                  ['{from}'=>DATE_YEAR_MIN,'{to}'=>DATE_YEAR_MAX]));
     return $value;
+}
+const DATE_YEAR_MIN = 1900;
+const DATE_YEAR_MAX = 2100;
+
+/**
+ * A calendar date the address names, or null: date_value()'s rule, for a value
+ * nobody typed into a form. A link from the portal holds a good one; anything
+ * else - an old bookmark, an address typed by hand, a list - reads as no date,
+ * and the page uses its own, never a refusal over a day (ADR 0026 §5).
+ */
+function query_date(string $key): ?string {
+    $value=$_GET[$key]??'';
+    if(!is_string($value)) return null;
+    try { return date_value(trim($value)); } catch(UserError) { return null; }
+}
+/**
+ * A date of birth, or a refusal in one sentence: a real date, not in the
+ * future, and not more than a hundred years ago - either is a slip of the
+ * thumb on a phone's date wheel, not a member. One rule wherever a birth date
+ * is typed: by staff, by a family, and while accepting an invitation.
+ */
+function birth_date_value(string $value, bool $required=false): ?string {
+    try { $date=date_value($value,$required); } catch(UserError) { $date=false; }
+    if($date===null) return null;
+    if($date===false || $date>today() || $date<(new DateTimeImmutable(today()))->modify('-100 years')->format('Y-m-d'))
+        throw new UserError(t('Bitte das Geburtsdatum prüfen.','Please check the date of birth.'));
+    return $date;
 }
 function date_range(?string $from, ?string $to): void { if($from && $to && $from>$to) throw new UserError(t('Das Enddatum liegt vor dem Startdatum.','The end date is before the start date.')); }
 function cents(string $v, bool $zero=true): int {
@@ -338,13 +506,15 @@ function set_setting(string $key, mixed $value): void {
 }
 /**
  * Who is acting: the person impersonating, while somebody is being looked at,
- * otherwise the signed-in login, otherwise nobody. The one answer audit() and
+ * otherwise the signed-in login, otherwise nobody - and nobody, too, while the
+ * portal does its own work (as_the_portal()). The one answer audit() and
  * history_record() give. Asked through current_user() first, so a view whose
  * session has ended is never named: with nobody signed in, nobody acted
  * (security review F1). current_user() is in app/auth.php, loaded later, and
  * called only while a request runs.
  */
 function acting_account_id(): ?int {
+    if(speaking_as()['nobody']) return null;
     $user=current_user();
     if(!$user) return null;
     return (int)($_SESSION['impersonator_id'] ?? $user['id']);
@@ -360,8 +530,8 @@ function acting_account_id(): ?int {
  * it matters most.
  *
  * $actor names somebody else only where nobody is signed in yet and the person
- * acting is known all the same: the holder of an invitation choosing a
- * username (change_own_username()). Nothing else passes it.
+ * acting is known all the same: the holder of an invitation setting up their
+ * own student (create_own_student()). Nothing else passes it.
  */
 function audit(string $action,string $type,?int $id=null,?int $actor=null): void {
     $actor??=acting_account_id();
@@ -369,23 +539,6 @@ function audit(string $action,string $type,?int $id=null,?int $actor=null): void
 }
 function seal(string $plain): string { $iv=random_bytes(12); $tag=''; $cipher=openssl_encrypt($plain,'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,$iv,$tag); if($cipher===false) throw new RuntimeException('Encryption failed'); return base64_encode($iv.$tag.$cipher); }
 function unseal(string $value): string { $b=base64_decode($value,true); if($b===false || strlen($b)<28) throw new RuntimeException('Invalid encrypted data'); $plain=openssl_decrypt(substr($b,28),'aes-256-gcm',base64_decode(config('app_key')),OPENSSL_RAW_DATA,substr($b,0,12),substr($b,12,16)); if($plain===false) throw new RuntimeException('Cannot decrypt with this app key'); return $plain; }
-/**
- * The name a copy gets: "Monatsbeitrag (Kopie)", then "(Kopie 2)".
- *
- * Numbered against the names already in use, because two rows reading exactly
- * the same on a list is a choice nobody can make. The name is shortened rather
- * than the suffix, so the part that says it is a copy never falls off the end.
- */
-function copy_name(string $name, array $taken=[], int $max=120): string {
-    $taken = array_map('mb_strtolower', $taken);
-    for ($n = 1; $n <= 99; $n++) {
-        $tail = t(' (Kopie', ' (copy') . ($n > 1 ? ' ' . $n : '') . ')';
-        $candidate = mb_substr($name, 0, max(1, $max - mb_strlen($tail))) . $tail;
-        if (!in_array(mb_strtolower($candidate), $taken, true)) return $candidate;
-    }
-    return mb_substr($name, 0, $max);
-}
-
 /**
  * An address the one way it is stored and compared: trimmed and in lower case.
  * Every lookup and comparison goes through this, so two spellings of one
@@ -443,122 +596,6 @@ function email_value(string $value): string {
     return $v;
 }
 
-/*
- * Usernames (ADR 0019): what everybody signs in with, such as lena.mueller.
- *
- * Lower-case a-z, digits, dot and hyphen; starting with a letter, ending with a
- * letter or digit, never two separators in a row, 3 to 40 characters. No
- * underscore, because username_for_new_account() builds a LIKE pattern from a
- * username and '_' is a LIKE wildcard: without it the pattern is literal.
- *
- * Pure functions, here beside the address rules, because the migration runner's
- * PHP step gives existing accounts their usernames with exactly these, and a
- * second copy of the rule anywhere else could only drift from this one.
- */
-const USERNAME_PATTERN = '/^[a-z](?:[a-z0-9]|[.-](?=[a-z0-9])){2,39}$/D';
-
-/**
- * Letters written the German way or stripped to their base letter, keyed by
- * what they become. Lower case only: everything is lower-cased first.
- *
- * One table in this file rather than ext-intl or iconv('…//TRANSLIT'). The first
- * is not a requirement of the portal and a shared host may lack it; the second
- * depends on the locale and answers differently on glibc and musl. This gives
- * the same username on every host, and the suite can test it.
- */
-const USERNAME_LETTERS = [
-    'ae' => 'äæ', 'oe' => 'öœ', 'ue' => 'ü', 'ss' => 'ßẞ', 'th' => 'þ', 'ij' => 'ĳ',
-    'a' => 'àáâãåāăą', 'c' => 'çćĉċč', 'd' => 'ðďđ', 'e' => 'èéêëēĕėęě', 'g' => 'ĝğġģ', 'h' => 'ĥħ',
-    'i' => 'ìíîïĩīĭįı', 'j' => 'ĵ', 'k' => 'ķĸ', 'l' => 'ĺļľŀł', 'n' => 'ñńņňŉŋ', 'o' => 'òóôõøōŏő',
-    'r' => 'ŕŗř', 's' => 'śŝşšſ', 't' => 'ţťŧ', 'u' => 'ùúûũūŭůűų', 'w' => 'ŵ', 'y' => 'ýÿŷ', 'z' => 'źżž',
-];
-
-/** A text in lower case with USERNAME_LETTERS applied, and nothing else changed. */
-function username_transliterated(string $text): string {
-    static $map=null;
-    if($map===null) {
-        // mb_strtolower() turns the Turkish capital İ into i and a combining dot
-        // above, which is not a letter of its own; it goes with the capital.
-        $map=["i\u{307}"=>'i'];
-        foreach(USERNAME_LETTERS as $to=>$letters) foreach(mb_str_split($letters) as $letter) $map[$letter]=$to;
-    }
-    return strtr(mb_strtolower($text),$map);
-}
-
-/**
- * A typed username in the one form it is stored and looked up in.
- *
- * Everything outside the table is kept, so a value that still does not match the
- * pattern is refused rather than quietly turned into somebody else's name. That
- * way `Lena.Müller`, capitalised by an iPhone, signs in as lena.mueller.
- */
-function username_normalised(string $typed): string { return username_transliterated(trim($typed)); }
-
-/** The username to write, from what was typed - or a refusal that says the rule. The only way a typed username reaches a write. */
-function username_value(string $typed): string {
-    $username=username_normalised($typed);
-    if(!preg_match(USERNAME_PATTERN,$username))
-        throw new UserError(t('Ein Benutzername hat 3 bis 40 Zeichen: Kleinbuchstaben a–z, Ziffern, Punkt und Bindestrich. Er beginnt mit einem Buchstaben, endet mit einem Buchstaben oder einer Ziffer, und Punkt oder Bindestrich stehen nie zweimal hintereinander.',
-                              'A username has 3 to 40 characters: lower-case letters a–z, digits, dot and hyphen. It starts with a letter, ends with a letter or a digit, and never has two dots or hyphens in a row.'));
-    return $username;
-}
-
-/**
- * The username a person's name suggests, with no number: lena.mueller.
- *
- * Inside each name a run of spaces, hyphens or dots becomes one hyphen,
- * apostrophes are dropped (O'Neill is oneill) and so is anything else outside
- * the alphabet. The two parts are joined with a dot. The result is cut to 36
- * characters, leaving room for a number up to 9999, at a separator where that
- * still leaves a name. A name that leaves nothing usable - written only in
- * Cyrillic, Greek or Chinese, say - gives 'konto', which is numbered like any
- * other.
- */
-function username_from_name(string $first, string $last): string {
-    $parts=[];
-    foreach([$first,$last] as $name) {
-        $part=preg_replace("/['’ʼ‘`´]/u",'',username_transliterated($name));
-        $part=preg_replace('/[^a-z0-9\s.-]/u','',(string)$part);
-        $part=trim((string)preg_replace('/[\s.-]+/u','-',(string)$part),'-');
-        if($part!=='') $parts[]=$part;
-    }
-    $base=implode('.',$parts);
-    if(strlen($base)>36) {
-        $cut=substr($base,0,36);
-        $boundary=max((int)strrpos($cut,'.'),(int)strrpos($cut,'-'));
-        // At the last separator, unless the next character is one anyway or
-        // cutting there would leave too little to be a name.
-        $base=rtrim(($base[36]==='.' || $base[36]==='-' || $boundary<3) ? $cut : substr($cut,0,$boundary),'.-');
-    }
-    return preg_match(USERNAME_PATTERN,$base) ? $base : 'konto';
-}
-
-/**
- * The first and the last word of a one-field name, as [first, last].
- *
- * For staff logins and for logins without a student, whose name is one field.
- * Middle names are dropped; a single word is the first name alone.
- */
-function full_name_parts(string $name): array {
-    $words=preg_split('/\s+/u',trim($name),-1,PREG_SPLIT_NO_EMPTY) ?: [];
-    return [(string)($words[0]??''), count($words)>1 ? (string)end($words) : ''];
-}
-
-/** username_from_name() for a name kept in one field. */
-function username_from_full_name(string $name): string { return username_from_name(...full_name_parts($name)); }
-
-/**
- * $base if nobody has it, otherwise $base2, $base3 … - the lowest that is free.
- *
- * So a number appears only when the name is taken, and a number freed by a
- * deleted login is handed out again.
- */
-function username_first_free(string $base, array $taken): string {
-    $taken=array_flip($taken);
-    if(!isset($taken[$base])) return $base;
-    for($n=2;$n<=9999;$n++) if(!isset($taken[$base.$n])) return $base.$n;
-    throw new RuntimeException('No free username left for '.$base);
-}
 function choose(string $value,array $allowed): string { if(!in_array($value,$allowed,true)) throw new UserError(t('Ungültige Auswahl.','Invalid choice.')); return $value; }
 /**
  * The privacy notice, with the operator's own details filled in.
@@ -649,6 +686,21 @@ function appearance(?array $user): array {
     ];
 }
 function maintenance_file(): string { return config('maintenance_file') ?: ROOT.'/storage/maintenance.flag'; }
+/**
+ * The names in a folder that end in $suffix, sorted: files, folders and links
+ * alike, without . and .., and without a hidden name - a host's .htaccess, or
+ * the deny file the backups' folder carries - which is never the portal's to
+ * list or to delete. None for a folder that is not there or cannot be read.
+ *
+ * Listed, never globbed: glob() reads [, *, ? and \ in a path as a pattern,
+ * and the portal does not choose where it is installed or keeps storage/. With
+ * storage/ in „ablage[1]" beside an „ablage1", glob() listed the neighbour's
+ * files, and the portal pruned those and never its own.
+ */
+function dir_entries(string $dir, string $suffix = ''): array {
+    $names = is_dir($dir) ? (@scandir($dir) ?: []) : [];
+    return array_values(array_filter($names, fn(string $name): bool => $name[0] !== '.' && str_ends_with($name, $suffix)));
+}
 // Split a migration file into statements on semicolons that are not inside a string
 // literal, a quoted identifier or a comment. Splitting on every semicolon breaks any
 // migration that carries one in a default value, an enum or a trigger body.

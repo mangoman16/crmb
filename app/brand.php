@@ -17,16 +17,19 @@ declare(strict_types=1);
  */
 
 /**
- * The fixed colours every derivation works against: app.css's card surfaces,
- * its light ink, and the near-black the dark menu is shaded toward. None of
- * them is hers to choose (ADR 0013 rejects a custom surface). The built-in
- * colours she can choose are not here: each is declared once, as 'builtin' in
- * app/defaults.php.
+ * The fixed colours every derivation works against: what app.css puts text on
+ * in each appearance - a group and the grey ground around it in light, a
+ * group and the field or track inside it in dark (Part 0.2 of the design
+ * language) - its light ink, and the near-black the dark menu is shaded
+ * toward. None of them is hers to choose (ADR 0013 rejects a custom surface).
+ * The first surface of each pair is the one a soft tint is mixed into. The
+ * built-in colours she can choose are not here: each is declared once, as
+ * 'builtin' in app/defaults.php.
  */
-const BRAND_SURFACE_LIGHT = '#ffffff';
-const BRAND_SURFACE_DARK = '#182430';
+const BRAND_SURFACES_LIGHT = ['#ffffff', '#f2f2f7'];
+const BRAND_SURFACES_DARK = ['#1c1c1e', '#2c2c2e'];
 const BRAND_NAV_SHADE = '#0d141b';
-const BRAND_INK_LIGHT = '#172d42';
+const BRAND_INK_LIGHT = '#000000';
 
 /** The four colours she chooses, by family; each also has a _dark override. */
 function brand_families(): array {
@@ -108,22 +111,23 @@ function brand_palette(): array {
 function brand_scheme_light(array $chosen, array $builtin): array {
     [$p, $n, $h, $b] = array_map(fn($f) => $chosen[$f], brand_families());
     $tokens = [];
+    $bg = $b !== '' ? $b : $builtin['brand_background'];
+    if ($b !== '') $tokens += ['--bg' => $bg, '--scrim-bg' => $bg.'ee'];
     // White is printed on the main colour (--on-accent), so white has to read
-    // on it - and then the main colour also reads as text on white.
-    $teal = $p !== '' ? colour_until_contrast($p, [BRAND_SURFACE_LIGHT], 4.5, 'darker') : $builtin['brand_primary'];
+    // on it - and the main colour has to read as text on a group, on the grey
+    // ground and on the club's own background where she chose one, which may
+    // be darker than both.
+    $teal = $p !== '' ? colour_until_contrast($p, [...BRAND_SURFACES_LIGHT, $bg], 4.5, 'darker') : $builtin['brand_primary'];
     if ($p !== '') {
-        $soft = colour_mix($p, BRAND_SURFACE_LIGHT, .12);
-        $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => '#ffffff',
-                    '--teal-soft' => $soft, '--teal-border' => colour_mix($p, BRAND_SURFACE_LIGHT, .30),
+        $soft = colour_mix($p, BRAND_SURFACES_LIGHT[0], .12);
+        $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => '#ffffff', '--teal-soft' => $soft,
                     '--teal-ink' => colour_until_contrast($teal, [$soft], 4.5, 'darker')];
     }
     $nav = $n !== '' ? $n : $builtin['brand_secondary'];
     $onNav = colour_text_on($nav);
-    if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '0d', '26');
+    if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '0d');
     $bright = $h !== '' ? colour_until_contrast($h, [$nav], 3, brand_toward($onNav)) : $builtin['brand_highlight'];
     if ($h !== '') $tokens['--teal-bright'] = $bright;
-    $bg = $b !== '' ? $b : $builtin['brand_background'];
-    if ($b !== '') $tokens += ['--bg' => $bg, '--scrim-bg' => $bg.'ee'];
     // The club's name on the sign-in page is printed in the menu colour on the
     // background, and a light menu colour on a light page would vanish.
     if ($n !== '' || $b !== '') $tokens['--brand-ink'] = colour_contrast($nav, $bg) >= 4.5 ? $nav : BRAND_INK_LIGHT;
@@ -135,21 +139,23 @@ function brand_scheme_light(array $chosen, array $builtin): array {
  * The dark scheme. $overrides holds the _dark colours that apply, by family,
  * '' where none does and the colour is worked out from the light choice. An
  * empty family is its _dark built-in colour, and the dark background's
- * built-in colour is also what the light choices are shaded toward.
+ * built-in colour is what a light background is shaded toward. The soft tint
+ * is mixed into the group it is drawn on, as in light - into the black ground
+ * it came out darker than app.css's own dark tints.
  */
 function brand_scheme_dark(array $chosen, array $overrides, array $builtin): array {
     $ground = $builtin['brand_background_dark'];
     $pick = fn(string $family) => $overrides[$family] !== '' ? $overrides[$family] : $chosen[$family];
     $tokens = [];
     // The dark scheme prints the dark ink on the main colour, and uses the main
-    // colour as text on the dark surface: it has to read against both.
+    // colour as text on a group and on what sits inside one: it has to read
+    // against all three. The black ground is darker than both surfaces.
     $p = $pick('brand_primary');
-    $teal = $p !== '' ? colour_until_contrast($p, [BRAND_SURFACE_DARK, COLOUR_DARK_INK], 4.5, 'lighter') : $builtin['brand_primary_dark'];
+    $teal = $p !== '' ? colour_until_contrast($p, [...BRAND_SURFACES_DARK, COLOUR_DARK_INK], 4.5, 'lighter') : $builtin['brand_primary_dark'];
     if ($p !== '') {
-        $soft = colour_mix($p, $ground, .18);
-        $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => COLOUR_DARK_INK,
-                    '--teal-soft' => $soft, '--teal-border' => colour_mix($p, $ground, .35),
-                    '--teal-ink' => colour_until_contrast($teal, [BRAND_SURFACE_DARK, $soft], 7, 'lighter')];
+        $soft = colour_mix($p, BRAND_SURFACES_DARK[0], .18);
+        $tokens += ['--teal' => $teal, '--focus' => $teal, '--on-accent' => COLOUR_DARK_INK, '--teal-soft' => $soft,
+                    '--teal-ink' => colour_until_contrast($teal, [...BRAND_SURFACES_DARK, $soft], 7, 'lighter')];
     }
     $n = $chosen['brand_secondary'];
     $nav = match (true) {
@@ -158,7 +164,7 @@ function brand_scheme_dark(array $chosen, array $overrides, array $builtin): arr
         default => $builtin['brand_secondary_dark'],
     };
     $onNav = colour_text_on($nav);
-    if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '12', '1a');
+    if ($n !== '') $tokens += brand_nav_tokens($nav, $onNav, '12');
     $h = $pick('brand_highlight');
     $bright = $h !== '' ? colour_until_contrast($h, [$nav], 3, brand_toward($onNav)) : $builtin['brand_highlight_dark'];
     if ($h !== '') $tokens['--teal-bright'] = $bright;
@@ -178,16 +184,14 @@ function brand_scheme_dark(array $chosen, array $overrides, array $builtin): arr
  *
  * The menu's text is a blend of its colour into that text, then darkened or
  * lightened until it reads: 7:1 for the entries, 4.5:1 for the quieter line.
- * The hover and faint lines are the text colour at a low alpha, as in app.css.
+ * The hover is the text colour at a low alpha, as in app.css.
  */
-function brand_nav_tokens(string $nav, string $onNav, string $hoverAlpha, string $faintAlpha): array {
+function brand_nav_tokens(string $nav, string $onNav, string $hoverAlpha): array {
     $ink = colour_until_contrast(colour_mix($onNav, $nav, .82), [$nav], 7, brand_toward($onNav));
-    $second = colour_mix($onNav, $nav, .08);
     return ['--navy' => $nav, '--nav-bg' => $nav, '--on-nav' => $onNav,
-            '--navy-2' => $second, '--nav-bg-2' => $second, '--nav-active' => colour_mix($onNav, $nav, .14),
-            '--nav-ink' => $ink, '--on-navy' => $ink,
+            '--nav-active' => colour_mix($onNav, $nav, .14), '--nav-ink' => $ink,
             '--nav-ink-2' => colour_until_contrast(colour_mix($onNav, $nav, .68), [$nav], 4.5, brand_toward($onNav)),
-            '--nav-hover' => $onNav.$hoverAlpha, '--on-navy-faint' => $onNav.$faintAlpha];
+            '--nav-hover' => $onNav.$hoverAlpha];
 }
 
 /** Text of the colour $onNav reads better the further a colour moves toward it: white is lighter, the dark ink darker. */
@@ -218,11 +222,18 @@ function brand_css_rule(string $selector, array $declarations): string {
  * everybody who has not picked a colour of their own: a personal accent keeps
  * winning, and if this file fails to load, no rule matches and the built-in
  * teal applies.
+ *
+ * Memoised per set of choices, like brand_palette(): every page asks for it
+ * through brand_css_url(), and the route asks twice, for the body and for the
+ * address the body is cached at.
  */
 function brand_css(): string {
-    $palette = brand_palette();
+    static $memo = [];
     $chosen = brand_chosen();
-    $primary = ['--teal', '--teal-ink', '--teal-soft', '--teal-border', '--focus', '--on-accent'];
+    $memoKey = implode(',', $chosen);
+    if (isset($memo[$memoKey])) return $memo[$memoKey];
+    $palette = brand_palette();
+    $primary = ['--teal', '--teal-ink', '--teal-soft', '--focus', '--on-accent'];
     $split = function (array $tokens) use ($primary): array {
         return [array_intersect_key($tokens, array_flip($primary)), array_diff_key($tokens, array_flip($primary))];
     };
@@ -249,18 +260,24 @@ function brand_css(): string {
     if ($autoDark !== '') $css .= "@media(prefers-color-scheme:dark){\n" . $autoDark . "}\n";
     $css .= brand_css_rule('html[data-theme=dark][data-accent=brand]', $darkAccent)
           . brand_css_rule('html[data-theme=dark]', $darkRoot);
-    return $css === '' ? '' : "/* The club's colours, from Einstellungen → Portal → Aussehen. Generated; see app/brand.php. */\n" . $css;
+    return $memo[$memoKey] = $css === '' ? '' : "/* The club's colours, from Einstellungen → Portal → Aussehen. Generated; see app/brand.php. */\n" . $css;
 }
 
 /**
- * The part of the stylesheet's address that changes when the colours do.
+ * The part of the stylesheet's address that changes when the stylesheet does:
+ * a hash of its bytes, as asset_path() gives app.css.
  *
- * The version of the portal is in it too: a release that changes how the
- * tokens are worked out changes the address, and nobody keeps last year's
- * derivation from a cache.
+ * Its bytes, not her choices and the release number. The address is kept for a
+ * year, immutable, so whatever it is made of has to change whenever the text
+ * does. It used to be made of those two, and a release changed how the colours
+ * are worked out while VERSION stayed 0.6.0: the address stayed the same, and
+ * a browser that had the old colours could keep them for a year. Made of the
+ * bytes, it also stays put when nothing on the page changes - a dark colour
+ * whose light one is not set, or an update that leaves the colours alone,
+ * costs nobody a download.
  */
 function brand_css_version(): string {
-    return substr(hash('sha256', app_version() . json_encode(brand_chosen())), 0, 12);
+    return substr(hash('sha256', brand_css()), 0, 12);
 }
 
 /**
@@ -291,12 +308,14 @@ function serve_brand_css(): never {
 }
 
 /**
- * The browser's own bar colour: the menu colour in light, the background in
- * dark - as the layout's theme-color tags and the manifest have always had it.
+ * The browser's own bar colour, for the layout's theme-color tags and the
+ * manifest: the grey ground in light and the black one in dark, which the
+ * portal's own bars sit on, so the phone's status bar runs into them without
+ * a band (Part 0.5). A club's own background, where she set one.
  */
 function brand_theme_colour(string $scheme): string {
     $used = brand_palette()['used'];
-    return $scheme === 'dark' ? $used['brand_background_dark'] : $used['brand_secondary'];
+    return $scheme === 'dark' ? $used['brand_background_dark'] : $used['brand_background'];
 }
 
 /** The page colour an installed portal opens on, before its first page is drawn. */
@@ -318,9 +337,9 @@ const PORTAL_LOGO_MIN_HEIGHT = 88;
 const PORTAL_LOGO_MAX_SIDE = 2048;
 /**
  * The largest file accepted: 1 MB. Every sign-in page loads the logo, often on
- * a phone on mobile data, so it gets a cap of its own below the general
- * upload limit, which is sized for payment proofs and voice notes. A logo
- * drawn for the web is a few kilobytes; a megabyte is a photograph.
+ * a phone on mobile data, so it gets a cap of its own below the general upload
+ * limit, which is sized for payment proofs and photos in the chat. A logo drawn
+ * for the web is a few kilobytes; a megabyte is a photograph.
  */
 const PORTAL_LOGO_MAX_BYTES = 1048576;
 /**
@@ -362,13 +381,13 @@ function portal_logo_types(): array {
  * The stored name of the logo in use, or '' for none.
  *
  * '' as well when the file is missing, so a database restored without
- * storage/ falls back to the icon, or the „B", rather than a broken picture.
- * The shape store_upload() gives a name is required, so the route serves from
- * this one folder whatever ends up in the setting.
+ * storage/ falls back to the icon, or the shuttlecock, rather than a broken
+ * picture, and for a name store_upload() could not have given a logo
+ * (is_stored_upload()).
  */
 function portal_logo(): string {
     $name = setting('portal_logo');
-    if (!is_string($name) || !preg_match('/^[a-f0-9]{32}\.(png|jpg|webp)$/D', $name)) return '';
+    if (!is_stored_upload($name, 'logo')) return '';
     return is_file(upload_dir('logo') . '/' . $name) ? $name : '';
 }
 
@@ -389,10 +408,59 @@ function portal_logo_size(): array {
     $name = portal_logo();
     if ($name === '') return [0, 0];
     if (!isset($sizes[$name])) {
-        $size = @getimagesize(upload_dir('logo') . '/' . $name);
+        $size = portal_logo_measured(upload_dir('logo') . '/' . $name);
         $sizes[$name] = $size ? [(int)$size[0], (int)$size[1]] : [0, 0];
     }
     return $sizes[$name];
+}
+
+/**
+ * getimagesize() of a stored logo, with its width and height as a browser draws
+ * it, or false when it cannot be read.
+ *
+ * A JPEG keeps which way is up (jpeg_segment_cleaned()), and every browser turns
+ * the picture by it. Turned a quarter - EXIF orientations 5 to 8, how a phone
+ * held upright stores its photo - it is drawn as wide as the file is tall.
+ * Measured as stored, a logo photographed that way was refused for a shape it is
+ * never shown in, and drawn into a box of the wrong shape.
+ */
+function portal_logo_measured(string $path): array|false {
+    $size = is_file($path) ? @getimagesize($path) : false;
+    // ponytail: only the first 64 KB are read for which way is up. The cleaned
+    // copy keeps it in its first few hundred bytes; a JPEG stored uncleaned, with
+    // more than 64 KB of other headers before its EXIF, is measured unturned. The
+    // way up is to read segment by segment with fseek().
+    if ($size && ($size[2] ?? null) === IMAGETYPE_JPEG
+        && jpeg_orientation((string)@file_get_contents($path, false, null, 0, 65536)) >= 5)
+        [$size[0], $size[1]] = [$size[1], $size[0]];
+    return $size;
+}
+
+/**
+ * Which way is up in a JPEG (1-8), or 0 when it does not say: the first EXIF
+ * block before the picture data, read by exif_orientation() as the cleaner reads
+ * it. Walked from marker to marker as jpeg_without_metadata() walks; anything
+ * that cannot be read says nothing, so the picture is measured as stored.
+ */
+function jpeg_orientation(string $b): int {
+    $n = strlen($b);
+    if ($n < 4 || substr($b, 0, 2) !== "\xFF\xD8") return 0;
+    for ($i = 2; ($i = strpos($b, "\xFF", $i)) !== false;) {
+        while ($i < $n && $b[$i] === "\xFF") $i++;
+        if ($i >= $n) return 0;
+        $marker = ord($b[$i++]);
+        // A stuffed zero, TEM and a restart stand alone, without a length.
+        if ($marker === 0x00 || $marker === 0x01 || ($marker >= 0xD0 && $marker <= 0xD7)) continue;
+        // The picture data, its end or a second start: no header said it.
+        if ($marker === 0xDA || $marker === 0xD9 || $marker === 0xD8 || $i + 2 > $n) return 0;
+        $length = unpack('n', substr($b, $i, 2))[1];
+        if ($length < 2 || $i + $length > $n) return 0;
+        // A segment too short to hold the six-byte header announces no EXIF,
+        // whatever the bytes after it say: nothing past a segment is read.
+        if ($marker === 0xE1 && $length >= 8 && substr($b, $i + 2, 6) === "Exif\0\0") return exif_orientation(substr($b, $i + 8, $length - 8));
+        $i += $length;
+    }
+    return 0;
 }
 
 /**
@@ -402,11 +470,12 @@ function portal_logo_size(): array {
  * checked against the extension as well, although store_upload() chose the
  * extension from the bytes: a file that reads as one type and is named as
  * another would be served as the wrong one. Each refusal names the size it
- * found and what is needed, because "not accepted" sends her back to guess.
+ * found, as it is drawn (portal_logo_measured()), and what is needed, because
+ * "not accepted" sends her back to guess.
  */
 function check_portal_logo(string $storedName): void {
     $path = upload_dir('logo') . '/' . $storedName;
-    $size = is_file($path) ? @getimagesize($path) : false;
+    $size = portal_logo_measured($path);
     $extension = pathinfo($storedName, PATHINFO_EXTENSION);
     [$width, $height] = $size ? [(int)$size[0], (int)$size[1]] : [0, 0];
     $dimensions = $width . ' × ' . $height;
@@ -481,7 +550,8 @@ function serve_portal_logo(): never {
  *                  the name is read once, not twice
  *   subtitle       „Verwaltung" or „Mein Portal", for the person looking
  *   show_name      false only when she hid it and a logo or icon is there to
- *                  take its place: with only the „B", the name always shows
+ *                  take its place: with only the shuttlecock, the name always
+ *                  shows
  *   show_subtitle  false when she hid the line
  */
 function brand_header(?array $user): array {

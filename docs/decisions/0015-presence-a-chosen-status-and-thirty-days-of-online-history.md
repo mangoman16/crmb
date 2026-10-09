@@ -1,9 +1,23 @@
 ---
-status: accepted
+status: superseded by 0026
 date: 2026-09-29
 ---
 
 # 0015. Presence: a chosen status, and thirty days of when somebody was online
+
+> **Superseded by ADR 0026 (2026-10-07).** The owner agreed the same day: "Remove all". 0026 removes
+> the dots, the chosen status, the thirty days of online history and their four settings: no goal of
+> the beta needs them, and on 2026-10-05 the owner asked for a chat that is "the absolute basics".
+> The owner had asked for this record on 2026-09-29, which is why the removal waited for their word.
+> Migration 020 stays as shipped, and 034 and 035 drop what it added. One part stays: `form_return()`
+> in `app/core.php` ("What shipped beyond the first draft"). Nothing else below is a rule any more,
+> though until the removal lands the code still does what this record and 0022 describe.
+
+> **Amended by ADR 0022 (2026-10-02).** Presence is no longer for staff only: `presence_visible_to()`
+> is true for every signed-in viewer, so everybody sees dots in the chat and their own in the account
+> menu. Last-online times, history and `presence_line()` stay staff only, through the new
+> `presence_details_visible_to()`. A family's status is still always `auto`, and the menu's line about
+> „Als offline anzeigen" is gone. Everything else below stands.
 
 > **Updated 2026-09-29, twice.**
 >

@@ -4,59 +4,118 @@
 The database applies any new migrations on the first page view. There is no
 second step, and nothing to remember.
 
-This application does not manage backups; that stays with the operator. The rest
-of this document explains what that first page view actually does, what happens
-when it fails, and how to run the same thing deliberately on a server that has a
-shell.
+The portal writes a full copy of its database before it applies a migration;
+keeping regular backups is up to whoever runs it. The rest of this document
+explains what that first page view actually does, what happens when it fails,
+and how to run the same thing deliberately on a server that has a shell.
 
 ## Updating an existing portal to 0.6.0
 
 A portal installed fresh from this version can skip this section: its start
 checklist covers all of it, and its privacy notice already starts from the new
 drafts. A portal that already has families in it needs one thing done
-**before** the upload, and then changes in the ways below the moment the new
-files are opened.
+**before** the upload — two, if anything in its custom fields is worth keeping —
+and then changes in the ways below the moment the new files are opened.
 
-**Before you upload: add two paragraphs to your privacy notice.** This version
-records when each account was in the portal, and it switches club news by
-email on for new accounts. Your privacy notice has to say both. The drafts in
-the download only fill in the notice of a brand-new portal; yours keeps the
-text you saved, so the paragraphs have to be added by hand. Do it while the old
-version is still running, so that no family uses the new one under a notice
-that does not mention it. Open **Einstellungen → Datenschutz**, and in the
-German text:
+**Coming from the first beta package**, the ZIP built from `00dc020`, whose
+**Einstellungen → System** says 0.6.0: that package already ran migrations 019
+to 033, so only 034 to 041 run now, and what this section says about the earlier
+ones, the custom fields among them, has already happened. Nobody with an address
+is signed out: that package already kept sign-ins in `storage/sessions`, so
+„Everybody is signed out once" below does not apply. Only a login that signed in
+with a username is signed out, by 039; it is „Ohne Anmeldung" afterwards, with
+its password cleared. For such a child, enter the child's own address on the
+card „Zugang zum Portal" and send the invitation. Three things from that package
+stay on the server after the upload, because this version no longer has them:
+the folder `.claude`, `app/presence.php` and `views/_signin_link.php`. The
+portal never loads them; delete them in the file manager if you like.
 
-1. At the end of the section that lists what is processed (in the draft, „3.
-   Welche Angaben verarbeitet werden"), add:
+**Before you upload: add four paragraphs to your privacy notice, and replace
+its „6.".** This version switches club news by email on for new accounts, it
+gives every course a group chat, a child can be in the portal before anybody
+signs in for them, as a login without an address, which receives no e-mail,
+children and the team can have a profile picture, and it deletes each kind of
+data once its period is over. Your privacy notice has to say all five. The
+drafts in the download only fill in the notice of a brand-new portal; yours
+keeps the text you saved, so the paragraphs have to be added by hand. Do it
+while the old version is still running, so that no family uses the new one
+under a notice that does not mention it. Open **Einstellungen → Datenschutz**,
+and in the German text:
 
-   > Das Portal speichert für jedes Konto, wann es zuletzt geöffnet wurde, und
-   > für höchstens die letzten 30 Tage, von wann bis wann es geöffnet war – nur
-   > Datum und Uhrzeit, keine IP-Adresse und keine aufgerufenen Seiten. Sehen
-   > können das nur Trainerinnen und Administratoren; Schülerkonten sehen weder
-   > eigene noch fremde Zeiten. Diese Zeiträume werden automatisch gelöscht,
-   > sobald sie älter als 30 Tage sind, oder früher, wenn das Portal auf eine
-   > kürzere Frist eingestellt ist; das Portal räumt dafür einmal am Tag auf.
-   > Der Zeitpunkt des letzten Besuchs bleibt gespeichert, solange das Konto
-   > besteht, und wird mit ihm gelöscht. Wer als Trainerin „Als offline
-   > anzeigen“ wählt, erscheint für andere Trainerinnen offline;
-   > Administratoren sehen die Zeiten weiterhin.
-   > [Zweck und Rechtsgrundlage ergänzen]
-
-2. In „4. Rechtsgrundlagen", replace the paragraph that begins „Der Newsletter
+1. In „4. Rechtsgrundlagen", replace the paragraph that begins „Der Newsletter
    wird nur an Konten mit aktiviertem Newsletter-Abonnement gesendet" with:
 
    > Neuigkeiten des Vereins werden als Vereinsinformation per E-Mail
    > verschickt, etwa wenn sich eine Trainingszeit ändert oder die Halle
    > geschlossen ist. Bei neuen Konten ist das eingeschaltet. Abschalten lässt
    > es sich schon beim Aktivieren des Kontos, jederzeit später in „Mein Konto“
-   > und über den Link in jeder dieser E-Mails; im Portal bleiben die
-   > Neuigkeiten lesbar.
+   > und über den Link in jeder dieser E-Mails, der 90 Tage ab dem Versand gilt;
+   > im Portal bleiben die Neuigkeiten lesbar.
    > [Rechtsgrundlage ergänzen – z. B. berechtigtes Interesse]
-   > E-Mail-Hinweise auf private Nachrichten haben eine eigene Einstellung.
-   > Sicherheitsmails wie Einladungen und Passwortlinks dienen der
-   > Bereitstellung des Zugangs.
+   > E-Mail-Hinweise auf neue Nachrichten, geänderte Trainingstermine und
+   > Antworten auf Anfragen haben eine eigene Einstellung. Sicherheitsmails wie
+   > Einladungen, Passwortlinks und der Hinweis, dass die Anmeldeadresse oder
+   > das Passwort geändert wurde, dienen der Bereitstellung und dem Schutz des
+   > Zugangs.
 
-3. Replace each line in square brackets with your own words, then save.
+2. At the end of the section that lists what is processed (in the draft, „3.
+   Welche Angaben verarbeitet werden"), add the paragraph about the chat, with
+   the note „[Zweck und Rechtsgrundlage ergänzen]" after it. It is in
+   `docs/privacy-draft-de.txt` in the download, beginning „Nachrichten: Jeder
+   Kurs hat einen Gruppenchat". It says that a course's children and the
+   coaching team read its group, that the administrators can read every chat
+   and write only in their own, that nothing records their reading, that a
+   message is text and photos, that the chats between two children from before
+   stay to read and take no new messages, that the group sees a child's profile
+   picture once the family agrees, and that an uploaded photo is stored without
+   where it was taken — kept as it came only where the portal cannot read it
+   through — and a chat photo without the name the phone gave it.
+
+3. After the sentence „SMTP-Passwörter und versandbereite E-Mail-Inhalte sind
+   in der Anwendungsdatenbank verschlüsselt.", add the paragraph from
+   `docs/privacy-draft-de.txt` beginning „Angemeldet wird mit der eigenen
+   E-Mail-Adresse". It says that everybody signs in with their own address and
+   that a login without an address receives no e-mail. In „2.", replace the
+   sentence „Jeder Schüler hat höchstens ein eigenes Konto, …" with the
+   draft's, which begins „Jeder Schüler hat ein eigenes Konto".
+
+4. After the chat paragraph and its note in „3.", add the paragraph on profile
+   pictures from `docs/privacy-draft-de.txt`, beginning „Profilbilder: Ein Kind
+   kann ein Profilbild haben". It says who adds a picture and that none is
+   required, that the portal keeps only a small square copy, that the trainers
+   and administrators see every child's picture and on what legal basis, that
+   the children in a child's courses and their families see it only once the
+   family has switched it on — from 14 the child itself, below that a parent —,
+   that everybody signed in sees the team's pictures, and when a picture is
+   deleted. If you cannot add it before the upload, switch „Kinder im selben
+   Kurs sehen Fotos" off right after it, under **Einstellungen → Datenschutz**,
+   card „Fotos im Kurs", until the notice says it: then no family is asked, and
+   no family sees another child's picture.
+
+5. In „6. Speicherung und Löschung", replace the note in square brackets, or
+   what you wrote in its place, with the draft's two paragraphs and its note,
+   beginning „Das Portal löscht beim täglichen Aufräumen von selbst". They say
+   how long the portal keeps each kind of data before its daily cleanup deletes
+   it, that charges, payments and invoices are kept seven years, and how long
+   deleted entries stay in the copies of the database. If you change a period
+   under **Einstellungen → System**, change the notice with it.
+
+6. Replace each line in square brackets with your own words, then save.
+
+**If your notice already has the chat paragraph**, from an earlier package of
+this version, what it told the families is no longer true: it said the
+administrators read the chats between a child and a trainer, and that an old
+chat between two children is read by the two alone. Now the administrators can
+read every chat, those included, and nothing records their reading. Replace
+that paragraph under **Einstellungen → Datenschutz** with the one in
+`docs/privacy-draft-de.txt`, beginning „Nachrichten: Jeder Kurs hat einen
+Gruppenchat", in English too if you keep an English notice, and save with „…
+zur Verwendung freigegeben" still ticked, so the notice is released again as
+you saved it. Do it before the upload, like the rest, so that no family reads a
+chat under the old sentence. The draft's paragraph also says that the group sees
+a child's profile picture once the family agrees; add the paragraph on profile
+pictures after it, as step 4 says. Saving changes the **Fassung** number; nobody
+is asked to acknowledge the notice again.
 
 The old paragraph called club news voluntary and based on consent. That is no
 longer true: you decided that club news is information every member needs,
@@ -64,20 +123,136 @@ which is why it now starts switched on. Which legal basis that rests on is
 yours to decide and to have checked; the bracketed notes mark where it goes. A
 notice you have released („… zur Verwendung freigegeben") is not saved while a
 note in square brackets is still in it, and the message names the note. The
-same two paragraphs in English are in `docs/privacy-draft-en.txt` in the
+same paragraphs in English are in `docs/privacy-draft-en.txt` in the
 download, for the English version if you keep one. Saving changes the
 **Fassung** number under the notice; nobody is asked to acknowledge it again.
 
+**If your notice was written from an earlier package of this version**, some of
+its sentences have changed since. Replace them with the drafts' and save with
+„… zur Verwendung freigegeben" still ticked, so it is released again: in „3.",
+in the chat paragraph, the sentence on a message taken down in a group, which
+is now kept for 30 days, and the end, on photos; in „4.", the end of the
+paragraph on club news, which now says that the link in each such mail works
+for 90 days from sending, and the sentence on security mails, which now include
+the mail saying that a sign-in address or a password was changed; in „6.",
+what step 5 above says; and in „7.", the sentence on cookies, which now names
+the second one, „badminton_https", set when the portal sends a browser on to
+its encrypted address.
+
+**Pictures need PHP's gd extension.** Without it the update runs and everything
+else works, but no picture can be added: a child's page and **Mein Konto** say
+„Fotos gehen auf diesem Server noch nicht.", and **Einstellungen → System**
+names what is missing, „Profilbilder verkleinern (gd)". Switch it on in the
+hosting panel where the PHP extensions are, before or after the upload.
+
+**Before you upload, if anything in the custom fields matters, write it down.**
+This version deletes the custom fields — „Weitere Angaben" on a child's page —
+with everything typed into them (migration 032, ADR 0026). Nothing in the portal
+shows them afterwards. The copy of the database the update writes first, in
+`storage/backups`, still holds them until five newer copies have pushed it out.
+
 **Migrations 020 and 021 run by themselves** on the first page view, like every
-migration before them. 020 gives every account a status, which starts on
-„Automatisch" and so shows exactly what it showed before, and adds an empty list
-of times online. Nothing from before the update is filled in, so for the first
-30 days the history says „Aufgezeichnet wird seit dem …" with the day of the
-update. That list is not among the tables whose rows are counted before and
-after, because the nightly cleanup deletes from it on purpose. 021 switches
-„Neuigkeiten per E-Mail" on for accounts created **from now on**. Every
-existing account keeps what it has: a family who had it off still has it off,
-and nobody is signed up behind their back.
+migration before them. 020 gives every account a status and adds an empty list
+of times online; 034 and 035 below take both away again in the same update, so
+neither is ever seen. 021 switches „Neuigkeiten per E-Mail" on for accounts
+created **from now on**. Every existing account keeps what it has: a family who
+had it off still has it off, and nobody is signed up behind their back.
+
+**Migrations 022 to 027 run by themselves** as well. 022 and 023 gave every
+login a username, and 024 takes the usernames away again, as you asked: every
+login keeps its address, password and settings, and signs in with its address
+exactly as before. 025 gives every course a group chat — an archived course too,
+which stays readable for staff — and turns each existing chat between a child
+and a trainer or administrator into one the administrators can read. The shared
+conversations from before, where a family wrote to every member of staff at
+once, are kept to read under „Frühere Unterhaltungen" and take no new messages.
+026 lets staff take a message in a group down and put it back; 027 adds a status
+emoji, which 035 takes away again. No row is removed, so the check that counts
+the guarded tables before and after passes; only the chats grow, by one group
+per course.
+
+**Migrations 028 to 031 follow.** 028 lets a login have no address, and gives
+logins a username column again, which 039 (below) takes away for good; every
+existing login keeps its address and gets no username. 029 and
+030 make a student's login impossible to delete: the database refuses it, and
+the portal gives the student a fresh login in its place instead. 031 adds what
+will keep a child taken out of a course rather than deleting the enrolment;
+nothing uses it yet. After the files, every student without a login is given
+one, a placeholder that nobody can sign in with until staff enter its address
+and send the invitation. No row is removed; the logins grow by one for each
+such student.
+
+**Migrations 032 and 033 delete what this version no longer has.** 032 deletes
+the custom fields, with every value typed into them. 033 deletes the saved views
+of the **Schüler** list and the e-mail templates, including the two examples a
+new portal started with. No other table loses a row. The table of custom-field
+values used to be among those counted before and after an update; it leaves
+that list with 032, so its loss does not refuse this update (step 6 below).
+Lines under **Änderungen** written before about a custom field stay, the field
+named „Früheres eigenes Feld".
+
+**Migrations 034 to 037 delete the rest of what goes.** 034 deletes the list of
+times each account was in the portal. 035 takes from every login when it was
+last seen, its chosen status, its status emoji and the name of its profile
+picture; 036 takes the name of each child's picture. 037 deletes every request
+one family made to write to another, whatever became of it. No login and no
+child is lost, so the check that counts the guarded tables before and after
+passes; the list of times and the requests were never among them. Chats between
+two children stay, to be read by the two of them, and take no new messages.
+Voice notes and files sent before stay where they are and open as before, until
+their message is a year old (the first cleanup, below); a new message is text
+and photos.
+
+**Migration 038 takes the pin off the age groups.** A child's age group now
+comes from the date of birth alone: the first band, in the order **Verwaltung →
+Altersgruppen** lists them, that covers the child's age today. 038 drops the
+column that held a child in a band whatever their age. After the update a child
+who was pinned shows the band their age gives, and a pinned child without a
+date of birth shows no band; the pins are only in the copy the update writes
+first. No child is lost, so the check passes. Levels stay as they were, and so
+do the bands, which you still edit under Verwaltung.
+
+**Migration 039 takes the usernames away again, for good.** Between 028 and
+this file a student's login could sign in with a username instead of an
+address, and staff could make one-time sign-in links for it; the owner has
+decided that everybody signs in with their own e-mail address (ADR 0030). 039
+drops the username column with its index. A login that signed in with a
+username — invited, in use or suspended alike — is „Ohne Anmeldung"
+afterwards, with its password cleared, and whoever was signed in with it is
+signed out. The child stays, with courses, charges and invoices, and signs in
+again once staff enter the child's own address on the card „Zugang zum
+Portal" and send the invitation. Such a login's side of its chats goes, with
+its read marks and its bell notices: the chats stay, every message in them,
+for the member of staff on the other side, and whoever is invited into the
+login later starts without them. Every login with an address keeps every value
+as it was. The rows 039 deletes are in tables the update does not count, so
+the check passes, and none of it shows under „Änderungen": an update writes no
+line there. Sign-in links made before this file stop working at once; the
+invitation and „Passwort vergessen" are the two ways in. What stays of the
+links is the audit log's lines on who made one and when it was used or
+withdrawn, which the portal shows nowhere and deletes after „Prüfprotokoll
+aufbewahren (Monate)", 36 by default; a line under „Änderungen" that names a
+username stays until „Änderungen aufbewahren (Monate)" removes it. On a portal
+updated from 0.4.0 none of this happens: every login there has an address,
+because until 028 the database allowed nothing else, and usernames existed only
+in versions that were never released.
+There is nothing for you to do.
+
+**Migrations 040 and 041 make room for pictures** (ADR 0031). 040 gives every
+child an empty picture and the family's answer for the course, which starts as
+no; 041 gives every login an empty picture. Neither writes or removes a row, so
+the check that counts the guarded tables has nothing to compare. There is
+nothing for you to do.
+
+**The old profile pictures are deleted for good.** Once the update has passed,
+the portal deletes the stored pictures from `storage/uploads/avatar`. The
+problem reports' screenshots, kept in the same folder, stay. The copy the update
+writes first is of the database only: it holds the pictures' names, not the
+pictures. Importing it, or any older copy, brings the names back without the
+files, and no picture comes back. If one matters to somebody, save it from the
+portal before you upload. The pictures of this version are new ones, added again
+by the families and the team, and kept in a folder of their own,
+`storage/uploads/picture`.
 
 **Brothers and sisters on one login are separated.** From this version one
 login belongs to one student, and migration 019 makes the database hold to
@@ -85,14 +260,45 @@ that. On a login that holds several children, the child whose record was
 created first keeps it. Each of the others is taken off it and keeps everything
 else: their record, their courses, charges, invoices and payments, and the
 address on their record. Nothing is deleted, so the check that compares the
-nineteen guarded tables before and after passes unchanged. Each child taken
+guarded tables before and after passes unchanged. Each child taken
 off a login gets a line under **Änderungen** saying which login it was on. The
-update sends the families no message. Those children cannot sign in until they
-have an email address of their own and a login of their own, invited or
-created on their own page; until then the overview and the **Schüler** list
-name them under „… Kinder brauchen eine eigene E-Mail-Adresse“. A shared login
-cannot be restored once the update has run, because the database now refuses
-it: the way back is the backup the update writes first.
+update sends the families no message. Each of those children is then given a
+placeholder login (see 028 to 031 above) and cannot sign in until staff enter,
+on the child's page, an address of the child's own and send the invitation. A
+shared login cannot be restored once the update has run, because the database
+now refuses it: the way back is the backup the update writes first.
+
+**The first cleanup after the update deletes what is past its period.** From
+this version the portal keeps each kind of record for a set time and deletes
+what is older in its daily cleanup (ADR 0032): chat messages, with their photos,
+voice notes and files, 12 months after they were sent, and one taken down in a
+group 30 days after it was taken down; absences 3 months after they ended;
+attendance 24 months after the training; the bell's notices after 90 days; the
+outbox's record of a mail 12 months after it was queued; payment proofs 24
+months after the upload; the audit log after 36 months; and a consent a newer
+answer replaced, 36 months after that. Charges, payments and invoices are never
+deleted by it. The cleanup runs after a page somebody opens, once a day has
+passed since the last one: within a day of the upload on a portal in use, and
+straight after the update on one nobody opened the day before. Its first run
+deletes at once everything already past its period, chat messages older than a
+year among it, in the chats under „Frühere Unterhaltungen" too. What it deletes
+from the database stays in the copy the update takes first, in
+`storage/backups`, until five newer copies have replaced it; the photos and
+files it deletes are gone for good. A file uploaded less than an hour before the
+run waits for the next one.
+
+Each period can be changed under **Einstellungen → System**, in „Erweitert", but
+the first cleanup may have run before you get there. A period set shorter,
+„Änderungen aufbewahren (Monate)" for the change log included, deletes nothing
+at once: the cleanup after a page view waits a day after the save, which says
+what the period was, so it can be set back meanwhile; where a cron job runs the
+console's `maintenance`, its next nightly run deletes. To set them before
+anything is deleted, switch off „Wartende Aufgaben beim Seitenaufruf erledigen"
+before you upload: under **Einstellungen → System**, inside „Erweitert" where
+the page has one. After the update, set the periods, then switch it on again.
+While it is off, mail waits in the queue. If a cron job runs the console's
+`maintenance` instead (INSTALL.md), take that line out of the panel until the
+periods are set.
 
 **After the update, press „Nur Verbindung prüfen“ once.** Invitations,
 password-reset links and address confirmations are now only sent when the last
@@ -102,6 +308,13 @@ enough. If the last test there failed, or was never run, then until it passes:
 „Passwort vergessen?“ receives nothing. Open **Einstellungen → SMTP**, press
 **„Nur Verbindung prüfen“**, and wait for the green **Erfolgreich**. Changing
 the SMTP settings later clears the result, and the test has to pass again.
+
+**After the update, take the custom fields out of your privacy notice.** If it
+names them — the draft's „sowie die im Formular ausdrücklich erhobenen weiteren
+Angaben" in „3.", and whatever you wrote in place of its note about them — take
+that out under **Einstellungen → Datenschutz**, in English too if you keep it:
+the portal no longer holds them. The drafts in the download no longer mention
+them.
 
 **The number under the privacy notice changes once.** It is now worked out
 from the German and the English text as a pair, so every portal shows a new
@@ -113,34 +326,157 @@ keeps both.
 **What you will notice afterwards.** None of this needs anything done; it is
 here so that nothing surprises you.
 
-- **Profile pictures load once**, not again on every page, and a family sees
-  only their own child's picture and those of the trainers and administrators.
-  Anybody else appears as initials, in **Nachrichten** too. A new picture shows at once; an
-  old one can stay in a phone's memory for up to seven days.
+- **A portal with an `https://` address is only served over HTTPS.** If
+  `'app_url'` in `config/config.php` starts with `https://`, as it does for a
+  portal set up over `https://`, a page opened over plain `http://` — an old
+  bookmark, a typed address — opens the same page over `https://` instead, and
+  a form sent over `http://` is refused with a sentence asking to open the page
+  again with `https://`. A portal whose address starts with `http://` works
+  exactly as before. To give it the same protection, switch on the SSL
+  certificate for the domain in the hosting panel, check that the sign-in page
+  opens with `https://` in front, then in `config/config.php` change `'app_url'`
+  to start with `https://` and set `'secure_cookies'` to `true`.
+- **Everybody is signed out once.** Sign-ins are now kept in the portal's own
+  folder, `storage/sessions`, instead of the folder the host shares between its
+  customers, so the first page view after the upload asks you and every family
+  to sign in again. Nothing is lost. If `storage/` cannot be written, sign-ins
+  stay where they were and the hosting error log says so.
 - **The bell stays where it is** when you open it, its panel fits on the
-  phone's screen, and the number of unread notices is a small badge in the
-  portal's colour. Tapping anywhere else, or Escape, closes it.
-- **Your picture at the top right opens a menu**: „Mein Konto" and
-  „Abmelden". For you and the other trainers it also holds a status —
-  „Automatisch", „Abwesend", „Als offline anzeigen" — and a coloured dot on the
-  picture: green online, blue recently, yellow away, grey offline. Families
-  have the menu, but no status and no dot.
-- **When somebody was online**: under **Konten** and on each child's page, a
-  line says when the account was last in the portal, and „Wann online? Letzte
-  30 Tage" opens the days and times. Only trainers and administrators see it.
-  When you view the portal as a family, it is your visit that is recorded, not
-  theirs.
-- **Club news by email starts switched on** for a new family: the box on the
-  invitation page is already ticked, and they can untick it there. The printed
-  sign-up form now asks „Bitte keine Neuigkeiten des Vereins per E-Mail
-  schicken." instead of asking for a yes.
+  phone's screen, and the number of unread notices is a small red badge.
+  Tapping anywhere else, or Escape, closes it.
+- **It looks and behaves like an iPhone app**: the phone's own font, white
+  grouped lists on a grey ground, switches, sheets from the bottom for anything
+  that deletes, and a back button with the name of the page above. Tell the
+  families what moved in their bar at the bottom, which now reads Übersicht ·
+  Beiträge · Chats · Profil: their **Mein Konto** is the row „Anmeldung und
+  Darstellung" on **Profil**, and the news is on the overview. Yours reads
+  Übersicht · Schüler · Anwesend · Chats · Mehr; „Post" is „Chats", and „Mehr"
+  is a page with Kurse, Geld, Einstellungen and your Mein Konto. The language
+  is chosen under **Mein Konto → Sprache**; the EN/DE switch is only on the
+  sign-in pages now.
+- **Everybody appears by their picture, or by their initials until one is
+  added**, and yours at the top right opens a menu with „Mein Konto" and
+  „Abmelden". Pictures are new in this version (ADR 0031): a family adds its
+  child's on the child's page, the trainer adds a child's there or straight from
+  **Anwesenheit**, and each member of the team their own on **Mein Konto**;
+  whoever sets up a login from an invitation is offered „Dein Foto" once. The
+  trainers and administrators see every child's picture; the other children in
+  a course and their families see it only once the child's family has switched
+  „Im Kurs-Chat zeigen" on — from 14 the child itself, below that a parent.
+  Nobody has a picture right after the update.
+- **Chats works like a messenger**: a group for every course, whose
+  children are whoever is enrolled now, then the chats with one person. A child
+  writes to a trainer or an administrator by name; you write to any child, or to
+  a course's group. Group messages send no e-mail. A message is text and photos:
+  a family's „+" asks the phone to open its camera and takes only a JPEG, and
+  you can also choose a PNG or WebP from the phone's photos. Voice notes and
+  files sent before this update stay in their chats and open as they did, until
+  their message is a year old; the
+  portal now tells every browser that it never uses the microphone
+  (`Permissions-Policy: microphone=()`), as it already did for the camera. A
+  chat between two children from before reads as it did, says that chats between
+  children have closed, and takes no new messages.
+- **Administrators can read every chat**, a trainer's with a second trainer and
+  the old chats between two children included, under „Alle Einzelchats" at the
+  top of **Chats**. They write only in their own chats, and every chat
+  between two people says at the top that the administrators can read along.
+  Nothing records that an administrator read a chat: the two in it see nothing,
+  and their unread marks stay. Tell the trainers; the families read it in
+  every chat.
+- **Everybody signs in with their own address, and every student has a
+  login.** „Schüler anlegen" is a wizard in two steps: who is joining and into
+  which course, then how they sign in — an invitation by e-mail, or no sign-in
+  for now. A child's page shows „Ohne Anmeldung" until the child's address is
+  entered there and the invitation sent. „Per E-Mail einladen", now reached
+  from the wizard's first step, still invites somebody by their address alone:
+  they fill in their own details and then choose a course.
+- **„Konten" is „Zugänge"**, under **Einstellungen**: trainers, administrators
+  and students in groups, each with its count. An administrator taps a team
+  member's row open for what she can do with it; a student's row leads to the
+  child's card „Zugang zum Portal", where that child's login is invited,
+  suspended or deleted. **Mein Konto** shows everybody the address they sign in
+  with and the three e-mail switches; the one for notices is now called „E-Mail
+  bei neuen Nachrichten und Änderungen im Training".
+- **The Schüler list looks different**, built for a phone: a search box at the
+  top, „Alle | Überfällig | Krank" where the chips were, the other filters
+  folded under „Filter", and „A–Z | Nach Alter", which lists the children under
+  their age groups. A row shows the age group and the level, and „Ohne Kurs"
+  where a child is in no course, but no price any more, there or on the
+  overview: the price is on the child's page and on **Geld**. A filter by an
+  absence reason other than „Krank" is no longer offered.
+- **Club news by email starts switched on** for a new family: the switch on
+  the invitation page is already on, and they can switch it off there, or later
+  under **Mein Konto**.
 - **Your club's colours and logo**, under **Einstellungen → Portal**, on the
-  cards „Aussehen" and „Logo". Until you set something, the portal looks exactly
-  as before. A colour too pale or too dark to read text on is used darker or
-  lighter, in the same hue, and the card shows both. A logo can be a PNG, JPEG or WebP
-  of at most 1 MB. A photo taken on a phone can be measured the wrong way round
-  and refused; saving it again from an image editor, or as a screenshot, fixes
-  that.
+  cards „Aussehen" and „Logo". Until you set something, the portal keeps its
+  built-in colours. A colour too pale or too dark to read text on is used darker
+  or lighter, in the same hue, and the card shows both. A logo can be a PNG,
+  JPEG or WebP of at most 1 MB; a photo taken on a phone held upright is
+  measured as it is shown and accepted.
+- **Every unsubscribe link in mail sent before this update stops working the
+  moment the new files are opened** — the links in your own test mails too. A
+  family who taps one reads „Dieser Abmeldelink gilt nicht mehr. Melde dich an
+  und schalte die E-Mails unter „Mein Konto“ ab." and nothing is switched for
+  them. The next mail of that kind they receive carries a link that works, for
+  90 days from the day it was sent; that is how long every link lasts from now
+  on. Nothing to do, unless somebody asks: then **Mein Konto** has the
+  switches.
+- **Invoices are made out to the child's name** as you entered it, never to the
+  name on the family's login. Invoices issued before do not change. A changed
+  training date now leads a family to their **Übersicht**, in the bell and in
+  the mail, where before it led to the course's page and „Kein Zugriff". A
+  family can send twenty receipts an hour; the next is told to wait.
+- **Example logins work for 14 days**, counted from when the example data was
+  made. One made before this update and older than that is refused at sign-in
+  from the moment the new files are opened, with the sentence a wrong password
+  gets. „Beispieldaten entfernen" and „Beispieldaten anlegen" give three fresh
+  sign-ins and a new password; what a fill makes is now one course and four
+  children.
+- **A family's login is called what the child is.** **Mein Konto** has no box
+  for a family's name any more, and renaming a child on the child's page renames
+  the login, with a line under **Änderungen**; so a child can no longer write in
+  a course's group under another name. A name a family gave itself before stays
+  until the child's record is next saved. Staff still choose their own name; in
+  a course's group, and in the list on **Chats**, their name now has a
+  grey pill beside it, „Trainerin" or „Administrator", which no typed name can
+  make and a child's never has.
+- **A chat sends one e-mail until it is read**, not one for every message. A
+  family's login can send twenty photos an hour into the chats — staff are not
+  counted — and a chat photo is stored without the name the phone gave it.
+- **Every administrator is told in the bell when payment details change**: a
+  recipient's IBAN, the name on the account or the QR code's contents, a new
+  recipient, a course paying into another recipient, or another
+  „Standard-Zahlungsempfänger" — who made the change, with a link to it.
+- **The QR code is a SEPA transfer into the recipient's own account.** „Inhalt
+  des QR-Codes" under **Verwaltung → Zahlungsempfänger** must keep „BCD" on its
+  first line, `{recipient}` on its sixth and `{iban}` on its seventh, as the
+  template a new portal starts with does; anything else is refused. A recipient
+  whose template was changed to something else shows no QR code after the
+  update until the template is put right; its form says so under the preview,
+  „Dieser Inhalt ergibt keinen QR-Code: …".
+- **A changed sign-in address or password is told by mail**, for a login that
+  was set up: the old address hears of a new one, shown only in part, and the
+  login's address of a new password. Neither mail carries a link.
+- **Postausgang keeps what a sent mail said for 90 days.** After the first daily
+  cleanup, a mail sent longer ago, but less than a year, still shows who it went
+  to, its subject and when, but opens without its text. A mail that could not be
+  sent keeps its text, so that it can be sent again, for as long as the outbox
+  keeps it.
+- **A payment reminder is one mail per child**, with every overdue charge in it,
+  and its subject begins „Noch offen: …". Nobody is reminded twice on the same
+  day, but a family reminded before the upload on the day of it, under the old
+  subject „Offener Badminton-Beitrag", can get one more that day.
+- **When no copy could be taken before an update**, the closed page no longer
+  says why: the reason, which could name the hosting account's folder or the
+  database, is in the hosting's error log (INSTALL.md).
+- **No longer in the portal**: custom fields, copying, saved views of the
+  **Schüler** list, „An mehrere schreiben" with its e-mail templates,
+  „Warteschlange senden", the printed form and data sheet, Verwaltung's „Tarife"
+  tab, the online dots with the status and „Wann online?", the status emoji, the
+  profile pictures from before, asking to write to another family, and voice
+  notes and files in new messages. Mail goes out by itself just after a page has
+  been served, as before; [CHANGELOG.md](CHANGELOG.md) says what takes the place
+  of the rest.
 
 Everything else in this version is either new or moved to another place in the
 menu; [CHANGELOG.md](CHANGELOG.md) lists it.
@@ -151,7 +487,13 @@ Each request compares the migration files on disk against what the database
 records as applied. On the common path that is one file read and nothing else.
 When they differ, an advisory database lock is taken first, so two visitors
 arriving together cannot both migrate — the second one waits, then finds nothing
-left to do. Then, inside that lock and **before the database is touched at all**:
+left to do. Inside that lock the portal first asks whether the database is its
+own to touch: while a copy is being imported — the copy's first statement makes
+a table `import_unfinished`, its last drops it — or the ledger records no
+migration while tables have rows, or everything is empty over a folder a portal
+has run on, it answers the closed page and changes nothing, the ledger's own
+table included ([A refused update](#a-refused-update), ADR 0029). Otherwise,
+still inside the lock and **before the database is touched at all**:
 
 1. **Are these files newer than the database?** If the database records
    migrations these files do not contain, this is a downgrade: the wrong package,
@@ -164,34 +506,159 @@ left to do. Then, inside that lock and **before the database is touched at all**
    time and an FTP client in text mode rewrites the line endings of everything it
    copies; both leave a directory that lists perfectly. A mismatch stops the
    update and names the files. A git checkout ships no manifest and is skipped.
-3. **Can a backup be written?** A full SQL dump goes to `storage/backups` before
-   anything is migrated. If it cannot be written, nothing is migrated. See
+3. **Can a backup be written?** First the portal checks that `storage/` can hold
+   the file of step 4; if it cannot, the update is refused here, before any copy
+   is taken, so a page view that is refused never writes a copy and never prunes
+   an older one. Then a full SQL dump goes to `storage/backups` before anything
+   is migrated. If it cannot be written, nothing is migrated. See
    [Backups](#backups) for the way past this when you have taken your own.
-4. Each unrecorded migration is then applied in name order and recorded with the
+4. **The numbers from before are written down.** The rows of the eighteen tables
+   in `schema_guarded_tables()` are counted — `accounts`, `students`,
+   `contacts`, `absences`, `charges`, `payments`, `threads`, `messages`,
+   `message_files`, `news`, `class_students`, `attendance`, `invoices`,
+   `invoice_charges`, `payment_proofs`, `consent_log`, `tariff_rates` and
+   `tariff_discounts` — and kept in `storage/update-unfinished.json`, with both
+   version numbers and which copy step 3 wrote, until the update has passed. If
+   that file cannot be written, nothing is migrated.
+5. Each unrecorded migration is then applied in name order and recorded with the
    checksum of the file it came from. A migration that was edited after being
    applied is refused **by name**, because the checksum no longer matches.
-5. **Is everything still there?** Rows in nineteen tables are counted before
-   and after: `accounts`, `students`, `contacts`, `field_values`, `absences`,
-   `charges`, `payments`, `threads`, `messages`, `message_files`, `news`,
-   `class_students`, `attendance`, `invoices`, `invoice_charges`,
-   `payment_proofs`, `consent_log`, `tariff_rates` and `tariff_discounts` — the
-   list in `schema_guarded_tables()`. A count that fell stops the update. Counts
-   do not prove an update was correct, but a count that fell proves it was not —
-   and this catches it while the backup is still the newest thing that happened.
-6. The seeded defaults are refreshed for anything new, and the page is served.
+6. **Is everything still there?** Every table still on the list is counted again
+   and compared with the numbers from step 4; a table that is gone counts as
+   empty. A count that fell stops the update. Counts do not prove an update was
+   correct, but a count that fell proves it was not.
+7. What the portal cannot work without is filled in where it is missing — the
+   lists it needs, a group chat for every course, a login for every student.
+   Every stored upload that no record names any more and that is more than ten
+   minutes old is deleted, as the daily cleanup does with an hour's grace: in
+   this version, the profile pictures (see [Updating an existing portal to
+   0.6.0](#updating-an-existing-portal-to-060)), and any receipt or chat photo
+   whose record went before the daily cleanup found it. While the database has
+   no login in it, neither sweep deletes anything: it is not yet the database
+   those files belong to, as in a restore between deleting the tables and
+   importing the copy ([INSTALL.md](INSTALL.md#wiederherstellen)). Then the file
+   from step 4 is deleted, and the page is served.
 
-If any step fails the portal answers 503 and stays closed, saying in German and
-English what went wrong and what to do. It never prints SQL: that address is
-public and a parent may be the one looking at it. The full database error goes to
-the hosting error log.
+If any step fails the portal answers 503 and stays closed. The page tells a
+family there is nothing for them to do, and tells whoever looks after the portal,
+in German and English, what went wrong and what to do. It never prints SQL: that
+address is public and a parent may be the one looking at it. The full database
+error goes to the hosting error log.
+
+Steps 1 to 4 change nothing in the database, so when one of them refuses, the
+next page view starts again once the cause is put right: the newest files,
+uploaded completely, and a `storage/` folder the portal can write to. From step 4
+on, the update is **unfinished** until step 7 has run, and every page view starts
+by counting again and comparing with the numbers in the file:
+
+- While a table still on the list has fewer rows than before, nothing more runs
+  and the portal stays closed — on every page view, not only the first. See
+  [A refused update](#a-refused-update).
+- Otherwise the update carries on where it stopped. A migration that stopped
+  partway is tried again from its first statement, against the same numbers, and
+  no second copy is written: the one from step 3 stays the newest.
 
 While maintenance mode is on all of this is skipped, so an operator applying a
-migration by hand from a shell cannot race the web request.
+migration by hand from a shell cannot race the web request. While an update is
+unfinished, maintenance mode lets nobody in, administrators included: only the
+update may change the rows the numbers describe. Deleting the maintenance flag,
+`storage/maintenance.flag`, lets the next page view count again.
+
+## A refused update
+
+When an update finds fewer rows in a guarded table than before, the portal stays
+closed until one of two things is true. It counts again on every page view and
+opens by itself once one of them is; there is nothing to press. Keep the ZIP of
+the version you are running until the next update has opened the portal: the
+first way back needs it.
+
+**The rows come back.** The way when the loss was a mistake, and the safe way
+whenever you are not sure which it was:
+
+1. Upload the files of the version the closed page names — the one you came
+   from — over the new ones. The portal stays closed meanwhile.
+2. Import the copy the closed page names, from `storage/backups`, as
+   [INSTALL.md](INSTALL.md#wiederherstellen) describes.
+3. Open the portal. It counts every guarded table again and opens once none has
+   fewer rows than before the update. If one still has, the page says which: the
+   import stopped partway, or it was a different file.
+
+In this order, because the newer files, left in place, apply their migrations
+again on the next page view and take the same rows again. If that happens anyway,
+nothing more is lost: no copy is written while an update is unfinished, so the
+one the page names is still there. Upload the files and import it again.
+
+**A release says the rows may go.** If a migration removed rows on purpose and
+its table was not taken off `schema_guarded_tables()` in the same commit, the
+release has a bug. The release that fixes it takes the table off the list, with
+the reason beside it, and uploading it opens the portal without importing
+anything: the tables still on the list are compared, and they have their rows.
+Whether a loss is intended is decided in the code, by whoever makes the
+releases — never by the portal.
+
+**While it is closed** nobody gets in: families, trainers and administrators
+alike, and maintenance mode does not change that. The console runs only `check`,
+`status`, `migrate`, `update`, `maintenance:on` and `maintenance:off`; mail,
+billing, the daily cleanup and `backup` wait. Any other command stops with one
+sentence saying that an update is unfinished, and exits with 1; a cron job set
+up in the panel fails the same way each time it runs. The same list holds while
+a copy is being imported (below), with that as the sentence, and
+`php bin/console.php maintenance` stops with exit 1 while `storage/maintenance.flag`
+is there, as `mail:work` does, so a cron job for it fails each run meanwhile
+and sweeps nothing. Anything else that added
+rows could make up a count that fell and hide what is missing. On a server with
+a shell, `php bin/console.php check` is the quickest look: it prints the row
+counts, `null` for a table that is gone, and then names the missing table in one
+sentence that points here, ending with exit code 1.
+
+**While a copy is being imported** the portal is closed as well, from the
+copy's first statement to its last: every copy the portal writes from this
+version on begins by making a table `import_unfinished` and ends by dropping
+it, and while that table exists nothing is run, copied or swept, by a page
+view, the background work or the console (ADR 0029). The closed page says so
+in phpMyAdmin's words and reloads itself every five minutes, so a tab left open
+opens the portal by itself once the whole copy is in; a page view does the same.
+An import that stopped leaves the table there and the page the same: import the
+same file again, and each table is dropped before it is made, so nothing is
+doubled. The background work — mail, charges, the daily cleanup — stays out
+by itself meanwhile, with or without maintenance mode. A copy from before this
+version, or one exported in the hosting panel, has no such table and is judged
+by its ledger: while `schema_migrations` is missing and tables have rows, the
+portal takes a copy to be on its way in and stays closed; once the ledger is in,
+it takes the database for its own, whatever the copy still has to bring. So
+restore such a copy with the files of its own version and with maintenance mode
+on until the import has finished. While everything is empty under a folder a
+portal has run on (`storage/schema.stamp` exists), the portal stays closed too
+and says how a new, empty portal would start there instead. INSTALL.md's
+„Wiederherstellen" has the steps, maintenance mode on first and off last,
+because the page path serves pages while the tables are gone.
+
+**The last way out of an import that never ends.** A damaged copy whose last
+statement never arrives leaves `import_unfinished` behind for good. Dropping
+that table in phpMyAdmin tells the portal to accept the database as it is: the
+next page view runs as after any import, with whatever the copy brought. Do it
+only once the copy has given all it can; the closed page offers the way that
+loses nothing first.
+
+**The last way out.** `storage/update-unfinished.json` holds the numbers from
+before. Deleting it tells the portal to accept the database as it is: the next
+page view counts afresh and opens, and whatever is missing stays missing. Do it
+only when the missing rows are meant to be gone or are back some other way — for
+instance after importing a copy you exported yourself before the update (with
+`skip-backup`), which can be older than the numbers in the file, so that the
+portal cannot tell it from a loss. Deleting the whole `storage/` folder does the
+same, and takes the copies with it.
 
 ## Backups
 
 A full SQL dump of every table, written before any migration runs. Plain SQL
-because that is what the import screen in every hosting panel accepts.
+because that is what the import screen in every hosting panel accepts. From this
+version on, every copy begins by making a table `import_unfinished`, with a
+comment phpMyAdmin shows, and ends by dropping it, so the portal knows an import
+is under way (ADR 0029; [A refused update](#a-refused-update)). No copy is
+written of a database that holds nothing — by an update, or by
+`php bin/console.php backup`, which refuses it with exit 1: it would have
+nothing to restore and would push out one that has.
 
 - **Where:** `storage/backups`, beside the maintenance flag, so a deployment with
   separate release folders keeps them across a switch. The folder denies itself
@@ -200,6 +667,9 @@ because that is what the import screen in every hosting panel accepts.
   failed to deny it still could not be walked.
 - **How many:** the last five. Older ones are removed as new ones arrive, because
   a portal nobody prunes eventually fills the disk quota, which is its own outage.
+- **One per update.** While an update is unfinished no further copy is written,
+  by a page view or by `php bin/console.php backup`, so pruning never removes the
+  copy taken before it.
 - **On demand:** `php bin/console.php backup [reason]`, or look at
   **Einstellungen → System**, which lists every copy with its date and size.
 - **Restoring** is deliberately not automated. Putting several megabytes of a
@@ -209,7 +679,9 @@ because that is what the import screen in every hosting panel accepts.
 - **When it cannot be written** the update stops. If you have exported the
   database from the panel yourself, create an empty file named `skip-backup` in
   the `storage` folder; the next update proceeds without one and consumes the
-  file, so it cannot quietly disable the safeguard for every future update.
+  file, so it cannot quietly disable the safeguard for every future update. A
+  `skip-backup` the portal cannot delete refuses the update instead, saying so:
+  left in place, it would skip the copy before every later update too.
 
 A first install writes no backup: an empty database has nothing worth copying.
 
@@ -222,9 +694,9 @@ for a server where you keep each release in its own directory.
 
 | Component | Location in the suggested layout | Update behavior |
 |---|---|---|
-| Source and dependencies | `/srv/badminton/releases/0.1.0/` | Put each new version in a new directory |
+| Source and dependencies | `/srv/badminton/releases/0.6.0/` | Put each new version in a new directory |
 | Configuration and encryption key | `/srv/badminton/shared/config.php` | Preserve the file and its `app_key` |
-| Students, fields, tariffs, payments, messages | The existing MySQL/MariaDB database | Apply only the new migrations |
+| Students, tariffs, payments, messages | The existing MySQL/MariaDB database | Apply only the new migrations |
 | Active web root | `/srv/badminton/current/public/` | `current` points to the selected release |
 
 Each release can contain a symlink `config/config.php` to the shared configuration. Set one shared `maintenance_file` path in that configuration. Do not keep a different maintenance flag inside each release, because a directory switch would then bypass the pause.
@@ -236,11 +708,31 @@ Each release can contain a symlink `config/config.php` to the shared configurati
   own — `bin/release.sh` reads `VERSION` to build it. The tag and the README
   line are typed, so check both against `VERSION` before tagging: the README
   line is the first thing anybody reads and nothing derives it.
+- A release is numbered like `0.6.0`. A package handed to the owner before the
+  release is `0.6.0-beta.N`, counting from 2, because the ZIP built from
+  `00dc020` was the first. The portal compares two versions only to see whether
+  they are the same, and tells newer from older by the migrations, so the suffix
+  needs nothing else. For such a package, `VERSION` and the ZIP's name say
+  `0.6.0-beta.N`, while the README line keeps „Version 0.6.0, in beta"; it has
+  no Git tag, and the commit that sets `VERSION` is on the branch, named by the
+  package's `BUILD.txt`.
+- To build a package, commit `VERSION` first, then run `bin/release.sh <folder>`
+  on a machine whose PHP has gd: `composer.json` names `ext-gd`, and composer
+  installs nothing without it. The script writes `badminton-crm-<version>.zip`
+  into that folder, or beside the project without one, with a `BUILD.txt` inside
+  that names the commit it was built from and when, so that a walk of the
+  package and VALIDATION.md can name it by its commit. It builds from the
+  committed `HEAD`, so it refuses a `VERSION` changed but not committed, a
+  version shaped like neither `0.6.0` nor `0.6.0-beta.2`, an entry at the top of
+  the repository that it has not been told to ship or to leave out, and anything
+  git tracks in `config/` or `storage/` besides their deny files and
+  `config.example.php`: such a file is already in git's history, and a password
+  in it has to be changed. Walk the package before handing it out
+  (`CRM_E2E_ZIP`, TESTING.md).
 - `CHANGELOG.md` records behavior and any compatibility notes.
 - `composer.lock` fixes dependency versions. Deployment uses **install**, never **update**.
 - Database migrations are ordered SQL files. The migration ledger stores each file’s checksum. Do not edit a migration that has already been applied; add a new file.
 - Future schema changes should first add compatible structures, then migrate values and verify them. Remove obsolete structures only in a separate later release after checking that no current code needs them.
-- Renaming a custom field keeps its numeric ID. Archiving retains its values. A field type with stored data cannot be changed silently.
 
 ## The same thing from a shell
 
@@ -259,7 +751,10 @@ been applied.
 
 An administrator can still sign in while maintenance mode is on, and a banner
 at the top of every page offers to switch it off. That is deliberate: switching
-it on from **Einstellungen → System** must not be able to lock you out.
+it on from **Einstellungen → System** must not be able to lock you out. The one
+exception is an unfinished update ([A refused update](#a-refused-update)): then
+nobody is let in, and deleting `storage/maintenance.flag` in the file manager, or
+`php bin/console.php maintenance:off`, switches maintenance mode off.
 
 ### What re-running is guaranteed to do
 
@@ -269,22 +764,30 @@ is safe to run repeatedly. Verified behaviour:
 | Situation | What happens |
 |---|---|
 | Opening the portal with nothing new uploaded | One file read, no database work |
-| Running `update` again with nothing new | Applies nothing, reopens the portal |
+| Running `update` again with nothing new | Applies nothing and reopens the portal — unless an update is unfinished and a guarded table still has fewer rows than before it |
 | Uploading an older package over a newer one | Refused by name; the database is not touched |
 | An extract that stopped halfway | Refused, naming the files that do not match |
 | `storage/` not writable when a migration is pending | Refused; no backup, no migration |
-| A migration that removes rows from a guarded table | Refused after the fact; the portal stays closed |
+| A migration that removes rows from a guarded table | Refused after the fact; the portal stays closed on every page view until the rows are back or a release takes the table off the list |
+| A page view, or a newer upload, after that refusal | Counts again; runs nothing and stays closed while a guarded table has fewer rows than before the update |
+| The previous version's files and the copy from before, after that refusal | Counts again and opens |
+| A migration that drops a guarded table | Counted as emptied, and refused the same way |
 | A new migration added in a later version | Applies only that one |
 | A column added later to an existing table | Existing rows get the column's default, never NULL |
 | A migration file edited after being applied | Refused by name, with the reason |
-| A migration failing partway | Stops at that statement, does **not** record the migration, names the statement number |
+| A migration failing partway | Stops at that statement, does **not** record the migration, names the statement number; each page view tries it again from its first statement, against the numbers from before the update, without writing another copy |
 
-The last row is the case that needs you. MySQL cannot roll back DDL, so a
-migration that fails at statement 5 of 12 leaves the first four applied and the
-migration unrecorded — re-running would start it from the beginning and fail
-again on the work already done. The error says exactly which statement stopped
-and what to do: restore your backup, or finish that migration by hand and add
-its row to `schema_migrations` yourself.
+A migration failing partway is the case that needs you. MySQL cannot roll back
+DDL, so a migration that fails at statement 5 of 12 leaves the first four applied
+and the migration unrecorded — trying it again starts it from the beginning, and
+fails again on the work already done unless each of its statements can run
+twice. The error names the file and says how far the update got — „(5/12)" on
+the closed page — counting the furthest statement any attempt reached, even when
+a later attempt stopped earlier, on what the first one had already done. The way
+back is the one for [a refused update](#a-refused-update): the
+previous version's files, then the copy from before. Finishing the migration by
+hand in phpMyAdmin and adding its row to `schema_migrations` works too; the next
+page view then compares and opens.
 
 ## Adding a feature after going live
 
@@ -299,12 +802,15 @@ Schema changes do need a migration. Add a new numbered file in
 leave a NULL the new code has to guess about.
 
 A migration must not reduce the row count of any table in
-`schema_guarded_tables()`. The update refuses one that does, on purpose: no
-migration in this project so far has removed a row from a guarded table — 019
-takes children off a shared login but deletes none of them — so a count going
-down means something went wrong rather than something being cleaned up. A future release that
-genuinely has to remove rows — merging duplicates, say — needs that guard
-widened deliberately, in the same commit, with the reason written down.
+`schema_guarded_tables()`. The update refuses one that does, on purpose, and the
+portal stays closed until the rows are back: a count going down means something
+went wrong rather than something being cleaned up. A release that genuinely has
+to remove rows — merging duplicates, say — takes the table off that list in the
+same commit, with the reason written beside it. A release that forgot to is fixed
+by the release that does: uploading it reopens the portal its predecessor closed
+([A refused update](#a-refused-update)). So far one has: 032, which deletes the
+custom fields with everything typed into them (ADR 0026), took `field_values` off
+the list.
 
 ## With release directories: before the maintenance window
 
@@ -314,13 +820,13 @@ into one folder, the two sections above are the whole procedure.
 
 1. Read the new release’s change notes, including the schema versions it supports.
 2. Put the new release in its own directory. Do not unzip it over the running application.
-3. Run `composer install --no-dev --prefer-dist --optimize-autoloader` if dependencies are not included.
-4. Test the release using a separate database and separate configuration. Do not point the test mail worker at real recipients. The integration suite deliberately creates and deletes test records and must never use the live database.
-5. Check the existing hosting recovery arrangement and who can restore it. No database export, restore or automatic backup is performed by this application.
+3. Run `composer install --no-dev --prefer-dist --optimize-autoloader --ignore-platform-req=ext-gd` if dependencies are not included. The flag lets Composer install where PHP's gd is missing, which only the pictures need; it waives gd alone and needs Composer 2.0 or later. `bin/update.sh` passes it by itself.
+4. Test the release using a separate database and separate configuration. Do not point the test mail worker at real recipients. The test suites create and delete records of their own and must never be pointed at the live database; `tests/run.php` refuses a database whose name does not end in `_test`, and the one `config/config.php` gives the portal.
+5. Check the existing hosting recovery arrangement and who can restore it. The portal writes a copy of the database before it migrates, but it never restores one: that is done by hand, as described in [INSTALL.md](INSTALL.md#wiederherstellen).
 
 ## With release directories: apply an update
 
-Example paths below are a layout template; `0.2.0` is an example of a future release, not an existing version.
+Example paths below are a layout template; `0.7.0` stands for whichever release you are moving to.
 
 1. Pause the mail cronjob. Enable maintenance in the active release:
 
@@ -341,25 +847,25 @@ Example paths below are a layout template; `0.2.0` is an example of a future rel
 3. Link the shared configuration into the new release, then apply its pending migrations:
 
    ```bash
-   ln -s /srv/badminton/shared/config.php /srv/badminton/releases/0.2.0/config/config.php
-   php /srv/badminton/releases/0.2.0/bin/console.php migrate
-   php /srv/badminton/releases/0.2.0/bin/console.php check > /srv/badminton/shared/after-update.json
+   ln -s /srv/badminton/shared/config.php /srv/badminton/releases/0.7.0/config/config.php
+   php /srv/badminton/releases/0.7.0/bin/console.php migrate
+   php /srv/badminton/releases/0.7.0/bin/console.php check > /srv/badminton/shared/after-update.json
    ```
 
    Stop if a command fails. The migration command does not erase the database or rerun successful migrations. MySQL schema changes may commit individually: a failed multi-statement migration can leave partial changes, so do not assume it rolled back automatically.
 
-4. Compare the before/after student counts, custom-value counts, charges, payments and total cents. Expected changes must be stated in the release notes. Counts alone do not prove completeness: also inspect representative linked students, custom fields, prices, payment periods and conversation ownership in the test deployment.
+4. Compare the before/after student counts, charges, payments and total cents. Expected changes must be stated in the release notes: moving to 0.6.0, the custom fields and their values are gone (migration 032), and the new release's `check` no longer counts them. Counts alone do not prove completeness: also inspect representative linked students, prices, payment periods and conversation ownership in the test deployment.
 
 5. Switch the code using an atomic symlink replacement on the same filesystem:
 
    ```bash
-   ln -s /srv/badminton/releases/0.2.0 /srv/badminton/current-next
+   ln -s /srv/badminton/releases/0.7.0 /srv/badminton/current-next
    mv -Tf /srv/badminton/current-next /srv/badminton/current
    ```
 
    This example uses GNU/Linux `mv`. Keep `current-next` unused before running it. Do not use `rsync --delete` over shared data. Reload PHP-FPM or clear its opcode cache through the hosting controls so workers load the new code.
 
-6. Disable maintenance, sign in, open a student, verify their custom fields and payments, and check a student account’s access. Then resume the mail cronjob and send a test mail to your own address.
+6. Disable maintenance, sign in, open a student, verify their details and payments, and check a student account’s access. Then resume the mail cronjob and send a test mail to your own address.
 
    ```bash
    php /srv/badminton/current/bin/console.php maintenance:off
@@ -376,14 +882,8 @@ Example paths below are a layout template; `0.2.0` is an example of a future rel
 - A lost or replaced `app_key` prevents decryption of existing encrypted mail settings and queue contents. Restore the correct configuration rather than generating a new key during an update.
 - SMTP cannot guarantee exactly-once delivery across a crash after server acceptance. Inspect uncertain/failed sends before manually retrying; a duplicate email is possible in that failure window.
 
-## Planned development sequence
-
-1. **0.1.x:** hosting feedback, accessibility corrections and bug fixes; retain the current data model where practical.
-2. **Next feature release:** confirm actual billing rules before implementing recurring charges, including unique billing-period keys to prevent duplicates.
-3. **Before any data conversion:** define the mapping, test on a separate copy, report affected rows, preserve source values and verify totals before activation.
-4. **Before removing old fields or tables:** use a separate cleanup release with a documented compatibility boundary and an explicit migration review.
-
 The schema updater only ever moves forward: it applies migration files that the
 ledger has not recorded, and refuses one whose contents changed after it ran. It
-never drops a table, never reverses a migration, and never runs while maintenance
-mode is on.
+drops nothing of its own accord — a table goes only when a migration file says
+so, as 032 and 033 do in 0.6.0 — never reverses a migration, and never runs
+while maintenance mode is on.

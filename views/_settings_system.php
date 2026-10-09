@@ -22,6 +22,11 @@ $inMaintenance=is_file(maintenance_file());
     <?php // Both halves of the version marker, side by side. One number alone
           // cannot show that an upload half-succeeded; two that disagree can. ?>
     <div class="notice <?=$status['ok']?'':'warn'?>"><strong><?=e(version_status_text($status))?></strong></div>
+    <?php // setup.php checked these once, before installing; a PHP version switched
+          // in the hosting panel since can lack one the old version had. ?>
+    <?php foreach(array_filter(extension_checks(),fn($check)=>!$check['ok']) as $missing): ?>
+    <div class="notice warn"><strong><?=e(t('Es fehlt: ','Missing: ').t($missing['label'][0],$missing['label'][1]))?></strong> <?=e(t($missing['fix'][0],$missing['fix'][1]))?></div>
+    <?php endforeach ?>
     <dl class="facts">
         <div><dt><?=e(t('Version der Dateien','Version of the files'))?></dt><dd><?=e($status['files'])?></dd></div>
         <div><dt><?=e(t('Version in der Datenbank','Version in the database'))?></dt><dd><?=e($status['database']!==''?$status['database']:t('noch nicht geschrieben','not written yet'))?></dd></div>

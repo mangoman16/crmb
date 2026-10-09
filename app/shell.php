@@ -4,8 +4,9 @@ declare(strict_types=1);
 /**
  * The things around the edges of every page.
  *
- * Notifications, accent colours, profile pictures, looking through somebody
- * else's eyes, and the button that says this is broken. Grouped together
+ * Notifications, accent colours, how a person is drawn - a picture or the
+ * initials - looking through somebody else's eyes, and the button that says
+ * this is broken. Grouped together
  * because they are all properties of the shell rather than of any one screen,
  * and separated from the pages so that adding a page does not mean remembering
  * to wire five things into it.
@@ -21,11 +22,29 @@ declare(strict_types=1);
  * $page and $params are where to go about it, kept as a page name and a few
  * values rather than a URL, so a notification written today still points
  * somewhere real after the address of the portal changes.
+ *
+ * Nothing is written for a placeholder (ADR 0023 §3): nobody reads its bell,
+ * and the invitation that later turns it into a login would hand the family a
+ * list of old news. Decided here, in the statement that writes, so no caller
+ * has to remember it - the invoice, the decided request and the changed date
+ * each had to, and two did not.
  */
 function notify(int $accountId, string $kind, string $title, string $body = '', string $page = '', array $params = []): void {
-    run('INSERT INTO notifications (account_id,kind,title,body,link_page,link_params,created_at) VALUES (?,?,?,?,?,?,?)',
-        [$accountId, mb_substr($kind, 0, 40), mb_substr($title, 0, 180), mb_substr($body, 0, 500),
-         mb_substr($page, 0, 40), mb_substr(http_build_query($params), 0, 255), now()]);
+    run("INSERT INTO notifications (account_id,kind,title,body,link_page,link_params,created_at) SELECT id,?,?,?,?,?,? FROM accounts WHERE id=? AND state<>'placeholder'",
+        [mb_substr($kind, 0, 40), mb_substr($title, 0, 180), mb_substr($body, 0, 500),
+         mb_substr($page, 0, 40), notice_params($params), now(), $accountId]);
+}
+
+/** A notice's link parameters as stored: the one form notify() writes and withdraw_notices() finds. */
+function notice_params(array $params): string { return mb_substr(http_build_query($params), 0, 255); }
+
+/**
+ * Take back from every bell, read or not, the notices of $kind that point at
+ * $page with $params: for something nobody can open any more, such as a news
+ * item unpublished (design, Part 7).
+ */
+function withdraw_notices(string $kind, string $page, array $params): void {
+    run('DELETE FROM notifications WHERE kind=? AND link_page=? AND link_params=?', [$kind, $page, notice_params($params)]);
 }
 
 /** Tell every member of staff. Used for the things only they can act on. */
@@ -40,7 +59,8 @@ function notify_staff(string $kind, string $title, string $body = '', string $pa
 
 /**
  * Tell every active administrator. Used for what only they can deal with: a
- * problem somebody reported, and an error nobody had to (ADR 0012).
+ * problem somebody reported, an error nobody had to (ADR 0012), and a change to
+ * where the families' money goes (ADR 0025).
  */
 function notify_admins(string $kind, string $title, string $body = '', string $page = '', array $params = []): int {
     $sent = 0;
@@ -51,13 +71,59 @@ function notify_admins(string $kind, string $title, string $body = '', string $p
     return $sent;
 }
 
+/**
+ * Tell every administrator that where the families' money goes has changed -
+ * a payment profile's account, a new profile, a course pointed at another one
+ * (ADR 0025, amended 2026-10-08) - with who did it, $by, ahead of $what. The
+ * trainer may make these changes, and so may whoever holds her login.
+ */
+function notify_admins_of_bank_change(array $by, string $title, string $what, string $page, array $params): int {
+    return notify_admins('bank', $title, t('Von ', 'By ') . login_holder_name($by) . ' (' . role_label((string)$by['role']) . '): ' . $what, $page, $params);
+}
+
+/**
+ * The kinds of notice the bell shows while $viewer looks through somebody else's
+ * eyes: those that quote nothing $viewer could not read anyway. A chat notice is
+ * not one - its text quotes the message, and a request to write is one too - so
+ * the bell would hand a trainer the words of a child's private chat that
+ * thread_seen_sql() keeps from her in the chat itself (security review, ADR 0022
+ * §9). Listed by what may be shown rather than by what may not, so a kind added
+ * later stays hidden until somebody has asked what it quotes.
+ */
+function notice_kinds_shown_while_viewing(array $viewer): array {
+    return [
+        'payment',      // an invoice's number, amount and date, which staff wrote
+        'schedule',     // a course's date and whether it takes place, which staff wrote
+        'request',      // somebody new, or a course asked for or decided: on pages staff read
+        'news',         // a news item's title and opening, which staff wrote for every family
+        // What somebody reported as broken, which administrators read under
+        // Einstellungen › Rückmeldungen. Asked of who is looking rather than of
+        // whose bell it is: a login that was an administrator once keeps these.
+        ...(is_admin($viewer) ? ['problem'] : []),
+    ];
+}
+
+/**
+ * Which of an account's notifications the bell may show now, as one condition
+ * over `notifications` and its parameters. The pane and its count both ask it,
+ * so the bell never counts a notice its pane would not show.
+ */
+function notifications_seen_sql(int $accountId): array {
+    $viewer = impersonator();
+    if (!$viewer) return ['account_id=?', [$accountId]];
+    $kinds = notice_kinds_shown_while_viewing($viewer);
+    return ['account_id=? AND kind IN (' . implode(',', array_fill(0, count($kinds), '?')) . ')', [$accountId, ...$kinds]];
+}
+
 /** The pane's contents: newest first, read and unread together. */
 function notifications_for(int $accountId, int $limit = 30): array {
-    return rows('SELECT * FROM notifications WHERE account_id=? ORDER BY id DESC LIMIT ' . max(1, min(100, $limit)), [$accountId]);
+    [$seen, $params] = notifications_seen_sql($accountId);
+    return rows('SELECT * FROM notifications WHERE ' . $seen . ' ORDER BY id DESC LIMIT ' . max(1, min(100, $limit)), $params);
 }
 
 function unread_notifications(int $accountId): int {
-    return (int)scalar('SELECT COUNT(*) FROM notifications WHERE account_id=? AND read_at IS NULL', [$accountId]);
+    [$seen, $params] = notifications_seen_sql($accountId);
+    return (int)scalar('SELECT COUNT(*) FROM notifications WHERE ' . $seen . ' AND read_at IS NULL', $params);
 }
 
 /** Where a notification points, or the dashboard when it no longer points anywhere. */
@@ -70,8 +136,8 @@ function notification_link(array $notification): string {
 
 function notification_icon(string $kind): string {
     return match ($kind) {
-        'payment' => 'wallet', 'message' => 'mail', 'request' => 'users',
-        'schedule' => 'calendar', 'problem' => 'lock', default => 'news',
+        'payment', 'bank' => 'wallet', 'message' => 'chat', 'request' => 'users',
+        'schedule' => 'calendar', 'problem' => 'lock', 'picture' => 'camera', 'news' => 'news', default => 'news',
     };
 }
 
@@ -120,10 +186,10 @@ function accent_for(?array $user): string {
 }
 
 // ---------------------------------------------------------------------------
-// Profile pictures
+// A person: a picture, a child's or a team member's, or the initials
 // ---------------------------------------------------------------------------
 
-/** The initials shown when there is no picture. Two letters, never more. */
+/** The initials that stand for a person. Two letters, never more. */
 function initials(string $name): string {
     $parts = preg_split('/\s+/', trim($name)) ?: [];
     $parts = array_values(array_filter($parts, fn($p) => $p !== ''));
@@ -132,36 +198,45 @@ function initials(string $name): string {
 }
 
 /**
- * An avatar: the picture if there is one, the initials if not.
+ * An avatar's side in CSS pixels, by its size: what app.css draws, and what the
+ * picture in it says it is before it has loaded, so nothing moves when it does.
+ */
+const AVATAR_SIDES = ['tiny' => 32, 'small' => 36, '' => 40, 'large' => 72];
+
+/**
+ * How a person is drawn, everywhere: their picture, or the initials (ADR 0031
+ * §6). The one helper, so who may see a face is asked in one place.
+ *
+ * The picture is drawn when the row has one (picture_of(): a child's, or a team
+ * member's own), its file is there and the one rule lets whoever is signed in
+ * see it (may_see_picture()); the initials otherwise, and for a course's letter.
+ * No query per face: the rows a page draws carry what the rule needs, and the
+ * rule asks its one question once a request. The address carries the picture's
+ * version, so the browser keeps it while it is the picture in use
+ * (picture_cache_control()) and asks again the moment it changes. alt is empty,
+ * because the name stands beside every face.
  *
  * $size is a class rather than a pixel count, so every avatar in the portal is
- * one of three sizes and a new one cannot be almost-but-not-quite the same as
- * the others.
- *
- * The address carries the picture's version, so the browser keeps it while it
- * is the picture in use (avatar_cache_control()) and asks again the moment a
- * new one is uploaded.
- *
- * An account's picture is drawn only for somebody the download route would
- * send it to (may_see_account_picture()); anyone else gets the initials rather
- * than a broken image. A child's is drawn as given: every page that lists
- * children has already scoped them with student() or its list equivalent.
+ * one of four sizes (AVATAR_SIDES) and a new one cannot be almost-but-not-quite
+ * the same as the others.
  */
-function avatar(array $who, string $size = '', string $kind = 'account'): string {
+function avatar(array $who, string $size = ''): string {
     $name = (string)($who['name'] ?? trim(($who['first_name'] ?? '') . ' ' . ($who['last_name'] ?? '')));
-    $class = 'avatar' . ($size !== '' ? ' ' . $size : '');
-    $stored = (string)($who['avatar_name'] ?? '');
+    $class = e('avatar' . ($size !== '' ? ' ' . $size : ''));
+    $picture = picture_of($who);
     $viewer = current_user();
-    $visible = $kind === 'student' || ($viewer !== null && may_see_account_picture($viewer, $who));
-    if ($stored !== '' && $visible)
-        return '<span class="' . e($class) . ' has-photo"><img src="'
-            . e(url('download', ['what' => 'avatar', 'kind' => $kind, 'id' => (int)($who['id'] ?? 0),
-                                 'v' => upload_version($stored)]))
-            // The tiny one is the top bar's, in view on every page the moment
-            // it opens; lazy would only hold its request back until layout.
-            // Lists of people further down stay lazy.
-            . '" alt=""' . ($size === 'tiny' ? '' : ' loading="lazy"') . '></span>';
-    return '<span class="' . e($class) . '">' . e(initials($name)) . '</span>';
+    if ($picture !== null && $viewer !== null && picture_stored($picture['picture_name']) && may_see_picture($viewer, $picture)) {
+        $side = AVATAR_SIDES[$size] ?? AVATAR_SIDES[''];
+        // Their own face is in the top bar of every page, in view the moment it
+        // opens: lazy would only hold its request back. Every other face waits
+        // until it is scrolled to.
+        $own = array_key_exists('role', $who) && (int)($who['id'] ?? 0) === (int)$viewer['id'];
+        return '<span class="' . $class . '"><img src="'
+            . e(url('download', ['what' => 'picture', 'kind' => $picture['team'] ? 'account' : 'student',
+                                 'id' => $picture['id'], 'v' => upload_version($picture['picture_name'])]))
+            . '" alt="" width="' . $side . '" height="' . $side . '"' . ($own ? '' : ' loading="lazy"') . '></span>';
+    }
+    return '<span class="' . $class . '">' . e(initials($name)) . '</span>';
 }
 
 // ---------------------------------------------------------------------------
@@ -173,14 +248,40 @@ function avatar(array $who, string $size = '', string $kind = 'account'): string
  *
  * Kept in the session rather than in the database, so it cannot outlive the
  * browser session it was started in, and so signing out ends it whatever else
- * happens.
+ * happens. Nor does it outlive the viewer's own login: her row is asked on every
+ * request - current_user() asks this as it finds a session good - whether it is
+ * still there, still may look at this account (may_impersonate()), and still has
+ * the auth_version it had as the view began. Deleted, suspended, or with a
+ * password changed since, she is looking at nothing any more.
+ *
+ * A view that has ended takes the whole session with it. Answering nobody and
+ * carrying on is what turned one into the child's own session, with no bar and
+ * nothing to limit it - every limit on a view asks this (security re-review N1).
  */
 function impersonator(): ?array {
     if (empty($_SESSION['impersonator_id'])) return null;
     // A view needs somebody signed in to be a view of: an id left over from a
     // session that ended is no view, and is dropped (security review F1).
-    if (!current_user()) { unset($_SESSION['impersonator_id']); return null; }
-    return one('SELECT * FROM accounts WHERE id=?', [(int)$_SESSION['impersonator_id']]);
+    $looked = current_user();
+    if (!$looked) { unset($_SESSION['impersonator_id']); return null; }
+    $real = one('SELECT * FROM accounts WHERE id=?', [(int)$_SESSION['impersonator_id']]);
+    if ($real && (int)$real['auth_version'] === (int)($_SESSION['impersonator_auth_version'] ?? 0)
+        && may_impersonate($real, $looked)) return $real;
+    unset($_SESSION['user_id'], $_SESSION['auth_version']);
+    forget_session_leftovers();
+    current_user(true);
+    return null;
+}
+
+/**
+ * What the portal says while somebody looks through another's eyes: the refusal
+ * of every action but stopping the view and signing out (dispatch_action()),
+ * and the line the chat shows where its writing box would be. One sentence, so
+ * the two cannot come to say different things.
+ */
+function viewing_refusal(): string {
+    return t('Beim Ansehen als jemand anderer lässt sich nichts schreiben oder ändern. Beende zuerst die Ansicht.',
+             'While viewing as somebody else, nothing can be written or changed. Stop viewing first.');
 }
 
 /**
@@ -191,10 +292,19 @@ function impersonator(): ?array {
  * makes sense - but not at another member of staff, and never at an
  * administrator, or impersonation would be a way to acquire rights rather than
  * to lose them.
+ *
+ * Only a login in use - active and set up by its holder. A view is a session as
+ * that login, and current_user() keeps a session for nothing else; an exception
+ * for a placeholder or a login not yet signed in would widen the one check made
+ * on every request, for a login with nothing of its own to show that the
+ * student page does not already show staff (ADR 0023 §12, A6 overruled). The
+ * same of the one looking: impersonator() asks this again of an open view on
+ * every request, and a viewer suspended since may look at nobody.
  */
 function may_impersonate(array $actor, array $target): bool {
     if ((int)$actor['id'] === (int)$target['id']) return false;
-    if ($target['state'] !== 'active') return false;
+    foreach ([$actor, $target] as $login)
+        if (($login['state'] ?? '') !== 'active' || empty($login['verified_at'])) return false;
     if (is_admin($actor)) return true;
     return is_staff($actor) && !is_staff($target);
 }
@@ -207,8 +317,10 @@ function start_impersonation(int $targetId): array {
         throw new UserError(t('Dieses Konto kannst du nicht ansehen.', 'You cannot view this account.'));
     audit('impersonation.started', 'account', $targetId);
     // Deliberately not session_regenerate_id(): the impersonator's own identity
-    // stays in this session and has to survive into the next request.
+    // stays in this session and has to survive into the next request - with
+    // her auth_version, which impersonator() asks her row for on every one.
     $_SESSION['impersonator_id'] = (int)$actor['id'];
+    $_SESSION['impersonator_auth_version'] = (int)$actor['auth_version'];
     $_SESSION['user_id'] = (int)$target['id'];
     $_SESSION['auth_version'] = (int)$target['auth_version'];
     $_SESSION['last_seen'] = time();
@@ -229,7 +341,7 @@ function stop_impersonation(): void {
     $real = impersonator();
     if (!$real) return;
     audit('impersonation.ended', 'account', (int)($_SESSION['user_id'] ?? 0));
-    unset($_SESSION['impersonator_id']);
+    unset($_SESSION['impersonator_id'], $_SESSION['impersonator_auth_version']);
     $_SESSION['user_id'] = (int)$real['id'];
     $_SESSION['auth_version'] = (int)$real['auth_version'];
     $_SESSION['last_seen'] = time();
@@ -253,9 +365,10 @@ function stop_impersonation(): void {
 /** How many steps a report carries, oldest first. */
 const REPORT_STEPS = 8;
 /**
- * Pages that are not somewhere a person went: pictures, the icon, the manifest,
- * the club's stylesheet and logo. Every page fetches the last two, so recorded
- * they would push the steps she actually took out of the trail.
+ * Pages that are not somewhere a person went: downloads - a chat fetches every
+ * photo in it through one - the icon, the manifest, the club's stylesheet and
+ * logo, which every page fetches. Recorded, they would push the steps she
+ * actually took out of the trail.
  */
 const REPORT_UNRECORDED_PAGES = ['download', 'icon', 'manifest', 'brand', 'logo'];
 
@@ -326,9 +439,8 @@ function recent_steps(): array {
  * requesting it, so the last step in the trail is not always it.
  */
 function form_origin(): array {
-    $read = fn(string $key): string => is_scalar($_POST[$key] ?? null) ? trim((string)$_POST[$key]) : '';
-    return ['page' => report_text($read('return_page'), 60), 'id' => (int)$read('return_id'),
-            'tab' => report_text($read('return_tab'), 60)];
+    return ['page' => report_text(form_bookkeeping('return_page'), 60), 'id' => (int)form_bookkeeping('return_id'),
+            'tab' => report_text(form_bookkeeping('return_tab'), 60)];
 }
 
 /** Text as a report may keep it: valid UTF-8, and at most $max characters. */
@@ -341,7 +453,7 @@ function report_text(string $text, int $max = 200): string {
  * Submitted values as a report may keep them.
  *
  * A secret is replaced by *** whatever was typed, even nothing, and at every
- * depth, so custom[api_token] is as safe as password. Otherwise: 40 fields,
+ * depth, so a nested one, x[api_token], is as safe as password. Otherwise: 40 fields,
  * 20 items per array, two levels of arrays, 200 characters per value. On top of
  * that the fields of one step stop at 16 kB: the limits multiply out to
  * megabytes for a form built to do so, and this sits in the session for the

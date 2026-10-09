@@ -21,7 +21,7 @@ if($command==='help'){
         ."php bin/console.php mail:test [address]   Open the SMTP connection now and print every step\n"
         ."php bin/console.php billing:run [YYYY-MM]  Create the monthly charges (default: this month)\n"
         ."php bin/console.php billing:plan [YYYY-MM] Show what billing:run would do, changing nothing\n"
-        ."php bin/console.php maintenance       Prune expired tokens and temporary records\n"
+        ."php bin/console.php maintenance       Delete everything past its period, expired links and old records included\n"
         ."php bin/console.php maintenance:on\n"
         ."php bin/console.php maintenance:off\n"
         ."php bin/console.php check\n"
@@ -32,6 +32,20 @@ if($command==='help'){
 }
 try{
     require __DIR__.'/../app/bootstrap.php';
+    // While an update is unfinished only the update changes the database: rows
+    // added meanwhile could make up a count that fell and hide what is missing.
+    // An allowlist, so a command added later is refused until somebody decides
+    // otherwise (ADR 0027 §3).
+    if(!in_array($command,['check','status','migrate','update','maintenance:on','maintenance:off'],true)){
+        if(schema_is_unfinished())
+            throw new RuntimeException('An update is unfinished ('.schema_unfinished_file().'), so until it has passed only check, status, migrate, update, maintenance:on and maintenance:off run; UPDATING.md, "A refused update", says what to do.');
+        // The same list while a copy is being restored (ADR 0029 §3): backup
+        // would copy an empty or half database over the copy being restored,
+        // maintenance would sweep the uploads whose rows have not arrived, and
+        // billing:run and mail:work would work on half the rows.
+        if(($restoring=schema_restore_refusal())!==null)
+            throw new RuntimeException($restoring->getMessage().' Until then only check, status, migrate, update, maintenance:on and maintenance:off run.');
+    }
     if($command==='maintenance:on'){
         if(file_put_contents(maintenance_file(),now().PHP_EOL)===false)throw new RuntimeException('Cannot create maintenance file.');
         echo "Maintenance enabled. New web requests and mail workers are paused. Let running requests finish before migrating.\n";exit;
@@ -45,9 +59,19 @@ try{
         try{$schema=scalar('SELECT MAX(version) FROM schema_migrations');}catch(PDOException){$schema='not migrated';}
         try{$pending=schema_pending();}catch(PDOException){$pending=array_map('basename',migration_files());}
         $result=['version'=>app_version(),'php'=>PHP_VERSION,'maintenance'=>is_file(maintenance_file()),'schema'=>$schema,'pending'=>$pending];
-        foreach(['accounts','students','contacts','field_definitions','field_values','absences','charges','payments','threads','messages','news','mail_jobs'] as $table)$result['rows'][$table]=(int)scalar('SELECT COUNT(*) FROM '.$table);
-        $result['totals_cents']=['charges'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM charges WHERE cancelled=0'),'confirmed_payments'=>(int)scalar('SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE voided=0 AND confirmed_at IS NOT NULL')];
-        echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE).PHP_EOL;exit;
+        // A table that is not there is null and named in a sentence, not the
+        // engine's error: this is the command somebody runs when an update has
+        // lost one (ADR 0027).
+        $missing=[];
+        $count=function(string $table,string $sql)use(&$missing):?int{
+            try{return (int)scalar($sql);}
+            catch(PDOException $e){if($e->getCode()!=='42S02')throw $e;$missing[$table]=$table;return null;}
+        };
+        foreach(['accounts','students','contacts','absences','charges','payments','threads','messages','news','mail_jobs'] as $table)$result['rows'][$table]=$count($table,'SELECT COUNT(*) FROM '.$table);
+        $result['totals_cents']=['charges'=>$count('charges','SELECT COALESCE(SUM(amount_cents),0) FROM charges WHERE cancelled=0'),'confirmed_payments'=>$count('payments','SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE voided=0 AND confirmed_at IS NOT NULL')];
+        echo json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE).PHP_EOL;
+        if($missing){fwrite(STDERR,'The database is missing '.(count($missing)>1?'the tables ':'the table ').implode(', ',$missing).'; UPDATING.md, "A refused update", says how to bring '.(count($missing)>1?'them':'it')." back.\n");exit(1);}
+        exit;
     }
     if($command==='status'){
         // Deliberately readable rather than JSON: this is the command a person
@@ -66,16 +90,18 @@ try{
     }
     if($command==='demo:fill'){
         $result=demo_fill(($argv[2]??'')==='--force');
-        printf("Created %d students, %d courses, %d charges, %d accounts.\n",$result['students'],$result['courses'],$result['charges'],$result['accounts']);
+        $count=fn(int $n,string $one,string $many):string=>$n.' '.($n===1?$one:$many);
+        printf("Created %s, %s, %s and %s.\n",$count($result['students'],'student','students'),$count($result['courses'],'course','courses'),
+               $count($result['charges'],'charge','charges'),$count($result['accounts'],'login','logins'));
         // It said "the password printed above" and printed no password, so the
         // three accounts it had just made could not be signed in to at all.
         // Generated once and never stored in the clear, so this is the only
-        // moment it can be shown. The usernames are read back rather than
-        // written here: beside real data one may carry a number.
+        // moment it can be shown.
         echo "\n";
-        foreach($result['logins'] as $login)printf("  %-24s (%s)\n",$login['username'],$login['role']==='student'?'family':$login['role']);
+        foreach($result['logins'] as $login)printf("  %-32s (%s)\n",$login['email'],$login['role']==='student'?'family':$login['role']);
         echo "\nAll of them sign in with: ".$result['password']."\n"
-            ."Write it down: it is not shown again. Remove everything with demo:clear.\n";exit;
+            ."Write it down: it is not shown again. They sign in for ".DEMO_LOGIN_DAYS." days; after that, demo:clear and demo:fill again\n"
+            ."give new ones. Remove everything with demo:clear.\n";exit;
     }
     if($command==='demo:clear'){
         $result=demo_clear();
@@ -111,6 +137,8 @@ try{
         echo "Update complete.\n";exit;
     }
     if($command==='backup'){
+        // A database that holds nothing is backup_database()'s own refusal
+        // (NothingToCopy), caught below like any error: one sentence, exit 1.
         echo backup_database($argv[2]??'manuell').PHP_EOL;
         echo "Restore by importing that file into an empty database.\n";exit;
     }
@@ -137,10 +165,8 @@ try{
         if($password!==ask('Repeat password',true))throw new RuntimeException('Passwords do not match.');
         // A second administrator can be created deliberately with --force; without
         // it the guard stays, so a stray run cannot quietly add one.
-        $made=create_admin_account($name,$email,$password,($argv[2]??'')==='--force');
-        // Nobody chose it (ADR 0019): this is the one place it is told. The
-        // address signs in as well (ADR 0020).
-        echo "Administrator created. Sign in with the username ".$made['username']." or with the email address ".email_normalised($email).".\n"
+        create_admin_account($name,$email,$password,($argv[2]??'')==='--force');
+        echo "Administrator created. Sign in with the email address ".email_normalised($email).".\n"
             ."Then configure SMTP and the privacy notice.\n";exit;
     }
     if($command==='billing:plan'){
@@ -167,9 +193,14 @@ try{
         exit($result['ok']?0:1);
     }
     if($command==='maintenance'){
-        prune_expired();
+        // As mail:work: nothing is swept while maintenance mode is on. INSTALL.md
+        // has the owner switch it on before a restore, and this is the cron job
+        // that would otherwise run on through it (ADR 0029 §6).
+        if(is_file(maintenance_file()))
+            throw new RuntimeException('Maintenance mode is on ('.maintenance_file().'), so nothing is pruned. Switch it off first: php bin/console.php maintenance:off');
+        if(!prune_expired()){echo "Nothing deleted: an update is running, or these files are newer than the database and wait for it. The next run tries again.\n";exit;}
         set_setting('prune_last_run',now());
-        echo "Expired tokens and temporary request records removed.\n";exit;
+        echo "Everything past its period deleted: expired links, temporary records, and what Einstellungen → System keeps for a set time.\n";exit;
     }
     throw new RuntimeException('Unknown command. Run: php bin/console.php help');
 }catch(Throwable $e){fwrite(STDERR,$e->getMessage().PHP_EOL);exit(1);}

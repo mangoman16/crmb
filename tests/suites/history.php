@@ -98,7 +98,9 @@ is_same(2, count($list), 'both versions');
 ok((int)$list[0]['id'] > (int)$list[1]['id'], 'newest first');
 
 case_('Only a table on the allowlist can be written about');
-throws(fn() => history_record('sqlite_master', 1, 'update', 'x', null, null), 'an unknown entity is refused');
+throws(fn() => history_record('schema_migrations', 1, 'update', 'x', null, null), 'a table that is not on it is refused, though it exists');
+foreach (['message_templates', 'field_definitions'] as $entity)
+    throws(fn() => history_record($entity, 1, 'update', 'x', null, null), 'and so is '.$entity.', whose feature has gone [ADR 0026 §7]');
 
 case_('The log has a horizon, and the audit log does not');
 $auditBefore = (int)scalar('SELECT COUNT(*) FROM audit_log');
@@ -110,101 +112,47 @@ is_same(0, history_prune(24), 'running it again removes nothing');
 is_same($auditBefore, (int)scalar('SELECT COUNT(*) FROM audit_log'), 'the audit log is untouched: it is evidence, not a convenience');
 
 // ---------------------------------------------------------------------------
-case_('A record she set up by hand can be copied, with what belongs to it');
-/* Two tariffs that differ in one number, a second course on another evening:
-   each of them is ten minutes of retyping, and retyping is where a wrong price
-   comes from. What comes with a copy is a judgement, not a foreign key. */
-sign_in_as(make_account(['role'=>'admin']));
-$course = make_class(['name'=>'Kindertraining', 'location'=>'Halle Nord', 'archived'=>1,
-    'days'=>[['weekday'=>1,'starts_at'=>'16:00:00','ends_at'=>'17:30:00','location'=>''],
-             ['weekday'=>4,'starts_at'=>'17:00:00','ends_at'=>'18:30:00','location'=>'Halle Süd']]]);
-$tariff = make_tariff(['class_id'=>$course, 'name'=>'Beitrag', 'interval_months'=>1,
-                       'rates'=>[1=>3700, 12=>25200]]);
-fixture('tariff_discounts', ['tariff_id'=>$tariff, 'name'=>'Erster Monat gratis',
-                             'months'=>1, 'kind'=>'percent', 'value'=>100, 'sort_order'=>0]);
-$kid = make_student(['first_name'=>'Lena']);
-make_enrolment($course, $kid, ['tariff_id'=>$tariff]);
-
-$copy = duplicate_record('classes', $course);
-$copied = training_class($copy);
-ok(str_contains((string)$copied['name'], 'Kopie'), 'the copy says it is one');
-is_same(0, (int)$copied['archived'], 'and is not archived, whatever the original was');
-is_same(2, count(class_days($copy)), 'both training days came with it');
-is_same('17:00:00', class_days($copy)[1]['starts_at'], 'at the times they were at');
-is_same(1, count(class_tariffs($copy, true)), 'and its price list');
-$copiedTariff = class_tariffs($copy, true)[0];
-is_same([1=>3700, 12=>25200], tariff_rates((int)$copiedTariff['id']), 'with both prices');
-is_same(1, count(tariff_discount_templates((int)$copiedTariff['id'])), 'and its discount template');
-// The children in the original course are emphatically not in the copy: that is
-// the difference between "what belongs to this record" and "what points at it".
-is_same(0, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=?', [$copy]),
-        'and nobody was enrolled in a course that did not exist a moment ago');
-is_same(1, (int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=?', [$course]),
-        'while the original keeps its members');
-
-case_('A copy is numbered rather than left identical');
-$second = duplicate_record('classes', $course);
-ok(training_class($second)['name'] !== $copied['name'], 'the second copy is not called the same as the first');
-ok(str_contains((string)training_class($second)['name'], '2'), 'it counts');
-
-case_('Only the records that are hers to build may be copied');
-foreach (['students', 'charges', 'payments', 'accounts', 'invoices'] as $table)
-    throws(fn() => duplicate_record($table, 1), 'a '.$table.' row cannot be copied', 'kopieren');
-// A copied news item is a draft, because the commonest reason to copy one is
-// last year's notice and the commonest mistake would be publishing it unchanged.
-$item = fixture('news', ['title'=>'Hallenzeiten', 'body'=>'Ab Oktober.', 'published'=>1,
-                         'created_at'=>now(), 'updated_at'=>now()]);
-is_same(0, (int)scalar('SELECT published FROM news WHERE id=?', [duplicate_record('news', $item)]),
-        'a copied news item is not published');
-
-// ---------------------------------------------------------------------------
-case_('A student’s custom fields are part of the student’s line, labelled and readable');
-/* ADR 0020, §7. field_values has no id to be tracked by, so a student's
-   snapshot carries each value as field:<id>. */
-sign_in_as($admin);
-$colour = fixture('field_definitions', ['label'=>'Lieblingsfarbe', 'label_en'=>'Favourite colour', 'field_type'=>'multiselect', 'section_name'=>'',
-    'options_json'=>'["rot","blau"]', 'default_json'=>'[]', 'required'=>0, 'visibility'=>'edit', 'sort_order'=>0, 'archived'=>0]);
-$photos = fixture('field_definitions', ['label'=>'Fotos erlaubt', 'label_en'=>'', 'field_type'=>'checkbox', 'section_name'=>'',
-    'options_json'=>'[]', 'default_json'=>'false', 'required'=>0, 'visibility'=>'edit', 'sort_order'=>0, 'archived'=>0]);
-$since = fixture('field_definitions', ['label'=>'Im Verein seit', 'label_en'=>'', 'field_type'=>'date', 'section_name'=>'',
-    'options_json'=>'[]', 'default_json'=>'""', 'required'=>0, 'visibility'=>'internal', 'sort_order'=>0, 'archived'=>0]);
+case_('A line written while custom fields existed still reads, without the tables it named');
+/* ADR 0026 §7. A student's line kept each custom value as field:<id>. The
+   definitions that named them went with migration 032, so every such key reads
+   the same and nothing is looked up; the value is read from the line alone. */
 $kid = make_student(['first_name'=>'Feld', 'last_name'=>'Test']);
-fixture('field_values', ['student_id'=>$kid, 'field_id'=>$since, 'value_json'=>'""']);
-tracked('students', $kid, 'Feld Test', function () use ($kid, $colour, $photos, $since) {
-    run('INSERT INTO field_values (student_id,field_id,value_json) VALUES (?,?,?)', [$kid, $colour, '["rot","blau"]']);
-    run('INSERT INTO field_values (student_id,field_id,value_json) VALUES (?,?,?)', [$kid, $photos, 'true']);
-    run('UPDATE field_values SET value_json=? WHERE student_id=? AND field_id=?', ['"2019-01-27"', $kid, $since]);
-});
-$changes = version_changes(history_for('students', $kid)[0]);
-is_same(['field:'.$colour, 'field:'.$photos, 'field:'.$since], array_keys($changes),
-        'a field filled in for the first time is a change, though the row did not exist before');
-is_same(['Lieblingsfarbe', 'Fotos erlaubt', 'Im Verein seit'], array_map('history_field_label', array_keys($changes)), 'each named as the settings page names it');
-is_same(['rot, blau', 'ja', '27.01.2019'], array_map(fn($c, $p) => history_value($p['to'], $c), array_keys($changes), $changes),
-        'a list joined with commas, a box as ja, a date as she writes one');
-is_same('—', history_value($changes['field:'.$since]['from'], 'field:'.$since), 'and an empty value as a dash');
-tracked('students', $kid, 'Feld Test', fn() => run('UPDATE field_values SET value_json=? WHERE student_id=? AND field_id=?', ['false', $kid, $photos]));
-$unticked = version_changes(history_for('students', $kid)[0])['field:'.$photos] ?? [];
-is_same(['ja', '—'], [history_value($unticked['from'] ?? null, 'field:'.$photos), history_value($unticked['to'] ?? null, 'field:'.$photos)],
-        'unticking reads „ja → —“: an unticked box is empty, by the same rule as a required one');
+$line = fixture('record_versions', ['entity'=>'students', 'entity_id'=>$kid, 'operation'=>'update', 'label'=>'Feld Test',
+    'before_json'=>json_encode(['field:7'=>'["rot"]', 'field:8'=>'true']),
+    'after_json'=>json_encode(['field:7'=>'["rot","blau"]', 'field:9'=>'"2019-01-27"']), 'actor_id'=>$admin, 'created_at'=>now()]);
+$changes = version_changes(one('SELECT * FROM record_versions WHERE id=?', [$line]));
+is_same(['field:7', 'field:8', 'field:9'], array_keys($changes), 'every value the line kept is still a change');
+is_same(array_fill(0, 3, 'Früheres eigenes Feld'), array_map('history_field_label', array_keys($changes)), 'each named „Früheres eigenes Feld“, whichever it was');
+is_same(0, query_count(fn() => history_field_label('field:7')), 'by a name that asks the database nothing');
+is_same([['rot', 'rot, blau'], ['ja', '—'], ['—', '27.01.2019']],
+        array_map(fn($c, $p) => [history_value($p['from'], $c), history_value($p['to'], $c)], array_keys($changes), $changes),
+        'its values read as they did: a list joined with commas, a box as ja, a date as she writes one, nothing as a dash');
 $_SESSION['locale'] = 'en';
-is_same('Favourite colour', history_field_label('field:'.$colour), 'in English where the field has an English name');
+is_same('Former custom field', history_field_label('field:7'), 'in English too');
 unset($_SESSION['locale']);
-is_same('Gelöschtes eigenes Feld', history_field_label('field:999999'), 'and a field that no longer exists says so rather than showing a number');
-run('DELETE FROM record_versions');
-tracked('students', $kid, 'Feld Test', fn() => run('INSERT INTO field_values (student_id,field_id,value_json) VALUES (?,?,?)',
-    [$kid, fixture('field_definitions', ['label'=>'Leer', 'label_en'=>'', 'field_type'=>'text', 'section_name'=>'', 'options_json'=>'[]',
-     'default_json'=>'""', 'required'=>0, 'visibility'=>'edit', 'sort_order'=>0, 'archived'=>0]), '""']));
-is_same([], version_changes(history_for('students', $kid)[0]), 'a field written empty where nothing was is no change worth a line');
-tracked('students', $kid, 'Feld Test', fn() => run('DELETE FROM students WHERE id=?', [$kid]), 'delete');
-$kept = json_decode((string)history_for('students', $kid)[0]['before_json'], true);
-is_same(['["rot","blau"]', null, '"2019-01-27"'], [$kept['field:'.$colour] ?? null, $kept['field:'.$photos] ?? null, $kept['field:'.$since] ?? null],
-        'a deleted student’s line keeps their custom values, every one that holds something');
+
+case_('A line about a feature that has gone is named, not refused');
+/* Message templates and custom fields are no longer tracked (ADR 0026 §7), but
+   what was written about them stays until the horizon removes it: the log
+   outlives any feature. */
+foreach (['message_templates'=>'Zahlungserinnerung', 'field_definitions'=>'T-Shirt-Größe'] as $entity => $label)
+    fixture('record_versions', ['entity'=>$entity, 'entity_id'=>1, 'operation'=>'update', 'label'=>$label,
+        'before_json'=>json_encode(['name'=>'Alt']), 'after_json'=>json_encode(['name'=>'Neu']), 'actor_id'=>$admin, 'created_at'=>now()]);
+is_same(['Frühere E-Mail-Vorlage', 'Früheres eigenes Feld'], [entity_label('message_templates'), entity_label('field_definitions')],
+        'an entity no longer tracked is named as it was, marked as former, never by its table');
+is_same('irgendetwas_altes', entity_label('irgendetwas_altes'), 'and one nobody named is shown as it was stored, rather than refusing the page');
+$page = render_view('history');
+ok(str_contains($page, e('Geändert: Frühere E-Mail-Vorlage · Zahlungserinnerung')) && str_contains($page, e('Geändert: Früheres eigenes Feld · T-Shirt-Größe')),
+   'and the change log draws both lines, in words');
+ok(str_contains($page, 'Früheres eigenes Feld') && str_contains($page, 'rot, blau'), 'and the student’s line with its former custom values');
+
+case_('A staff save that changes nothing has nothing to say');
 $quiet = make_student(['first_name'=>'Still', 'last_name'=>'Kind', 'level_id'=>(int)(level_default()['id'] ?? 0) ?: null]);
 run('DELETE FROM record_versions');
 act('student_save', ['id'=>(string)$quiet, 'revision'=>'1', 'first_name'=>'Still', 'last_name'=>'Kind', 'email'=>'', 'birth_date'=>'',
     'joined_on'=>'2025-01-01', 'ended_on'=>'', 'status'=>'active', 'internal_notes'=>'', 'address'=>'', 'phone'=>'']);
 is_same([], version_changes(history_for('students', $quiet)[0] ?? ['before_json'=>null, 'after_json'=>null, 'entity'=>'students']),
-        'a staff save that posts nothing for a box with no stored row logs no change: an unticked box is nothing, not „nein“');
+        'an empty box posted where nothing was stored is no change');
 
 case_('What a family writes is labelled, and a contact’s line does not repeat whose it is');
 foreach (['address'=>'Anschrift', 'phone'=>'Telefonnummer', 'owner_name'=>'Name', 'relation_label'=>'Beziehung', 'is_primary'=>'Standardkontakt'] as $column => $word)
@@ -226,7 +174,7 @@ $familyLogin = make_account(['role'=>'student', 'name'=>'Familie Test']);
 $theirs = make_student(['first_name'=>'Eigen', 'last_name'=>'Kind', 'account_id'=>$familyLogin]);
 sign_in_as($familyLogin);
 tracked('students', $theirs, 'Eigen Kind', fn() => run('UPDATE students SET phone=? WHERE id=?', ['1', $theirs]));
-$_SESSION['impersonator_id'] = $admin;
+view_as($admin, $familyLogin);
 tracked('students', $theirs, 'Eigen Kind', fn() => run('UPDATE students SET phone=? WHERE id=?', ['2', $theirs]));
 unset($_SESSION['impersonator_id']);
 sign_in_as($admin);
@@ -236,3 +184,27 @@ is_same([$familyLogin], array_map('intval', array_column($byFamilies, 'actor_id'
 is_same('student', $byFamilies[0]['actor_role'] ?? null, 'with the actor’s role, read when the page is read');
 is_same(3, count(history_recent()), 'while „Alle“ has all three, the change made while viewing as the family under the administrator');
 is_same(['admin', 'admin', 'student'], array_column(history_for('students', $theirs), 'actor_role'), 'and a record’s own history carries the role too');
+
+// ---------------------------------------------------------------------------
+case_('The change log never holds a password hash or a session counter [R5, S6]');
+/* Moved from the usernames suite when usernames went (ADR 0021). The last visit
+   was the third, until it went with the rest of the presence (ADR 0026). */
+sign_in_as($admin);
+run("DELETE FROM record_versions");
+$recorded = fn() => array_merge(...array_map(fn($v) => array_keys((array)json_decode((string)$v['before_json'], true) + (array)json_decode((string)$v['after_json'], true)),
+    rows("SELECT before_json, after_json FROM record_versions WHERE entity='accounts'")));
+$logged = tracked_insert('accounts', 'Neu', fn() => make_account());
+tracked('accounts', $logged, 'Neu', fn() => run("UPDATE accounts SET password_hash='x', auth_version=auth_version+1 WHERE id=?", [$logged]));
+tracked('accounts', $logged, 'Neu', fn() => run('DELETE FROM accounts WHERE id=?', [$logged]), 'delete');
+is_same(3, (int)scalar("SELECT COUNT(*) FROM record_versions WHERE entity='accounts'"), 'an insert, an update and a delete were recorded');
+is_same([], array_values(array_intersect($recorded(), ['password_hash', 'auth_version'])), 'and none of them holds either');
+ok(in_array('email', $recorded(), true), 'while the rest of the row is there');
+
+case_('A creation is put down to who is signed in, unless its caller names the one person who is not yet');
+/* ADR 0021, §3: the student an invitation by address makes is recorded before
+   anybody is signed in, so create_own_student() names the link's own login. */
+$holderOfLink = make_account(['role' => 'student']);
+$byAdmin = tracked_insert('students', 'Vom Admin', fn() => make_student());
+$named = tracked_insert('students', 'Selbst angelegt', fn() => make_student(), $holderOfLink);
+is_same([$admin, $holderOfLink], [(int)history_for('students', $byAdmin)[0]['actor_id'], (int)history_for('students', $named)[0]['actor_id']],
+        'the signed-in administrator for one, the named login for the other');

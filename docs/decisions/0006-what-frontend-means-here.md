@@ -1,9 +1,11 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-22
 ---
 
 # 0006. What "front end" means in a project with no client application
+
+> **Accepted on 2026-10-07** by the project manager (0026 §2), as `CLAUDE.md`'s agent table has it.
 
 ## Context
 

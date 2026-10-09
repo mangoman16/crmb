@@ -1,9 +1,30 @@
 ---
-status: accepted
+status: accepted, amended by 0022, 0026, 0031
 date: 2026-09-29
 ---
 
 # 0016. The account menu is a `<details>`, and a status is a POST
+
+> **Amended by ADR 0031 (2026-10-08).** Profile pictures are back for children, so a family's
+> `<summary>` shows its child's picture where there is one, through `avatar()` (0031 §1). Staff have
+> no picture and keep their initials, as the 0026 note below says; so does a family whose child has
+> none. Everything else stands.
+>
+> *Owner, 2026-10-08:* staff have pictures too (0031's note at the top), so "Staff have no picture
+> and keep their initials" no longer holds: a team member's `<summary>` shows their own picture
+> where there is one, through the same `avatar()`, and their initials otherwise.
+
+> **Superseded in part by ADR 0026 (2026-10-07).** Profile pictures are gone, so the `<summary>` shows
+> the person's initials, name and role. The owner gave their word on 0026's † the same day ("Remove
+> all"), so the status block, `presence_save`, the dot and 0022's emoji picker go too, with the
+> `structure`, `mobile-tester` and `TESTING.md` items about the status; the panel is „Mein Konto" and
+> „Abmelden" for everybody. The `<details>` itself, „Mein Konto", „Abmelden" and their rules stand.
+
+> **Amended by ADR 0022 (2026-10-02).** Everybody's menu shows their own dot and an emoji picker:
+> one form posting `status_emoji_save`, a button per emoji and „Keins", the current one marked and
+> not a button. A family's panel is „Mein Konto", the emoji and „Abmelden". The status block stays
+> staff only and loses its line about „Als offline anzeigen". Neither shows while viewing as
+> somebody else. Everything else below stands.
 
 > **Updated 2026-09-29.** The owner has answered the question this record left to ADR 0015:
 > the status block and the dot are for staff only. A family's menu holds „Mein Konto" and

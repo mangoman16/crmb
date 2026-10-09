@@ -17,7 +17,7 @@ $everyday=array_diff_key($specs,$advanced);
 $registryField=function(string $key,array $spec): void {
     $value=setting($key); $label=setting_label($spec); $hint=setting_hint($spec); $name='set_'.$key;
     switch($spec['kind']):
-        case 'bool': echo '<div class="field">';check_field($name,$label,(bool)$value);if($hint)echo '<small>'.e($hint).'</small>';echo '</div>';break;
+        case 'bool': echo '<div class="field">';check_field($name,$label,(bool)$value,'',false,true);if($hint)echo '<small>'.e($hint).'</small>';echo '</div>';break;
         case 'int': input($name,$label,(string)(int)$value,'number',false,$hint);break;
         case 'longtext': echo '<div class="full">';input($name,$label,(string)$value,'textarea',false,$hint);echo '</div>';break;
         case 'list': input($name,$label,implode("\n",(array)$value),'textarea',false,$hint?:t('Ein Eintrag pro Zeile.','One item per line.'));break;
@@ -88,11 +88,6 @@ if(!$specs):?><p class="muted"><?=e(t('Für diesen Bereich gibt es keine Vorgabe
     <details class="advanced-settings" id="<?=e($registryCard?'advanced-'.$registryCard['id']:'advanced')?>" <?=($_GET['open']??'')==='advanced'?'open':''?>><summary><?=e(t('Erweitert','Advanced'))?></summary>
         <p class="muted"><?=e(t('Selten gebraucht. Die Vorgaben passen für die meisten Portale.','Rarely needed. The defaults suit most portals.'))?></p>
         <div class="grid two"><?php foreach($advanced as $key=>$spec)$registryField($key,$spec); ?></div>
-        <?php /* Custom fields are a system matter, so only the System tab's
-                 block leads there - not every group's that has an „Erweitert". */
-        if(current_page()==='settings' && $registryGroup==='system'): ?>
-        <p class="advanced-link"><a href="<?=e(url('settings',['tab'=>'fields']))?>"><?=e(t('Eigene Felder für Schüler','Custom fields for students'))?></a></p>
-        <?php endif ?>
     </details>
     <?php endif ?>
     <?php submit_button(); ?></form>

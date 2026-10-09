@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Install or update the portal from Git, and bring the database with it.
 #
-#   bin/update.sh                     update the checkout this script lives in
+#   bin/update.sh                     update the checkout this script lives in, from its origin
 #   bin/update.sh --ref v0.6.0        update and pin to a tag
 #   bin/update.sh --clone /var/www/crm    first install into an empty directory
+#   bin/update.sh --clone /var/www/crm --repo URL    the same, from another copy of the repository
 #   bin/update.sh --check             say what would happen, change nothing
 #
 # The portal can also update itself from a file upload - see UPDATING.md. This
@@ -16,7 +17,7 @@
 # would. A second implementation is how the two start protecting her differently.
 set -euo pipefail
 
-REPO_URL="https://github.com/mangoman16/crmb"
+REPO_URL=""
 REF=""
 TARGET=""
 CLONE=0
@@ -26,18 +27,31 @@ RUN_COMPOSER=1
 die() { printf '\n%s\n' "$*" >&2; exit 1; }
 say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
+# An address as it is shown: without a user name or token written into it,
+# since what this prints can end up in a cron job's mail. Up to the last '@'
+# before the path, as a password may hold a raw '@' of its own.
+shown_url() { printf '%s' "$1" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@#\1#'; }
 
 while [ $# -gt 0 ]; do
+    # A value that starts with '-' is the next option, not this one's: with the
+    # tag forgotten, "--ref --check" took --check as the tag, skipped the dry run
+    # and handed it to git checkout, which read it as an option of its own.
     case "$1" in
-        --clone)       CLONE=1; TARGET="${2:-}"; [ -n "$TARGET" ] || die "--clone needs a directory."; shift 2 ;;
-        --ref)         REF="${2:-}"; [ -n "$REF" ] || die "--ref needs a tag or branch."; shift 2 ;;
-        --repo)        REPO_URL="${2:-}"; [ -n "$REPO_URL" ] || die "--repo needs a URL."; shift 2 ;;
+        --clone)       CLONE=1; TARGET="${2:-}"; case $TARGET in ''|-*) die "--clone needs a directory.";; esac; shift 2 ;;
+        --ref)         REF="${2:-}"; case $REF in ''|-*) die "--ref needs a tag or branch.";; esac; shift 2 ;;
+        --repo)        REPO_URL="${2:-}"; case $REPO_URL in ''|-*) die "--repo needs a URL.";; esac; shift 2 ;;
         --check)       CHECK=1; shift ;;
         --no-composer) RUN_COMPOSER=0; shift ;;
-        -h|--help)     sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        # The comment at the top, up to the first line of code. A fixed range of
+        # lines printed the code after it as well.
+        -h|--help)     awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit 0 ;;
         *)             die "Unknown option: $1. Try --help." ;;
     esac
 done
+# An update fetches from the checkout's own origin, where --repo would change
+# nothing but the line on the screen: refused rather than ignored.
+[ -z "$REPO_URL" ] || [ "$CLONE" -eq 1 ] \
+    || die "--repo goes with --clone. An update fetches from this checkout's own origin; to change that: git remote set-url origin <url>"
 
 command -v git >/dev/null || die "git is not installed."
 command -v php >/dev/null || die "php is not installed."
@@ -49,9 +63,13 @@ if [ "$CLONE" -eq 1 ]; then
     if [ -e "$TARGET" ] && [ -n "$(ls -A "$TARGET" 2>/dev/null || true)" ]; then
         die "$TARGET exists and is not empty. To update an existing checkout, run bin/update.sh inside it."
     fi
-    step "Cloning $REPO_URL into $TARGET"
+    # A first install has no origin yet, so it comes from the portal's home
+    # unless --repo names another copy, a club's own for instance. The clone
+    # keeps that address as its origin, which every later update fetches.
+    REPO_URL="${REPO_URL:-https://github.com/mangoman16/crmb}"
+    step "Cloning $(shown_url "$REPO_URL") into $TARGET"
     [ "$CHECK" -eq 1 ] && { say "would clone; stopping because of --check"; exit 0; }
-    git clone ${REF:+--branch "$REF"} "$REPO_URL" "$TARGET"
+    git clone ${REF:+--branch "$REF"} -- "$REPO_URL" "$TARGET"
     ROOT="$(cd "$TARGET" && pwd)"
 else
     ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -76,7 +94,12 @@ if [ "$CLONE" -eq 0 ]; then
         die "There are uncommitted changes in $ROOT. Commit, stash or revert them first; this script will not overwrite them."
     fi
 
-    step "Fetching $REPO_URL"
+    # The checkout's own origin, which on another club's server is that club's
+    # repository rather than ours: the line names what is fetched, as git has it.
+    # git config rather than git remote get-url, which needs git 2.7.
+    ORIGIN_URL="$(git config --get remote.origin.url)" \
+        || die "This checkout has no remote called origin to fetch from. Add one with: git remote add origin <url>"
+    step "Fetching from origin, $(shown_url "$ORIGIN_URL")"
     git fetch --tags --prune origin
 
     if [ -n "$REF" ]; then
@@ -118,7 +141,15 @@ if [ "$RUN_COMPOSER" -eq 1 ] && [ -f composer.json ]; then
             say "Would run composer install."
         else
             step "Installing the dependencies"
-            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+            # gd is the one requirement waived here. composer.json requires ext-gd
+            # for the machine that builds the release, but the portal installs and
+            # runs without it, with no pictures (ADR 0031, the amendment "gd is
+            # optional"). Composer checks every requirement against this host's PHP
+            # before it installs anything, so without the flag a host without gd
+            # would stop here, where setup.php would have installed. Only gd: a
+            # host missing anything else the portal needs stops, as setup.php does.
+            # The flag takes one name since Composer 2.0.
+            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --ignore-platform-req=ext-gd
         fi
     elif [ ! -d vendor ]; then
         say ""

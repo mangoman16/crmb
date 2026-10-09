@@ -72,8 +72,10 @@ function setup_steps(): array {
     // --- families -------------------------------------------------------------
     $invited = (bool)scalar("SELECT COUNT(*) FROM students s JOIN accounts a ON a.id=s.account_id"
         ." WHERE s.is_demo=0 AND a.is_demo=0 AND a.state IN ('invited','active')");
-    $uninvited = (int)(scalar("SELECT id FROM students WHERE is_demo=0 AND status<>'ended' AND account_id IS NULL"
-        .' ORDER BY first_name, last_name, id LIMIT 1') ?: 0);
+    // A child whose login is still a placeholder signs in with nothing yet
+    // (ADR 0023 §3): that is who the step leads to.
+    $uninvited = (int)(scalar("SELECT s.id FROM students s WHERE s.is_demo=0 AND s.status<>'ended' AND ".student_without_sign_in_sql()
+        .' ORDER BY s.first_name, s.last_name, s.id LIMIT 1') ?: 0);
 
     $steps = [
         ['key' => 'organisation',
@@ -104,8 +106,8 @@ function setup_steps(): array {
          'what' => t('Kinder eintragen', 'Enter the children'),
          'why'  => t('Jedes Kind in einem Kurs mit Preis, damit seine Beiträge entstehen.', 'Each child in a course with a price, so their charges are created.'),
          // Straight to the child whose course has no price, or who has no
-         // course; with nobody yet, to the form for the first one.
-         'page' => $unpriced || $courseless ? 'student' : ($children ? 'students' : 'student'),
+         // course; with nobody yet, to the wizard for the first one (ADR 0023 §9).
+         'page' => $unpriced || $courseless ? 'student' : ($children ? 'students' : 'student_new'),
          'params' => $unpriced ? ['id' => $unpriced, 'tab' => 'classes'] : ($courseless ? ['id' => $courseless, 'tab' => 'classes'] : []),
          'anchor' => $unpriced ? 'courses' : ($courseless ? 'add-course' : null),
          'done' => $children > 0 && $unpriced === null && $courseless === 0,
@@ -113,7 +115,9 @@ function setup_steps(): array {
         ['key' => 'billing',
          'what' => t('Beiträge', 'Charges'),
          'why'  => t('Monatsbeiträge automatisch anlegen lassen oder einmal selbst anlegen.', 'Have the monthly charges created automatically, or create them once yourself.'),
-         'page' => 'payments', 'params' => [],
+         // To the switch inside „Monatsbeiträge“, which the visit from here
+         // opens, rather than the top of Geld above the list.
+         'page' => 'payments', 'params' => [], 'anchor' => 'auto-charges',
          'done' => (bool)setting('auto_billing')
              || (bool)scalar('SELECT COUNT(*) FROM charges c JOIN students s ON s.id=c.student_id WHERE s.is_demo=0 AND c.cancelled=0'),
          'blocked_by' => []],

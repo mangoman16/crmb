@@ -10,11 +10,10 @@
  * behind, not a description of it.
  *
  * send() records exactly what a browser posts, token and request id included,
- * and then runs the action through act() rather than handle_post(). On SQLite a
- * write locks the whole file: handle_post() claims the request id on the main
- * connection, and a throttle inside feedback_send or email_change then waits on
- * the counter connection for a lock that is never released. MariaDB locks rows,
- * so the portal is fine; the harness is not, and the trail is the same either way.
+ * and then runs the action through act() rather than handle_post(): the trail
+ * is written before either runs, so it is the same through both, and what
+ * handle_post() adds - the token, the throttles, the request-id claim - is not
+ * what this suite is about.
  */
 $admin  = make_account(['role'=>'admin', 'name'=>'Chefin']);
 $family = make_account(['role'=>'student', 'name'=>'Familie Hofer']);
@@ -97,12 +96,12 @@ is_same(8, count($steps), 'the last eight are kept');
 is_same('/index.php?page=student&id=4', $steps[0]['url'], 'the oldest first');
 is_same('/index.php?page=student&id=11', $steps[7]['url'], 'the newest last');
 
-case_('Not recorded: pictures, the icon, the manifest, the club’s colours and logo');
-/* An avatar loads through download on every page, and so do the club's
-   stylesheet and logo once she has set them; recorded, they would push the
-   steps that matter out of the trail. */
+case_('Not recorded: a chat’s photos, the icon, the manifest, the club’s colours and logo');
+/* A chat's photos load through download, one request each, and every page
+   fetches the club's stylesheet and logo once she has set them; recorded, they
+   would push the steps that matter out of the trail. */
 $before = recent_steps();
-visit('download', ['what'=>'avatar', 'kind'=>'account', 'id'=>1]);
+visit('download', ['what'=>'attachment', 'id'=>1]);
 visit('icon', ['v'=>'abcdef123456']);
 visit('manifest');
 visit('brand', ['v'=>'abcdef123456']);
@@ -119,19 +118,19 @@ ok(!array_key_exists('query', $context), 'no query string, which was empty in ev
 ok(!array_key_exists('referer', $context), 'and no Referer, which the portal never lets a browser send');
 
 case_('Not recorded: anybody not signed in');
-/* Which leaves out the login form and the username typed into it, and every
+/* Which leaves out the login form and the address typed into it, and every
    token link opened by nobody in particular. */
 act('logout', []);
 is_same(null, current_user(), 'nobody is signed in');
 $familyRow = one('SELECT * FROM accounts WHERE id=?', [$family]);
 visit('login');
-send('login', ['username'=>$familyRow['username'], 'password'=>'Test-Only-Password-2026'] + on_page('login'));
+send('login', ['login'=>$familyRow['email'], 'password'=>'Test-Only-Password-2026'] + on_page('login'));
 is_same($family, (int)(current_user()['id'] ?? 0), 'the sign-in worked');
 /* Read from the session itself, not through recent_steps(): a step recorded
    for nobody would be hidden by the change of account at sign-in, and the
-   password would be masked anyway - the username is what would give it away. */
+   password would be masked anyway - the address is what would give it away. */
 is_same([], $_SESSION['steps'] ?? [], 'neither the page nor the form was written down');
-ok(!str_contains(serialize($_SESSION), $familyRow['username']), 'so the username typed into it is nowhere in the session');
+ok(!str_contains(serialize($_SESSION), $familyRow['email']), 'so the address typed into it is nowhere in the session');
 ok(!str_contains(serialize($_SESSION), 'Test-Only-Password-2026'), 'and nor is the password');
 
 case_('The trail belongs to one account');
@@ -177,16 +176,16 @@ is_same('***', report_input([str_repeat('x', 80).'password' => 'geheim'])[mb_sub
 
 case_('An attached file is its size, its type and how it arrived - never its name');
 send('feedback_send', ['message'=>'Mit Bild', 'page'=>'dashboard'] + on_page('dashboard'));   // not recorded, as above
-send('avatar_save', ['kind'=>'account', 'id'=>(string)$family] + on_page('profile'),
-     ['avatar' => ['name'=>'Urlaub-Lena-Hofer.png', 'type'=>'image/png', 'tmp_name'=>'/tmp/phpA1B2C3', 'error'=>UPLOAD_ERR_OK, 'size'=>48213],
+send('proof_upload', ['student_id'=>'0'] + on_page('profile'),
+     ['proof' => ['name'=>'Beleg-Lena-Hofer.png', 'type'=>'image/png', 'tmp_name'=>'/tmp/phpA1B2C3', 'error'=>UPLOAD_ERR_OK, 'size'=>48213],
       'extra'  => ['name'=>['a.pdf', 'b.pdf'], 'type'=>['application/pdf', 'application/pdf'], 'tmp_name'=>['/tmp/x', '/tmp/y'],
                    'error'=>[UPLOAD_ERR_OK, UPLOAD_ERR_INI_SIZE], 'size'=>[100, 0]]]);
 $step = last_step();
-is_same('avatar_save', $step['action'], 'the step is the upload');
-is_same(['bytes'=>48213, 'type'=>'image/png', 'error'=>UPLOAD_ERR_OK], $step['files']['avatar'] ?? null, 'size, declared type and error');
+is_same('proof_upload', $step['action'], 'the step is the upload');
+is_same(['bytes'=>48213, 'type'=>'image/png', 'error'=>UPLOAD_ERR_OK], $step['files']['proof'] ?? null, 'size, declared type and error');
 is_same(UPLOAD_ERR_INI_SIZE, $step['files']['extra'][1]['error'] ?? null, 'a list of files is kept per file, with the one the server refused');
 $trail = serialize($_SESSION['steps']);
-ok(!str_contains($trail, 'Urlaub-Lena-Hofer'), 'the name somebody gave the file is not kept');
+ok(!str_contains($trail, 'Beleg-Lena-Hofer'), 'the name somebody gave the file is not kept');
 ok(!str_contains($trail, 'phpA1B2C3'), 'nor where the server put it');
 
 // ---------------------------------------------------------------------------
@@ -337,6 +336,7 @@ act('feedback_state', ['id'=>(string)$doneTwice, 'state'=>'done']);
 $still = fn(int $id) => (int)scalar('SELECT COUNT(*) FROM feedback WHERE id=?', [$id]) === 1;
 ok($still($old) && is_file(upload_dir('avatar').'/'.$oldShot), 'before: the 31-day-old report and its screenshot are there');
 
+schema_made_current();
 prune_expired();
 ok(!$still($old), 'a report done 31 days ago is gone');
 ok(!is_file(upload_dir('avatar').'/'.$oldShot), 'and so is its screenshot');

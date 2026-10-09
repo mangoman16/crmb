@@ -1,0 +1,29 @@
+-- A team member has a picture: trainers and administrators can be shown by a
+-- face, as the children are
+-- (docs/decisions/0031-profile-pictures-come-back-staff-see-every-face-a-course-once-the-family-agrees.md).
+--
+-- The team's pictures, which ADR 0031 first left out, were asked for after all
+-- on 2026-10-08, and the record had kept the way open: one column,
+-- accounts.picture_name. A team member has no student row; the login is what
+-- describes them, so their picture is on the login. A child's picture stays on
+-- the student (040), never on a login, which can be replaced or outlive the
+-- child, so a family's login keeps ''.
+--
+-- picture_name is the stored name of the picture. '' is no picture, as in 040
+-- and for every stored name the portal keeps, and upload_references() asks for
+-- <>''. 40 characters: a stored name is 32 hex digits and .jpg, and
+-- STORED_UPLOAD_NAME allows 38 at most.
+--
+-- Every login written by the previous version reads '': no picture, which is
+-- what was true of every one of them. An insert that does not name the column -
+-- an invitation, a placeholder, the first administrator or an example login, as
+-- the previous version writes each - still writes a login, with ''. No row is
+-- written or removed, so the update's guard, which counts the rows of accounts,
+-- has nothing to refuse, and no step after the files is needed.
+--
+-- One statement, because it cannot run twice: MySQL 8.0 has no ADD COLUMN IF
+-- NOT EXISTS. Run a second time after it finished, as the next page view would
+-- if the update stopped before the ledger recorded it, the engine refuses it
+-- because the column is there already (1060, SQLSTATE 42S21, on MariaDB
+-- 10.11.14), and nothing changes, as with 031 and 040. Not run on MySQL 8.0.
+ALTER TABLE accounts ADD COLUMN picture_name VARCHAR(40) NOT NULL DEFAULT '' AFTER name;

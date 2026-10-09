@@ -13,7 +13,7 @@ declare(strict_types=1);
  * keeping only one of them. "Nobody's next invoice changes" was a claim with
  * nothing behind it.
  *
- * Three pauses. Before 015, a portal as it stood with prices on the tariff and
+ * Thirteen pauses. Before 015, a portal as it stood with prices on the tariff and
  * addresses on the contacts. Before 019, a portal where one login holds several
  * brothers and sisters and a child's address has drifted from its login's. 019
  * is then applied three ways: straight through; stopped after each of its
@@ -21,84 +21,136 @@ declare(strict_types=1);
  * page view does after an interrupted update, each on a fresh copy; and once
  * more after it has finished. Before 020, logins with news by email both off
  * and on, which 020 and 021 must leave as they are; 020 is stopped and started
- * again the same way, and 021 run twice. Before 022, logins whose names make
- * the same username, a staff login with a one-word name, a name with umlauts and
- * a hyphen, a login whose student is gone, one still at the invitation and one
- * whose address has a quoted local part, which 022 and 023 must keep as they were
- * but for a unique placeholder username; 023 is stopped and started again the
- * same way, and its UPDATE run twice. After 023, a second login on an address
- * that is already a login's, which the database must still refuse.
+ * again the same way, and 021 run twice. Before 022, logins as the version
+ * before usernames wrote them - a staff login, a name with umlauts and a hyphen,
+ * a login whose student is gone, one still at the invitation and one whose
+ * address has a quoted local part - which 022, 023 and 024 together must bring
+ * through with every value they had; 023 is stopped and started again the same
+ * way, and its UPDATE run twice. Before 024, the same portal with the usernames
+ * the previous version gave it and logins that version wrote itself, which 024
+ * must keep with every value but the username; afterwards two logins made
+ * without one must both be taken, a second on an address that is already a
+ * login's must still be refused, and the runner's step after the files must
+ * change no login. Before 025, on that same portal, the chats the previous
+ * version wrote - a trainer's chat with a student, one between two students and
+ * a desk thread the trainer answered - which 025 must sort into the right kind
+ * and owner and lose nothing of; 025 is stopped and started again the same way,
+ * and its UPDATE run twice. Before 028, on that portal with 025 to 027 applied,
+ * the people ADR 0023 §4 is about - students without a login, two brothers on one
+ * parent's address, an example student, a student whose invitation is not yet
+ * taken up, a login whose student is gone - and enrolments on terms of their own,
+ * one of them a past membership. 028 to 031 are applied one at a time, each run
+ * a second time straight after; 029 is also stopped after each statement and
+ * started again on a new connection, and run on a key with another name. Then
+ * the runner's step, stopped part way after each placeholder but the last, then
+ * through, then again; and what the database refuses afterwards. Before 032, on
+ * a portal 028 to 031 were applied to, custom fields with values, saved views,
+ * templates and the change-log lines that name them, which 032 and 033 must drop
+ * and touch nothing else; each file is run twice, and stopped after its first
+ * statement and started again. Before 034, on a portal 032 and 033 were applied
+ * to, when logins were online, the status, emoji and picture each chose,
+ * children's pictures and the requests families sent one another, beside a
+ * screenshot and a chat's photo, voice note and file, which 034 to 037 must drop
+ * and touch nothing else of; each file is run twice. Before 038, on a portal 032
+ * to 037 were applied to, levels and age bands as a portal keeps them, children
+ * in every level, two of them pinned to a band, and change-log lines that name
+ * them, written into the portal at the pause before 032: 038 must take the pins
+ * and touch nothing else, and is run twice. Before 039, on a portal 032 to 038
+ * were applied to, three logins that sign in by a username - invited, set up, and
+ * suspended - the set-up one in a chat with the trainer, in a course group, with
+ * a notice in its bell and its read marks, beside the address logins, a
+ * placeholder and the staff, written into the portal at the pause before 032:
+ * 039 must turn the three into placeholders, take their places in chats, their
+ * notices and their read marks, and touch nothing else; it is run twice, and
+ * stopped after each statement but the last and started again. Before 040, on a
+ * portal 032 to 039 were applied to, children of every kind with their logins -
+ * active, on trial, paused, ended and an example; families set up by address,
+ * invited, suspended, placeholders, those 039 made among them, and children
+ * without a login - and one with every column filled: 040 must give every child
+ * '' and 0 and touch nothing else, a child written the way the previous version
+ * writes one must still be taken, and it is run twice. Before 041, on a portal
+ * 032 to 040 were applied to, logins of every kind - beside those families, an
+ * administrator with every column filled, a trainer set up, one invited, one
+ * suspended, and an example trainer: 041 must give every login '' and touch
+ * nothing else, a login written by each of the previous version's four inserts
+ * must still be taken, and it is run twice. Then the update this release
+ * brings, through the application's own runner on a release of this run's own,
+ * with the pictures' files on disk, which its step after the files must delete
+ * and nothing beside them; and the mistakes ADR 0027 is about, one file at a
+ * time, one page view after another: a file that drops a guarded table, refused
+ * on every page view; the stamp and the settings forged as a pass would write
+ * them; a newer upload on top; the copy imported with the new files still in
+ * place, then broken off at contacts, then whole; a release that takes the
+ * table off the list; a file that empties the table, one that loses a row and
+ * stops, one that stops every time, one that stops in an update run with
+ * skip-backup; and the record of the unfinished update unwritable, then
+ * unreadable. Then this release's update stopped after each of 033 to 040 in
+ * turn and started again by the next page view, which must end as the update
+ * that ran through; and last, the restores ADR 0029 keeps the portal closed for
+ * until the import is done.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
  * what it found as JSON; tests/suites/migrations.php does the asserting, so the
  * failures read like every other failure in the run.
  *
- *   php tests/migration-data.php [<sqlite-file>]     on a SQLite file, rebuilt for each run
- *   php tests/migration-data.php --mysql=<config>    on the MySQL or MariaDB database
- *                                                    that config names
+ *   php tests/migration-data.php <config>     on the database that config names
  *
- * The second is the one that proves the dialect. The database must be empty and
- * its name must end in _test, because every table in it is dropped again and
- * again; empty is the one thing that proves it is not a database somebody uses.
+ * tests/mariadb-local.sh makes that database and passes its config to the suite
+ * as CRM_MIGRATION_CONFIG. It must be empty and its name must end in _test,
+ * because every table in it is dropped again and again; empty is the one thing
+ * that proves it is not a database somebody uses.
  */
 
 require_once __DIR__ . '/harness.php';
-// sqlite_translate() splits statements with the application's own split_sql(),
-// and connect() is how the MySQL target is reached. This process has no
-// database to boot against, so the files are taken on their own.
+// The statements are split with the application's own split_sql(), and
+// connect() is how the database is reached, with the session set up the way the
+// runner's is: UTC, real prepares. This process has no database to boot
+// against, so the files are taken on their own.
 require_once APP_ROOT . '/app/core.php';
 // schema_guarded_tables(): what an update must not lose a row of, read from the
 // runner rather than listed a second time here.
 require_once APP_ROOT . '/app/schema.php';
-// The runner's step after the files (database/defaults.php): the usernames and
-// the sign-in comparison hash, with what those need to write and to read a
+// ... and the copies' marker it asks before anything is written or swept
+// (import_unfinished(), ADR 0029).
+require_once APP_ROOT . '/app/backup.php';
+// The runner's step after the files (database/defaults.php): the sign-in
+// comparison hash among it, with what that needs to write and to read a
 // setting.
 require_once APP_ROOT . '/app/tx.php';
 require_once APP_ROOT . '/app/defaults.php';
 require_once APP_ROOT . '/app/auth.php';
+// ... and course_groups_fill(), which gives courses from before 025 their group.
+require_once APP_ROOT . '/app/messaging.php';
+// ... and prune_uploads(), with which it deletes the pictures 035 and 036 leave
+// behind on disk.
+require_once APP_ROOT . '/app/uploads.php';
 
-$mysql = null;
-$sqliteFile = null;
-foreach (array_slice($argv, 1) as $arg) {
-    if (str_starts_with($arg, '--mysql=')) $mysql = substr($arg, 8);
-    else $sqliteFile ??= $arg;
+$target = (string)($argv[1] ?? '');
+if ($target === '' || !is_file($target)) {
+    fwrite(STDERR, "Usage: php tests/migration-data.php <config of an empty *_test database>\n");
+    exit(2);
 }
-$sqliteFile ??= sys_get_temp_dir() . '/crm-migration-' . getmypid() . '-' . bin2hex(random_bytes(4)) . '.sqlite';
-
-if ($mysql !== null) {
-    $GLOBALS['config'] = is_file($mysql) ? require $mysql : [];
-    $name = (string)(config('db')['database'] ?? '');
-    if (!str_ends_with($name, '_test')) {
-        fwrite(STDERR, "Refusing: the database in $mysql must have a name ending in _test.\n");
-        exit(2);
-    }
-    $tables = (int)connect()->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn();
-    if ($tables > 0) {
-        fwrite(STDERR, "Refusing: $name is not empty ($tables tables), and this drops every table in it. Give it an empty database.\n");
-        exit(2);
-    }
-    // Empty when it started, so everything in it is this run's own - also when
-    // a migration fails half way, which would otherwise leave the next run
-    // refusing a database that is no longer empty.
-    register_shutdown_function(fn() => drop_every_table(connect()));
+$GLOBALS['config'] = require $target;
+$name = (string)(config('db')['database'] ?? '');
+// The harness's own rule: a name that merely ends in _test can still carry a
+// second dbname into the connection string.
+if (!test_database_name_allowed($name)) {
+    fwrite(STDERR, "Refusing: the database in $target must have a name of letters, digits and underscores ending in _test.\n");
+    exit(2);
 }
+$tables = (int)connect()->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn();
+if ($tables > 0) {
+    fwrite(STDERR, "Refusing: $name is not empty ($tables tables), and this drops every table in it. Give it an empty database.\n");
+    exit(2);
+}
+// Empty when it started, so everything in it is this run's own - also when a
+// migration fails half way, which would otherwise leave the next run refusing a
+// database that is no longer empty.
+register_shutdown_function(fn() => drop_every_table(connect()));
 
-/**
- * An empty database to build a portal in, and the connection to it.
- *
- * MySQL through the application's own connect(), so the session is set up the
- * way the runner's is: UTC, real prepares.
- */
+/** An empty database to build a portal in, and a connection of its own to it. */
 function fresh_database(): PDO {
-    global $mysql, $sqliteFile;
-    if ($mysql === null) {
-        @unlink($sqliteFile);
-        $pdo = new TestSqlitePdo('sqlite:' . $sqliteFile, null, null,
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-        $pdo->exec('PRAGMA foreign_keys=OFF');   // the halves are applied out of order for nobody
-        return $pdo;
-    }
     $pdo = connect();
     drop_every_table($pdo);
     return $pdo;
@@ -111,11 +163,23 @@ function drop_every_table(PDO $pdo): void {
     $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
 }
 
-/** The statements of one migration file, in the dialect of the target. */
+/** The statements of one migration file, split as the runner splits them. */
 function migration_statements(string $path): array {
-    global $mysql;
-    $sql = (string)file_get_contents($path);
-    return $mysql === null ? sqlite_translate($sql)['statements'] : split_sql($sql);
+    return split_sql((string)file_get_contents($path));
+}
+
+/**
+ * Put a copy back as INSTALL.md has it done: every table dropped, then the copy
+ * run statement by statement. With $until, the import breaks off at the first
+ * statement of that table, as one that stopped partway would. Not phpMyAdmin;
+ * TESTING.md walks the same with phpMyAdmin.
+ */
+function import_copy(PDO $pdo, string $path, ?string $until = null): void {
+    drop_every_table($pdo);
+    foreach (split_sql((string)file_get_contents($path)) as $statement) {
+        if ($until !== null && str_starts_with($statement, 'DROP TABLE IF EXISTS `' . $until . '`')) break;
+        $pdo->exec($statement);
+    }
 }
 
 /** Run statements, stopping the whole process with the file named if one fails. */
@@ -276,45 +340,41 @@ function build_portal_before_019(): array {
     ]];
 }
 
-/** What 019 is about, read back: every child, every change-log line, every count. */
-function portal_state(PDO $pdo): array {
+/** The rows of every table schema_guarded_tables() names, leaving out any that is not there. */
+function guarded_counts(PDO $pdo): array {
     $counts = [];
     foreach (schema_guarded_tables() as $table) {
         try { $counts[$table] = (int)$pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn(); }
-        catch (PDOException) { /* not created by these migrations */ }
+        catch (PDOException) { /* not created by these migrations, or not there any more */ }
     }
+    return $counts;
+}
+
+/** What 019 is about, read back: every child, every change-log line, every count. */
+function portal_state(PDO $pdo): array {
     return [
         'students' => $pdo->query('SELECT id, first_name, last_name, account_id, email, revision, updated_at FROM students ORDER BY id')->fetchAll(),
         'versions' => $pdo->query('SELECT entity, entity_id, operation, label, before_json, after_json, actor_id, created_at'
             . ' FROM record_versions ORDER BY id')->fetchAll(),
-        'counts' => $counts,
+        'counts' => guarded_counts($pdo),
     ];
 }
 
 /** The index 019 ends with, as the engine describes it. */
 function one_account_index(PDO $pdo): array {
-    global $mysql;
-    if ($mysql !== null) {
-        $rows = $pdo->query("SELECT non_unique AS non_unique, column_name AS name FROM information_schema.statistics"
-            . " WHERE table_schema = DATABASE() AND table_name = 'students' AND index_name = 'student_one_account'"
-            . ' ORDER BY seq_in_index')->fetchAll();
-        return ['exists' => $rows !== [], 'unique' => $rows !== [] && (int)$rows[0]['non_unique'] === 0,
-                'columns' => array_column($rows, 'name')];
-    }
-    foreach ($pdo->query('PRAGMA index_list(students)')->fetchAll() as $index) {
-        if ($index['name'] !== 'student_one_account') continue;
-        return ['exists' => true, 'unique' => (int)$index['unique'] === 1,
-                'columns' => array_column($pdo->query('PRAGMA index_info(student_one_account)')->fetchAll(), 'name')];
-    }
-    return ['exists' => false, 'unique' => false, 'columns' => []];
+    $rows = $pdo->query("SELECT non_unique AS non_unique, column_name AS name FROM information_schema.statistics"
+        . " WHERE table_schema = DATABASE() AND table_name = 'students' AND index_name = 'student_one_account'"
+        . ' ORDER BY seq_in_index')->fetchAll();
+    return ['exists' => $rows !== [], 'unique' => $rows !== [] && (int)$rows[0]['non_unique'] === 0,
+            'columns' => array_column($rows, 'name')];
 }
 
+/** A table's columns, in the order the engine keeps them. */
 function table_columns(PDO $pdo, string $table): array {
-    global $mysql;
-    return $mysql === null
-        ? array_column($pdo->query('PRAGMA table_info(' . $table . ')')->fetchAll(), 'name')
-        : array_column($pdo->query("SELECT column_name AS name FROM information_schema.columns WHERE table_schema = DATABASE()"
-            . " AND table_name = '" . $table . "' ORDER BY ordinal_position")->fetchAll(), 'name');
+    $columns = $pdo->prepare('SELECT column_name AS name FROM information_schema.columns WHERE table_schema = DATABASE()'
+        . ' AND table_name = ? ORDER BY ordinal_position');
+    $columns->execute([$table]);
+    return array_column($columns->fetchAll(), 'name');
 }
 
 /** Each login's news-by-email choice, and its status once 020 has given it one. */
@@ -337,15 +397,8 @@ function new_login(PDO $pdo, string $email): array {
     return $row;
 }
 
-/**
- * The indexes 020 gives online_periods, as MySQL or MariaDB describes them.
- *
- * null on SQLite, whose translation drops an index written inside CREATE TABLE
- * for every table alike; that they exist is a fact about the real engine only.
- */
-function online_period_indexes(PDO $pdo): ?array {
-    global $mysql;
-    if ($mysql === null) return null;
+/** The indexes 020 gives online_periods, as the engine describes them. */
+function online_period_indexes(PDO $pdo): array {
     $indexes = [];
     foreach ($pdo->query("SELECT index_name AS name, column_name AS col FROM information_schema.statistics"
         . " WHERE table_schema = DATABASE() AND table_name = 'online_periods' ORDER BY index_name, seq_in_index")->fetchAll() as $row)
@@ -354,13 +407,12 @@ function online_period_indexes(PDO $pdo): ?array {
 }
 
 /**
- * Logins as the previous version wrote them, for 022 and 023 to give usernames to.
+ * Logins as the version before usernames wrote them, for 022, 023 and 024.
  *
- * The cases ADR 0019 names for the backfill that follows these migrations: two
- * people whose names make the same username, a staff login with a one-word name,
- * a name with umlauts and a hyphen, a student login whose student is gone, and a
- * login still at the invitation. Their addresses are lower-case ASCII, because
- * every address the portal stores has been through email_value().
+ * A staff login, a name with umlauts and a hyphen, a student login whose student
+ * is gone, a login still at the invitation and an address with a quoted local
+ * part. Their addresses are lower-case ASCII, because every address the portal
+ * stores has been through email_value().
  */
 function add_logins_before_022(PDO $pdo): array {
     $earlier = '2025-10-01 08:00:00';
@@ -388,57 +440,42 @@ function add_logins_before_022(PDO $pdo): array {
             'legacy' => $login('Familie Alt', '"familie..alt"@beispiel.test')];
 }
 
-/**
- * A login at "", as 022 leaves every login and 023 leaves none.
- *
- * The runner's step looks for both "" and a '#' placeholder. Without a row at
- * each, a step that stopped looking for one of them would fail nothing. On an
- * address of its own, like every login.
- */
-function add_login_never_named(PDO $pdo): int {
-    return insert_row($pdo, 'accounts', ['name' => 'Familie Leer', 'email' => 'leer@beispiel.test', 'username' => '',
-        'role' => 'student', 'state' => 'active', 'verified_at' => '2025-10-03 08:00:00', 'created_at' => '2025-10-03 08:00:00']);
-}
-
-/** Every login, every column, in id order: what 022 and 023 must not change but for username. */
+/** Every login, every column, in id order. */
 function every_login(PDO $pdo): array {
     return $pdo->query('SELECT * FROM accounts ORDER BY id')->fetchAll();
 }
 
 /**
- * The unique indexes on accounts, each as the list of its columns, keyed by name.
+ * Every index on a table but the primary key, keyed by name: whether it is
+ * unique, and its columns.
  *
- * SQLite names the index behind an inline UNIQUE itself (sqlite_autoindex_…),
- * so what is compared across engines is the columns; the name is kept, because
- * on MariaDB it shows the address is still guarded by the index 001 made,
- * which the engine called email after its column.
+ * The name is kept as well as the columns: on accounts it shows the address is
+ * still guarded by the index 001 made, which the engine called email after its
+ * column.
  */
-function login_unique_indexes(PDO $pdo): array {
-    global $mysql;
+function table_indexes(PDO $pdo, string $table): array {
     $indexes = [];
-    if ($mysql !== null) {
-        foreach ($pdo->query("SELECT index_name AS name, column_name AS col FROM information_schema.statistics"
-            . " WHERE table_schema = DATABASE() AND table_name = 'accounts' AND non_unique = 0 AND index_name <> 'PRIMARY'"
-            . ' ORDER BY index_name, seq_in_index')->fetchAll() as $row)
-            $indexes[$row['name']][] = $row['col'];
-    } else {
-        foreach ($pdo->query('PRAGMA index_list(accounts)')->fetchAll() as $index)
-            if ((int)$index['unique'] === 1 && $index['origin'] !== 'pk')
-                $indexes[$index['name']] = array_column($pdo->query('PRAGMA index_info("' . $index['name'] . '")')->fetchAll(), 'name');
+    $query = $pdo->prepare("SELECT index_name AS name, non_unique AS non_unique, column_name AS col FROM information_schema.statistics"
+        . " WHERE table_schema = DATABASE() AND table_name = ? AND index_name <> 'PRIMARY'"
+        . ' ORDER BY index_name, seq_in_index');
+    $query->execute([$table]);
+    foreach ($query->fetchAll() as $row) {
+        $indexes[$row['name']]['unique'] = (int)$row['non_unique'] === 0;
+        $indexes[$row['name']]['columns'][] = $row['col'];
     }
     ksort($indexes);
     return $indexes;
 }
 
 /**
- * What the database says to a write, as its SQLSTATE, or null if it took it.
+ * What the database says to a login written with these values, as its
+ * SQLSTATE, or null if it took it.
  *
- * Each write is undone again, so the next one meets the logins as 023 left them.
+ * The write is undone again, so the next one meets the logins as they were.
  */
-function refusal(PDO $pdo, string $name, string $email, string $username): ?string {
+function refusal(PDO $pdo, array $row): ?string {
     try {
-        $id = insert_row($pdo, 'accounts', ['name' => $name, 'email' => $email, 'username' => $username,
-            'role' => 'student', 'created_at' => gmdate('Y-m-d H:i:s')]);
+        $id = insert_row($pdo, 'accounts', $row + ['role' => 'student', 'created_at' => gmdate('Y-m-d H:i:s')]);
     } catch (PDOException $e) {
         return (string)$e->getCode();
     }
@@ -447,25 +484,695 @@ function refusal(PDO $pdo, string $name, string $email, string $username): ?stri
 }
 
 /**
- * 001 to 021 with the logins above, then 022.
+ * Two logins written the way the portal writes one after 024, naming no
+ * username, each on an address of its own: what the database said to each.
  *
- * Also returns every login as it was before 022, which is what 022 and 023 are
- * held to afterwards.
+ * Both are undone again. With a username column still unique at '', the second
+ * is the one refused - which is what shows this looks at the right thing.
  */
-function build_portal_before_023(): array {
+function two_logins_without_a_username(PDO $pdo): array {
+    [$said, $made] = [[], []];
+    foreach (['erste.neue@beispiel.test', 'zweite.neue@beispiel.test'] as $email) {
+        try {
+            $made[] = insert_row($pdo, 'accounts', ['name' => '', 'email' => $email, 'role' => 'student', 'created_at' => gmdate('Y-m-d H:i:s')]);
+            $said[] = null;
+        } catch (PDOException $e) {
+            $said[] = (string)$e->getCode();
+        }
+    }
+    foreach ($made as $id) $pdo->exec('DELETE FROM accounts WHERE id = ' . $id);
+    return $said;
+}
+
+/** 001 to 021 with a portal's data, and the logins above written in. */
+function build_portal_before_022(): array {
     [$pdo] = build_portal_before_019();
     apply_migrations($pdo, '019', '021');
-    $logins = add_logins_before_022($pdo);
-    $before = ['accounts' => every_login($pdo), 'counts' => portal_state($pdo)['counts'], 'unique' => login_unique_indexes($pdo)];
-    apply_migrations($pdo, '022', '022');
-    // A login that already has a username when 023 runs. An update cannot make
-    // one - it applies 022 and 023 before any code writes a username - so it is
-    // here only as the row an UPDATE that forgot its WHERE would overwrite:
-    // "touched only the rows still at ''" is then checked against a row it must
-    // leave alone, not only against rows it was meant to change.
-    $logins['named'] = insert_row($pdo, 'accounts', ['name' => 'Schon Benannt', 'email' => 'benannt@beispiel.test',
-        'username' => 'schon.benannt', 'role' => 'student', 'created_at' => '2025-10-02 08:00:00']);
-    return [$pdo, $logins, $before];
+    return [$pdo, add_logins_before_022($pdo)];
+}
+
+/**
+ * The same portal as the previous version left it, for 024 to run on.
+ *
+ * 022 and 023 applied, and every login given a username the way that version's
+ * update gave them - written here as data, since the code that made them is
+ * gone. The cases above get the names its rule made of theirs; the logins from
+ * before 015 and 019 one after their id, which is as unique and is all 024 can
+ * tell apart. One is left at its '#' placeholder, as an update to that version
+ * that stopped in its runner step would have left it. Beside them, logins that
+ * version wrote itself, named as they were made: an invitation never taken up,
+ * with its link, and a suspended trainer. And a change-log line about a username
+ * change, which the history page keeps reading under its old label.
+ */
+function build_portal_before_024(): array {
+    [$pdo, $logins] = build_portal_before_022();
+    apply_migrations($pdo, '022', '023');
+    $name = $pdo->prepare('UPDATE accounts SET username = ? WHERE id = ?');
+    foreach (['mueller' => 'lena.mueller', 'mueller2' => 'lena.mueller2', 'gross' => 'hans-juergen.gross-oezdemir',
+              'staff' => 'trainerin', 'invited' => 'eva.hofer', 'legacy' => 'familie.alt'] as $key => $username)
+        $name->execute([$username, $logins[$key]]);
+    $pdo->prepare("UPDATE accounts SET username = CONCAT('login.', id) WHERE username LIKE '#%' AND id <> ?")->execute([$logins['orphan']]);
+    $later = '2026-09-15 08:00:00';
+    $logins['invitation'] = insert_row($pdo, 'accounts', ['name' => 'Jana Berger', 'email' => 'jana@beispiel.test',
+        'username' => 'jana.berger', 'role' => 'student', 'state' => 'invited', 'locale' => 'en', 'created_at' => $later]);
+    insert_row($pdo, 'auth_tokens', ['account_id' => $logins['invitation'], 'token_hash' => hash('sha256', 'einladung-jana'),
+        'purpose' => 'invite', 'expires_at' => '2026-09-17 08:00:00', 'created_at' => $later]);
+    $logins['suspended'] = insert_row($pdo, 'accounts', ['name' => 'Co-Trainer', 'email' => 'co@beispiel.test',
+        'username' => 'co-trainer', 'role' => 'trainer', 'state' => 'suspended',
+        'password_hash' => '$2y$10$abcdefghijklmnopqrstuuOLDHASHkeptbytheupdateYYYYYYYYYY', 'verified_at' => $later, 'created_at' => $later]);
+    insert_row($pdo, 'record_versions', ['entity' => 'accounts', 'entity_id' => $logins['mueller'], 'operation' => 'update',
+        'label' => 'Familie Müller', 'before_json' => json_encode(['username' => 'lena.m']),
+        'after_json' => json_encode(['username' => 'lena.mueller']), 'actor_id' => $logins['mueller'], 'created_at' => $later]);
+    return [$pdo, $logins];
+}
+
+/**
+ * Chats as the version before 025 wrote them, for 025 to sort (ADR 0022 §5).
+ *
+ * A two-person chat a trainer started with a student, and so owned; then one
+ * for each of the four things 025 asks before it changes a chat, each failing
+ * that one alone: a thread of the old shared desk that the trainer answered,
+ * which made her a participant - two people, a student and staff, exactly like
+ * the first, and still not its kind; a chat between two students, with nobody
+ * from staff; one between two trainers, with no student; and one of three
+ * people, two students and a trainer. Each with a message from everybody in it,
+ * so a message lost would show.
+ */
+function add_chats_before_025(PDO $pdo, array $logins): array {
+    $at = '2026-09-20 08:00:00';
+    $chat = function (string $kind, int $owner, array $people) use ($pdo, $at): int {
+        $id = insert_row($pdo, 'threads', ['account_id' => $owner, 'kind' => $kind, 'subject' => '', 'updated_at' => $at]);
+        foreach ($people as $person) {
+            insert_row($pdo, 'thread_participants', ['thread_id' => $id, 'account_id' => $person, 'joined_at' => $at]);
+            insert_row($pdo, 'messages', ['thread_id' => $id, 'sender_id' => $person, 'body' => 'Hallo', 'created_at' => $at]);
+        }
+        return $id;
+    };
+    return ['trainer_and_student' => $chat('direct', $logins['staff'], [$logins['staff'], $logins['mueller']]),
+            'two_students' => $chat('direct', $logins['mueller2'], [$logins['mueller2'], $logins['gross']]),
+            'desk' => $chat('staff', $logins['gross'], [$logins['gross'], $logins['staff']]),
+            'two_staff' => $chat('direct', $logins['suspended'], [$logins['suspended'], $logins['staff']]),
+            'three_people' => $chat('direct', $logins['mueller'], [$logins['mueller'], $logins['gross'], $logins['staff']])];
+}
+
+/** What 025 is held to, read back: every chat's kind and owner, and how many chats, messages and people in them. */
+function chat_state(PDO $pdo): array {
+    $count = fn(string $table): int => (int)$pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn();
+    return ['threads' => $pdo->query('SELECT id, kind, account_id FROM threads ORDER BY id')->fetchAll(),
+            'counts' => ['threads' => $count('threads'), 'messages' => $count('messages'),
+                         'thread_participants' => $count('thread_participants')]];
+}
+
+/**
+ * What 024 is held to, read back: every login, the table's columns and indexes,
+ * every guarded count, the sign-in links and the change log about logins.
+ */
+function login_state(PDO $pdo): array {
+    return ['accounts' => every_login($pdo), 'columns' => table_columns($pdo, 'accounts'), 'indexes' => table_indexes($pdo, 'accounts'),
+            'counts' => guarded_counts($pdo),
+            'tokens' => $pdo->query('SELECT * FROM auth_tokens ORDER BY id')->fetchAll(),
+            'versions' => $pdo->query("SELECT * FROM record_versions WHERE entity = 'accounts' ORDER BY id")->fetchAll()];
+}
+
+/**
+ * The people 028 to 031 and the runner's step after them are about, written the
+ * way the version before 028 writes them (ADR 0023 §4, 0024 §1).
+ *
+ * The portal 024 left has most of them already: students with a login, students
+ * the earlier updates left without one (019 took brothers and sisters off a
+ * shared login), one whose name is longer than a login's name holds, Ida, whose
+ * address is the Novak family's login, a login whose student is gone, and
+ * invitations by address that no student points to. Beside them: two brothers
+ * on one parent's address, neither with a login, whom a placeholder carrying
+ * the address would make collide; an example student without a login, whose
+ * placeholder has to go with demo_clear(); a student invited by e-mail who has
+ * not accepted yet, whose invitation has to stay exactly as it is; and a course
+ * with enrolments of students with and without a login, one of them a past
+ * membership, each on terms of its own so a term lost would show.
+ */
+function add_people_before_028(PDO $pdo): array {
+    $at = '2026-09-25 08:00:00';
+    $child = fn(?int $account, string $first, string $last, string $email, int $demo = 0): int => insert_row($pdo, 'students', [
+        'account_id' => $account, 'first_name' => $first, 'last_name' => $last, 'email' => $email, 'status' => 'active',
+        'joined_on' => '2026-09-01', 'revision' => 2, 'is_demo' => $demo, 'created_at' => $at, 'updated_at' => $at]);
+    $people = ['max' => $child(null, 'Max', 'Wagner', 'familie.wagner@beispiel.test'),
+               'moritz' => $child(null, 'Moritz', 'Wagner', 'familie.wagner@beispiel.test'),
+               'example' => $child(null, 'Beispiel', 'Kind', '', 1)];
+    // As invite_student() writes one: the login first, with its link, then the
+    // student pointing at it.
+    $people['clara_login'] = insert_row($pdo, 'accounts', ['name' => 'Clara Fuchs', 'email' => 'clara@beispiel.test',
+        'role' => 'student', 'state' => 'invited', 'locale' => 'de', 'created_at' => $at]);
+    insert_row($pdo, 'auth_tokens', ['account_id' => $people['clara_login'], 'token_hash' => hash('sha256', 'einladung-clara'),
+        'purpose' => 'invite', 'expires_at' => '2026-09-27 08:00:00', 'created_at' => $at]);
+    $people['clara'] = $child($people['clara_login'], 'Clara', 'Fuchs', 'clara@beispiel.test');
+    $people['course'] = insert_row($pdo, 'classes', ['name' => 'Jugendtraining', 'description' => '', 'location' => 'Halle Süd',
+        'capacity' => 12, 'sort_order' => 10, 'archived' => 0, 'created_at' => $at]);
+    $enrol = fn(int $student, int $price, ?string $left, int $discount) => insert_row($pdo, 'class_students', [
+        'class_id' => $people['course'], 'student_id' => $student, 'joined_on' => '2026-02-01', 'left_on' => $left,
+        'price_cents' => $price, 'price_note' => 'vereinbart', 'due_day' => 15, 'interval_months' => 3,
+        'discount_months' => $discount ? 2 : 0, 'discount_kind' => 'amount', 'discount_value' => $discount,
+        'discount_note' => $discount ? 'Geschwister' : '']);
+    $enrol(20, 3900, null, 0);            // Paul, on his family's login
+    $enrol(51, 3600, null, 500);          // Lisa, taken off it by 019
+    $enrol(50, 3900, '2026-06-30', 0);    // Jonas, who has left: a past membership
+    $enrol($people['max'], 3600, null, 500);
+    $enrol($people['moritz'], 3600, null, 500);
+    $enrol($people['example'], 3000, null, 0);
+    $enrol($people['clara'], 3900, null, 0);
+    return $people;
+}
+
+/** 001 to 027 with every portal above written in, and the people 028 is about. */
+function build_portal_before_028(): array {
+    [$pdo, $logins] = build_portal_before_024();
+    apply_migrations($pdo, '024', '027');
+    return [$pdo, $logins + add_people_before_028($pdo)];
+}
+
+/**
+ * The keys from students to other tables, as the engine describes them: the
+ * name, the column, the table it points at, and what deleting a row there does.
+ */
+function student_keys(PDO $pdo): array {
+    return $pdo->query('SELECT k.constraint_name AS name, k.column_name AS col, k.referenced_table_name AS refers_to, r.delete_rule AS on_delete'
+        . ' FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r'
+        . ' ON r.constraint_schema = k.constraint_schema AND r.constraint_name = k.constraint_name AND r.table_name = k.table_name'
+        . " WHERE k.table_schema = DATABASE() AND k.table_name = 'students' AND k.referenced_table_name IS NOT NULL"
+        . ' ORDER BY k.column_name, k.constraint_name')->fetchAll();
+}
+
+/**
+ * What the engine says of one column: its type, whether it may be NULL, its
+ * default, its collation and its place, or null when there is no such column.
+ */
+function column_facts(PDO $pdo, string $table, string $column): ?array {
+    $query = $pdo->prepare('SELECT column_type AS type, is_nullable AS nullable, column_default AS default_value,'
+        . ' collation_name AS collation, ordinal_position AS position FROM information_schema.columns'
+        . ' WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?');
+    $query->execute([$table, $column]);
+    $facts = $query->fetch();
+    if (!$facts) return null;
+    // MariaDB reports a default of NULL as the text 'NULL', MySQL 8.0 as NULL; and
+    // a text default as the literal, quotes and all - '' for the empty text -
+    // where MySQL 8.0 reports the text itself.
+    if ($facts['default_value'] !== null && strtoupper((string)$facts['default_value']) === 'NULL') $facts['default_value'] = null;
+    elseif (preg_match("/^'(.*)'\$/s", (string)$facts['default_value'], $quoted)) $facts['default_value'] = str_replace("''", "'", $quoted[1]);
+    $facts['position'] = (int)$facts['position'];
+    return $facts;
+}
+
+/**
+ * What 028 to 031 and the step after them are held to, read back: every login,
+ * student, enrolment and link, the columns and keys they change, the indexes,
+ * every guarded count and the mail waiting.
+ */
+function login_rule_state(PDO $pdo): array {
+    return ['accounts' => every_login($pdo),
+            'students' => $pdo->query('SELECT id, account_id, first_name, last_name, email, is_demo, revision, updated_at FROM students ORDER BY id')->fetchAll(),
+            'enrolments' => $pdo->query('SELECT * FROM class_students ORDER BY class_id, student_id')->fetchAll(),
+            'tokens' => $pdo->query('SELECT * FROM auth_tokens ORDER BY id')->fetchAll(),
+            'columns' => ['email' => column_facts($pdo, 'accounts', 'email'), 'username' => column_facts($pdo, 'accounts', 'username'),
+                          'left_on' => column_facts($pdo, 'class_students', 'left_on'),
+                          'removed_on' => column_facts($pdo, 'class_students', 'removed_on')],
+            'keys' => student_keys($pdo), 'indexes' => table_indexes($pdo, 'accounts'), 'one_account' => one_account_index($pdo),
+            'counts' => guarded_counts($pdo),
+            'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn()];
+}
+
+/**
+ * Run a file's statements again on a connection of its own, as the next page
+ * view does after an update that applied the file but stopped before the ledger
+ * recorded it: [SQLSTATE, the engine's own error number] it refused it with, or
+ * null if it ran. The number tells "what it drops is gone" (1091) from a
+ * statement the engine could not even read (1064), which share SQLSTATE 42000.
+ */
+function run_again(string $path): ?array {
+    // A new connection: no variable or prepared statement of the first run survives into it.
+    $next = connect();
+    try { foreach (migration_statements($path) as $statement) $next->exec($statement); return null; }
+    catch (PDOException $e) { return [(string)$e->getCode(), (int)($e->errorInfo[1] ?? 0)]; }
+}
+
+/**
+ * What the database said to these writes, as [SQLSTATE, the engine's own error
+ * number] for the first it refused, or null when it took them all. Undone either
+ * way, so the next attempt meets the portal as it was.
+ */
+function attempt(PDO $pdo, array $writes): ?array {
+    $pdo->beginTransaction();
+    $said = null;
+    try { foreach ($writes as [$sql, $params]) $pdo->prepare($sql)->execute($params); }
+    catch (PDOException $e) { $said = [(string)$e->getCode(), (int)($e->errorInfo[1] ?? 0)]; }
+    $pdo->rollBack();
+    return $said;
+}
+
+/**
+ * What the version before 032 and 033 keeps in the four tables they drop, and
+ * the change-log lines that name them (ADR 0026 §7, §8).
+ *
+ * Two custom fields, one of them archived the way field_save leaves a field
+ * that held data, with values on three students, one of whom has a value in
+ * each; a change-log line about a student's value, under the field:<id> key the
+ * change log gives one, and one about a field. Two saved views. The two
+ * templates a first install seeded, one the trainer wrote, and a change-log
+ * line about one of them.
+ */
+function add_custom_fields_views_and_templates(PDO $pdo): array {
+    $at = '2026-09-30 08:00:00';
+    $field = fn(string $label, string $type, string $options, string $default, int $required, string $visibility, int $archived): int =>
+        insert_row($pdo, 'field_definitions', ['label' => $label, 'label_en' => '', 'field_type' => $type, 'section_name' => '',
+            'options_json' => $options, 'default_json' => $default, 'required' => $required, 'visibility' => $visibility,
+            'sort_order' => 10, 'archived' => $archived]);
+    $shirt = $field('T-Shirt-Größe', 'select', '["S","M","L"]', '""', 1, 'edit', 0);
+    $school = $field('Schule', 'text', '[]', '""', 0, 'internal', 1);
+    // Paul, Lisa and Ida, from the portal before 019.
+    foreach ([[20, $shirt, '"M"'], [20, $school, '"VS Nord"'], [51, $shirt, '"S"'], [80, $shirt, '"L"']] as [$student, $fieldId, $value])
+        insert_row($pdo, 'field_values', ['student_id' => $student, 'field_id' => $fieldId, 'value_json' => $value]);
+    $line = fn(string $entity, int $id, string $label, array $before, array $after) => insert_row($pdo, 'record_versions', [
+        'entity' => $entity, 'entity_id' => $id, 'operation' => 'update', 'label' => $label,
+        'before_json' => json_encode($before, JSON_UNESCAPED_UNICODE), 'after_json' => json_encode($after, JSON_UNESCAPED_UNICODE),
+        'actor_id' => null, 'created_at' => $at]);
+    $line('students', 20, 'Paul Gruber', ['field:' . $shirt => '"S"'], ['field:' . $shirt => '"M"']);
+    $line('field_definitions', $school, 'Schule', ['archived' => 0], ['archived' => 1]);
+    $views = [insert_row($pdo, 'saved_filters', ['name' => 'Überfällig', 'criteria_json' => '{"overdue":"1"}']),
+              insert_row($pdo, 'saved_filters', ['name' => 'Jugend, krank', 'criteria_json' => '{"sick":"1","q":"Jugend"}'])];
+    $template = fn(string $name, string $subject, string $body): int =>
+        insert_row($pdo, 'message_templates', ['name' => $name, 'subject' => $subject, 'body' => $body]);
+    $reminder = $template('Zahlungserinnerung', 'Dein Badminton-Beitrag', "Hallo {{first_name}},\n\nbei deinen Badminton-Beiträgen sind derzeit {{outstanding}} offen.\n\n{{portal_url}}");
+    $templates = [$reminder, $template('Training – Information', 'Information zum Training', "Hallo {{first_name}},\n\n{{portal_url}}"),
+                  $template('Hallenwechsel', 'Training in der Halle Süd', "Hallo {{first_name}}, ab Montag in der Halle Süd.")];
+    $line('message_templates', $reminder, 'Zahlungserinnerung', ['subject' => 'Beitrag'], ['subject' => 'Dein Badminton-Beitrag']);
+    return ['fields' => [$shirt, $school], 'views' => $views, 'templates' => $templates];
+}
+
+/**
+ * What the version before 038 keeps in what it changes (ADR 0026 §8, §11): each
+ * child's pinned band, beside the levels and the bands, which stay.
+ *
+ * Levels and bands as a portal keeps them: the three of each the step after the
+ * files seeds on a new portal, and one of each the trainer added and later
+ * archived. Every child in a level, as the step's backfill leaves them, with
+ * children in all four, the archived one included; two children pinned to a
+ * band, one of them to the archived band, and every other child not; and birth
+ * dates on four. Change-log lines about a child's level and band, a level and a
+ * band, and the audit log's entries about saving a level and a band. Written as
+ * data, so that every portal built from here has them whether or not the step
+ * ran on it; where it runs, it finds both lists filled and every child in a
+ * level, and adds to neither.
+ */
+function add_levels_and_pinned_bands(PDO $pdo): array {
+    [$first, $later] = ['2025-09-01 08:00:00', '2026-09-28 08:00:00'];
+    $level = fn(string $name, string $about, int $order, int $isDefault, int $archived, string $at): int =>
+        insert_row($pdo, 'levels', ['name' => $name, 'description' => $about, 'sort_order' => $order, 'is_default' => $isDefault,
+                                    'archived' => $archived, 'created_at' => $at]);
+    $band = fn(string $name, int $min, ?int $max, int $order, int $archived, string $at): int =>
+        insert_row($pdo, 'age_groups', ['name' => $name, 'min_age' => $min, 'max_age' => $max, 'sort_order' => $order,
+                                        'archived' => $archived, 'created_at' => $at]);
+    $levels = ['beginner' => $level('Anfänger', 'Lernt die Grundschläge.', 10, 1, 0, $first),
+               'advanced' => $level('Fortgeschritten', 'Spielt sicher im Training.', 20, 0, 0, $first),
+               'expert' => $level('Könner', 'Spielt Turniere oder Ligaspiele.', 30, 0, 0, $first),
+               'archived' => $level('Wettkampfgruppe', 'Bis zum Sommer.', 40, 0, 1, $later)];
+    $bands = ['under_12' => $band('Unter 12', 0, 11, 10, 0, $first), 'youth' => $band('Jugend', 12, 17, 20, 0, $first),
+              'adults' => $band('Erwachsene', 18, null, 30, 0, $first), 'archived' => $band('U15', 12, 14, 40, 1, $later)];
+    $pdo->prepare('UPDATE students SET level_id = ? WHERE level_id IS NULL')->execute([$levels['beginner']]);
+    // Paul, Lisa, Jakob and Ida, from the portal before 019.
+    $set = $pdo->prepare('UPDATE students SET level_id = ?, age_group_id = ?, birth_date = ? WHERE id = ?');
+    $set->execute([$levels['expert'], null, '2014-05-06', 20]);
+    $set->execute([$levels['archived'], $bands['youth'], '2012-11-30', 51]);
+    $set->execute([$levels['advanced'], $bands['archived'], '2011-02-28', 60]);
+    $set->execute([$levels['beginner'], null, '2016-08-15', 80]);
+    $line = fn(string $entity, int $id, string $operation, string $label, ?array $before, ?array $after) => insert_row($pdo, 'record_versions', [
+        'entity' => $entity, 'entity_id' => $id, 'operation' => $operation, 'label' => $label,
+        'before_json' => $before === null ? null : json_encode($before, JSON_UNESCAPED_UNICODE),
+        'after_json' => $after === null ? null : json_encode($after, JSON_UNESCAPED_UNICODE), 'actor_id' => null, 'created_at' => $later]);
+    $line('students', 51, 'update', 'Lisa Huber', ['level_id' => $levels['beginner'], 'age_group_id' => null],
+          ['level_id' => $levels['archived'], 'age_group_id' => $bands['youth']]);
+    $line('levels', $levels['archived'], 'update', 'Wettkampfgruppe', ['archived' => 0], ['archived' => 1]);
+    $line('age_groups', $bands['archived'], 'insert', 'U15', null,
+          ['name' => 'U15', 'min_age' => 12, 'max_age' => 14, 'sort_order' => 40, 'archived' => 0]);
+    foreach ([['level.saved', 'level', $levels['archived']], ['age_group.saved', 'age_group', $bands['archived']]] as [$action, $type, $id])
+        insert_row($pdo, 'audit_log', ['actor_id' => null, 'action' => $action, 'entity_type' => $type, 'entity_id' => $id, 'created_at' => $later]);
+    return ['levels' => $levels, 'age_groups' => $bands];
+}
+
+/**
+ * Logins without an address, as the version between 028 and 039 wrote them
+ * (ADR 0023 §1 to §4): three that sign in by a username, which 039 turns into
+ * placeholders, and a placeholder, which it must leave as it is (ADR 0030 §2).
+ *
+ * One invited by username and not yet signed in; one set up by its holder and
+ * active, with the password that set it and verified_at; one set up and then
+ * suspended by staff; and a placeholder, as placeholder_login() writes one, with
+ * no address, no username, no password. Each a student's login, as every login
+ * without an address was. The active one has a chat with the trainer, a notice
+ * about it and its read marks, as has a family that signs in by address; it is
+ * also in Kindertraining, whose group it has read to the trainer's latest
+ * message. 039 takes the first one's place, notice and read marks, and nothing
+ * of the trainer's or the family's (security finding F1). Written at the pause
+ * before 032, so that every portal built from here carries them to 039, the
+ * runner's included.
+ */
+function add_logins_without_an_address(PDO $pdo): array {
+    $at = '2026-10-06 08:00:00';
+    $login = fn(string $name, ?string $username, string $state, ?string $hash, ?string $verified): int => insert_row($pdo, 'accounts', [
+        'name' => $name, 'email' => null, 'username' => $username, 'password_hash' => $hash, 'role' => 'student', 'state' => $state,
+        'verified_at' => $verified, 'locale' => 'de', 'newsletter' => 0, 'created_at' => $at]);
+    $logins = ['username_invited' => $login('Noah Steiner', 'noah.steiner', 'invited', null, null),
+               'username_active' => $login('Lea Brunner', 'lea.brunner', 'active', '$2y$10$abcdefghijklmnopqrstuuSETWITHTHEUSERNAMEXXXXXXXXXXXX', '2026-10-06 09:00:00'),
+               'username_suspended' => $login('Tom Berger', 'tom.berger', 'suspended', '$2y$10$abcdefghijklmnopqrstuuSETWITHTHEUSERNAMEYYYYYYYYYYYY', '2026-10-06 09:00:00'),
+               'placeholder' => $login('Mila Koch', null, 'placeholder', null, null)];
+    foreach ([['username_invited', 'Noah', 'Steiner'], ['username_active', 'Lea', 'Brunner'], ['username_suspended', 'Tom', 'Berger'],
+              ['placeholder', 'Mila', 'Koch']] as [$key, $first, $last])
+        $logins[$key . '_student'] = insert_row($pdo, 'students', ['account_id' => $logins[$key], 'first_name' => $first, 'last_name' => $last,
+            'status' => 'active', 'joined_on' => '2026-10-06', 'revision' => 1, 'created_at' => $at, 'updated_at' => $at]);
+    $loginBy = fn(string $email): int => (int)$pdo->query('SELECT id FROM accounts WHERE email = ' . $pdo->quote($email))->fetchColumn();
+    $logins['trainer'] = $loginBy('trainerin@beispiel.test');
+    $logins['chat'] = add_chat_with_notices($pdo, $logins['username_active'], $logins['trainer'], 'Lea Brunner', '2026-10-06 10:00:00');
+    // Hans-Jürgen Groß's family, which signs in by address. Not the Müllers: the
+    // runner's portal gives them a chat with the trainer already, and a pair has one.
+    $logins['family'] = $loginBy('gross@beispiel.test');
+    $logins['family_chat'] = add_chat_with_notices($pdo, $logins['family'], $logins['trainer'], 'Familie Groß', '2026-10-06 11:00:00');
+    // Lea in Kindertraining, its group as course_group_thread() makes one, with a
+    // message from the trainer that Lea has read: a mark that would let a new
+    // holder of her login start out with the group read.
+    $kids = (int)$pdo->query("SELECT id FROM classes WHERE name = 'Kindertraining'")->fetchColumn();
+    insert_row($pdo, 'class_students', ['class_id' => $kids, 'student_id' => $logins['username_active_student'], 'joined_on' => '2026-10-06']);
+    $logins['course_group'] = insert_row($pdo, 'threads', ['account_id' => null, 'kind' => 'course', 'class_id' => $kids, 'subject' => '',
+                                                           'updated_at' => '2026-10-06 12:00:00']);
+    $said = insert_row($pdo, 'messages', ['thread_id' => $logins['course_group'], 'sender_id' => $logins['trainer'],
+                                          'body' => 'Training heute in der Halle Süd.', 'created_at' => '2026-10-06 12:00:00']);
+    insert_row($pdo, 'thread_reads', ['thread_id' => $logins['course_group'], 'account_id' => $logins['username_active'],
+                                      'last_read_message_id' => $said, 'updated_at' => '2026-10-06 12:05:00']);
+    return $logins;
+}
+
+/**
+ * A chat between a student's login and the trainer as direct_thread() makes one
+ * - owned by the student, both in it, a message from each, each read to the
+ * last by both - and a notice about it in each one's bell, as notify() writes
+ * them.
+ */
+function add_chat_with_notices(PDO $pdo, int $student, int $trainer, string $studentName, string $at): int {
+    $chat = insert_row($pdo, 'threads', ['account_id' => $student, 'kind' => 'staff_direct', 'subject' => '', 'updated_at' => $at]);
+    foreach ([$trainer, $student] as $person)
+        insert_row($pdo, 'thread_participants', ['thread_id' => $chat, 'account_id' => $person, 'joined_at' => $at]);
+    $last = 0;
+    foreach ([[$student, 'Ich bin morgen krank.'], [$trainer, 'Gute Besserung!']] as [$sender, $body])
+        $last = insert_row($pdo, 'messages', ['thread_id' => $chat, 'sender_id' => $sender, 'body' => $body, 'created_at' => $at]);
+    foreach ([$trainer, $student] as $reader)
+        insert_row($pdo, 'thread_reads', ['thread_id' => $chat, 'account_id' => $reader, 'last_read_message_id' => $last, 'updated_at' => $at]);
+    foreach ([[$student, 'Neue Nachricht von Trainerin'], [$trainer, 'Neue Nachricht von ' . $studentName]] as [$to, $title])
+        insert_row($pdo, 'notifications', ['account_id' => $to, 'kind' => 'message', 'title' => $title, 'body' => '',
+            'link_page' => 'messages', 'link_params' => 'thread=' . $chat, 'created_at' => $at]);
+    return $chat;
+}
+
+/**
+ * 001 to 031 with every portal above written in, rows in the four tables 032 and
+ * 033 drop, the levels, bands and pins of add_levels_and_pinned_bands(), and the
+ * logins of add_logins_without_an_address().
+ */
+function build_portal_before_032(): array {
+    [$pdo] = build_portal_before_028();
+    apply_migrations($pdo, '028', '031');
+    return [$pdo, add_logins_without_an_address($pdo) + add_custom_fields_views_and_templates($pdo) + add_levels_and_pinned_bands($pdo)];
+}
+
+/**
+ * The change-log lines and audit-log entries about a level, a band or a child's
+ * level or band: what 038 must leave as they were written, though it drops the
+ * column some of them name.
+ */
+function lines_about_levels_and_bands(PDO $pdo): array {
+    return ['versions' => $pdo->query("SELECT * FROM record_versions WHERE entity IN ('levels', 'age_groups')"
+                . " OR before_json LIKE '%\"level_id\"%' OR after_json LIKE '%\"level_id\"%'"
+                . " OR before_json LIKE '%\"age_group_id\"%' OR after_json LIKE '%\"age_group_id\"%' ORDER BY id")->fetchAll(),
+            'audit' => $pdo->query("SELECT * FROM audit_log WHERE entity_type IN ('level', 'age_group') ORDER BY id")->fetchAll()];
+}
+
+/**
+ * Both lists as the engine has them, every row and every column: what 038 must
+ * leave as it found them.
+ */
+function levels_and_bands(PDO $pdo): array {
+    $lists = [];
+    foreach (['levels', 'age_groups'] as $table)
+        $lists[$table] = ['columns' => table_columns($pdo, $table), 'rows' => $pdo->query('SELECT * FROM ' . $table . ' ORDER BY id')->fetchAll()];
+    return $lists;
+}
+
+/**
+ * Every table, its rows counted and checksummed, and every foreign key, as the
+ * engine describes them: what 032 and 033 are held to, which must take their
+ * own tables away and leave every other table, row and key as it was. CHECKSUM
+ * TABLE reads every row, so a row changed or lost anywhere shows, in a table
+ * schema_guarded_tables() names or not.
+ */
+function every_table(PDO $pdo): array {
+    $tables = array_column($pdo->query('SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchAll(), 'name');
+    sort($tables);
+    $quoted = array_map(fn(string $table): string => '`' . sql_name($table, 'table') . '`', $tables);
+    $rows = $sums = [];
+    foreach ($tables as $i => $table) $rows[$table] = (int)$pdo->query('SELECT COUNT(*) FROM ' . $quoted[$i])->fetchColumn();
+    foreach ($pdo->query('CHECKSUM TABLE ' . implode(', ', $quoted))->fetchAll() as $row)
+        $sums[substr((string)$row['Table'], strpos((string)$row['Table'], '.') + 1)] = (string)$row['Checksum'];
+    ksort($sums);
+    return ['tables' => $tables, 'rows' => $rows, 'sums' => $sums,
+            'keys' => $pdo->query('SELECT table_name AS on_table, constraint_name AS name, referenced_table_name AS refers_to, delete_rule AS on_delete'
+                . ' FROM information_schema.referential_constraints WHERE constraint_schema = DATABASE() ORDER BY table_name, constraint_name')->fetchAll()];
+}
+
+/**
+ * The change-log lines about a custom field, a value in one or a template:
+ * what the history page goes on reading once 032 and 033 have dropped the
+ * tables they name.
+ */
+function lines_about_what_goes(PDO $pdo): array {
+    return $pdo->query("SELECT * FROM record_versions WHERE entity IN ('field_definitions', 'message_templates')"
+        . " OR before_json LIKE '%\"field:%' OR after_json LIKE '%\"field:%' ORDER BY id")->fetchAll();
+}
+
+/**
+ * What the version before 034 to 037 keeps in what they drop (ADR 0026 §8, §11;
+ * 0022 §11.3), written into a portal 001 to 031 or 033 were applied to.
+ *
+ * When two logins were online, one stretch of it hidden; a time last seen, a
+ * chosen status, an emoji and a picture on logins of both roles, so a value lost
+ * from a column that stays would show; pictures on two children, one of them
+ * saved a moment ago; and requests from one family to another, one waiting, one
+ * agreed to and one declined. Beside them what has to stay: a problem report with
+ * its screenshot, stored in the pictures' folder; a chat between a child and the
+ * trainer with a photo, a voice note and a file in it, which ADR 0022 §11.4 keeps;
+ * a receipt and the portal's icon, each named by its row, as every other kind of
+ * upload is; and change-log lines that mention a picture and an emoji.
+ *
+ * Returns the stored names the files on disk are given, by what each is.
+ */
+function add_presence_pictures_and_requests(PDO $pdo): array {
+    $at = '2026-10-02 08:00:00';
+    $login = function (string $email) use ($pdo): int {
+        $query = $pdo->prepare('SELECT id FROM accounts WHERE email = ?');
+        $query->execute([$email]);
+        return (int)$query->fetchColumn();
+    };
+    [$trainer, $lena, $hans, $lenaM] = [$login('trainerin@beispiel.test'), $login('mueller@beispiel.test'),
+                                        $login('gross@beispiel.test'), $login('lena.m@beispiel.test')];
+    $stored = fn(string $character, string $extension): string => str_repeat($character, 32) . '.' . $extension;
+    $files = ['account_pictures' => [$stored('a', 'jpg'), $stored('b', 'png')], 'child_picture' => $stored('c', 'jpg'),
+              'child_picture_just_saved' => $stored('9', 'jpg'), 'screenshot' => $stored('d', 'png'),
+              'chat' => [$stored('1', 'jpg'), $stored('2', 'webm'), $stored('3', 'pdf')],
+              'receipt' => $stored('4', 'pdf'), 'icon' => $stored('5', 'png')];
+
+    $set = $pdo->prepare('UPDATE accounts SET last_seen_at = ?, presence = ?, status_emoji = ?, avatar_name = ? WHERE id = ?');
+    $set->execute(['2026-10-01 17:45:00', 'away', 'badminton', '', $trainer]);
+    $set->execute(['2026-10-01 18:10:00', 'hidden', 'star', $files['account_pictures'][0], $lena]);
+    $set->execute(['2026-09-30 16:00:00', 'auto', '', $files['account_pictures'][1], $hans]);
+    $set->execute(['2026-09-29 15:30:00', 'auto', 'happy', '', $lenaM]);
+    // Paul and Lisa, from the portal before 019.
+    $pdo->prepare('UPDATE students SET avatar_name = ? WHERE id = ?')->execute([$files['child_picture'], 20]);
+    $pdo->prepare('UPDATE students SET avatar_name = ? WHERE id = ?')->execute([$files['child_picture_just_saved'], 51]);
+
+    foreach ([[$lena, '2026-10-01 17:00:00', '2026-10-01 17:20:00', 0], [$lena, '2026-10-01 18:00:00', '2026-10-01 18:10:00', 1],
+              [$trainer, '2026-10-01 17:30:00', '2026-10-01 17:45:00', 0]] as [$account, $from, $to, $hidden])
+        insert_row($pdo, 'online_periods', ['account_id' => $account, 'started_at' => $from, 'last_seen_at' => $to, 'hidden' => $hidden]);
+    foreach ([[$lenaM, $hans, 'pending', 'Darf ich dir schreiben?', null], [$lena, $lenaM, 'accepted', '', $at],
+              [$hans, $lena, 'declined', 'Hallo!', $at]] as [$from, $to, $state, $message, $decided])
+        insert_row($pdo, 'contact_requests', ['from_account_id' => $from, 'to_account_id' => $to, 'state' => $state,
+            'message' => $message, 'decided_at' => $decided, 'created_at' => $at]);
+
+    insert_row($pdo, 'feedback', ['account_id' => $lena, 'page' => 'messages', 'message' => 'Das Bild lädt nicht.', 'context_json' => '{}',
+        'screenshot_name' => $files['screenshot'], 'state' => 'new', 'created_at' => $at]);
+    $chat = insert_row($pdo, 'threads', ['account_id' => $lena, 'kind' => 'staff_direct', 'subject' => '', 'updated_at' => $at]);
+    foreach ([$lena, $trainer] as $person)
+        insert_row($pdo, 'thread_participants', ['thread_id' => $chat, 'account_id' => $person, 'joined_at' => $at]);
+    foreach ([['image', $files['chat'][0], 'image/jpeg', 0], ['voice', $files['chat'][1], 'audio/webm', 12],
+              ['file', $files['chat'][2], 'application/pdf', 0]] as [$kind, $name, $mime, $seconds]) {
+        $message = insert_row($pdo, 'messages', ['thread_id' => $chat, 'sender_id' => $lena, 'body' => '', 'created_at' => $at]);
+        insert_row($pdo, 'message_files', ['message_id' => $message, 'kind' => $kind, 'stored_name' => $name, 'original_name' => 'von-lena.' . substr($name, 33),
+            'mime' => $mime, 'bytes' => 2048, 'seconds' => $seconds, 'created_at' => $at]);
+    }
+
+    insert_row($pdo, 'payment_proofs', ['student_id' => 20, 'stored_name' => $files['receipt'], 'original_name' => 'beleg.pdf',
+        'mime' => 'application/pdf', 'bytes' => 2048, 'uploaded_by' => $lena, 'created_at' => $at]);
+    insert_row($pdo, 'settings', ['setting_key' => 'portal_icon', 'setting_value' => json_encode($files['icon']), 'updated_at' => $at]);
+
+    $line = fn(string $entity, int $id, string $label, array $before, array $after) => insert_row($pdo, 'record_versions', [
+        'entity' => $entity, 'entity_id' => $id, 'operation' => 'update', 'label' => $label,
+        'before_json' => json_encode($before), 'after_json' => json_encode($after), 'actor_id' => $lena, 'created_at' => $at]);
+    $line('accounts', $lena, 'Familie Müller', ['status_emoji' => '', 'avatar_name' => ''],
+          ['status_emoji' => 'star', 'avatar_name' => $files['account_pictures'][0]]);
+    $line('students', 20, 'Paul Gruber', ['avatar_name' => ''], ['avatar_name' => $files['child_picture']]);
+    return $files;
+}
+
+/**
+ * What 034 to 039 are held to, read back: every table with its rows and their
+ * checksum and every key; of the two tables that lose columns, accounts and
+ * students, every row, every column and every index; and every place in a chat,
+ * every notice and every read mark, which 039 takes from the logins it turns into
+ * placeholders.
+ */
+function tables_and_people(PDO $pdo): array {
+    return every_table($pdo) + [
+        'accounts' => every_login($pdo), 'students' => $pdo->query('SELECT * FROM students ORDER BY id')->fetchAll(),
+        'columns' => ['accounts' => table_columns($pdo, 'accounts'), 'students' => table_columns($pdo, 'students')],
+        'indexes' => ['accounts' => table_indexes($pdo, 'accounts'), 'students' => table_indexes($pdo, 'students')],
+        'participants' => $pdo->query('SELECT * FROM thread_participants ORDER BY thread_id, account_id')->fetchAll(),
+        'notifications' => $pdo->query('SELECT * FROM notifications ORDER BY id')->fetchAll(),
+        'reads' => $pdo->query('SELECT * FROM thread_reads ORDER BY thread_id, account_id')->fetchAll(),
+        'counts' => guarded_counts($pdo)];
+}
+
+/**
+ * The children a portal can have that the one built here has none of yet, with
+ * their logins, written as the version between 039 and 040 writes them (ADR 0031
+ * §2): one on trial, whose family is invited by address and not yet in; one
+ * paused, billing paused with a note, whose family's login staff suspended; one
+ * who has ended, on a placeholder; an example child on an example placeholder,
+ * as demo_fill() makes them; and one with every column a child has filled, none
+ * left NULL - an address over two lines, an agreed price, its note, a due day, a
+ * tariff, the archived level, and notes with quotes, a backslash and a character
+ * of four bytes - whose family is set up. Beside the children the portal has
+ * already, whose families signed in by address or are invited, on placeholders,
+ * on the placeholders 039 made, and without a login, 040 meets every kind.
+ */
+function add_children_of_every_kind(PDO $pdo): array {
+    $at = '2026-10-07 08:00:00';
+    $login = fn(string $name, ?string $email, string $state, ?string $hash, int $isDemo = 0): int => insert_row($pdo, 'accounts', [
+        'name' => $name, 'email' => $email, 'password_hash' => $hash, 'role' => 'student', 'state' => $state,
+        'verified_at' => $hash === null ? null : '2026-09-01 09:00:00', 'locale' => 'de', 'is_demo' => $isDemo, 'created_at' => $at]);
+    $child = fn(int $account, string $first, string $last, string $status, array $more = []): int => insert_row($pdo, 'students', array_replace([
+        'account_id' => $account, 'first_name' => $first, 'last_name' => $last, 'status' => $status, 'joined_on' => '2026-09-01',
+        'revision' => 1, 'created_at' => $at, 'updated_at' => $at], $more));
+    $set = '$2y$10$abcdefghijklmnopqrstuuSETBYTHEFAMILYXXXXXXXXXXXXXXXXX';
+    return [
+        'trial' => $child($login('Familie Maier', 'maier@beispiel.test', 'invited', null), 'Finn', 'Maier', 'trial'),
+        'paused' => $child($login('Familie Lang', 'lang@beispiel.test', 'suspended', $set), 'Greta', 'Lang', 'paused',
+                           ['billing_paused' => 1, 'billing_note' => 'Verletzt bis Ende Oktober']),
+        'ended' => $child($login('Ben Schuster', null, 'placeholder', null), 'Ben', 'Schuster', 'ended', ['ended_on' => '2026-09-30']),
+        'example' => $child($login('Beispiel Zwei', null, 'placeholder', null, 1), 'Beispiel', 'Zwei', 'active', ['is_demo' => 1]),
+        'every_value' => $child($login('Familie Ångström', 'angstrom@beispiel.test', 'active', $set), 'Zoë', 'Ångström-Øberg', 'active', [
+            'email' => 'zoe@beispiel.test', 'address' => "Hauptstraße 1/4\n1010 Wien", 'phone' => '+43 664 1234567',
+            'birth_date' => '2015-02-28', 'ended_on' => '2027-06-30',
+            'level_id' => (int)$pdo->query('SELECT id FROM levels WHERE archived = 1 ORDER BY id LIMIT 1')->fetchColumn(),
+            'tariff_id' => (int)$pdo->query('SELECT id FROM tariffs ORDER BY id LIMIT 1')->fetchColumn(),
+            'price_cents' => 2450, 'price_note' => 'Geschwisterpreis', 'billing_note' => 'Zahlt halbjährlich',
+            'billing_due_day' => 15, 'internal_notes' => "Allergie: Nüsse 🥜\n\"Notfall\": Mama anrufen \\ nicht die Schule",
+            'revision' => 7]),
+    ];
+}
+
+/**
+ * A child written the way the version before 040 writes one, read back, then
+ * undone, so the portal is as it was: placeholder_login()'s login and
+ * create_student()'s insert as they stood at 039, which name neither of 040's
+ * columns. What the engine refused it with, as [SQLSTATE, its own error number],
+ * or the child as the engine wrote it.
+ */
+function child_as_the_previous_version_writes_one(PDO $pdo): array {
+    $at = '2026-10-08 08:00:00';
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare("INSERT INTO accounts (name,email,role,state,locale,is_demo,created_at) VALUES (?,NULL,'student','placeholder','de',?,?)")
+            ->execute(['Neu Angemeldet', 0, $at]);
+        $login = (int)$pdo->lastInsertId();
+        $level = $pdo->query('SELECT id FROM levels WHERE is_default = 1 ORDER BY id LIMIT 1')->fetchColumn();
+        $pdo->prepare('INSERT INTO students (account_id,first_name,last_name,email,address,phone,birth_date,joined_on,status,level_id,internal_notes,updated_at,created_at)'
+            . ' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            ->execute([$login, 'Neu', 'Angemeldet', '', '', '', null, '2026-10-08', 'active', $level === false ? null : (int)$level, '', $at, $at]);
+        $written = $pdo->prepare('SELECT * FROM students WHERE id = ?');
+        $written->execute([(int)$pdo->lastInsertId()]);
+        return ['refused' => null, 'child' => $written->fetch()];
+    } catch (PDOException $e) {
+        return ['refused' => [(string)$e->getCode(), (int)($e->errorInfo[1] ?? 0)], 'child' => null];
+    } finally {
+        $pdo->rollBack();
+    }
+}
+
+/**
+ * The team a portal can have beside the trainer who is set up and the one who
+ * is suspended, which the one built here has already, written as the version
+ * between 040 and 041 writes them: an administrator with every column of a
+ * login filled, none left NULL - a name with a character of four bytes, English,
+ * a dark theme, an accent, large text, every mail switch off, the notice's
+ * version and a raised auth_version; a trainer invited by address and not yet
+ * in, as invite_login() writes one; a manager, the older name for a trainer
+ * that the code still reads; and an example trainer, as demo_fill() makes one.
+ */
+function add_team_of_every_kind(PDO $pdo): array {
+    $at = '2026-10-08 07:00:00';
+    $set = '$2y$10$abcdefghijklmnopqrstuuSETBYTHETEAMXXXXXXXXXXXXXXXXXXX';
+    $login = fn(array $row): int => insert_row($pdo, 'accounts', $row + ['locale' => 'de', 'created_at' => $at]);
+    return [
+        'administrator' => $login(['name' => 'Åsa Øster-Šimić 🏸', 'email' => 'leitung@beispiel.test', 'password_hash' => $set,
+            'role' => 'admin', 'state' => 'active', 'auth_version' => 4, 'verified_at' => '2025-09-01 09:00:00', 'locale' => 'en',
+            'theme' => 'dark', 'accent' => 'teal', 'text_scale' => 'large', 'newsletter' => 0, 'notifications' => 0,
+            'payment_notices' => 0, 'privacy_version' => 'a1b2c3d4e5f60718', 'created_at' => '2025-09-01 08:00:00', 'is_demo' => 0]),
+        'invited_trainer' => $login(['name' => 'Neuer Trainer', 'email' => 'neu.trainer@beispiel.test', 'role' => 'trainer']),
+        'manager' => $login(['name' => 'Alte Leitung', 'email' => 'manager@beispiel.test', 'password_hash' => $set, 'role' => 'manager',
+            'state' => 'active', 'verified_at' => $at]),
+        'example_trainer' => $login(['name' => 'Trainer Beispiel', 'email' => 'beispiel.trainer@beispiel.test', 'password_hash' => $set,
+            'role' => 'trainer', 'state' => 'active', 'verified_at' => $at, 'is_demo' => 1]),
+    ];
+}
+
+/**
+ * A login written by each insert of one the version before 041 has, read back,
+ * then undone, so the portal is as it was: invite_login()'s, placeholder_login()'s,
+ * create_admin_account()'s and demo_fill()'s, as they stood at 040, none of which
+ * names the column 041 adds. What the engine refused the first one it did not
+ * take with, as [SQLSTATE, its own error number], or the logins as it wrote them.
+ */
+function logins_as_the_previous_version_writes_them(PDO $pdo): array {
+    $at = '2026-10-08 08:00:00';
+    $hash = '$2y$10$abcdefghijklmnopqrstuuSETBYTHEHOLDERXXXXXXXXXXXXXXXXX';
+    $writes = [
+        'invitation' => ['INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,?,?,?)',
+                         ['Neu Eingeladen', 'neu.eingeladen@beispiel.test', 'trainer', 'de', $at]],
+        'placeholder' => ["INSERT INTO accounts (name,email,role,state,locale,is_demo,created_at) VALUES (?,NULL,'student','placeholder','de',?,?)",
+                          ['Neu Platzhalter', 0, $at]],
+        'first_administrator' => ["INSERT INTO accounts (name,email,password_hash,role,state,verified_at,created_at) VALUES (?,?,?,'admin','active',?,?)",
+                                  ['Neu Leitung', 'neu.leitung@beispiel.test', $hash, $at, $at]],
+        'example' => ['INSERT INTO accounts (name,email,password_hash,role,state,verified_at,locale,created_at,is_demo) VALUES (?,?,?,?,?,?,?,?,1)',
+                      ['Neu Beispiel', 'neu.beispiel@beispiel.test', $hash, 'trainer', 'active', $at, 'de', $at]],
+    ];
+    $pdo->beginTransaction();
+    try {
+        $logins = [];
+        $read = $pdo->prepare('SELECT * FROM accounts WHERE id = ?');
+        foreach ($writes as $kind => [$sql, $params]) {
+            $pdo->prepare($sql)->execute($params);
+            $read->execute([(int)$pdo->lastInsertId()]);
+            $logins[$kind] = $read->fetch();
+        }
+        return ['refused' => null, 'logins' => $logins];
+    } catch (PDOException $e) {
+        return ['refused' => [(string)$e->getCode(), (int)($e->errorInfo[1] ?? 0)], 'logins' => null];
+    } finally {
+        $pdo->rollBack();
+    }
 }
 
 $nineteen = migration_path('019');
@@ -490,12 +1197,15 @@ $again = portal_state($pdo);
 // a NULL for its status. One with news on is added so that "unchanged" is not
 // only ever checked against zeros.
 add_subscribed_login($pdo);
-$twentyBefore = ['accounts' => login_choices($pdo), 'counts' => portal_state($pdo)['counts']];
-apply_migrations($pdo, '020', '999');
-$twentyAfter = ['accounts' => login_choices($pdo), 'counts' => portal_state($pdo)['counts'],
+$twentyBefore = ['accounts' => login_choices($pdo), 'counts' => guarded_counts($pdo)];
+// Read after 033, the last file before 034 and 035 drop the history and the
+// status again: what 020 and 021 did to these logins is what is held to here.
+apply_migrations($pdo, '020', '033');
+$twentyAfter = ['accounts' => login_choices($pdo), 'counts' => guarded_counts($pdo),
                 'online_periods' => table_columns($pdo, 'online_periods'),
                 'online_period_rows' => (int)$pdo->query('SELECT COUNT(*) FROM online_periods')->fetchColumn(),
                 'indexes' => online_period_indexes($pdo), 'new_login' => new_login($pdo, 'neu@beispiel.test')];
+apply_migrations($pdo, '034', '999');
 
 $fetch = fn(string $sql) => $pdo->query($sql)->fetchAll();
 $result = [
@@ -506,7 +1216,7 @@ $result = [
     'students' => $fetch('SELECT id, first_name, account_id, email FROM students ORDER BY id'),
     'tariff_columns' => table_columns($pdo, 'tariffs'),
     'ids' => $ids,
-    'engine' => $mysql === null ? 'sqlite' : (string)$pdo->query('SELECT VERSION()')->fetchColumn(),
+    'engine' => (string)$pdo->query('SELECT VERSION()')->fetchColumn(),
     'nineteen' => ['statements' => count($statements), 'before' => $before, 'after' => $after,
                    'index' => $index, 'again' => $again, 'retried' => []],
 ];
@@ -538,72 +1248,860 @@ for ($stopped = 1; $stopped < count($twentyStatements); $stopped++) {
         'online_periods' => table_columns($pdo, 'online_periods'), 'new_login' => new_login($pdo, 'neu@beispiel.test')];
 }
 
-// --- 022 and 023 on logins that already exist --------------------------------
-// Every login the previous version wrote keeps every value it had, and gains a
-// placeholder username that is unique. The rule that one address is one login
-// stays, and the rule that one username is one login comes (ADR 0020 §1, §9).
-// The usernames made from names are the runner's PHP step afterwards, below.
+// --- 022, 023 and 024 on logins from before usernames ---------------------------
+// A portal still on 021 runs all three in one update. The column 022 adds is the
+// one 024 drops, so every login the version before usernames wrote must come out
+// exactly as it went in (ADR 0021 §1).
 $twentyThree = migration_path('023');
 $twentyThreeStatements = migration_statements($twentyThree);
-[$pdo, $logins, $twentyTwoBefore] = build_portal_before_023();
-$withUsername = ['accounts' => every_login($pdo), 'columns' => table_columns($pdo, 'accounts')];
-run_statements($pdo, $twentyThree, $twentyThreeStatements);
-$result['twentytwo'] = [
-    'logins' => $logins, 'statements' => count($twentyThreeStatements),
-    'before' => $twentyTwoBefore, 'after_022' => $withUsername,
-    'after' => ['accounts' => every_login($pdo), 'counts' => portal_state($pdo)['counts'], 'unique' => login_unique_indexes($pdo)],
-    // A second login on the address of a login the update carried through,
-    // with a username nobody has: only the address can be what refuses it. As
-    // typed, in other capitals, and on the legacy quoted address [R2].
-    'same_address' => refusal($pdo, 'Zweiter Zugang', 'mueller@beispiel.test', 'zweiter.zugang'),
-    'address_other_case' => refusal($pdo, 'Zweiter Zugang', 'Mueller@Beispiel.test', 'zweiter.zugang'),
-    'legacy_address_taken' => refusal($pdo, 'Zweiter Zugang', '"familie..alt"@beispiel.test', 'zweiter.zugang'),
-    // The negative: the same write on an address of its own is taken, so the
-    // refusals above are the address's and not every write's.
-    'own_address' => refusal($pdo, 'Zweiter Zugang', 'zweiter.zugang@beispiel.test', 'zweiter.zugang'),
-    'same_username' => refusal($pdo, 'Doppelt', 'doppelt@beispiel.test', 'schon.benannt'),
-    'other_case' => refusal($pdo, 'Doppelt', 'doppelt@beispiel.test', 'Schon.Benannt'),
-    'placeholder_taken' => refusal($pdo, 'Doppelt', 'doppelt@beispiel.test', '#' . $logins['mueller']),
-    'retried' => [],
-];
-// A second run of 023's UPDATE, as a retry after the file finished but before
-// the ledger recorded it: every login is at a placeholder or a name by now.
-run_statements($pdo, $twentyThree, array_slice($twentyThreeStatements, 0, -1));
-$result['twentytwo']['again'] = every_login($pdo);
+$twentyFour = migration_path('024');
+$twentyFourStatements = migration_statements($twentyFour);
+[$pdo, $logins] = build_portal_before_022();
+$usernamesBefore = login_state($pdo);
+apply_migrations($pdo, '022', '024');
+$result['usernames'] = ['logins' => $logins, 'statements' => count($twentyThreeStatements),
+                        'before' => $usernamesBefore, 'after' => login_state($pdo), 'retried' => []];
 
-// --- the runner's step after 023, on the logins carried through ----------------
-// The placeholders become usernames in database/defaults.php, which
-// schema_apply() requires after the files on every update (ADR 0019 §4, kept by
-// 0020), not in a migration. So it is run here, through the application's own
-// functions, on this portal's connection - twice, the second time as the next
-// update would. The portal is marked as set up, as every portal being updated
-// is, so only the part that runs on every update runs. One login at '' is
-// written in first, beside the placeholders 023 made.
-$result['twentytwo']['runner'] = ['never_named' => add_login_never_named($pdo)];
-$pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
-$GLOBALS['crm_connect_override'] = fn(): PDO => $pdo;
-$runnerState = function () use ($pdo): array {
-    setting_cache_clear();
-    return ['accounts' => every_login($pdo), 'counts' => portal_state($pdo)['counts'],
-            'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn(),
-            'dummy_hash' => (string)setting('sign_in_dummy_hash')];
-};
-$runnerStep = static function (): void { require APP_ROOT . '/database/defaults.php'; };
-$result['twentytwo']['runner']['before'] = $runnerState();
-$runnerStep();
-$result['twentytwo']['runner']['first'] = $runnerState();
-$runnerStep();
-$result['twentytwo']['runner']['second'] = $runnerState();
-// db() keeps the connection it has; nothing below asks it for another.
-unset($GLOBALS['crm_connect_override']);
-
-// --- 023 interrupted after each statement, then started again from the first --
-for ($stopped = 1; $stopped < count($twentyThreeStatements); $stopped++) {
-    [$pdo] = build_portal_before_023();
+// --- 023 interrupted after each statement and started again, then 024 ----------
+// The last round lets 023 finish and runs its UPDATE once more, as a retry after
+// the file finished but before the ledger recorded it would.
+for ($stopped = 1; $stopped <= count($twentyThreeStatements); $stopped++) {
+    [$pdo] = build_portal_before_022();
+    apply_migrations($pdo, '022', '022');
     run_statements($pdo, $twentyThree, array_slice($twentyThreeStatements, 0, $stopped));
-    run_statements($pdo, $twentyThree, $twentyThreeStatements);
-    $result['twentytwo']['retried'][$stopped] = ['accounts' => every_login($pdo), 'unique' => login_unique_indexes($pdo)];
+    run_statements($pdo, $twentyThree, $stopped < count($twentyThreeStatements)
+        ? $twentyThreeStatements : array_slice($twentyThreeStatements, 0, -1));
+    run_statements($pdo, $twentyFour, $twentyFourStatements);
+    $result['usernames']['retried'][$stopped] = ['accounts' => every_login($pdo), 'indexes' => table_indexes($pdo, 'accounts')];
 }
 
-if ($mysql === null) @unlink($sqliteFile);
+// --- 024 on the logins the previous version left --------------------------------
+// Every login keeps every value but its username; the column and its index go and
+// nothing else does; afterwards a login can be made without a username, twice,
+// and the address still refuses a second login.
+[$pdo, $logins] = build_portal_before_024();
+$twentyFourBefore = login_state($pdo) + ['two_new' => two_logins_without_a_username($pdo)];
+run_statements($pdo, $twentyFour, $twentyFourStatements);
+$address = fn(string $email): ?string => refusal($pdo, ['name' => 'Zweiter Zugang', 'email' => $email]);
+$result['twentyfour'] = [
+    'logins' => $logins, 'statements' => count($twentyFourStatements), 'before' => $twentyFourBefore,
+    'after' => login_state($pdo) + ['two_new' => two_logins_without_a_username($pdo)],
+    // A second login on the address of a login 024 carried through: as typed, in
+    // other capitals, and on the legacy quoted address [R2]. The negative: the
+    // same write on an address of its own is taken, so what refused the others
+    // was the address.
+    'same_address' => $address('mueller@beispiel.test'),
+    'address_other_case' => $address('Mueller@Beispiel.test'),
+    'legacy_address_taken' => $address('"familie..alt"@beispiel.test'),
+    'own_address' => $address('zweiter.zugang@beispiel.test'),
+];
+// A second run, as the next page view would make it after an update that
+// applied the file but stopped before the ledger recorded it.
+$refused = null;
+try { foreach ($twentyFourStatements as $statement) $pdo->exec($statement); }
+catch (PDOException $e) { $refused = (string)$e->getCode(); }
+$result['twentyfour']['again'] = ['refused' => $refused, 'state' => login_state($pdo)];
+
+// --- 025 on the chats the previous version wrote ----------------------------------
+// It turns a two-person chat between a student and staff into 'staff_direct',
+// owned by the student, and leaves every other chat as it was (ADR 0022 §5). Its
+// UPDATE comes before its ALTER so that an update stopped between them can start
+// the file again from the top (§10). Straight through here, on the portal 024
+// left; stopped and started again at the end, where building a portal for each
+// round cannot take this one away from the runner's step below.
+$twentyFive = migration_path('025');
+$twentyFiveStatements = migration_statements($twentyFive);
+$chats = add_chats_before_025($pdo, $logins);
+$twentyFiveBefore = chat_state($pdo);
+run_statements($pdo, $twentyFive, $twentyFiveStatements);
+$result['twentyfive'] = ['chats' => $chats, 'logins' => $logins, 'statements' => count($twentyFiveStatements),
+                         'before' => $twentyFiveBefore, 'after' => chat_state($pdo), 'retried' => []];
+
+// --- the runner's step after 024 -------------------------------------------------
+// database/defaults.php, which schema_apply() requires after the files on every
+// update, run through the application's own functions on the application's own
+// connection to this portal's database, twice, the second time as the next
+// update would. The portal is marked as set up, as every portal being updated is,
+// so only the part that runs on every update runs. Up to 023 that step gave out
+// usernames; after 024 it must not reach for the column at all, or every request
+// would meet a failed update and the portal would stay closed.
+$pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
+// The step runs after the newest file, so the files after 025 go in first, as
+// an update applies them.
+foreach (glob(APP_ROOT . '/database/migrations/*.sql') as $file)
+    if (strcmp(basename($file), '026') >= 0)
+        foreach (split_sql((string)file_get_contents($file)) as $statement) $pdo->exec($statement);
+$runnerState = function () use ($pdo): array {
+    setting_cache_clear();
+    return ['accounts' => every_login($pdo), 'counts' => guarded_counts($pdo),
+            'without_login' => (int)$pdo->query('SELECT COUNT(*) FROM students WHERE account_id IS NULL')->fetchColumn(),
+            'mail' => (int)$pdo->query('SELECT COUNT(*) FROM mail_jobs')->fetchColumn(),
+            'courses' => (int)$pdo->query('SELECT COUNT(*) FROM classes')->fetchColumn(),
+            'dummy_hash' => (string)setting('sign_in_dummy_hash')];
+};
+// What it threw, if anything, so a failure reads as an assertion in the suite
+// rather than as this process stopping.
+$runnerStep = static function (): string {
+    try { require APP_ROOT . '/database/defaults.php'; return ''; }
+    catch (Throwable $e) { return get_class($e) . ': ' . $e->getMessage(); }
+};
+$runner = ['before' => $runnerState(), 'first_error' => $runnerStep()];
+$runner['first'] = $runnerState();
+$runner['second_error'] = $runnerStep();
+$runner['second'] = $runnerState();
+$result['twentyfour']['runner'] = $runner;
+
+// --- 025 interrupted after each statement and started again from the first -------
+// The last round lets it finish and runs its UPDATE once more, as a retry after
+// the file finished but before the ledger recorded it would. Each round starts
+// from a portal of its own, built and brought to 024 the same way as above.
+for ($stopped = 1; $stopped <= count($twentyFiveStatements); $stopped++) {
+    [$pdo, $logins] = build_portal_before_024();
+    run_statements($pdo, $twentyFour, $twentyFourStatements);
+    add_chats_before_025($pdo, $logins);
+    run_statements($pdo, $twentyFive, array_slice($twentyFiveStatements, 0, $stopped));
+    run_statements($pdo, $twentyFive, $stopped < count($twentyFiveStatements)
+        ? $twentyFiveStatements : array_slice($twentyFiveStatements, 0, -1));
+    $result['twentyfive']['retried'][$stopped] = chat_state($pdo);
+}
+
+// --- 028 to 031 and the runner's step after them ----------------------------------
+// A login may have a username and no address (028); the key that emptied a
+// student's login on delete goes (029) and comes back as RESTRICT (030); an
+// enrolment gets removed_on (031); and the runner's step gives every student
+// without a login a placeholder (ADR 0023 §2-§4, 0024 §1). One portal, one file
+// at a time, with each file run a second time straight after, as the next page
+// view does after an update that applied it but stopped before the ledger
+// recorded it: 029 must then do nothing, the others be refused and change
+// nothing.
+$files = [];
+foreach (['028', '029', '030', '031'] as $number) $files[$number] = migration_path($number);
+[$pdo, $people] = build_portal_before_028();
+$state = ['before' => login_rule_state($pdo)];
+$refused = [];
+foreach ($files as $number => $path) {
+    run_statements($pdo, $path, migration_statements($path));
+    $state[$number] = login_rule_state($pdo);
+    $refused[$number] = run_again($path);
+    $state[$number . '_again'] = login_rule_state($pdo);
+    // And 029 once more after 030 has added the key it must never take.
+    if ($number === '030') {
+        $refused['029_after_030'] = run_again($files['029']);
+        $state['029_after_030'] = login_rule_state($pdo);
+    }
+}
+
+// The runner's step on that portal: database/defaults.php on the application's
+// own connection, as schema_apply() requires it after the files. First stopped
+// part way, after each placeholder but the last, by a trigger that refuses the
+// next one, the way a lost connection or a full disk would stop it: each time,
+// every student and every login must be as before the step. Then through, then
+// once more as the next update would run it.
+$pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
+$withoutLogin = (int)$pdo->query('SELECT COUNT(*) FROM students WHERE account_id IS NULL')->fetchColumn();
+$step = ['without_login' => $withoutLogin, 'stopped' => []];
+for ($stopped = 1; $stopped < $withoutLogin; $stopped++) {
+    $pdo->exec("CREATE TRIGGER stop_the_step BEFORE INSERT ON accounts FOR EACH ROW"
+        . " IF NEW.state = 'placeholder' AND (SELECT COUNT(*) FROM accounts WHERE state = 'placeholder') >= $stopped"
+        . " THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'stopped by the test'; END IF");
+    setting_cache_clear();
+    $error = $runnerStep();
+    $pdo->exec('DROP TRIGGER stop_the_step');
+    $step['stopped'][$stopped] = ['error' => $error, 'state' => login_rule_state($pdo)];
+}
+setting_cache_clear();
+$step['first_error'] = $runnerStep();
+$step['first'] = login_rule_state($pdo);
+setting_cache_clear();
+$step['second_error'] = $runnerStep();
+$step['second'] = login_rule_state($pdo);
+
+// What the database says afterwards, each write undone again. A student's login
+// of every kind - a placeholder, one in use, an invitation not yet taken up - is
+// refused; a login nobody points to, and a student's login once the student is
+// gone, are not; a student cannot be pointed at a login that does not exist.
+// And the address and username rules 028 sets: a login with neither, twice; one
+// with a username alone; a username taken in other capitals; an address taken.
+$loginOf = fn(int $studentId): int => (int)$pdo->query('SELECT account_id FROM students WHERE id = ' . $studentId)->fetchColumn();
+$delete = fn(int $account): array => [['DELETE FROM accounts WHERE id = ?', [$account]]];
+$login = fn(string $name, ?string $email, ?string $username): array =>
+    ['INSERT INTO accounts (name, email, username, role, state, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+     [$name, $email, $username, 'student', 'invited', '2026-10-01 08:00:00']];
+$step['attempts'] = [
+    'placeholder' => attempt($pdo, $delete($loginOf((int)$people['max']))),
+    // Paul's family login, in use since before 019.
+    'in_use' => attempt($pdo, $delete($loginOf(20))),
+    'invitation_of_a_student' => attempt($pdo, $delete((int)$people['clara_login'])),
+    'orphan' => attempt($pdo, $delete((int)$people['orphan'])),
+    'invitation_by_address' => attempt($pdo, $delete((int)$people['invitation'])),
+    'student_first' => attempt($pdo, [['DELETE FROM students WHERE id = ?', [$people['max']]],
+                                      ['DELETE FROM accounts WHERE id = ?', [$loginOf((int)$people['max'])]]]),
+    'missing_login' => attempt($pdo, [['UPDATE students SET account_id = ? WHERE id = ?', [987654, $people['max']]]]),
+    'student_without_login' => attempt($pdo, [['INSERT INTO students (first_name, last_name, status, revision, created_at, updated_at)'
+        . " VALUES ('Ohne', 'Zugang', 'active', 1, '2026-10-01 08:00:00', '2026-10-01 08:00:00')", []]]),
+    'neither_twice' => attempt($pdo, [$login('Erster Platzhalter', null, null), $login('Zweiter Platzhalter', null, null)]),
+    'username_alone' => attempt($pdo, [$login('Lena Hofer', null, 'lena.hofer')]),
+    'username_other_case' => attempt($pdo, [$login('Lena Hofer', null, 'lena.hofer'), $login('Lena Hofer', null, 'Lena.Hofer')]),
+    'username_own' => attempt($pdo, [$login('Lena Hofer', null, 'lena.hofer'), $login('Lena Hofer', null, 'lena.hofer2')]),
+    'address_taken' => attempt($pdo, [$login('Zweiter Zugang', 'mueller@beispiel.test', null)]),
+];
+$step['after_attempts'] = login_rule_state($pdo);
+
+// --- 029 stopped after each statement and started again on a new connection --------
+// The next page view is a new connection, with neither the first one's variable
+// nor its prepared statement. Each round on a portal of its own; then 030, which
+// must add its key as it does after one run.
+$twentyNine = migration_statements($files['029']);
+$retried = [];
+for ($stopped = 1; $stopped < count($twentyNine); $stopped++) {
+    [$pdo] = build_portal_before_028();
+    apply_migrations($pdo, '028', '028');
+    $before = login_rule_state($pdo);
+    run_statements($pdo, $files['029'], array_slice($twentyNine, 0, $stopped));
+    $pdo = null;
+    $next = connect();
+    run_statements($next, $files['029'], $twentyNine);
+    $retried[$stopped] = ['before' => $before, 'after' => login_rule_state($next)];
+    run_statements($next, $files['030'], migration_statements($files['030']));
+    $retried[$stopped]['keys_after_030'] = student_keys($next);
+}
+
+// --- 029 on a key that has another name ----------------------------------------------
+// The name was the engine's choice (001 gave none). A database whose key is
+// called something else - another engine, a restore by a tool that names keys
+// its own way - must come out the same.
+[$pdo] = build_portal_before_028();
+$pdo->exec('ALTER TABLE students DROP FOREIGN KEY students_ibfk_1');
+$pdo->exec('ALTER TABLE students ADD CONSTRAINT login_of_this_student FOREIGN KEY (account_id) REFERENCES accounts (id) ON DELETE SET NULL');
+$renamed = ['before' => student_keys($pdo)];
+apply_migrations($pdo, '028', '030');
+$renamed['after'] = student_keys($pdo);
+
+$result['twentyeight'] = ['people' => $people, 'statements' => array_map(fn($path) => count(migration_statements($path)), $files),
+                          'state' => $state, 'refused' => $refused, 'step' => $step, 'retried' => $retried, 'renamed' => $renamed];
+
+// --- 032 and 033 on custom fields, saved views and templates ------------------------
+// Both only drop: 032 the custom fields with every value, 033 the saved views and
+// the templates (ADR 0026 §7, §8). On the portal 028 to 031 were applied to, with
+// rows in all four tables and change-log lines that name them, each file is held
+// to taking its own tables away and nothing else, then run a second time on a
+// connection of its own, as the next page view does after an update that applied
+// it but stopped before the ledger recorded it.
+$dropping = ['032' => migration_path('032'), '033' => migration_path('033')];
+[$pdo, $written] = build_portal_before_032();
+$dropState = fn(): array => every_table($pdo) + ['lines' => lines_about_what_goes($pdo)];
+$drops = ['written' => $written, 'before' => $dropState(),
+          'statements' => array_map(fn(string $path): int => count(migration_statements($path)), $dropping)];
+foreach ($dropping as $number => $path) {
+    run_statements($pdo, $path, migration_statements($path));
+    $drops[$number] = $dropState();
+    $drops['refused'][$number] = run_again($path);
+    $drops[$number . '_again'] = $dropState();
+}
+
+// --- 032 and 033 stopped after each statement and started again from the first -----
+// Each round on a portal of its own, built and filled the same way, 033's with 032
+// applied first.
+foreach ($dropping as $number => $path) {
+    $statements = migration_statements($path);
+    for ($stopped = 1; $stopped < count($statements); $stopped++) {
+        [$pdo] = build_portal_before_032();
+        if ($number === '033') run_statements($pdo, $dropping['032'], migration_statements($dropping['032']));
+        $round = ['before' => every_table($pdo)];
+        run_statements($pdo, $path, array_slice($statements, 0, $stopped));
+        $round['stopped'] = every_table($pdo);
+        run_statements($pdo, $path, $statements);
+        $drops['retried'][$number][$stopped] = $round + ['after' => every_table($pdo)];
+    }
+}
+$result['dropping'] = $drops;
+
+// --- 034 to 037 on the online history, the pictures and the contact requests --------
+// 034 drops when each login was online, 035 a login's time last seen, status,
+// emoji and picture, 036 a child's picture, and 037 the requests families sent one
+// another (ADR 0026 §8, §11; 0022 §11.3). On the portal 032 and 033 were applied
+// to, with rows in everything they take and in what has to stay, one file at a
+// time: each is held to taking its own and nothing else, then run a second time
+// on a connection of its own, as the next page view does after an update that
+// applied it but stopped before the ledger recorded it. Each is one statement, so
+// none can stop inside itself; an update stopped between them is started again
+// through the runner, below.
+$going = [];
+foreach (['034', '035', '036', '037'] as $number) $going[$number] = migration_path($number);
+[$pdo] = build_portal_before_032();
+apply_migrations($pdo, '032', '033');
+$gone = ['files' => add_presence_pictures_and_requests($pdo), 'before' => tables_and_people($pdo),
+         'statements' => array_map(fn(string $path): int => count(migration_statements($path)), $going)];
+foreach ($going as $number => $path) {
+    run_statements($pdo, $path, migration_statements($path));
+    $gone[$number] = tables_and_people($pdo);
+    $gone['refused'][$number] = run_again($path);
+    $gone[$number . '_again'] = tables_and_people($pdo);
+}
+$result['going'] = $gone;
+
+// --- 038 on children pinned to an age band ---------------------------------------------
+// 038 takes each child's pinned band, with its key: a child's band is worked out
+// from the birth date alone (ADR 0026 §8, §11; the owner's answer of 2026-10-07).
+// On the portal 032 to 037 were applied to, with levels and bands seeded and
+// added, children in every level, two of them pinned to a band, and change-log
+// lines naming them, it is held to taking the pin and nothing else - each child's
+// level above all, the column beside the one it drops - then run a second time
+// on a connection of its own, as the next page view does after an update that
+// applied it but stopped before the ledger recorded it. One statement, so it
+// cannot stop inside itself; an update stopped just before it is started again
+// through the runner, below.
+$pinFile = migration_path('038');
+[$pdo, $written] = build_portal_before_032();
+apply_migrations($pdo, '032', '037');
+$pinState = fn(): array => tables_and_people($pdo) + ['lists' => levels_and_bands($pdo), 'lines' => lines_about_levels_and_bands($pdo)];
+$pins = ['written' => $written, 'before' => $pinState(), 'statements' => count(migration_statements($pinFile))];
+run_statements($pdo, $pinFile, migration_statements($pinFile));
+$pins['after'] = $pinState();
+$pins['refused'] = run_again($pinFile);
+$pins['again'] = $pinState();
+$result['pins'] = $pins;
+
+// --- 039 on logins that signed in by a username ------------------------------------------
+// 039 turns every login without an address that is not a placeholder already -
+// invited, active or suspended - into one; deletes every place in a chat, notice
+// and read mark a placeholder holds, which only those logins do (security finding
+// F1); and drops the username column with its index: everybody signs in by their
+// own address again (ADR 0030 §2). On the portal 032 to 038 were applied to, with
+// the three username logins - the active one in a chat with the trainer and in a
+// course group, with notices and read marks - beside the address logins, a
+// family's chat with the trainer, a placeholder and the staff, it is held to
+// changing those three logins, taking what they hold in chats and bells, and
+// nothing else, then run a second time on a connection of its own, as the next
+// page view does after an update that applied it but stopped before the ledger
+// recorded it. Then, each round on a portal of its own, stopped after each
+// statement but the last and started again from the first. Afterwards two logins
+// written the way the portal writes one, naming no username, must both be taken.
+// Each state is read from the portal it names.
+$addressFile = migration_path('039');
+$addressStatements = migration_statements($addressFile);
+$addressState = fn(PDO $portal): array => tables_and_people($portal) + ['lists' => levels_and_bands($portal)];
+[$pdo, $written] = build_portal_before_032();
+apply_migrations($pdo, '032', '038');
+$addresses = ['written' => $written, 'statements' => count($addressStatements), 'before' => $addressState($pdo)];
+run_statements($pdo, $addressFile, $addressStatements);
+$addresses['after'] = $addressState($pdo);
+$addresses['refused'] = run_again($addressFile);
+$addresses['again'] = $addressState($pdo);
+$addresses['two_new'] = two_logins_without_a_username($pdo);
+for ($stopped = 1; $stopped < count($addressStatements); $stopped++) {
+    [$portal] = build_portal_before_032();
+    apply_migrations($portal, '032', '038');
+    run_statements($portal, $addressFile, array_slice($addressStatements, 0, $stopped));
+    $round = ['stopped' => $addressState($portal)];
+    run_statements($portal, $addressFile, $addressStatements);
+    $addresses['retried'][$stopped] = $round + ['restarted' => $addressState($portal)];
+}
+$result['addresses'] = $addresses;
+
+// --- 040 on children of every kind -----------------------------------------------------------
+// 040 gives every child the stored name of a picture and the family's yes for the
+// course, '' and 0 (ADR 0031 §2). On the portal 032 to 039 were applied to, with
+// children of every kind and their logins, it is held to adding the two columns
+// where the record puts them, with their types and defaults, and changing
+// nothing else, then run a second time on a connection of its own, as the next
+// page view does after an update that applied it but stopped before the ledger
+// recorded it. A child written the way the previous version writes one is tried
+// before it and after it, and undone each time: the children already there read
+// '' and 0 even without the defaults, because the engine fills a new column with
+// its type's empty value, so a missing default shows only on the next insert.
+// One statement, so it cannot stop inside itself; an update stopped just before
+// it is started again through the runner, below.
+$faceFile = migration_path('040');
+[$pdo, $written] = build_portal_before_032();
+apply_migrations($pdo, '032', '039');
+$faceState = fn(): array => tables_and_people($pdo) + ['facts' => ['last_name' => column_facts($pdo, 'students', 'last_name'),
+    'picture_name' => column_facts($pdo, 'students', 'picture_name'), 'course_sees_picture' => column_facts($pdo, 'students', 'course_sees_picture')]];
+$faces = ['written' => $written + add_children_of_every_kind($pdo), 'statements' => count(migration_statements($faceFile))];
+$faces['before'] = $faceState();
+$faces['previous_version_before'] = child_as_the_previous_version_writes_one($pdo);
+run_statements($pdo, $faceFile, migration_statements($faceFile));
+$faces['after'] = $faceState();
+$faces['previous_version'] = child_as_the_previous_version_writes_one($pdo);
+$faces['refused'] = run_again($faceFile);
+$faces['again'] = $faceState();
+$result['faces'] = $faces;
+
+// --- 041 on logins of every kind --------------------------------------------------------------
+// 041 gives every login the stored name of a picture, '': a team member's
+// picture is on the login (ADR 0031). On a portal 032 to 040 were applied to,
+// with the children of every kind written before 040 and their families'
+// logins, and the team of every kind written before 041, it is held to adding
+// the column right after the name, with its type and default, and changing
+// nothing else, then run a second time on a connection of its own. A login
+// written by each of the previous version's four inserts is tried before it and
+// after it, and undone each time: as with 040, the logins already there would
+// read '' without the default too, so a missing one shows only on the next
+// insert. One statement, so it cannot stop inside itself; an update stopped just
+// before it is started again through the runner, below.
+$teamFile = migration_path('041');
+[$pdo, $written] = build_portal_before_032();
+apply_migrations($pdo, '032', '039');
+$written += add_children_of_every_kind($pdo);
+apply_migrations($pdo, '040', '040');
+$teamState = fn(): array => tables_and_people($pdo) + ['facts' => ['name' => column_facts($pdo, 'accounts', 'name'),
+    'picture_name' => column_facts($pdo, 'accounts', 'picture_name')]];
+$team = ['written' => $written + add_team_of_every_kind($pdo), 'statements' => count(migration_statements($teamFile))];
+$team['before'] = $teamState();
+$team['previous_version_before'] = logins_as_the_previous_version_writes_them($pdo);
+run_statements($pdo, $teamFile, migration_statements($teamFile));
+$team['after'] = $teamState();
+$team['previous_version'] = logins_as_the_previous_version_writes_them($pdo);
+$team['refused'] = run_again($teamFile);
+$team['again'] = $teamState();
+$result['team'] = $team;
+
+// --- this release's update, then one with a mistake in it, through the runner -------
+// schema_apply() itself, the one copy the installer, the console and the first
+// request after an upload all use, on a portal as the previous version leaves it:
+// 001 to 031 in its ledger, its runner step run, and rows in everything 032 to
+// 039 drop or change. The runner reads ROOT/database/migrations, so ROOT is a
+// release of this run's own, a copy of the shipped files that one more file can
+// be put into without the portal's own folder ever seeing it; the stamp and the
+// backups go to this run's folder, beside the maintenance flag. First the update
+// this release brings, which must pass the guard, drop and change what 032 to
+// 039 drop and change, give every child 040's '' and 0 and every login 041's ''.
+// Then a file that drops contacts, a guarded table with rows in it, which the
+// guard must refuse: before ADR 0026 §7 it compared only the tables it could
+// still count, and let such a file through.
+$release = test_run_dir() . '/release';
+mkdir($release . '/database/migrations', 0700, true);
+foreach (glob(APP_ROOT . '/database/migrations/*.sql') ?: [] as $file) copy($file, $release . '/database/migrations/' . basename($file));
+copy(APP_ROOT . '/database/defaults.php', $release . '/database/defaults.php');
+copy(APP_ROOT . '/VERSION', $release . '/VERSION');
+// The privacy drafts, which the seed a first install runs once reads: the
+// restore scenarios at the end install afresh through the runner.
+mkdir($release . '/docs', 0700);
+foreach (['privacy-draft-de.txt', 'privacy-draft-en.txt'] as $draft) copy(APP_ROOT . '/docs/' . $draft, $release . '/docs/' . $draft);
+// Defined once, here: had anything defined it already, the runner would read the
+// shipped files rather than this release, and nothing below would be what it says.
+if (defined('ROOT')) { fwrite(STDERR, "ROOT is already defined, so the runner would not read this run's own release.\n"); exit(2); }
+define('ROOT', $release);
+// What schema_apply() needs beyond the files above: the manifest check, the backup
+// and the version it records.
+require_once APP_ROOT . '/app/install.php';
+require_once APP_ROOT . '/app/version.php';
+$GLOBALS['config']['maintenance_file'] = test_run_dir() . '/maintenance.flag';
+
+// The files the pictures were stored in, and what has to stay beside them (ADR
+// 0026 §8). In the pictures' folder: every picture a column names, one of them
+// saved a moment ago; a problem report's screenshot; a file not named the way an
+// upload is; and a folder and a link named the way one is. Elsewhere: the chat's
+// photo, voice note and file, a receipt, the portal's icon, a file in the uploads
+// folder itself, and the file the link points to, outside the uploads. A day old,
+// all of them, but the picture saved a moment ago. Planted afresh each time, so
+// what the step deleted the time before is there again.
+$uploads = dirname(maintenance_file()) . '/uploads';
+$outside = test_run_dir() . '/outside-the-uploads.jpg';
+$plant = function (array $files) use ($uploads, $outside): void {
+    if (is_dir($uploads))
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($uploads, FilesystemIterator::SKIP_DOTS),
+                                               RecursiveIteratorIterator::CHILD_FIRST) as $entry)
+            $entry->isDir() && !$entry->isLink() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+    $old = time() - 86400;
+    $stored = fn(string $character, string $extension): string => str_repeat($character, 32) . '.' . $extension;
+    $put = function (string $relative, int $when) use ($uploads): void {
+        if (!is_dir(dirname($uploads . '/' . $relative))) mkdir(dirname($uploads . '/' . $relative), 0700, true);
+        file_put_contents($uploads . '/' . $relative, 'x');
+        touch($uploads . '/' . $relative, $when);
+    };
+    foreach ([...$files['account_pictures'], $files['child_picture'], $files['screenshot'], 'kein-upload.txt'] as $name) $put('avatar/' . $name, $old);
+    $put('avatar/' . $files['child_picture_just_saved'], time());
+    foreach ($files['chat'] as $name) $put('message/' . $name, $old);
+    $put('proof/' . $files['receipt'], $old);
+    $put('icon/' . $files['icon'], $old);
+    $put($stored('6', 'jpg'), $old);
+    mkdir($uploads . '/avatar/' . $stored('e', 'jpg'));
+    touch($uploads . '/avatar/' . $stored('e', 'jpg'), $old);
+    file_put_contents($outside, 'x');
+    touch($outside, $old);
+    symlink($outside, $uploads . '/avatar/' . $stored('f', 'jpg'));
+};
+// Everything under the uploads, each as a file, a folder or a link, and whether
+// the file the link points to is still there.
+$onDisk = function () use ($uploads, $outside): array {
+    clearstatcache();
+    $listing = [];
+    if (is_dir($uploads))
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($uploads, FilesystemIterator::SKIP_DOTS),
+                                               RecursiveIteratorIterator::SELF_FIRST) as $entry)
+            $listing[substr($entry->getPathname(), strlen($uploads) + 1)] = $entry->isLink() ? 'link' : ($entry->isDir() ? 'folder' : 'file');
+    ksort($listing);
+    return ['uploads' => $listing, 'outside' => is_file($outside)];
+};
+
+// A portal as the previous version leaves it: 001 to 031 in the ledger as
+// schema_apply() makes it, that update's step after the files run, rows in
+// everything 032 to 039 drop or change, and the files on disk, planted after
+// that step.
+$previousVersion = function () use ($runnerStep, $plant): array {
+    [$pdo, $written] = build_portal_before_032();
+    $files = add_presence_pictures_and_requests($pdo);
+    $pdo->exec('CREATE TABLE schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+    $record = $pdo->prepare('INSERT INTO schema_migrations (version, checksum, applied_at) VALUES (?, ?, ?)');
+    foreach (migration_files() as $file)
+        if (strcmp(basename($file), '032') < 0) $record->execute([basename($file), hash_file('sha256', $file), '2026-10-01 08:00:00']);
+    $pdo->exec("INSERT INTO settings (setting_key, setting_value, updated_at) VALUES ('defaults_initialized', 'true', '2025-10-03 08:00:00')");
+    setting_cache_clear();
+    $error = $runnerStep();
+    $plant($files);
+    return [$pdo, $written, $files, $error];
+};
+
+[$pdo, $written, $files, $previousStepError] = $previousVersion();
+// This release's files: every one from 032 on.
+$thisRelease = array_values(array_filter(glob(APP_ROOT . '/database/migrations/*.sql') ?: [],
+                                         fn(string $path): bool => strcmp(basename($path), '032') >= 0));
+$runner = ['written' => $written, 'files' => $files, 'previous_step_error' => $previousStepError,
+           'shipped' => array_combine(array_map('basename', $thisRelease), array_map(fn(string $path): string => hash_file('sha256', $path), $thisRelease))];
+// What a run said, rather than this process stopping on it: null when it passed.
+$outcome = static function (callable $run): ?array {
+    try { $run(); return null; }
+    catch (Throwable $e) {
+        return ['class' => get_class($e), 'log' => $e->getMessage()]
+            + ($e instanceof UpdateBlocked ? ['de' => $e->de, 'en' => $e->en] : [])
+            + ($e instanceof SchemaError ? ['statement' => $e->statement, 'summary' => $e->summary()] : []);
+    }
+};
+// A page view's run, with the safeguards; setup's waives them (schema_first_install()).
+$update = fn(): ?array => $outcome(fn() => schema_apply());
+$install = fn(): ?array => $outcome(fn() => schema_apply(null, safeguards: false));
+// Null when there is no ledger at all, as after an import that broke off before it.
+$ledger = function () use ($pdo): ?array {
+    try { return $pdo->query('SELECT version, checksum FROM schema_migrations ORDER BY version')->fetchAll(); }
+    catch (PDOException) { return null; }
+};
+$runner['before'] = tables_and_people($pdo) + ['ledger' => $ledger(), 'files' => $onDisk()];
+$runner['release'] = ['refused' => $update(), 'current' => schema_is_current(), 'backups' => count(backups())];
+$runner['release']['state'] = tables_and_people($pdo) + ['ledger' => $ledger(), 'files' => $onDisk()];
+// The step after the files once more, as every later update runs it.
+setting_cache_clear();
+$runner['release']['again'] = ['error' => $runnerStep(), 'files' => $onDisk()];
+
+// --- a refused update stays refused (ADR 0027) ----------------------------------------
+// One schema_apply() is one page view, with the caches a request starts without;
+// after it, what it said and everything ADR 0027 holds it to: the ledger, the
+// copies, the stamp, the record of an unfinished update, the guarded counts, the
+// tables, the version and the release history. Each mistake below is a file of
+// this run's release, and each ends where it began: its file taken out again,
+// the copy imported, and a run that passes. The copies that are no longer
+// needed are removed, so pruning never has to choose between two taken in the
+// same second.
+$record = function (): ?array {
+    clearstatcache();
+    if (!is_file(schema_unfinished_file())) return null;
+    $text = (string)file_get_contents(schema_unfinished_file());
+    return ['text' => $text, 'data' => json_decode($text, true)];
+};
+$state = function () use ($pdo, $ledger, $record): array {
+    clearstatcache();
+    setting_cache_clear();
+    return ['ledger' => $ledger(), 'copies' => array_column(backups(), 'name'),
+            'stamp' => is_file(schema_stamp_file()) ? (string)file_get_contents(schema_stamp_file()) : null,
+            'record' => $record(), 'counts' => guarded_counts($pdo),
+            'tables' => array_column($pdo->query('SELECT table_name AS name FROM information_schema.tables'
+                . ' WHERE table_schema = DATABASE() ORDER BY table_name')->fetchAll(), 'name'),
+            'version' => database_version(), 'history' => count(version_history())];
+};
+$request = function () use ($update, $state): array {
+    clearstatcache();
+    setting_cache_clear();
+    return ['said' => $update()] + $state();
+};
+$migrations = $release . '/database/migrations';
+$add = fn(string $name, string $sql) => file_put_contents($migrations . '/' . $name, $sql);
+$take = fn(string $name) => unlink($migrations . '/' . $name);
+// The copy a request wrote: the names in the folder it added.
+$written = fn(array $before, array $after): array => array_values(array_diff($after['copies'], $before['copies']));
+$contactsIn = fn(string $name): int => is_file(backup_dir() . '/' . $name)
+    ? substr_count((string)file_get_contents(backup_dir() . '/' . $name), 'INSERT INTO `contacts` VALUES') : -1;
+// The portal as this release's update left it, taken outside the copies folder
+// so that neither pruning nor a scenario can touch it: what each scenario that
+// does not import its own copy goes back to.
+$untouched = test_run_dir() . '/as-this-release-left-it.sql';
+$handle = fopen($untouched, 'wb');
+backup_write($handle, connect(), 'test');
+fclose($handle);
+$putBack = function (string $mistake, string $copy) use ($take, $pdo, $request): array {
+    $take($mistake);
+    import_copy($pdo, $copy);
+    return $request();
+};
+// Every scenario after the first starts with no update unfinished. Code that
+// leaves a record behind fails the scenario that left it; removing it here keeps
+// that one failure from turning each scenario after it into a crash that hides
+// which rule broke.
+$clean = function (): void {
+    clearstatcache();
+    if (is_file(schema_unfinished_file())) unlink(schema_unfinished_file());
+};
+$runner['app_version'] = app_version();
+$runner['release']['record'] = $record();
+
+// 1. A loss stays refused, request after request: a file that drops contacts.
+$add('999_a_mistake_drops_the_contacts.sql', "DROP TABLE contacts;\n");
+$mistake = ['before' => $state(), 'requests' => []];
+foreach ([1, 2, 3] as $n) $mistake['requests'][$n] = $request();
+$mistake['copy'] = $written($mistake['before'], $mistake['requests'][1]);
+$named = backup_dir() . '/' . ($mistake['copy'][0] ?? 'none');
+$mistake['copy_contacts'] = $contactsIn($mistake['copy'][0] ?? 'none');
+
+// 3. The stamp and the settings written as a run that passes would write them.
+file_put_contents(schema_stamp_file(), schema_state());
+set_setting('schema_fingerprint', schema_fingerprint());
+set_setting('schema_written_by', app_version());
+clearstatcache();
+setting_cache_clear();
+$mistake['forged'] = ['stamp' => schema_state(), 'current' => schema_is_current(), 'next' => $request()];
+
+// 4. A newer upload on top of the loss: its migration must not run.
+$add('999_b_a_newer_release_makes_a_table.sql', "CREATE TABLE made_by_a_newer_release (id INT PRIMARY KEY) ENGINE=InnoDB;\n");
+$mistake['newer'] = $request();
+$take('999_b_a_newer_release_makes_a_table.sql');
+
+// 6. The copy imported with the new files still in place: they take the same
+//    rows again, and still no second copy is written.
+import_copy($pdo, $named);
+$mistake['imported'] = ['contacts' => guarded_counts($pdo)['contacts'] ?? 0, 'request' => $request(),
+                        'copy_contacts' => $contactsIn($mistake['copy'][0] ?? 'none')];
+
+// 5. The previous files - the release without the file that lost the rows -
+//    then the copy the record names, first broken off at contacts, then whole.
+$take('999_a_mistake_drops_the_contacts.sql');
+import_copy($pdo, $named, 'contacts');
+$mistake['partial'] = $request();
+import_copy($pdo, $named);
+$mistake['complete'] = $request();
+// 2. ... after which the next page view takes the fast path, asking nothing.
+clearstatcache();
+setting_cache_clear();
+$mistake['afterwards'] = ['current' => schema_is_current(), 'queries' => query_count(fn() => schema_is_current())];
+@unlink($named);
+
+// 7. A release that takes contacts off the list, as the record sees it: the
+//    table it counted is one no longer guarded. The run passes and deletes it.
+$clean();
+$add('999_a_mistake_drops_the_contacts.sql', "DROP TABLE contacts;\n");
+$offList = ['before' => $state()];
+$offList['refused'] = $request();
+$offList['copy'] = $written($offList['before'], $offList['refused']);
+$kept = $offList['refused']['record']['data']['counts'] ?? null;
+if (is_array($kept)) {
+    $renamed = $offList['refused']['record']['data'];
+    $renamed['counts'] = array_combine(array_map(fn(string $table): string => $table === 'contacts' ? 'contacts_no_longer_guarded' : $table,
+                                                  array_keys($kept)), $kept);
+    file_put_contents(schema_unfinished_file(), json_encode($renamed, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+$offList['released'] = $request();
+$offList['restored'] = $putBack('999_a_mistake_drops_the_contacts.sql', $untouched);
+foreach ($offList['copy'] as $name) @unlink(backup_dir() . '/' . $name);
+
+// 1. The same with a file that deletes every contact and drops nothing.
+$clean();
+$add('999_c_mistake_empties_the_contacts.sql', "DELETE FROM contacts;\n");
+$emptied = ['before' => $state(), 'requests' => []];
+foreach ([1, 2, 3] as $n) $emptied['requests'][$n] = $request();
+$emptied['copy'] = $written($emptied['before'], $emptied['requests'][1]);
+$emptied['restored'] = $putBack('999_c_mistake_empties_the_contacts.sql', $untouched);
+foreach ($emptied['copy'] as $name) @unlink(backup_dir() . '/' . $name);
+
+// 4. A file that deletes one contact and then stops: the retry must not run.
+$clean();
+$add('999_d_mistake_deletes_a_contact_and_stops.sql', "DELETE FROM contacts ORDER BY id LIMIT 1;\nINSERT INTO no_such_table VALUES (1);\n");
+$halfway = ['before' => $state(), 'requests' => []];
+foreach ([1, 2] as $n) $halfway['requests'][$n] = $request();
+$halfway['copy'] = $written($halfway['before'], $halfway['requests'][1]);
+$halfway['restored'] = $putBack('999_d_mistake_deletes_a_contact_and_stops.sql', $untouched);
+foreach ($halfway['copy'] as $name) @unlink(backup_dir() . '/' . $name);
+
+// 6. A file that makes a table and then stops, six page views in a row: six
+//    times as many as the copies that are kept, plus one.
+$clean();
+$add('999_e_mistake_makes_a_table_and_stops.sql', "CREATE TABLE made_before_stopping (id INT PRIMARY KEY) ENGINE=InnoDB;\nINSERT INTO no_such_table VALUES (1);\n");
+$stopping = ['before' => $state(), 'requests' => []];
+for ($n = 1; $n <= BACKUP_KEEP + 1; $n++) $stopping['requests'][$n] = $request();
+$stopping['copy'] = $written($stopping['before'], $stopping['requests'][1]);
+$stopping['copy_contacts'] = $contactsIn($stopping['copy'][0] ?? 'none');
+$stopping['restored'] = $putBack('999_e_mistake_makes_a_table_and_stops.sql', $untouched);
+foreach ($stopping['copy'] as $name) @unlink(backup_dir() . '/' . $name);
+
+// A file that stops in an update run with skip-backup: there is no copy, so the
+// refusal sends nobody looking for one.
+$clean();
+$add('999_g_mistake_stops_without_a_copy.sql', "INSERT INTO no_such_table VALUES (1);\n");
+file_put_contents(backup_override_file(), '');
+$uncopied = ['before' => $state(), 'request' => $request(), 'skip_backup_left' => is_file(backup_override_file())];
+$take('999_g_mistake_stops_without_a_copy.sql');
+$uncopied['after'] = $request();
+
+// 8. No record, no migration: its place taken by a folder, which no write can
+//    replace, for root as for anybody (a read-only folder stops nobody as root).
+//    Several page views, none of which may write a copy.
+$clean();
+mkdir(schema_unfinished_file());
+$add('999_f_a_release_makes_a_table.sql', "CREATE TABLE made_without_the_numbers (id INT PRIMARY KEY) ENGINE=InnoDB;\n");
+$unwritable = ['before' => $state(), 'requests' => []];
+foreach ([1, 2, 3] as $n) $unwritable['requests'][$n] = $request();
+$unwritable['part_left'] = is_file(schema_unfinished_file() . '.part');
+rmdir(schema_unfinished_file());
+
+// 9. A record that cannot be read: half a JSON object, then one whose counts are
+//    a sentence. Nothing may run either time.
+file_put_contents(schema_unfinished_file(), "{\n");
+$unreadable = ['before' => $state(), 'broken' => $request()];
+file_put_contents(schema_unfinished_file(), json_encode(['started' => now(), 'from' => app_version(), 'to' => app_version(),
+                                                         'backup' => null, 'counts' => 'alle Kontakte']));
+$unreadable['counts_text'] = $request();
+$clean();
+$take('999_f_a_release_makes_a_table.sql');
+$unreadable['after'] = $request();
+foreach ($written($unwritable['before'], $unreadable['after']) as $name) @unlink(backup_dir() . '/' . $name);
+
+// --- this release's update stopped between two of its files, then started again --------
+// 034 to 038, 040 and 041 are one statement each and cannot stop inside
+// themselves, and 039 stopped after each of its statements but the last is run
+// above; what is left is an update stopping between two files: after each of 033
+// to 040, which a file that stops, put after each in turn, does to it. The stops
+// after 039 and after 040 leave 040 and 041 to the next page view. The next page
+// view, without that file, starts again at the first file the ledger does not
+// have. Each round on a portal of its own as the previous version left it, its
+// files on disk planted afresh.
+$restarted = [];
+foreach (['033', '034', '035', '036', '037', '038', '039', '040'] as $stop) {
+    $clean();
+    [$pdo] = $previousVersion();
+    $round = ['before' => tables_and_people($pdo) + ['files' => $onDisk(), 'copies' => $state()['copies']]];
+    $stopper = $stop . '_zz_the_update_stops_here.sql';
+    $add($stopper, "INSERT INTO no_such_table VALUES (1);\n");
+    $round['stopped'] = $request() + ['files' => $onDisk()];
+    $take($stopper);
+    $round['restarted'] = $request() + ['portal' => tables_and_people($pdo), 'files' => $onDisk()];
+    foreach ($written($round['before'], $round['restarted']) as $name) @unlink(backup_dir() . '/' . $name);
+    $restarted[$stop] = $round;
+}
+
+// --- a restore keeps the portal closed until its import is done (ADR 0029) -------------
+// On the portal the last round left - data, its ledger full, the stamp written by
+// a run that passed - the three states in which nothing may touch the database,
+// each met the way a restore meets it: the ledger dropped under the data (b); every
+// table deleted, as INSTALL.md's restore begins (c); then the portal's own copy,
+// which the engine wrote with the marker, imported statement by statement and the
+// run tried at each stop (a), through to its last statement, which opens the
+// portal; the import stopped and the same copy imported again; and, with the
+// stamp deleted, a new install on the used folder, which copies nothing. The
+// states are read without the settings table, which a restore takes away too.
+$clean();
+$restoreState = function () use ($pdo, $ledger, $record, $onDisk): array {
+    clearstatcache();
+    setting_cache_clear();
+    return ['ledger' => $ledger(), 'copies' => array_column(backups(), 'name'),
+            'stamp' => is_file(schema_stamp_file()) ? (string)file_get_contents(schema_stamp_file()) : null,
+            'record' => $record(), 'counts' => guarded_counts($pdo),
+            'tables' => array_column($pdo->query('SELECT table_name AS name FROM information_schema.tables'
+                . ' WHERE table_schema = DATABASE() ORDER BY table_name')->fetchAll(), 'name'),
+            'files' => $onDisk()];
+};
+$restoreRequest = function (callable $run) use ($restoreState): array {
+    clearstatcache();
+    setting_cache_clear();
+    return ['said' => $run()] + $restoreState();
+};
+// The copy's statements run from one to another, as an import that stops partway
+// runs them: what the engine refused, or null when it took them all.
+$importSteps = function (array $statements, int $from, int $to) use ($pdo): ?string {
+    for ($i = $from; $i < $to; $i++) {
+        try { $pdo->exec($statements[$i]); }
+        catch (PDOException $e) { return 'statement ' . ($i + 1) . ': ' . $e->getMessage(); }
+    }
+    return null;
+};
+$restore = ['portal' => every_table($pdo), 'before' => $restoreState()];
+// The copy the portal itself writes of this portal, marker and all.
+$restoreCopy = backup_database('wiederherstellung');
+$restore['copy'] = basename($restoreCopy);
+$copyStatements = split_sql((string)file_get_contents($restoreCopy));
+$restore['copy_statements'] = count($copyStatements);
+$restore['copied'] = $restoreState();
+
+// (b) The ledger gone from under the data, then there but empty.
+$pdo->exec('DROP TABLE schema_migrations');
+$noLedger = ['before' => $restoreState()];
+$noLedger['request'] = $restoreRequest($update);
+$pdo->exec('CREATE TABLE schema_migrations (version VARCHAR(100) PRIMARY KEY, checksum CHAR(64) NOT NULL, applied_at DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+$noLedger['empty_ledger_before'] = $restoreState();
+$noLedger['empty_ledger'] = $restoreRequest($update);
+$restore['no_ledger'] = $noLedger;
+
+// (c) Every table deleted, as the restore begins: a page view's run, then setup's.
+drop_every_table($pdo);
+$wiped = ['before' => $restoreState()];
+$wiped['request'] = $restoreRequest($update);
+$wiped['install'] = $restoreRequest($install);
+$restore['emptied'] = $wiped;
+
+// (a) The copy imported statement by statement, the run tried at each stop: after
+// the marker is made, after accounts, after payment_proofs, after the ledger's
+// last row, and with only the final DROP to go. Then the last statement.
+$dropOf = fn(string $table): int => (int)array_search('DROP TABLE IF EXISTS `' . $table . '`', $copyStatements, true);
+$order = [];
+foreach ($copyStatements as $statement)
+    if (preg_match('/^DROP TABLE IF EXISTS `([a-z_]+)`$/', $statement, $m) && $m[1] !== IMPORT_UNFINISHED_TABLE) $order[] = $m[1];
+$after = fn(string $table): int => $dropOf($order[array_search($table, $order, true) + 1]);
+$marker = array_search(true, array_map(fn(string $statement): bool => str_starts_with($statement, 'CREATE TABLE IF NOT EXISTS `' . IMPORT_UNFINISHED_TABLE . '`'), $copyStatements), true);
+$stops = ['marker' => (int)$marker + 1, 'accounts' => $after('accounts'), 'payment_proofs' => $after('payment_proofs'),
+          'ledger' => $after('schema_migrations'), 'before_last' => count($copyStatements) - 1];
+$importing = ['order' => $order, 'marker_at' => $marker, 'stops' => $stops, 'rounds' => []];
+$ran = 0;
+foreach ($stops as $name => $upto) {
+    $round = ['import_error' => $importSteps($copyStatements, $ran, $upto)];
+    $ran = $upto;
+    $round['before'] = $restoreState();
+    $round['request'] = $restoreRequest($update);
+    if ($name === 'marker') $round['install'] = $restoreRequest($install);
+    $importing['rounds'][$name] = $round;
+}
+$importing['last_error'] = $importSteps($copyStatements, $ran, count($copyStatements));
+$importing['done'] = $restoreRequest($update) + ['portal' => every_table($pdo)];
+$restore['importing'] = $importing;
+
+// The import stopped at payment_proofs, then the same copy imported again from
+// its first statement.
+drop_every_table($pdo);
+$again = ['first_error' => $importSteps($copyStatements, 0, $stops['payment_proofs'])];
+$again['stopped_before'] = $restoreState();
+$again['stopped'] = $restoreRequest($update);
+$again['second_error'] = $importSteps($copyStatements, 0, count($copyStatements));
+$again['done'] = $restoreRequest($update) + ['portal' => every_table($pdo)];
+$restore['again'] = $again;
+
+// A new install: no stamp, no table. Then one on a used folder with the stamp
+// deleted by hand, beside more copies than are kept, which a copy would prune.
+drop_every_table($pdo);
+unlink(schema_stamp_file());
+$fresh = ['before' => $restoreState()];
+$fresh['request'] = $restoreRequest($update);
+$restore['fresh'] = $fresh;
+drop_every_table($pdo);
+unlink(schema_stamp_file());
+$planted = [];
+for ($n = 1; $n <= BACKUP_KEEP; $n++) {
+    $planted[] = $name = '2026-01-0' . $n . '-000000-alt-0000000' . $n . '.sql';
+    file_put_contents(backup_dir() . '/' . $name, "-- an old copy\n");
+    touch(backup_dir() . '/' . $name, time() - 86400 * (BACKUP_KEEP + 1 - $n));
+}
+$used = ['planted' => $planted, 'before' => $restoreState()];
+$used['request'] = $restoreRequest($update);
+$restore['used_folder'] = $used;
+foreach ($planted as $name) @unlink(backup_dir() . '/' . $name);
+@unlink($restoreCopy);
+
+$result['runner'] = $runner + ['mistake' => $mistake, 'off_list' => $offList, 'emptied' => $emptied, 'halfway' => $halfway,
+                               'stopping' => $stopping, 'uncopied' => $uncopied, 'unwritable' => $unwritable, 'unreadable' => $unreadable,
+                               'restarted' => $restarted, 'restore' => $restore];
+
 echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";

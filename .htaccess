@@ -24,9 +24,11 @@ DirectoryIndex index.php
 <FilesMatch "\.(md|json|lock|sql|sh|ya?ml|bundle|example|log|txt|dist)$">
     Require all denied
 </FilesMatch>
-<Files "VERSION">
+# The three files without an extension to match: the release number, the
+# checksums of every PHP and SQL file, and the commit the package was built from.
+<FilesMatch "^(VERSION|MANIFEST|BUILD\.txt)$">
     Require all denied
-</Files>
+</FilesMatch>
 
 # A git checkout in public_html carries .git/, and with it every file's whole
 # history, beside other dot-files nobody should be served (.claude/, a stray

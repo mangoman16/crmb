@@ -1,36 +1,11 @@
 'use strict';
-// „Mehr" is a link to #sidebar, which the stylesheet opens without JavaScript.
-// Here it becomes the button it stands for: it slides the menu in and out and
-// leaves the address alone, and the backdrop and „Menü schließen" close it.
-let menu = document.getElementById('menu-toggle');
-const backdrop = document.getElementById('menu-backdrop');
-const menuClose = document.getElementById('menu-close');
-if (menu && menu.tagName === 'A') {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.id = menu.id;
-  button.setAttribute('aria-controls', 'sidebar');
-  button.setAttribute('aria-expanded', 'false');
-  button.append(...menu.childNodes);
-  menu.replaceWith(button);
-  menu = button;
-}
-if (backdrop) backdrop.hidden = true;
-function closeMenu() {
-  document.body.classList.remove('menu-open');
-  if (menu) menu.setAttribute('aria-expanded', 'false');
-  if (backdrop) backdrop.hidden = true;
-  // Opened as #sidebar before this script ran (or by a bookmarked address):
-  // dropping the fragment is what closes it then.
-  if (location.hash === '#sidebar') history.replaceState(null, '', location.pathname + location.search);
-}
-menu?.addEventListener('click', () => {
-  const open = document.body.classList.toggle('menu-open');
-  menu.setAttribute('aria-expanded', String(open));
-  if (backdrop) backdrop.hidden = !open;
-});
-[backdrop, menuClose].forEach(link => link?.addEventListener('click', event => { event.preventDefault(); closeMenu(); }));
-document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
+// iOS shows :active - a row turning grey, a button dimming while it is pressed -
+// only while a touch listener exists, and an inline one is refused by the
+// portal's own Content-Security-Policy. This one does nothing but exist. The
+// class says the script ran: only then does the stylesheet switch off the
+// system's grey tap flash, because only then is :active there to replace it.
+document.addEventListener('touchstart', () => {}, { passive: true });
+document.documentElement.classList.add('js');
 
 // The top bar's menus are <details>: without this each opens and closes by its
 // own button and nothing else. Added here is what a menu is expected to do as
@@ -59,37 +34,6 @@ document.addEventListener('pointerup', event => {
   if (pressedOutside && outsideMenus(event.target)) closeTopbarMenus(null);
   pressedOutside = false;
 });
-document.querySelectorAll('[data-select-all]').forEach(control => {
-  control.addEventListener('change', () => {
-    document.querySelectorAll('input[name="student_ids[]"]:not(:disabled)').forEach(box => { box.checked = control.checked; });
-  });
-});
-document.querySelectorAll('[data-insert]').forEach(button => {
-  button.addEventListener('click', () => {
-    const field = document.querySelector('textarea[name="body"]');
-    if (!field) return;
-    field.setRangeText(button.dataset.insert, field.selectionStart, field.selectionEnd, 'end');
-    field.focus();
-  });
-});
-const type = document.querySelector('select[name="field_type"]');
-function updateFieldEditor() {
-  if (!type) return;
-  const options = document.querySelector('[data-field-options]');
-  const defaults = document.querySelector('[data-field-default]');
-  const checkbox = document.querySelector('[data-field-checkbox]');
-  if (options) options.hidden = !['select', 'multiselect'].includes(type.value);
-  if (defaults) defaults.hidden = type.value === 'checkbox';
-  if (checkbox) checkbox.hidden = type.value !== 'checkbox';
-  const field = defaults?.querySelector('[name="default_value"]');
-  if (field && type.value === 'multiselect' && field.tagName !== 'TEXTAREA') {
-    const area = document.createElement('textarea');
-    area.name = field.name; area.id = field.id; area.value = field.value; area.rows = 3;
-    field.replaceWith(area);
-  }
-}
-type?.addEventListener('change', updateFieldEditor);
-updateFieldEditor();
 document.querySelectorAll('[data-add-option]').forEach(button => {
   button.addEventListener('click', () => {
     const key = button.dataset.addOption;
@@ -105,20 +49,244 @@ document.querySelectorAll('[data-add-option]').forEach(button => {
     row.querySelector('select, input:not([type="hidden"])')?.focus();
   });
 });
-// The database request id also prevents duplicate records after a repeated POST.
+// A form is sent once. The database request id already refuses a second post;
+// here a second tap does nothing at all, and the button that was pressed says it
+// is working (aria-busy, which the stylesheet draws as a spinner) until the next
+// page arrives. The buttons are switched off after the submit, not during it, so
+// the one pressed still sends its name and value.
 document.querySelectorAll('form[method="post"]').forEach(form => {
-  form.addEventListener('submit', () => {
-    if (form.dataset.submitted) return;
+  form.addEventListener('submit', event => {
+    if (form.dataset.submitted) { event.preventDefault(); return; }
     form.dataset.submitted = '1';
-    window.setTimeout(() => { form.querySelectorAll('button[type="submit"]').forEach(button => { button.disabled = true; }); }, 0);
+    event.submitter?.setAttribute('aria-busy', 'true');
+    window.setTimeout(() => {
+      form.querySelectorAll('button[type="submit"]').forEach(button => { button.disabled = true; button.dataset.sendingOff = '1'; });
+    }, 0);
   });
 });
+// The waiting page (Part 0.4b). A tap that leaves for another page keeps its pressed
+// look, as an iPhone keeps a tapped row lit until the next screen is in; if the page
+// has not come after 0.5 s, the waiting page fades in - the club's name, and a
+// shuttle rallying over a net - and stays at least 0.5 s, its fade-in included, so
+// it never blinks. The next page carries it on (wait.js) and fades it out. After 6 s
+// it says it is taking longer and offers „Abbrechen": in the home-screen app nothing
+// else stops a page that does not come. A form that sends has its button's spinner
+// instead (above): the two never show for one tap.
+// In step with app.css: WAIT_SHOWN_AT_LEAST is wait-in's 0.2 s and 0.3 s fully
+// shown; WAIT_FADE_OUT is wait-out's 0.25 s.
+const WAIT_AFTER = 500, WAIT_SHOWN_AT_LEAST = 500, WAIT_FADE_OUT = 250, WAIT_SLOW = 6000;
+const root = document.documentElement;
+const waitPage = document.querySelector('.wait-page');
+const waitSaid = document.querySelector('.wait-said');
+const waitCancel = waitPage?.querySelector('.wait-cancel');
+let waitTimer = 0, slowTimer = 0, focusBefore = null;
+const showWait = () => {
+  // A waiting page that is up carries on - past a second Enter in a search field,
+  // or a link reached behind it - with its one slow line 6 s after it appeared. A
+  // second would take „Abbrechen", by then focused, for where focus was.
+  if (!waitPage || root.classList.contains('is-waiting')) return;
+  try { sessionStorage.setItem('crmb-wait', String(Date.now())); } catch (error) { /* the next page appears as usual */ }
+  root.style.setProperty('--wait-elapsed', '0ms');
+  root.classList.add('is-waiting');
+  waitSaid.textContent = waitSaid.dataset.text;
+  slowTimer = window.setTimeout(() => {
+    waitPage.classList.add('is-slow');
+    waitSaid.textContent = waitSaid.dataset.slow;
+    // „Abbrechen" is all there is to do now, so focus goes to it, and a keyboard
+    // or VoiceOver need not look for it behind the whole page. Only then, never
+    // sooner; „Abbrechen" gives focus back to where it was.
+    focusBefore = document.activeElement;
+    waitCancel?.focus();
+  }, WAIT_SLOW);
+};
+const leaving = pressed => {
+  document.querySelectorAll('.is-pending').forEach(el => el.classList.remove('is-pending'));
+  pressed?.classList.add('is-pending');
+  window.clearTimeout(waitTimer);
+  waitTimer = window.setTimeout(showWait, WAIT_AFTER);
+};
+const stay = () => {
+  const hadFocus = waitPage?.contains(document.activeElement);
+  window.clearTimeout(waitTimer); window.clearTimeout(slowTimer);
+  if (hadFocus) focusBefore?.focus?.();
+  focusBefore = null;
+  root.classList.remove('is-waiting');
+  waitPage?.classList.remove('is-slow');
+  if (waitSaid) waitSaid.textContent = '';
+  try { sessionStorage.removeItem('crmb-wait'); } catch (error) { /* nothing was stored */ }
+  document.querySelectorAll('.is-pending').forEach(el => el.classList.remove('is-pending'));
+};
+waitCancel?.addEventListener('click', () => { window.stop(); stay(); });
+if (root.classList.contains('is-arriving')) {
+  const rest = Math.max(0, Number(root.dataset.waitSince) + WAIT_SHOWN_AT_LEAST - Date.now());
+  window.setTimeout(() => {
+    root.classList.add('is-arrived');
+    window.setTimeout(() => root.classList.remove('is-arriving', 'is-arrived'), WAIT_FADE_OUT);
+  }, rest);
+}
+document.addEventListener('click', event => {
+  const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+  if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  // Somewhere that leaves this page standing: another tab, a file, mail or the
+  // phone, or a place further down this page. The portal's own download page is
+  // a file as well: it answers with the file and no page. It still opens here,
+  // not in a new tab, which in the home-screen app would have Safari's cookies.
+  if ((link.target && link.target !== '_self') || link.hasAttribute('download') || !/^https?:$/.test(link.protocol)
+      || new URLSearchParams(link.search).get('page') === 'download') return;
+  if (link.hash && link.href.split('#')[0] === location.href.split('#')[0]) return;
+  leaving(link);
+});
+document.addEventListener('submit', event => {
+  const form = event.target;
+  if (event.defaultPrevented || (form.target && form.target !== '_self')) return;
+  // Marked by the form's own listener above, which runs first: it is sending.
+  if (event.submitter?.getAttribute('aria-busy') === 'true') return;
+  leaving(event.submitter);
+});
+// Back to a page the browser kept as it was left - a form sent, its buttons off,
+// a sheet open, a link still pressed: it is a page to use again, not one still
+// sending or leaving.
+window.addEventListener('pageshow', event => {
+  if (!event.persisted) return;
+  stay();
+  document.querySelectorAll('form[data-submitted]').forEach(form => {
+    delete form.dataset.submitted;
+    form.querySelectorAll('[data-sending-off]').forEach(button => { button.disabled = false; delete button.dataset.sendingOff; });
+    form.querySelectorAll('[aria-busy]').forEach(button => { button.removeAttribute('aria-busy'); });
+  });
+  document.querySelectorAll('dialog.sheet-dialog[open]').forEach(dialog => { dialog.close(); });
+});
+
+// A fold that removes or makes something, or holds a choice made rarely and on
+// purpose (details[data-sheet]), opens as a sheet from the bottom of the screen,
+// the way iOS asks before it deletes: the fold's summary as the title - or the
+// name the fold gives its sheet (data-sheet-title), where the summary is a whole
+// row - what it holds under it, and „Abbrechen", which shuts it and changes
+// nothing. What it holds is moved into a <dialog> and back again, never copied,
+// so the form in it is the same form with the same fields. Escape and a tap on
+// the dimmed page beside it shut it too. Without this the fold opens in place,
+// as it always did; a browser without <dialog> keeps that.
+let sheets = 0;
+document.querySelectorAll('details[data-sheet]').forEach(fold => {
+  const summary = fold.querySelector(':scope > summary');
+  if (!summary || typeof window.HTMLDialogElement !== 'function') return;
+  // Said before the tap: this opens a sheet, not a fold in place.
+  summary.setAttribute('aria-haspopup', 'dialog');
+  const open = () => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'sheet-dialog';
+    const title = document.createElement('h2');
+    title.className = 'sheet-title';
+    title.id = 'sheet-title-' + (++sheets);
+    title.tabIndex = -1;
+    // A fold whose summary is a whole row - a face, what a tap does and who
+    // sees it - names its sheet itself, or the title would read all of that.
+    title.textContent = fold.dataset.sheetTitle || summary.textContent.trim();
+    dialog.setAttribute('aria-labelledby', title.id);
+    const grabber = document.createElement('span');
+    grabber.className = 'sheet-grabber';
+    grabber.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('div');
+    body.className = 'sheet-body';
+    const held = [...fold.childNodes].filter(node => node !== summary);
+    body.append(...held);
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'button subtle sheet-cancel';
+    // The word comes from the page, in the page's language, like every other.
+    cancel.textContent = document.body.dataset.sheetCancel;
+    dialog.append(grabber, title, body, cancel);
+    document.body.append(dialog);
+    cancel.addEventListener('click', () => { dialog.close(); });
+    // A tap on the dimmed page lands on the dialog itself, outside its box; a
+    // tap inside it, on its padding, lands there too, so where it landed decides.
+    dialog.addEventListener('click', event => {
+      if (event.target !== dialog) return;
+      const box = dialog.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+      fold.append(...held);
+      fold.open = false;
+      dialog.remove();
+      summary.focus();
+    });
+    dialog.showModal();
+    // The title first, so what happens is read before anything is typed, and a
+    // phone does not put its keyboard over the sentence that explains it.
+    title.focus();
+  };
+  summary.addEventListener('click', event => { event.preventDefault(); open(); });
+  // Opened by the page itself: as a sheet as well.
+  if (fold.open) { fold.open = false; open(); }
+});
+
+// A photo goes as soon as it is chosen, and the course switch takes effect as
+// soon as it is flipped, as on a phone (ADR 0031). Each form's own button is for
+// a page without JavaScript, and the stylesheet hides it once this has run.
+// That button sends the form, so the busy mark above applies and the waiting
+// page stays off; click(), because iOS 15 has no requestSubmit().
+document.querySelectorAll('form.auto-submit').forEach(form => {
+  form.addEventListener('change', async event => {
+    const field = event.target;
+    if (field.type === 'file' && !field.files.length) return;
+    field.closest('label')?.setAttribute('aria-busy', 'true');
+    if (field.type === 'file') await shrinkPhoto(field);
+    form.querySelector('.picture-save')?.click();
+  });
+});
+// A phone's photo is 12 to 48 megapixels, often more than the upload limit, and
+// slow on the weak network of a sports hall, while the server keeps a square of
+// 320 pixels of it (ADR 0031 §3). So it is drawn again, PHOTO_SIDE long, before it
+// goes: upright as the phone shows it, because the copy carries no EXIF for the
+// server to turn it by, and straight at the small size, because a phone's
+// browser may refuse a canvas the size of the photo. Whatever fails on the way,
+// the photo goes as it was chosen, and the server keeps every limit, as it does
+// for a page without JavaScript.
+const PHOTO_SIDE = 1024;
+async function shrinkPhoto(field) {
+  const photo = field.files[0];
+  try {
+    // Read as a data: address, not a blob: one, because the portal's
+    // Content-Security-Policy lets a page show images from itself and data:
+    // only (app/bootstrap.php); a blob: address is refused, and with it every
+    // photo would have gone at full size.
+    const address = await new Promise((done, failed) => {
+      const reader = new FileReader();
+      reader.onload = () => done(reader.result);
+      reader.onerror = () => failed(reader.error);
+      reader.readAsDataURL(photo);
+    });
+    const image = new Image();
+    image.src = address;
+    await image.decode();
+    const scale = PHOTO_SIDE / Math.max(image.naturalWidth, image.naturalHeight);
+    if (!(scale < 1)) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(image.naturalWidth * scale);
+    canvas.height = Math.round(image.naturalHeight * scale);
+    const paint = canvas.getContext('2d');
+    // What was see-through turns white, as the server's own square does.
+    paint.fillStyle = '#fff';
+    paint.fillRect(0, 0, canvas.width, canvas.height);
+    paint.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const copy = await new Promise(done => canvas.toBlob(done, 'image/jpeg', 0.85));
+    if (!copy || copy.size >= photo.size) return;
+    const files = new DataTransfer();
+    files.items.add(new File([copy], photo.name.replace(/\.[^.]*$/, '') + '.jpg', { type: 'image/jpeg' }));
+    field.files = files.files;
+  } catch {
+    // Not read, not decoded, no canvas, no DataTransfer: the photo goes as it was chosen.
+  }
+}
 
 // Reveal controls that only make sense with JavaScript available.
 document.querySelectorAll('[data-needs-js]').forEach(el => { el.hidden = false; });
 
 // Attendance: set every student's choice at once, then correct the exceptions.
-// Without JavaScript the radios still work one by one, so this is additive.
+// Without JavaScript the radios still work one by one, so this is additive. A
+// choice from the „Mehr" sheet shuts it once made; its close puts the buttons
+// back where they came from.
 document.querySelectorAll('[data-mark-all]').forEach(button => {
   button.addEventListener('click', () => {
     const value = button.dataset.markAll;
@@ -126,6 +294,7 @@ document.querySelectorAll('[data-mark-all]').forEach(button => {
       const radio = group.querySelector('input[value="' + CSS.escape(value) + '"]');
       if (radio) radio.checked = true;
     });
+    button.closest('dialog')?.close();
   });
 });
 
@@ -180,67 +349,6 @@ document.querySelectorAll('.colour-field').forEach(wrapper => {
     const typed = whole(field.value) || (field.value.trim() === '' ? whole(field.placeholder) : '');
     if (typed && typed !== picker.value) picker.value = typed;
   });
-});
-
-// A voice message, recorded in the browser and handed to the file input the
-// paper clip already uses. One way in rather than two: without this the clip
-// still works, and a browser that cannot record simply never shows the button.
-document.querySelectorAll('[data-record]').forEach(button => {
-  const form = button.closest('form');
-  const field = form?.querySelector('input[type="file"]');
-  const seconds = form?.querySelector('[data-record-seconds]');
-  const status = form?.querySelector('[data-record-status]');
-  const canRecord = window.MediaRecorder && navigator.mediaDevices?.getUserMedia
-    && window.DataTransfer && window.File;
-  if (!field || !canRecord) return;
-  button.hidden = false;
-
-  let recorder = null, chunks = [], startedAt = 0, ticker = 0;
-  const say = text => { if (!status) return; status.hidden = text === ''; status.textContent = text; };
-
-  const stop = () => {
-    window.clearInterval(ticker);
-    if (recorder && recorder.state !== 'inactive') recorder.stop();
-    recorder?.stream?.getTracks().forEach(track => track.stop());
-    recorder = null;
-    button.classList.remove('is-recording');
-  };
-
-  button.addEventListener('click', async () => {
-    if (recorder) { stop(); return; }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recorder = new MediaRecorder(stream);
-      chunks = [];
-      startedAt = Date.now();
-      recorder.addEventListener('dataavailable', event => { if (event.data.size) chunks.push(event.data); });
-      recorder.addEventListener('stop', () => {
-        const length = Math.round((Date.now() - startedAt) / 1000);
-        const blob = new Blob(chunks, { type: recorder?.mimeType || chunks[0]?.type || 'audio/webm' });
-        // Named for the type the recorder actually produced: the server reads
-        // the bytes rather than the name, but a sensible name is what the
-        // person sees again in their downloads.
-        const extension = blob.type.includes('mp4') ? 'm4a' : 'webm';
-        const transfer = new DataTransfer();
-        transfer.items.add(new File([blob], 'sprachnachricht.' + extension, { type: blob.type }));
-        field.files = transfer.files;
-        if (seconds) seconds.value = String(length);
-        say(button.dataset.recorded || ('Aufnahme bereit (' + length + 's). Zum Senden auf den Pfeil tippen.'));
-      });
-      recorder.start();
-      button.classList.add('is-recording');
-      ticker = window.setInterval(() => {
-        say('Aufnahme läuft … ' + Math.round((Date.now() - startedAt) / 1000) + 's');
-      }, 500);
-    } catch (error) {
-      recorder = null;
-      say(button.dataset.denied || 'Kein Zugriff auf das Mikrofon. Du kannst stattdessen eine Datei anhängen.');
-    }
-  });
-
-  // A recording that is still running when the form is submitted would arrive
-  // empty, so stopping first is not optional.
-  form?.addEventListener('submit', () => { if (recorder) stop(); });
 });
 
 // The composer grows with what is typed, up to a point, the way a messenger does.

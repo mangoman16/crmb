@@ -6,6 +6,15 @@
  * one query per row, so it looks fine with five students and crawls with fifty.
  * The thresholds are deliberately loose — they catch growth, not milliseconds.
  */
+case_('The count is checked before it is trusted');
+/* query_count() reads the server's own counter, and a reading that came back 0
+   for everything would pass every ceiling below. So it is held to statements
+   counted by hand first, the zero included. */
+is_same(0, query_count(fn() => null), 'nothing sent counts nothing');
+is_same(1, query_count(fn() => scalar('SELECT 1')), 'one statement counts one');
+is_same(3, query_count(function () { rows('SELECT 1'); one('SELECT 2'); run('SELECT 3'); }), 'three count three');
+is_same(0, query_count(fn() => run_counter('SELECT 1')), 'and the rate-limit counter’s own connection is not in it');
+
 $trainer = make_account(['role'=>'trainer']); sign_in_as($trainer);
 $tariff = make_tariff();
 $class = make_class(['tariff_id'=>$tariff]);
@@ -128,6 +137,27 @@ for ($n = 3; $n < 36; $n++) $addCharge($n);          // three years of membershi
 payment_cache_clear();
 $many = query_count(fn() => render_view('student', ['id'=>$billed,'tab'=>'payments']));
 is_same($few, $many, 'three charges and thirty-six cost the same ('.$few.')');
-ok($many < 12, 'and that is a flat handful, not one per charge (took '.$many.')');
+/* Six when this was written; eleven by October 2026, and twelve once a charge on
+   a live invoice said which invoice holds it - live_invoices_of_charges(), one
+   query for every charge on the tab. Raised by that one, not by a margin, so
+   the next query added here is noticed too. */
+ok($many < 13, 'and that is a flat handful, not one per charge (took '.$many.')');
 ok(str_contains(render_view('student', ['id'=>$billed,'tab'=>'payments']), 'Beitrag 35'), 'the last charge really is on the page');
 
+case_('The team page does not grow a query per person');
+/* Held with the presence until it went (ADR 0026): a row of „Konten" is drawn
+   from what the page has already read, and a query per person would grow with
+   every trainer the club takes on. */
+$teamAdmin = make_account(['role'=>'admin', 'name'=>'Team Leitung']);
+sign_in_as($teamAdmin);
+render_view('accounts');                       // the settings cache fills once per process, not per person
+$queries = fn() => query_count(fn() => render_view('accounts'));
+$before = $queries();
+$added = [];
+for ($i = 1; $i <= 5; $i++) $added[] = 'Teammitglied '.$i;
+foreach ($added as $name) make_account(['role'=>'trainer', 'name'=>$name]);
+$grown = $queries() - $before;
+ok($grown < 5, 'five more team members cost fewer than five more queries ('.$grown.')');
+$team = render_view('accounts');
+is_same($added, array_values(array_filter($added, fn(string $name): bool => str_contains($team, e($name)))),
+        'and all five are on the page');

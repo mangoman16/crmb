@@ -1,9 +1,47 @@
 ---
-status: accepted
+status: accepted, amended by f5d3c28
 date: 2026-09-29
 ---
 
 # 0013. Brand colours are a generated stylesheet, served by the router
+
+> **Amended 2026-10-07, by the design language.** Commit `f5d3c28` ("The portal looks and
+> behaves like an iOS app…") built Part 0 of
+> `docs/design/2026-10-07-ios-design-language-and-goal-screens.md`; there is no ADR for it. The
+> portal is now white groups on a grey ground in light and dark groups on black in dark, so the
+> colours the derivation works against changed. What no longer holds, and what holds instead:
+>
+> - **Context, the main colour.** `--teal-border` is gone. The family is `--teal`, `--teal-ink`,
+>   `--teal-soft` and `--focus`.
+> - **Context, the second colour.** Neither `.stat.accent` nor the browser's bar takes it any
+>   more. It colours the side menu, and the brand mark and the club's name on the sign-in page.
+> - **Settings table.** Three built-in colours changed: `brand_primary` is `#06736c`,
+>   `brand_background` is `#f2f2f7` with `'text_on' => '#636366'`, and `brand_background_dark`
+>   is `#000000` with `'text_on' => '#aeaeb2'`. The other five stand.
+> - **Fixed colours in `app/brand.php`.** `BRAND_SURFACE_LIGHT` and `BRAND_SURFACE_DARK` are
+>   gone. `BRAND_SURFACES_LIGHT` is `['#ffffff', '#f2f2f7']`, the white group and the grey ground
+>   around it; `BRAND_SURFACES_DARK` is `['#1c1c1e', '#2c2c2e']`, the dark group and a field
+>   inside it. A soft tint is mixed into the first of each pair. `BRAND_INK_LIGHT` is `#000000`.
+>   `BRAND_NAV_SHADE` stands.
+> - **Derivation.** `G` is `#000000`. In the table:
+>   - `--teal`, `--focus`: light, `P` darker until ≥ 4.5 against `#ffffff` and `#f2f2f7`; dark,
+>     `P` lighter until ≥ 4.5 against `#1c1c1e`, `#2c2c2e` and `COLOUR_DARK_INK`.
+>   - `--teal-ink`, dark: `--teal` lighter until ≥ 7 against `#1c1c1e`, `#2c2c2e` and
+>     `--teal-soft`. The light rule stands.
+>   - `--teal-soft`, dark: `mix(P, #1c1c1e, .18)`, into the dark group as light mixes into the
+>     white one. At `f5d3c28` it was mixed into `G`; frontend-dev's change after it moves it.
+>   - The `--teal-border` row is gone, and so are `--navy-2`, `--nav-bg-2`, `--on-navy` and
+>     `--on-navy-faint`. Of their rows, `--nav-active` (`mix(on-nav, nav, .14)`), `--nav-ink`,
+>     `--nav-ink-2` and `--nav-hover` (on-nav + `0d` light, `12` dark) stand.
+>   - `--brand-ink` still falls back to `BRAND_INK_LIGHT`, now `#000000`.
+> - **Browser colours.** `brand_theme_colour()` returns the ground, not the menu colour: what
+>   `brand_background` and `brand_background_dark` end up as, `#f2f2f7` and `#000000` unless the
+>   club set a background, which the `--bg` row then works out. The phone's status bar runs into
+>   the portal's own bars without a band (Part 0.5). The manifest's `theme_color` and
+>   `background_color` are therefore the same colour.
+>
+> Everything else here stands: the eight settings and the „Aussehen" card, `app/colour.php`,
+> adjusting lightness only, the route and its caching, and what may leave as CSS.
 
 ## Context
 
@@ -179,8 +217,10 @@ Lesbarkeit verwendet: #…" beside it.
   - When `v` equals `brand_css_version()`, it sends
     `shared_cache_control(CLUB_ASSET_MAX_AGE, true)`. Otherwise it sends `no-cache`.
   - With nothing customised, it serves an empty stylesheet, not an error.
-- **The version.** `brand_css_version()` is the first 12 characters of
-  `sha256(app_version() . json_encode(brand_chosen()))`.
+- **The version.** `brand_css_version()` is the first 12 characters of `sha256(brand_css())`,
+  the stylesheet's own bytes. *(Amended 2026-10-01: it was the release number plus her choices,
+  and the release number did not change when the colour calculation did, so a year-long cache
+  kept the old colours.)*
 - **When there is no request.** `brand_css_url()` is `''` when no light colour is set. A dark
   override alone does not apply yet, so it costs no request.
 - **Where it loads.** The layout links the stylesheet directly after `app.css`, only when the

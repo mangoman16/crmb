@@ -2,12 +2,21 @@
 <?php
 [$theme,$textScale]=appearance($user);
 $accent=accent_for($user);
-$realUser=$public?null:impersonator();
+/* Viewing the portal as somebody (ADR 0022 §9) is said on every page it
+   reaches, the public ones too: while it lasts, a link's page, the sign-in and
+   „abbestellen" refuse to go on until it ends, and the bar is the way to end
+   it. On the error page $user is null; the person looked at is still asked. */
+$realUser=impersonator();
+$viewed=$realUser?($user??current_user()):null;
 ?>
 <html lang="<?=e(locale())?>"<?=$theme!=='auto'?' data-theme="'.e($theme).'"':''?><?=$textScale!=='normal'?' data-text="'.e($textScale).'"':''?> data-accent="<?=e($accent)?>">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <?php /* Light or dark, said before any stylesheet: whatever a browser draws of
+             the page before app.css applies - or without it, when it fails to
+             load - is in its own colours, white unless told otherwise. */ ?>
+    <meta name="color-scheme" content="<?=e($theme==='auto'?'light dark':$theme)?>">
     <?php /* Matching the bar to the surface keeps the notch area from banding in standalone mode. */ ?>
     <meta name="theme-color" content="<?=e(brand_theme_colour($theme==='dark'?'dark':'light'))?>"<?=$theme==='auto'?' media="(prefers-color-scheme: light)"':''?>>
     <?php if($theme==='auto'): ?><meta name="theme-color" content="<?=e(brand_theme_colour('dark'))?>" media="(prefers-color-scheme: dark)"><?php endif ?>
@@ -33,40 +42,64 @@ $realUser=$public?null:impersonator();
     <meta name="format-detection" content="telephone=no">
     <meta name="description" content="<?=e(setting('club_name').' – '.t('Schüler, Beiträge und Nachrichten.','students, payments and messages.'))?>">
     <title><?=e(setting('club_name','Badminton'))?></title>
-    <link rel="stylesheet" href="<?=e(asset_url('app.css'))?>?v=<?=e(app_version())?>">
+    <?php /* asset_url() puts a hash of the file's bytes in the address, so a
+             changed stylesheet or script is fetched on the next page. Nothing
+             is appended here: the release number stayed the same across a
+             release that changed both, and browsers kept the old ones. */ ?>
+    <link rel="stylesheet" href="<?=e(asset_url('app.css'))?>">
     <?php /* The club's colours, after app.css so they win at equal specificity;
              no request at all while none is set (ADR 0013). */
     if(($brandCss=brand_css_url())!==''): ?><link rel="stylesheet" href="<?=e($brandCss)?>"><?php endif ?>
-    <script defer src="<?=e(asset_url('app.js'))?>?v=<?=e(app_version())?>"></script>
+    <?php /* Whether the page before this one was showing the waiting page, so this
+             one carries it on instead of cutting it off (Part 0.4b). Not deferred,
+             on purpose: it has to run before the first paint. A few lines, cached. */ ?>
+    <script src="<?=e(asset_url('wait.js'))?>"></script>
+    <script defer src="<?=e(asset_url('app.js'))?>"></script>
 </head>
-<body class="<?=$public?'public-page':'app-page'?>">
+<?php /* data-sheet-cancel: the word under a sheet (app.js), in the page's language. */ ?>
+<body class="<?=$public?'public-page':'app-page'?>" data-sheet-cancel="<?=e(t('Abbrechen','Cancel'))?>">
+<?php /* The waiting page (Part 0.4b): shown by app.js when the next page is slow to
+         come, and carried on by that page until it fades out. hidden, so without
+         JavaScript - or without the stylesheet - nothing of it shows. The status
+         line is outside it, so it is there to be heard before it says anything. */ ?>
+<div class="wait-page" hidden>
+    <div class="wait-stage" aria-hidden="true"><span class="wait-net"></span><?=icon('shuttle')?></div>
+    <p class="wait-name" aria-hidden="true"><?=e((string)setting('club_name'))?></p>
+    <p class="wait-slow"><span><?=e(t('Dauert länger als sonst.','Taking longer than usual.'))?></span><button type="button" class="button secondary wait-cancel"><?=e(t('Abbrechen','Cancel'))?></button></p>
+</div>
+<span class="visually-hidden wait-said" role="status" data-text="<?=e(t('Wird geladen …','Loading …'))?>" data-slow="<?=e(t('Dauert länger als sonst.','Taking longer than usual.'))?>"></span>
 <a class="skip-link" href="#main"><?=e(t('Zum Inhalt','Skip to content'))?></a>
 <?php if(!$public):
 $unreadNotes=unread_notifications((int)$user['id']);
 ?>
-<aside class="sidebar" id="sidebar">
-    <?php /* The way out of the side menu on a phone. A link, so it works without
-             JavaScript: „Mehr" opens the menu as #sidebar, and this leaves it. */
-    if(is_staff($user)): ?><a class="menu-close" id="menu-close" href="#main"><?=e(t('Menü schließen','Close menu'))?></a><?php endif ?>
+<?php /* The menu on a computer. On a phone it is not shown: the bar at the
+         bottom holds four places and „Mehr" the rest (ADR 0028). It stays in
+         the markup, because the server does not know how wide the screen is. */ ?>
+<aside class="sidebar">
     <?php brand_block($user,'sidebar',url('dashboard')); ?>
     <?=sidebar_nav($user,$page)?>
     <?php /* The account used to be here as well as in the top bar. One of the two
              was always redundant, and the top bar is the one on screen whatever
              you have scrolled to, so only what it has no room for stays here. */ ?>
     <div class="sidebar-bottom">
-        <a class="feedback-link" href="#feedback"><?=icon('help')?><span><?=e(t('Etwas funktioniert nicht','Something is wrong'))?></span></a>
         <div class="sidebar-meta"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutz','Privacy'))?></a><span>v<?=e(app_version())?></span></div>
     </div>
 </aside>
 <div class="app-shell">
-<?php /* Pinned, because everything in it - the language switch, what is waiting,
-         who you are, and the way back out of impersonation - is wanted from
-         wherever you happen to have scrolled to. */ ?>
+<?php /* Pinned, because everything in it - the way back up, what is waiting and
+         who you are - is wanted from wherever you happen to have scrolled to.
+         On a phone it is an iOS navigation bar (Part 0, C1): on a page with
+         something above it, the way back there, named after it; on the others,
+         the club's mark. The page's title joins it once the large title has
+         scrolled away. The language is set in Mein Konto, so it is not here;
+         the pages before signing in keep their switch. */ ?>
 <header class="topbar">
     <span class="topbar-context"><?=e((string)setting('portal_tagline'))?></span>
-    <?php brand_block($user,'bar',url('dashboard')); ?>
+    <?php if($up=nav_back($page,$user)): ?>
+    <a class="nav-back" href="<?=e($up['href'])?>" aria-label="<?=e(t('Zurück zu ','Back to ').$up['name'])?>"><?=icon('chevron')?><span><?=e($up['label'])?></span></a>
+    <?php if(($barTitle=page_title())!==''): ?><span class="nav-title" aria-hidden="true"><?=e($barTitle)?></span><?php endif ?>
+    <?php else: brand_block($user,'bar',url('dashboard')); endif ?>
     <div class="topbar-actions">
-        <a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['id','tab']))))?>"><?=locale()==='de'?'EN':'DE'?></a>
         <details class="topbar-menu notification-pane">
             <summary aria-label="<?=e($unreadNotes?$unreadNotes.' '.t('neue Hinweise','new notifications'):t('Hinweise','Notifications'))?>">
                 <?=icon('bell')?><?php if($unreadNotes):?><span class="count"><?=e($unreadNotes)?></span><?php endif ?>
@@ -74,7 +107,10 @@ $unreadNotes=unread_notifications((int)$user['id']);
             <div class="topbar-menu-panel notification-list">
                 <div class="notification-head">
                     <strong><?=e(t('Hinweise','Notifications'))?></strong>
-                    <?php if($unreadNotes){start_form('notifications_read',[],'inline-form');submit_button(t('Alle gelesen','Mark all read'),'subtle');echo '</form>';} ?>
+                    <?php /* Not while looking through somebody else's eyes: the
+                             notices stay unread until they read them, and the
+                             action refuses it there (ADR 0022 §9). */
+                    if($unreadNotes && !$realUser){start_form('notifications_read',[],'inline-form');submit_button(t('Alle gelesen','Mark all read'),'subtle');echo '</form>';} ?>
                 </div>
                 <?php $notes=notifications_for((int)$user['id'],20);
                 if(!$notes):?><p class="muted"><?=e(t('Nichts Neues.','Nothing new.'))?></p><?php endif ?>
@@ -94,14 +130,14 @@ $unreadNotes=unread_notifications((int)$user['id']);
 <header class="public-header"><?php brand_block($user,'public',url($user?'dashboard':'login')); ?><a class="language" href="<?=e(url($page,['lang'=>locale()==='de'?'en':'de']+array_intersect_key($_GET,array_flip(['account','category','signature']))))?>"><?=locale()==='de'?'EN':'DE'?></a></header>
 <?php endif ?>
 <main id="main" class="<?=$public?'public-main':'main-content'?>">
-<?php if($realUser): ?>
+<?php if($realUser && $viewed): ?>
 <div class="impersonation-bar" role="status">
-    <span><?=e(t('Du siehst das Portal als ','You are seeing the portal as '))?><strong><?=e($user['name'])?></strong><?=e(t('. Angemeldet bist du als ','. You are signed in as '))?><strong><?=e($realUser['name'])?></strong>.</span>
+    <span><?=e(t('Du siehst das Portal als ','You are seeing the portal as '))?><strong><?=e($viewed['name'])?></strong><?=e(t('. Angemeldet bist du als ','. You are signed in as '))?><strong><?=e($realUser['name'])?></strong>.</span>
     <?php start_form('impersonate',['mode'=>'stop'],'inline-form');submit_button(t('Ansicht beenden','Stop viewing'),'secondary');?></form>
 </div>
 <?php endif ?>
 <?php if(!$public && is_admin($user) && is_file(maintenance_file())): ?>
-<div class="flash error" role="status"><?=e(t('Wartungsmodus ist aktiv – für alle anderen ist das Portal geschlossen.','Maintenance mode is on – the portal is closed for everyone else.'))?> <a href="<?=e(url('settings',['tab'=>'system']))?>"><?=e(t('Beenden','Switch off'))?></a></div>
+<div class="flash error" role="status"><?=icon('alert')?><span><?=e(t('Wartungsmodus ist aktiv – für alle anderen ist das Portal geschlossen.','Maintenance mode is on – the portal is closed for everyone else.'))?> <a href="<?=e(url('settings',['tab'=>'system']))?>"><?=e(t('Beenden','Switch off'))?></a></span></div>
 <?php endif ?>
 <?php /* The way back to the checklist (ADR 0011), after she left it to do one of
          its steps. The flag is in the session, so it outlives the redirect after
@@ -109,7 +145,9 @@ $unreadNotes=unread_notifications((int)$user['id']);
 if(!$public && is_staff($user) && setup_return_active() && setup_unfinished()): $setup=setup_progress(); ?>
 <nav class="setup-return" aria-label="<?=e(t('Einrichtung','Setup'))?>"><a href="<?=e(url('start'))?>"><span aria-hidden="true">←</span> <?=e(t('Zurück zur Einrichtung','Back to the setup').' ('.$setup['done'].' '.t('von','of').' '.$setup['total'].' '.t('erledigt','done').')')?></a></nav>
 <?php endif ?>
-<?php if(isset($_SESSION['flash'])):$f=$_SESSION['flash'];unset($_SESSION['flash']);?><div class="flash <?=e($f['kind'])?>" role="status"><?=e($f['message'])?></div><?php endif ?>
+<?php /* The banner (Part 0, C14): what a save did, in one sentence under the bar.
+         It stays until the next page, because people here read slowly. */
+if(isset($_SESSION['flash'])):$f=$_SESSION['flash'];unset($_SESSION['flash']);?><div class="flash <?=e($f['kind'])?>" role="status"><?=icon($f['kind']==='error'?'alert':'check')?><span><?=e($f['message'])?></span></div><?php endif ?>
 <?=$content?>
 <?php if(!$public): ?>
 <?php /* On every page, because the page something goes wrong on is the page you
@@ -120,13 +158,18 @@ if(!$public && is_staff($user) && setup_return_active() && setup_unfinished()): 
          lived in every product she has ever used. On a phone it stays at the end
          of the page: the bottom of a phone screen already holds the menu bar and
          the sticky save button, and a third thing floating over them is how a
-         Save button becomes unreachable. The menu carries a link down to it.
+         Save button becomes unreachable. Mein Konto and „Mehr" carry a link
+         down to it (privacy_and_help_group()).
 
-         A conversation keeps it at the end of the page on a desktop screen too:
-         its writing box is pinned to the bottom of the window as well, and the
-         help button sat on its Send button there until the thread was scrolled
-         to its very end - so a click meant for Send opened this form instead. */
-$pinnedHelp=!($page==='messages' && (int)($_GET['id']??0)>0); ?>
+         A conversation with a writing box keeps it at the end of the page on a
+         desktop screen too: the box is pinned to the bottom of the window as
+         well, and the help button sat on its Send button there until the thread
+         was scrolled to its very end - so a click meant for Send opened this
+         form instead. Whether the box is drawn is views/messages.php's to say,
+         as $writable, which it always sets and leaves in the scope this layout
+         shares with it. Read from the address here instead, the answer was a
+         second copy of that rule, and wrong for a chat that can only be read. */
+$pinnedHelp=!($page==='messages' && $writable); ?>
 <details class="feedback<?=$pinnedHelp?' is-pinned':''?>" id="feedback">
     <summary><?=icon('help')?><span><?=e(t('Etwas funktioniert hier nicht','Something is wrong on this page'))?></span></summary>
     <div class="feedback-panel">
@@ -143,23 +186,17 @@ $pinnedHelp=!($page==='messages' && (int)($_GET['id']??0)>0); ?>
 <?php if(!$public): ?>
 </div>
 <nav class="mobile-nav" aria-label="<?=e(t('Mobilmenü','Mobile menu'))?>">
-<?php foreach(mobile_nav_entries($user) as $item):?><a href="<?=e(url($item['route'],$item['params']))?>" <?=nav_is_current($item['route'],$page,$user)?'aria-current="page"':''?>><?=icon($item['icon'])?><?php
+<?php foreach(mobile_nav_entries($user) as $item):?><a href="<?=e(url($item['route'],$item['params']))?>" <?=nav_item_current($item,$page,$user)?'aria-current="page"':''?>><?=icon($item['icon'])?><?php
     // The bar prints the short word; a screen reader hears the entry's full name.
     if($item['short']!==$item['label']):?><span aria-hidden="true"><?=e($item['short'])?></span><span class="visually-hidden"><?=e($item['label'])?></span><?php else:?><span><?=e($item['label'])?></span><?php endif ?><?php if($item['count']):?><span class="count" aria-label="<?=e($item['count'].' '.t('ungelesen','unread'))?>"><?=e((string)$item['count'])?></span><?php endif ?></a><?php endforeach ?>
-<?php /* A link to the side menu, so the entries that are not on the bar - Kurse,
-         Geld, Einstellungen - are reachable without JavaScript (the stylesheet
-         opens #sidebar when it is the target). app.js turns it into a button
-         that slides the menu in and out without touching the address. */
-if(is_staff($user)): ?><a href="#sidebar" id="menu-toggle" aria-controls="sidebar"><?=icon('more')?><span><?=e(t('Mehr','More'))?></span></a>
-<?php endif ?>
 </nav>
-<a class="menu-backdrop" id="menu-backdrop" href="#main" aria-label="<?=e(t('Menü schließen','Close menu'))?>"></a>
 <?php else: ?>
 <?php /* Only the way to the privacy notice and the version. The paragraph that
          stood here was repeated at the foot of every public page, which is where
          nobody reads a paragraph; the one thing it had to say is now a sentence
-         on the sign-in card. */ ?>
-<footer class="public-footer"><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><span>v<?=e(app_version())?></span></footer>
+         on the sign-in card. A page whose own sentence links the notice says so
+         ($privacyLinked), and the footer leaves its link out: one on a page. */ ?>
+<footer class="public-footer"><?php if(empty($privacyLinked)): ?><a href="<?=e(url('privacy'))?>"><?=e(t('Datenschutzerklärung','Privacy notice'))?></a><?php endif ?><span>v<?=e(app_version())?></span></footer>
 <?php endif ?>
 </body>
 </html>

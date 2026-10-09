@@ -1,0 +1,25 @@
+-- Custom fields are gone, and what was typed into them goes with them
+-- (docs/decisions/0026-who-the-portal-is-for-the-beta-and-what-it-no-longer-carries.md, §7).
+--
+-- The owner asked for „Eigene Felder" to leave Einstellungen and for their data
+-- to be deleted rather than kept, so both tables go, with every definition and
+-- every value in them. The copy the update takes beforehand, in storage/backups,
+-- holds them as they were.
+--
+-- field_values was in schema_guarded_tables() and leaves it in the same commit:
+-- this file empties it on purpose, and the update must not be refused for
+-- that. field_definitions was never guarded. No other table loses a row or
+-- changes. The students the values belonged to keep everything they had:
+-- dropping the table whose key points at them deletes nothing they hold. Lines
+-- in the change log keep their field:<id> keys; the code names those without
+-- reading these tables.
+--
+-- field_values goes first. Its foreign key points at field_definitions, and the
+-- engine refuses to drop a table that another table's key still points at,
+-- whatever that key's ON DELETE says: error 1451, read on MariaDB 10.11.14.
+-- MySQL 8.0's documentation says it refuses too; no MySQL 8.0 server has run
+-- this. Each statement can run twice - IF EXISTS makes the second a note, not an
+-- error - so an update that stops between them starts the file again from the
+-- first, which then does nothing.
+DROP TABLE IF EXISTS field_values;
+DROP TABLE IF EXISTS field_definitions;

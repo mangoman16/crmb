@@ -3,6 +3,10 @@ declare(strict_types=1);
 
 ini_set('display_errors','0');
 try {
+    // An address holds text, and ?tab[]=x makes a list of it. Nothing reads a
+    // list from the address, so every list goes here, before anything reads
+    // it - boot_http() included - rather than being guarded against page by page.
+    $_GET=array_filter($_GET,'is_string');
     require __DIR__.'/../app/bootstrap.php';
     boot_http();
     // A timeout or running out of memory ends the script where no catch can
@@ -18,8 +22,10 @@ try {
     require ROOT.'/app/actions_messages.php';
     require ROOT.'/app/actions_config.php';
     require ROOT.'/app/ui.php';
-    $page=is_scalar($_GET['page']??'')?(string)($_GET['page']??'dashboard'):'dashboard';
-    $allowed=['dashboard','start','students','student','payments','classes','accounts','messages','compose','news','outbox','manage','invoices','attendance','download','settings','history','profile','print','login','forgot','activate','unsubscribe','privacy','icon','manifest','brand','logo'];
+    $page=$_GET['page']??'dashboard';
+    // Every page there is. allowed_pages() reads this list for a way back that
+    // an action works out itself, so it is written here and only here.
+    $allowed=['dashboard','start','students','student','student_new','payments','classes','accounts','messages','news','outbox','manage','invoices','attendance','download','settings','history','profile','more','welcome','login','forgot','activate','unsubscribe','privacy','icon','manifest','brand','logo'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
     // The trail a problem report carries. Here, before the POST branch, because
     // that branch redirects and never comes back: recorded any later, the trail
@@ -29,49 +35,45 @@ try {
     // reason: a save's redirect has to find it there (ADR 0011).
     note_setup_return($page);
     if($_SERVER['REQUEST_METHOD']==='POST') {
-        try {
-            [$target,$params]=handle_post();
-            if($target==='outbox' && isset($params['process'])) {
-                // Leave a margin below max_execution_time so the response still renders.
-                $limit=(int)ini_get('max_execution_time');
-                $count=process_mail(25,$limit>0?max(5.0,$limit-8.0):45.0);
-                $note=$count['sent'].' '.t('gesendet, ','sent, ').$count['failed'].' '.t('fehlgeschlagen.','failed.');
-                if($count['deferred'])$note.=' '.$count['deferred'].' '.t('warten noch und werden automatisch weiter versendet.','still waiting; they will be sent automatically.');
-                flash($note);$params=[];
-            }
-            go($target,$params);
-        } catch(UserError $ex) {flash($ex->getMessage(),'error');remember_input(post('action'));}
+        // A file larger than the server takes reaches PHP as an empty post, its
+        // token gone too: said as what it is, and back on the page it came
+        // from below, rather than refused as an expired session (post_too_large()).
+        if(post_too_large()) flash(upload_too_large(),'error');
+        else try {
+            go(...handle_post());
+        } catch(SignInRequired) {go('login');}
+        // The action is read here as the form's own bookkeeping, which cannot
+        // refuse: post() would answer a list with a second refusal, from inside
+        // this catch, and the way back would end in „Kein Zugriff".
+        catch(UserError $ex) {flash($ex->getMessage(),'error');remember_input(form_bookkeeping('action'));}
         catch(PDOException $ex) {
-            remember_input(post('action'));
-            // A form sent twice is handled, not broken: the second copy is told
-            // so. Anything else the database refused is written down for the
-            // administrators (ADR 0012), and the person is told in a sentence.
-            if($ex->getCode()==='23000' && str_contains($ex->getMessage(),'form_requests'))
-                flash(t('Diese Eingabe wurde bereits verarbeitet.','This submission has already been processed.'),'error');
-            else {
-                capture_error($ex);
-                flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: ein Wert ist schon vergeben, oder verknüpfte Daten sind vorhanden.','Cannot save: a value is already taken, or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
-            }
+            // What the database refused is written down for the administrators
+            // (ADR 0012), and the person is told in a sentence. A form sent
+            // twice never gets here: handle_post() answers it.
+            remember_input(form_bookkeeping('action'));
+            capture_error($ex);
+            flash($ex->getCode()==='23000'?t('Die Eingabe ist nicht möglich: ein Wert ist schon vergeben, oder verknüpfte Daten sind vorhanden.','Cannot save: a value is already taken, or related records exist.'):t('Speichern fehlgeschlagen. Bitte erneut versuchen.','Could not save. Please try again.'),'error');
         }
         [$back,$params]=form_return(current_user()?'dashboard':'login',$allowed);
         go($back,$params);
     }
     if($page==='activate' && isset($_GET['token'])) {
         throttle('token-view',$_SERVER['REMOTE_ADDR']??'local',60);
-        $token=is_scalar($_GET['token'])?(string)$_GET['token']:'';
+        $token=$_GET['token'];
         $_SESSION['activation_hash']=preg_match('/^[a-f0-9]{64}$/D',$token)?hash('sha256',$token):'';
+        adopt_link_language(token_record($_SESSION['activation_hash']));
         go('activate');
     }
     $public=in_array($page,['login','forgot','activate','unsubscribe','privacy','not_found','icon','manifest','brand','logo'],true);
     $user=$public?current_user():require_user();
-    // Not for the icon, the manifest and the brand stylesheet and logo: a browser
-    // fetches those on its own, from a tab left open or a home-screen icon, and
-    // counting them would show somebody as online who is not looking (ADR 0015).
-    if($user && !in_array($page,['icon','manifest','brand','logo'],true))presence_touch($user);
-    if(in_array($page,['accounts','payments','compose','outbox','classes','manage','invoices','attendance','print'],true))require_staff();
+    if(in_array($page,['accounts','payments','outbox','classes','manage','invoices','attendance','student_new','more'],true))require_staff();
     // A family's list is their own student; an old bookmark to the students list
     // opens that page instead. Not a change of who may open it.
     if($page==='students' && ($instead=students_list_instead($user)))go($instead[0],$instead[1]);
+    // A student page with no student was the old create form. Students are made
+    // by the wizard now (ADR 0023 §5), so an old link or bookmark goes there -
+    // for staff; anybody else is refused there as before.
+    if($page==='student' && (int)($_GET['id']??0)<=0)go('student_new',array_intersect_key($_GET,['from'=>1]));
     // A download is not a page: it answers with a file and leaves. Handled here
     // rather than in a view because a view is wrapped in the layout, and the one
     // thing a PDF must not have around it is HTML.
@@ -93,6 +95,10 @@ try {
     else require ROOT.'/views/'.$page.'.php';
     $content=ob_get_clean();
     require ROOT.'/views/layout.php';
+} catch(SignInRequired) {
+    // A page that needs somebody signed in, asked for by nobody.
+    if(ob_get_level())ob_end_clean();
+    go('login');
 } catch(UserError $ex) {
     // A record that is gone is not a refusal. "Kein Zugriff" over "Kurs nicht
     // gefunden" tells the trainer she is not allowed to see her own course,
@@ -113,5 +119,7 @@ try {
     // no family's data in the message - but a database error's is never logged.
     if(function_exists('capture_error'))capture_error($ex);else error_log('CRM: '.get_class($ex).($ex instanceof PDOException?'':': '.$ex->getMessage()));
     header('Content-Type: text/html; charset=utf-8');
-    echo '<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Badminton</title><p>Die Anwendung ist vorübergehend nicht verfügbar. Bitte Installation und Serverprotokoll prüfen.</p><p>The application is temporarily unavailable. Please check installation and server logs.</p></html>';
+    // Drawn for light and dark alike, so it is not a white page on a phone in
+    // dark mode while it shows; nobody's choice of appearance is known here.
+    echo '<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Badminton</title><p>Die Anwendung ist vorübergehend nicht verfügbar. Bitte Installation und Serverprotokoll prüfen.</p><p>The application is temporarily unavailable. Please check installation and server logs.</p></html>';
 }

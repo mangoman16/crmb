@@ -17,18 +17,23 @@ function dispatch_config(string $action): array {
     // ---- classes -------------------------------------------------------
 
     case 'class_save':
-        require_staff(); $id=(int)post('id');
-        if($id && !one('SELECT id FROM classes WHERE id=?',[$id])) throw new NotFound(t('Kurs nicht gefunden.','Course not found.'));
-        $capacity=(int)post('capacity','0');
-        if($capacity<0 || $capacity>500) throw new UserError(t('Plätze: 0 bis 500 (0 = unbegrenzt).','Places: 0 to 500 (0 = unlimited).'));
+        $u=require_staff(); $id=(int)post('id');
+        $was=$id?one('SELECT id,payment_profile_id FROM classes WHERE id=?',[$id]):null;
+        if($id && !$was) throw new NotFound(t('Kurs nicht gefunden.','Course not found.'));
+        // An empty box is no limit, as a 0 is.
+        $capacity=whole_number_value(post('capacity')?:'0',0,500,t('Plätze: 0 bis 500 (0 = unbegrenzt).','Places: 0 to 500 (0 = unlimited).'));
         $days=class_days_from_post();
-        $args=[required_text('name',120),text_limit('description',500),text_limit('location',160),
-               reference_or_null('accounts','trainer_id',"role IN ('admin','trainer','manager')"),
-               reference_or_null('payment_profiles','payment_profile_id'),
-               $capacity,(int)post('sort_order','0'),post('archived')?1:0];
+        $name=required_text('name',120); $description=text_limit('description',500); $location=text_limit('location',160);
+        $trainerId=reference_or_null('accounts','trainer_id',"role IN ('admin','trainer','manager')");
+        $profileId=reference_or_null('payment_profiles','payment_profile_id');
+        $args=[$name,$description,$location,$trainerId,$profileId,$capacity,list_position_value(post('sort_order')),post('archived')?1:0];
         $id=transactional(function() use ($id,$args,$days): int {
             if($id) run('UPDATE classes SET name=?,description=?,location=?,trainer_id=?,payment_profile_id=?,capacity=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
-            else { run('INSERT INTO classes (name,description,location,trainer_id,payment_profile_id,capacity,sort_order,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
+            else {
+                run('INSERT INTO classes (name,description,location,trainer_id,payment_profile_id,capacity,sort_order,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId();
+                // Every course has its group chat from the start (ADR 0022).
+                course_group_thread($id);
+            }
             // Replaced rather than reconciled: the form shows the whole pattern,
             // so what it posts is the whole pattern. Nothing points at a
             // class_days row, so there is no identity worth preserving.
@@ -38,6 +43,18 @@ function dispatch_config(string $action): array {
                     [$id,$day['weekday'],$day['starts_at'],$day['ends_at'],$day['location'],$order*10]);
             return $id;
         });
+        // A course pointed at another payment profile sends its families'
+        // money to another account, so every administrator hears of it, like a
+        // changed IBAN (ADR 0025, amended 2026-10-08). Compared as charges find
+        // their account (charge_payment_profile()): no profile of its own is the
+        // default one, and a new course would have had that.
+        $house=(int)setting('default_payment_profile');
+        $from=(int)($was['payment_profile_id']??0)?:$house; $to=(int)($profileId??0)?:$house;
+        if($from!==$to)
+            notify_admins_of_bank_change($u,t('Kurs zahlt auf ein anderes Konto: ','Course pays into another account: ').$name,
+                strtr(t('Die Beiträge gehen jetzt auf {to} statt auf {from}.','Charges are now paid into {to} instead of {from}.'),
+                      ['{to}'=>payment_profile_name($to),'{from}'=>payment_profile_name($from)]),
+                'classes',['id'=>$id,'edit'=>1]);
         audit('class.saved','class',$id); flash(t('Kurs gespeichert.','Course saved.'));
         return ['classes',['id'=>$id]];
 
@@ -66,9 +83,11 @@ function dispatch_config(string $action): array {
         if(post('notify')) {
             $entry=class_session((int)$c['id'],$on);
             foreach(rows('SELECT DISTINCT s.account_id FROM class_students cs JOIN students s ON s.id=cs.student_id'
-                .' WHERE cs.class_id=? AND cs.left_on IS NULL AND s.account_id IS NOT NULL',[(int)$c['id']]) as $who)
+                .' WHERE cs.class_id=? AND '.current_enrolment_sql(),[(int)$c['id']]) as $who)
+                // To the overview, where a family's „Termine" are: the course's
+                // own page is staff's, and a family is refused it.
                 notify((int)$who['account_id'],'schedule',$c['name'].' – '.fmt_date($on),
-                    session_statuses()[$entry['status']??'planned']??'','classes',['id'=>(int)$c['id'],'tab'=>'dates']);
+                    session_statuses()[$entry['status']??'planned']??'','dashboard');
             $sent=notify_class_change($c,$on,$entry,text_limit('note',500));
             flash(plural($sent,'Familie informiert','Familien informiert','family notified','families notified').'.');
         }
@@ -77,35 +96,41 @@ function dispatch_config(string $action): array {
     case 'class_delete':
         require_staff(); $c=training_class((int)post('id'));
         if(post('confirmation')!==$c['name']) throw new UserError(t('Bitte den Kursnamen zur Bestätigung eingeben.','Please enter the class name to confirm.'));
+        // The group chat goes with its course, so one that holds messages is
+        // kept by archiving the course instead (ADR 0022). An empty one goes.
+        if(scalar('SELECT 1 FROM messages m JOIN threads t ON t.id=m.thread_id WHERE t.class_id=? LIMIT 1',[$c['id']]))
+            throw new UserError(t('Im Gruppenchat dieses Kurses gibt es Nachrichten. Archiviere den Kurs stattdessen – dann bleibt der Chat lesbar.',
+                                  'This course’s group chat has messages. Archive the course instead – the chat then stays readable.'));
         // Charges reference the class with ON DELETE SET NULL, so payment history
         // survives; only the grouping goes away.
         tracked('classes',(int)$c['id'],(string)$c['name'],fn()=>run('DELETE FROM classes WHERE id=?',[$c['id']]),'delete');
-        audit('class.deleted','class',(int)$c['id']); flash(t('Kurs gelöscht. Beiträge und Zahlungen bleiben erhalten. Rückgängig unter „Änderungen“.','Class deleted. Charges and payments are kept. Undo under “Changes”.'));
+        // The change log keeps the deleted row to read, not to restore (app/history.php).
+        audit('class.deleted','class',(int)$c['id']); flash(t('Kurs gelöscht. Beiträge und Zahlungen bleiben erhalten. Unter „Änderungen“ steht, was gelöscht wurde.','Course deleted. Charges and payments are kept. “Changes” shows what was deleted.'));
         return ['classes',[]];
 
     case 'class_member_add':
         require_staff(); $c=training_class((int)post('class_id')); $s=student((int)post('student_id'));
-        if((int)$c['capacity']>0) {
-            $current=(int)scalar('SELECT COUNT(*) FROM class_students WHERE class_id=? AND left_on IS NULL',[$c['id']]);
-            if($current>=(int)$c['capacity']) throw new UserError(t('Dieser Kurs ist voll. Plätze in den Kurseinstellungen erhöhen.','This class is full. Raise the number of places in the class settings.'));
-        }
+        if(($held=course_held((int)$c['id'])) && course_is_full($held))
+            throw new UserError(t('Dieser Kurs ist voll. Plätze in den Kurseinstellungen erhöhen.','This class is full. Raise the number of places in the class settings.'));
         $tariffId=reference_or_null('tariffs','tariff_id','class_id='.(int)$c['id']);
-        run('INSERT INTO class_students (class_id,student_id,joined_on,tariff_id) VALUES (?,?,?,?)'
-            .' ON DUPLICATE KEY UPDATE joined_on=VALUES(joined_on),left_on=NULL,tariff_id=VALUES(tariff_id)',
-            [$c['id'],$s['id'],date_value(post('joined_on'))??today(),$tariffId]);
+        if(enrol_student((int)$c['id'],(int)$s['id'],$tariffId,date_value(post('joined_on'))??today()))
+            flash(strtr(t('{name} ist wieder im Kurs. Ein früher vereinbarter Preis oder Rabatt gilt nicht mehr – beim Kind unter „Tarif, Zahlungsweise und Rabatt“ neu eintragen, wenn er weiter gelten soll.',
+                          '{name} is back in the course. A price or discount agreed before no longer applies – enter it again on the child under “Tariff, how it is paid, and any discount” if it should go on.'),
+                        ['{name}'=>$s['first_name'].' '.$s['last_name']]));
         audit('class.member_added','class',(int)$c['id']);
         return ['classes',['id'=>$c['id']]];
 
     case 'enrolment_save':
         require_staff(); $c=training_class((int)post('class_id')); $s=student((int)post('student_id'));
-        if(!enrolment((int)$c['id'],(int)$s['id'])) throw new UserError(t('Dieses Kind ist nicht in diesem Kurs.','This child is not in this course.'));
-        $dueDay=(int)post('due_day','0');
-        if($dueDay<0 || $dueDay>28) throw new UserError(t('Zahltag: 1 bis 28, oder 0 für „wie im Tarif“.','Payment day: 1 to 28, or 0 for “as the tariff says”.'));
-        $tariffId=reference_or_null('tariffs','tariff_id','class_id='.(int)$c['id']);
+        $current=enrolment((int)$c['id'],(int)$s['id']);
+        if(!$current) throw new UserError(t('Dieses Kind ist nicht in diesem Kurs.','This child is not in this course.'));
+        $dueDay=whole_number_value(post('due_day')?:'0',0,28,t('Zahltag: 1 bis 28, oder 0 für „wie im Tarif“.','Payment day: 1 to 28, or 0 for “as the tariff says”.'));
+        $joined=date_value(post('joined_on')); $left=date_value(post('left_on')); date_range($joined,$left);
+        $tariffId=posted_enrolment_tariff($current);
         // 0 is "whatever this tariff's usual interval is", which is what most
         // enrolments say. Anything else has to be a price that is written down,
         // or the child would be billed at an amount nobody could point at.
-        $interval=(int)post('interval_months','0');
+        $interval=whole_number_value(post('interval_months')?:'0',0,12,t('Bitte einen gültigen Abrechnungszeitraum wählen.','Please choose a valid billing interval.'));
         if($interval!==0) {
             billing_valid_interval($interval);
             if(!isset(tariff_rates((int)$tariffId)[$interval]))
@@ -116,7 +141,7 @@ function dispatch_config(string $action): array {
             .'discount_months=?,discount_kind=?,discount_value=?,discount_note=? WHERE class_id=? AND student_id=?',
             [$tariffId, $interval,
              post('price')!==''?cents(post('price')):null, text_limit('price_note'), $dueDay,
-             date_value(post('joined_on')), date_value(post('left_on')),
+             $joined, $left,
              $discount['months'], $discount['kind'], $discount['value'],
              $discount['value']>0?text_limit('discount_note',120):'',
              $c['id'], $s['id']]);
@@ -133,7 +158,7 @@ function dispatch_config(string $action): array {
         $kind=choose(post('kind'),array_keys(request_kinds()));
         $tariffId=post('tariff_id')!==''?(int)post('tariff_id'):null;
         if($kind==='join') {
-            $class=one('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND cs.left_on IS NULL) AS member_count FROM classes c WHERE c.id=?',[$classId]);
+            $class=one('SELECT c.*, (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id=c.id AND '.current_enrolment_sql().') AS member_count FROM classes c WHERE c.id=?',[$classId]);
             if(course_is_full($class)) throw new UserError(t('Dieser Kurs ist voll.','This course is full.'));
         }
         // The trainer is the person being asked, so she does not ask: her own
@@ -175,17 +200,47 @@ function dispatch_config(string $action): array {
     // ---- payment profiles ----------------------------------------------
 
     case 'profile_save':
-        require_staff(); $id=(int)post('id');
-        if($id && !one('SELECT id FROM payment_profiles WHERE id=?',[$id])) throw new UserError(t('Zahlungsempfänger nicht gefunden.','Payment profile not found.'));
+        $u=require_staff(); $id=(int)post('id');
+        $before=$id?one('SELECT * FROM payment_profiles WHERE id=?',[$id]):null;
+        if($id && !$before) throw new UserError(t('Zahlungsempfänger nicht gefunden.','Payment profile not found.'));
         $iban=strtoupper(preg_replace('/\s+/','',post('iban')) ?? '');
         if($iban!=='' && !valid_iban($iban)) throw new UserError(t('Diese IBAN ist nicht gültig. Bitte Ziffern und Prüfsumme kontrollieren.','This IBAN is not valid. Please check the digits and the checksum.'));
         $bic=strtoupper(preg_replace('/\s+/','',post('bic')) ?? '');
         if($bic!=='' && !preg_match('/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/D',$bic)) throw new UserError(t('Diese BIC ist nicht gültig.','This BIC is not valid.'));
         $currency=strtoupper(post('currency','EUR'));
         if(!preg_match('/^[A-Z]{3}$/D',$currency)) throw new UserError(t('Währung als dreistelliger Code, z. B. EUR.','Currency as a three-letter code, e.g. EUR.'));
-        $args=[required_text('name',120),text_limit('recipient',140),$iban,$bic,$currency,text_limit('qr_template',2000),text_limit('note',255),post('archived')?1:0];
-        if($id) run('UPDATE payment_profiles SET name=?,recipient=?,iban=?,bic=?,currency=?,qr_template=?,note=?,archived=? WHERE id=?',[...$args,$id]);
-        else { run('INSERT INTO payment_profiles (name,recipient,iban,bic,currency,qr_template,note,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
+        // Stored with LF, as qr_payload() reads it: a browser posts a textarea
+        // with CRLF, and the same text saved again was a change every time.
+        $posted=['name'=>required_text('name',120),'recipient'=>text_limit('recipient',140),'iban'=>$iban,'bic'=>$bic,'currency'=>$currency,
+                 'qr_template'=>qr_template_lines(text_limit('qr_template',2000)),'note'=>text_limit('note',255),'archived'=>post('archived')?1:0];
+        // A transfer into this profile's account or no code at all
+        // (qr_template_pays_profile()): anything else is refused here, where it
+        // can still be corrected.
+        if(trim($posted['qr_template'])!=='' && !qr_template_pays_profile($posted['qr_template']))
+            throw new UserError(t('Der Inhalt des QR-Codes muss eine SEPA-Überweisung bleiben: „BCD“ in der ersten Zeile, {recipient} in der sechsten und {iban} in der siebten.',
+                                  'The QR code contents must stay a SEPA transfer: “BCD” on the first line, {recipient} on the sixth and {iban} on the seventh.'));
+        $args=array_values($posted);
+        // Every change is kept in „Änderungen", with what it was before and who
+        // changed it (ADR 0025): an IBAN decides where the families' money goes,
+        // and a trainer may change it, so its old value is the one most worth
+        // being able to read back.
+        if($id) tracked('payment_profiles',$id,$args[0],fn()=>run('UPDATE payment_profiles SET name=?,recipient=?,iban=?,bic=?,currency=?,qr_template=?,note=?,archived=? WHERE id=?',[...$args,$id]));
+        else $id=tracked_insert('payment_profiles',$args[0],function() use ($args): int {
+            run('INSERT INTO payment_profiles (name,recipient,iban,bic,currency,qr_template,note,archived,created_at) VALUES (?,?,?,?,?,?,?,?,?)',[...$args,now()]);
+            return (int)db()->lastInsertId();
+        });
+        // Where the money goes and what the banking apps are told: every
+        // administrator hears of a change to it in the bell, who and which, and
+        // finds what it was before under „Änderungen" (ADR 0025, amended
+        // 2026-10-08). A new profile counts: it brings an account of its own. A
+        // template saved before with CRLF is the same text as the one posted now.
+        if($before) $before['qr_template']=qr_template_lines((string)$before['qr_template']);
+        $changed=array_values(array_filter(['iban','recipient','qr_template'],
+            fn(string $column): bool => (string)($before[$column]??'')!==(string)$posted[$column]));
+        if($changed)
+            notify_admins_of_bank_change($u,($before?t('Kontoverbindung geändert: ','Bank details changed: '):t('Neuer Zahlungsempfänger: ','New payment profile: ')).$posted['name'],
+                implode(', ',array_map('history_field_label',$changed)).t('. Die Einzelheiten stehen unter „Änderungen“.','. The details are under “Changes”.'),
+                'history',['entity'=>'payment_profiles','record'=>$id]);
         audit('profile.saved','payment_profile',$id); flash(t('Zahlungsempfänger gespeichert.','Payment profile saved.'));
         return ['manage',['tab'=>'payments','edit'=>$id]];
 
@@ -205,7 +260,7 @@ function dispatch_config(string $action): array {
         // to start, and the form that offers the choice with nothing to offer.
         if($archived && $id && (int)scalar('SELECT COUNT(*) FROM levels WHERE archived=0 AND id<>?',[$id])===0)
             throw new UserError(t('Es muss mindestens eine Gruppe übrig bleiben.','At least one level has to remain.'));
-        $args=[required_text('name',80),text_limit('description',300),(int)post('sort_order','0'),$archived];
+        $args=[required_text('name',80),text_limit('description',300),list_position_value(post('sort_order')),$archived];
         $id=transactional(function() use ($id,$args,$isDefault): int {
             if($id) run('UPDATE levels SET name=?,description=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
             else { run('INSERT INTO levels (name,description,sort_order,archived,created_at) VALUES (?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
@@ -222,12 +277,12 @@ function dispatch_config(string $action): array {
     case 'age_group_save':
         require_staff(); $id=(int)post('id');
         if($id && !one('SELECT id FROM age_groups WHERE id=?',[$id])) throw new UserError(t('Diese Altersgruppe gibt es nicht.','No such age group.'));
-        $min=(int)post('min_age','0');
+        $age=fn(string $value): int => whole_number_value($value,0,120,t('Bitte ein Alter zwischen 0 und 120 angeben.','Please give an age between 0 and 120.'));
+        $min=$age(post('min_age')?:'0');
         // Empty means "and upwards", which is what the oldest band always is.
-        $max=post('max_age')===''?null:(int)post('max_age');
-        if($min<0 || $min>120 || ($max!==null && ($max<0 || $max>120))) throw new UserError(t('Bitte ein Alter zwischen 0 und 120 angeben.','Please give an age between 0 and 120.'));
+        $max=post('max_age')===''?null:$age(post('max_age'));
         if($max!==null && $max<$min) throw new UserError(t('Das Höchstalter liegt unter dem Mindestalter.','The upper age is below the lower one.'));
-        $args=[required_text('name',80),$min,$max,(int)post('sort_order','0'),post('archived')?1:0];
+        $args=[required_text('name',80),$min,$max,list_position_value(post('sort_order')),post('archived')?1:0];
         if($id) run('UPDATE age_groups SET name=?,min_age=?,max_age=?,sort_order=?,archived=? WHERE id=?',[...$args,$id]);
         else { run('INSERT INTO age_groups (name,min_age,max_age,sort_order,archived,created_at) VALUES (?,?,?,?,?,?)',[...$args,now()]); $id=(int)db()->lastInsertId(); }
         audit('age_group.saved','age_group',$id); flash(t('Altersgruppe gespeichert.','Age group saved.'));
@@ -235,42 +290,60 @@ function dispatch_config(string $action): array {
 
     case 'payment_remind':
         $u=require_staff(); throttle('payment-remind',(string)$u['id'],6,3600);
-        if(!setting('smtp',[])) throw new UserError(t('Bitte zuerst SMTP einrichten.','Set up SMTP first.'));
+        // One run at a time (security review): two at once - the trainer and an
+        // administrator, or two tabs - each read the outbox before the other
+        // wrote to it, and every family got two mails. Writing this row holds
+        // it until the run commits, whether it existed yet or not (a SELECT ...
+        // FOR UPDATE on a missing row locks nothing two runs cannot share), so
+        // a second run waits here. And here, before this transaction reads
+        // anything: its first plain read fixes what it sees (REPEATABLE READ),
+        // and one made before the wait would miss the mails the other run
+        // committed meanwhile. What runs before it in the transaction is no
+        // such read: claim_request()'s insert is a write, who is signed in was
+        // read before the transaction began (record_step()), and throttle()
+        // counts on a connection of its own.
+        set_setting('payment_reminders_last_run',now());
+        // Working mail, and nothing more: the same rule as the sheet on Geld.
+        if(($mailMissing=mail_sending_missing())!=='') throw new UserError($mailMissing);
+        // To exactly whom the sheet on Geld counted (payment_reminders()): one
+        // mail per child with all its overdue charges, none to a child that
+        // cannot take one or was reminded today already (design N5).
         $only=(int)post('student_id');
-        $sent=0; $skipped=0;
-        // One reminder per overdue charge, to the student's own login. A student
-        // with no login - including a brother or sister taken off a shared one
-        // by the update to one login per member - is skipped and counted, until
-        // they are invited with an address of their own.
-        foreach(rows('SELECT c.*, s.first_name, s.last_name, s.account_id,'
-            .' '.charge_paid_sql().' AS paid'
-            .' FROM charges c JOIN students s ON s.id=c.student_id'
-            .' WHERE c.cancelled=0 AND '.charge_overdue_sql().'<?'.($only?' AND s.id=?':'')
-            .' ORDER BY s.account_id, c.due_on', $only?[today(),$only]:[today()]) as $c) {
-            $due=(int)$c['amount_cents']-(int)$c['paid'];
-            if($due<=0 || !$c['account_id']) { $skipped++; continue; }
-            $account=one('SELECT * FROM accounts WHERE id=?',[(int)$c['account_id']]);
-            if(!$account) { $skipped++; continue; }
-            if(notify_payment($account,['id'=>$c['student_id'],'first_name'=>$c['first_name'],'last_name'=>$c['last_name']],$due,(string)$c['due_on'])) $sent++;
-            else $skipped++;
-        }
+        $reminders=payment_reminders($only?:null);
+        $sent=0;
+        foreach($reminders['send'] as $reminder) if(notify_payment($reminder['account'],$reminder['student'],$reminder['charges'])) $sent++;
         audit('payment.reminded','charge');
-        flash($sent
-            ? $sent.' '.t('Erinnerungen liegen im Postausgang.','reminders are in the outbox.').($skipped?' '.$skipped.' '.t('übersprungen (kein Konto oder abgemeldet).','skipped (no account, or unsubscribed).'):'')
-            : t('Keine Erinnerung nötig oder alle Empfänger haben diese E-Mails abbestellt.','Nothing to remind about, or every recipient has unsubscribed from these emails.'),
-            $sent?'success':'error');
-        return ['outbox',[]];
+        $leftOut=payment_reminders_left_out($reminders);
+        // In the plain style whatever went out: a run that sends nothing has
+        // not gone wrong, it found nobody to send to.
+        flash(match(true) {
+            $sent>0 => plural($sent,'Erinnerung geht raus.','Erinnerungen gehen raus.','reminder is on its way.','reminders are on their way.').($leftOut!==''?' '.$leftOut:''),
+            // Everybody overdue cannot take a mail, and nobody was reminded today.
+            $reminders['none']>0 && !$reminders['today'] => t('Keine Erinnerung verschickt: ','No reminder sent: ').payment_reminders_unreachable(),
+            // Said first, or „Heute schon erinnert" alone reads as sent just now.
+            $leftOut!=='' => t('Keine Erinnerung verschickt.','No reminder sent.').' '.$leftOut,
+            // A page left open while the last of it was paid.
+            default => t('Gerade ist nichts überfällig.','Nothing is overdue right now.'),
+        });
+        return ['payments',['overdue'=>1]];
 
     // ---- attendance ----------------------------------------------------
 
     case 'attendance_save':
         $u=require_staff(); $c=training_class((int)post('class_id'));
         $on=date_value(post('session_on'),true);
-        if($on>today()) throw new UserError(t('Das Datum liegt in der Zukunft.','That date is in the future.'));
+        /* The face of a child without a photo is a button of this form (ADR
+           0031; the screens' spec, §2): a photo is a page load of its own, so
+           the marks made so far are saved first and nothing ticked is lost,
+           and the list comes back with the sheet that takes the photo. A day
+           still to come is then neither saved nor refused, and with nothing
+           saved nothing is said. */
+        $photo=post('photo')!==''?max(0,(int)post('photo')):null;
+        if($on>today() && $photo===null) throw new UserError(t('Das Datum liegt in der Zukunft.','That date is in the future.'));
         $marks=$_POST['present']??[]; if(!is_array($marks)) throw new UserError(t('Ungültige Eingabe.','Invalid input.'));
         $allowed=array_keys(attendance_statuses());
         $saved=0; $cleared=0;
-        foreach(class_members((int)$c['id']) as $m) {
+        foreach($on>today()?[]:class_members((int)$c['id']) as $m) {
             $sid=(int)$m['id'];
             if(!array_key_exists($sid,$marks)) continue;
             $value=is_scalar($marks[$sid])?trim((string)$marks[$sid]):'';
@@ -286,9 +359,12 @@ function dispatch_config(string $action): array {
                 [$c['id'],$sid,$on,$value,$u['id'],now()]);
             $saved++;
         }
-        audit('attendance.saved','class',(int)$c['id']);
-        flash(plural($saved,'Eintrag gespeichert.','Einträge gespeichert.','entry saved.','entries saved.')
-              .($cleared?' '.plural($cleared,'entfernt.','entfernt.','removed.','removed.'):''));
+        if($photo===null || $saved || $cleared) {
+            audit('attendance.saved','class',(int)$c['id']);
+            flash(plural($saved,'Eintrag gespeichert.','Einträge gespeichert.','entry saved.','entries saved.')
+                  .($cleared?' '.plural($cleared,'entfernt.','entfernt.','removed.','removed.'):''));
+        }
+        if($photo!==null) return ['attendance',['id'=>$c['id'],'on'=>$on]+($photo?['photo'=>$photo]:[])];
         return ['classes',['id'=>$c['id'],'tab'=>'attendance','on'=>$on]];
 
     case 'attendance_clear':
@@ -324,11 +400,11 @@ function dispatch_config(string $action): array {
     // ---- defaults registry and maintenance -----------------------------
 
     case 'defaults_registry_save':
-        $group=choose(post('group'),['portal','branding','students','payments','organisation','system']);
+        $group=choose(post('group'),['portal','branding','students','payments','organisation','privacy','system']);
         // Who may change what, rather than one rule for the whole registry:
         // membership statuses and payment methods are the trainer's words for
         // her own work; the portal's name, its look and the background jobs are not.
-        if(in_array($group,['students','payments'],true)) require_staff(); else require_admin();
+        $u=in_array($group,['students','payments'],true)?require_staff():require_admin();
         // Every value is checked before any is written, so a refusal - an
         // unreadable background, a colour that is not one - leaves the whole
         // card as it was, and says so, rather than half of it saved.
@@ -341,11 +417,26 @@ function dispatch_config(string $action): array {
             $values[$key]=setting_validate($key,$spec,$raw);
         }
         foreach($values as $key=>$value) set_setting($key,$value);
+        // Every course without a profile of its own pays into the default one:
+        // changing it moves their families' money as moving a course does
+        // (class_save), so every administrator hears of it (ADR 0025, amended
+        // 2026-10-08).
+        if(array_key_exists('default_payment_profile',$values) && (int)$before['default_payment_profile']!==(int)$values['default_payment_profile'])
+            notify_admins_of_bank_change($u,t('Standard-Zahlungsempfänger geändert: ','Default payment recipient changed: ').payment_profile_name((int)$values['default_payment_profile']),
+                strtr(t('Kurse ohne eigenen Zahlungsempfänger zahlen jetzt auf {to} statt auf {from}.','Courses without a payment recipient of their own now pay into {to} instead of {from}.'),
+                      ['{to}'=>payment_profile_name((int)$values['default_payment_profile']),'{from}'=>payment_profile_name((int)$before['default_payment_profile'])]),
+                'manage',['tab'=>'payments']);
         audit('settings.saved','settings');
         // The colours are not tracked(), so the message is the way back: it
         // names what they were, to be typed in again (ADR 0013).
         $replaced=$group==='branding'?settings_replaced_colours($specs,$before,$values):'';
-        flash(t('Vorgaben gespeichert.','Defaults saved.').($replaced!==''?' '.$replaced:''));
+        // A period set shorter deletes at the next daily cleanup, and is the
+        // way back until then (ADR 0032): what it was is said, to be typed in
+        // again. The cleanup this request ends with would come before that is
+        // read, so the page views' cleanup waits a day from now (tick_prune()).
+        $shortened=settings_shortened_periods($specs,$before,$values);
+        if($shortened!=='') set_setting('period_last_shortened',now());
+        flash(t('Vorgaben gespeichert.','Defaults saved.').($replaced!==''?' '.$replaced:'').($shortened!==''?' '.$shortened:''));
         // The „Aussehen" card is on the Portal tab; it has no tab of its own.
         return [choose(post('to_page','settings'),['settings','manage']),['tab'=>post('to_tab')?:($group==='branding'?'portal':$group)]];
 
@@ -355,7 +446,8 @@ function dispatch_config(string $action): array {
         require_staff(); $s=student((int)post('student_id'));
         $ids=$_POST['charge_ids']??[];
         if(!is_array($ids)) throw new UserError(t('Ungültige Auswahl.','Invalid selection.'));
-        $id=create_invoice((int)$s['id'],array_map('intval',$ids),post('issued_on'),post('terms')!==''?(int)post('terms'):-1);
+        $terms=post('terms')!==''?whole_number_value(post('terms'),0,180,t('Zahlungsziel: 0 bis 180 Tage.','Payment term: 0 to 180 days.')):-1;
+        $id=create_invoice((int)$s['id'],array_map('intval',$ids),post('issued_on'),$terms);
         $created=invoice($id);
         if($created['account_id'])
             notify((int)$created['account_id'],'payment',t('Neue Rechnung: ','New invoice: ').$created['number'],
@@ -378,13 +470,18 @@ function dispatch_config(string $action): array {
             flash(t('Rechnung storniert. Die Nummer bleibt vergeben, damit die Nummernfolge lückenlos bleibt.','Invoice cancelled. The number stays used, so the sequence has no hole in it.'));
         } else {
             if(!setting('smtp',[])) throw new UserError(t('Bitte zuerst SMTP einrichten.','Set up SMTP first.'));
-            flash(notify_invoice($inv)?t('Rechnung liegt im Postausgang.','The invoice is in the outbox.')
-                                      :t('Für dieses Kind ist kein Konto hinterlegt, an das die Rechnung gehen könnte.','This child has no account for the invoice to go to.'));
+            if($refusal=invoice_mail_refusal($inv)) throw new UserError($refusal);
+            notify_invoice($inv);
+            flash(t('Rechnung liegt im Postausgang.','The invoice is in the outbox.'));
         }
         return ['student',['id'=>$inv['student_id'],'tab'=>'invoices']];
 
     case 'proof_upload':
-        $u=require_user(); $s=student((int)post('student_id'));
+        // A receipt is a file, kept until staff remove it, so the limit is the
+        // one a problem report's screenshot has: a family sending several for
+        // several months is well inside it, a thousand is a full disk.
+        $u=require_user(); throttle('proof',(string)$u['id'],20,3600);
+        $s=student((int)post('student_id'));
         $chargeId=post('charge_id')!==''?(int)post('charge_id'):null;
         if($chargeId && !one('SELECT id FROM charges WHERE id=? AND student_id=?',[$chargeId,$s['id']]))
             throw new UserError(t('Dieser Beitrag gehört nicht zu diesem Kind.','That charge does not belong to this child.'));
@@ -407,7 +504,7 @@ function dispatch_config(string $action): array {
         audit('proof.deleted','student',(int)$p['student_id']);
         return ['student',['id'=>$p['student_id'],'tab'=>'payments']];
 
-    // ---- the shell: notifications, pictures, colours, impersonation ------
+    // ---- the shell: notifications, pictures, impersonation ---
 
     case 'notifications_read':
         $u=require_user();
@@ -416,27 +513,75 @@ function dispatch_config(string $action): array {
         // The pane is on every page, so back to that page with its record and tab.
         return form_return();
 
-    case 'avatar_save':
+    case 'picture_save':
+        /* A picture added, replaced or removed (ADR 0031 §7, as amended): a
+           child's (student_id) by the child's own login on the child's page,
+           and by staff for every child, at training too, from the attendance
+           list; or a team member's own (kind=account), on Mein Konto, by that
+           team member and nobody else - a student's login never has a picture
+           of its own. student() finds the one child a family may change, and
+           any for staff. Twenty photos an hour per login, as for a receipt:
+           making one is the most a request here asks of the server. Removing
+           makes nothing, and is not counted. */
         $u=require_user();
-        $kind=choose(post('kind','account'),['account','student']);
-        $table=$kind==='student'?'students':'accounts';
-        // A family may change their own picture and their own children's; staff
-        // may change anybody's, which is how a wrong photo gets fixed.
-        if($kind==='student') { $s=student((int)post('id')); $id=(int)$s['id']; }
-        else { $id=(int)post('id'); if($id!==(int)$u['id'] && !is_staff($u)) throw new UserError(t('Kein Zugriff.','Access denied.')); }
-        $old=(string)(scalar('SELECT avatar_name FROM '.$table.' WHERE id=?',[$id])?:'');
-        if(post('remove')) {
-            run('UPDATE '.$table.' SET avatar_name=? WHERE id=?',['',$id]);
-            if($old!=='') delete_upload('avatar',$old);
-            flash(t('Bild entfernt.','Picture removed.'));
-        } else {
-            $stored=store_upload('avatar','avatar');
-            run('UPDATE '.$table.' SET avatar_name=? WHERE id=?',[$stored['stored_name'],$id]);
-            if($old!=='') delete_upload('avatar',$old);
-            flash(t('Bild gespeichert.','Picture saved.'));
+        $team=post('kind')==='account';
+        // Asked before a photo is made of anything: the writer asks again, of the locked row.
+        if($team) team_picture_holder($u);
+        $s=$team?null:student((int)post('student_id'));
+        // Sent from the attendance list, back to the same course and day: the
+        // face in its row, or - refused - the sheet that takes it, open again
+        // under the sentence that says why (the screens' spec, §2).
+        $list=!$team && (int)post('class_id')>0?['id'=>(int)post('class_id'),'on'=>date_value(post('on'),true)]:null;
+        $stored='';
+        if(post('remove')==='') {
+            try {
+                throttle('picture',(string)$u['id'],20,3600,t('Zu viele Fotos in kurzer Zeit. In einer Stunde geht es wieder.','Too many photos in a short time. It works again in an hour.'));
+                $stored=store_upload('picture','picture')['stored_name'];
+            } catch(UserError $refused) {
+                if($list===null) throw $refused;
+                flash($refused->getMessage(),'error');
+                return ['attendance',$list+['photo'=>(int)$s['id']]];
+            }
         }
-        audit('avatar.saved',$kind,$id);
-        return $kind==='student'?['student',['id'=>$id]]:['profile',[]];
+        if($team) write_team_picture((int)$u['id'],$stored); else write_child_picture($s,$stored);
+        if($stored!=='' && $list!==null) {
+            flash(strtr(t('Foto von {name} gespeichert.','Photo of {name} saved.'),['{name}'=>$s['first_name']]));
+            return ['attendance',$list];
+        }
+        flash($stored!==''?t('Foto gespeichert.','Photo saved.'):t('Foto gelöscht.','Photo deleted.'));
+        // From „Dein Foto" (to=landing), on to where a first password lands
+        // without the step.
+        if(post('to')==='landing') return landing_after_first_password($u);
+        return $team?['profile',['#'=>'picture']]:['student',['id'=>$s['id'],'#'=>'picture']];
+
+    case 'picture_consent':
+        /* Whether the children in the child's courses and their families see
+           the picture in the course chat (ADR 0031 §8). Only the child's own
+           login says yes. Staff take it back - for a family that asks on the
+           phone, or a picture that should not be shown - and never give it:
+           nobody says yes in a family's place. Each change is kept three ways,
+           each for its reader: the column the rule reads, the consent log with
+           the notice's version as the proof, and the change log with who. */
+        $u=require_user(); $s=student((int)post('student_id'));
+        $on=post('on')==='1';
+        if($on && (is_staff($u) || (int)$s['account_id']!==(int)$u['id']))
+            throw new UserError(t('Einschalten kann nur die Familie, auf der Seite ihres Kindes.','Only the family can switch this on, on their child’s page.'));
+        if($on && !setting('pictures_in_course')) throw new UserError(t('Der Verein zeigt im Kurs-Chat keine Fotos.','The club shows no photos in the course chat.'));
+        if($on!==((int)(lock_row('students',(int)$s['id'])['course_sees_picture']??0)===1)) {
+            tracked('students',(int)$s['id'],$s['first_name'].' '.$s['last_name'],
+                fn()=>run('UPDATE students SET course_sees_picture=? WHERE id=?',[$on?1:0,(int)$s['id']]));
+            /* Whose say it was, in the purpose (ADR 0031, as amended): a
+               parent's, through the family's login, under consent_age or with
+               no birth date (§ 4 Abs. 4 DSG), is course_sees_picture_by_parent;
+               from that age on the child's own is course_sees_picture. Staff
+               only ever take it back, which is no parent's say: the purpose
+               itself, and who in the change log. A parent's yes stays when the
+               child turns 14. */
+            record_consent((int)$s['account_id'],!is_staff($u) && needs_a_parents_yes($s)?'course_sees_picture_by_parent':'course_sees_picture',$on);
+            audit($on?'picture.shown_to_course':'picture.hidden_from_course','student',(int)$s['id']);
+        }
+        flash($on?t('Im Kurs-Chat sichtbar.','Shown in the course chat.'):t('Im Kurs-Chat ausgeblendet.','Hidden from the course chat.'));
+        return ['student',['id'=>$s['id'],'#'=>'picture']];
 
     case 'impersonate':
         // Stopping is checked against who is really signed in, not against the
@@ -478,10 +623,10 @@ function dispatch_config(string $action): array {
         flash(t('Danke! Die Meldung ist angekommen.','Thank you. Your report has arrived.'));
         // Back to the page the report was sent from, record and tab included:
         // the page name alone opened ?page=student with no id, which is „Kein
-        // Zugriff“. form_origin() is what the report itself recorded; the router
-        // refuses a page it does not know, so nothing is trusted beyond that.
-        $on=form_origin();
-        return [$on['page']!==''?$on['page']:'dashboard',array_filter(['id'=>$on['id']?:null,'tab'=>$on['tab']!==''?$on['tab']:null],fn($v)=>$v!==null)];
+        // Zugriff“. Read by form_return(), as the way back after a refusal is,
+        // so it is held to the pages there are: a forged page name leads to the
+        // overview, not to a page the router does not know.
+        return form_return('dashboard');
 
     case 'feedback_state':
         require_admin(); $state=choose(post('state'),['new','seen','done']);
@@ -539,3 +684,77 @@ function dispatch_config(string $action): array {
     return dispatch_settings_or_messages($action);
 }
 
+/**
+ * $login, if it may have a picture of its own - a team member's - or the
+ * refusal: a student's login never has one, the child's is on the child (ADR
+ * 0031, as amended).
+ */
+function team_picture_holder(?array $login): array {
+    if(!$login || !is_staff($login)) throw new UserError(t('Nur das Team hat ein eigenes Foto; das eines Kindes steht beim Kind.','Only the team has a photo of their own; a child’s is on the child.'));
+    return $login;
+}
+
+/**
+ * The one writer of a team member's own picture (ADR 0031; the owner,
+ * 2026-10-08): $stored is the picture store_upload() has just made, or '' to
+ * remove theirs. Only a team member's login has one - a student's never does -
+ * so the login is read under a lock and must be the team's. Tracked, so
+ * „Änderungen" says who changed it, as „Profilbild"; the file it replaces is
+ * deleted at once, and last, as a child's is.
+ */
+function write_team_picture(int $accountId, string $stored): void {
+    $locked=team_picture_holder(lock_row('accounts',$accountId));
+    $old=(string)$locked['picture_name'];
+    if($stored===$old) return;
+    tracked('accounts',$accountId,(string)$locked['name'],fn()=>run('UPDATE accounts SET picture_name=? WHERE id=?',[$stored,$accountId]));
+    audit($stored!==''?'picture.saved':'picture.removed','account',$accountId);
+    // Last, because a file cannot be rolled back.
+    if($old!=='') delete_upload('picture',$old);
+}
+
+/**
+ * The one writer of a child's picture (ADR 0031 §7): $stored is the picture
+ * store_upload() has just made, or '' to remove the one there is.
+ *
+ * Tracked, so „Änderungen" says who changed it - as „Profilbild", never the
+ * file's name. A picture staff put on a child ends the family's yes in the same
+ * statement, the consent log keeps that as the family's latest answer, and the
+ * family's bell says so: the course sees a picture only once the family has seen
+ * that picture and said yes ("The family always sees it").
+ * A placeholder's bell takes nothing (notify()). The family's own picture leaves
+ * its answer as it was, and so does a removal.
+ *
+ * The file it replaces is deleted at once, and last, as the icon's and the
+ * logo's are: a commit that fails after that leaves the row naming a file that
+ * is gone, which draws the initials (has_picture()), and the nightly prune takes
+ * whatever no row names. Read under a lock, so two at once each delete the file
+ * they replaced.
+ */
+function write_child_picture(array $student, string $stored): void {
+    $actor=require_user();
+    $id=(int)$student['id'];
+    $locked=lock_row('students',$id);
+    if(!$locked) throw new NotFound(t('Schüler nicht gefunden.','Student not found.'));
+    $old=(string)$locked['picture_name'];
+    if($stored===$old) return;
+    $byStaff=$stored!=='' && is_staff($actor);
+    tracked('students',$id,$locked['first_name'].' '.$locked['last_name'],fn()=>$byStaff
+        ? run('UPDATE students SET picture_name=?,course_sees_picture=0 WHERE id=?',[$stored,$id])
+        : run('UPDATE students SET picture_name=? WHERE id=?',[$stored,$id]));
+    // The answer that holds now, which is what the log keeps (ADR 0031 §8, ADR
+    // 0032): staff are no parent, so it is the purpose itself, as when staff
+    // switch it off on the child's page.
+    if($byStaff && (int)$locked['course_sees_picture']===1) record_consent((int)$locked['account_id'],'course_sees_picture',false);
+    if($byStaff)
+        notify((int)$locked['account_id'],'picture',
+            strtr(t('Neues Foto von {name}','New photo of {name}'),['{name}'=>$locked['first_name']]),
+            strtr(t('{name} hat es hinzugefügt. Du kannst es jederzeit ändern oder entfernen.','{name} added it. You can change or remove it at any time.'),['{name}'=>$actor['name']])
+                // The yes it ended, and whose it is to give again, by the age.
+                .((int)$locked['course_sees_picture']!==1?'':(needs_a_parents_yes($locked)
+                    ?t(' Im Kurs-Chat erscheint es erst, wenn ein Elternteil wieder zustimmt.',' It shows in the course chat only once a parent agrees again.')
+                    :t(' Im Kurs-Chat zeigst du es erst, wenn du wieder zustimmst.',' It shows in the course chat only once you agree again.'))),
+            'student',['id'=>$id,'#'=>'picture']);
+    audit($stored!==''?'picture.saved':'picture.removed','student',$id);
+    // Last, because a file cannot be rolled back.
+    if($old!=='') delete_upload('picture',$old);
+}

@@ -4,10 +4,16 @@
   "type": "project",
   "require": {
     "php": ">=8.2",
+    "ext-ctype": "*",
+    "ext-fileinfo": "*",
+    "ext-filter": "*",
+    "ext-gd": "*",
+    "ext-iconv": "*",
     "ext-mbstring": "*",
     "ext-openssl": "*",
     "ext-pdo": "*",
     "ext-pdo_mysql": "*",
+    "ext-session": "*",
     "bacon/bacon-qr-code": "^3.0",
     "phpmailer/phpmailer": "^7.0"
   },
