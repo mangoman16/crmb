@@ -152,14 +152,17 @@ function upload_extension(string $kind, string $mime): string {
 }
 
 /**
- * A file over the limit, refused with the limit in it: one sentence for the
- * server's refusal and the portal's alike. A picture is a photo to whoever
- * sends it, so it says so (ADR 0031).
+ * A file over the limit, refused with the limit in it: one sentence wherever it
+ * is caught - by the portal (store_upload()), by the server for the one file
+ * (upload_max_filesize), or by the server for the whole form (post_max_size,
+ * public/index.php). That last throws the form away before the portal sees
+ * which field the file was in, and a child's page takes a receipt as well as
+ * the child's picture, so no path says „Foto": the same photo was „Das Foto ist
+ * zu groß" at one size and „Die Datei ist zu groß" at another. „Höchstens" is
+ * the word the file field's own hint uses (file_field()).
  */
-function upload_too_large(string $kind = ''): string {
-    return $kind === 'picture'
-        ? t('Das Foto ist zu groß. Höchstens ', 'That photo is too big. At most ') . upload_limit_label() . '.'
-        : t('Die Datei ist zu groß. Erlaubt sind ', 'That file is too big. The limit is ') . upload_limit_label() . '.';
+function upload_too_large(): string {
+    return t('Die Datei ist zu groß. Höchstens ', 'That file is too big. At most ') . upload_limit_label() . '.';
 }
 
 /**
@@ -183,9 +186,9 @@ function post_too_large(): bool {
  * no before the portal saw anything, and telling somebody "try a smaller
  * picture" is the only useful response.
  */
-function upload_error_message(int $code, string $kind = ''): string {
+function upload_error_message(int $code): string {
     return match ($code) {
-        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => upload_too_large($kind),
+        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => upload_too_large(),
         UPLOAD_ERR_PARTIAL => t('Die Datei kam nur teilweise an. Bitte noch einmal versuchen.', 'The file only arrived partly. Please try again.'),
         UPLOAD_ERR_NO_FILE => t('Es wurde keine Datei ausgewählt.', 'No file was chosen.'),
         UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE =>
@@ -204,10 +207,10 @@ function upload_error_message(int $code, string $kind = ''): string {
 function store_upload(string $field, string $kind): array {
     $file = $_FILES[$field] ?? null;
     if (!is_array($file) || !isset($file['error'])) throw new UserError(t('Es wurde keine Datei ausgewählt.', 'No file was chosen.'));
-    if ((int)$file['error'] !== UPLOAD_ERR_OK) throw new UserError(upload_error_message((int)$file['error'], $kind));
+    if ((int)$file['error'] !== UPLOAD_ERR_OK) throw new UserError(upload_error_message((int)$file['error']));
     if (!is_uploaded_file((string)$file['tmp_name'])) throw new UserError(t('Diese Datei kam nicht über das Formular.', 'That file did not come through the form.'));
     if ((int)$file['size'] <= 0) throw new UserError(t('Die Datei ist leer.', 'That file is empty.'));
-    if ((int)$file['size'] > upload_limit()) throw new UserError(upload_too_large($kind));
+    if ((int)$file['size'] > upload_limit()) throw new UserError(upload_too_large());
 
     $mime = uploaded_file_type((string)$file['tmp_name']);
     $extension = upload_extension($kind, $mime);

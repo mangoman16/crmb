@@ -2818,10 +2818,10 @@ what could not be checked rather than ticking it. The screens are specified in
   Safari → Erweitert → JavaScript), choose a photo straight from the iPhone's
   camera — 24 megapixels, 5712 × 4284, a little over the 24 million the server
   takes — and press „Foto speichern": it is refused in one sentence on the same
-  page — „Das Foto ist zu groß. Höchstens …" over the upload limit, „Die Datei
-  ist zu groß. Erlaubt sind …" over what the server takes at all
-  (`post_max_size`), or „Dieses Foto hat zu viele Bildpunkte: höchstens 24
-  Megapixel." — never „Die Sitzung ist abgelaufen", and the face stays as it
+  page — „Die Datei ist zu groß. Höchstens …", the same words whether it is over
+  the upload limit or over what the server takes at all (`post_max_size`), or
+  „Dieses Foto hat zu viele Bildpunkte: höchstens 24 Megapixel." — never „Die
+  Sitzung ist abgelaufen", and the face stays as it
   was. A receipt under **Beiträge** over `post_max_size` is answered the same
   way. JavaScript on again, the same photo arrives, made smaller by the browser.
 - [ ] **P.4** On a computer, without JavaScript, choose a WebP, a GIF or a PDF

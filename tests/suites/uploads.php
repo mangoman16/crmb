@@ -904,8 +904,20 @@ foreach (['6000 × 4000, exactly the limit' => [6000, 4000, false], 'one row mor
     try { picture_square(jpeg_header($width, $height), 'image/jpeg'); } catch (UserError $e) { $said = $e->getMessage(); }
     is_same($tooMany, str_contains($said, 'höchstens 24 Megapixel'), $what.($tooMany ? ' is refused for its size' : ' is not refused for its size'));
 }
-is_same('Das Foto ist zu groß. Höchstens '.upload_limit_label().'.', upload_too_large('picture'), 'a photo over the limit is refused as a photo');
-is_same(upload_too_large('picture'), upload_error_message(UPLOAD_ERR_INI_SIZE, 'picture'), 'whether the portal or the server said so');
+/* One sentence for a file over the limit, wherever it is caught (mobile-tester,
+   2026-10-09): the same photo was „Das Foto ist zu groß. Höchstens …“ over what
+   the server takes for one file, and „Die Datei ist zu groß. Erlaubt sind …“
+   over what it takes for the whole form, which arrives without saying which
+   field it came from. That whole-form path is driven through the router in the
+   robustness suite, which expects upload_too_large(). */
+is_same('Die Datei ist zu groß. Höchstens '.upload_limit_label().'.', upload_too_large(),
+        'a file over the limit is refused with the limit, in the word the file field’s hint uses');
+foreach (['picture', 'proof', 'message', 'avatar', 'icon', 'logo'] as $kind) {
+    $_FILES = ['upload' => ['name'=>'IMG_0816.JPG', 'type'=>'image/jpeg', 'tmp_name'=>'', 'error'=>UPLOAD_ERR_INI_SIZE, 'size'=>0]];
+    $said = '';
+    try { store_upload('upload', $kind); } catch (UserError $e) { $said = $e->getMessage(); } finally { $_FILES = []; }
+    is_same(upload_too_large(), $said, 'one '.$kind.' over what the server takes for one file is refused as a whole form over post_max_size is');
+}
 throws(fn() => upload_extension('picture', 'image/gif'), 'and a type a picture is not made from in the same words as an unreadable one', picture_unreadable());
 
 case_('A header claiming 30,000 × 30,000, or a PNG of one colour claiming 25 million pixels, is refused before anything is decoded, in a process of its own [ADR 0031 §3, test 5]');

@@ -304,9 +304,11 @@ These are the first fixes, the audit's N1, N6 and N7.
   other marks for the whole list in a sheet, and Enter still saves. **On a
   family's Übersicht** the child's face leads the greeting and opens the child's
   photo.
-- **A photo or a receipt larger than the server takes** is answered „Die Datei
-  ist zu groß. Erlaubt sind …" on its own page, no longer „Die Sitzung ist
-  abgelaufen".
+- **A file over a size limit gets one sentence**, „Die Datei ist zu groß.
+  Höchstens 2,0 MB.", with the limit that applies — the portal's own, or the
+  server's where that is smaller — on its own page. A photo or a receipt larger
+  than the server takes at all is answered the same way, no longer „Die Sitzung
+  ist abgelaufen".
 - **Pictures need PHP's gd.** Without it setup installs all the same and lists
   it as „eingeschränkt", no picture can be added, and everything else works. The
   machine that builds a release needs gd, because composer checks for it; on a
