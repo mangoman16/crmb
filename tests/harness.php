@@ -190,6 +190,7 @@ function test_boot(): void {
         exit(2);
     }
 
+    test_server_at_start();     // the copy every suite starts from, before any suite writes to it
     $_SESSION = ['locale' => 'de'];
     require APP_ROOT.'/app/bootstrap.php';
 
@@ -247,6 +248,15 @@ function test_tables(): array {
 }
 
 /**
+ * $_SERVER as the run found it, before a suite wrote a request into it: taken
+ * once, by test_boot(), and given back to every suite by test_reset().
+ */
+function test_server_at_start(): array {
+    static $server;
+    return $server ??= $_SERVER;
+}
+
+/**
  * Empty every data table, keeping the schema, then re-seed the defaults.
  *
  * The list of tables is read from the database rather than kept here. A
@@ -278,7 +288,16 @@ function test_reset(): void {
     // The counter connection is separate by design, so clear it through itself.
     run_counter('DELETE FROM rate_limits');
     setting_cache_clear();
+    // Every suite starts as the run did, with no request in it: a suite that
+    // drew a page as a web request left REQUEST_METHOD behind, and the install
+    // suite counted two more checks after it than alone.
+    $_SERVER = test_server_at_start();
     $_SESSION = ['locale' => 'de'];
+    // current_user() answers from what it found until asked to look again. Left
+    // alone, it went on naming the account the previous suite signed in last -
+    // a row deleted above - so a suite that acted before signing anybody in
+    // acted as that account in a whole run, and as nobody alone.
+    current_user(true);
     require APP_ROOT . '/database/defaults.php';
     setting_cache_clear();
     // Request-scoped memos outlive a request here, because a test run is one

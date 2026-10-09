@@ -129,6 +129,35 @@ foreach ($requirements as $check)
         ok($check['ok'], 'pdo_mysql is reported as present, which it is');
 ok(count(install_blockers()) <= count($requirements), 'blockers are a subset of the requirements');
 
+case_('Opened in a browser, setup checks the connection first, and does not install over plain HTTP');
+/* install_requirements() judges the request that asks; setup.php passes none,
+   so it reads $_SERVER. This row's checks once ran only when an earlier suite
+   had left a request in $_SERVER, and this suite counted two more checks in a
+   whole run than alone; each request is set here, by the check that needs it. */
+$https = 'Verschlüsselte Verbindung (HTTPS)';
+$connection = fn(): ?array => array_values(array_filter(install_requirements(), fn($c) => $c['label'] === $https))[0] ?? null;
+$blocks = fn(): bool => in_array($https, array_column(install_blockers(), 'label'), true);
+is_same(null, $connection(), 'a command-line run - this one, whichever suite ran before it - has no connection to judge, and no row for one');
+$runServer = $_SERVER;
+try {
+    $_SERVER = ['REQUEST_METHOD' => 'GET', 'HTTP_HOST' => 'badminton.example.at', 'REQUEST_URI' => '/setup.php', 'SERVER_PORT' => 80] + $runServer;
+    is_same($https, install_requirements()[0]['label'] ?? null, 'a request from a browser has the connection checked first');
+    $plain = $connection();
+    ok($plain !== null && $plain['ok'] === false && $plain['fatal'] === true, 'over http:// it fails, as something setup does not install without');
+    ok(str_contains($plain['fix'] ?? '', 'SSL-Zertifikat') && str_contains($plain['fix'] ?? '', 'über https:// öffnen'),
+       'and says to switch the certificate on and open setup over https://: '.($plain['fix'] ?? '(no sentence)'));
+    ok($blocks(), 'so it is among what stops the installation');
+    $_SERVER['HTTPS'] = 'on';
+    $secure = $connection();
+    ok($secure !== null && $secure['ok'] === true && $secure['fix'] === '', 'over https:// it holds, with nothing to do');
+    ok(!$blocks(), 'and stops nothing');
+    unset($_SERVER['HTTPS']);
+    $_SERVER['HTTP_HOST'] = 'localhost:8080';
+    ok(($connection()['ok'] ?? null) === true, 'on the computer it runs on, plain http:// is allowed, for trying it out');
+} finally {
+    $_SERVER = $runServer;
+}
+
 case_('A PHP without fileinfo is refused before installing, and handed to the System page by name');
 /* Uploads read a file's type from its bytes, and only fileinfo can: without it
    every photo and receipt is refused with a sentence about the file. So setup

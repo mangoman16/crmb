@@ -77,8 +77,15 @@ passing; [VALIDATION.md](../VALIDATION.md) has the latest run and its date.
 ## Writing a test
 
 Suites are plain PHP files in `tests/suites/`, run in alphabetical order with a
-freshly emptied database and the seeded defaults. Group related assertions with
-`case_()` and describe the behaviour, not the mechanics:
+freshly emptied database and the seeded defaults. Each starts with nobody signed
+in and with `$_SERVER` as the run found it, a command-line run with no request
+in it: a case that needs one sets `REQUEST_METHOD`, `HTTPS` and whatever else it
+reads itself, so a suite counts the same checks alone as in a whole run.
+`$_GET`, `$_POST` and `$_FILES` are not reset. `$_POST` still holds the fields
+of the last `act()` or `submit()`, this suite's or the one before's, and what a
+suite wrote into `$_GET` or `$_FILES` itself stays there (`render_view()` puts
+`$_GET` back on its own), so a case that reads them sets them first. Group
+related assertions with `case_()` and describe the behaviour, not the mechanics:
 
 ```php
 case_('A parent reaches only their own children');

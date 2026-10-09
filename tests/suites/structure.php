@@ -1216,6 +1216,16 @@ ok(str_contains($harness['submit'], 'handle_post()'),
 is_same([], enclosing_calls_of($harness['submit'], 'dispatch_action'),
         'and never reaches dispatch_action() around it, which would be that second description');
 
+case_('A reset leaves nobody signed in, whoever was signed in before it');
+/* test_reset() emptied the session, but current_user() went on answering with
+   the account it had found: a suite that acted before signing anybody in acted
+   as whoever the suite before it had signed in last - a login the reset had
+   just deleted - in a whole run, and as nobody alone. */
+$signedIn = sign_in_as(make_account(['role' => 'admin']));
+is_same((int)$signedIn['id'], (int)(current_user()['id'] ?? 0), 'an administrator is signed in before the reset, so the check below has something to undo');
+test_reset();
+is_same(null, current_user(), 'after it nobody is, as on a first request');
+
 /**
  * Every call in a stretch of PHP, in the order the tokens run, with the two
  * things a rule about ordering needs to know about each one: whether it is a
