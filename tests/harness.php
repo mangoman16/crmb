@@ -287,6 +287,7 @@ function test_reset(): void {
     // error, since a request captures only one.
     payment_cache_clear();
     setup_cache_clear();
+    picture_audience_clear();
     error_capture_reset();
 }
 
@@ -620,6 +621,25 @@ function deepest_form_nesting(string $html): int {
         elseif (preg_match('/^<\/form/i', $piece)) $depth--;
     }
     return $depth === 0 ? $deepest : 99;   // 99: unbalanced, which is worse
+}
+
+/**
+ * The named pieces of one PHP file: one entry per function and per action
+ * handler, so a rule can name the handler that is wrong rather than the file it
+ * sits in. Each is its source as written.
+ */
+function named_blocks_of(string $path): array {
+    $blocks = []; $name = basename($path).' (file)'; $buffer = '';
+    foreach (file($path) as $line) {
+        if (preg_match('/^\s*function\s+([a-z_][a-z0-9_]*)\s*\(/i', $line, $m)
+         || preg_match("/^\s*case\s+'([a-z0-9_]+)'\s*:/", $line, $m)) {
+            $blocks[$name] = ($blocks[$name] ?? '').$buffer;
+            $buffer = ''; $name = $m[1];
+        }
+        $buffer .= $line;
+    }
+    $blocks[$name] = ($blocks[$name] ?? '').$buffer;
+    return $blocks;
 }
 
 /**

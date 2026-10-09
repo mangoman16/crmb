@@ -2,10 +2,19 @@
          you. A family's record - name, courses, payments - is their "Profil" in
          the menu, and the two must not read as the same page. */
 page_head(t('Mein Konto','My account'),t('Wie du dich anmeldest und wie das Portal für dich aussieht.','How you sign in and how the portal looks for you.'));
-/* Everything about signing in, in one card and first, as the heading promises:
-   the address - the only name a login has (ADR 0021, §1; 0030 §1) - whether a
+/* Everything about signing in, in one card, as the heading promises: the
+   address - the only name a login has (ADR 0021, §1; 0030 §1) - whether a
    mailed link set the password in the last two weeks, and the two changes. */
-$resets=password_resets_for((int)$user['id'],PASSWORD_RESET_SHOWN_DAYS); ?>
+$resets=password_resets_for((int)$user['id'],PASSWORD_RESET_SHOWN_DAYS);
+/* Before it, a team member's own picture (ADR 0031; the owner, 2026-10-08):
+   the families see the team's faces in the chats. No switch - everybody signed
+   in sees the team's. A family's login has no picture of its own: theirs is
+   the child's, on the child's page. */
+if(is_staff($user)): ?>
+<section class="card picture-card" id="picture" aria-label="<?=e(t('Foto','Photo'))?>">
+    <?php picture_row($user,['kind'=>'account'],t('Das Team und die Familien sehen es.','The team and the families see it.'),t('Dein Foto','Your photo')); ?>
+</section>
+<?php endif ?>
 <section class="card" id="sign-in">
     <h2><?=e(t('Anmeldung','Signing in'))?></h2>
     <?php login_facts($user,t('bestätigt','verified')); ?>

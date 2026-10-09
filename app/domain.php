@@ -179,7 +179,8 @@ function student_login_counts(): array {
 /**
  * One page of the Schüler card: every student with their login, sorted by last
  * name, as the login's columns - for login_state_badge() and the address -
- * plus the student's id and names, and link_expires_at: when the newest
+ * plus the student's id, names and picture (CHILD_PICTURE_COLUMNS, for
+ * avatar()), and link_expires_at: when the newest
  * invitation still waiting runs out, or null when there is none (lapsed links
  * are pruned once a day). An unknown filter is 'all'. The link's date only,
  * never its hash.
@@ -192,7 +193,7 @@ function student_login_counts(): array {
 function student_logins(string $filter, int $page): array {
     $condition = student_login_filters()[$filter] ?? student_login_filters()['all'];
     $offset = (page_in_range($page) - 1) * STUDENT_LOGINS_PER_PAGE;
-    return rows('SELECT a.*, s.id AS student_id, s.first_name, s.last_name,'
+    return rows('SELECT a.*, s.id AS student_id, s.first_name, s.last_name, '.child_picture_columns('a', '', 's').','
         ." (SELECT MAX(t.expires_at) FROM auth_tokens t WHERE t.account_id=a.id AND t.purpose='invite') AS link_expires_at"
         .' FROM students s JOIN accounts a ON a.id=s.account_id WHERE '.$condition
         .' ORDER BY s.last_name, s.first_name, s.id LIMIT '.STUDENT_LOGINS_PER_PAGE.' OFFSET '.$offset);

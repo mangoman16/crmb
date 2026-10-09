@@ -246,16 +246,18 @@ function install_writable(string $path): bool {
 }
 
 /**
- * One row per PHP extension the portal cannot do without: what it is for,
- * whether this PHP has it, and what to do if not. Label and fix come in German
- * and English, so that setup.php and the signed-in portal each say them in
- * their own language.
+ * One row per PHP extension the portal calls: what it is for, whether this PHP
+ * has it, whether setup stops without it (fatal), and what to do if not. Label
+ * and fix come in German and English, so that setup.php and the signed-in
+ * portal each say them in their own language.
  *
- * setup.php will not install without them. Einstellungen → System names any a
- * running portal has lost, because a PHP version switched in the hosting panel
- * can come without one the old version had. $loaded answers whether an
- * extension is there; the suite passes its own, to watch a missing one being
- * reported without taking anything away from the PHP it runs on.
+ * setup.php will not install without the fatal ones. gd alone is not: without
+ * it there are no pictures and everything else works, so setup names it and
+ * goes on (ADR 0031 §4, as amended). Einstellungen → System names any a running
+ * portal has lost, because a PHP version switched in the hosting panel can come
+ * without one the old version had. $loaded answers whether an extension is
+ * there; the suite passes its own, to watch a missing one being reported
+ * without taking anything away from the PHP it runs on.
  */
 function extension_checks(?callable $loaded = null): array {
     $loaded ??= extension_loaded(...);
@@ -285,11 +287,17 @@ function extension_checks(?callable $loaded = null): array {
         'filter'    => ['de' => 'E-Mail- und Webadressen prüfen', 'en' => 'Checking email and web addresses',
                         'why' => ['Ohne diese Erweiterung öffnet sich keine Seite des Portals.',
                                   'Without this extension no page of the portal opens.']],
+        // square_picture() makes every picture with it, a child's or a team
+        // member's (ADR 0031 §4). Without it a picture is refused in words
+        // (pictures_unavailable()) and nothing else changes.
+        'gd'        => ['de' => 'Profilbilder verkleinern', 'en' => 'Making profile pictures smaller', 'fatal' => false,
+                        'why' => ['Ohne diese Erweiterung lässt sich kein Profilbild speichern; alles andere geht.',
+                                  'Without this extension no profile picture can be saved; everything else works.']],
     ];
     $rows = [];
     foreach ($needed as $extension => $about) {
         $why = $about['why'] ?? ['', ''];
-        $rows[] = ['extension' => $extension, 'ok' => (bool)$loaded($extension),
+        $rows[] = ['extension' => $extension, 'ok' => (bool)$loaded($extension), 'fatal' => $about['fatal'] ?? true,
                    'label' => [$about['de'] . ' (' . $extension . ')', $about['en'] . ' (' . $extension . ')'],
                    'fix'   => [trim($why[0] . ' Die PHP-Erweiterung „' . $extension . '“ im Hosting-Panel aktivieren.'),
                                trim($why[1] . ' Enable the “' . $extension . '” PHP extension in the hosting panel.')]];
@@ -328,7 +336,7 @@ function install_requirements(?array $server = null, ?callable $loaded = null): 
          'Im Hosting-Panel unter „PHP-Version“ eine neuere Version auswählen.',
          'Choose a newer version under “PHP version” in the hosting panel.');
     foreach (extension_checks($loaded) as $extension)
-        $add($extension['label'][0], $extension['label'][1], $extension['ok'], $extension['fix'][0], $extension['fix'][1]);
+        $add($extension['label'][0], $extension['label'][1], $extension['ok'], $extension['fix'][0], $extension['fix'][1], $extension['fatal']);
     $add('Der Ordner config/ ist beschreibbar', 'The config/ folder is writable',
          install_writable(config_path()),
          'Im Dateimanager für den Ordner config die Rechte auf 755 setzen. Die Einstellungen lassen sich sonst unten von Hand anlegen.',

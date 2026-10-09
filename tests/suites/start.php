@@ -160,8 +160,9 @@ is_same(['start', []], submit('activate', ['password'=>'Federball-2026-Halle!', 
 $newcomer = make_account(['role'=>'trainer', 'email'=>'neu@beispiel.test', 'state'=>'invited', 'verified_at'=>null, 'password_hash'=>null]);
 $_SESSION['activation_hash'] = hash('sha256', make_token($newcomer, 'invite'));
 setup_cache_clear();
-is_same(['dashboard', []], submit('activate', ['password'=>'Federball-2026-Halle!', 'password_confirm'=>'Federball-2026-Halle!', 'privacy_seen'=>'1']),
-        'a trainer accepting an invitation lands on the overview');
+is_same(['welcome', []], submit('activate', ['password'=>'Federball-2026-Halle!', 'password_confirm'=>'Federball-2026-Halle!', 'privacy_seen'=>'1']),
+        'a trainer accepting an invitation lands on „Dein Foto“ first (ADR 0031)');
+is_same(['dashboard', []], landing_after_sign_in(current_user()), 'which goes on to the overview, where she landed before');
 sign_in_as($admin);
 
 case_('The way back survives a save and ends on the checklist');

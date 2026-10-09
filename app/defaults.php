@@ -356,8 +356,28 @@ function setting_schema(): array {
         'upload_max_kb' => [
             'kind' => 'int', 'default' => 4096, 'min' => 64, 'max' => 51200, 'group' => 'portal',
             'label' => ['Größte erlaubte Datei (kB)', 'Largest allowed file (kB)'],
-            'hint'  => ['Gilt für Zahlungsbelege, Fotos im Chat und Bildschirmfotos zu Problemmeldungen. Der Server begrenzt zusätzlich; es gilt der kleinere Wert.',
-                        'Applies to payment proofs, photos in the chat and screenshots in problem reports. The server has its own limit; the smaller one wins.'],
+            'hint'  => ['Gilt für Zahlungsbelege, Profilfotos, Fotos im Chat und Bildschirmfotos zu Problemmeldungen. Der Server begrenzt zusätzlich; es gilt der kleinere Wert.',
+                        'Applies to payment proofs, profile photos, photos in the chat and screenshots in problem reports. The server has its own limit; the smaller one wins.'],
+        ],
+        // What the children of a course see of each other is the club's to
+        // decide (ADR 0031 §5): on, which is the owner's answer. Off, families
+        // are not asked, nobody but staff and the child's own login sees a
+        // picture, and the answers already given count again once it is on.
+        'pictures_in_course' => [
+            'kind' => 'bool', 'default' => true, 'group' => 'privacy',
+            'label' => ['Kinder im selben Kurs sehen Fotos', 'Children in the same course see photos'],
+            'hint'  => ['Nur von Kindern, deren Familie zugestimmt hat, und nur im Kurs-Chat. Die Datenschutzerklärung muss es erwähnen.',
+                        'Only of children whose family has agreed, and only in the course chat. The privacy notice must mention it.'],
+        ],
+        // From what age a child says that yes alone (ADR 0031 §8, as amended;
+        // needs_a_parents_yes()): 14 in Austria, § 4 Abs. 4 DSG. The GDPR lets
+        // each state choose between 13 and 16 (Art. 8), so a club elsewhere sets
+        // its own; rarely changed, so under „Erweitert".
+        'consent_age' => [
+            'kind' => 'int', 'default' => 14, 'min' => 13, 'max' => 16, 'group' => 'privacy', 'advanced' => true,
+            'label' => ['Ab diesem Alter stimmt ein Kind selbst zu', 'From this age a child agrees alone'],
+            'hint'  => ['Darunter, und ohne Geburtsdatum, stimmt ein Elternteil zu. In Österreich 14, in Deutschland 16.',
+                        'Below it, and without a date of birth, a parent agrees. 14 in Austria, 16 in Germany.'],
         ],
         'privacy_ready' => [
             'kind' => 'bool', 'default' => false, 'group' => 'privacy', 'internal' => true,

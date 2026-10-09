@@ -101,9 +101,13 @@ function delete_login(int $accountId): void {
         throw new UserError(strtr(t('Diese Anmeldung gehört zu {name} und wird nie allein gelöscht – jedes Kind hat eine. Auf der Seite von {name} unter „Zugang zum Portal“ bekommt es stattdessen eine neue, leere.',
                                     'This login belongs to {name} and is never deleted on its own – every child has one. On {name}’s page under “Access to the portal” they get a new, empty one instead.'),
                                   ['{name}'=>$student['first_name'].' '.$student['last_name']]));
+    $picture=(string)(scalar('SELECT picture_name FROM accounts WHERE id=? FOR UPDATE',[$accountId]) ?: '');
     run('DELETE FROM auth_tokens WHERE account_id=?',[$accountId]);
     run('DELETE FROM mail_jobs WHERE account_id=?',[$accountId]);
     run('DELETE FROM accounts WHERE id=?',[$accountId]);
+    // A team member's picture goes with the login, at once (ADR 0031 §9), and
+    // last, because a file cannot be rolled back.
+    if($picture!=='') delete_upload('picture',$picture);
 }
 
 /**
@@ -284,11 +288,14 @@ function invite_student(array $student, string $email, string $locale = 'de'): i
  * points to, from before ADR 0010, only lets go of the child: it is a team
  * member's, with her chats and her role, and a stale link on a child's record
  * must not take it. Deleting it belongs on Zugänge, where it is hers.
+ *
+ * The family's yes for the course ends in the same statement (ADR 0031 §8):
+ * whoever said it no longer holds the login, and could not take it back.
  */
 function replace_login_with_placeholder(array $student, array $old): int {
     $fresh=tracked('students',(int)$student['id'],$student['first_name'].' '.$student['last_name'],function() use ($student): int {
         $fresh=placeholder_login((string)$student['first_name'],(string)$student['last_name'],(bool)($student['is_demo']??false));
-        run('UPDATE students SET account_id=?,updated_at=?,revision=revision+1 WHERE id=?',[$fresh,now(),(int)$student['id']]);
+        run('UPDATE students SET account_id=?,course_sees_picture=0,updated_at=?,revision=revision+1 WHERE id=?',[$fresh,now(),(int)$student['id']]);
         return $fresh;
     });
     if(($old['role']??'')==='student') delete_login((int)$old['id']);
@@ -356,6 +363,45 @@ function name_login_after_student(int $accountId, string $first, string $last): 
     $name=login_name_for($first,$last);
     if($name===(string)$login['name']) return;
     tracked('accounts',$accountId,$name,fn()=>run('UPDATE accounts SET name=? WHERE id=?',[$name,$accountId]));
+}
+
+/**
+ * Where a first password goes on to, past „Dein Foto" or straight where there
+ * is no step (ADR 0023 §5, ADR 0031): a family's login to its child's page,
+ * where it corrects or completes what staff entered or left out - every time,
+ * not only while family_next_steps() has something to say - and anybody else
+ * where every sign-in lands. One rule for the activation, for a photo saved on
+ * the step (picture_save's to=landing) and for its „Überspringen", so the three
+ * cannot send one person to two places.
+ */
+function landing_after_first_password(array $login): array {
+    $own=login_student_id((int)$login['id']);
+    return $own ? ['student',['id'=>$own]] : landing_after_sign_in($login);
+}
+
+/**
+ * Where a first password lands, and what it says (ADR 0023 §5, ADR 0031, as
+ * amended).
+ *
+ * „Dein Foto" first, once, where this server can make a picture and there is
+ * one to put it on - the child for a family, the team member themself - asked
+ * here, where nothing else leads (welcome). Skipped or saved, it goes on to
+ * landing_after_first_password(), where this lands without the step.
+ *
+ * The banner says how they sign in from now on. The welcome is said once: by
+ * the step, whose title it is, or - where there is no step, on a server
+ * without gd - by the banner. $gd is whether this server can make a picture:
+ * the suite passes false to walk a host without gd, as for square_picture().
+ */
+function first_password_landing(array $signed, ?bool $gd = null): array {
+    $own=login_student_id((int)$signed['id']);
+    $photo=($gd ?? pictures_possible()) && ($own || is_staff($signed));
+    flash(strtr(t('Dein Konto ist bereit. Du meldest dich ab jetzt mit {login} an.','Your account is ready. From now on you sign in with {login}.'),['{login}'=>(string)$signed['email']])
+        .($own && !$photo ? ' '.strtr(t('Willkommen, {name}! Schau kurz, ob alles stimmt, und ergänze, was fehlt. Frag deine Eltern, wenn du etwas nicht weißt.',
+                                        'Welcome, {name}! Check that everything is right and fill in what is missing. Ask your parents if you are not sure.'),
+                                      ['{name}'=>(string)scalar('SELECT first_name FROM students WHERE id=?',[$own])]) : ''));
+    if($photo) return ['welcome',[]];
+    return landing_after_first_password($signed);
 }
 
 /**
@@ -508,6 +554,15 @@ function dispatch_action(string $action): array {
         return landing_after_sign_in($a);
     case 'logout':
         $_SESSION=[]; session_regenerate_id(true); current_user(true);
+        // Children's pictures are kept by the browser for up to a week
+        // (picture_cache_control()), so it is asked to forget them with
+        // everything else it cached here. Best effort only: Safari has not
+        // always honoured Clear-Site-Data, and no browser has to. What bounds a
+        // copy left on a borrowed phone is the week. headers_sent() is only
+        // ever true where output began before the action ran - the test runner,
+        // which prints as it goes; a real request prints nothing before its
+        // redirect.
+        if(!headers_sent()) header('Clear-Site-Data: "cache"');
         return ['login',[]];
     case 'forgot':
         /* „Passwort vergessen", by address (ADR 0021 §1). The answer is the
@@ -587,19 +642,10 @@ function dispatch_action(string $action): array {
                 strtr(t('Hat sich über die Einladung an {email} eingerichtet. Noch in keinem Kurs.','Set up through the invitation to {email}. Not in a course yet.'),['{email}'=>(string)$signed['email']]),
                 'student',['id'=>$ownStudent]);
         }
-        if($purpose==='invite') {
-            /* Set up for the first time: the person lands on their own
-               student page, where they correct or complete what staff
-               entered or left out - every time, not only while
-               family_next_steps() has something to say (ADR 0023 §5). Every
-               later sign-in lands where landing_after_sign_in() says. */
-            $own=login_student_id((int)$signed['id']);
-            flash(strtr(t('Dein Konto ist bereit. Du meldest dich ab jetzt mit {login} an.','Your account is ready. From now on you sign in with {login}.'),['{login}'=>(string)$signed['email']])
-                .($own ? ' '.strtr(t('Willkommen, {name}! Schau kurz, ob alles stimmt, und ergänze, was fehlt. Frag deine Eltern, wenn du etwas nicht weißt.',
-                                     'Welcome, {name}! Check that everything is right and fill in what is missing. Ask your parents if you are not sure.'),
-                                   ['{name}'=>(string)scalar('SELECT first_name FROM students WHERE id=?',[$own])]) : ''));
-            if($own) return ['student',['id'=>$own]];
-        } elseif($purpose==='reset') {
+        // Set up for the first time: first_password_landing(). Every later
+        // sign-in lands where landing_after_sign_in() says.
+        if($purpose==='invite') return first_password_landing($signed);
+        if($purpose==='reset') {
             flash(t('Dein neues Passwort gilt ab sofort.','Your new password works from now on.'));
         } else {
             flash(t('Deine neue E-Mail-Adresse ist bestätigt. Du meldest dich ab jetzt mit ihr an.','Your new email address is confirmed. From now on you sign in with it.'));
@@ -888,6 +934,10 @@ function dispatch_action(string $action): array {
             delete_login((int)$login['id']);
             audit('account.withdraw','account',(int)$login['id']);
         }
+        // The child's picture goes with the child, at once (ADR 0031 §9), and
+        // last, because a file cannot be rolled back. A login left behind on
+        // Zugänge carries none: the picture was the student's.
+        if((string)$s['picture_name']!=='') delete_upload('picture',(string)$s['picture_name']);
         // The change log keeps the deleted row to read, not to restore (app/history.php).
         flash(t('Schüler gelöscht. Unter „Änderungen“ steht, was gelöscht wurde; wiederherstellen lässt es sich nicht.',
                 'Student deleted. “Changes” shows what was deleted; it cannot be restored.')

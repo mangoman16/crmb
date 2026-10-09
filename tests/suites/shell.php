@@ -508,6 +508,12 @@ $reaches = function (array $who, string $owner, array $ownerParams, string $targ
     }
     return false;
 };
+/* Reached on purpose from nowhere: „Dein Foto" is asked once, where the first
+   password lands (activate), and never again (ADR 0031). Named with what must
+   stay true of it, so the exemption cannot outlive its reason. */
+$reachedOnce = ['welcome' => "if(\$photo) return ['welcome',[]];"];
+foreach ($reachedOnce as $page => $landing)
+    ok(str_contains((string)file_get_contents(APP_ROOT.'/app/actions.php'), $landing), $page.' is where a first password lands, and only there');
 $people = ['an administrator, setup unfinished' => [$admin, true], 'an administrator, setup hidden' => [$admin, false],
            'a trainer' => [$trainer, false], 'a family' => [$ownLogin, false]];
 $checkedPairs = 0;
@@ -524,7 +530,7 @@ foreach ($people as $who => [$accountId, $setupOpen]) {
     }
     $frameLinks = array_column($linksOn(shell_page('dashboard')), 0);
     foreach ($allowed as $page) {
-        if (in_array($page, $signedOutOnly, true)) continue;
+        if (in_array($page, $signedOutOnly, true) || isset($reachedOnce[$page])) continue;
         if (in_array($page, $staffOnly, true) && !is_staff($user)) continue;
         if (in_array($page, $adminOnly, true) && !is_admin($user)) continue;
         $checkedPairs++;
@@ -925,7 +931,7 @@ if ($node === '') {
     exec(escapeshellarg($node).' '.escapeshellarg(TEST_ROOT.'/topbar-menus.mjs').' 2>&1', $output, $status);
     $results = json_decode(implode("\n", $output), true);
     ok($status === 0 && is_array($results), 'tests/topbar-menus.mjs ran'.($status === 0 && is_array($results) ? '' : ': '.implode("\n", $output)));
-    ok(is_array($results) && count($results) >= 72, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
+    ok(is_array($results) && count($results) >= 87, 'and made all its checks ('.(is_array($results) ? count($results) : 0).')');
     foreach (is_array($results) ? $results : [] as $result)
         ok($result['pass'] === true, $result['what'].($result['pass'] ? '' : ' — '.$result['detail']));
 }
@@ -1163,3 +1169,79 @@ foreach ($scene as $r)
     }
 ok(count($carried) >= 4, 'the scene\'s animations are read ('.implode(', ', array_keys($carried)).')');
 is_same([], $startingOver, 'and each goes on from the moment the waiting page appeared, Reduce Motion\'s pulse included');
+
+case_('A face keeps its size while its photo loads, and a photo form\'s own button is for a page without JavaScript [ADR 0031]');
+/* avatar() gives every picture the width and height of its size from
+   AVATAR_SIDES, so nothing moves when it arrives; app.css draws the circle
+   it sits in. The two agree, size by size. */
+$css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
+$drawn = [];
+foreach (AVATAR_SIDES as $size => $side) {
+    $rows = array_filter(css_matching($css, '/^'.preg_quote('.avatar'.($size !== '' ? '.'.$size : ''), '/').'$/'),
+        fn($r) => $r['media'] === '' && in_array($r['property'], ['width', 'height'], true));
+    $drawn[$size !== '' ? $size : 'default'] = array_values(array_unique(array_column($rows, 'value')));
+}
+$said = [];
+foreach (AVATAR_SIDES as $size => $side) $said[$size !== '' ? $size : 'default'] = [$side.'px'];
+is_same($said, $drawn, 'every size app.css draws a face at is the size avatar() writes on its picture');
+/* A chosen photo and a flipped switch go at once with JavaScript (app.js);
+   without it, each form's own button sends it, so only a page where the
+   script ran may hide that button. */
+is_same(['html.js .picture-save display: none'],
+        array_values(array_map(fn($r) => $r['selector'].' '.$r['property'].': '.$r['value'],
+            array_filter($css, fn($r) => str_ends_with($r['selector'], '.picture-save') && in_array($r['property'], ['display', 'visibility'], true)))),
+        'the photo forms\' own buttons are hidden only where the script has run');
+
+case_('Initials fit their face at any text size, and a photo card\'s row reads in full and shows a photo being sent [mobile-tester, 2026-10-08]');
+/* A face's initials are in pixels, as its circle is. In rem they grew with the
+   reader's text size inside a circle that did not: at 200 % „EW" was cut by
+   21 px in the 72 px faces and the 120 px one (mobile-tester, 2026-10-08). */
+$initials = array_filter($css, fn($r) => $r['property'] === 'font-size' && preg_match('/\.avatar(?![\w-])/', $r['selector']) === 1);
+ok(count($initials) >= 5, 'the faces\' initials are read ('.count($initials).' sizes)');
+is_same([], array_values(array_map(fn($r) => $r['selector'].' '.$r['value'], array_filter($initials, fn($r) => preg_match('/^\d+(\.\d+)?px$/', $r['value']) !== 1))),
+        'and each is drawn in pixels, so no text size pushes them out of their circle');
+/* A photo card's row says what a tap does in full: a list row cuts its name
+   with an ellipsis, and at 125 % „Foto hinzufügen" read „Foto hinzu…" at 320 px
+   (mobile-tester, 2026-10-08; spec-pictures2 §1: it wraps, never cut). */
+$property = fn(string $selector, string $name) => array_values(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'),
+    fn($r) => $r['property'] === $name && $r['media'] === ''))[0] ?? null;
+$cut = $property('.member-row-text strong', 'white-space');
+$wraps = $property('.picture-card .member-row-text strong', 'white-space');
+ok($cut !== null && $wraps !== null && $wraps['value'] === 'normal' && css_wins($wraps, $cut), 'a photo card\'s row wraps what a tap does, over the list row\'s single line');
+is_same('anywhere', $property('.picture-card .member-row-text strong', 'overflow-wrap')['value'] ?? null, 'and breaks a word longer than the line rather than cut it');
+/* While a chosen photo is sent, the row turns the spinner a sending button
+   turns, not only the grey of a pressed row: an upload on a slow network
+   takes seconds (mobile-tester, 2026-10-08). Over the face, out of the row's
+   flow: beside the text it narrowed it, and the row grew by up to 106 px at a
+   large text size (the coordinator, 2026-10-09). */
+$drawn = fn(string $selector, string $media = '') => array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'),
+    fn($r) => $r['media'] === $media), 'value', 'property');
+$still = '@media(prefers-reduced-motion:reduce)';
+$spinner = [$drawn('.button[aria-busy=true]:after'), $drawn('.button[aria-busy=true]:after', $still)];
+ok($spinner[0] !== [] && $spinner[1] !== [], 'a sending button\'s spinner is read');
+$overFace = $drawn('.picture-card .member-row[aria-busy=true]:after');
+is_same('absolute', $overFace['position'] ?? null, 'a photo card\'s row turns it over the face, out of the row\'s flow, so its text and height stay');
+is_same($spinner, [array_diff_key($overFace, array_flip(['position', 'left', 'top'])), $drawn('.picture-card .member-row[aria-busy=true]:after', $still)],
+        'and it is the spinner a sending button turns, with Reduce Motion too');
+is_same('transparent', $drawn('.picture-card .member-row[aria-busy=true] .avatar')['color'] ?? null, 'in place of the initials, not on top of them');
+
+case_('Attendance\'s Enter button is drawn but never seen, and a face beside a title stays beside it on a phone [the audit, N3, N7]');
+/* Enter presses a form's first submit button, and at attendance the faces are
+   submit buttons too, so the first is a copy of „Anwesenheit speichern". A
+   browser takes a button that is not drawn at all - display:none - as no
+   default, and goes on to the next: a face. So the copy is hidden by its
+   visibility, which keeps it from every tap and every screen reader as well. */
+$css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
+$rule = fn(string $selector) => array_column(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'), fn($r) => $r['media'] === ''), 'value', 'property');
+is_same(['position' => 'absolute', 'visibility' => 'hidden'], $rule('.default-submit'), 'the copy takes no room, and nobody sees it');
+is_same([], array_values(array_filter($css, fn($r) => str_contains($r['selector'], 'default-submit') && $r['property'] === 'display')),
+        'and nothing takes it out of the drawing');
+/* A phone stacks the large title over the page's action; a face leads the
+   title instead, beside it while 13rem are left for the name (N7). */
+$face = $rule('.page-heading.has-face');
+is_same(['row', 'wrap'], [$face['flex-direction'] ?? null, $face['flex-wrap'] ?? null], 'a heading with a face is a row that wraps, at every width');
+$direction = fn(string $selector, bool $phone) => array_values(array_filter(css_matching($css, '/^'.preg_quote($selector, '/').'$/'),
+    fn($r) => $r['property'] === 'flex-direction' && ($r['media'] !== '') === $phone))[0] ?? null;
+$column = $direction('.page-heading', true);
+ok($column !== null && $column['value'] === 'column' && css_wins($direction('.page-heading.has-face', false) ?? $column, $column), 'over the phone\'s column');
+is_same('1 1 13rem', $rule('.page-heading.has-face>div')['flex'] ?? null, 'the name keeps 13rem beside the face, or goes under it');

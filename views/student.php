@@ -27,6 +27,47 @@ if($tab==='details'):
     $login=$staff && $s['account_id']?one('SELECT * FROM accounts WHERE id=?',[(int)$s['account_id']]):null;
     $firstName=$s['first_name']!==''?$s['first_name']:t('die Schülerin oder der Schüler','the student');
     $mailReady=$staff && account_mail_ready();
+    /* The child's photo (ADR 0031): first on the Profil tab, because a face is
+       who somebody is, and outside the student form, because its forms post on
+       their own. One row - the face, what a tap does, who sees it - then the
+       course switch for the family, or for staff where the course stands: staff
+       may only take the course view away, so they get a button, not a switch
+       that could only go one way. */
+    $hasPicture=has_picture($s);
+    $courseView=(bool)setting('pictures_in_course');
+    $shared=(bool)$s['course_sees_picture'];
+    $placeholder=$staff && login_without_sign_in($login);
+    $rowHint=$staff
+        ?($hasPicture?t('Die Familie sieht es und kann es ändern.','The family sees it and can change it.')
+            :($placeholder?t('Die Familie sieht es, sobald sie sich angemeldet hat.','The family sees it once they have signed in.')
+                :t('Die Familie bekommt einen Hinweis und kann es ändern.','The family is told and can change it.')))
+        :(!$hasPicture?t('Freiwillig. Ohne Foto stehen hier deine Anfangsbuchstaben.','Optional. Without a photo your initials are shown here.')
+            :($courseView && $shared?t('Dein Trainerteam und dein Kurs sehen es.','Your trainers and your course see it.')
+                :t('Dein Trainerteam sieht es.','Your trainers see it.'))); ?>
+<section class="card picture-card" id="picture" aria-label="<?=e(t('Foto','Photo'))?>">
+<?php picture_row($s,['student_id'=>$id],$rowHint,strtr(t('Foto von {name}','Photo of {name}'),['{name}'=>$s['first_name']]));
+    if($hasPicture && $courseView && !$staff):
+        /* Whose yes it is, said under the switch before the tap (ADR 0031, as
+           amended; § 4 Abs. 4 DSG): a parent's, through this login, under the
+           club's consent_age or without a birth date; from that age the
+           child's own. A parent's yes stays when the child turns 14. */
+        $consentHint=empty($s['birth_date'])?t('Ohne Geburtsdatum schaltet das ein Elternteil ein.','Without a date of birth, a parent switches this on.')
+            :(needs_a_parents_yes($s)?strtr(t('Unter {age} schaltet das ein Elternteil ein.','Under {age}, a parent switches this on.'),['{age}'=>(int)setting('consent_age')])
+                :t('Das entscheidest du selbst.','You decide this yourself.'));
+        start_form('picture_consent',['student_id'=>$id],'picture-consent auto-submit');
+        check_field('on',t('Im Kurs-Chat zeigen','Show in the course chat'),$shared,$consentHint,false,true);
+        submit_button(t('Speichern','Save'),'secondary picture-save'); ?></form>
+    <p class="picture-note"><?=e($shared?t('Die Kinder in deinem Kurs und ihre Familien sehen es im Kurs-Chat. Ausschalten geht jederzeit.','The children in your course and their families see it in the course chat. You can switch it off at any time.')
+        :strtr(t('Die anderen im Kurs sehen nur „{initials}“.','The others in the course see only “{initials}”.'),['{initials}'=>initials($s['first_name'].' '.$s['last_name'])]))?></p>
+    <?php elseif($hasPicture && $courseView): ?>
+    <div class="picture-state"><p><?=e($shared?t('Im Kurs-Chat sichtbar, weil die Familie zugestimmt hat. Wieder einschalten kann dann nur sie.','Visible in the course chat because the family agreed. Only they can switch it on again.')
+        :($placeholder?t('Im Kurs-Chat nicht sichtbar. Zustimmen kann die Familie, sobald sie sich angemeldet hat.','Not visible in the course chat. The family can agree once they have signed in.')
+            :t('Im Kurs-Chat nicht sichtbar. Das entscheidet die Familie.','Not visible in the course chat. The family decides.')))?></p>
+        <?php if($shared){ start_form('picture_consent',['student_id'=>$id,'on'=>0],'inline-form'); submit_button(t('Im Kurs-Chat ausblenden','Hide from the course chat'),'subtle picture-hide'); echo '</form>'; } ?>
+    </div>
+    <?php endif ?>
+</section>
+<?php
     start_form('student_save',['id'=>$id,'revision'=>$s['revision']??0],'form'); ?>
 <section class="card" id="personal"><h2><?=e(t('Persönliche Daten','Personal details'))?></h2>
 <?php if(!$staff): ?>

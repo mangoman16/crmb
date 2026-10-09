@@ -8,6 +8,16 @@ date: 2026-10-06
 > **Amended by ADR 0031 (2026-10-08).** In §5, the first set-up lands on „Dein Foto" first, one
 > optional step for the child's picture; saved or skipped, it goes on to the student page with the
 > welcome, as §5 says. Everything else stands.
+>
+> *Changed 2026-10-08, by the designer, in the specification of „Dein Foto":* the student page
+> then comes without the welcome, on purpose: the step's own title already welcomes, and the
+> activation's banner keeps only „Dein Konto ist bereit. Du meldest dich ab jetzt mit {login} an."
+> So "with the welcome, as §5 says" above no longer holds; §5's welcome is that title now.
+>
+> *Changed 2026-10-08, by the project manager, from the code review:* without gd there is no
+> „Dein Foto" (0031's note on gd), and a family's banner keeps the welcome, as §5 says. A family
+> is welcomed exactly once, by the step or else by the banner; a team member without gd gets the
+> banner without a welcome, as before the pictures came back.
 
 > **Superseded in part by ADR 0030 (2026-10-08).** The owner: "Drop once again the username support,
 > mainly email login support / 1 admin 1 email / 1 person 1 email / 1 trainer 1 email / 1 student 1

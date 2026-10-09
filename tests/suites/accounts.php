@@ -820,7 +820,7 @@ is_same([$defaults['status'], today(), $defaults['level_id'] === null ? null : (
 is_same(['Ida Neumann', 'active'], [scalar('SELECT name FROM accounts WHERE id=?', [(int)$ida['id']]), scalar('SELECT state FROM accounts WHERE id=?', [(int)$ida['id']])],
         'the login is named after her and set up');
 is_same((int)$ida['id'], (int)(current_user()['id'] ?? 0), 'she is signed in, and nobody else is');
-is_same(['student', ['id' => $own]], $landed, 'on her own page');
+is_same(['welcome', []], $landed, 'on „Dein Foto“ first, the step after a first password, which leads on to her page (ADR 0031)');
 is_same('Kurs wählen', family_next_steps($own)[0]['what'] ?? null, 'where choosing a course is the first thing to do');
 $line = one("SELECT * FROM record_versions WHERE entity='students' AND entity_id=?", [$own]);
 is_same(['insert', (int)$ida['id']], [$line['operation'] ?? null, (int)($line['actor_id'] ?? 0)],
@@ -832,8 +832,8 @@ is_same([$boss, $coach], array_map('intval', array_column($told, 'account_id')),
 is_same(['Neu im Portal: Ida Neumann', 'Hat sich über die Einladung an ida.neumann@beispiel.test eingerichtet. Noch in keinem Kurs.', 'student', 'id='.$own],
         [$told[0]['title'] ?? null, $told[0]['body'] ?? null, $told[0]['link_page'] ?? null, $told[0]['link_params'] ?? null],
         'naming her, with a link to her page');
-is_same('Dein Konto ist bereit. Du meldest dich ab jetzt mit ida.neumann@beispiel.test an. Willkommen, Ida! Schau kurz, ob alles stimmt, und ergänze, was fehlt. Frag deine Eltern, wenn du etwas nicht weißt.',
-        $_SESSION['flash']['message'] ?? null, 'and told how she signs in from now on, and welcomed to check her details (ADR 0023 §5)');
+is_same('Dein Konto ist bereit. Du meldest dich ab jetzt mit ida.neumann@beispiel.test an.',
+        $_SESSION['flash']['message'] ?? null, 'and told how she signs in from now on; what is left to fill in, her own page says after the photo (ADR 0031)');
 ok(!in_array((int)$ida['id'], array_map('intval', array_column(open_invitations(), 'id')), true)
    && !in_array((int)$ida['id'], array_map('intval', array_column(orphan_logins(), 'id')), true), 'no longer an open invitation, nor a login left behind');
 

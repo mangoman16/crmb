@@ -49,8 +49,13 @@ with MariaDB; MySQL is meant to work but has never been run.
   team only; a chat two children had earlier stays to read and takes no new messages. A
   message is text and photos; voice notes
   and files sent earlier stay. Messages are deleted a year after they were sent. A photo is
-  stored without where, when and with what it was taken. Everybody appears by name and
-  initials.
+  stored without where, when and with what it was taken. Everybody appears by name, and by
+  picture or initials.
+- **Profile pictures**, for the children and the team: a family adds its child's, the
+  trainer a child's at training too, each team member their own. The trainers and
+  administrators see every child's; the other families in a course only once the child's
+  family agrees, from 14 the child itself (ADR 0031). Kept as a small square, without where
+  and when it was taken; PHP's gd makes it.
 - **News**, and club news by e-mail, which starts switched on and can be switched off in
   **Mein Konto** or from every such mail.
 - **Mail** through SMTP, with the password stored encrypted, a queue that retries, and an
@@ -105,12 +110,15 @@ With a shell:
 ```bash
 git clone https://github.com/mangoman16/crmb.git /path/to/webroot
 cd /path/to/webroot
-composer install --no-dev --prefer-dist --optimize-autoloader
+composer install --no-dev --prefer-dist --optimize-autoloader --ignore-platform-req=ext-gd
 # then open the address in a browser and finish the setup page
 ```
 
-`bin/update.sh` updates such a checkout, files and database together; `bin/update.sh --help`
-lists its options. `php bin/console.php help` lists the console's commands.
+`--ignore-platform-req=ext-gd` lets Composer install where PHP's gd is missing, which only the
+profile pictures need; it waives gd alone and needs Composer 2.0 or later.
+`bin/update.sh --clone` installs the same way by itself, and `bin/update.sh` updates such a
+checkout, files and database together; `bin/update.sh --help` lists its options.
+`php bin/console.php help` lists the console's commands.
 
 ## Where things are
 

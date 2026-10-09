@@ -4,8 +4,9 @@ declare(strict_types=1);
 /**
  * The things around the edges of every page.
  *
- * Notifications, accent colours, people's initials, looking through somebody
- * else's eyes, and the button that says this is broken. Grouped together
+ * Notifications, accent colours, how a person is drawn - a picture or the
+ * initials - looking through somebody else's eyes, and the button that says
+ * this is broken. Grouped together
  * because they are all properties of the shell rather than of any one screen,
  * and separated from the pages so that adding a page does not mean remembering
  * to wire five things into it.
@@ -123,7 +124,7 @@ function notification_link(array $notification): string {
 function notification_icon(string $kind): string {
     return match ($kind) {
         'payment', 'bank' => 'wallet', 'message' => 'chat', 'request' => 'users',
-        'schedule' => 'calendar', 'problem' => 'lock', default => 'news',
+        'schedule' => 'calendar', 'problem' => 'lock', 'picture' => 'camera', default => 'news',
     };
 }
 
@@ -172,7 +173,7 @@ function accent_for(?array $user): string {
 }
 
 // ---------------------------------------------------------------------------
-// A person's initials
+// A person: a picture, a child's or a team member's, or the initials
 // ---------------------------------------------------------------------------
 
 /** The initials that stand for a person. Two letters, never more. */
@@ -184,17 +185,45 @@ function initials(string $name): string {
 }
 
 /**
- * An avatar: a person's initials. There are no pictures of people any more
- * (ADR 0026 §8): the club does not need photos of children, and initials stand
- * in everywhere.
+ * An avatar's side in CSS pixels, by its size: what app.css draws, and what the
+ * picture in it says it is before it has loaded, so nothing moves when it does.
+ */
+const AVATAR_SIDES = ['tiny' => 32, 'small' => 36, '' => 40, 'large' => 72];
+
+/**
+ * How a person is drawn, everywhere: their picture, or the initials (ADR 0031
+ * §6). The one helper, so who may see a face is asked in one place.
+ *
+ * The picture is drawn when the row has one (picture_of(): a child's, or a team
+ * member's own), its file is there and the one rule lets whoever is signed in
+ * see it (may_see_picture()); the initials otherwise, and for a course's letter.
+ * No query per face: the rows a page draws carry what the rule needs, and the
+ * rule asks its one question once a request. The address carries the picture's
+ * version, so the browser keeps it while it is the picture in use
+ * (picture_cache_control()) and asks again the moment it changes. alt is empty,
+ * because the name stands beside every face.
  *
  * $size is a class rather than a pixel count, so every avatar in the portal is
- * one of three sizes and a new one cannot be almost-but-not-quite the same as
- * the others.
+ * one of four sizes (AVATAR_SIDES) and a new one cannot be almost-but-not-quite
+ * the same as the others.
  */
 function avatar(array $who, string $size = ''): string {
     $name = (string)($who['name'] ?? trim(($who['first_name'] ?? '') . ' ' . ($who['last_name'] ?? '')));
-    return '<span class="' . e('avatar' . ($size !== '' ? ' ' . $size : '')) . '">' . e(initials($name)) . '</span>';
+    $class = e('avatar' . ($size !== '' ? ' ' . $size : ''));
+    $picture = picture_of($who);
+    $viewer = current_user();
+    if ($picture !== null && $viewer !== null && picture_stored($picture['picture_name']) && may_see_picture($viewer, $picture)) {
+        $side = AVATAR_SIDES[$size] ?? AVATAR_SIDES[''];
+        // Their own face is in the top bar of every page, in view the moment it
+        // opens: lazy would only hold its request back. Every other face waits
+        // until it is scrolled to.
+        $own = array_key_exists('role', $who) && (int)($who['id'] ?? 0) === (int)$viewer['id'];
+        return '<span class="' . $class . '"><img src="'
+            . e(url('download', ['what' => 'picture', 'kind' => $picture['team'] ? 'account' : 'student',
+                                 'id' => $picture['id'], 'v' => upload_version($picture['picture_name'])]))
+            . '" alt="" width="' . $side . '" height="' . $side . '"' . ($own ? '' : ' loading="lazy"') . '></span>';
+    }
+    return '<span class="' . $class . '">' . e(initials($name)) . '</span>';
 }
 
 // ---------------------------------------------------------------------------

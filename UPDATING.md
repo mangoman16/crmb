@@ -17,16 +17,17 @@ drafts. A portal that already has families in it needs one thing done
 **before** the upload — two, if anything in its custom fields is worth keeping —
 and then changes in the ways below the moment the new files are opened.
 
-**Before you upload: add three paragraphs to your privacy notice, and replace
+**Before you upload: add four paragraphs to your privacy notice, and replace
 its „6.".** This version switches club news by email on for new accounts, it
 gives every course a group chat, a child can be in the portal before anybody
-signs in for them, as a login without an address, which receives no e-mail, and
-it deletes each kind of data once its period is over. Your privacy notice has to
-say all four. The drafts in the download only fill in the notice of a brand-new
-portal; yours keeps the text you saved, so the paragraphs have to be added by
-hand. Do it while the old version is still running, so that no family uses the
-new one under a notice that does not mention it. Open **Einstellungen →
-Datenschutz**, and in the German text:
+signs in for them, as a login without an address, which receives no e-mail,
+children and the team can have a profile picture, and it deletes each kind of
+data once its period is over. Your privacy notice has to say all five. The
+drafts in the download only fill in the notice of a brand-new portal; yours
+keeps the text you saved, so the paragraphs have to be added by hand. Do it
+while the old version is still running, so that no family uses the new one
+under a notice that does not mention it. Open **Einstellungen → Datenschutz**,
+and in the German text:
 
 1. In „4. Rechtsgrundlagen", replace the paragraph that begins „Der Newsletter
    wird nur an Konten mit aktiviertem Newsletter-Abonnement gesendet" with:
@@ -52,9 +53,10 @@ Datenschutz**, and in the German text:
    coaching team read its group, that the administrators can read every chat
    and write only in their own, that nothing records their reading, that a
    message is text and photos, that the chats between two children from before
-   stay to read and take no new messages, and that an uploaded photo is stored
-   without where it was taken — kept as it came only where the portal cannot
-   read it through — and a chat photo without the name the phone gave it.
+   stay to read and take no new messages, that the group sees a child's profile
+   picture once the family agrees, and that an uploaded photo is stored without
+   where it was taken — kept as it came only where the portal cannot read it
+   through — and a chat photo without the name the phone gave it.
 
 3. After the sentence „SMTP-Passwörter und versandbereite E-Mail-Inhalte sind
    in der Anwendungsdatenbank verschlüsselt.", add the paragraph from
@@ -64,7 +66,20 @@ Datenschutz**, and in the German text:
    sentence „Jeder Schüler hat höchstens ein eigenes Konto, …" with the
    draft's, which begins „Jeder Schüler hat ein eigenes Konto".
 
-4. In „6. Speicherung und Löschung", replace the note in square brackets, or
+4. After the chat paragraph and its note in „3.", add the paragraph on profile
+   pictures from `docs/privacy-draft-de.txt`, beginning „Profilbilder: Ein Kind
+   kann ein Profilbild haben". It says who adds a picture and that none is
+   required, that the portal keeps only a small square copy, that the trainers
+   and administrators see every child's picture and on what legal basis, that
+   the children in a child's courses and their families see it only once the
+   family has switched it on — from 14 the child itself, below that a parent —,
+   that everybody signed in sees the team's pictures, and when a picture is
+   deleted. If you cannot add it before the upload, switch „Kinder im selben
+   Kurs sehen Fotos" off right after it, under **Einstellungen → Datenschutz**,
+   card „Fotos im Kurs", until the notice says it: then no family is asked, and
+   no family sees another child's picture.
+
+5. In „6. Speicherung und Löschung", replace the note in square brackets, or
    what you wrote in its place, with the draft's two paragraphs and its note,
    beginning „Das Portal löscht beim täglichen Aufräumen von selbst". They say
    how long the portal keeps each kind of data before its daily cleanup deletes
@@ -72,7 +87,7 @@ Datenschutz**, and in the German text:
    deleted entries stay in the copies of the database. If you change a period
    under **Einstellungen → System**, change the notice with it.
 
-5. Replace each line in square brackets with your own words, then save.
+6. Replace each line in square brackets with your own words, then save.
 
 **If your notice already has the chat paragraph**, from an earlier package of
 this version, what it told the families is no longer true: it said the
@@ -84,8 +99,10 @@ that paragraph under **Einstellungen → Datenschutz** with the one in
 Gruppenchat", in English too if you keep an English notice, and save with „…
 zur Verwendung freigegeben" still ticked, so the notice is released again as
 you saved it. Do it before the upload, like the rest, so that no family reads a
-chat under the old sentence. Saving changes the **Fassung** number; nobody is
-asked to acknowledge the notice again.
+chat under the old sentence. The draft's paragraph also says that the group sees
+a child's profile picture once the family agrees; add the paragraph on profile
+pictures after it, as step 4 says. Saving changes the **Fassung** number; nobody
+is asked to acknowledge the notice again.
 
 The old paragraph called club news voluntary and based on consent. That is no
 longer true: you decided that club news is information every member needs,
@@ -105,9 +122,15 @@ is now kept for 30 days, and the end, on photos; in „4.", the end of the
 paragraph on club news, which now says that the link in each such mail works
 for 90 days from sending, and the sentence on security mails, which now include
 the mail saying that a sign-in address or a password was changed; in „6.",
-what step 4 above says; and in „7.", the sentence on cookies, which now names
+what step 5 above says; and in „7.", the sentence on cookies, which now names
 the second one, „badminton_https", set when the portal sends a browser on to
 its encrypted address.
+
+**Pictures need PHP's gd extension.** Without it the update runs and everything
+else works, but no picture can be added: a child's page and **Mein Konto** say
+„Fotos gehen auf diesem Server noch nicht.", and **Einstellungen → System**
+names what is missing, „Profilbilder verkleinern (gd)". Switch it on in the
+hosting panel where the PHP extensions are, before or after the upload.
 
 **Before you upload, if anything in the custom fields matters, write it down.**
 This version deletes the custom fields — „Weitere Angaben" on a child's page —
@@ -202,13 +225,21 @@ because until 028 the database allowed nothing else, and usernames existed only
 in versions that were never released.
 There is nothing for you to do.
 
-**The profile pictures are deleted for good.** Once the update has passed, the
-portal deletes the stored pictures from `storage/uploads/avatar`. The problem
-reports' screenshots, kept in the same folder, stay. The copy the update writes
-first is of the database only: it holds the pictures' names, not the pictures.
-Importing it, or any older copy, brings the names back without the files, and
-no picture comes back. If one matters to somebody, save it from the portal
-before you upload.
+**Migrations 040 and 041 make room for pictures** (ADR 0031). 040 gives every
+child an empty picture and the family's answer for the course, which starts as
+no; 041 gives every login an empty picture. Neither writes or removes a row, so
+the check that counts the guarded tables has nothing to compare. There is
+nothing for you to do.
+
+**The old profile pictures are deleted for good.** Once the update has passed,
+the portal deletes the stored pictures from `storage/uploads/avatar`. The
+problem reports' screenshots, kept in the same folder, stay. The copy the update
+writes first is of the database only: it holds the pictures' names, not the
+pictures. Importing it, or any older copy, brings the names back without the
+files, and no picture comes back. If one matters to somebody, save it from the
+portal before you upload. The pictures of this version are new ones, added again
+by the families and the team, and kept in a folder of their own,
+`storage/uploads/picture`.
 
 **Brothers and sisters on one login are separated.** From this version one
 login belongs to one student, and migration 019 makes the database hold to
@@ -310,8 +341,16 @@ here so that nothing surprises you.
   is a page with Kurse, Geld, Einstellungen and your Mein Konto. The language
   is chosen under **Mein Konto → Sprache**; the EN/DE switch is only on the
   sign-in pages now.
-- **Everybody appears by their initials**, and your initials at the top right
-  open a menu with „Mein Konto" and „Abmelden".
+- **Everybody appears by their picture, or by their initials until one is
+  added**, and yours at the top right opens a menu with „Mein Konto" and
+  „Abmelden". Pictures are new in this version (ADR 0031): a family adds its
+  child's on the child's page, the trainer adds a child's there or straight from
+  **Anwesenheit**, and each member of the team their own on **Mein Konto**;
+  whoever sets up a login from an invitation is offered „Dein Foto" once. The
+  trainers and administrators see every child's picture; the other children in
+  a course and their families see it only once the child's family has switched
+  „Im Kurs-Chat zeigen" on — from 14 the child itself, below that a parent.
+  Nobody has a picture right after the update.
 - **Nachrichten works like a messenger**: a group for every course, whose
   children are whoever is enrolled now, then the chats with one person. A child
   writes to a trainer or an administrator by name; you write to any child, or to
@@ -416,10 +455,11 @@ here so that nothing surprises you.
 - **No longer in the portal**: custom fields, copying, saved views of the
   **Schüler** list, „An mehrere schreiben" with its e-mail templates,
   „Warteschlange senden", the printed form and data sheet, Verwaltung's „Tarife"
-  tab, the online dots with the status and „Wann online?", the status emoji,
-  profile pictures, asking to write to another family, and voice notes and files
-  in new messages. Mail goes out by itself just after a page has been served, as
-  before; [CHANGELOG.md](CHANGELOG.md) says what takes the place of the rest.
+  tab, the online dots with the status and „Wann online?", the status emoji, the
+  profile pictures from before, asking to write to another family, and voice
+  notes and files in new messages. Mail goes out by itself just after a page has
+  been served, as before; [CHANGELOG.md](CHANGELOG.md) says what takes the place
+  of the rest.
 
 Everything else in this version is either new or moved to another place in the
 menu; [CHANGELOG.md](CHANGELOG.md) lists it.
@@ -656,17 +696,19 @@ Each release can contain a symlink `config/config.php` to the shared configurati
   `00dc020` was the first. The portal compares two versions only to see whether
   they are the same, and tells newer from older by the migrations, so the
   suffix needs nothing else.
-- To build a package, commit `VERSION` first, then run `bin/release.sh
-  <folder>`: it writes `badminton-crm-<version>.zip` into that folder, or beside
-  the project without one, with a `BUILD.txt` inside that names the commit it
-  was built from and when, so that a walk of the package and VALIDATION.md can
-  name it by its commit. It builds from the committed `HEAD`, so it refuses a
-  `VERSION` changed but not committed, a version shaped like neither `0.6.0` nor
-  `0.6.0-beta.2`, an entry at the top of the repository that it has not been
-  told to ship or to leave out, and anything git tracks in `config/` or
-  `storage/` besides their deny files and `config.example.php`: such a file is
-  already in git's history, and a password in it has to be changed. Walk the
-  package before handing it out (`CRM_E2E_ZIP`, TESTING.md).
+- To build a package, commit `VERSION` first, then run `bin/release.sh <folder>`
+  on a machine whose PHP has gd: `composer.json` names `ext-gd`, and composer
+  installs nothing without it. The script writes `badminton-crm-<version>.zip`
+  into that folder, or beside the project without one, with a `BUILD.txt` inside
+  that names the commit it was built from and when, so that a walk of the
+  package and VALIDATION.md can name it by its commit. It builds from the
+  committed `HEAD`, so it refuses a `VERSION` changed but not committed, a
+  version shaped like neither `0.6.0` nor `0.6.0-beta.2`, an entry at the top of
+  the repository that it has not been told to ship or to leave out, and anything
+  git tracks in `config/` or `storage/` besides their deny files and
+  `config.example.php`: such a file is already in git's history, and a password
+  in it has to be changed. Walk the package before handing it out
+  (`CRM_E2E_ZIP`, TESTING.md).
 - `CHANGELOG.md` records behavior and any compatibility notes.
 - `composer.lock` fixes dependency versions. Deployment uses **install**, never **update**.
 - Database migrations are ordered SQL files. The migration ledger stores each file’s checksum. Do not edit a migration that has already been applied; add a new file.
@@ -758,7 +800,7 @@ into one folder, the two sections above are the whole procedure.
 
 1. Read the new release’s change notes, including the schema versions it supports.
 2. Put the new release in its own directory. Do not unzip it over the running application.
-3. Run `composer install --no-dev --prefer-dist --optimize-autoloader` if dependencies are not included.
+3. Run `composer install --no-dev --prefer-dist --optimize-autoloader --ignore-platform-req=ext-gd` if dependencies are not included. The flag lets Composer install where PHP's gd is missing, which only the pictures need; it waives gd alone and needs Composer 2.0 or later. `bin/update.sh` passes it by itself.
 4. Test the release using a separate database and separate configuration. Do not point the test mail worker at real recipients. The test suites create and delete records of their own and must never be pointed at the live database; `tests/run.php` refuses a database whose name does not end in `_test`, and the one `config/config.php` gives the portal.
 5. Check the existing hosting recovery arrangement and who can restore it. The portal writes a copy of the database before it migrates, but it never restores one: that is done by hand, as described in [INSTALL.md](INSTALL.md#wiederherstellen).
 

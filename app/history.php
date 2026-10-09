@@ -37,6 +37,11 @@ function history_field_label(string $column): string {
         'first_name' => t('Vorname', 'First name'),
         'last_name' => t('Nachname', 'Last name'),
         'birth_date' => t('Geburtsdatum', 'Date of birth'),
+        // A picture - a child's, or a team member's own - and the family's yes
+        // for the course (ADR 0031 §7, §8). The picture reads as „Bild" or „—",
+        // never as its file's name.
+        'picture_name' => t('Profilbild', 'Profile picture'),
+        'course_sees_picture' => t('Im Kurs-Chat sichtbar', 'Shown in the course chat'),
         'joined_on' => t('Dabei seit', 'Member since'),
         'left_on' => t('Ausgetreten am', 'Left on'),
         'ended_on' => t('Mitgliedschaft bis', 'Membership until'),
@@ -317,7 +322,9 @@ function version_changes(array $version): array {
  * A stored column value as a short readable string.
  *
  * $column is the field it came from, for the values whose raw form means
- * nothing to her: a login is stored as a number and read as its holder, and a
+ * nothing to her: a login is stored as a number and read as its holder, a
+ * picture as a file's name and read as „Bild", the family's yes as 0 or
+ * 1 and read as nein or ja, and a
  * custom field's (field:<id>), on a line from before they went, as JSON - read
  * as its text, its options joined with commas, or ja / nein for a box. A
  * calendar date - a value shaped exactly YYYY-MM-DD, a former custom date
@@ -332,6 +339,8 @@ function history_value(mixed $v, string $column = ''): string {
     }
     if ($v === null || $v === '') return '—';
     if ($column === 'account_id') return history_login((int)$v);
+    if ($column === 'picture_name') return t('Bild', 'Picture');
+    if ($column === 'course_sees_picture') return (int)$v === 1 ? t('ja', 'yes') : t('nein', 'no');
     if (is_bool($v)) return $v ? t('ja', 'yes') : t('nein', 'no');
     $s = (string)$v;
     if (preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/D', $s) && local_time($s)) return fmt_date($s);

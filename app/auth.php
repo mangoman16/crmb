@@ -13,7 +13,9 @@ function current_user(bool $reload=false): ?array {
     // exactly this session between opening it and sending its page - dropped
     // here, no invitation or reset link would ever work signed out.
     if(empty($_SESSION['user_id'])) { unset($_SESSION['impersonator_id']); return $cached=null; }
-    $a=one('SELECT * FROM accounts WHERE id=?',[(int)$_SESSION['user_id']]);
+    // With the child's picture beside the login (child_picture_columns()), so
+    // the top bar draws a family's face without a query of its own (ADR 0031 §6).
+    $a=one('SELECT a.*, '.child_picture_columns('a').' FROM accounts a WHERE a.id=?',[(int)$_SESSION['user_id']]);
     $expired=time()-(int)($_SESSION['last_seen']??0)>(int)config('session_idle_minutes')*60;
     if(!$a || $a['state']!=='active' || !$a['verified_at'] || (int)$a['auth_version']!==(int)($_SESSION['auth_version']??0) || $expired) {
         unset($_SESSION['user_id'],$_SESSION['auth_version']);
@@ -346,10 +348,15 @@ function create_admin_account(string $name,string $email,string $password,bool $
  * silently, and the family it was meant to let back in would stay locked out.
  */
 function rate_limit_bucket(string $name,string $identity): string { return hash('sha256',$name.'|'.$identity); }
-function throttle(string $name,string $identity,int $limit,int $seconds=900): void {
+/**
+ * Count one attempt in $name's bucket for $identity, and refuse once there are
+ * more than $limit in $seconds - in $refusal's words where the action has its
+ * own, as a photo does (ADR 0031), and otherwise as too many attempts.
+ */
+function throttle(string $name,string $identity,int $limit,int $seconds=900,?string $refusal=null): void {
     $key=rate_limit_bucket($name,$identity); $time=time();
     run_counter('INSERT INTO rate_limits (bucket,hits,window_start) VALUES (?,1,?) ON DUPLICATE KEY UPDATE hits=IF(window_start < ?,1,hits+1),window_start=IF(window_start < ?,?,window_start)',[$key,$time,$time-$seconds,$time-$seconds,$time]);
-    if((int)run_counter('SELECT hits FROM rate_limits WHERE bucket=?',[$key])->fetchColumn()>$limit) throw new UserError(t('Zu viele Versuche. Bitte später erneut versuchen.','Too many attempts. Please try again later.'));
+    if((int)run_counter('SELECT hits FROM rate_limits WHERE bucket=?',[$key])->fetchColumn()>$limit) throw new UserError($refusal??t('Zu viele Versuche. Bitte später erneut versuchen.','Too many attempts. Please try again later.'));
 }
 /**
  * Count one request against several throttles, then refuse if any is over.

@@ -321,11 +321,18 @@ function dispatch_config(string $action): array {
     case 'attendance_save':
         $u=require_staff(); $c=training_class((int)post('class_id'));
         $on=date_value(post('session_on'),true);
-        if($on>today()) throw new UserError(t('Das Datum liegt in der Zukunft.','That date is in the future.'));
+        /* The face of a child without a photo is a button of this form (ADR
+           0031; the screens' spec, §2): a photo is a page load of its own, so
+           the marks made so far are saved first and nothing ticked is lost,
+           and the list comes back with the sheet that takes the photo. A day
+           still to come is then neither saved nor refused, and with nothing
+           saved nothing is said. */
+        $photo=post('photo')!==''?max(0,(int)post('photo')):null;
+        if($on>today() && $photo===null) throw new UserError(t('Das Datum liegt in der Zukunft.','That date is in the future.'));
         $marks=$_POST['present']??[]; if(!is_array($marks)) throw new UserError(t('Ungültige Eingabe.','Invalid input.'));
         $allowed=array_keys(attendance_statuses());
         $saved=0; $cleared=0;
-        foreach(class_members((int)$c['id']) as $m) {
+        foreach($on>today()?[]:class_members((int)$c['id']) as $m) {
             $sid=(int)$m['id'];
             if(!array_key_exists($sid,$marks)) continue;
             $value=is_scalar($marks[$sid])?trim((string)$marks[$sid]):'';
@@ -341,9 +348,12 @@ function dispatch_config(string $action): array {
                 [$c['id'],$sid,$on,$value,$u['id'],now()]);
             $saved++;
         }
-        audit('attendance.saved','class',(int)$c['id']);
-        flash(plural($saved,'Eintrag gespeichert.','Einträge gespeichert.','entry saved.','entries saved.')
-              .($cleared?' '.plural($cleared,'entfernt.','entfernt.','removed.','removed.'):''));
+        if($photo===null || $saved || $cleared) {
+            audit('attendance.saved','class',(int)$c['id']);
+            flash(plural($saved,'Eintrag gespeichert.','Einträge gespeichert.','entry saved.','entries saved.')
+                  .($cleared?' '.plural($cleared,'entfernt.','entfernt.','removed.','removed.'):''));
+        }
+        if($photo!==null) return ['attendance',['id'=>$c['id'],'on'=>$on]+($photo?['photo'=>$photo]:[])];
         return ['classes',['id'=>$c['id'],'tab'=>'attendance','on'=>$on]];
 
     case 'attendance_clear':
@@ -379,7 +389,7 @@ function dispatch_config(string $action): array {
     // ---- defaults registry and maintenance -----------------------------
 
     case 'defaults_registry_save':
-        $group=choose(post('group'),['portal','branding','students','payments','organisation','system']);
+        $group=choose(post('group'),['portal','branding','students','payments','organisation','privacy','system']);
         // Who may change what, rather than one rule for the whole registry:
         // membership statuses and payment methods are the trainer's words for
         // her own work; the portal's name, its look and the background jobs are not.
@@ -483,7 +493,7 @@ function dispatch_config(string $action): array {
         audit('proof.deleted','student',(int)$p['student_id']);
         return ['student',['id'=>$p['student_id'],'tab'=>'payments']];
 
-    // ---- the shell: notifications, colours, impersonation ----------------
+    // ---- the shell: notifications, pictures, impersonation ---
 
     case 'notifications_read':
         $u=require_user();
@@ -491,6 +501,76 @@ function dispatch_config(string $action): array {
         else run('UPDATE notifications SET read_at=? WHERE account_id=? AND read_at IS NULL',[now(),$u['id']]);
         // The pane is on every page, so back to that page with its record and tab.
         return form_return();
+
+    case 'picture_save':
+        /* A picture added, replaced or removed (ADR 0031 §7, as amended): a
+           child's (student_id) by the child's own login on the child's page,
+           and by staff for every child, at training too, from the attendance
+           list; or a team member's own (kind=account), on Mein Konto, by that
+           team member and nobody else - a student's login never has a picture
+           of its own. student() finds the one child a family may change, and
+           any for staff. Twenty photos an hour per login, as for a receipt:
+           making one is the most a request here asks of the server. Removing
+           makes nothing, and is not counted. */
+        $u=require_user();
+        $team=post('kind')==='account';
+        // Asked before a photo is made of anything: the writer asks again, of the locked row.
+        if($team) team_picture_holder($u);
+        $s=$team?null:student((int)post('student_id'));
+        // Sent from the attendance list, back to the same course and day: the
+        // face in its row, or - refused - the sheet that takes it, open again
+        // under the sentence that says why (the screens' spec, §2).
+        $list=!$team && (int)post('class_id')>0?['id'=>(int)post('class_id'),'on'=>date_value(post('on'),true)]:null;
+        $stored='';
+        if(post('remove')==='') {
+            try {
+                throttle('picture',(string)$u['id'],20,3600,t('Zu viele Fotos in kurzer Zeit. In einer Stunde geht es wieder.','Too many photos in a short time. It works again in an hour.'));
+                $stored=store_upload('picture','picture')['stored_name'];
+            } catch(UserError $refused) {
+                if($list===null) throw $refused;
+                flash($refused->getMessage(),'error');
+                return ['attendance',$list+['photo'=>(int)$s['id']]];
+            }
+        }
+        if($team) write_team_picture((int)$u['id'],$stored); else write_child_picture($s,$stored);
+        if($stored!=='' && $list!==null) {
+            flash(strtr(t('Foto von {name} gespeichert.','Photo of {name} saved.'),['{name}'=>$s['first_name']]));
+            return ['attendance',$list];
+        }
+        flash($stored!==''?t('Foto gespeichert.','Photo saved.'):t('Foto gelöscht.','Photo deleted.'));
+        // From „Dein Foto" (to=landing), on to where a first password lands
+        // without the step.
+        if(post('to')==='landing') return landing_after_first_password($u);
+        return $team?['profile',['#'=>'picture']]:['student',['id'=>$s['id'],'#'=>'picture']];
+
+    case 'picture_consent':
+        /* Whether the children in the child's courses and their families see
+           the picture in the course chat (ADR 0031 §8). Only the child's own
+           login says yes. Staff take it back - for a family that asks on the
+           phone, or a picture that should not be shown - and never give it:
+           nobody says yes in a family's place. Each change is kept three ways,
+           each for its reader: the column the rule reads, the consent log with
+           the notice's version as the proof, and the change log with who. */
+        $u=require_user(); $s=student((int)post('student_id'));
+        $on=post('on')==='1';
+        if($on && (is_staff($u) || (int)$s['account_id']!==(int)$u['id']))
+            throw new UserError(t('Einschalten kann nur die Familie, auf der Seite ihres Kindes.','Only the family can switch this on, on their child’s page.'));
+        if($on && !setting('pictures_in_course')) throw new UserError(t('Der Verein zeigt im Kurs-Chat keine Fotos.','The club shows no photos in the course chat.'));
+        if($on!==((int)(lock_row('students',(int)$s['id'])['course_sees_picture']??0)===1)) {
+            tracked('students',(int)$s['id'],$s['first_name'].' '.$s['last_name'],
+                fn()=>run('UPDATE students SET course_sees_picture=? WHERE id=?',[$on?1:0,(int)$s['id']]));
+            /* Whose say it was, in the purpose (ADR 0031, as amended): a
+               parent's, through the family's login, under consent_age or with
+               no birth date (§ 4 Abs. 4 DSG), is course_sees_picture_by_parent;
+               from that age on the child's own is course_sees_picture. Staff
+               only ever take it back, which is no parent's say: the purpose
+               itself, and who in the change log. A parent's yes stays when the
+               child turns 14. */
+            record_consent((int)$s['account_id'],!is_staff($u) && needs_a_parents_yes($s)?'course_sees_picture_by_parent':'course_sees_picture',$on);
+            audit($on?'picture.shown_to_course':'picture.hidden_from_course','student',(int)$s['id']);
+        }
+        flash($on?t('Im Kurs-Chat sichtbar.','Shown in the course chat.'):t('Im Kurs-Chat ausgeblendet.','Hidden from the course chat.'));
+        return ['student',['id'=>$s['id'],'#'=>'picture']];
 
     case 'impersonate':
         // Stopping is checked against who is really signed in, not against the
@@ -593,3 +673,77 @@ function dispatch_config(string $action): array {
     return dispatch_settings_or_messages($action);
 }
 
+/**
+ * $login, if it may have a picture of its own - a team member's - or the
+ * refusal: a student's login never has one, the child's is on the child (ADR
+ * 0031, as amended).
+ */
+function team_picture_holder(?array $login): array {
+    if(!$login || !is_staff($login)) throw new UserError(t('Nur das Team hat ein eigenes Foto; das eines Kindes steht beim Kind.','Only the team has a photo of their own; a child’s is on the child.'));
+    return $login;
+}
+
+/**
+ * The one writer of a team member's own picture (ADR 0031; the owner,
+ * 2026-10-08): $stored is the picture store_upload() has just made, or '' to
+ * remove theirs. Only a team member's login has one - a student's never does -
+ * so the login is read under a lock and must be the team's. Tracked, so
+ * „Änderungen" says who changed it, as „Profilbild"; the file it replaces is
+ * deleted at once, and last, as a child's is.
+ */
+function write_team_picture(int $accountId, string $stored): void {
+    $locked=team_picture_holder(lock_row('accounts',$accountId));
+    $old=(string)$locked['picture_name'];
+    if($stored===$old) return;
+    tracked('accounts',$accountId,(string)$locked['name'],fn()=>run('UPDATE accounts SET picture_name=? WHERE id=?',[$stored,$accountId]));
+    audit($stored!==''?'picture.saved':'picture.removed','account',$accountId);
+    // Last, because a file cannot be rolled back.
+    if($old!=='') delete_upload('picture',$old);
+}
+
+/**
+ * The one writer of a child's picture (ADR 0031 §7): $stored is the picture
+ * store_upload() has just made, or '' to remove the one there is.
+ *
+ * Tracked, so „Änderungen" says who changed it - as „Profilbild", never the
+ * file's name. A picture staff put on a child ends the family's yes in the same
+ * statement, the consent log keeps that as the family's latest answer, and the
+ * family's bell says so: the course sees a picture only once the family has seen
+ * that picture and said yes ("The family always sees it").
+ * A placeholder's bell takes nothing (notify()). The family's own picture leaves
+ * its answer as it was, and so does a removal.
+ *
+ * The file it replaces is deleted at once, and last, as the icon's and the
+ * logo's are: a commit that fails after that leaves the row naming a file that
+ * is gone, which draws the initials (has_picture()), and the nightly prune takes
+ * whatever no row names. Read under a lock, so two at once each delete the file
+ * they replaced.
+ */
+function write_child_picture(array $student, string $stored): void {
+    $actor=require_user();
+    $id=(int)$student['id'];
+    $locked=lock_row('students',$id);
+    if(!$locked) throw new NotFound(t('Schüler nicht gefunden.','Student not found.'));
+    $old=(string)$locked['picture_name'];
+    if($stored===$old) return;
+    $byStaff=$stored!=='' && is_staff($actor);
+    tracked('students',$id,$locked['first_name'].' '.$locked['last_name'],fn()=>$byStaff
+        ? run('UPDATE students SET picture_name=?,course_sees_picture=0 WHERE id=?',[$stored,$id])
+        : run('UPDATE students SET picture_name=? WHERE id=?',[$stored,$id]));
+    // The answer that holds now, which is what the log keeps (ADR 0031 §8, ADR
+    // 0032): staff are no parent, so it is the purpose itself, as when staff
+    // switch it off on the child's page.
+    if($byStaff && (int)$locked['course_sees_picture']===1) record_consent((int)$locked['account_id'],'course_sees_picture',false);
+    if($byStaff)
+        notify((int)$locked['account_id'],'picture',
+            strtr(t('Neues Foto von {name}','New photo of {name}'),['{name}'=>$locked['first_name']]),
+            strtr(t('{name} hat es hinzugefügt. Du kannst es jederzeit ändern oder entfernen.','{name} added it. You can change or remove it at any time.'),['{name}'=>$actor['name']])
+                // The yes it ended, and whose it is to give again, by the age.
+                .((int)$locked['course_sees_picture']!==1?'':(needs_a_parents_yes($locked)
+                    ?t(' Im Kurs-Chat erscheint es erst, wenn ein Elternteil wieder zustimmt.',' It shows in the course chat only once a parent agrees again.')
+                    :t(' Im Kurs-Chat zeigst du es erst, wenn du wieder zustimmst.',' It shows in the course chat only once you agree again.'))),
+            'student',['id'=>$id,'#'=>'picture']);
+    audit($stored!==''?'picture.saved':'picture.removed','student',$id);
+    // Last, because a file cannot be rolled back.
+    if($old!=='') delete_upload('picture',$old);
+}

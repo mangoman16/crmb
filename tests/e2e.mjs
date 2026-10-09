@@ -14,8 +14,9 @@
  *      page without a gap, „Abbrechen“, Reduce Motion, no app.js (Part 0.4b)
  *   2. each of the nine steps from its own button, back via „Zurück zur
  *      Einrichtung“, and the tick after each, up to 9 of 9 and „Alles eingerichtet“
- *   3. the family: invitation link from the captured mail, password, dashboard,
- *      Profil, the charge, a payment proof, „Etwas funktioniert nicht“
+ *   3. the family: invitation link from the captured mail, password, „Dein Foto“
+ *      skipped, dashboard, Profil, the charge, a payment proof, „Etwas
+ *      funktioniert nicht“; a person invited by address adds a photo there
  *   4. the trainer: the charge and the payment, confirming it, an invoice PDF,
  *      the problem report with its trail
  *   5. an unexpected error (a table renamed underneath the portal): the family
@@ -966,9 +967,18 @@ step('family accepts the invitation', async ({ browser }) => {
     await look(page, 'family');
     ok((await flash(page)).includes(`Dein Konto ist bereit. Du meldest dich ab jetzt mit ${FAMILY.email} an.`),
        '„Dein Konto ist bereit. Du meldest dich ab jetzt mit … an.“', await flash(page));
-    // Something is still missing (no emergency contact yet), so they land on the
-    // child's own page with „Noch zu ergänzen“; the child is in a course already,
-    // so choosing one is not among the steps.
+    // „Dein Foto“ (ADR 0031, as amended): asked once, right after the first
+    // password, for the child's picture. This family skips it.
+    ok(label(page.url()) === '?page=welcome', 'the first password leads to „Dein Foto“', page.url());
+    ok((await page.locator('h1').innerText()).trim() === `Willkommen, ${S.childName}!`, `headed „Willkommen, ${S.childName}!“`, await page.locator('h1').innerText());
+    const pick = page.locator('main form:has(input[name=action][value=picture_save]) input[type=file][name=picture]');
+    ok(await pick.count() === 1 && await pick.getAttribute('capture') === null, 'it offers „Foto hinzufügen“, from the camera or the library', await mainText(page));
+    ok(await page.locator('form:has(input[name=action][value=picture_consent])').count() === 0, 'and no course switch: that waits on the child’s page');
+    await submit(page, page.locator('main a.photo-skip', { hasText: 'Überspringen' }));
+    await look(page, 'family');
+    // Something is still missing (no emergency contact yet), so „Überspringen“
+    // goes on to the child's own page with „Noch zu ergänzen“; the child is in a
+    // course already, so choosing one is not among the steps.
     const u = new URL(page.url());
     ok(u.searchParams.get('page') === 'student' && u.searchParams.get('id') === String(S.invitedChild),
        `the family lands on ${S.childName}'s own page`, page.url() + ' ' + await flash(page));
@@ -1025,6 +1035,20 @@ step('invited by address: own record and a course', async ({ browser }) => {
     await f.locator('[name=privacy_seen]').check();
     await save(page, f, '„Konto aktivieren“');
     await look(page, 'newcomer');
+    // „Dein Foto“: this one adds a photo. Chosen, it goes at once (app.js), and
+    // the step goes on to their own page.
+    ok(label(page.url()) === '?page=welcome', 'their first password leads to „Dein Foto“ too', page.url());
+    const photo = await page.evaluate(() => {
+        const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 300;
+        const g = canvas.getContext('2d'); g.fillStyle = '#c0392b'; g.fillRect(0, 0, 400, 300); g.fillStyle = '#2471a3'; g.fillRect(0, 0, 200, 300);
+        return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await Promise.all([page.waitForNavigation({ waitUntil: 'load' }),
+        page.locator('main form:has(input[name=action][value=picture_save]) input[type=file][name=picture]')
+            .setInputFiles({ name: 'ich.png', mimeType: 'image/png', buffer: Buffer.from(photo, 'base64') })]);
+    await look(page, 'newcomer');
+    ok((await flash(page)).includes('Foto gespeichert.'), 'choosing a photo saves it: „Foto gespeichert.“', await flash(page));
+    ok(await page.locator('section#picture .avatar img').count() === 1, 'and their own page shows their face', await page.locator('section#picture').innerHTML().catch(() => ''));
     const own = sql(`SELECT id, first_name, last_name, birth_date, email FROM students WHERE account_id=${S.newcomerAccount}`).split('\n').filter(Boolean);
     must(own.length === 1, 'exactly one student is made for the login', JSON.stringify(own));
     const [id, first, last, born, email] = own[0].split('\t');

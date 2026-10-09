@@ -67,6 +67,66 @@ function file_field(string $name,string $label,string $kind='proof',string $hint
     echo '<small>'.e(($hint?$hint.' ':'').t('Höchstens ','At most ').upload_limit_label($maxBytes).'.').'</small></div>';
 }
 /**
+ * The form that sends a photo (ADR 0031), wherever one is taken: a child's, or a
+ * team member's own.
+ *
+ * What is tapped is a label holding the file field, so the whole row or button
+ * opens the phone's own choice of library and camera; $camera opens the rear
+ * camera at once instead, for the trainer photographing the child in front of
+ * her. The form's own button sends it on a page without JavaScript; with it,
+ * the photo goes once chosen, drawn smaller first, and the button is hidden
+ * (app.js, app.css). $inside prints what the label shows, escaping it itself.
+ */
+function picture_form(array $hidden,string $labelClass,callable $inside,bool $camera=false): void {
+    start_form('picture_save',$hidden,'picture-form auto-submit',true);
+    echo '<label class="'.e($labelClass).'">';
+    $inside();
+    echo '<input type="file" name="picture" accept="'.e(implode(',',array_keys(upload_types('picture')))).'"'.($camera?' capture="environment"':'').'></label>';
+    submit_button(t('Foto speichern','Save the photo'),'secondary picture-save');
+    echo '</form>';
+}
+/**
+ * The row a picture is added or changed by, at the top of its card - a child's
+ * on the child's page, a team member's own on Mein Konto (ADR 0031): the face at
+ * its large size, what a tap does, and $hint, who sees it.
+ *
+ * Without a picture the row is the file field's label, so a tap opens the
+ * phone's own menu, camera and library both. With one it opens a sheet titled
+ * $sheetTitle: „Neues Foto", the sentence that says a removal cannot be undone,
+ * „Foto löschen" - the one question before it, as an iOS action sheet asks, and
+ * a new photo is the way back. $hidden tells picture_save whose picture it is.
+ *
+ * Without gd no photo can be made, so instead of a button that could only fail
+ * the row says so, and who sets it up, in the words a refused photo is given
+ * (pictures_unavailable()); a picture there is still shown, and still deleted.
+ * Every form here posts on its own: never inside another.
+ */
+function picture_row(array $who,array $hidden,string $hint,string $sheetTitle): void {
+    $add=fn(string $action) => function() use($who,$action,$hint): void {
+        echo avatar($who,'large').'<span class="member-row-text"><strong>'.e($action).'</strong><small>'.e($hint).'</small></span>';
+    };
+    $remove=function() use($hidden): void {
+        start_form('picture_save',$hidden+['remove'=>1]);
+        submit_button(t('Foto löschen','Delete the photo'),'subtle danger-text');
+        echo '</form>';
+    };
+    if(!pictures_possible()) {
+        [$what,$setUp]=pictures_unavailable();
+        echo '<div class="member-row">'.avatar($who,'large').'<span class="member-row-text"><strong>'.e($what).'</strong><small>'.e($setUp).'</small></span></div>';
+        if(is_admin()) echo '<div class="row-actions">'.link_button(t('Zur Einrichtung','Go to the setup'),'settings',['tab'=>'system'],'secondary').'</div>';
+        if(has_picture($who)) $remove();
+        return;
+    }
+    if(!has_picture($who)) { picture_form($hidden,'member-row',$add(t('Foto hinzufügen','Add a photo'))); return; }
+    echo '<details class="picture-change" data-sheet data-sheet-title="'.e($sheetTitle).'"><summary class="member-row">';
+    $add(t('Foto ändern','Change the photo'))();
+    echo '</summary>';
+    picture_form($hidden,'button picture-pick',function(): void { echo icon('camera').e(t('Neues Foto','New photo')); });
+    echo '<p>'.e(t('Löschen geht sofort und lässt sich nicht zurückholen.','Deleting happens at once and cannot be undone.')).'</p>';
+    $remove();
+    echo '</details>';
+}
+/**
  * A labelled form field.
  *
  * $placeholder is for compact rows where a visible label would crowd the
@@ -222,10 +282,23 @@ function submit_button(string $label='',string $class='primary',string $name='',
  * The large title a page opens with, the line under it, and its one action.
  * The title is also what the bar at the top shows once it has scrolled away
  * (page_title()).
+ *
+ * $face, drawn already (avatar() inside a link), leads the title, as a family's
+ * overview greets the child by their own face (the audit, N7); the title goes
+ * under it where there is too little room beside it (app.css).
  */
-function page_head(string $title,string $description='',string $action=''): void {
+function page_head(string $title,string $description='',string $action='',string $face=''): void {
     page_title($title);
-    echo '<div class="page-heading"><div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>';
+    echo '<div class="page-heading'.($face!==''?' has-face':'').'">'.$face.'<div><h1>'.e($title).'</h1>'.($description?'<p class="muted">'.e($description).'</p>':'').'</div>'.$action.'</div>';
+}
+/**
+ * The name a page greets whoever is signed in by: the overview's „Hallo …" and
+ * „Dein Foto"'s „Willkommen, …!". A family's login by its child's first name, as
+ * a mail greets it (greeting_name()); a team member by the first word of their
+ * own, where a mail uses the whole.
+ */
+function greeting_first_name(array $account): string {
+    return is_staff($account) ? explode(' ',trim((string)($account['name']??'')))[0] : greeting_name($account);
 }
 /**
  * The title page_head() was given on this request, '' before it was called.

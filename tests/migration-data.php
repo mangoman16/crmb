@@ -13,7 +13,7 @@ declare(strict_types=1);
  * keeping only one of them. "Nobody's next invoice changes" was a claim with
  * nothing behind it.
  *
- * Eight pauses. Before 015, a portal as it stood with prices on the tariff and
+ * Thirteen pauses. Before 015, a portal as it stood with prices on the tariff and
  * addresses on the contacts. Before 019, a portal where one login holds several
  * brothers and sisters and a child's address has drifted from its login's. 019
  * is then applied three ways: straight through; stopped after each of its
@@ -62,20 +62,32 @@ declare(strict_types=1);
  * placeholder and the staff, written into the portal at the pause before 032:
  * 039 must turn the three into placeholders, take their places in chats, their
  * notices and their read marks, and touch nothing else; it is run twice, and
- * stopped after each statement but the last and started again.
- * Then the update this release
+ * stopped after each statement but the last and started again. Before 040, on a
+ * portal 032 to 039 were applied to, children of every kind with their logins -
+ * active, on trial, paused, ended and an example; families set up by address,
+ * invited, suspended, placeholders, those 039 made among them, and children
+ * without a login - and one with every column filled: 040 must give every child
+ * '' and 0 and touch nothing else, a child written the way the previous version
+ * writes one must still be taken, and it is run twice. Before 041, on a portal
+ * 032 to 040 were applied to, logins of every kind - beside those families, an
+ * administrator with every column filled, a trainer set up, one invited, one
+ * suspended, and an example trainer: 041 must give every login '' and touch
+ * nothing else, a login written by each of the previous version's four inserts
+ * must still be taken, and it is run twice. Then the update this release
  * brings, through the application's own runner on a release of this run's own,
  * with the pictures' files on disk, which its step after the files must delete
  * and nothing beside them; and the mistakes ADR 0027 is about, one file at a
  * time, one page view after another: a file that drops a guarded table, refused
  * on every page view; the stamp and the settings forged as a pass would write
  * them; a newer upload on top; the copy imported with the new files still in
- * place, then broken off at contacts, then whole; a release that takes the table
- * off the list; a file that empties the table, one that loses a row and stops,
- * one that stops every time, one that stops in an update run with skip-backup;
- * and the record of the unfinished update unwritable, then unreadable. Last, this
- * release's update stopped after each of 033 to 038 in turn and started again by
- * the next page view, which must end as the update that ran through.
+ * place, then broken off at contacts, then whole; a release that takes the
+ * table off the list; a file that empties the table, one that loses a row and
+ * stops, one that stops every time, one that stops in an update run with
+ * skip-backup; and the record of the unfinished update unwritable, then
+ * unreadable. Then this release's update stopped after each of 033 to 040 in
+ * turn and started again by the next page view, which must end as the update
+ * that ran through; and last, the restores ADR 0029 keeps the portal closed for
+ * until the import is done.
  *
  * Its own process and its own database, because the database the suite is using
  * has all the migrations applied already and this needs to stop half way. Prints
@@ -660,8 +672,11 @@ function column_facts(PDO $pdo, string $table, string $column): ?array {
     $query->execute([$table, $column]);
     $facts = $query->fetch();
     if (!$facts) return null;
-    // MariaDB reports a default of NULL as the text 'NULL', MySQL 8.0 as NULL.
+    // MariaDB reports a default of NULL as the text 'NULL', MySQL 8.0 as NULL; and
+    // a text default as the literal, quotes and all - '' for the empty text -
+    // where MySQL 8.0 reports the text itself.
     if ($facts['default_value'] !== null && strtoupper((string)$facts['default_value']) === 'NULL') $facts['default_value'] = null;
+    elseif (preg_match("/^'(.*)'\$/s", (string)$facts['default_value'], $quoted)) $facts['default_value'] = str_replace("''", "'", $quoted[1]);
     $facts['position'] = (int)$facts['position'];
     return $facts;
 }
@@ -1027,6 +1042,137 @@ function tables_and_people(PDO $pdo): array {
         'notifications' => $pdo->query('SELECT * FROM notifications ORDER BY id')->fetchAll(),
         'reads' => $pdo->query('SELECT * FROM thread_reads ORDER BY thread_id, account_id')->fetchAll(),
         'counts' => guarded_counts($pdo)];
+}
+
+/**
+ * The children a portal can have that the one built here has none of yet, with
+ * their logins, written as the version between 039 and 040 writes them (ADR 0031
+ * §2): one on trial, whose family is invited by address and not yet in; one
+ * paused, billing paused with a note, whose family's login staff suspended; one
+ * who has ended, on a placeholder; an example child on an example placeholder,
+ * as demo_fill() makes them; and one with every column a child has filled, none
+ * left NULL - an address over two lines, an agreed price, its note, a due day, a
+ * tariff, the archived level, and notes with quotes, a backslash and a character
+ * of four bytes - whose family is set up. Beside the children the portal has
+ * already, whose families signed in by address or are invited, on placeholders,
+ * on the placeholders 039 made, and without a login, 040 meets every kind.
+ */
+function add_children_of_every_kind(PDO $pdo): array {
+    $at = '2026-10-07 08:00:00';
+    $login = fn(string $name, ?string $email, string $state, ?string $hash, int $isDemo = 0): int => insert_row($pdo, 'accounts', [
+        'name' => $name, 'email' => $email, 'password_hash' => $hash, 'role' => 'student', 'state' => $state,
+        'verified_at' => $hash === null ? null : '2026-09-01 09:00:00', 'locale' => 'de', 'is_demo' => $isDemo, 'created_at' => $at]);
+    $child = fn(int $account, string $first, string $last, string $status, array $more = []): int => insert_row($pdo, 'students', array_replace([
+        'account_id' => $account, 'first_name' => $first, 'last_name' => $last, 'status' => $status, 'joined_on' => '2026-09-01',
+        'revision' => 1, 'created_at' => $at, 'updated_at' => $at], $more));
+    $set = '$2y$10$abcdefghijklmnopqrstuuSETBYTHEFAMILYXXXXXXXXXXXXXXXXX';
+    return [
+        'trial' => $child($login('Familie Maier', 'maier@beispiel.test', 'invited', null), 'Finn', 'Maier', 'trial'),
+        'paused' => $child($login('Familie Lang', 'lang@beispiel.test', 'suspended', $set), 'Greta', 'Lang', 'paused',
+                           ['billing_paused' => 1, 'billing_note' => 'Verletzt bis Ende Oktober']),
+        'ended' => $child($login('Ben Schuster', null, 'placeholder', null), 'Ben', 'Schuster', 'ended', ['ended_on' => '2026-09-30']),
+        'example' => $child($login('Beispiel Zwei', null, 'placeholder', null, 1), 'Beispiel', 'Zwei', 'active', ['is_demo' => 1]),
+        'every_value' => $child($login('Familie Ångström', 'angstrom@beispiel.test', 'active', $set), 'Zoë', 'Ångström-Øberg', 'active', [
+            'email' => 'zoe@beispiel.test', 'address' => "Hauptstraße 1/4\n1010 Wien", 'phone' => '+43 664 1234567',
+            'birth_date' => '2015-02-28', 'ended_on' => '2027-06-30',
+            'level_id' => (int)$pdo->query('SELECT id FROM levels WHERE archived = 1 ORDER BY id LIMIT 1')->fetchColumn(),
+            'tariff_id' => (int)$pdo->query('SELECT id FROM tariffs ORDER BY id LIMIT 1')->fetchColumn(),
+            'price_cents' => 2450, 'price_note' => 'Geschwisterpreis', 'billing_note' => 'Zahlt halbjährlich',
+            'billing_due_day' => 15, 'internal_notes' => "Allergie: Nüsse 🥜\n\"Notfall\": Mama anrufen \\ nicht die Schule",
+            'revision' => 7]),
+    ];
+}
+
+/**
+ * A child written the way the version before 040 writes one, read back, then
+ * undone, so the portal is as it was: placeholder_login()'s login and
+ * create_student()'s insert as they stood at 039, which name neither of 040's
+ * columns. What the engine refused it with, as [SQLSTATE, its own error number],
+ * or the child as the engine wrote it.
+ */
+function child_as_the_previous_version_writes_one(PDO $pdo): array {
+    $at = '2026-10-08 08:00:00';
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare("INSERT INTO accounts (name,email,role,state,locale,is_demo,created_at) VALUES (?,NULL,'student','placeholder','de',?,?)")
+            ->execute(['Neu Angemeldet', 0, $at]);
+        $login = (int)$pdo->lastInsertId();
+        $level = $pdo->query('SELECT id FROM levels WHERE is_default = 1 ORDER BY id LIMIT 1')->fetchColumn();
+        $pdo->prepare('INSERT INTO students (account_id,first_name,last_name,email,address,phone,birth_date,joined_on,status,level_id,internal_notes,updated_at,created_at)'
+            . ' VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            ->execute([$login, 'Neu', 'Angemeldet', '', '', '', null, '2026-10-08', 'active', $level === false ? null : (int)$level, '', $at, $at]);
+        $written = $pdo->prepare('SELECT * FROM students WHERE id = ?');
+        $written->execute([(int)$pdo->lastInsertId()]);
+        return ['refused' => null, 'child' => $written->fetch()];
+    } catch (PDOException $e) {
+        return ['refused' => [(string)$e->getCode(), (int)($e->errorInfo[1] ?? 0)], 'child' => null];
+    } finally {
+        $pdo->rollBack();
+    }
+}
+
+/**
+ * The team a portal can have beside the trainer who is set up and the one who
+ * is suspended, which the one built here has already, written as the version
+ * between 040 and 041 writes them: an administrator with every column of a
+ * login filled, none left NULL - a name with a character of four bytes, English,
+ * a dark theme, an accent, large text, every mail switch off, the notice's
+ * version and a raised auth_version; a trainer invited by address and not yet
+ * in, as invite_login() writes one; a manager, the older name for a trainer
+ * that the code still reads; and an example trainer, as demo_fill() makes one.
+ */
+function add_team_of_every_kind(PDO $pdo): array {
+    $at = '2026-10-08 07:00:00';
+    $set = '$2y$10$abcdefghijklmnopqrstuuSETBYTHETEAMXXXXXXXXXXXXXXXXXXX';
+    $login = fn(array $row): int => insert_row($pdo, 'accounts', $row + ['locale' => 'de', 'created_at' => $at]);
+    return [
+        'administrator' => $login(['name' => 'Åsa Øster-Šimić 🏸', 'email' => 'leitung@beispiel.test', 'password_hash' => $set,
+            'role' => 'admin', 'state' => 'active', 'auth_version' => 4, 'verified_at' => '2025-09-01 09:00:00', 'locale' => 'en',
+            'theme' => 'dark', 'accent' => 'teal', 'text_scale' => 'large', 'newsletter' => 0, 'notifications' => 0,
+            'payment_notices' => 0, 'privacy_version' => 'a1b2c3d4e5f60718', 'created_at' => '2025-09-01 08:00:00', 'is_demo' => 0]),
+        'invited_trainer' => $login(['name' => 'Neuer Trainer', 'email' => 'neu.trainer@beispiel.test', 'role' => 'trainer']),
+        'manager' => $login(['name' => 'Alte Leitung', 'email' => 'manager@beispiel.test', 'password_hash' => $set, 'role' => 'manager',
+            'state' => 'active', 'verified_at' => $at]),
+        'example_trainer' => $login(['name' => 'Trainer Beispiel', 'email' => 'beispiel.trainer@beispiel.test', 'password_hash' => $set,
+            'role' => 'trainer', 'state' => 'active', 'verified_at' => $at, 'is_demo' => 1]),
+    ];
+}
+
+/**
+ * A login written by each insert of one the version before 041 has, read back,
+ * then undone, so the portal is as it was: invite_login()'s, placeholder_login()'s,
+ * create_admin_account()'s and demo_fill()'s, as they stood at 040, none of which
+ * names the column 041 adds. What the engine refused the first one it did not
+ * take with, as [SQLSTATE, its own error number], or the logins as it wrote them.
+ */
+function logins_as_the_previous_version_writes_them(PDO $pdo): array {
+    $at = '2026-10-08 08:00:00';
+    $hash = '$2y$10$abcdefghijklmnopqrstuuSETBYTHEHOLDERXXXXXXXXXXXXXXXXX';
+    $writes = [
+        'invitation' => ['INSERT INTO accounts (name,email,role,locale,created_at) VALUES (?,?,?,?,?)',
+                         ['Neu Eingeladen', 'neu.eingeladen@beispiel.test', 'trainer', 'de', $at]],
+        'placeholder' => ["INSERT INTO accounts (name,email,role,state,locale,is_demo,created_at) VALUES (?,NULL,'student','placeholder','de',?,?)",
+                          ['Neu Platzhalter', 0, $at]],
+        'first_administrator' => ["INSERT INTO accounts (name,email,password_hash,role,state,verified_at,created_at) VALUES (?,?,?,'admin','active',?,?)",
+                                  ['Neu Leitung', 'neu.leitung@beispiel.test', $hash, $at, $at]],
+        'example' => ['INSERT INTO accounts (name,email,password_hash,role,state,verified_at,locale,created_at,is_demo) VALUES (?,?,?,?,?,?,?,?,1)',
+                      ['Neu Beispiel', 'neu.beispiel@beispiel.test', $hash, 'trainer', 'active', $at, 'de', $at]],
+    ];
+    $pdo->beginTransaction();
+    try {
+        $logins = [];
+        $read = $pdo->prepare('SELECT * FROM accounts WHERE id = ?');
+        foreach ($writes as $kind => [$sql, $params]) {
+            $pdo->prepare($sql)->execute($params);
+            $read->execute([(int)$pdo->lastInsertId()]);
+            $logins[$kind] = $read->fetch();
+        }
+        return ['refused' => null, 'logins' => $logins];
+    } catch (PDOException $e) {
+        return ['refused' => [(string)$e->getCode(), (int)($e->errorInfo[1] ?? 0)], 'logins' => null];
+    } finally {
+        $pdo->rollBack();
+    }
 }
 
 $nineteen = migration_path('019');
@@ -1453,18 +1599,76 @@ for ($stopped = 1; $stopped < count($addressStatements); $stopped++) {
 }
 $result['addresses'] = $addresses;
 
+// --- 040 on children of every kind -----------------------------------------------------------
+// 040 gives every child the stored name of a picture and the family's yes for the
+// course, '' and 0 (ADR 0031 §2). On the portal 032 to 039 were applied to, with
+// children of every kind and their logins, it is held to adding the two columns
+// where the record puts them, with their types and defaults, and changing
+// nothing else, then run a second time on a connection of its own, as the next
+// page view does after an update that applied it but stopped before the ledger
+// recorded it. A child written the way the previous version writes one is tried
+// before it and after it, and undone each time: the children already there read
+// '' and 0 even without the defaults, because the engine fills a new column with
+// its type's empty value, so a missing default shows only on the next insert.
+// One statement, so it cannot stop inside itself; an update stopped just before
+// it is started again through the runner, below.
+$faceFile = migration_path('040');
+[$pdo, $written] = build_portal_before_032();
+apply_migrations($pdo, '032', '039');
+$faceState = fn(): array => tables_and_people($pdo) + ['facts' => ['last_name' => column_facts($pdo, 'students', 'last_name'),
+    'picture_name' => column_facts($pdo, 'students', 'picture_name'), 'course_sees_picture' => column_facts($pdo, 'students', 'course_sees_picture')]];
+$faces = ['written' => $written + add_children_of_every_kind($pdo), 'statements' => count(migration_statements($faceFile))];
+$faces['before'] = $faceState();
+$faces['previous_version_before'] = child_as_the_previous_version_writes_one($pdo);
+run_statements($pdo, $faceFile, migration_statements($faceFile));
+$faces['after'] = $faceState();
+$faces['previous_version'] = child_as_the_previous_version_writes_one($pdo);
+$faces['refused'] = run_again($faceFile);
+$faces['again'] = $faceState();
+$result['faces'] = $faces;
+
+// --- 041 on logins of every kind --------------------------------------------------------------
+// 041 gives every login the stored name of a picture, '': a team member's
+// picture is on the login (ADR 0031). On a portal 032 to 040 were applied to,
+// with the children of every kind written before 040 and their families'
+// logins, and the team of every kind written before 041, it is held to adding
+// the column right after the name, with its type and default, and changing
+// nothing else, then run a second time on a connection of its own. A login
+// written by each of the previous version's four inserts is tried before it and
+// after it, and undone each time: as with 040, the logins already there would
+// read '' without the default too, so a missing one shows only on the next
+// insert. One statement, so it cannot stop inside itself; an update stopped just
+// before it is started again through the runner, below.
+$teamFile = migration_path('041');
+[$pdo, $written] = build_portal_before_032();
+apply_migrations($pdo, '032', '039');
+$written += add_children_of_every_kind($pdo);
+apply_migrations($pdo, '040', '040');
+$teamState = fn(): array => tables_and_people($pdo) + ['facts' => ['name' => column_facts($pdo, 'accounts', 'name'),
+    'picture_name' => column_facts($pdo, 'accounts', 'picture_name')]];
+$team = ['written' => $written + add_team_of_every_kind($pdo), 'statements' => count(migration_statements($teamFile))];
+$team['before'] = $teamState();
+$team['previous_version_before'] = logins_as_the_previous_version_writes_them($pdo);
+run_statements($pdo, $teamFile, migration_statements($teamFile));
+$team['after'] = $teamState();
+$team['previous_version'] = logins_as_the_previous_version_writes_them($pdo);
+$team['refused'] = run_again($teamFile);
+$team['again'] = $teamState();
+$result['team'] = $team;
+
 // --- this release's update, then one with a mistake in it, through the runner -------
 // schema_apply() itself, the one copy the installer, the console and the first
 // request after an upload all use, on a portal as the previous version leaves it:
 // 001 to 031 in its ledger, its runner step run, and rows in everything 032 to
-// 038 drop. The runner reads ROOT/database/migrations, so ROOT is a release of
-// this run's own, a copy of the shipped files that one more file can be put into
-// without the portal's own folder ever seeing it; the stamp and the backups go to
-// this run's folder, beside the maintenance flag. First the update this release
-// brings, which must pass the guard and drop what 032 to 038 drop. Then a file
-// that drops contacts, a guarded table with rows in it, which the guard must
-// refuse: before ADR 0026 §7 it compared only the tables it could still count, and
-// let such a file through.
+// 039 drop or change. The runner reads ROOT/database/migrations, so ROOT is a
+// release of this run's own, a copy of the shipped files that one more file can
+// be put into without the portal's own folder ever seeing it; the stamp and the
+// backups go to this run's folder, beside the maintenance flag. First the update
+// this release brings, which must pass the guard, drop and change what 032 to
+// 039 drop and change, give every child 040's '' and 0 and every login 041's ''.
+// Then a file that drops contacts, a guarded table with rows in it, which the
+// guard must refuse: before ADR 0026 §7 it compared only the tables it could
+// still count, and let such a file through.
 $release = test_run_dir() . '/release';
 mkdir($release . '/database/migrations', 0700, true);
 foreach (glob(APP_ROOT . '/database/migrations/*.sql') ?: [] as $file) copy($file, $release . '/database/migrations/' . basename($file));
@@ -1533,7 +1737,8 @@ $onDisk = function () use ($uploads, $outside): array {
 
 // A portal as the previous version leaves it: 001 to 031 in the ledger as
 // schema_apply() makes it, that update's step after the files run, rows in
-// everything 032 to 038 drop, and the files on disk, planted after that step.
+// everything 032 to 039 drop or change, and the files on disk, planted after
+// that step.
 $previousVersion = function () use ($runnerStep, $plant): array {
     [$pdo, $written] = build_portal_before_032();
     $files = add_presence_pictures_and_requests($pdo);
@@ -1758,15 +1963,16 @@ $unreadable['after'] = $request();
 foreach ($written($unwritable['before'], $unreadable['after']) as $name) @unlink(backup_dir() . '/' . $name);
 
 // --- this release's update stopped between two of its files, then started again --------
-// 034 to 038 are one statement each and cannot stop inside themselves, and 039
-// stopped after each of its statements but the last is run above; what is left
-// is an update stopping between two files: after each of 033 to 038, which a
-// file that stops, put after each in turn, does to it. The next page view,
-// without that file, starts again at the first file the ledger does not have.
-// Each round on a portal of its own as the previous version left it, its files
-// on disk planted afresh.
+// 034 to 038, 040 and 041 are one statement each and cannot stop inside
+// themselves, and 039 stopped after each of its statements but the last is run
+// above; what is left is an update stopping between two files: after each of 033
+// to 040, which a file that stops, put after each in turn, does to it. The stops
+// after 039 and after 040 leave 040 and 041 to the next page view. The next page
+// view, without that file, starts again at the first file the ledger does not
+// have. Each round on a portal of its own as the previous version left it, its
+// files on disk planted afresh.
 $restarted = [];
-foreach (['033', '034', '035', '036', '037', '038'] as $stop) {
+foreach (['033', '034', '035', '036', '037', '038', '039', '040'] as $stop) {
     $clean();
     [$pdo] = $previousVersion();
     $round = ['before' => tables_and_people($pdo) + ['files' => $onDisk(), 'copies' => $state()['copies']]];

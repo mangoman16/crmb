@@ -10,13 +10,14 @@
  * signed out" were claims with nothing behind them, and they are the two claims
  * a trainer is trusting with her families' money.
  *
- * tests/migration-data.php builds a portal as it stood before 015, 019, 020, 022,
- * 024, 025, 028, 032, 034, 038 and 039, applies the rest, and prints what it finds;
- * then it runs this release's update through the application's own runner, with
- * the files the pictures left on disk, the mistakes ADR 0027 keeps the portal
- * closed for, page view after page view, with the imports that reopen it, and the
- * update stopped between two of its files and started again. This reads that and
- * holds it to the promise.
+ * tests/migration-data.php builds a portal as it stood before 015, 019, 020,
+ * 022, 024, 025, 028, 032, 034, 038, 039, 040 and 041, applies the rest, and
+ * prints what it finds; then it runs this release's update through the
+ * application's own runner, with the files the pictures left on disk, the
+ * mistakes ADR 0027 keeps the portal closed for, page view after page view,
+ * with the imports that reopen it, the update stopped between two of its files
+ * and started again, and the restores ADR 0029 keeps it closed for. This reads
+ * that and holds it to the promise.
  *
  * What it does not yet hold to it: 017 backfills covered_from and covered_to on
  * every charge that carries a period, and no case below looks at a charge. The
@@ -42,7 +43,7 @@ case_('On this run’s own engine, a new login has news by email on');
 run("INSERT INTO accounts (name, email, role, created_at) VALUES ('Neu', 'neu@example.test', 'student', ?)", [now()]);
 is_same(1, (int)scalar("SELECT newsletter FROM accounts WHERE email = 'neu@example.test'"), 'news by email is on');
 
-case_('On this run’s own engine, the online history, the contact requests, a login’s status, emoji and picture and a child’s picture are gone [ADR 0026 §8, §11]');
+case_('On this run’s own engine, the online history, the contact requests, a login’s status and emoji, and the columns a login’s and a child’s old pictures were in are gone [ADR 0026 §8, §11]');
 foreach (['online_periods', 'contact_requests'] as $table)
     ok(!test_has_table($table), $table . ' is not in the database the migrations make');
 $columnsOf = fn(string $table): array => array_column(rows('SELECT column_name AS name FROM information_schema.columns'
@@ -54,6 +55,31 @@ is_same(0, (int)scalar("SELECT COUNT(*) FROM information_schema.statistics WHERE
     . " AND table_name = 'accounts' AND index_name = 'account_seen'"), 'and the index on last_seen_at went with its column');
 is_same([], array_values(array_intersect(['online_periods', 'contact_requests'], schema_guarded_tables())),
         'neither dropped table is on the update’s guard, so dropping them needed no change to it');
+
+case_('On this run’s own engine, a child has a picture’s name and the family’s yes for the course and a login a picture’s name, empty and no until they are set [ADR 0031]');
+// On the database every other suite uses, so a run on MariaDB proves it there.
+// migration-data.php holds 040 and 041 to the children and logins the previous
+// version wrote.
+$inOrder = array_column(rows('SELECT column_name AS name FROM information_schema.columns WHERE table_schema = DATABASE()'
+    . " AND table_name = 'students' ORDER BY ordinal_position"), 'name');
+$lastName = array_search('last_name', $inOrder, true);
+is_same(['last_name', 'picture_name', 'course_sees_picture'], $lastName === false ? [] : array_slice($inOrder, $lastName, 3),
+        'students has picture_name and course_sees_picture, in that order, right after last_name');
+test_load_actions();
+$newChild = 0;
+does_not_throw(function () use (&$newChild) { $newChild = transactional(fn(): int => create_student(['first_name' => 'Ohne', 'last_name' => 'Bild'])); },
+               'create_student() makes a child, naming neither column');
+// Read inside does_not_throw(): a column a migration failed to add must fail
+// these checks, not stop the suite before the run with data in between.
+$read = [];
+does_not_throw(function () use (&$read, $newChild) {
+    $read = [one('SELECT picture_name, course_sees_picture FROM students WHERE id = ?', [$newChild]),
+             scalar('SELECT a.picture_name FROM accounts a JOIN students s ON s.account_id = a.id WHERE s.id = ?', [$newChild])];
+}, 'the child and its login can be read back by those columns');
+is_same(['picture_name' => '', 'course_sees_picture' => 0], $read[0] ?? null, 'and the child has no picture and no yes for the course');
+is_same('', $read[1] ?? null, 'and the placeholder login create_student() makes for the child has no picture either');
+is_same(['picture_name'], array_values(array_filter($columnsOf('accounts'), fn(string $column): bool => str_contains($column, 'picture') || str_contains($column, 'avatar'))),
+        'accounts has one column for a picture, picture_name, a team member’s: the old avatar_name stays dropped');
 
 case_('On this run’s own engine, no two logins share an address');
 // On the run's own database, so a run on MariaDB proves this on MariaDB.
@@ -389,14 +415,14 @@ if (!function_exists('exec')) {
     // Shared hosting often lists exec in disable_functions. The run says what it
     // could not do rather than stopping on an undefined function.
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 038, and the update refusing a migration that drops a guarded table'
+        ['the data moved, kept, added or dropped by migrations 015, 016 and 019 to 041, and the update refusing a migration that drops a guarded table'
          . ' (this PHP disables exec, which the run with data in between needs)']));
     return;
 }
 $target = (string)getenv('CRM_MIGRATION_CONFIG');
 if ($target === '') {
     test_unsupported(array_merge(test_unsupported(),
-        ['the data moved, kept or dropped by migrations 015, 016 and 019 to 038, and the update refusing a migration that drops a'
+        ['the data moved, kept, added or dropped by migrations 015, 016 and 019 to 041, and the update refusing a migration that drops a'
          . ' guarded table (set CRM_MIGRATION_CONFIG to the config of a'
          . ' second, empty *_test database; tests/mariadb-local.sh does)']));
     return;
@@ -1368,20 +1394,177 @@ case_('After 039 a login written the way the portal writes one, naming no userna
 is_same([null, null], $ad['two_new'], 'two logins on addresses of their own, naming only name, address, role and time: the engine takes both');
 
 // ---------------------------------------------------------------------------
+// 040: a child has a picture again, and the family decides whether the course
+// sees it (ADR 0031 §2). It adds two columns to students and writes nothing, so
+// it is held to exactly that: the two columns where the record puts them, with
+// their types and defaults; '' and 0 on every child; every other value of every
+// child and every login byte for byte; every other table to the engine's
+// checksum; every count. And a child written the way the previous version
+// writes one is still taken: the children already there would read '' and 0
+// without the defaults too, because the engine fills a new column with its
+// type's empty value, so that insert is what a missing default breaks.
+$fc = $after['faces'];
+[$was, $is] = [$fc['before'], $fc['after']];
+$faceColumns = ['picture_name', 'course_sees_picture'];
+$distinct = function (array $values): array { $values = array_values(array_unique($values)); sort($values); return $values; };
+// What kind of login a child has: its state, and whether it signs in by address.
+$loginKind = function (array $state, array $child) use ($loginOf): string {
+    if (!array_key_exists('account_id', $child)) return 'no such child';
+    if ($child['account_id'] === null) return 'none';
+    $login = $loginOf($state, (int)$child['account_id']);
+    return $login === [] ? 'missing' : $login['state'] . ($login['email'] === null ? '' : ' by address');
+};
+
+case_('Before 040 the portal has children of every kind, with their logins, and no column for a picture');
+is_same(['active', 'ended', 'paused', 'trial'], $distinct(array_column($was['students'], 'status')), 'children active, on trial, paused and ended');
+is_same(['active by address', 'invited by address', 'none', 'placeholder', 'suspended by address'],
+        $distinct(array_map(fn(array $child): string => $loginKind($was, $child), $was['students'])),
+        'whose families are set up by address, invited or suspended, on placeholders, and without a login');
+is_same(array_fill(0, 3, 'placeholder'), array_map(fn(string $key): string => $loginKind($was, $studentOf($was, (int)$fc['written'][$key . '_student'])),
+                                                   ['username_invited', 'username_active', 'username_suspended']),
+        'the three whose logins 039 made placeholders among them');
+$example = $studentOf($was, (int)$fc['written']['example']);
+is_same([1, 1], [$example['is_demo'] ?? 'missing', $loginOf($was, (int)($example['account_id'] ?? 0))['is_demo'] ?? 'missing'],
+        'and an example child on an example login, as demo_fill() makes them');
+$full = $studentOf($was, (int)$fc['written']['every_value']);
+ok($full !== [] && !in_array(null, $full, true), 'one child has a value in every column, so no column is compared only as NULL');
+ok(str_contains((string)($full['internal_notes'] ?? ''), "\u{1F95C}") && str_contains((string)($full['internal_notes'] ?? ''), '\\'),
+   'its notes with a character of four bytes, quotes and a backslash');
+is_same([null, null], [$was['facts']['picture_name'], $was['facts']['course_sees_picture']], 'students has neither picture_name nor course_sees_picture yet');
+
+case_('040 adds a picture’s name and the course’s yes right after the last name, with their types and defaults, and gives every child \'\' and 0 [ADR 0031 §2]');
+$lastNameAt = (int)($is['facts']['last_name']['position'] ?? 0);
+is_same(['type' => 'varchar(40)', 'nullable' => 'NO', 'default_value' => '', 'collation' => $is['facts']['last_name']['collation'] ?? 'missing', 'position' => $lastNameAt + 1],
+        $is['facts']['picture_name'], 'picture_name: up to 40 characters, never NULL, \'\' by default, in the collation of the names beside it, right after last_name');
+$flag = $is['facts']['course_sees_picture'] ?? [];
+// Plain TINYINT, as every flag is: MariaDB reports it as tinyint(4), MySQL 8.0.19 and later as tinyint, and both TINYINT(1) as tinyint(1).
+ok(in_array($flag['type'] ?? null, ['tinyint(4)', 'tinyint'], true), 'course_sees_picture is a plain TINYINT like every other flag, not TINYINT(1): ' . ($flag['type'] ?? 'missing'));
+is_same(['nullable' => 'NO', 'default_value' => '0', 'collation' => null, 'position' => $lastNameAt + 2], array_diff_key($flag, ['type' => 1]),
+        'course_sees_picture: never NULL, 0 by default, right after picture_name');
+is_same(array_merge(array_slice($was['columns']['students'], 0, $lastNameAt), $faceColumns, array_slice($was['columns']['students'], $lastNameAt)),
+        $is['columns']['students'], 'and every other column of students is there, in its order');
+is_same(array_fill(0, count($was['students']), ''), array_column($is['students'], 'picture_name'), 'every child has no picture');
+is_same(array_fill(0, count($was['students']), 0), array_column($is['students'], 'course_sees_picture'), 'and no yes for the course, which nobody has given');
+
+case_('040 changes nothing else: every child and every login byte for byte, every other table, key, index and count');
+is_same($was['students'], $less($is['students'], $faceColumns), 'every child has every value they had, the one with every column filled among them, and none is lost or added');
+is_same([$was['accounts'], $was['columns']['accounts'], $was['indexes']['accounts']], [$is['accounts'], $is['columns']['accounts'], $is['indexes']['accounts']],
+        'every login, with its columns and indexes, is as it was');
+is_same($except($was['sums'], ['students']), $except($is['sums'], ['students']), 'every other table has every row it had, to the engine’s checksum');
+is_same([$was['tables'], $was['rows'], $was['keys'], $was['indexes']['students']], [$is['tables'], $is['rows'], $is['keys'], $is['indexes']['students']],
+        'the same tables, as many rows in each, the same keys, and on students the same indexes and no new one');
+
+case_('040 removes no row, so the update’s guard has nothing to compare, and students stays on it');
+is_same($was['counts'], $is['counts'], 'every table in schema_guarded_tables() has as many rows as before');
+ok(in_array('students', schema_guarded_tables(), true) && ($was['counts']['students'] ?? 0) > 0, 'students is guarded and had rows to lose: ' . ($was['counts']['students'] ?? 0));
+
+case_('After 040 a child written the way the previous version writes one is still taken, with \'\' and 0');
+is_same(null, $fc['previous_version_before']['refused'], 'before 040 the engine takes placeholder_login()’s login and create_student()’s insert as they stood at 039');
+is_same(null, $fc['previous_version']['refused'], 'after 040 it takes them too, though the insert names neither column: refused with ' . $refusedWith($fc['previous_version']['refused']));
+is_same(['', 0], [$fc['previous_version']['child']['picture_name'] ?? 'missing', $fc['previous_version']['child']['course_sees_picture'] ?? 'missing'],
+        'and the child reads \'\' and 0');
+
+case_('040 is one statement, so it cannot stop inside itself');
+is_same(1, $fc['statements'], 'one statement');
+
+case_('Run a second time, 040 is refused by the engine and changes nothing');
+// As 031: MySQL 8.0 has no ADD COLUMN IF NOT EXISTS, so what matters is that the
+// second run stops there, with the portal closed and the copy in place.
+is_same(['42S21', 1060], $fc['refused'],
+        'run again on a connection of its own, as the next page view would, the engine refuses it: the column is there already (1060, SQLSTATE 42S21)');
+is_same($is, $fc['again'], 'and the tables, rows, checksums, keys, columns, indexes, children and logins are as one run left them');
+
+// ---------------------------------------------------------------------------
+// 041: a team member has a picture, on the login (ADR 0031). It adds one column
+// to accounts and writes nothing, so it is held to exactly that: the column right
+// after the name, with its type and default; '' on every login; every other
+// value of every login and every child byte for byte; every other table to the
+// engine's checksum; every count. And a login written by each of the previous
+// version's four inserts is still taken: as with 040, the logins already there
+// would read '' without the default too.
+$tm = $after['team'];
+[$was, $is] = [$tm['before'], $tm['after']];
+$kindOfLogin = fn(array $login): string => $login['role'] . ' ' . $login['state'] . ($login['email'] === null ? '' : ' by address');
+
+case_('Before 041 the portal has logins of every kind, the team’s and the families’, and no column for a login’s picture');
+is_same(['admin active by address', 'manager active by address', 'student active by address', 'student invited by address', 'student placeholder',
+         'student suspended by address', 'trainer active by address', 'trainer invited by address', 'trainer suspended by address'],
+        $distinct(array_map($kindOfLogin, $was['accounts'])),
+        'an administrator, a manager, trainers set up, invited and suspended, and families set up, invited and suspended by address or on placeholders');
+$administrator = $loginOf($was, (int)$tm['written']['administrator']);
+ok($administrator !== [] && !in_array(null, $administrator, true), 'one login has a value in every column, so no column is compared only as NULL');
+is_same([1, 1], [(int)($loginOf($was, (int)$tm['written']['example_trainer'])['is_demo'] ?? 0),
+                 (int)($loginOf($was, (int)($studentOf($was, (int)$tm['written']['example'])['account_id'] ?? 0))['is_demo'] ?? 0)],
+        'and an example login on each side, a trainer’s and a child’s');
+is_same(null, $was['facts']['picture_name'], 'accounts has no picture_name yet');
+ok(in_array('picture_name', $was['columns']['students'], true), 'while students has the one 040 gave it');
+
+case_('041 adds a picture’s name right after the name of every login, with its type and default, and gives every login \'\' [ADR 0031]');
+$nameAt = (int)($is['facts']['name']['position'] ?? 0);
+is_same(['type' => 'varchar(40)', 'nullable' => 'NO', 'default_value' => '', 'collation' => $is['facts']['name']['collation'] ?? 'missing', 'position' => $nameAt + 1],
+        $is['facts']['picture_name'], 'picture_name: up to 40 characters, never NULL, \'\' by default, in the collation of the name, right after it');
+is_same(array_merge(array_slice($was['columns']['accounts'], 0, $nameAt), ['picture_name'], array_slice($was['columns']['accounts'], $nameAt)),
+        $is['columns']['accounts'], 'and every other column of accounts is there, in its order');
+is_same(array_fill(0, count($was['accounts']), ''), array_column($is['accounts'], 'picture_name'), 'every login has no picture: the team’s, the families’ and the placeholders’');
+
+case_('041 changes nothing else: every login and every child byte for byte, every other table, key, index and count');
+is_same($was['accounts'], $less($is['accounts'], ['picture_name']), 'every login has every value it had, the one with every column filled among them, and none is lost or added');
+is_same([$was['students'], $was['columns']['students'], $was['indexes']['students']], [$is['students'], $is['columns']['students'], $is['indexes']['students']],
+        'every child is as it was, with the picture’s name and the course’s yes 040 gave them');
+is_same($except($was['sums'], ['accounts']), $except($is['sums'], ['accounts']), 'every other table has every row it had, to the engine’s checksum');
+is_same([$was['tables'], $was['rows'], $was['keys'], $was['indexes']['accounts']], [$is['tables'], $is['rows'], $is['keys'], $is['indexes']['accounts']],
+        'the same tables, as many rows in each, the same keys, and on accounts the same indexes and no new one');
+
+case_('041 removes no row, so the update’s guard has nothing to compare, and accounts stays on it');
+is_same($was['counts'], $is['counts'], 'every table in schema_guarded_tables() has as many rows as before');
+ok(in_array('accounts', schema_guarded_tables(), true) && ($was['counts']['accounts'] ?? 0) > 0, 'accounts is guarded and had rows to lose: ' . ($was['counts']['accounts'] ?? 0));
+
+case_('After 041 a login written by each of the previous version’s inserts is still taken, with \'\'');
+is_same(null, $tm['previous_version_before']['refused'],
+        'before 041 the engine takes invite_login()’s, placeholder_login()’s, create_admin_account()’s and demo_fill()’s inserts as they stood at 040');
+is_same(null, $tm['previous_version']['refused'], 'after 041 it takes them too, though none names the column: refused with ' . $refusedWith($tm['previous_version']['refused']));
+is_same(['invitation' => '', 'placeholder' => '', 'first_administrator' => '', 'example' => ''],
+        array_map(fn(array $login): string => (string)($login['picture_name'] ?? 'missing'), $tm['previous_version']['logins'] ?? []), 'and each login reads \'\'');
+
+case_('041 is one statement, so it cannot stop inside itself');
+is_same(1, $tm['statements'], 'one statement');
+
+case_('Run a second time, 041 is refused by the engine and changes nothing');
+is_same(['42S21', 1060], $tm['refused'],
+        'run again on a connection of its own, as the next page view would, the engine refuses it: the column is there already (1060, SQLSTATE 42S21)');
+is_same($is, $tm['again'], 'and the tables, rows, checksums, keys, columns, indexes, logins and children are as one run left them');
+
+// ---------------------------------------------------------------------------
 // The update this release brings, then one with a mistake in it, through the
 // application's own runner, schema_apply(), on a portal the previous version
 // left: 001 to 031 in its ledger, rows in everything 032 to 039 drop or change,
-// and the files the pictures were stored in on disk.
+// children for 040 to give a picture's name and the course's yes, logins for
+// 041 to give a picture's name, and the files the pictures were stored in on
+// disk.
 $u = $after['runner'];
 // What 035 and 039 take from every login.
 $accountGone = array_merge($presence, ['username']);
 $ledgerOf = fn(array $state): array => array_column($state['ledger'], 'checksum', 'version');
 // What this release drops, and the tables whose rows it changes: the settings and
-// the ledger record the update, and accounts and students lose columns.
+// the ledger record the update, accounts loses five columns and gains one, and
+// students loses two and gains two.
 $droppedTables = array_merge($custom, $views, ['online_periods', 'contact_requests']);
 $changedTables = ['settings', 'schema_migrations', 'accounts', 'students', 'thread_participants', 'notifications', 'thread_reads'];
+// Children as 040 leaves them: no picture and no yes for the course, right after
+// the last name - in that place, because is_same() compares the order too.
+$withFaces = fn(array $rows): array => array_map(function (array $row): array {
+    $at = array_search('last_name', array_keys($row), true);
+    return $at === false ? $row
+        : array_slice($row, 0, $at + 1) + ['picture_name' => '', 'course_sees_picture' => 0] + array_slice($row, $at + 1);
+}, $rows);
+// Logins as 041 leaves them: no picture, right after the name - in that place,
+// because is_same() compares the order too.
+$withPictureName = fn(array $rows): array => array_map(function (array $row): array {
+    $at = array_search('name', array_keys($row), true);
+    return $at === false ? $row : array_slice($row, 0, $at + 1) + ['picture_name' => ''] + array_slice($row, $at + 1);
+}, $rows);
 
-case_('This release’s update passes the guard on a portal with custom-field values, and drops exactly what 032 to 039 drop');
+case_('This release’s update passes the guard on a portal with custom-field values, drops exactly what 032 to 039 drop, and adds what 040 and 041 add');
 is_same('', $u['previous_step_error'], 'the portal was where the previous version’s update leaves it, its step after the files run');
 ok(($u['before']['rows']['field_values'] ?? 0) > 0, 'with custom-field values for the guard to see: ' . ($u['before']['rows']['field_values'] ?? 0));
 ok(($u['before']['rows']['online_periods'] ?? 0) > 0 && ($u['before']['rows']['contact_requests'] ?? 0) > 0,
@@ -1392,20 +1575,21 @@ is_same(3, count($convertedIn($u['before'])), 'and three logins that sign in by 
 is_same(null, $u['release']['refused'], 'schema_apply() goes through: field_values is off the guard, so 032 emptying it does not refuse the update');
 is_same(true, $u['release']['current'], 'and files and database agree afterwards, so the portal opens');
 is_same(1, $u['release']['backups'], 'with the copy taken before the files ran');
-is_same(['032', '033', '034', '035', '036', '037', '038', '039'], array_map(fn(string $version): string => substr($version, 0, 3), array_keys($u['shipped'])),
-        'this release’s files are 032 to 039');
+is_same(['032', '033', '034', '035', '036', '037', '038', '039', '040', '041'], array_map(fn(string $version): string => substr($version, 0, 3), array_keys($u['shipped'])),
+        'this release’s files are 032 to 041');
 is_same($u['shipped'], array_diff_key($ledgerOf($u['release']['state']), $ledgerOf($u['before'])),
         'the ledger gained each of them, with the checksum of the file shipped, and nothing else');
 is_same(array_values(array_diff($u['before']['tables'], $droppedTables)), $u['release']['state']['tables'],
         'the six tables are gone, and every other table is there');
 is_same($except($u['before']['sums'], array_merge($droppedTables, $changedTables)), $except($u['release']['state']['sums'], $changedTables),
         'every table but the settings, the ledger, accounts, students, places in chats, notices and read marks has every row it had, levels, age_groups, threads and messages among them: the backup, the files and the step after them changed nothing else');
-is_same($asPlaceholders($less($u['before']['accounts'], $accountGone)), $u['release']['state']['accounts'],
-        'every login has every value it had but the four 035 takes and the username 039 takes, the three that signed in by one now placeholders');
+is_same($withPictureName($asPlaceholders($less($u['before']['accounts'], $accountGone))), $u['release']['state']['accounts'],
+        'every login has every value it had but the four 035 takes and the username 039 takes, the three that signed in by one now placeholders, and none a picture yet');
 is_same(array_map(fn(string $kind): array => $keptFrom($u['before'][$kind], $convertedIn($u['before'])), $held),
         array_map(fn(string $kind): array => $u['release']['state'][$kind], $held),
         'and those three hold no place in a chat, no notice and no read mark, while every other login keeps every one it had');
-is_same($less($u['before']['students'], $childGone), $u['release']['state']['students'], 'and every child every value but the picture and the pinned band, their level included');
+is_same($withFaces($less($u['before']['students'], $childGone)), $u['release']['state']['students'],
+        'and every child every value but the old picture and the pinned band, their level included, with no picture and no yes for the course in their place');
 is_same($u['before']['counts'], $u['release']['state']['counts'], 'every guarded table has as many rows as before');
 is_same(null, $u['release']['record'], 'and it leaves no record of an unfinished update behind: the run that passes deletes it [ADR 0027 §1]');
 
@@ -1432,11 +1616,12 @@ is_same('', $u['release']['again']['error'], 'the step runs again, as every late
 is_same($u['release']['state']['files'], $u['release']['again']['files'], 'and deletes nothing more');
 
 case_('This release’s update stopped between two of its files and started again by the next page view ends as the update that ran through');
-// 034 to 038 are one statement each, and 039 stopped inside itself is run above,
-// so what is left is an update stopping between two files: a file that stops is
-// put after each in turn, and the next page view runs without it.
+// 034 to 038, 040 and 041 are one statement each, and 039 stopped inside itself
+// is run above, so what is left is an update stopping between two files: a file
+// that stops is put after each in turn, and the next page view runs without it.
 $restarts = $u['restarted'] ?? [];
-is_same(['033', '034', '035', '036', '037', '038'], array_map('strval', array_keys($restarts)), 'stopped after each of 033 to 038 in turn');
+is_same(['033', '034', '035', '036', '037', '038', '039', '040'], array_map('strval', array_keys($restarts)),
+        'stopped after each of 033 to 040 in turn, the last two leaving 040 and 041 to the next page view');
 foreach ($restarts as $stop => $round) {
     $when = 'stopped after ' . $stop . ': ';
     $stopped = $round['stopped'];
@@ -1457,11 +1642,13 @@ foreach ($restarts as $stop => $round) {
     is_same($round['before']['counts'], $again['counts'], $when . 'every guarded table has as many rows as before');
     is_same($except($round['before']['sums'], array_merge($droppedTables, $changedTables)), $except($again['portal']['sums'], $changedTables),
             $when . 'every other table has every row it had, to the engine’s checksum');
-    is_same($asPlaceholders($less($round['before']['accounts'], $accountGone)), $again['portal']['accounts'], $when . 'every login every value but the four 035 takes and the username, the three username logins now placeholders');
+    is_same($withPictureName($asPlaceholders($less($round['before']['accounts'], $accountGone))), $again['portal']['accounts'],
+            $when . 'every login every value but the four 035 takes and the username, the three username logins now placeholders, and none a picture yet');
     is_same(array_map(fn(string $kind): array => $keptFrom($round['before'][$kind], $convertedIn($round['before'])), $held),
             array_map(fn(string $kind): array => $again['portal'][$kind], $held),
             $when . 'and they hold no place in a chat, no notice and no read mark, every other login all it had');
-    is_same($less($round['before']['students'], $childGone), $again['portal']['students'], $when . 'and every child every value but the picture and the pinned band');
+    is_same($withFaces($less($round['before']['students'], $childGone)), $again['portal']['students'],
+            $when . 'and every child every value but the old picture and the pinned band, with no picture and no yes for the course');
     is_same($u['release']['state']['files'], $again['files'], $when . 'and the files on disk end as after the update that ran through');
 }
 

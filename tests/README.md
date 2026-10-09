@@ -179,7 +179,8 @@ child joins the course on the day of the run and the other part-way through
 the month (its „Dabei seit“ set to a day before today); both charges must cover
 from the day they joined, be due no earlier than that day or the day they were
 written, and not be overdue on the day they appear, and the family's card must
-name the same period as the invoice. Then the family opens the invitation link out of the captured mail, sets a password,
+name the same period as the invoice. Then the family opens the invitation link out of the captured mail, sets a password, skips „Dein Foto“
+(the person invited by address adds one there, and sees it on their page),
 sees their child under „Profil“ and the charge under „Beiträge“, uploads a
 payment proof and sends „Etwas funktioniert hier nicht“. Then the trainer sees
 the charge and the proof, records the payment as confirmed, issues an invoice

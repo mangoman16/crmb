@@ -25,7 +25,7 @@ try {
     $page=$_GET['page']??'dashboard';
     // Every page there is. allowed_pages() reads this list for a way back that
     // an action works out itself, so it is written here and only here.
-    $allowed=['dashboard','start','students','student','student_new','payments','classes','accounts','messages','news','outbox','manage','invoices','attendance','download','settings','history','profile','more','login','forgot','activate','unsubscribe','privacy','icon','manifest','brand','logo'];
+    $allowed=['dashboard','start','students','student','student_new','payments','classes','accounts','messages','news','outbox','manage','invoices','attendance','download','settings','history','profile','more','welcome','login','forgot','activate','unsubscribe','privacy','icon','manifest','brand','logo'];
     if(!in_array($page,$allowed,true)) {http_response_code(404);$page='not_found';}
     // The trail a problem report carries. Here, before the POST branch, because
     // that branch redirects and never comes back: recorded any later, the trail
@@ -35,7 +35,11 @@ try {
     // reason: a save's redirect has to find it there (ADR 0011).
     note_setup_return($page);
     if($_SERVER['REQUEST_METHOD']==='POST') {
-        try {
+        // A file larger than the server takes reaches PHP as an empty post, its
+        // token gone too: said as what it is, and back on the page it came
+        // from below, rather than refused as an expired session (post_too_large()).
+        if(post_too_large()) flash(upload_too_large(),'error');
+        else try {
             go(...handle_post());
         } catch(SignInRequired) {go('login');}
         // The action is read here as the form's own bookkeeping, which cannot

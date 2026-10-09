@@ -57,8 +57,9 @@ if (!ACCOUNTS.admin || !PASSWORD) {
 /** Pages worth opening, and the query strings the interface really produces. */
 const pages = async (page, role) => {
     const first = async (sql) => await page.evaluate(() => 0);   // ids come from the links below
-    // messages&new=1 is the chat's „Neue Nachricht“ (ADR 0022).
-    const common = ['dashboard', 'messages', 'messages&new=1', 'news', 'profile'];
+    // messages&new=1 is the chat's „Neue Nachricht“ (ADR 0022); welcome is
+    // „Dein Foto“, which a first password leads to (ADR 0031).
+    const common = ['dashboard', 'messages', 'messages&new=1', 'news', 'profile', 'welcome'];
     if (role !== 'admin') {
         // A family's „Profil“ is their own child's page; the students list sends
         // them there on purpose, so the address is taken from the menu bar.

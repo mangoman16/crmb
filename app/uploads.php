@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 /**
  * Files people send: payment proofs, photos in a chat, problem reports'
- * screenshots, and the portal's own icon and logo.
+ * screenshots, the children's and the team's pictures, and the portal's own
+ * icon and logo.
  *
  * Three rules hold for all of them.
  *
@@ -103,6 +104,9 @@ function upload_types(string $kind): array {
         // The logo may be wide and may be a photograph, so JPEG and WebP too;
         // not GIF, which animates, and never SVG, which can carry script (ADR 0014).
         'logo'   => ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'],
+        // The photos a picture is made from, a child's or a team member's
+        // (ADR 0031 §3); what is stored is square_picture()'s JPEG.
+        'picture' => picture_types(),
         // A kind nobody named takes nothing. A list that fell open here once
         // gave any new kind every type there was, PDFs and audio included.
         default  => throw new LogicException('No upload kind named „' . $kind . '“ in upload_types().'),
@@ -142,8 +146,34 @@ function upload_extension(string $kind, string $mime): string {
     if (isset($allowed[$mime])) return $allowed[$mime];
     if ($kind === 'message' && chat_photo_from_camera(current_user()))
         throw new UserError(t('Bitte nimm das Foto mit der Kamera auf.', 'Please take the photo with the camera.'));
+    if ($kind === 'picture') throw new UserError(picture_unreadable());
     throw new UserError(t('Dieser Dateityp ist hier nicht erlaubt. Möglich sind: ', 'That kind of file is not allowed here. Allowed: ')
         . implode(', ', array_unique(array_values($allowed))) . '.');
+}
+
+/**
+ * A file over the limit, refused with the limit in it: one sentence for the
+ * server's refusal and the portal's alike. A picture is a photo to whoever
+ * sends it, so it says so (ADR 0031).
+ */
+function upload_too_large(string $kind = ''): string {
+    return $kind === 'picture'
+        ? t('Das Foto ist zu groß. Höchstens ', 'That photo is too big. At most ') . upload_limit_label() . '.'
+        : t('Die Datei ist zu groß. Erlaubt sind ', 'That file is too big. The limit is ') . upload_limit_label() . '.';
+}
+
+/**
+ * Whether this request is a form PHP threw away for being larger than
+ * post_max_size. PHP then empties $_POST and $_FILES - the token, the action
+ * and the file all gone - and only CONTENT_LENGTH says what came, so the token
+ * check would call a photo too large an expired session. Asked once, where a
+ * post enters (public/index.php), before the token; a post_max_size of 0 is no
+ * limit at all.
+ */
+function post_too_large(): bool {
+    $limit = ini_bytes((string)ini_get('post_max_size'));
+    return ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && $_POST === [] && $_FILES === []
+        && $limit > 0 && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $limit;
 }
 
 /**
@@ -153,10 +183,9 @@ function upload_extension(string $kind, string $mime): string {
  * no before the portal saw anything, and telling somebody "try a smaller
  * picture" is the only useful response.
  */
-function upload_error_message(int $code): string {
+function upload_error_message(int $code, string $kind = ''): string {
     return match ($code) {
-        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
-            t('Die Datei ist zu groß. Erlaubt sind ', 'That file is too big. The limit is ') . upload_limit_label() . '.',
+        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => upload_too_large($kind),
         UPLOAD_ERR_PARTIAL => t('Die Datei kam nur teilweise an. Bitte noch einmal versuchen.', 'The file only arrived partly. Please try again.'),
         UPLOAD_ERR_NO_FILE => t('Es wurde keine Datei ausgewählt.', 'No file was chosen.'),
         UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE =>
@@ -175,14 +204,31 @@ function upload_error_message(int $code): string {
 function store_upload(string $field, string $kind): array {
     $file = $_FILES[$field] ?? null;
     if (!is_array($file) || !isset($file['error'])) throw new UserError(t('Es wurde keine Datei ausgewählt.', 'No file was chosen.'));
-    if ((int)$file['error'] !== UPLOAD_ERR_OK) throw new UserError(upload_error_message((int)$file['error']));
+    if ((int)$file['error'] !== UPLOAD_ERR_OK) throw new UserError(upload_error_message((int)$file['error'], $kind));
     if (!is_uploaded_file((string)$file['tmp_name'])) throw new UserError(t('Diese Datei kam nicht über das Formular.', 'That file did not come through the form.'));
     if ((int)$file['size'] <= 0) throw new UserError(t('Die Datei ist leer.', 'That file is empty.'));
-    if ((int)$file['size'] > upload_limit())
-        throw new UserError(t('Die Datei ist zu groß. Erlaubt sind ', 'That file is too big. The limit is ') . upload_limit_label() . '.');
+    if ((int)$file['size'] > upload_limit()) throw new UserError(upload_too_large($kind));
 
     $mime = uploaded_file_type((string)$file['tmp_name']);
     $extension = upload_extension($kind, $mime);
+
+    // A photo can carry where it was taken - a family's home - and a picture
+    // posted to a course's group reaches every child in it (ADR 0022). So a
+    // picture is stored as its cleaned copy, written once; anything else is
+    // moved as it came. A picture of a child or of a team member is not the
+    // photo at all but the small square square_picture() makes of it (ADR
+    // 0031 §3). Made before the
+    // folder and the name, so a photo refused leaves nothing behind. The
+    // upload was not empty, so an empty copy means the file could not be read,
+    // and storing it would keep nothing of the picture while saying it had
+    // been kept.
+    $clean = null;
+    if ($kind === 'picture') {
+        $clean = square_picture((string)$file['tmp_name'], $mime);
+        [$mime, $extension] = ['image/jpeg', 'jpg'];
+    } elseif (str_starts_with($mime, 'image/')) {
+        $clean = image_without_metadata((string)file_get_contents((string)$file['tmp_name']), $mime);
+    }
 
     $dir = upload_dir($kind);
     if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir))
@@ -190,14 +236,6 @@ function store_upload(string $field, string $kind): array {
                               'The upload folder cannot be created. Check that storage/ is writable.'));
     $stored = bin2hex(random_bytes(16)) . '.' . $extension;
     $path = $dir . '/' . $stored;
-    // A photo can carry where it was taken - a family's home - and a picture
-    // posted to a course's group reaches every child in it (ADR 0022). So a
-    // picture is stored as its cleaned copy, written once; anything else is
-    // moved as it came. The upload was not empty, so an empty copy means the
-    // file could not be read, and storing it would keep nothing of the picture
-    // while saying it had been kept.
-    $clean = str_starts_with($mime, 'image/')
-        ? image_without_metadata((string)file_get_contents((string)$file['tmp_name']), $mime) : null;
     $saved = $clean === null ? @move_uploaded_file((string)$file['tmp_name'], $path)
                              : $clean !== '' && @file_put_contents($path, $clean, LOCK_EX) === strlen($clean);
     if (!$saved) {
@@ -424,6 +462,188 @@ function webp_without_metadata(string $b): string {
     return 'RIFF' . pack('V', 4 + strlen($chunks)) . 'WEBP' . $chunks;
 }
 
+// ---------------------------------------------------------------------------
+// A picture: a child's, or a team member's (ADR 0031 §3, §4)
+// ---------------------------------------------------------------------------
+
+/**
+ * The side of the one square a picture is stored as, in pixels. The
+ * largest face drawn is 72 pt, on the child's page, which a 3× phone draws with
+ * 216 pixels; 320 leaves room. About 20 to 30 KB each.
+ */
+const PICTURE_SIDE = 320;
+
+/**
+ * The most pixels a photo may have to be made into a picture: 24 million, about
+ * 120 MB to decode (ADR 0031 §3, from the security review). Not left to the
+ * upload limit: a PNG of one colour claiming 25 million pixels is a few
+ * kilobytes, and a few of them at once could take a shared host's memory. Asked
+ * of the header, before anything is decoded.
+ *
+ * A phone's own „24 MP" photo is 5712 × 4284, 24.5 million: the browser makes a
+ * photo smaller before it sends it, and without JavaScript that one is refused
+ * in words, as a photo over the upload limit is.
+ */
+const PICTURE_MAX_PIXELS = 24_000_000;
+
+/** What decoding holds of one pixel, give or take: about five bytes. */
+const PICTURE_BYTES_PER_PIXEL = 5;
+
+/** As far as a request raises its own memory_limit to decode one photo: 256 MB, as WordPress does for images. */
+const PICTURE_MEMORY_CEILING = 256 * 1024 * 1024;
+
+/** How long a photo waits for the one being made before it is refused: a 24-megapixel photo takes a second or two. */
+const PICTURE_LOCK_SECONDS = 10;
+
+/** Whether this PHP can make a picture at all: whether it has gd, which extension_checks() names. */
+function pictures_possible(): bool { return function_exists('imagecreatetruecolor'); }
+
+/**
+ * What a person is told where this server cannot make a picture (ADR 0031 §4),
+ * as [what, who sets it up]: an administrator where to look, anybody else that
+ * an administrator does it. One wording, for the refusal (square_picture()) and
+ * for the picture card, which shows the two on two lines.
+ */
+function pictures_unavailable(): array {
+    return [t('Fotos gehen auf diesem Server noch nicht.', 'Photos do not work on this server yet.'),
+            is_admin() ? t('Unter „Einstellungen“ → „System“ steht, was fehlt.', '“Settings” → “System” says what is missing.')
+                       : t('Das richtet eine Administratorin ein.', 'An administrator sets this up.')];
+}
+
+/**
+ * The photos a picture is made from, as media type => extension: JPEG and PNG
+ * (the security review, 2026-10-08) - what a phone's camera writes, and what the
+ * browser sends once it has made a chosen photo smaller - as far as this
+ * server's gd reads them, so the form's accept never offers what
+ * square_picture() refuses. Nothing else gd might read: each format is a native
+ * decoder of the host's that a family can reach, and libwebp's is where
+ * CVE-2023-4863 was. So no WebP, which is refused in words when it comes
+ * without JavaScript; no GIF, whose animation would be lost on the way to a
+ * still; no HEIC, which gd cannot read. Without gd both are named, and
+ * square_picture() says what the server is missing instead.
+ */
+function picture_types(): array {
+    $types = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
+    if (!pictures_possible()) return $types;
+    $read = ['image/jpeg' => IMG_JPG, 'image/png' => IMG_PNG];
+    return array_filter($types, fn(string $mime): bool => (imagetypes() & $read[$mime]) !== 0, ARRAY_FILTER_USE_KEY);
+}
+
+/** What a photo is refused with that cannot be made into a picture, whatever was wrong with it. */
+function picture_unreadable(): string {
+    return t('Dieses Bild lässt sich nicht lesen. Bitte ein Foto (JPEG oder PNG) wählen.',
+             'This picture cannot be read. Please choose a photo (JPEG or PNG).');
+}
+
+/**
+ * Room to decode a photo of $pixels pixels, or a refusal in words rather than
+ * PHP's fatal error and a blank page.
+ *
+ * When what decoding takes does not fit in what memory_limit leaves, the
+ * request raises its own limit as far as PICTURE_MEMORY_CEILING, where the host
+ * lets a script set it, and never lowers it. A 12-megapixel photo takes about
+ * 60 MB. Where gd is PHP's own copy, its pictures count against the limit; a gd
+ * of the system's own allocates beside it, and then this only asks for more
+ * than was needed.
+ */
+function picture_memory_for(int $pixels): void {
+    $needed = memory_get_usage() + $pixels * PICTURE_BYTES_PER_PIXEL;
+    $limit = ini_bytes((string)ini_get('memory_limit'));
+    if ($limit < 0 || $needed <= $limit) return;    // -1 is no limit at all
+    if ($needed <= PICTURE_MEMORY_CEILING && @ini_set('memory_limit', (string)PICTURE_MEMORY_CEILING) !== false) return;
+    throw new UserError(t('Dieses Foto ist zu groß, um es hier zu verkleinern. Bitte ein kleineres wählen.',
+                          'This photo is too large to be made smaller here. Please choose a smaller one.'));
+}
+
+/**
+ * A picture as it is stored, a child's or a team member's (ADR 0031 §3), made
+ * from the photo in the file at $path: one square JPEG of PICTURE_SIDE pixels,
+ * cut from the middle of the photo, turned upright by its EXIF orientation and
+ * on white where the photo was see-through - then cleaned like every stored
+ * picture (image_without_metadata()), which also takes the comment gd writes
+ * into it. Made from the pixels, it keeps nothing else of the photo: no place,
+ * no time, no camera, no thumbnail, no second picture. The photo itself is
+ * never stored.
+ *
+ * Never a 500 or a warning, whatever arrives. The size is read from the header
+ * (getimagesize()), which decodes nothing, and a photo with no size, or with
+ * more than PICTURE_MAX_PIXELS, is refused before a byte of it is decoded or
+ * even read in; the memory to
+ * decode it is made room for or refused (picture_memory_for()); a JPEG cut off
+ * in its picture data - which gd draws without a word, grey below the cut - and
+ * anything else gd cannot read are refused in words. The photo is let go as
+ * soon as the square is cut, and the square once it is encoded.
+ *
+ * Decoded by the function of the one type read from its bytes, JPEG or PNG -
+ * never imagecreatefromstring(), which takes any format the host's gd was built
+ * with (the security review, 2026-10-08). From the file, because those take a
+ * file, and a data: address is shut where allow_url_fopen is off, as on many a
+ * shared host.
+ *
+ * ponytail: the square is cut from the middle, with no step to choose it. Its
+ * ceiling: a face at the edge of a photo is cut off. The way up is a crop step
+ * in app.js, with the middle as what a page without JavaScript gets.
+ *
+ * One photo is decoded at a time across the portal, under a lock of the
+ * database's as the mail queue and the background work hold theirs: twenty
+ * sessions of one login at once could otherwise each take what 24 megapixels
+ * take. A trainer photographing one child after another never waits; a photo
+ * sent while another is being made waits for it, up to $wait seconds, and is
+ * then refused in words.
+ *
+ * gd drops the colour profile, so a wide-colour photo shows a little paler; at
+ * 320 pixels that is accepted. $gd is whether gd is there: the suite passes
+ * false to watch the refusal without taking gd from the PHP it runs on, and 0
+ * as $wait to watch the lock refuse without waiting for it.
+ */
+function square_picture(string $path, string $mime, ?bool $gd = null, int $wait = PICTURE_LOCK_SECONDS): string {
+    if (!($gd ?? pictures_possible())) throw new UserError(implode(' ', pictures_unavailable()));
+    // is_file() first: getimagesize() throws on an empty path or a NUL byte.
+    $size = isset(picture_types()[$mime]) && is_file($path) ? @getimagesize($path) : false;
+    if (!$size || ($size['mime'] ?? '') !== $mime || $size[0] < 1 || $size[1] < 1) throw new UserError(picture_unreadable());
+    if ($size[0] * $size[1] > PICTURE_MAX_PIXELS)
+        throw new UserError(t('Dieses Foto hat zu viele Bildpunkte: höchstens 24 Megapixel.',
+                              'This photo has too many pixels: at most 24 megapixels.'));
+    picture_memory_for($size[0] * $size[1]);
+    if ((int)scalar('SELECT GET_LOCK(?, ?)', ['badminton_crm_picture', $wait]) !== 1)
+        throw new UserError(t('Gerade wird ein anderes Foto verarbeitet. Bitte gleich noch einmal.',
+                              'Another photo is being processed right now. Please try again in a moment.'));
+    try {
+        // Cleaned, a JPEG that is whole ends where its picture ends; gd would draw
+        // one cut off without a word. Which way is up is read from the cleaned one.
+        $clean = image_without_metadata((string)@file_get_contents($path), $mime);
+        if ($mime === 'image/jpeg' && !str_ends_with($clean, "\xFF\xD9")) throw new UserError(picture_unreadable());
+        $photo = $mime === 'image/png' ? @imagecreatefrompng($path) : @imagecreatefromjpeg($path);
+        if ($photo === false) throw new UserError(picture_unreadable());
+        [$width, $height] = [imagesx($photo), imagesy($photo)];
+        $side = min($width, $height);
+        $square = imagecreatetruecolor(PICTURE_SIDE, PICTURE_SIDE);
+        imagefilledrectangle($square, 0, 0, PICTURE_SIDE - 1, PICTURE_SIDE - 1, imagecolorallocate($square, 255, 255, 255));
+        imagecopyresampled($square, $photo, 0, 0, intdiv($width - $side, 2), intdiv($height - $side, 2), PICTURE_SIDE, PICTURE_SIDE, $side, $side);
+        unset($photo);
+        $square = picture_upright($square, $mime === 'image/jpeg' ? jpeg_orientation($clean) : 0);
+        ob_start();
+        imagejpeg($square, null, 85);
+        $jpeg = (string)ob_get_clean();
+        unset($square);
+        return image_without_metadata($jpeg, 'image/jpeg');
+    } finally {
+        run("SELECT RELEASE_LOCK('badminton_crm_picture')");
+    }
+}
+
+/**
+ * The square turned the way its EXIF says is up (2-8; 0 and 1 are upright
+ * already). Turned once it is cut, so 320 pixels are turned rather than the
+ * whole photo: the middle of a turned photo is the turned middle of the photo.
+ */
+function picture_upright(GdImage $square, int $orientation): GdImage {
+    if (in_array($orientation, [2, 5, 7], true)) imageflip($square, IMG_FLIP_HORIZONTAL);
+    if ($orientation === 4) imageflip($square, IMG_FLIP_VERTICAL);
+    $angle = match ($orientation) { 3 => 180, 5, 8 => 90, 6, 7 => 270, default => 0 };
+    return $angle === 0 ? $square : imagerotate($square, $angle, 0);
+}
+
 /** The shape of every name store_upload() gives a file: nothing a person typed. */
 const STORED_UPLOAD_NAME = '/^[a-f0-9]{32}\.[a-z0-9]{2,5}$/D';
 
@@ -469,6 +689,10 @@ function upload_references(): array {
         // be swept an hour after it was uploaded.
         'icon'    => ["SELECT REPLACE(setting_value,'\"','') AS name FROM settings WHERE setting_key='portal_icon'"],
         'logo'    => ["SELECT REPLACE(setting_value,'\"','') AS name FROM settings WHERE setting_key='portal_logo'"],
+        // Children's pictures, back since 040 in a folder of their own, and the
+        // team's since 041 beside them (ADR 0031 §9).
+        'picture' => ["SELECT picture_name AS name FROM students WHERE picture_name<>''",
+                      "SELECT picture_name AS name FROM accounts WHERE picture_name<>''"],
     ];
 }
 
@@ -540,7 +764,8 @@ function prune_uploads(int $graceSeconds = 3600): int {
  *
  * An invoice, a payment proof, a message attachment or a problem report's
  * screenshot is one family's business, and a phone shared in the family keeps
- * what its browser keeps. Only the club's own icon and logo say otherwise.
+ * what its browser keeps. Only the club's own icon and logo say otherwise, and a
+ * picture of a child or a team member, for a week (picture_cache_control()).
  */
 const DOWNLOAD_CACHE_CONTROL = 'private, no-store';
 
@@ -563,9 +788,11 @@ function upload_download_name(string $storedName, string $givenName): string {
  * Content-Disposition is attachment for everything except images, and the type
  * is the one recorded at upload rather than guessed again, so a file cannot be
  * served as something it is not - nor named as something it is not
- * (upload_download_name()).
+ * (upload_download_name()). $cacheControl is said only for a picture
+ * (serve_download()); everything else is kept by no cache.
  */
-function send_upload(string $kind, string $storedName, string $mime, string $givenName = ''): never {
+function send_upload(string $kind, string $storedName, string $mime, string $givenName = '',
+                     string $cacheControl = DOWNLOAD_CACHE_CONTROL): never {
     $path = upload_dir($kind) . '/' . $storedName;
     if (!preg_match(STORED_UPLOAD_NAME, $storedName) || !is_file($path)) {
         http_response_code(404);
@@ -577,7 +804,7 @@ function send_upload(string $kind, string $storedName, string $mime, string $giv
     // request is holding should not be what decides whether a file can be
     // downloaded at all.
     send_download_headers($mime, upload_download_name($storedName, $givenName),
-                          !str_starts_with($mime, 'image/'), (int)filesize($path));
+                          !str_starts_with($mime, 'image/'), (int)filesize($path), $cacheControl);
     readfile($path);
     exit;
 }
@@ -655,6 +882,175 @@ function upload_version_current(string $storedName, mixed $requestedVersion): bo
     return $storedName !== '' && is_string($requestedVersion) && $requestedVersion === upload_version($storedName);
 }
 
+// ---------------------------------------------------------------------------
+// Who sees a picture (ADR 0031 §5, §6)
+// ---------------------------------------------------------------------------
+
+/**
+ * The columns a family's login carries beside its own so that avatar() can draw
+ * its child's picture with no query of its own - which child, the picture, and
+ * the family's yes for the course - as name => the student's column. A
+ * student's own row has the three under its own names: id, picture_name and
+ * course_sees_picture.
+ */
+const CHILD_PICTURE_COLUMNS = ['child_id' => 'id', 'child_picture_name' => 'picture_name', 'child_course_sees_picture' => 'course_sees_picture'];
+
+/**
+ * Those columns for the login under $account, as a select list: read from its
+ * student, of whom a login has one at most (students.account_id is unique), or
+ * from $student where the statement has joined that student already. With a
+ * $prefix each is named with it, as chat_person_columns() names a person's.
+ */
+function child_picture_columns(string $account, string $prefix = '', string $student = ''): string {
+    $account = sql_name($account, 'table alias');
+    if ($prefix !== '') $prefix = sql_name($prefix, 'column prefix');
+    if ($student !== '') $student = sql_name($student, 'table alias');
+    $read = fn(string $column): string => $student !== ''
+        ? $student . '.' . $column
+        : '(SELECT pictured.' . $column . ' FROM students pictured WHERE pictured.account_id=' . $account . '.id)';
+    return implode(', ', array_map(fn(string $as, string $column): string => $read($column) . ' AS ' . $prefix . $as,
+                                   array_keys(CHILD_PICTURE_COLUMNS), CHILD_PICTURE_COLUMNS));
+}
+
+/**
+ * The picture a row draws, or null when it draws none - as may_see_picture()
+ * and the route read one: whether it is the team's, whose it is (the student's
+ * id for a child, the login's for the team), the login it belongs to, its
+ * file's name and the family's yes.
+ *
+ * A student's row draws the child. A login's row - one that says its role -
+ * draws a team member's own picture (accounts.picture_name), or a family's
+ * child's by the CHILD_PICTURE_COLUMNS it carries: a student's login never has
+ * a picture of its own, the child's is on the child. A row without a picture's
+ * column - a course's letter, a name on its own - draws none.
+ */
+function picture_of(array $who): ?array {
+    if (!array_key_exists('role', $who))
+        return ($who['picture_name'] ?? null) === null ? null
+            : ['team' => false, 'id' => (int)($who['id'] ?? 0), 'account_id' => (int)($who['account_id'] ?? 0),
+               'picture_name' => (string)$who['picture_name'], 'course_sees_picture' => (int)($who['course_sees_picture'] ?? 0)];
+    if (is_staff($who))
+        return ($who['picture_name'] ?? null) === null ? null
+            : ['team' => true, 'id' => (int)($who['id'] ?? 0), 'account_id' => (int)($who['id'] ?? 0),
+               'picture_name' => (string)$who['picture_name'], 'course_sees_picture' => 0];
+    return ($who['child_picture_name'] ?? null) === null ? null
+        : ['team' => false, 'id' => (int)($who['child_id'] ?? 0), 'account_id' => (int)($who['id'] ?? 0),
+           'picture_name' => (string)$who['child_picture_name'], 'course_sees_picture' => (int)($who['child_course_sees_picture'] ?? 0)];
+}
+
+/** Whether $name is a picture as store_upload() names one (STORED_UPLOAD_NAME), whose file is there. */
+function picture_stored(string $name): bool {
+    return $name !== '' && preg_match(STORED_UPLOAD_NAME, $name) === 1 && is_file(upload_dir('picture') . '/' . $name);
+}
+
+/**
+ * Whether a row has a picture to draw (picture_of()), whose file is there. A
+ * commit that failed after the old file was deleted leaves a name whose file is
+ * gone, and the person is drawn by the initials until the next picture (ADR 0031
+ * §7). Any row avatar() draws: a student's, a team member's, a family's login.
+ */
+function has_picture(array $who): bool { return picture_stored((string)(picture_of($who)['picture_name'] ?? '')); }
+
+/**
+ * Whether $viewer may see a picture: the one rule (ADR 0031 §5), which avatar()
+ * draws by and the route serves by, so a page never shows a face the route
+ * would refuse. $picture is as picture_of() gives one. True for
+ *
+ *   - a team member's picture: everybody signed in sees the team's faces (the
+ *     owner, 2026-10-08) - the people a family writes to and trains with;
+ *   - staff, every child's - the owner's reason, "for anwesenheit";
+ *   - the child's own login;
+ *   - anybody whose child is in a running course with the child now
+ *     (children_in_course_with()), once the child's family has said yes
+ *     (picture_consent, needs_a_parents_yes()) and while the club shows
+ *     pictures in a course (pictures_in_course).
+ *
+ * Not in return: a family that keeps its own child's to itself still sees those
+ * of families who said yes, because a yes with a price is not freely given (GDPR
+ * Art. 7(4)). Nobody signed out sees any: the callers ask with who is signed in.
+ */
+function may_see_picture(array $viewer, array $picture): bool {
+    if (!empty($picture['team']) || is_staff($viewer)) return true;
+    if ((int)($picture['account_id'] ?? 0) === (int)$viewer['id']) return true;
+    return (int)($picture['course_sees_picture'] ?? 0) === 1 && (bool)setting('pictures_in_course')
+        && isset(children_in_course_with((int)$viewer['id'])[(int)($picture['id'] ?? 0)]);
+}
+
+/**
+ * The children in a running course with the child of login $accountId now
+ * (running_enrolment_sql(), for both), as student id => true: whom a family's
+ * yes reaches. Asked once per request and kept for it, so a page of twenty
+ * faces asks no query per face. A test run is one process, and empties it with
+ * picture_audience_clear() as a request would start without it.
+ */
+function children_in_course_with(int $accountId): array {
+    $memo =& picture_audience();
+    return $memo[$accountId] ??= array_fill_keys(array_map('intval', array_column(rows(
+        'SELECT DISTINCT theirs.student_id FROM students s'
+        .' JOIN class_students mine ON mine.student_id=s.id AND '.running_enrolment_sql('mine')
+        .' JOIN class_students theirs ON theirs.class_id=mine.class_id AND '.running_enrolment_sql('theirs')
+        .' WHERE s.account_id=?', [$accountId]), 'student_id')), true);
+}
+function &picture_audience(): array { static $memo = []; return $memo; }
+function picture_audience_clear(): void { $memo =& picture_audience(); $memo = []; }
+
+/**
+ * Whether the yes for $student's picture in the course is a parent's to give
+ * (ADR 0031, as amended: § 4 Abs. 4 DSG): under the age from which a child
+ * agrees alone, consent_age (14 unless the club is in another country), or with
+ * no birth date to tell. A parent agrees then, through the family's login.
+ * Asked today: picture_consent writes down whose the yes was, and a parent's
+ * yes stays when the child turns 14 - nobody is asked again. The switch's words
+ * and the bell's notice ask it too.
+ */
+function needs_a_parents_yes(array $student): bool {
+    $age = student_age($student['birth_date'] ?? null);
+    return $age === null || $age < (int)setting('consent_age');
+}
+
+/**
+ * The stored name of a picture, for whoever is signed in - or the route's one
+ * 404 (ADR 0031 §6, as amended): of $kind 'student', a child's by the student's
+ * id; of 'account', a team member's by the login's. Any other kind is the 404.
+ *
+ * It reads only the columns the rule needs and asks may_see_picture(); not
+ * student(), which hands over the whole record, when a family that may see a
+ * classmate's face may see nothing else of the child. No such child or login,
+ * no picture and not allowed are the same 404 in the same words, so the address
+ * cannot be used to learn which ids exist; a family's login asked for as the
+ * team's has none (picture_of()).
+ */
+function picture_for_download(string $kind, int $id): string {
+    $viewer = require_user();
+    $row = match ($kind) {
+        'student' => one('SELECT id, account_id, picture_name, course_sees_picture FROM students WHERE id=?', [$id]),
+        'account' => one('SELECT id, role, picture_name FROM accounts WHERE id=?', [$id]),
+        default   => null,
+    };
+    $picture = $row ? picture_of($row) : null;
+    if ($picture === null || !picture_stored($picture['picture_name']) || !may_see_picture($viewer, $picture))
+        throw new NotFound(t('Dieses Bild gibt es nicht.', 'There is no such picture.'));
+    return $picture['picture_name'];
+}
+
+/**
+ * How long a browser may keep the picture it is sent (ADR 0031 §6, as ADR 0017
+ * had it): a week at the address of the picture stored now, and not at all at
+ * any other. Twenty faces fetched again on every page is what the week saves; a
+ * new picture has a new address, and a removed one is drawn as the initials, so
+ * nothing stale is shown from the cache. An older address is still answered,
+ * uncached, rather than refused: a page drawn a moment before the picture
+ * changed would otherwise show a broken image.
+ *
+ * Always private - a child's photograph is never for a shared cache - and never
+ * immutable: a copy on a borrowed phone runs out on its own within the week.
+ * Sign-out asks the browser to forget it sooner (logout), which not every
+ * browser does.
+ */
+function picture_cache_control(string $storedName, mixed $requestedVersion): string {
+    return upload_version_current($storedName, $requestedVersion) ? 'private, max-age=604800' : DOWNLOAD_CACHE_CONTROL;
+}
+
 /**
  * Serve whatever ?page=download was asked for.
  *
@@ -670,6 +1066,16 @@ function serve_download(): void {
     if ($what === 'invoice') {
         $invoice = invoice($id);
         send_bytes(invoice_pdf($invoice), 'application/pdf', invoice_filename($invoice));
+    }
+    if ($what === 'picture') {
+        // Whose face may be seen is picture_for_download()'s to decide;
+        // anybody else gets its 404, whatever kind the address holds.
+        $name = picture_for_download(is_string($_GET['kind'] ?? null) ? $_GET['kind'] : '', $id);
+        // Nothing here writes to the session, so it is let go now that it has
+        // said who is asking: twenty faces on a page then load side by side,
+        // rather than each waiting for the one before it to let go.
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+        send_upload('picture', $name, 'image/jpeg', '', picture_cache_control($name, $_GET['v'] ?? null));
     }
     if ($what === 'shot') {
         require_admin();

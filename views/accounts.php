@@ -44,11 +44,13 @@ select_field('role',t('Rolle','Role'),$roles,'trainer',true);
 $deleteText=t('Löscht die Anmeldung, die privaten Unterhaltungen und die E-Mails, die für sie noch warten. Schüler, Beiträge und Rechnungen bleiben.','Deletes the login, the private conversations and any emails still waiting for it. Students, charges and invoices stay.');
 $loginRow=function(array $a,bool $orphan=false) use ($user,$mailReady,$deleteText): void {
     // A login nobody has set up yet may have no name, and then the address is
-    // its name (login_holder_name()); said once, not twice.
+    // its name (login_holder_name()); said once, not twice. The face is the
+    // login's own: a team member's photo where there is one, by the rule every
+    // face follows (avatar()), the initials of that name otherwise.
     $holder=login_holder_name($a);
     $address=(string)($a['email']??'');
     $identity=function() use ($a,$holder,$address): void {
-        echo avatar(['name'=>$holder]).'<span class="member-row-text"><strong>'.e($holder).'</strong>';
+        echo avatar(['name'=>$holder]+$a).'<span class="member-row-text"><strong>'.e($holder).'</strong>';
         if($address!=='' && $address!==$holder) echo '<small>'.e($address).'</small>';
         login_state_badge($a);
         echo '</span>';
@@ -123,7 +125,9 @@ if($loginCounts['all']>0): ?>
     $linkLive=$invited && $row['link_expires_at']!==null && (string)$row['link_expires_at']>now();
     $address=(string)($row['email']??''); ?>
 <a class="member-row" href="<?=e(url('student',['id'=>$row['student_id'],'#'=>'access']))?>">
-    <?=avatar(['name'=>$row['first_name'].' '.$row['last_name']])?>
+    <?php /* The row is the login, carrying its child's picture (student_logins()); the
+             initials are the child's name, which the row shows, not the login's. */ ?>
+    <?=avatar(['name'=>$row['first_name'].' '.$row['last_name']]+$row)?>
     <span class="member-row-text"><strong><?=e($row['first_name'].' '.$row['last_name'])?></strong>
         <?php if($address!==''): ?><small><?=e($address)?></small><?php endif ?>
         <?php if($invited): ?><small><?=e($linkLive?t('Link gilt bis ','Link valid until ').fmt_datetime((string)$row['link_expires_at']):t('Link abgelaufen','Link expired'))?></small><?php endif ?>

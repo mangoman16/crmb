@@ -252,6 +252,17 @@ if (test_has_table('saved_filters')) fixture('saved_filters', ['name' => 'Aktive
 if (test_has_table('field_definitions'))
     fixture('field_definitions', ['label' => 'T-Shirt-Größe', 'field_type' => 'select', 'options_json' => '["S","M","L"]', 'default_json' => 'null', 'visibility' => 'edit']);
 
+/* Pictures (ADR 0031): the family's child's, the other family's child's - whose
+   family said yes, in a course the family's child is not in - and the
+   trainer's own. Kept as bytes too, for the real router's folder below. */
+$r->pictureBytes = (function (): string { ob_start(); imagejpeg(imagecreatetruecolor(320, 320), null, 85); return (string)ob_get_clean(); })();
+$r->pictures = ['own' => str_repeat('0a', 16).'.jpg', 'other' => str_repeat('0b', 16).'.jpg', 'team' => str_repeat('0c', 16).'.jpg'];
+@mkdir(upload_dir('picture'), 0775, true);
+foreach ($r->pictures as $name) file_put_contents(upload_dir('picture').'/'.$name, $r->pictureBytes);
+run('UPDATE students SET picture_name=? WHERE id=?', [$r->pictures['own'], $w['child']]);
+run('UPDATE students SET picture_name=?, course_sees_picture=1 WHERE id=?', [$r->pictures['other'], $o['child']]);
+run('UPDATE accounts SET picture_name=? WHERE id=?', [$r->pictures['team'], $trainer]);
+
 $r->families = ['family', 'administrator viewing as the family'];
 $r->ids = ['family' => $w['login'], 'trainer' => $trainer, 'administrator' => $admin, 'administrator viewing as the family' => $w['login']];
 $r->roles = [];
@@ -400,6 +411,7 @@ if ($why !== '') {
                     robust_outside($role, $page, ['page' => $page] + $query + array_fill_keys(array_diff($r->queryKeys, array_keys($query)), $value), null, 'as linked, '.$label.' in every other key');
                     foreach (array_keys($query) as $key) robust_outside($role, $page, ['page' => $page, $key => $value] + $query, null, 'as linked, '.$label.' in '.$key);
                 }
+        robust_pictures_outside();
     } finally {
         robust_server_stop();
         set_setting('auto_background', $background);
@@ -462,8 +474,11 @@ if ($noForm)
 if ($r->notTwice)
     test_unsupported(array_merge(test_unsupported(), ['robustness: a form sent twice was not reached where the form as drawn is refused - '
         .robust_list(array_map(fn($who, $why) => $who.' („'.mb_strimwidth($why, 0, 50, '…').'“)', array_keys($r->notTwice), $r->notTwice), 12)]));
+// The pictures this suite put in the run's picture folder go with it: the
+// suites after it count what the prune finds there.
+foreach (dir_entries(upload_dir('picture')) as $name) @unlink(upload_dir('picture').'/'.$name);
 test_unsupported(array_merge(test_unsupported(), ['robustness: what an action does with an uploaded file. is_uploaded_file() is true only for '
-    .'a real upload, so in process store_upload() refuses every file before it reads it']));
+    .'a real upload, so in process store_upload() refuses every file before it reads it; out of process one child’s photo goes through the router, and no other upload']));
 
 // ---------------------------------------------------------------------------
 // How one probe is made and judged
@@ -476,13 +491,14 @@ test_unsupported(array_merge(test_unsupported(), ['robustness: what an action do
  */
 function robust_undone(callable $fn): mixed {
     $result = null;
-    $memos = [setting_cache(), payment_cache(), setup_cache()];
+    $memos = [setting_cache(), payment_cache(), setup_cache(), picture_audience()];
     try { transactional(function () use ($fn, &$result) { $result = $fn(); throw new RobustUndo(); }); }
     catch (RobustUndo) {}
     finally {
         $memo = &setting_cache(); $memo = $memos[0];
         $memo = &payment_cache(); $memo = $memos[1];
         $memo = &setup_cache(); $memo = $memos[2];
+        $memo = &picture_audience(); $memo = $memos[3];
     }
     return $result;
 }
@@ -964,11 +980,14 @@ function robust_server_stop(): void {
 }
 
 /**
- * One request to the real router: a GET of $query, or with $post a POST of it as
- * signed out. $role is 'signed out' or one of the roles, whose session is written
- * where the server keeps its sessions.
+ * One request to the real router as $role, in a session of its own written where
+ * the server keeps its sessions: a GET of $query, or with $post a POST of it -
+ * with the session's token and a request id added, and with $files, as
+ * name => [file name, type, bytes], as a form that carries a file. Returns the
+ * status, the header lines, the body, what the server logged meanwhile, and the
+ * session's file, which the caller reads and deletes.
  */
-function robust_outside(string $role, string $what, array $query, ?array $post, string $input): void {
+function robust_fetch(string $role, array $query, ?array $post = null, array $files = []): array {
     $r = robust();
     run_counter('DELETE FROM rate_limits');
     $session = $role === 'signed out' ? ['locale' => 'de', 'csrf' => bin2hex(random_bytes(32))] : ['last_seen' => time()] + $r->roles[$role];
@@ -976,19 +995,55 @@ function robust_outside(string $role, string $what, array $query, ?array $post, 
     $stored = '';
     foreach ($session as $key => $value) $stored .= $key.'|'.serialize($value);
     file_put_contents($r->work.'/sessions/sess_'.$id, $stored);
-    if ($post !== null) $post += ['action' => $what, 'csrf' => $session['csrf'], 'request_id' => bin2hex(random_bytes(32))];
+    $type = 'application/x-www-form-urlencoded';
+    if ($post !== null) {
+        $post += ['csrf' => $session['csrf'], 'request_id' => bin2hex(random_bytes(32))];
+        $content = http_build_query($post);
+        if ($files) {
+            $boundary = 'robust'.bin2hex(random_bytes(8));
+            $type = 'multipart/form-data; boundary='.$boundary;
+            $content = '';
+            foreach ($post as $name => $value) $content .= "--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n";
+            foreach ($files as $name => [$filename, $fileType, $bytes])
+                $content .= "--$boundary\r\nContent-Disposition: form-data; name=\"$name\"; filename=\"$filename\"\r\nContent-Type: $fileType\r\n\r\n$bytes\r\n";
+            $content .= "--$boundary--\r\n";
+        }
+    }
     clearstatcache();
     $from = filesize($r->log);
     $context = stream_context_create(['http' => [
         'method' => $post === null ? 'GET' : 'POST', 'ignore_errors' => true, 'follow_location' => 0, 'timeout' => 30,
-        'header' => 'Cookie: badminton_session='.$id."\r\n".($post === null ? '' : "Content-Type: application/x-www-form-urlencoded\r\n"),
-        'content' => $post === null ? '' : http_build_query($post)]]);
+        'header' => 'Cookie: badminton_session='.$id."\r\n".($post === null ? '' : 'Content-Type: '.$type."\r\n"),
+        'content' => $content ?? '']]);
     $body = (string)@file_get_contents('http://127.0.0.1:'.$r->port.'/index.php'.($query ? '?'.http_build_query($query) : ''), false, $context);
     $headers = $http_response_header ?? [];
     clearstatcache();
-    $log = (string)file_get_contents($r->log, false, null, $from);
     preg_match('~^HTTP/\S+ (\d{3})~', $headers[0] ?? '', $m);
-    $status = (int)($m[1] ?? 0);
+    return ['status' => (int)($m[1] ?? 0), 'headers' => $headers, 'body' => $body,
+            'log' => (string)file_get_contents($r->log, false, null, $from), 'session' => $r->work.'/sessions/sess_'.$id];
+}
+
+/** Whether what the server logged during a request holds no PHP warning and nothing the portal wrote to the host's log. */
+function robust_log_clean(string $log): bool {
+    return !preg_match('/PHP (?:Warning|Notice|Deprecated|Fatal error|Parse error)|\bCRM\b/', $log);
+}
+
+/** A response's header by its name, or null. */
+function robust_header(array $sent, string $name): ?string {
+    foreach ($sent['headers'] as $line)
+        if (stripos($line, $name.':') === 0) return trim(substr($line, strlen($name) + 1));
+    return null;
+}
+
+/**
+ * One request to the real router: a GET of $query, or with $post a POST of it as
+ * signed out. $role is 'signed out' or one of the roles, whose session is written
+ * where the server keeps its sessions.
+ */
+function robust_outside(string $role, string $what, array $query, ?array $post, string $input): void {
+    $r = robust();
+    $sent = robust_fetch($role, $query, $post === null ? null : $post + ['action' => $what]);
+    ['status' => $status, 'headers' => $headers, 'body' => $body, 'log' => $log] = $sent;
     $problems = [];
     if ($status === 0 || $status >= 500) $problems[] = ['answers with a status of 500 or more, or none', 'status '.$status];
     if (preg_match('/<b>(?:Warning|Notice|Deprecated)<\/b>:|\b(?:Warning|Notice|Deprecated): /', $body)) $problems[] = ['prints a PHP warning into the page', ''];
@@ -1008,11 +1063,113 @@ function robust_outside(string $role, string $what, array $query, ?array $post, 
                            'status '.$status.($location !== '' ? ', to '.($to['page'] ?? '?') : '')];
     }
     // The session the request left says whether it was refused at the token.
-    if ($post !== null && str_contains((string)@file_get_contents($r->work.'/sessions/sess_'.$id), 'Die Sitzung ist abgelaufen'))
+    if ($post !== null && str_contains((string)@file_get_contents($sent['session']), 'Die Sitzung ist abgelaufen'))
         $problems[] = ['the post never reached the action: the suite’s own token was refused', ''];
     if ($status > 0) $r->reached['requests to the real router']++;
     robust_record('outside', $what.' as '.$role, $input, $problems);
-    @unlink($r->work.'/sessions/sess_'.$id);
+    @unlink($sent['session']);
+}
+
+/**
+ * Pictures through the real router (ADR 0031 §6; tests 3, 10 and 11): what is
+ * served and how long it may be kept, which a command line cannot read; the one
+ * 404 for every picture that is not to be had, whatever the address holds;
+ * sign-out's header; and one real photo uploaded, which only a real request
+ * carries.
+ */
+function robust_pictures_outside(): void {
+    $r = robust(); $w = $r->own; $o = $r->other;
+    $folder = $r->work.'/uploads/picture';
+    @mkdir($folder, 0775, true);
+    foreach ($r->pictures as $name) file_put_contents($folder.'/'.$name, $r->pictureBytes);
+    $picture = fn(string $role, array $query): array => robust_fetch($role, ['page' => 'download', 'what' => 'picture'] + $query);
+
+    case_('A picture through the real router comes as a JPEG, kept a week privately at its address and no longer [ADR 0031 §6, test 3]');
+    $current = $picture('family', ['kind' => 'student', 'id' => (string)$w['child'], 'v' => upload_version($r->pictures['own'])]);
+    is_same([200, 'image/jpeg', 'private, max-age=604800'], [$current['status'], robust_header($current, 'Content-Type'), robust_header($current, 'Cache-Control')],
+            'the family’s own child’s picture, at its current address: a JPEG, kept a week, privately');
+    is_same([null, null], [robust_header($current, 'Expires'), robust_header($current, 'Pragma')], 'with no Expires or Pragma saying otherwise');
+    is_same($r->pictureBytes, $current['body'], 'and the picture itself');
+    $older = $picture('family', ['kind' => 'student', 'id' => (string)$w['child'], 'v' => 'aaaaaaaaaaaa']);
+    is_same([200, 'private, no-store'], [$older['status'], robust_header($older, 'Cache-Control')], 'at an older address it is answered, and kept nowhere');
+    $team = $picture('family', ['kind' => 'account', 'id' => (string)$r->ids['trainer'], 'v' => upload_version($r->pictures['team'])]);
+    is_same([200, 'image/jpeg'], [$team['status'], robust_header($team, 'Content-Type')], 'the trainer’s own picture is served to a family');
+    $normal = fn(array $sent): string => (string)preg_replace('/name="request_id" value="[a-f0-9]{64}"/', '', $sent['body']);
+    $refused = ['nobody' => $picture('family', ['kind' => 'student', 'id' => (string)$r->missing]),
+                'a child with no picture' => $picture('family', ['kind' => 'student', 'id' => '1103']),
+                'another family’s child, whom a yes does not reach' => $picture('family', ['kind' => 'student', 'id' => (string)$o['child']]),
+                'its own child’s with no kind' => $picture('family', ['id' => (string)$w['child']]),
+                'its own child’s as the team’s' => $picture('family', ['kind' => 'account', 'id' => (string)$w['child']]),
+                'the trainer’s as a child’s' => $picture('family', ['kind' => 'student', 'id' => (string)$r->ids['trainer']])];
+    foreach ($refused as $what => $sent)
+        is_same([404, $normal($refused['nobody'])], [$sent['status'], $normal($sent)], $what.': the same 404, the same page');
+    ok(str_contains($refused['nobody']['body'], e('Dieses Bild gibt es nicht.')), 'which says so in words');
+    foreach (['a child’s' => ['kind' => 'student', 'id' => (string)$w['child'], 'v' => upload_version($r->pictures['own'])],
+              'a team member’s' => ['kind' => 'account', 'id' => (string)$r->ids['trainer'], 'v' => upload_version($r->pictures['team'])]] as $whose => $query) {
+        $out = $picture('signed out', $query);
+        parse_str((string)parse_url((string)robust_header($out, 'Location'), PHP_URL_QUERY), $to);
+        is_same([303, 'login', ''], [$out['status'], $to['page'] ?? null, $out['body']], 'signed out, '.$whose.' picture is the way to the sign-in page, and no picture');
+    }
+
+    case_('The picture route answers any value with a 404 in words [ADR 0031, test 10]');
+    $values = $r->classes[2] + array_intersect_key($r->classes[4], array_flip(['„-1“', '„0“', '„2147483648“', '„99999999999999999999“']))
+            + array_combine(array_map(fn($kind) => 'the other family’s '.$kind, array_keys($o)), array_map('strval', $o));
+    foreach (['family', 'trainer'] as $role)
+        foreach ($values as $label => $value) {
+            $sent = $picture($role, ['kind' => $label === 'the other family’s login' ? 'account' : 'student', 'id' => $value]);
+            $allowed = $role === 'trainer' && $label === 'the other family’s child';
+            ok($allowed ? $sent['status'] === 200 : ($sent['status'] === 404 && str_contains($sent['body'], e('Dieses Bild gibt es nicht.')) && robust_log_clean($sent['log'])),
+               $role.', '.$label.' as the id: '.($allowed ? 'staff are served every child’s picture' : 'a 404 in words, nothing logged').' (status '.$sent['status'].')');
+        }
+
+    case_('Signing out asks the browser to forget the pictures it keeps [ADR 0031 §6, test 11]');
+    $out = robust_fetch('family', [], ['action' => 'logout']);
+    is_same([303, '"cache"'], [$out['status'], robust_header($out, 'Clear-Site-Data')], 'the sign-out answers with Clear-Site-Data: "cache"');
+    @unlink($out['session']);
+
+    case_('A real photo, uploaded through the real router, becomes the child’s picture [ADR 0031 §3, test 10]');
+    $im = imagecreatetruecolor(800, 600);
+    imagefilledrectangle($im, 0, 0, 399, 599, imagecolorallocate($im, 220, 30, 30));
+    ob_start(); imagejpeg($im, null, 90); $photo = (string)ob_get_clean();
+    $other = robust_other_rows();
+    $sent = robust_fetch('family', [], ['action' => 'picture_save', 'student_id' => (string)$w['child'], 'return_page' => 'student', 'return_id' => (string)$w['child']],
+                         ['picture' => ['IMG_0815.JPG', 'image/jpeg', $photo]]);
+    $location = (string)robust_header($sent, 'Location');
+    parse_str((string)parse_url($location, PHP_URL_QUERY), $to);
+    is_same([303, 'student', (string)$w['child'], 'picture'], [$sent['status'], $to['page'] ?? null, $to['id'] ?? null, parse_url($location, PHP_URL_FRAGMENT)],
+            'the family’s photo is taken, and the page goes back to the picture on the child’s page');
+    ok(!str_contains((string)@file_get_contents($sent['session']), 's:4:"kind";s:5:"error"'), 'with no refusal on the way');
+    @unlink($sent['session']);
+    $name = (string)scalar('SELECT picture_name FROM students WHERE id=?', [$w['child']]);
+    ok($name !== $r->pictures['own'] && preg_match(STORED_UPLOAD_NAME, $name) === 1 && str_ends_with($name, '.jpg'), 'the child has a new picture: '.$name);
+    $size = is_file($folder.'/'.$name) ? getimagesize($folder.'/'.$name) : false;
+    is_same([320, 320, IMAGETYPE_JPEG], $size ? [$size[0], $size[1], $size[2]] : null, 'stored as one square JPEG of 320, not as the photo that was sent');
+    ok(!is_file($folder.'/'.$r->pictures['own']), 'and the picture it replaced is gone at once');
+    is_same($other, robust_other_rows(), 'and nothing of the other family’s changed');
+    ok(robust_log_clean($sent['log']), 'and the server logged no warning: '.trim($sent['log']));
+
+    case_('A photo larger than the server takes is said to be too large, on the page it came from [the screens’ review of ADR 0031]');
+    /* PHP throws such a post away before the portal runs - the token, the
+       action and the file - and writes a line of its own to the host's log.
+       The server is this PHP, with this php.ini, so its post_max_size is this. */
+    $limit = ini_bytes((string)ini_get('post_max_size'));
+    $page = robust_fetch('family', ['page' => 'student', 'id' => (string)$w['child']]);
+    @unlink($page['session']);
+    preg_match('~<form method="post" action="([^"]*)"[^>]*>\s*<input type="hidden" name="action" value="picture_save">~', $page['body'], $form);
+    parse_str((string)parse_url(html_entity_decode($form[1] ?? ''), PHP_URL_QUERY), $address);
+    is_same(['return_page' => 'student', 'return_id' => (string)$w['child']], $address, 'the picture card’s form says in its address where it came from');
+    if ($limit > 0) {
+        $big = robust_fetch('family', $address, ['action' => 'picture_save', 'student_id' => (string)$w['child']],
+                            ['picture' => ['IMG_0816.JPG', 'image/jpeg', str_repeat("\xFF", $limit)]]);
+        parse_str((string)parse_url((string)robust_header($big, 'Location'), PHP_URL_QUERY), $to);
+        $said = (string)@file_get_contents($big['session']);
+        @unlink($big['session']);
+        is_same([303, 'student', (string)$w['child']], [$big['status'], $to['page'] ?? null, $to['id'] ?? null], 'a photo over post_max_size goes back to the child’s page');
+        ok(str_contains($said, '"'.upload_too_large().'";s:4:"kind";s:5:"error"') && !str_contains($said, 'Die Sitzung ist abgelaufen'),
+           'saying the file is too large, with the limit - not that the session expired');
+        ok(robust_log_clean(preg_replace('/^.*POST Content-Length of \d+ bytes exceeds the limit of \d+ bytes.*$/m', '', $big['log'])),
+           'and nothing logged but PHP’s own line about the size: '.trim($big['log']));
+    }
 }
 
 // ---------------------------------------------------------------------------

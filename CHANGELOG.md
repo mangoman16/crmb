@@ -9,53 +9,62 @@ one thing done before the upload — two, if anything in its custom fields is
 worth keeping — and changes in several ways the first time it is opened;
 [UPDATING.md](UPDATING.md#updating-an-existing-portal-to-060) has them in full.
 
-**First, while the old version is still running, add three paragraphs to the
+**First, while the old version is still running, add four paragraphs to the
 privacy notice** under **Einstellungen → Datenschutz**: one replacing the old
 newsletter paragraph, because club news by email now starts switched on and is
 no longer described as voluntary consent; one about the course groups, what a
 message holds, and the administrators reading chats between a child and a
-trainer; and one saying that everybody signs in with their own address and that
-a login without one receives no e-mail. Replace its „6." too, with the draft's,
-because the portal now deletes data once its period is over. UPDATING.md has the
-first to copy and says where in the drafts the others are. The drafts shipped
-with this version only fill in the notice of a new portal; an existing one keeps
-the text it had. Where the legal basis goes there is a note in square brackets,
-which is the operator's to decide and have checked, and a released notice is not
-saved until the notes are replaced.
+trainer; one saying that everybody signs in with their own address and that a
+login without one receives no e-mail; and one on profile pictures: who adds one,
+who sees it, and that a child agrees alone from 14 and a parent below that.
+Replace its „6." too, with the draft's, because the portal now deletes data once
+its period is over. If the pictures paragraph cannot go in before the upload,
+switch „Kinder im selben Kurs sehen Fotos" off right after it until it does.
+UPDATING.md has the first to copy and says where in the drafts the others are.
+The drafts shipped with this version only fill in the notice of a new portal; an
+existing one keeps the text it had. Where the legal basis goes there is a note
+in square brackets, which is the operator's to decide and have checked, and a
+released notice is not saved until the notes are replaced.
 
 **Second, if anything typed into the custom fields is worth keeping, write it
 down.** This version deletes the custom fields, with every value in them. After
 the update, take them out of the privacy notice too.
 
-Migrations 019 to 039 then run by themselves. 019 takes every child but the
+Migrations 019 to 041 then run by themselves. 019 takes every child but the
 first off a login they shared; nothing is deleted, and each change is written
 under **Änderungen**. 020 gives every account a status and an empty list of
 times online, which 034 and 035 take away again. 021 switches news by email on
 for accounts created from now on; every existing account keeps its choice. 022
 to 024 give usernames and take them away again; 028 brings them back, for
 students only, and lets a login have no address; 039 takes them away for good.
-025 to 027 give every course
-its group chat, let staff take a group message down, and add the status emoji,
-which 035 takes away again; the old shared conversations stay readable and
-closed. 029 and 030 make a student's login impossible to delete: it is replaced
-instead. 031 prepares keeping a child taken out of a course; nothing uses it
-yet. 032 deletes the custom fields with their values, and 033 the saved views of
-the **Schüler** list and the e-mail templates; the custom fields' values are no
-longer among the tables counted before and after an update, so their going does
-not refuse it. 034 to 037 delete the times online, each login's status, emoji
-and picture, each child's picture, and every request one family made to write to
-another. 038 takes away the pin that held a child in an age group: the band
-now comes from the date of birth alone. 039 drops the username column: a test
-login that signed in with a username — invited, in use or suspended — is „Ohne
-Anmeldung" afterwards and needs an address and an invitation, and its side of
-its chats, its read marks and its bell notices go, while the chats stay for the
-other side. Nothing of this shows under „Änderungen", and a portal updated
-from 0.4.0 has no such login.
-After the files, the stored profile pictures are deleted, **for good**:
-the copy the update takes first is of the database, and brings back their names
-but not the pictures. Also after the files, every student without a login — the
-children 019 took off a shared one among them — is given a placeholder that
-nobody signs in with until staff enter its address and send the invitation.
+025 to 027 give every course its group chat, let staff take a group message
+down, and add the status emoji, which 035 takes away again; the old shared
+conversations stay readable and closed. 029 and 030 make a student's login
+impossible to delete: it is replaced instead. 031 prepares keeping a child taken
+out of a course; nothing uses it yet. 032 deletes the custom fields with their
+values, and 033 the saved views of the **Schüler** list and the e-mail
+templates; the custom fields' values are no longer among the tables counted
+before and after an update, so their going does not refuse it. 034 to 037 delete
+the times online, each login's status, emoji and picture, each child's picture,
+and every request one family made to write to another. 038 takes away the pin
+that held a child in an age group: the band now comes from the date of birth
+alone. 039 drops the username column: a test login that signed in with a
+username — invited, in use or suspended — is „Ohne Anmeldung" afterwards and
+needs an address and an invitation, and its side of its chats, its read marks
+and its bell notices go, while the chats stay for the other side. Nothing of
+this shows under „Änderungen", and a portal updated from 0.4.0 has no such
+login. 040 and 041 make room for the new pictures: an empty one for every child,
+with the family's answer for the course starting as no, and an empty one for
+every login; they write no row. After the files, the stored profile pictures
+from before are deleted, **for good**: the copy the update takes first is of the
+database, and brings back their names but not the pictures. Also after the
+files, every student without a login — the children 019 took off a shared one
+among them — is given a placeholder that nobody signs in with until staff enter
+its address and send the invitation.
+
+**Pictures need PHP's gd.** Without it the update runs and everything else
+works; no picture can be added, and **Einstellungen → System** names what is
+missing.
 
 **The portal now deletes data past its period**, in a daily cleanup. Its first
 run comes within a day of the upload, or with the first page if nobody opened
@@ -105,10 +114,11 @@ What the portal carries has been cut to what the trainer and the families need
   their four settings. The update deletes the times it had kept, and the
   privacy notice no longer has to mention them.
 - **The status emoji.**
-- **Profile pictures**, of the team and of the children. Everybody appears by
-  their initials. Once the update has passed, the stored pictures are deleted
-  from the server; the copy of the database taken before the update holds only
-  their names, so they cannot be brought back.
+- **The profile pictures from before**, of the team and of the children. Once
+  the update has passed, the stored pictures are deleted from the server; the
+  copy of the database taken before the update holds only their names, so they
+  cannot be brought back. Pictures come back in this version as new ones
+  („Pictures, for the children and the team", below).
 - **Asking to write to another family**, with every request asked or answered,
   which the update deletes. A chat between two children that such a request led
   to stays, for the two of them to read, and takes no new messages.
@@ -194,6 +204,56 @@ and the screens for the owner's goals. **Seen in Chromium only**, at 320 and 390
 pixels, as each role, light and dark; not yet on a real iPhone, which TESTING.md
 I.1–I.12 and W.1–W.3 walk, with W.4 on an Android phone. Chromium cannot show
 whether Safari still flashes white.
+
+### Pictures, for the children and the team (ADR 0031)
+
+- **A child can have a profile picture again.** The family adds, replaces and
+  removes it on the child's page, from the camera or the photo library; the
+  trainer and the administrators do it for every child, there or straight from
+  **Anwesenheit**, where the face of a child without one is a camera that saves
+  the marks made so far first. A picture is never required.
+- **What is kept is a small square**, 320 × 320 pixels, made on the server,
+  without where, when and with what it was taken; the phone's photo itself is
+  not kept. Only JPEG and PNG, up to 24 megapixels; with JavaScript the browser
+  makes a photo smaller before it is sent, so a phone's photo does not go at
+  full size. Twenty pictures an hour per login.
+- **Who sees a child's picture**: the trainers and administrators, always — at
+  attendance, in the lists, on the child's page and in the chats; the child's
+  own login; and, once the family has switched „Im Kurs-Chat zeigen" on, the
+  other children in the child's courses and their families, in the course chat.
+  From 14 the child switches it on alone, below that and without a birth date a
+  parent (§ 4 Abs. 4 DSG; „Ab diesem Alter stimmt ein Kind selbst zu", 14 by
+  default), and a parent's yes stays when the child turns 14. Staff can only
+  switch it off. A new picture from staff hides it from the course again until
+  the family says yes to that picture, and the family's bell says so. A family
+  that keeps it off still sees the others.
+- **The club decides** whether the children of a course see each other's
+  pictures at all: „Kinder im selben Kurs sehen Fotos" under **Einstellungen →
+  Datenschutz**, on by default.
+- **The team has pictures too**: each trainer and administrator adds their own
+  on **Mein Konto**, and everybody signed in sees them.
+- **„Dein Foto"**: whoever sets up a login from an invitation is offered a
+  picture once, right after the password, and can skip it; a family whose
+  trainer already took one sees it there with „Passt so". The banner after the
+  password then says only „Dein Konto ist bereit. Du meldest dich ab jetzt mit …
+  an."; what is left to fill in, the child's page says. On a server without gd
+  there is no „Dein Foto", and a family's banner keeps its welcome.
+- **A removed or replaced picture is deleted at once**, a child's with the
+  child and a team member's with their login; „Foto löschen" says first that it
+  cannot be undone. A browser that showed a picture may keep its copy for up to
+  a week, shown nowhere; signing out asks it to delete such copies.
+- **At Anwesenheit** „Alle: Anwesend" stands beside „Mehr", which holds the
+  other marks for the whole list in a sheet, and Enter still saves. **On a
+  family's Übersicht** the child's face leads the greeting and opens the child's
+  photo.
+- **A photo or a receipt larger than the server takes** is answered „Die Datei
+  ist zu groß. Erlaubt sind …" on its own page, no longer „Die Sitzung ist
+  abgelaufen".
+- **Pictures need PHP's gd.** Without it setup installs all the same and lists
+  it as „eingeschränkt", no picture can be added, and everything else works. The
+  machine that builds a release needs gd, because composer checks for it; on a
+  Git install `bin/update.sh` tells composer to waive gd alone, so a host
+  without it updates as it installs.
 
 ### A slow or silent mail server no longer holds up the next page
 

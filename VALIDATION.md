@@ -6,6 +6,41 @@ records from before the suite ran on MariaDB only — until commit `f82289c` on 
 when it also ran on a SQLite translation — are in git history; they describe code that has
 changed since.
 
+## 0.6.0, unreleased — pictures (ADR 0031)
+
+Recorded 2026-10-09 by docs-writer. The gate run is the project manager's, as
+reported to the writer; the writer watched only the Composer record below.
+
+- **The project manager's gate run**, 2026-10-09, on a clean worktree of
+  `1bc2573` with adr0031-db.patch (md5 `5f4bfd8b…`),
+  adr0031-server-rebased.patch (`22aa817e…`), adr0031-views-rebased.patch
+  (`c2149382…`), update-gd.patch (`a28695e5…`), the documents patch and
+  records-pictures.patch (`5413a364…`), which is the pictures commit's tree:
+  `tests/mariadb-local.sh` 9271 passed, 0 failed, in 300 s; `tests/e2e.sh` 413
+  checks passed, 0 failed, `RESULT: PASS`, no PHP warnings, no layout findings.
+- **The machine**: PHP 8.4.26 with gd 2.3.3, and MariaDB
+  10.11.14-MariaDB-0ubuntu0.24.04.1.
+- **mobile-tester**, as reported, 2026-10-09, on its own copy of the same tree:
+  Chromium 141 at 320, 360 and 390 px, light and dark, normal to 200 % text. In
+  99 card rows „Foto hinzufügen" and „Foto ändern" wrap and are never cut;
+  Zugänge shows the team's photos; initials stay inside the 72 and 120 px faces;
+  in 24 cases a row keeps its exact size while a photo is sent, the spinner
+  centred over the face; a 48-megapixel photo without JavaScript is answered on
+  its own page; the Reduce Motion pulse runs on across the change of page. Of
+  210 screens in common with `1bc2573`, with the same data, none is newly
+  broken. Not seen on an iPhone.
+- **Composer on a PHP without gd**, watched by docs-writer on 2026-10-09: PHP
+  8.4.26 with every extension of this machine loaded except gd, Composer 2.8.12
+  and this version's `composer.lock`. Run as
+  `composer install --no-dev --prefer-dist --optimize-autoloader --dry-run`, it
+  stops on `ext-gd` (exit 2) and names `--ignore-platform-req=ext-gd`; with that
+  flag added, it would install the three locked packages (exit 0). The
+  `vendor/composer/platform_check.php` this Composer writes for this
+  `composer.json` tests the PHP version alone, so a package built with gd starts
+  without it.
+- **Not run**: MySQL 8.0, where neither 040 nor 041 has been tried; Safari, an
+  iPhone and an Android phone, so the picture walks P.1–P.20 are not walked.
+
 ## 0.6.0, unreleased — at `76cc959` with the ADR 0030 patches: one person, one address
 
 Recorded 2026-10-08 by docs-writer, from the project manager's run, the implementers' and

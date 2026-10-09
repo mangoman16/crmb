@@ -93,7 +93,7 @@ release and emptied again for the next.
 - The privacy notice in English is optional: U.35, U.56
 - News by email starts switched on for a new login, and can be switched off when accepting the invitation: [15.2, 15.7](#news-email-and-the-queue), in News and email
 - The bell no longer jumps when opened, its panel stays on a phone's screen, its number is a red badge like the one on **Chats**, and a tap elsewhere or Escape closes it: [5.3a–5.3g](#the-shell-the-bar-notifications-feedback-impersonation), in The shell
-- Your initials at the top right open a menu — your name, „Mein Konto", „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [5.3i, 5.3j](#the-shell-the-bar-notifications-feedback-impersonation) · with the bell, only one open at a time: 5.3f
+- Your picture or initials at the top right open a menu — your name, „Mein Konto", „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [5.3i, 5.3j](#the-shell-the-bar-notifications-feedback-impersonation) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
 - After an update the browser fetches the new stylesheet and script by itself: the account menu is styled and the bell stays still without clearing the cache: A.0
 - Everybody signs in with their own e-mail address, and nobody else's. A person is added either by inviting an address — they fill in their own details and choose a course — or through the wizard „Schüler anlegen"; nobody sets another person's password (ADR 0021, amended by ADR 0023 and ADR 0030): A.1–A.13
@@ -119,6 +119,7 @@ release and emptied again for the next.
 - How long the portal keeps what it holds: ten periods under **Einstellungen → System**, the daily cleanup deletes what is past them with their files, and never an invoice, a charge or a payment: [D.1–D.7](#how-long-the-portal-keeps-what-it-holds-adr-0032)
 - The security review of 2026-10-08: a family's login is called what the child is, and Mein Konto no longer renames it; a chat mails once until it is read; twenty chat photos an hour per family's login, staff not counted; administrators hear of every change to where the money goes; the QR code is a SEPA transfer into the account shown; a changed address or password is told by mail; a chat photo keeps no file name; the outbox forgets what a sent mail said after 90 days: [S.7–S.14](#the-security-batch-roadmap-item-6), S.3
 - The portal looks and behaves like an iPhone app: the phone's own font, grouped lists, a tab bar (Übersicht · Schüler · Anwesend · Chats · Mehr for staff, Übersicht · Beiträge · Chats · Profil for a family), red counts, switches, sheets, a back button, pages that fade; „Mehr" as a page; Mein Konto for a family through Profil, the language in Mein Konto — on a real iPhone: [I.1–I.11](#the-portal-as-an-iphone-app-design-language-phase-1), and 1.6, 5.0a, 5.1b, 5.3c, 6.10, U.46, U.47, U.48, U.52, U.56
+- Pictures come back (ADR 0031): a child's, added by the family or the trainer, also from **Anwesenheit**; the team's own on **Mein Konto**; the course sees a child's once the family says yes, a parent's under 14; „Dein Foto" once, after the first password; JPEG and PNG only, up to 24 megapixels; at **Anwesenheit** „Mehr" for the rarer marks and Enter that saves; the child's face beside the greeting: [P.1–P.20](#pictures-adr-0031)
 
 ---
 
@@ -185,6 +186,7 @@ measurement.
 | `messaging` | Who may read a conversation and who may write to whom |
 | `migrations` | An update carries the data with it: prices, discounts, addresses |
 | `performance` | Query counts, so a page does not issue one query per row |
+| `pictures` | Who sees a picture, who adds, changes and removes it, the family's yes for the course and whose yes it is by age, and what goes with a child or a login (ADR 0031) |
 | `reports` | A problem report's trail of steps, and nothing in it that must never be kept |
 | `retention` | Each period deletes what is past it and nothing short of it, files included; never an accounting record (ADR 0032) |
 | `robustness` | Every form sent every kind of nonsense by every kind of person: one sentence back, never an error page, a warning or a write to somebody else's rows |
@@ -582,14 +584,15 @@ Skip on an ordinary code change; do all of it before a release.
   switch JavaScript back on.
 - [ ] **5.3h** With the bell open on a child's page, „Alle gelesen" leaves you on
   that same child, not on „Nicht gefunden".
-- [ ] **5.3i** Tap your initials at the top right: the menu shows your name and
-  role, „Mein Konto" and „Abmelden" — no status, no emoji and no coloured dot,
-  as staff and as a family. „Mein Konto" opens your account. With JavaScript off
-  as in 5.3g, the menu opens and closes the same way, and „Abmelden" signs you
-  out.
+- [ ] **5.3i** Tap your picture or initials at the top right: the menu shows
+  your name and role, „Mein Konto" and „Abmelden" — no status, no emoji and no
+  coloured dot, as staff and as a family. „Mein Konto" opens your account. With
+  JavaScript off as in 5.3g, the menu opens and closes the same way, and
+  „Abmelden" signs you out.
 - [ ] **5.3j** On an iPhone 320 pixels wide (an iPhone SE of the first
-  generation), tap your initials: „Abmelden" is above the bar at the bottom and
-  can be tapped. No such iPhone to hand? Write down that this was not checked.
+  generation), tap your picture or initials: „Abmelden" is above the bar at the
+  bottom and can be tapped. No such iPhone to hand? Write down that this was not
+  checked.
 - [ ] **5.4** A family sends a message. Both the trainer *and* the
   administrator get a notification — not only one of them.
 - [ ] **5.5** Clicking a notification lands on the thing it is about.
@@ -1224,10 +1227,12 @@ The `views` suite checks the same page's HTML; these checks are for the screen.
 - [ ] **20.4** The released notice says what this version stores and sends: club
   news by email being on for new accounts, the course groups and what a message
   holds, and that everybody signs in with their own address and a login without
-  one receives no e-mail, and in „6." how long each kind of data is kept and
-  that charges, payments and invoices stay seven years. It says nothing about
-  usernames, sign-in links, when somebody was online, an online dot, a status
-  emoji or a profile picture. A portal that was updated keeps the text saved
+  one receives no e-mail, in „3." the paragraph on profile pictures: who adds
+  one, who sees it, that a child agrees alone from 14 and a parent below that,
+  and that everybody signed in sees the team's, and in „6." how long each kind
+  of data is kept and that charges, payments and invoices stay seven years. It
+  says nothing about usernames, sign-in links, when somebody was online, an
+  online dot or a status emoji. A portal that was updated keeps the text saved
   before, so these arrive only if they were pasted in (UPDATING.md). No „[…]"
   note is left in the released text.
 
@@ -1295,8 +1300,8 @@ Do this last, on a real phone, not a resized desktop window.
 - [ ] **22.4** **Mein Konto → Farbe**: the eight dots show eight colours. If they
   are grey, a style has been written inline again and the browser is refusing
   it.
-- [ ] **22.5** The pinned bar shows your initials on a phone, not an empty
-  square.
+- [ ] **22.5** The pinned bar shows your picture or initials on a phone, not an
+  empty square.
 - [ ] **22.6** Add the portal to the home screen. It opens without browser
   chrome and with its own icon.
 - [ ] **22.7** In dark mode, every screen you touched above is still readable.
@@ -2189,9 +2194,11 @@ the families use.
   **Einstellungen → System** lists the copy written just before the update. A
   picture saved less than ten minutes before the update may stay until the next
   daily cleanup; write it down if one did.
-- [ ] **R.10** Nobody has a picture: **Mein Konto** and a child's page have no
-  card „Bild", and everybody appears by their initials — at the top right, in
-  the **Schüler** list, in **Zugänge** and in every chat.
+- [ ] **R.10** The pictures from before this release do not come back: right
+  after the update nobody has a picture, and everybody appears by their
+  initials — at the top right, in the **Schüler** list, in **Zugänge** and in
+  every chat. Pictures added afterwards are ADR 0031's, checked in
+  [P.1–P.20](#pictures-adr-0031).
 - [ ] **R.11** Nobody has a dot, a status or an emoji: the account menu is as
   in 5.3i; **Zugänge** and the card „Zugang zum Portal" on a child's page have no
   line about when somebody was last here and no „Wann online? Letzte 30 Tage";
@@ -2739,6 +2746,172 @@ before the run waits for a later one, whatever its row's date says.
   UTC. Set it back to 90. Delete `period_last_shortened`, as if a day had
   passed, wait a minute and open a page: `prune_last_run` is filled, and the row
   is still there, inside its 90 days.
+
+### Pictures (ADR 0031)
+
+What the suites cannot reach: a photo from a real phone, a browser's cache, a
+host without gd, and how the screens feel in the hand. Walk P.1 to P.20 on a
+test install with the example data, on a real iPhone and an Android phone where
+marked, as a trainer and as a family, in light mode and in dark; write down
+what could not be checked rather than ticking it. The screens are specified in
+`docs/design/2026-10-08-pictures.md`.
+
+- [ ] **P.1** **(iPhone, Android)** As the trainer, open a child's page and add
+  a photo from the gallery, then replace it with one from the camera. Each time
+  the face shows upright, as the phone showed the photo, and the banner says
+  „Foto gespeichert.". In the file manager, `storage/uploads/picture` holds one
+  file for the child, a `.jpg` of a few tens of kilobytes; the one it replaced
+  is gone. On a slow connection — weak 4G, or the Network Link Conditioner as in
+  W.1 — a spinner turns over the face while the photo is sent, and the row does
+  not move.
+- [ ] **P.2** **(release)** Download that file from the file manager and open it
+  in an image viewer that shows the photo's details: 320 × 320 pixels, and no
+  camera, no date taken, no place. The photo the phone sent is nowhere in
+  `storage`.
+- [ ] **P.3** **(iPhone)** With JavaScript off (Safari: Einstellungen → Apps →
+  Safari → Erweitert → JavaScript), choose a photo straight from the iPhone's
+  camera — 24 megapixels, 5712 × 4284, a little over the 24 million the server
+  takes — and press „Foto speichern": it is refused in one sentence on the same
+  page — „Das Foto ist zu groß. Höchstens …" over the upload limit, „Die Datei
+  ist zu groß. Erlaubt sind …" over what the server takes at all
+  (`post_max_size`), or „Dieses Foto hat zu viele Bildpunkte: höchstens 24
+  Megapixel." — never „Die Sitzung ist abgelaufen", and the face stays as it
+  was. A receipt under **Beiträge** over `post_max_size` is answered the same
+  way. JavaScript on again, the same photo arrives, made smaller by the browser.
+- [ ] **P.4** On a computer, without JavaScript, choose a WebP, a GIF or a PDF
+  for a child's picture: „Dieses Bild lässt sich nicht lesen. Bitte ein Foto
+  (JPEG oder PNG) wählen.", and nothing changes.
+- [ ] **P.5** **(release)** In a computer's browser, signed in as the family,
+  open the developer tools' network panel and reload a page with the child's
+  face: its request answers `Cache-Control: private, max-age=604800` and no
+  `Expires` or `Pragma`; reloading again takes it from the cache. Copy the
+  picture's address — `kind=student` for a child, `kind=account` for a team
+  member — change the number after `id=` to another child's, and open it:
+  „Dieses Bild gibt es nicht.", the same as for an id that does not exist.
+  Sign out: the answer carries `Clear-Site-Data: "cache"`.
+- [ ] **P.6** **(iPhone, Android)** As the trainer, on **Anwesenheit**, tick two
+  children, then tap the face of a child without a photo — the initials with a
+  small camera: the ticks are saved („2 Einträge gespeichert.") and the sheet
+  „Foto von …" opens for that child, where „Foto aufnehmen" opens the rear
+  camera at once. Take a photo: back on the list for the same course and day,
+  „Foto von … gespeichert.", the face in its row. Tap a face with nothing
+  ticked: no „0 Einträge" banner. A face that has a photo does nothing here.
+- [ ] **P.7** As a family whose child is in a course with the child of P.1: in
+  the course's group, the trainer's photo of that child is not shown — the
+  initials are. As that child's family, switch „Im Kurs-Chat zeigen" on: the
+  other family now sees the face. In phpMyAdmin, `consent_log` has a row for the
+  family's login with `course_sees_picture_by_parent` (a child under 14, or with
+  no birth date) or `course_sees_picture` (14 or older) and `enabled` 1. The
+  trainer adds a new photo: the face is gone from the other family's group
+  again, and the family's bell says „Neues Foto von …", ending with „Im
+  Kurs-Chat erscheint es erst, wenn ein Elternteil wieder zustimmt." for a child
+  under 14, or „Im Kurs-Chat zeigst du es erst, wenn du wieder zustimmst." from
+  14.
+- [ ] **P.8** As a trainer, **Mein Konto**: the first card, above „Anmeldung",
+  says „Foto hinzufügen" and „Das Team und die Familien sehen es.". Add a photo
+  of yourself: „Foto gespeichert.", and the card says „Foto ändern" and opens
+  the sheet „Dein Foto" with „Neues Foto", „Löschen geht sofort und lässt sich
+  nicht zurückholen." and „Foto löschen". On **Zugänge**, her row shows the
+  photo, not initials. As a family, the trainer's face shows in the chat with
+  her and on the group's member sheet, and in the group beside each run of her
+  messages, with the pill „Trainerin" beside her name; a child's run has that
+  child's face, its photo where the family has said yes (P.7), and no pill. The
+  family's own **Mein Konto** has no photo card. Delete the trainer's photo:
+  initials again, and the file is gone from `storage/uploads/picture`.
+- [ ] **P.9** **(release)** Invite a new family by address and set up the login
+  from the mail: after the password the page is „Dein Foto" („Willkommen,
+  …!"). „Überspringen" leads to the child's own page; a photo added there leads
+  to the same page with „Foto gespeichert.". Open `?page=welcome` by hand
+  afterwards: the same harmless step, and nothing links to it. Sign out, ask
+  for a new password on the sign-in page and set it from the mail: the page
+  after it is **Übersicht**, not „Dein Foto".
+- [ ] **P.10** **(release)** On a test install only, switch gd off in the
+  hosting panel for a moment. `setup.php` on a fresh install lists „Profilbilder
+  verkleinern (gd)" as „eingeschränkt" and installs all the same.
+  **Einstellungen → System** says „Es fehlt: Profilbilder verkleinern (gd)" and
+  what to do. A child's page and the team's **Mein Konto** show „Fotos gehen auf
+  diesem Server noch nicht." where „Foto hinzufügen" was, with „Unter
+  „Einstellungen“ → „System“ steht, was fehlt." and „Zur Einrichtung" for an
+  administrator and „Das richtet eine Administratorin ein." for anybody else; a
+  picture already there still shows and can be deleted. **Anwesenheit** shows no
+  camera. A family setting up its login from an invitation sees no „Dein Foto":
+  it lands on the child's page, and the banner goes on after „Dein Konto ist
+  bereit. …" with „Willkommen, {Vorname}! Schau kurz, ob alles stimmt, und
+  ergänze, was fehlt. …". A trainer invited the same way lands on **Übersicht**,
+  and the banner says only how they sign in. Everything else works. Switch gd
+  back on.
+- [ ] **P.11** **(iPhone)** As a family whose child has a photo, with „Kinder im
+  selben Kurs sehen Fotos" on (P.13): under the photo on the child's
+  **Profil** tab, the switch „Im Kurs-Chat zeigen" says whose decision it is —
+  „Unter 14 schaltet das ein Elternteil ein." for a child under 14, „Ohne
+  Geburtsdatum schaltet das ein Elternteil ein." for a child with no birth date,
+  „Das entscheidest du selbst." from 14 — and the line under it says what the
+  others see: „Die anderen im Kurs sehen nur „…“." with the child's initials
+  while it is off, and „Die Kinder in deinem Kurs und ihre Familien sehen es im
+  Kurs-Chat. Ausschalten geht jederzeit." while it is on. Switch it on for a
+  child under 14; then, as the trainer, set the child's birth date to 14 years
+  ago today: the switch stays on, its line now says „Das entscheidest du
+  selbst.", and nothing asks again.
+- [ ] **P.12** As the trainer, on the page of that child, with the switch on:
+  under the photo, „Im Kurs-Chat sichtbar, weil die Familie zugestimmt hat.
+  Wieder einschalten kann dann nur sie." and the button „Im Kurs-Chat
+  ausblenden", and no switch. Tap it: „Im Kurs-Chat ausgeblendet.", the other
+  family sees the initials again, and the line says „Im Kurs-Chat nicht
+  sichtbar. Das entscheidet die Familie.". For a child whose family has not
+  signed in yet it says „Im Kurs-Chat nicht sichtbar. Zustimmen kann die
+  Familie, sobald sie sich angemeldet hat.".
+- [ ] **P.13** As the administrator, **Einstellungen → Datenschutz**: the card
+  „Fotos im Kurs" has „Kinder im selben Kurs sehen Fotos", on, and under
+  „Erweitert" „Ab diesem Alter stimmt ein Kind selbst zu", 14, which takes 13
+  to 16. Switch „Kinder im selben Kurs sehen Fotos" off: a family's child's
+  page has no switch any more and says „Dein Trainerteam sieht es.", and the
+  other family in the course sees the initials where it saw the face; the
+  trainer still sees every face. Switch it on again: the yes given before
+  counts again.
+- [ ] **P.14** **(iPhone)** As a family, on the child's **Profil** tab with no
+  photo: the first card says „Foto hinzufügen" and „Freiwillig. Ohne Foto stehen
+  hier deine Anfangsbuchstaben.", and a tap offers the phone's camera and its
+  photo library. Add one: „Foto gespeichert.", „Foto ändern" and „Dein
+  Trainerteam sieht es.". Tap the photo: the sheet „Foto von …" holds „Neues
+  Foto", „Löschen geht sofort und lässt sich nicht zurückholen.", „Foto
+  löschen" and „Abbrechen". „Foto löschen": „Foto gelöscht.", the initials
+  again, and the file is gone from `storage/uploads/picture` at once.
+- [ ] **P.15** **(release)** As the trainer, add a photo to a child whose
+  invitation is still open, then set the login up from the invitation's mail:
+  „Dein Foto" says „Dein Trainerteam hat schon ein Foto von dir hinzugefügt."
+  and shows it, with „Passt so" and „Anderes Foto" and no „Überspringen". „Passt
+  so" leads to the child's page and changes nothing; „Anderes Foto" takes
+  another, and the child's page says „Foto gespeichert.".
+- [ ] **P.16** **(release)** As the administrator, invite a trainer from
+  **Zugänge** and set the login up from the mail: after the password, „Dein
+  Foto" says „Willkommen, …!" and „Möchtest du ein Foto? Die Familien sehen es
+  in den Chats.", offers „Foto hinzufügen" and „Überspringen", and under them
+  „Alle im Portal sehen es. Ändern kannst du es unter „Mein Konto“.".
+  „Überspringen" leads to **Übersicht**.
+- [ ] **P.17** As the trainer, on **Anwesenheit**, with JavaScript: one row
+  holds „Alle: Anwesend" and „Mehr". „Mehr" opens a sheet with „Für die ganze
+  Liste. Gespeichert wird erst mit „Anwesenheit speichern“.", „Alle: Fehlt",
+  „Alle: Entschuldigt" and „Abbrechen". „Alle: Fehlt" marks every child „Fehlt"
+  and closes the sheet; nothing is saved until „Anwesenheit speichern". Without
+  JavaScript the row is not there, and each child is marked one by one.
+- [ ] **P.18** On a computer, as the trainer, on **Anwesenheit** for a day with
+  a child who has no photo: mark two children with the keyboard — Tab to a
+  child's marks, the arrow keys to choose — and press Enter. If the browser
+  sends the form on Enter, the marks are saved, „2 Einträge gespeichert.", and
+  no photo sheet opens.
+- [ ] **P.19** **(iPhone)** As a family, **Übersicht**: the child's face, or its
+  initials, sits large to the left of „Hallo …"; on a 320-pixel screen, or with
+  a larger text size, the greeting goes under the face, and no name breaks
+  inside a word. Tapping the face opens the child's page at the photo; VoiceOver
+  reads it as „Dein Profil". A login with no child of its own has no face
+  there.
+- [ ] **P.20** **(iPhone)** **Mein Konto → Schriftgröße „Am größten"**, on a
+  320-pixel screen, as the trainer and as a family. On a photo card, „Foto
+  hinzufügen" and „Foto ändern" wrap onto a second line and are never cut. The
+  initials stay inside every face: the 72-pixel ones on the child's page and on
+  Mein Konto, the face on **Übersicht**, the sheet at **Anwesenheit** and „Dein
+  Foto". Put the text size back.
+
 
 ---
 

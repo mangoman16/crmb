@@ -49,7 +49,9 @@ is_same(['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'], u
 is_same(['image/png' => 'png'], upload_types('icon'), 'the portal icon is a PNG and nothing else, not even an SVG');
 is_same(['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'], upload_types('logo'),
         'the logo may be a PNG, a JPEG or a WebP - no GIF, which animates, and no SVG');
-foreach (['avatar','proof','message','icon','logo'] as $kind)
+is_same(['image/jpeg' => 'jpg', 'image/png' => 'png'], upload_types('picture'),
+        'a picture is made from a JPEG or a PNG, as far as gd reads them - no WebP, no GIF, no HEIC (ADR 0031 §3, the security review)');
+foreach (['avatar','proof','message','icon','logo','picture'] as $kind)
     foreach (['text/html','application/x-php','application/octet-stream','image/svg+xml'] as $mime)
         ok(!isset(upload_types($kind)[$mime]), $mime.' is allowed nowhere');
 throws(fn() => upload_types('gibt-es-nicht'), 'a kind nobody declared is a mistake in the code, never a list of nothing', 'No upload kind');
@@ -96,7 +98,7 @@ foreach (upload_types('message') as $extension)
     ok(preg_match('/^[a-z0-9]{2,5}$/D', $extension) === 1, 'the extension '.$extension.' cannot execute anywhere');
 
 case_('Every kind of upload is swept, and the sweep knows where each is pointed at from');
-foreach (['avatar','proof','message','icon','logo'] as $kind)
+foreach (['avatar','proof','message','icon','logo','picture'] as $kind)
     ok(isset(upload_references()[$kind]), $kind.' is covered by the sweep');
 
 case_('A file nothing points at any more is removed');
@@ -229,15 +231,19 @@ touch(upload_dir('message') . '/' . $made['message']['kept'], $old);
 is_same(1, prune_uploads(), 'the attachment of a deleted message is swept');
 ok(!is_file(upload_dir('message') . '/' . $made['message']['kept']), 'and the voice note is really gone');
 
-case_('The nightly maintenance is what runs it');
+case_('The daily cleanup is what runs it');
 ok(str_contains((string)file_get_contents(APP_ROOT.'/app/tick.php'), 'prune_uploads()'),
    'so nobody has to remember to sweep by hand');
 
 case_('A family’s download is never kept by the browser');
 is_same('private, no-store', (new ReflectionFunction('send_download_headers'))->getParameters()[4]->getDefaultValue(),
         'send_download_headers() keeps a download out of every cache unless told otherwise, as only the icon and the logo are');
-is_same(4, (new ReflectionFunction('send_upload'))->getNumberOfParameters(),
-        'and send_upload() cannot be told otherwise: an invoice, a receipt, a chat’s photo or a screenshot is never kept');
+is_same(DOWNLOAD_CACHE_CONTROL, (new ReflectionFunction('send_upload'))->getParameters()[4]->getDefaultValue(),
+        'and neither does send_upload() unless it is told to');
+preg_match_all('/send_upload\(([^;]*)\);/', (string)file_get_contents(APP_ROOT.'/app/uploads.php'), $sent);
+is_same(["'picture', \$name, 'image/jpeg', '', picture_cache_control(\$name, \$_GET['v'] ?? null)"],
+        array_values(array_filter($sent[1], fn(string $arguments): bool => substr_count($arguments, ',') > 3)),
+        'which only a child’s picture is, by picture_cache_control(): an invoice, a receipt, a chat’s photo or a screenshot is never kept');
 
 case_('A download leaves under the extension its bytes were stored as, whatever its sender called it [security review]');
 /* store_upload() read the bytes and chose the extension; the name the sender
@@ -786,12 +792,188 @@ $storedName = str_repeat('3f', 16) . '.jpg';
 is_same($storedName, upload_download_name($storedName, ''), 'so it downloads under the name the portal gave it');
 
 // ---------------------------------------------------------------------------
+// A picture, a child's or a team member's (ADR 0031 §3)
+// ---------------------------------------------------------------------------
+
+/** A photo gd draws, the left half one colour and the right half another - or see-through - as a phone would send one. */
+function picture_photo(string $type, int $width, int $height, array $left, array $right, bool $seeThrough = false): string {
+    $im = imagecreatetruecolor($width, $height);
+    if ($seeThrough) { imagealphablending($im, false); imagesavealpha($im, true); }
+    imagefilledrectangle($im, 0, 0, intdiv($width, 2) - 1, $height - 1,
+                         $seeThrough ? imagecolorallocatealpha($im, 0, 0, 0, 127) : imagecolorallocate($im, ...$left));
+    imagefilledrectangle($im, intdiv($width, 2), 0, $width - 1, $height - 1, imagecolorallocate($im, ...$right));
+    ob_start();
+    match ($type) { 'image/jpeg' => imagejpeg($im, null, 90), 'image/png' => imagepng($im), 'image/webp' => imagewebp($im, null, 90) };
+    return (string)ob_get_clean();
+}
+
+/** One pixel of a picture, as [r, g, b]. */
+function picture_pixel(string $jpeg, int $x, int $y): array {
+    $c = imagecolorat(imagecreatefromstring($jpeg), $x, $y);
+    return [($c >> 16) & 0xFF, ($c >> 8) & 0xFF, $c & 0xFF];
+}
+
+/**
+ * A real PNG of one colour, $width × $height pixels of one bit each: a few
+ * kilobytes that gd would decode into the whole picture (ADR 0031 §3).
+ */
+function png_of_one_colour(int $width, int $height): string {
+    $row = "\0" . str_repeat("\0", intdiv($width + 7, 8));    // no filter, then the pixels
+    return "\x89PNG\r\n\x1a\n" . png_chunk('IHDR', pack('NNCCCCC', $width, $height, 1, 3, 0, 0, 0)) . png_chunk('PLTE', "\x2E\x8B\x57")
+         . png_chunk('IDAT', (string)gzcompress(str_repeat($row, $height), 9)) . png_chunk('IEND', '');
+}
+
+/** square_picture() of $bytes, from a file as an upload hands it over. */
+function picture_square(string $bytes, string $type): string {
+    $file = test_run_dir().'/photo-'.bin2hex(random_bytes(4));
+    file_put_contents($file, $bytes);
+    try { return square_picture($file, $type); } finally { @unlink($file); }
+}
+
+case_('A photo becomes one square JPEG of 320 pixels, cut from its middle, upright, and keeps nothing else [ADR 0031 §3, test 5]');
+/* Made from bytes: store_upload() takes only what came through a form, and
+   the robustness suite sends one real photo through the router. JPEG blurs a
+   little at an edge, so each colour is read well inside its half, and near
+   enough is the colour. */
+$near = fn(array $got, array $want): bool => max(array_map(fn(int $a, int $b): int => abs($a - $b), $got, $want)) <= 24;
+$warnings = [];
+set_error_handler(function (int $no, string $message) use (&$warnings): bool {
+    if (error_reporting() & $no) $warnings[] = $message;    // one a person or a log would see
+    return true;
+});
+try {
+    // The phone's segments of a photo taken upright (orientation 1): the one
+    // taken on its side is the case after this.
+    $upright = jpeg_from_a_phone(1, $where);
+    $metadata = substr($upright, 2, (int)strpos($upright, "\xFF\xC0") - 2) . jpeg_segment(0xFE, 'Aufgenommen in ' . $where);
+    $photos = [
+        'a JPEG from a phone, with EXIF, GPS, XMP, IPTC and a comment' =>
+            ["\xFF\xD8" . $metadata . substr(picture_photo('image/jpeg', 640, 480, [220, 30, 30], [30, 30, 220]), 2), 'image/jpeg', [220, 30, 30], [30, 30, 220]],
+        'a PNG with a see-through half' =>
+            [picture_photo('image/png', 500, 400, [0, 0, 0], [20, 200, 40], true), 'image/png', [255, 255, 255], [20, 200, 40]],
+        'a PNG taller than wide' =>
+            [picture_photo('image/png', 300, 600, [240, 200, 20], [20, 20, 20]), 'image/png', [240, 200, 20], [20, 20, 20]],
+    ];
+    ok(substr_count($photos['a JPEG from a phone, with EXIF, GPS, XMP, IPTC and a comment'][0], $where) === 4,
+       'the phone’s photo carries the address four times, as EXIF, XMP, IPTC and its comment, and is a picture gd can read');
+    foreach ($photos as $what => [$bytes, $type, $left, $right]) {
+        $made = picture_square($bytes, $type);
+        $size = getimagesizefromstring($made);
+        is_same([320, 320, IMAGETYPE_JPEG], $size ? [$size[0], $size[1], $size[2]] : null, $what.' comes back as one JPEG of 320 × 320');
+        is_same($made, image_without_metadata($made, 'image/jpeg'), 'holding only what image_without_metadata() keeps');
+        ok(!str_contains($made, "Exif\0\0") && !str_contains($made, 'ns.adobe.com') && !str_contains($made, 'Photoshop')
+           && !str_contains($made, 'CREATOR') && !str_contains($made, 'Gartenweg'),
+           'no EXIF, no XMP, no IPTC, no comment - gd’s own included - and no place');
+        ok($near(picture_pixel($made, 40, 160), $left) && $near(picture_pixel($made, 280, 160), $right),
+           'cut from the middle, the left of it on the left and the right on the right'.($type === 'image/png' ? ', white where it was see-through' : ''));
+    }
+    /* Stored on its side, as a phone keeps a photo taken upright: the top half
+       red, the bottom blue, and EXIF saying to turn it a quarter to the right.
+       Drawn upright, red is on the right. */
+    $im = imagecreatetruecolor(600, 400);
+    imagefilledrectangle($im, 0, 0, 599, 199, imagecolorallocate($im, 220, 30, 30));
+    imagefilledrectangle($im, 0, 200, 599, 399, imagecolorallocate($im, 30, 30, 220));
+    ob_start(); imagejpeg($im, null, 90); $stored = (string)ob_get_clean();
+    $sideways = "\xFF\xD8" . jpeg_orientation_segment(6) . substr($stored, 2);
+    $turned = picture_square($sideways, 'image/jpeg');
+    ok($near(picture_pixel($turned, 280, 160), [220, 30, 30]) && $near(picture_pixel($turned, 40, 160), [30, 30, 220]),
+       'a JPEG with orientation 6 comes back upright: the red of its top is on the right, where it belongs');
+    is_same(0, jpeg_orientation($turned), 'and says no orientation of its own, since it is upright');
+    $gif = (function (): string { ob_start(); imagegif(imagecreatetruecolor(10, 10)); return (string)ob_get_clean(); })();
+    $heic = pack('N', 24) . 'ftypheic' . pack('N', 0) . 'mif1heic' . str_repeat("\0", 100);
+    $whole = picture_photo('image/jpeg', 640, 480, [220, 30, 30], [30, 30, 220]);
+    $webp = (function (): string { ob_start(); imagewebp(imagecreatetruecolor(40, 30)); return (string)ob_get_clean(); })();
+    foreach (['a JPEG cut off in its picture data' => [substr($whole, 0, (int)(strlen($whole) * 0.6)), 'image/jpeg'],
+              'a WebP, which only a page without JavaScript sends' => [$webp, 'image/webp'], 'a WebP said to be a PNG' => [$webp, 'image/png'],
+              'a text file' => ["Ein Brief, kein Foto.\n", 'text/plain'], 'a text file said to be a JPEG' => ["Ein Brief, kein Foto.\n", 'image/jpeg'],
+              'an empty string' => ['', 'image/jpeg'], 'a GIF' => [$gif, 'image/gif'], 'a GIF said to be a PNG' => [$gif, 'image/png'],
+              'HEIC' => [$heic, 'image/heic'], 'a PNG cut off' => [substr($photos['a PNG with a see-through half'][0], 0, 200), 'image/png']] as $what => [$bytes, $type])
+        throws(fn() => picture_square($bytes, $type), $what.' is refused in words', picture_unreadable());
+} finally {
+    restore_error_handler();
+}
+is_same([], $warnings, 'and no case left a PHP warning');
+/* 24 million pixels, from the header alone (ADR 0031 §3, the security review):
+   a header of exactly that many is not refused for its size - it has no
+   picture, and is refused as unreadable - and one row more is. A phone's own
+   „24 MP" photo is 24.5 million: refused as it comes, without JavaScript; with
+   it, the browser has made the photo smaller before sending it. */
+foreach (['6000 × 4000, exactly the limit' => [6000, 4000, false], 'one row more than the limit' => [6000, 4001, true],
+          'a phone’s own „24 MP“, 5712 × 4284, as it comes' => [5712, 4284, true]] as $what => [$width, $height, $tooMany]) {
+    $said = '';
+    try { picture_square(jpeg_header($width, $height), 'image/jpeg'); } catch (UserError $e) { $said = $e->getMessage(); }
+    is_same($tooMany, str_contains($said, 'höchstens 24 Megapixel'), $what.($tooMany ? ' is refused for its size' : ' is not refused for its size'));
+}
+is_same('Das Foto ist zu groß. Höchstens '.upload_limit_label().'.', upload_too_large('picture'), 'a photo over the limit is refused as a photo');
+is_same(upload_too_large('picture'), upload_error_message(UPLOAD_ERR_INI_SIZE, 'picture'), 'whether the portal or the server said so');
+throws(fn() => upload_extension('picture', 'image/gif'), 'and a type a picture is not made from in the same words as an unreadable one', picture_unreadable());
+
+case_('A header claiming 30,000 × 30,000, or a PNG of one colour claiming 25 million pixels, is refused before anything is decoded, in a process of its own [ADR 0031 §3, test 5]');
+/* Were the check gone, decoding it would run the process out of memory - so it
+   is asked in one of its own, with a host's 64 MB, and the suite reads what
+   that process said or that it died. */
+if (!function_exists('exec')) {
+    test_unsupported(array_merge(test_unsupported(), ['uploads: a huge picture in a process of its own (this PHP disables exec)']));
+} else {
+    $work = test_run_dir().'/picture-request';
+    @mkdir($work, 0700, true);
+    write_run_config($work.'/config.php', config('db'), $work);
+    $ask = function (string $bytes, string $type) use ($work): array {
+        $file = $work.'/photo-'.bin2hex(random_bytes(4));
+        file_put_contents($file, $bytes);
+        $out = [];
+        exec('CRM_CONFIG='.escapeshellarg($work.'/config.php').' '.escapeshellarg(PHP_BINARY).' -d memory_limit=64M '
+             .escapeshellarg(TEST_ROOT.'/picture-request.php').' '.escapeshellarg($file).' '.escapeshellarg($type).' 2>&1', $out);
+        @unlink($file);
+        return json_decode((string)end($out), true) ?: ['said' => trim(implode("\n", $out)) ?: 'nothing: the process died', 'made' => 0, 'rose' => -1];
+    };
+    foreach (['a PNG' => [png_header(30000, 30000), 'image/png'], 'a JPEG' => [jpeg_header(30000, 30000), 'image/jpeg']] as $what => [$bytes, $type]) {
+        $huge = $ask($bytes, $type);
+        is_same('Dieses Foto hat zu viele Bildpunkte: höchstens 24 Megapixel.', $huge['said'], $what.' header claiming 30,000 × 30,000 is refused in words');
+        ok($huge['rose'] >= 0 && $huge['rose'] < 1048576, 'before anything is decoded: the memory rose by '.$huge['rose'].' bytes');
+    }
+    /* A whole PNG this time, one gd would decode: one colour, 5,000 × 5,000, a
+       few kilobytes for 25 million pixels - the case the limit is 24 million
+       for, not the fifty first proposed. */
+    $plain = png_of_one_colour(5000, 5000);
+    $flat = $ask($plain, 'image/png');
+    is_same('Dieses Foto hat zu viele Bildpunkte: höchstens 24 Megapixel.', $flat['said'],
+            'a PNG of one colour, 5,000 × 5,000 in '.strlen($plain).' bytes, is refused in words');
+    ok($flat['rose'] >= 0 && $flat['rose'] < 1048576, 'before anything is decoded: the memory rose by '.$flat['rose'].' bytes');
+    is_same(320, (int)(getimagesizefromstring(picture_square(png_of_one_colour(500, 400), 'image/png'))[0] ?? 0),
+            'while the same PNG at 500 × 400 is made into a picture: the refusal is for its pixels');
+    $fine = $ask(picture_photo('image/jpeg', 640, 480, [1, 2, 3], [4, 5, 6]), 'image/jpeg');
+    ok($fine['said'] === '' && $fine['made'] > 0, 'while a photo of 640 × 480 is made there, so the refusal above is not one of everything');
+}
+
+case_('One photo is made at a time across the portal, and one sent meanwhile is told so in words [ADR 0031 §3, the security review]');
+/* Twenty sessions of one login at once could each take what 24 megapixels
+   take. The lock is the database's, held here by a second connection as
+   another request would hold it, and asked with no wait: a person waits up to
+   PICTURE_LOCK_SECONDS for it, the suite does not. */
+$other = connect();
+$free = fn(): int => (int)scalar("SELECT IS_FREE_LOCK('badminton_crm_picture')");
+$photo = picture_photo('image/jpeg', 640, 480, [220, 30, 30], [30, 30, 220]);
+$file = test_run_dir().'/photo-meanwhile.jpg';
+file_put_contents($file, $photo);
+is_same(1, (int)$other->query("SELECT GET_LOCK('badminton_crm_picture', 0)")->fetchColumn(), 'another request is making a photo');
+throws(fn() => square_picture($file, 'image/jpeg', null, 0), 'a photo sent meanwhile is refused in words',
+       'Gerade wird ein anderes Foto verarbeitet. Bitte gleich noch einmal.');
+$other->query("SELECT RELEASE_LOCK('badminton_crm_picture')");
+ok(str_starts_with(square_picture($file, 'image/jpeg', null, 0), "\xFF\xD8"), 'once that one is made, it is made too');
+is_same(1, $free(), 'and the lock is free the moment a photo is made: the trainer’s next one never waits');
+throws(fn() => picture_square(substr($photo, 0, (int)(strlen($photo) * 0.6)), 'image/jpeg'), 'a photo refused while it is being made', picture_unreadable());
+is_same(1, $free(), 'lets go of it as well');
+unlink($file);
+$other = null;
+
+// ---------------------------------------------------------------------------
 case_('With nobody in the database nothing is swept: those files are not its rows’ to judge [security review]');
 /* INSTALL.md restores a backup by deleting every table and importing the copy.
    A request between the two made the tables afresh and ran the update's step
    after the files (database/defaults.php), whose sweep found no row naming any
    file and deleted every receipt, chat photo, screenshot, icon and logo older
-   than ten minutes; the nightly prune would have done the same. The backup
+   than ten minutes; the daily cleanup would have done the same. The backup
    holds the rows, never the files. Last in this suite, because it empties every
    table the way that window does: test_reset() deletes every row and runs that
    step. */
@@ -807,7 +989,7 @@ is_same(0, (int)scalar('SELECT COUNT(*) FROM accounts'), 'the database has nobod
 clearstatcache();
 is_same(array_keys($stranded), array_keys(array_filter($stranded, 'is_file')),
         'the update’s step deleted none of the files, a day old and named by no row as they are');
-is_same(0, prune_uploads(), 'and the nightly prune deletes none either');
+is_same(0, prune_uploads(), 'and the daily cleanup deletes none either');
 clearstatcache();
 is_same(array_keys($stranded), array_keys(array_filter($stranded, 'is_file')), 'every one is still there');
 make_account(['role'=>'admin']);

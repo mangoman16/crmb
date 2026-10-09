@@ -158,7 +158,7 @@ svg{flex-shrink:0;vertical-align:middle}
 html.js{-webkit-tap-highlight-color:transparent}
 .button,.chip,.text-link,.tabs a,.nav-back,.section-heading>a{transition:opacity .1s}
 /* Every :active has an .is-pending twin, also the two app.js never sets: a segment's label and the account menu's sending button. */
-.button:active,.chip:active,.text-link:active,.tabs a:active,.nav-back:active,.section-heading>a:active,.segmented label:active,.button.is-pending,.chip.is-pending,.text-link.is-pending,.tabs a.is-pending,.nav-back.is-pending,.section-heading>a.is-pending,.segmented label.is-pending{opacity:.7}
+.button:active,.chip:active,.text-link:active,.tabs a:active,.nav-back:active,.section-heading>a:active,.segmented label:active,.page-face:active,.button.is-pending,.chip.is-pending,.text-link.is-pending,.tabs a.is-pending,.nav-back.is-pending,.section-heading>a.is-pending,.segmented label.is-pending,.page-face.is-pending{opacity:.7}
 a.student-card,a.payment-row,a.class-row,a.editor-list-item,a.member-row,a.news-summary,a.thread-item,a.notification,.link-list a,.account-menu-row,.mobile-nav a{transition:background-color .1s}
 a.student-card:active,a.payment-row:active,a.class-row:active,a.editor-list-item:active,a.member-row:active,a.news-summary:active,a.thread-item:active,a.notification:active,.link-list a:active,button.account-menu-row:active,a.account-menu-row:active,.mobile-nav a:active,a.student-card.is-pending,a.payment-row.is-pending,a.class-row.is-pending,a.editor-list-item.is-pending,a.member-row.is-pending,a.news-summary.is-pending,a.thread-item.is-pending,a.notification.is-pending,.link-list a.is-pending,button.account-menu-row.is-pending,a.account-menu-row.is-pending,.mobile-nav a.is-pending{background:var(--pressed)}
 @media(hover:hover){
@@ -244,6 +244,12 @@ a.student-card:active,a.payment-row:active,a.class-row:active,a.editor-list-item
 .page-heading>div{min-width:0}
 .page-heading p{margin-top:6px;font-size:var(--t-sub)}
 .page-heading>.button{flex:none}
+/* A face leading the title (N7): beside it while 13rem are left for the name,
+   under it otherwise - at 320, and at a large text size - so the face never
+   breaks a name inside a word. */
+.page-heading.has-face{flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:12px}
+.page-heading.has-face>div{flex:1 1 13rem}
+.page-face{flex:none;border-radius:50%}
 
 /* --- Groups and rows (C5) ---------------------------------------------------
    A card is a group: white, rounded, no border and no shadow, on the grey
@@ -269,6 +275,8 @@ a.student-card:active,a.payment-row:active,a.class-row:active,a.editor-list-item
    value and the chevron of a row that leads somewhere. */
 .record-row,.payment-row{display:flex;justify-content:space-between;align-items:center;gap:8px 16px;padding-block:11px}
 .record-row>div{min-width:0;overflow-wrap:anywhere}
+.record-who{display:flex;align-items:center;gap:12px}
+.record-who>div{min-width:0}
 .record-row p,.payment-row p{margin:2px 0 0;font-size:var(--t-sub);color:var(--muted)}
 .record-row small,.payment-row small{display:block;margin-top:2px}
 /* A row names a child, a course or a receipt by a link, and that link is the
@@ -313,7 +321,8 @@ a.student-card:active,a.payment-row:active,a.class-row:active,a.editor-list-item
    plain, and destructive. A screen's one primary action is 50px, the width of
    a phone, in the save bar at its foot. While a form is sending, app.js marks
    the button that sent it busy and ignores further taps; the request id
-   already refuses a second post. */
+   already refuses a second post. A photo card's row that sends a chosen photo
+   is marked busy the same way, and turns the same spinner, over its face. */
 .button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 20px;border:0;border-radius:999px;
         background:var(--teal);color:var(--on-accent);font-size:var(--t-headline);font-weight:600;line-height:1.25;text-align:center;max-width:100%}
 .button.secondary{background:var(--teal-soft);color:var(--teal-ink)}
@@ -322,7 +331,7 @@ a.student-card:active,a.payment-row:active,a.class-row:active,a.editor-list-item
 .danger-text,.button.danger-text{color:var(--red-ink)}
 .button[aria-busy=true]{cursor:progress}
 .button[aria-busy=true]:disabled{opacity:1}
-.button[aria-busy=true]::after{content:"";flex-shrink:0;width:1em;height:1em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+.button[aria-busy=true]::after,.picture-card .member-row[aria-busy=true]::after{content:"";flex-shrink:0;width:1em;height:1em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .form>.button{margin-top:16px}
 .form>.grid{margin-bottom:20px}
@@ -568,7 +577,10 @@ details.why{margin-top:12px}
 .sheet-title{margin:0 0 12px;font-size:var(--t-headline);text-align:center}
 .sheet-title:focus{outline:none}
 .sheet-body p{margin:0 0 12px;font-size:var(--t-sub);color:var(--ink-2)}
+.sheet-body form+p{margin-top:12px}
 .sheet-body form .button,.sheet-cancel{width:100%}
+.sheet-body>.button{width:100%}
+.sheet-body>.button+.button{margin-top:8px}
 .sheet-cancel{margin-top:8px}
 
 /* --- The menus in the bar: what is waiting, and who you are --------------------
@@ -617,12 +629,58 @@ details.why{margin-top:12px}
 .account-menu-panel .inline-form{display:flex}
 .account-menu-signout{margin-top:4px;padding-top:4px;border-top:.5px solid var(--border)}
 
-/* --- People: their initials --------------------------------------------------- */
-.avatar{display:grid;place-items:center;flex-shrink:0;width:40px;height:40px;border-radius:50%;background:var(--avatar-bg);color:var(--avatar-ink);font-weight:600;font-size:15px}
+/* --- People: a photo, a child's or a team member's, or the initials (ADR 0031) -----
+   avatar() draws one or the other in the same circle, so a photo takes the
+   place of the initials without moving anything around it. The initials are in
+   pixels, as the circle is: in rem they grew with the reader's text size and
+   out of a circle that did not. */
+.avatar{display:grid;place-items:center;flex-shrink:0;width:40px;height:40px;border-radius:50%;overflow:hidden;background:var(--avatar-bg);color:var(--avatar-ink);font-weight:600;font-size:15px}
 .student-card:nth-child(3n) .avatar{background:var(--teal-soft);color:var(--teal-ink)}
 .student-card:nth-child(4n) .avatar{background:var(--avatar-warm-bg);color:var(--avatar-warm-ink)}
 .avatar.small{width:36px;height:36px;font-size:14px}
 .avatar.tiny{width:32px;height:32px;font-size:13px}
+.avatar.large{width:72px;height:72px;font-size:26px}
+.avatar img{display:block;width:100%;height:100%;object-fit:cover}
+/* A photo's card - a child's on the child's page, one's own on Mein Konto: one
+   row - the face, what a tap does, who sees it - then, for a child, the course
+   switch or, for staff, where the course stands. */
+.picture-card .member-row{min-height:96px;cursor:pointer}
+/* What a tap does, in full at any text size: it wraps, and a word longer than
+   the line breaks, rather than end in „Foto hinzu…" (spec-pictures2 §1). */
+.picture-card .member-row-text strong{display:block;white-space:normal;overflow-wrap:anywhere;-webkit-hyphens:auto;hyphens:auto;color:var(--teal-ink)}
+.picture-card .member-row-text small{font-weight:400;color:var(--muted);white-space:normal}
+.picture-card summary.member-row{list-style:none}
+.picture-card summary.member-row::-webkit-details-marker{display:none}
+.picture-card .member-row[aria-busy=true]{background:var(--pressed)}
+/* While a chosen photo is sent, the face it replaces turns the sending spinner in
+   place of the initials: out of the row's flow, so neither its text nor its height
+   moves - in the flow it narrowed the text, and the row grew by up to 106 px at
+   a large text size (the coordinator, 2026-10-09). 36px is the middle of the
+   72 px face at the row's start. */
+.picture-card .member-row[aria-busy=true]::after{position:absolute;left:calc(36px - .5em - 2px);top:calc(50% - .5em - 2px)}
+.picture-card .member-row[aria-busy=true] .avatar{color:transparent}
+.picture-card label input[type=file],.picture-pick input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.picture-card label.member-row:focus-within,.picture-pick:focus-within{outline:3px solid var(--focus);outline-offset:-3px}
+/* Each photo form's own button is for a page without JavaScript: with it, a
+   chosen photo and a flipped switch go at once (app.js). */
+html.js .picture-save{display:none}
+.picture-pick{position:relative;width:100%;gap:8px}
+.picture-sheet-face{display:flex;justify-content:center;margin-bottom:16px}
+.picture-consent,.picture-state{border-top:.5px solid var(--border)}
+.picture-state{padding-top:12px;font-size:var(--t-sub)}
+.picture-hide{padding-inline:0}
+.picture-note{margin-top:8px;padding-bottom:12px;color:var(--muted);font-size:var(--t-foot)}
+/* Attendance: the initials of a child with no photo, with a camera on them, are
+   the button that takes one. */
+.avatar-add{position:relative;flex:none;display:grid;place-items:center;width:44px;height:44px;margin:-2px;padding:0;border:0;border-radius:50%;background:none;cursor:pointer}
+.avatar-add .glyph-camera{position:absolute;right:-1px;bottom:-1px;width:20px;height:20px;padding:3px;border-radius:50%;background:var(--teal);color:var(--on-accent);box-shadow:0 0 0 2px var(--surface)}
+.avatar-add[aria-busy=true]{opacity:.7}
+/* „Dein Foto": one question after the first password, the face as the page's
+   centre, the photo's button under it, the way on under that. */
+.photo-step{display:flex;flex-direction:column;align-items:center;gap:12px;margin:8px 0 24px;text-align:center}
+.photo-step>.avatar{width:120px;height:120px;margin-bottom:8px;font-size:44px}
+.photo-step>form,.photo-step>.button{width:100%;max-width:420px}
+.photo-step .photo-note{margin:4px 0 0;max-width:30em;color:var(--muted);font-size:var(--t-foot)}
 /* The icon's and the logo's cards: the preview beside its form. */
 .avatar-editor{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
 .avatar-editor>div{flex:1;min-width:240px}
@@ -835,6 +893,13 @@ details.account-row[open]>summary{margin-bottom:0}
 .segmented input:checked+label.tone-amber{background:var(--amber-fill);color:#fff}
 .segmented input:focus-visible+label{outline:3px solid var(--focus);outline-offset:2px}
 .attendance-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+/* „Alle: Anwesend" wide, „Mehr" small beside it: the size .row-actions uses, or
+   „Alle: Anwesend" breaks onto two lines at 320. The rest is in a sheet (N3). */
+.attendance-tools .button{font-size:var(--t-sub);padding:8px 16px}
+.attendance-more{flex:none}
+/* The copy of „Anwesenheit speichern" a form's Enter presses: drawn, so every
+   browser takes it as the default, but never seen and never reached. */
+.default-submit{position:absolute;visibility:hidden}
 /* "Not recorded" sits with the name rather than in the choice grid, so the
    real statuses fit on one row per student instead of wrapping onto two. */
 .clear-mark{display:grid;place-items:center;min-width:44px;min-height:44px;margin-left:auto;border-radius:50%;color:var(--muted);font-weight:700;cursor:pointer}
@@ -1400,7 +1465,7 @@ html.is-arrived .wait-page{animation:wait-out .25s ease-in both}
   html{scroll-behavior:auto}
   *{transition:none!important}
   .sheet-dialog[open]{animation:none}
-  .button[aria-busy=true]::after{animation-duration:2s}
+  .button[aria-busy=true]::after,.picture-card .member-row[aria-busy=true]::after{animation-duration:2s}
   /* The shuttle rests at the top of the clear and only brightens and fades, from
      where the page before had got to, as the rally does; the scene does not
      settle. The fades stay: they change brightness, not place. */

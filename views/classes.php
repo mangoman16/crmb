@@ -245,13 +245,14 @@ elseif($id && !$edit): $members=class_members($id); ?>
     <?php if(!$members)echo '<p class="muted">'.e(t('Noch keine Schüler in diesem Kurs.','No students in this course yet.')).'</p>';
     foreach($members as $m): $left=$m['left_on']!==null; $en=enrolment($id,(int)$m['id']); ?>
     <div class="record-row<?=$left?' is-past':''?>">
-        <div>
+        <?php /* The face beside the name, so the trainer learns who is who (ADR 0031). */ ?>
+        <div class="record-who"><?=avatar($m)?><div>
             <strong><a href="<?=e(url('student',['id'=>$m['id']]))?>"><?=e($m['first_name'].' '.$m['last_name'])?></a></strong>
             <p><?=e($left
                 ? t('Ausgetreten am ','Left on ').fmt_date($m['left_on'])
                 : t('Dabei seit ','Member since ').fmt_date($m['joined_on']))?>
                · <?=e($en && $en['tariff_name']?$en['tariff_name']:t('Kein Tarif','No tariff'))?></p>
-        </div>
+        </div></div>
         <div class="row-actions">
         <?php if(!$left){ start_form('class_member_remove',['class_id'=>$id,'student_id'=>$m['id'],'mode'=>'leave'],'inline-form');
                           submit_button(t('Austritt eintragen','Record leaving'),'subtle'); echo '</form>'; }

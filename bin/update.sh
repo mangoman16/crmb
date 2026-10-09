@@ -118,7 +118,15 @@ if [ "$RUN_COMPOSER" -eq 1 ] && [ -f composer.json ]; then
             say "Would run composer install."
         else
             step "Installing the dependencies"
-            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+            # gd is the one requirement waived here. composer.json requires ext-gd
+            # for the machine that builds the release, but the portal installs and
+            # runs without it, with no pictures (ADR 0031, the amendment "gd is
+            # optional"). Composer checks every requirement against this host's PHP
+            # before it installs anything, so without the flag a host without gd
+            # would stop here, where setup.php would have installed. Only gd: a
+            # host missing anything else the portal needs stops, as setup.php does.
+            # The flag takes one name since Composer 2.0.
+            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --ignore-platform-req=ext-gd
         fi
     elif [ ! -d vendor ]; then
         say ""

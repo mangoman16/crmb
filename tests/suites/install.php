@@ -153,6 +153,19 @@ ok(str_contains($named['fix'][0], 'Hosting-Panel') && str_contains($named['fix']
 is_same([], array_column(array_filter(extension_checks(), fn($c) => !$c['ok']), 'extension'),
         'and on the PHP running this suite, which has every one, it names none');
 
+case_('A PHP without gd installs: only pictures are missing, and setup says so [ADR 0031 §4, as amended]');
+/* Everything but a picture works without gd (pictures_unavailable()), so it is
+   the one extension setup names and goes on without: „eingeschränkt", not a
+   stop. The System page names it all the same. */
+$withoutGd = fn(string $extension): bool => $extension !== 'gd';
+$gdRow = array_values(array_filter(install_requirements([], $withoutGd), fn($c) => str_contains($c['label'], '(gd)')))[0] ?? null;
+ok($gdRow !== null && $gdRow['ok'] === false && $gdRow['fatal'] === false, 'setup lists gd as missing, and as nothing it needs to install');
+ok(!in_array($gdRow['label'] ?? null, array_column(install_blockers([], $withoutGd), 'label'), true), 'so it does not stop the installation');
+ok(str_contains($gdRow['fix'] ?? '', 'Profilbild') && str_contains($gdRow['fix'] ?? '', 'alles andere geht'),
+   'and says what is missing without it, and that everything else works: '.($gdRow['fix'] ?? '(no sentence)'));
+is_same(['gd'], array_column(array_filter(extension_checks($withoutGd), fn($c) => !$c['ok']), 'extension'), 'the System page is given it to name');
+is_same(['gd'], array_column(array_filter(extension_checks(), fn($c) => !$c['fatal']), 'extension'), 'and every other extension is still one setup stops without');
+
 case_('An old database server is named rather than silently accepted');
 is_same('', install_server_note('8.0.36'), 'MySQL 8 is fine');
 is_same('', install_server_note('10.11.14-MariaDB-0ubuntu0.24.04.1'), 'MariaDB 10.11 is fine, which is what this was run on');

@@ -57,6 +57,18 @@ const ENROLMENT_COLUMNS = 'cs.*, cs.interval_months AS enrolment_interval,'
 function enrolment_is_current(array $row): bool { return ($row['left_on'] ?? null) === null; }
 function current_enrolment_sql(string $alias = 'cs'): string { return sql_name($alias, 'alias').'.left_on IS NULL'; }
 
+/**
+ * Whether an enrolment puts its child in a running course now: current, in a
+ * course that is not archived. Who is in a course's group (ADR 0022 §1,
+ * thread_listed_sql()) and whom a child's picture reaches once the family has
+ * said yes (ADR 0031 §5, children_in_course_with()) are this one condition, so a
+ * group's members and a picture's audience cannot come to disagree.
+ */
+function running_enrolment_sql(string $alias = 'cs'): string {
+    $alias = sql_name($alias, 'alias');
+    return '('.current_enrolment_sql($alias).' AND '.$alias.'.class_id IN (SELECT id FROM classes WHERE archived=0))';
+}
+
 /** One enrolment, with the tariff it names and the course it is in. */
 function enrolment(int $classId, int $studentId): ?array {
     $row = one('SELECT '.ENROLMENT_COLUMNS

@@ -12,6 +12,9 @@ Auf einem normalen Webhosting-Paket, ohne Kommandozeile, in drei Schritten.
   und keine Seite mit einem QR-Code; ohne `ctype` zeigen die Schülerliste, die
   Rechnungen, der Postausgang und jede Seite mit einem QR-Code einen Fehler, und
   keine IBAN lässt sich speichern; ohne `filter` öffnet sich keine Seite.
+- Für Profilbilder außerdem `gd`. Fehlt sie, installiert die Einrichtungsseite
+  trotzdem und zeigt sie als „eingeschränkt“: Profilbilder lassen sich dann
+  nicht speichern, alles andere geht, und **Einstellungen → System** nennt sie.
 - MariaDB mit InnoDB und `utf8mb4`. Geprüft ist das Portal nur mit MariaDB 10.11;
   MySQL 8.0 ist vorgesehen, aber noch nie ausprobiert worden.
 - Apache oder LiteSpeed mit `.htaccess`, oder Nginx (Beispiel in `docs/nginx.conf.example`).
@@ -50,12 +53,15 @@ Kommandozeile hat.
 ```bash
 git clone https://github.com/mangoman16/crmb.git /pfad/zum/webverzeichnis
 cd /pfad/zum/webverzeichnis
-composer install --no-dev --prefer-dist --optimize-autoloader
+composer install --no-dev --prefer-dist --optimize-autoloader --ignore-platform-req=ext-gd
 ```
 
 `bin/update.sh --clone /pfad/zum/webverzeichnis` erledigt beides in einem
-Schritt. Ohne `composer install` läuft das Portal zwar, kann aber keine E-Mails
-verschicken und keinen Zahlungs-QR-Code zeichnen.
+Schritt, mit demselben Schalter. Ohne `composer install` läuft das Portal zwar,
+kann aber keine E-Mails verschicken und keinen Zahlungs-QR-Code zeichnen.
+`--ignore-platform-req=ext-gd` lässt Composer auch dort installieren, wo PHPs
+`gd` fehlt: Nur Profilbilder brauchen sie, alles andere läuft ohne. Ausgenommen
+ist damit nur `gd`; der Schalter braucht Composer 2.0 oder neuer.
 
 ### Ohne Shell-Zugang: ZIP-Datei
 
@@ -338,7 +344,8 @@ Datenbankschloss verhindert, dass zwei Läufe dieselbe E-Mail verschicken.
 Wer eine Kommandozeile hat, braucht die Einrichtungsseite nicht:
 
 ```bash
-composer install --no-dev --prefer-dist --optimize-autoloader   # nur nach git clone
+composer install --no-dev --prefer-dist --optimize-autoloader \
+  --ignore-platform-req=ext-gd   # nur nach git clone; gd brauchen nur Profilbilder
 cp config/config.example.php config/config.php
 php bin/console.php key                    # Ergebnis als app_key eintragen
 php bin/console.php migrate
@@ -369,6 +376,8 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 | „Vor der Aktualisierung konnte keine Sicherung angelegt werden“ | Den Grund nennt das Fehlerprotokoll des Hostings, nicht die Seite. Rechte für `storage` auf `755` setzen. Oder im Panel selbst eine Sicherung anlegen und danach im Ordner `storage` eine leere Datei `skip-backup` erstellen; sie gilt für genau ein Update. |
 | „Vor der Aktualisierung konnte das Portal im Ordner storage nicht schreiben“ | Dem Ordner `storage` Schreibrechte geben (`755`) und neu laden. Das Portal hat dabei nichts geändert und keine Sicherung angelegt. |
 | Jedes Foto und jeder Beleg wird abgelehnt, auch eine Datei, die in Ordnung ist | Unter **Einstellungen → System** nachsehen: Steht dort „Es fehlt: Fotos und Belege hochladen (fileinfo)“, im Hosting-Panel die PHP-Erweiterung `fileinfo` aktivieren. |
+| Statt „Foto hinzufügen“ steht „Fotos gehen auf diesem Server noch nicht.“ | Unter **Einstellungen → System** steht dann „Es fehlt: Profilbilder verkleinern (gd)“: im Hosting-Panel die PHP-Erweiterung `gd` aktivieren. Alles andere geht auch ohne sie. |
+| Über „Die Datei ist zu groß. Erlaubt sind …“ steht eine englische PHP-Warnung „POST Content-Length of … bytes exceeds the limit …“ | Das Hosting zeigt PHP-Fehler beim Start einer Anfrage auf der Seite an (`display_errors` und `display_startup_errors` an); in PHPs Vorgabe für Server, `php.ini-production`, sind beide aus. Im Hosting-Panel ausschalten. Die Datei war größer, als der Server annimmt; das Portal sagt es im Satz darunter. |
 | „Gerade wird eine Sicherung eingespielt, oder das Einspielen ist abgebrochen.“ | Warten, bis phpMyAdmin fertig meldet, dann die Seite neu laden; sie lädt sich alle fünf Minuten von selbst neu. Ist das Einspielen abgebrochen: dieselbe Datei in phpMyAdmin noch einmal einspielen, nichts wird doppelt. Kommt das Ende der Datei nie an, weil sie beschädigt ist: in phpMyAdmin die Tabelle `import_unfinished` löschen – das Portal nimmt die Datenbank dann so, wie sie ist ([UPDATING.md](UPDATING.md#a-refused-update), „A refused update“). |
 | „In der Datenbank fehlt die Tabelle schema_migrations, die jedes Portal hat.“ | Wird gerade eine Sicherung von vor dieser Version oder eine aus dem Panel eingespielt: warten, bis phpMyAdmin fertig meldet, dann neu laden; abgebrochen: dieselbe Datei noch einmal einspielen. Wird nichts eingespielt, nennt `config/config.php` eine fremde Datenbank: die richtige eintragen. Das Portal hat nichts verändert. |
 | „Die Datenbank ist leer, aber in diesem Ordner lief schon ein Portal.“ | Beim Wiederherstellen: die Sicherung in phpMyAdmin einspielen, dann neu laden. Soll hier wirklich ein neues, leeres Portal entstehen: im Dateimanager `storage/schema.stamp` löschen und neu laden – Belege und Fotos des alten Portals werden danach gelöscht, seine Sicherungen in `storage/backups` bleiben. Die Einrichtungsseite sagt denselben Satz, wenn sie auf eine neue Datenbank zeigt, aber im Ordner eines alten Portals liegt. |

@@ -496,7 +496,8 @@ case_('The chat list and a chat’s header draw a person from the same facts');
 sign_in_as($hofer);
 $row = array_values(array_filter(chat_list(current_user()), fn($c) => (int)$c['id'] === (int)$thread['id']))[0] ?? [];
 $header = array_values(array_filter(thread_people((int)$thread['id']), fn($p) => (int)$p['id'] === $trainer))[0] ?? [];
-is_same(CHAT_PERSON_COLUMNS, array_keys($header), 'the header reads the one list of what the chat shows of a person');
+is_same([...CHAT_PERSON_COLUMNS, ...array_keys(CHILD_PICTURE_COLUMNS)], array_keys($header),
+        'the header reads the one list of what the chat shows of a person, the child’s picture beside it (ADR 0031)');
 is_same($header, chat_person_in($row, 'other_'), 'and the list’s row carries the same person, value for value');
 /* The list named a group's last writer from a column of its own, without the
    role that tells staff apart (security review, 2026-10-08). */

@@ -75,7 +75,15 @@ submit_button(t('Nur Verbindung prüfen','Only test the connection'),'secondary'
 </div>
 <?php endif ?>
 </section>
-<?php elseif($tab==='privacy'): ?>
+<?php elseif($tab==='privacy'):
+/* Whether the children of a course see each other's photos is the club's to
+   decide, above the notice that has to say it (ADR 0031 §5, §11), and from
+   what age a child agrees alone (§8, as amended), under „Erweitert" because it
+   is rarely changed: the registry draws the group's settings that are not
+   internal. */
+$registryGroup='privacy';
+$registryCard=['id'=>'pictures','head'=>function(): void { ?><h2><?=e(t('Fotos im Kurs','Photos in a course'))?></h2><?php }];
+require ROOT.'/views/_settings_registry.php'; ?>
 <section class="card"><h2><?=e(t('Datenschutzerklärung','Privacy notice'))?></h2><p class="muted"><?=e(t('Den Entwurf an das tatsächliche Hosting und den E-Mail-Dienst anpassen. Beide Sprachfassungen sind öffentlich vor der Anmeldung erreichbar.','Adapt the draft to the actual hosting and email service. Both languages are accessible before sign-in.'))?></p>
 <div class="notice"><?=e(t('Name und Anschrift kommen aus „Betrieb“ und müssen hier nicht getippt werden. Diese Platzhalter werden beim Anzeigen ersetzt: ','The name and address come from “Betrieb” and do not have to be typed here. These placeholders are filled in when the notice is shown: '))?><code><?=e(implode(' ',array_keys(privacy_placeholders())))?></code></div><?php start_form('privacy_save');input('privacy_de','Deutsch',setting('privacy_de',''),'textarea',true);input('privacy_en',t('English (freiwillig)','English (optional)'),setting('privacy_en',''),'textarea',false,t('Leer lassen, wenn es keine englische Fassung gibt. Wer das Portal auf Englisch nutzt, sieht dann die deutsche, mit einem Hinweis darauf.','Leave it empty if there is no English version. Whoever uses the portal in English then sees the German one, with a note saying so.'));check_field('privacy_ready',t('Die Datenschutzerklärung ist vollständig und zur Verwendung freigegeben.','The privacy notice is complete and approved for use.'),(bool)setting('privacy_ready',false));submit_button();?></form></section>
 <?php endif ?>

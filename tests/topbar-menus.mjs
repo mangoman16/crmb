@@ -33,6 +33,15 @@
  * page and its status line. On the stand-in elements, closest(), matches() and
  * querySelector() understand a tag, classes and attributes - [open], [name] and
  * [name="value"] - and throw on any other selector rather than guess.
+ *
+ * And a photo's card (ADR 0031): a form that sends a photo as soon as one is
+ * chosen and a switch's form, each with its own button for a page without
+ * JavaScript, two folds that open as a sheet, and attendance's bulk choices,
+ * one of them in a sheet already open. For the photo, the page offers what the
+ * shrinking asks of a browser - a reader that gives the file as a data:
+ * address, a picture decoded to a size the check sets, a canvas that remembers
+ * how it was painted, and a way to put a file back into the input - and
+ * nothing more.
  */
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -107,6 +116,7 @@ class FakeElement {
     for (let el = other; el; el = el.parent) if (el === this) return true;
     return false;
   }
+  get childNodes() { return [...this.children]; }
   descendants() { return this.children.flatMap(child => [child, ...child.descendants()]); }
   querySelector(selector) { return this.descendants().find(el => el.matches(selector)) ?? null; }
   querySelectorAll(selector) { return this.descendants().filter(el => el.matches(selector)); }
@@ -172,7 +182,75 @@ const storage = () => {
 };
 const stored = storage();
 let stops = 0;
-const answered = new Set(['.topbar-menu', 'form[method="post"]', 'form[data-submitted]', 'dialog.sheet-dialog[open]', '.is-pending']);
+// A child's photo card: the photo's form, its file input in the row's label,
+// the switch's form, and the button of each for a page without JavaScript,
+// which records being pressed.
+const photoForm = new FakeElement('form', ['picture-form', 'auto-submit'], main);
+photoForm.setAttribute('method', 'post');
+const photoRow = new FakeElement('label', ['member-row'], photoForm);
+const photoField = Object.assign(new FakeElement('input', [], photoRow), { type: 'file', files: [] });
+const switchForm = new FakeElement('form', ['picture-consent', 'auto-submit'], main);
+switchForm.setAttribute('method', 'post');
+const switchRow = new FakeElement('label', [], switchForm);
+const switchField = Object.assign(new FakeElement('input', [], switchRow), { type: 'checkbox', checked: true });
+const presses = new Map();
+const saveButton = form => {
+  const button = new FakeElement('button', ['picture-save'], form);
+  button.setAttribute('type', 'submit');
+  button.click = () => presses.set(button, (presses.get(button) ?? 0) + 1);
+  return button;
+};
+const photoSave = saveButton(photoForm);
+const switchSave = saveButton(switchForm);
+// Two folds that open as a sheet: one names its sheet itself, as the photo
+// card's row does; the other is named by its summary, as every other fold is.
+const fold = (title, summaryText) => {
+  const details = new FakeElement('details', [], main);
+  details.setAttribute('data-sheet', '');
+  if (title) details.setAttribute('data-sheet-title', title);
+  const summary = Object.assign(new FakeElement('summary', [], details), { textContent: summaryText });
+  new FakeElement('p', [], details);
+  details.querySelector = selector => (selector === ':scope > summary' ? summary : FakeElement.prototype.querySelector.call(details, selector));
+  return { details, summary };
+};
+const namedFold = fold('Foto von Mia', 'MH Foto ändern Dein Trainerteam sieht es.');
+const plainFold = fold('', ' Kind löschen ');
+// Attendance's bulk choices (the audit, N3): „Alle: Anwesend" on the page, and
+// one from the „Mehr" sheet - a <dialog> by then - which shuts it once chosen.
+const markAll = (code, parent) => {
+  const button = new FakeElement('button', ['button', 'secondary'], parent);
+  button.setAttribute('type', 'button');
+  button.setAttribute('data-mark-all', code);
+  return button;
+};
+const markOnPage = markAll('present', main);
+const moreSheet = Object.assign(new FakeElement('dialog', ['sheet-dialog'], body), { closed: 0, close() { this.closed++; } });
+const markInSheet = markAll('absent', new FakeElement('div', ['sheet-body'], moreSheet));
+// What the next photo decodes to, how big its smaller copy comes out, and every
+// canvas drawn on.
+let photo = { width: 3024, height: 4032, readable: true };
+let copySize = 240000;
+const canvases = [];
+let decodedFrom = '';
+class FakeImage {
+  set src(address) { decodedFrom = address; }
+  decode() { return photo.readable ? Promise.resolve() : Promise.reject(new Error('not a picture this browser reads')); }
+  get naturalWidth() { return photo.width; }
+  get naturalHeight() { return photo.height; }
+}
+const newCanvas = () => {
+  const canvas = { width: 0, height: 0, painted: [] };
+  canvas.getContext = () => ({
+    set fillStyle(value) { canvas.painted.push(['fillStyle', value]); },
+    fillRect: (...args) => canvas.painted.push(['fillRect', ...args]),
+    drawImage: (image, ...args) => canvas.painted.push(['drawImage', image instanceof FakeImage, ...args]),
+  });
+  canvas.toBlob = (done, type) => done({ size: copySize, type });
+  canvases.push(canvas);
+  return canvas;
+};
+const answered = new Set(['.topbar-menu', 'form[method="post"]', 'form[data-submitted]', 'dialog.sheet-dialog[open]', '.is-pending',
+                          'form.auto-submit', 'details[data-sheet]', '[data-mark-all]']);
 
 const documentListeners = {};
 const windowListeners = {};
@@ -190,7 +268,9 @@ const page = {
   // finds nothing to attach to and stays out of the way.
   querySelectorAll: selector => (answered.has(selector) ? body.querySelectorAll(selector) : []),
   addEventListener: (type, fn) => { (documentListeners[type] ??= []).push(fn); },
-  createElement: tag => new FakeElement(tag),
+  createElement: tag => (tag === 'canvas' ? newCanvas()
+    : tag === 'dialog' ? Object.assign(new FakeElement('dialog'), { showModal() { this.shown = true; }, close() { this.shown = false; } })
+    : new FakeElement(tag)),
 };
 
 const context = vm.createContext({
@@ -200,6 +280,14 @@ const context = vm.createContext({
   history: { replaceState() {} },
   navigator: {},
   URLSearchParams,
+  // A blob: address, as URL.createObjectURL() makes one, is what the portal's
+  // Content-Security-Policy refuses to show; FileReader gives a data: one.
+  URL: { createObjectURL: () => 'blob:photo', revokeObjectURL() {} },
+  FileReader: class { readAsDataURL(file) { this.result = 'data:' + file.type + ';base64,'; Promise.resolve().then(() => this.onload()); } },
+  Image: FakeImage,
+  File: class { constructor(parts, name, options) { Object.assign(this, { name, type: options.type, size: parts[0].size }); } },
+  DataTransfer: class { constructor() { this.files = []; this.items = { add: file => this.files.push(file) }; } },
+  HTMLDialogElement: function HTMLDialogElement() {},
   console,
   addEventListener: (type, fn) => { (windowListeners[type] ??= []).push(fn); },
   setTimeout: (fn, ms = 0) => { timers.set(++timerCount, { fn, ms }); return timerCount; },
@@ -493,6 +581,66 @@ try {
   try { buttonless = arriving(1500, clock, { withCancel: false }); } catch (error) { buttonless = { error: String(error) }; }
   check('a waiting page without „Abbrechen" stops nothing else the script does', !buttonless.error && buttonless.ownTimers.size === 1,
         buttonless.error ?? buttonless.state());
+
+  // A sheet opened from a whole row is named by the fold, not by everything the row reads.
+  const titleOf = ({ summary }) => {
+    for (const fn of summary.listeners.click ?? []) fn({ preventDefault() {} });
+    const dialog = body.children.filter(el => el.tagName === 'DIALOG').at(-1);
+    return dialog?.children.find(el => el.tagName === 'H2')?.textContent;
+  };
+  check('a fold that names its sheet gives it that title, not the whole row', titleOf(namedFold) === 'Foto von Mia', String(titleOf(namedFold)));
+  check('any other sheet is titled by its summary, as before', titleOf(plainFold) === 'Kind löschen', String(titleOf(plainFold)));
+
+  // A bulk choice made in the „Mehr" sheet shuts it; one on the page has no sheet to shut.
+  for (const fn of markInSheet.listeners.click ?? []) fn({ target: markInSheet });
+  for (const fn of markOnPage.listeners.click ?? []) fn({ target: markOnPage });
+  check('„Alle: Fehlt" from the „Mehr" sheet shuts the sheet once chosen, and „Alle: Anwesend" on the page shuts nothing',
+        moreSheet.closed === 1, JSON.stringify({ closed: moreSheet.closed }));
+
+  // A photo goes as soon as it is chosen, drawn smaller first (ADR 0031).
+  // What a listener throws is kept for the check, as a browser would only log it.
+  let thrown = null;
+  const choose = async (files, field = photoField, form = photoForm) => {
+    presses.clear(); canvases.length = 0; thrown = null;
+    field.files = files;
+    for (const fn of form.listeners.change ?? []) await Promise.resolve(fn({ target: field })).catch(error => { thrown = String(error); });
+  };
+  const photoState = () => JSON.stringify({ pressed: presses.get(photoSave) ?? 0, canvases: canvases.map(c => [c.width, c.height]),
+    files: photoField.files.map(f => [f.name, f.type, f.size]), thrown });
+  const fromPhone = { name: 'IMG_0001.png', type: 'image/png', size: 3500000 };
+  photo = { width: 3024, height: 4032, readable: true }; copySize = 240000;
+  await choose([fromPhone]);
+  check('choosing a photo sends it by its form\'s own button, once', presses.get(photoSave) === 1, photoState());
+  check('and the row says it is working', photoRow.getAttribute('aria-busy') === 'true', photoState());
+  check('the photo is read as a data: address, which the portal\'s Content-Security-Policy lets a page show, not a blob: one',
+        decodedFrom.startsWith('data:'), decodedFrom);
+  check('a large photo is drawn at most 1024 long, on a canvas that size, never at its own',
+        canvases.length === 1 && canvases[0].width === 768 && canvases[0].height === 1024, photoState());
+  check('straight at that size, on white', JSON.stringify(canvases[0]?.painted)
+        === JSON.stringify([['fillStyle', '#fff'], ['fillRect', 0, 0, 768, 1024], ['drawImage', true, 0, 0, 768, 1024]]), JSON.stringify(canvases[0]?.painted));
+  check('and what goes is that copy, as a JPEG', photoField.files.length === 1 && photoField.files[0].size === 240000
+        && photoField.files[0].type === 'image/jpeg' && photoField.files[0].name === 'IMG_0001.jpg', photoState());
+  photo = { width: 800, height: 600, readable: true };
+  await choose([fromPhone]);
+  check('a photo already small enough goes as it was chosen', presses.get(photoSave) === 1 && canvases.length === 0 && photoField.files[0] === fromPhone, photoState());
+  photo = { width: 4032, height: 3024, readable: false };
+  await choose([fromPhone]);
+  check('a photo this browser cannot read goes as it was chosen, for the server to judge', presses.get(photoSave) === 1 && photoField.files[0] === fromPhone, photoState());
+  photo = { width: 4032, height: 3024, readable: true }; copySize = fromPhone.size;
+  await choose([fromPhone]);
+  check('a copy no smaller than the photo does not go in its place', presses.get(photoSave) === 1 && photoField.files[0] === fromPhone, photoState());
+  copySize = 240000;
+  const withFiles = context.DataTransfer;
+  context.DataTransfer = undefined;
+  await choose([fromPhone]);
+  context.DataTransfer = withFiles;
+  check('nor where the browser cannot put a file back into the field', presses.get(photoSave) === 1 && photoField.files[0] === fromPhone, photoState());
+  await choose([]);
+  check('closing the picker without a photo sends nothing', !presses.get(photoSave), photoState());
+  presses.clear(); canvases.length = 0;
+  for (const fn of switchForm.listeners.change ?? []) await fn({ target: switchField });
+  check('flipping the course switch sends it at once, with nothing drawn', presses.get(switchSave) === 1 && canvases.length === 0,
+        JSON.stringify({ pressed: presses.get(switchSave) ?? 0, canvases: canvases.length }));
 } catch (error) {
   check('the menu code ran against the stand-in page', false, String(error && error.stack || error));
 }

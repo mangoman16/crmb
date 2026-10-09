@@ -118,6 +118,41 @@ sort($added); $declared = FORM_BOOKKEEPING_FIELDS; sort($declared);
 is_same($declared, $added, 'the bookkeeping list is exactly what every form adds besides its token');
 $_GET = [];
 
+case_('A post larger than the server takes is a file too large, answered on the page it came from [the screens’ review of ADR 0031]');
+/* PHP empties $_POST and $_FILES then - the token, the action and the way back
+   with them - so the token check called it an expired session, on the overview.
+   A form with a file says in its address where it came from, post_too_large()
+   tells the router what happened, and the way back is read from the address.
+   The real request, through the router, is in the robustness suite. */
+[$pageBefore, $getBefore, $serverBefore] = [$GLOBALS['page'] ?? null, $_GET, $_SERVER];
+$GLOBALS['page'] = 'student'; $_GET = ['id'=>'7', 'tab'=>'payments'];
+ob_start(); start_form('proof_upload', ['student_id'=>7], 'form', true); echo '</form>'; $withFile = (string)ob_get_clean();
+ob_start(); start_form('student_save', ['id'=>7]); echo '</form>'; $withoutFile = (string)ob_get_clean();
+preg_match('/<form [^>]*action="([^"]*)"/', $withFile, $address);
+is_same(url().'?return_page=student&return_id=7&return_tab=payments', html_entity_decode($address[1] ?? ''),
+        'a form with a file names its page, record and tab in its address');
+ok(str_contains($withoutFile, ' action="'.e(url()).'"'), 'one without a file does not need to: its fields arrive');
+$_POST = []; $_GET = ['return_page'=>'student', 'return_id'=>'7', 'return_tab'=>'payments', 'action'=>'student_delete', 'request_id'=>'x'];
+is_same(['student', ['id'=>7, 'tab'=>'payments']], form_return(), 'with nothing posted, the way back is read from the address');
+is_same(['', ''], [form_bookkeeping('action'), form_bookkeeping('request_id')], 'and only the way back: what a form asks for is never read from an address');
+$_GET = ['return_page'=>'students']; $_POST = ['return_page'=>'student', 'return_id'=>'7'];
+is_same(['student', ['id'=>7]], form_return(), 'what is posted comes first');
+$_POST = []; $_GET = $getBefore;
+$limit = ini_bytes((string)ini_get('post_max_size'));
+$tooLarge = function (string $method, string $length, array $post = []) use ($serverBefore): bool {
+    [$_SERVER['REQUEST_METHOD'], $_SERVER['CONTENT_LENGTH'], $_POST] = [$method, $length, $post];
+    try { return post_too_large(); } finally { [$_SERVER, $_POST] = [$serverBefore, []]; }
+};
+if ($limit <= 0) {
+    test_unsupported(array_merge(test_unsupported(), ['forms: a post over post_max_size (this PHP sets no limit)']));
+} else {
+    is_same([true, false, false, false, false],
+            [$tooLarge('POST', (string)($limit + 1)), $tooLarge('POST', (string)$limit), $tooLarge('POST', (string)($limit + 1), ['action'=>'proof_upload']),
+             $tooLarge('GET', (string)($limit + 1)), $tooLarge('POST', '')],
+            'post_too_large(): one byte over post_max_size with nothing arrived; not at the limit, with fields, as a GET, or with no length');
+}
+if ($pageBefore === null) unset($GLOBALS['page']); else $GLOBALS['page'] = $pageBefore;
+
 case_('An address with ?tab[]= draws its page without a warning');
 /* A list where a word is expected is something anybody can type into an
    address. Turned into text it warned „Array to string conversion" - on a

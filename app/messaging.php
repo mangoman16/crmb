@@ -72,8 +72,7 @@ function thread_listed_sql(array $user): array {
         return ["((t.kind='course' AND EXISTS (SELECT 1 FROM classes c WHERE c.id=t.class_id AND c.archived=0))"
             ." OR (t.kind IN ('direct','staff_direct') AND $mine) OR t.kind='staff')", [$id]];
     return ["((t.kind='course' AND EXISTS (SELECT 1 FROM class_students cs JOIN students s ON s.id=cs.student_id"
-        .' JOIN classes c ON c.id=cs.class_id WHERE cs.class_id=t.class_id AND s.account_id=? AND '.current_enrolment_sql('cs')
-        .' AND c.archived=0))'
+        .' WHERE cs.class_id=t.class_id AND s.account_id=? AND '.running_enrolment_sql('cs').'))'
         ." OR (t.kind IN ('direct','staff_direct','staff') AND $mine))", [$id, $id]];
 }
 
@@ -189,28 +188,35 @@ function is_participant(int $threadId, int $accountId): bool {
 }
 
 /**
- * What the chat shows of a person: who, their role and whether their login is
- * in use. One list, so the header, the member sheet, the contacts and the chat
+ * What the chat shows of a person: who, their role, whether their login is in
+ * use and a team member's picture - and a family's login carries its child's
+ * picture beside it (child_picture_columns()). avatar() draws by them (ADR 0031
+ * §6). One list, so the header, the member sheet, the contacts and the chat
  * list cannot draw one person from different facts.
  */
-const CHAT_PERSON_COLUMNS = ['id', 'name', 'role', 'state'];
+const CHAT_PERSON_COLUMNS = ['id', 'name', 'role', 'state', 'picture_name'];
 
 /**
- * Those columns as a select list over the accounts table under $alias. With a
- * $prefix each is named with it, for a row that carries a person beside columns
- * of its own; chat_person_in() takes the person back out of such a row.
+ * Those columns as a select list over the accounts table under $alias, with the
+ * child's picture columns after them. With a $prefix each is named with it, for
+ * a row that carries a person beside columns of its own; chat_person_in() takes
+ * the person back out of such a row. $student is the alias of the login's
+ * student where the statement has joined it already - a course's members, who
+ * are students first and may have no login in use - and the picture is read
+ * from it rather than looked up beside the login.
  */
-function chat_person_columns(string $alias, string $prefix = ''): string {
+function chat_person_columns(string $alias, string $prefix = '', string $student = ''): string {
     $alias = sql_name($alias, 'table alias');
     if ($prefix !== '') $prefix = sql_name($prefix, 'column prefix');
     return implode(', ', array_map(fn(string $column): string => $alias . '.' . $column . ($prefix !== '' ? ' AS ' . $prefix . $column : ''),
-                                   CHAT_PERSON_COLUMNS));
+                                   CHAT_PERSON_COLUMNS))
+        . ', ' . child_picture_columns($alias, $prefix, $student);
 }
 
 /** The person a row carries under $prefix, as the helpers that draw people expect one. */
 function chat_person_in(array $row, string $prefix): array {
     $person = [];
-    foreach (CHAT_PERSON_COLUMNS as $column) $person[$column] = $row[$prefix . $column] ?? null;
+    foreach ([...CHAT_PERSON_COLUMNS, ...array_keys(CHILD_PICTURE_COLUMNS)] as $column) $person[$column] = $row[$prefix . $column] ?? null;
     return $person;
 }
 
@@ -252,6 +258,11 @@ function thread_title(array $thread, array $user): string {
  * With $allDirect, an administrator's „Alle Einzelchats" (ADR 0022 §11.1): every
  * chat between two people that she is not in, with nothing unread. She has no
  * read mark in those (mark_thread_read()), and none of them waits for her.
+ *
+ * ponytail: the writer carries a child's picture columns too, as every person
+ * the chat shows does (ADR 0031), though the list draws no face for the
+ * writer: three lookups by a unique key a row. The way up, should the list
+ * ever grow slow, is the writer's columns without them.
  */
 function chat_list(array $user, bool $allDirect = false): array {
     $me = (int)$user['id'];
@@ -391,14 +402,14 @@ function thread_messages(int $threadId, int $before = 0, int $limit = 50): array
 /**
  * Who is in a course's group: every active member of staff, and every student
  * enrolled now - with their login where they have an active one, so the page
- * can say who cannot read the group yet.
+ * can say who cannot read the group yet. A student without one still carries
+ * their picture (chat_person_columns()'s $student), for staff, who see it.
  */
 function course_group_people(int $classId): array {
-    $cols = chat_person_columns('a');
     return [
-        'staff' => rows("SELECT $cols FROM accounts a WHERE a.role IN ('admin','trainer','manager') AND a.state='active'"
+        'staff' => rows('SELECT '.chat_person_columns('a')." FROM accounts a WHERE a.role IN ('admin','trainer','manager') AND a.state='active'"
             .' ORDER BY a.name, a.id'),
-        'members' => rows("SELECT s.id AS student_id, s.first_name, s.last_name, $cols FROM class_students cs"
+        'members' => rows('SELECT s.id AS student_id, s.first_name, s.last_name, '.chat_person_columns('a', '', 's').' FROM class_students cs'
             ." JOIN students s ON s.id=cs.student_id LEFT JOIN accounts a ON a.id=s.account_id AND a.state='active'"
             .' WHERE cs.class_id=? AND '.current_enrolment_sql('cs').' ORDER BY s.last_name, s.first_name, s.id', [$classId]),
     ];

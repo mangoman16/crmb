@@ -22,9 +22,12 @@ $mine=$staff?null:($students[0]??null);
 // nothing to put a child into; the first step there is the course. The same
 // question the checklist's „Ersten Kurs anlegen" asks, through the same function.
 $hasCourse=$staff && real_course_exists();
-page_head(t('Hallo ','Hello ').($staff?explode(' ',$user['name'])[0]:greeting_name($user)),
+/* The child's own face greets them, and leads to their photo at the top of
+   their page (the audit, N7): where one is added or changed. */
+page_head(t('Hallo ','Hello ').greeting_first_name($user),
     $staff?t('Übersicht über Schüler, Beiträge und Abwesenheiten.','Students, charges and absences at a glance.'):t('Deine Termine, Beiträge und Nachrichten.','Your dates, payments and messages.'),
-    $staff?($hasCourse?link_button(t('+ Schüler anlegen','+ Add student'),'student_new',['from'=>'dashboard']):''):($mine?link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]):''));
+    $staff?($hasCourse?link_button(t('+ Schüler anlegen','+ Add student'),'student_new',['from'=>'dashboard']):''):($mine?link_button(t('Nachricht schreiben','Write message'),'messages',['new'=>1]):''),
+    $mine?'<a class="page-face" href="'.e(url('student',['id'=>$mine['id'],'#'=>'picture'])).'" aria-label="'.e(t('Dein Profil','Your profile')).'">'.avatar($mine,'large').'</a>':'');
 if(!$staff):
     /* The family's page, in the order they read it: who, what is owed, when is
        training, what is new. Every part the full width - there is one of

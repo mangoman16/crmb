@@ -157,13 +157,15 @@ window.addEventListener('pageshow', event => {
   document.querySelectorAll('dialog.sheet-dialog[open]').forEach(dialog => { dialog.close(); });
 });
 
-// A fold that removes or makes something (details[data-sheet]) opens as a sheet
-// from the bottom of the screen, the way iOS asks before it deletes: the fold's
-// summary as the title, what it holds under it, and „Abbrechen", which shuts it
-// and changes nothing. What it holds is moved into a <dialog> and back again,
-// never copied, so the form in it is the same form with the same fields. Escape
-// and a tap on the dimmed page beside it shut it too. Without this the fold
-// opens in place, as it always did; a browser without <dialog> keeps that.
+// A fold that removes or makes something, or holds a choice made rarely and on
+// purpose (details[data-sheet]), opens as a sheet from the bottom of the screen,
+// the way iOS asks before it deletes: the fold's summary as the title - or the
+// name the fold gives its sheet (data-sheet-title), where the summary is a whole
+// row - what it holds under it, and „Abbrechen", which shuts it and changes
+// nothing. What it holds is moved into a <dialog> and back again, never copied,
+// so the form in it is the same form with the same fields. Escape and a tap on
+// the dimmed page beside it shut it too. Without this the fold opens in place,
+// as it always did; a browser without <dialog> keeps that.
 let sheets = 0;
 document.querySelectorAll('details[data-sheet]').forEach(fold => {
   const summary = fold.querySelector(':scope > summary');
@@ -177,7 +179,9 @@ document.querySelectorAll('details[data-sheet]').forEach(fold => {
     title.className = 'sheet-title';
     title.id = 'sheet-title-' + (++sheets);
     title.tabIndex = -1;
-    title.textContent = summary.textContent.trim();
+    // A fold whose summary is a whole row - a face, what a tap does and who
+    // sees it - names its sheet itself, or the title would read all of that.
+    title.textContent = fold.dataset.sheetTitle || summary.textContent.trim();
     dialog.setAttribute('aria-labelledby', title.id);
     const grabber = document.createElement('span');
     grabber.className = 'sheet-grabber';
@@ -217,11 +221,72 @@ document.querySelectorAll('details[data-sheet]').forEach(fold => {
   if (fold.open) { fold.open = false; open(); }
 });
 
+// A photo goes as soon as it is chosen, and the course switch takes effect as
+// soon as it is flipped, as on a phone (ADR 0031). Each form's own button is for
+// a page without JavaScript, and the stylesheet hides it once this has run.
+// That button sends the form, so the busy mark above applies and the waiting
+// page stays off; click(), because iOS 15 has no requestSubmit().
+document.querySelectorAll('form.auto-submit').forEach(form => {
+  form.addEventListener('change', async event => {
+    const field = event.target;
+    if (field.type === 'file' && !field.files.length) return;
+    field.closest('label')?.setAttribute('aria-busy', 'true');
+    if (field.type === 'file') await shrinkPhoto(field);
+    form.querySelector('.picture-save')?.click();
+  });
+});
+// A phone's photo is 12 to 48 megapixels, often more than the upload limit, and
+// slow on the weak network of a sports hall, while the server keeps a square of
+// 320 pixels of it (ADR 0031 §3). So it is drawn again, PHOTO_SIDE long, before it
+// goes: upright as the phone shows it, because the copy carries no EXIF for the
+// server to turn it by, and straight at the small size, because a phone's
+// browser may refuse a canvas the size of the photo. Whatever fails on the way,
+// the photo goes as it was chosen, and the server keeps every limit, as it does
+// for a page without JavaScript.
+const PHOTO_SIDE = 1024;
+async function shrinkPhoto(field) {
+  const photo = field.files[0];
+  try {
+    // Read as a data: address, not a blob: one, because the portal's
+    // Content-Security-Policy lets a page show images from itself and data:
+    // only (app/bootstrap.php); a blob: address is refused, and with it every
+    // photo would have gone at full size.
+    const address = await new Promise((done, failed) => {
+      const reader = new FileReader();
+      reader.onload = () => done(reader.result);
+      reader.onerror = () => failed(reader.error);
+      reader.readAsDataURL(photo);
+    });
+    const image = new Image();
+    image.src = address;
+    await image.decode();
+    const scale = PHOTO_SIDE / Math.max(image.naturalWidth, image.naturalHeight);
+    if (!(scale < 1)) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(image.naturalWidth * scale);
+    canvas.height = Math.round(image.naturalHeight * scale);
+    const paint = canvas.getContext('2d');
+    // What was see-through turns white, as the server's own square does.
+    paint.fillStyle = '#fff';
+    paint.fillRect(0, 0, canvas.width, canvas.height);
+    paint.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const copy = await new Promise(done => canvas.toBlob(done, 'image/jpeg', 0.85));
+    if (!copy || copy.size >= photo.size) return;
+    const files = new DataTransfer();
+    files.items.add(new File([copy], photo.name.replace(/\.[^.]*$/, '') + '.jpg', { type: 'image/jpeg' }));
+    field.files = files.files;
+  } catch {
+    // Not read, not decoded, no canvas, no DataTransfer: the photo goes as it was chosen.
+  }
+}
+
 // Reveal controls that only make sense with JavaScript available.
 document.querySelectorAll('[data-needs-js]').forEach(el => { el.hidden = false; });
 
 // Attendance: set every student's choice at once, then correct the exceptions.
-// Without JavaScript the radios still work one by one, so this is additive.
+// Without JavaScript the radios still work one by one, so this is additive. A
+// choice from the „Mehr" sheet shuts it once made; its close puts the buttons
+// back where they came from.
 document.querySelectorAll('[data-mark-all]').forEach(button => {
   button.addEventListener('click', () => {
     const value = button.dataset.markAll;
@@ -229,6 +294,7 @@ document.querySelectorAll('[data-mark-all]').forEach(button => {
       const radio = group.querySelector('input[value="' + CSS.escape(value) + '"]');
       if (radio) radio.checked = true;
     });
+    button.closest('dialog')?.close();
   });
 });
 

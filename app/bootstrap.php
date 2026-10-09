@@ -41,8 +41,13 @@ require __DIR__ . '/groups.php';
 require __DIR__ . '/attendance.php';
 require __DIR__ . '/billing.php';
 require __DIR__ . '/shell.php';
-// upload_types() calls message_upload_types() in messaging.php, loaded below, at
-// request time only - never while loading - so this order is safe as it stands.
+// avatar() in shell.php above calls picture_of(), picture_stored() and
+// may_see_picture() from here, and current_user() in auth.php calls
+// child_picture_columns(); from here, upload_types() calls message_upload_types()
+// in messaging.php below and square_picture() calls jpeg_orientation() in
+// brand.php below. Each at request time only - never while loading - so this
+// order is safe as it stands (ADR 0031 §10). Do not "tidy" it by moving a file
+// without checking those calls.
 require __DIR__ . '/uploads.php';
 // The club's colours and logo. Needs setting() and setting_colour_refusal()
 // from defaults.php, colour.php, is_staff() from auth.php and uploads.php's

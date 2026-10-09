@@ -5,6 +5,38 @@ date: 2026-10-08
 
 # 0031. Profile pictures come back: staff see every face, a course once the family agrees
 
+> **Amended on 2026-10-08 by the project manager, from the security review (P4): gd is optional.**
+> A host without gd could not install the portal at all, for a feature it can do without, and that
+> is worse than a portal without faces. The second kind of extension that §4 and Rejected warned of
+> is one flag, on gd's row alone.
+>
+> - `extension_checks()` marks gd optional. `setup.php` lists it as „eingeschränkt" and installs
+>   all the same; Einstellungen → System names it while it is missing.
+> - Without gd there are no pictures, and everything else works. Where a picture would be added,
+>   the page says instead that photos do not work on this server yet: to an administrator, where
+>   to look, to anybody else, that an administrator sets it up (`pictures_unavailable()`). A photo
+>   sent anyway is refused in the same words, and the first sign-in goes straight on, without
+>   „Dein Foto": a family's banner keeps the welcome, a team member's has none, as before the
+>   pictures came back (4 in the note below).
+> - `composer.json` keeps `ext-gd` under `require`, on purpose, not under `suggest`. Composer runs
+>   on the machine that builds the release, which needs gd anyway, and the check it writes into the
+>   release (`vendor/composer/platform_check.php`) tests the PHP version and nothing else, so a
+>   portal without gd still starts. On a Git install Composer runs on the host as well: there
+>   `bin/update.sh` passes `--ignore-platform-req=ext-gd` (Composer 2.0 or later), which waives gd
+>   alone, so a host without gd updates as it installs, and any other missing extension still stops
+>   the update, as it stops `setup.php`. The `structure` suite still holds `extension_checks()` and
+>   `composer.json` to each other.
+> - "Must stay true" gains: gd is the only extension setup installs without, and the only one
+>   `bin/update.sh` waives. Test 9 gains, in the `install` suite: without gd, setup lists it and
+>   installs, the System page names it, and every other extension still stops setup.
+>
+> These parts no longer hold: under the title, "one PHP extension the portal now requires"; in §4,
+> its title, "Setup refuses to install without it", "anybody else to the club" and the bullet
+> "Required, not optional"; in Rejected, "gd as an optional extension"; in Consequences, "gd is a
+> PHP extension the portal now requires (§4)" and "that the hosting needs gd"; and in "In plain
+> words", that your hosting needs gd. Lines marked *Changed 2026-10-08, by the project manager* say
+> so in §4, Rejected and "In plain words", and one in 4 of the note below. Everything else stands.
+
 > **Amended on 2026-10-08: the owner's answers.** The owner, the same day:
 >
 > - "we are based in austria, use austrian law"
@@ -82,6 +114,14 @@ date: 2026-10-08
 >      before: a family to its child's page, with the welcome (0023 §5), a team member to
 >      `landing_after_sign_in()` (0011). A reset and a confirmed address land as before. This
 >      record now amends 0011, 0021 and 0023 too, and their notes say so.
+>      *Changed 2026-10-08, by the designer, in the specification of „Dein Foto":* the family goes
+>      on without the welcome, on purpose: the step's own title already welcomes. The activation's
+>      banner keeps only „Dein Konto ist bereit. Du meldest dich ab jetzt mit {login} an.", so
+>      "with the welcome (0023 §5)" above no longer holds.
+>      *Changed 2026-10-08, by the project manager, from the code review:* without gd there is no
+>      step (the note at the top), and a family's banner keeps the welcome, as 0023 §5 has it. A
+>      family is welcomed exactly once, by the step or else by the banner; a team member without gd
+>      gets the banner without a welcome, as before the pictures came back.
 >    - It posts `picture_save`, the one writer, and offers the picture only, never the course switch,
 >      which waits on the child's page (§8).
 >    - Every invitation has something to put a picture on: a team member's account, or the child,
@@ -286,12 +326,17 @@ refused in words while everything else works.
   `ext-gd`, with `composer.lock`'s hash in the same commit. Setup refuses to install without it.
   Einstellungen → System names it when a PHP version switched in the hosting panel has lost it. The
   `structure` suite holds the two lists to each other.
+  *Changed 2026-10-08, by the project manager:* setup installs without gd (the note at the top).
 - **It is guarded where it is called**, as fileinfo is in `uploaded_file_type()`. Without gd, a
   picture is refused with the sentence that sends an administrator to Einstellungen → System and
   anybody else to the club. Nothing else in the portal changes.
+  *Changed 2026-10-08, by the project manager:* the words are `pictures_unavailable()`'s: anybody
+  else is told that an administrator sets it up (the note at the top).
 - **Required, not optional.** `extension_checks()` is one list, "what the code calls". An optional
   class of extension would be a new idea, for one feature. A host without gd cannot install until it
   is switched on, and setup says how.
+  *Changed 2026-10-08, by the project manager, from the security review:* optional after all; setup
+  installs without gd, and only pictures are missing (the note at the top).
 
 ### 5. Who sees a picture: one rule
 
@@ -522,6 +567,7 @@ No new file, and the load order does not change.
   brings ImageMagick's many decoders, each a way in. A library through Composer is a dependency to
   patch, and decoding in PHP is slow.
 - **gd as an optional extension.** A second kind of extension, for one feature (§4).
+  *Changed 2026-10-08, by the project manager:* chosen after all (the note at the top).
 - **The `avatar` folder.** It holds the screenshots, which only administrators open.
 - **`DEFAULT NULL`.** §2.
 - **A setting for pictures as a whole.** A picture is never required, so a club that wants none adds
@@ -718,6 +764,8 @@ course, with and without the yes, and the yes taken back; a removed picture is g
   deleted.
 - Your hosting needs PHP's „gd" switched on; Einstellungen → System says so if it is not. A setting
   lets you switch the course view off for the whole club.
+  *Changed 2026-10-08, by the project manager:* the portal installs and runs without „gd" too;
+  only pictures need it, and Einstellungen → System says so while it is missing.
 - Before real families use the portal, the privacy notice gets a paragraph about pictures, and you
   answer two questions for it: from what age a child may switch the course view on alone, and on what
   legal basis staff see a photo the trainer took. The project manager will ask you.

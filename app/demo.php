@@ -277,6 +277,8 @@ function demo_logins(): array {
 function demo_clear(): array {
     return transactional(function (): array {
         $counts = demo_counts();
+        $pictures = array_column(rows("SELECT picture_name FROM students WHERE is_demo=1 AND picture_name<>''"
+            ." UNION ALL SELECT picture_name FROM accounts WHERE is_demo=1 AND picture_name<>''"), 'picture_name');
         run('DELETE FROM payments WHERE charge_id IN (SELECT id FROM charges WHERE student_id IN (SELECT id FROM students WHERE is_demo=1))');
         run('DELETE FROM charges WHERE student_id IN (SELECT id FROM students WHERE is_demo=1)');
         run('DELETE FROM students WHERE is_demo=1');
@@ -291,6 +293,9 @@ function demo_clear(): array {
         run('DELETE FROM mail_jobs WHERE account_id IN (SELECT id FROM accounts WHERE is_demo=1)');
         run('DELETE FROM accounts WHERE is_demo=1');
         audit('demo.cleared', 'settings');
+        // The example children's and logins' pictures go with them, at once
+        // (ADR 0031 §9), and last, because a file cannot be rolled back.
+        foreach ($pictures as $name) delete_upload('picture', (string)$name);
         return $counts;
     });
 }

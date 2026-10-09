@@ -63,6 +63,11 @@ give_every_student_a_login();
 // ponytail: a picture saved in the ten minutes before the update stays until
 // the next nightly prune. Naming the pictures before 035 drops their column
 // would need a step between two migrations, which the runner does not have.
+// Pictures came back with 040 and 041 (ADR 0031 §9), in a folder of their own,
+// picture: a child's, named by students.picture_name, and a team member's, by
+// accounts.picture_name. The same rule keeps every one in use and deletes one an
+// action left behind, here after every update as well as at night. The old
+// pictures in avatar are not among them, and still go.
 prune_uploads(600);
 
 if(setting('defaults_initialized',false))return;

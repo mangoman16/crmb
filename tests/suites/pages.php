@@ -551,7 +551,8 @@ ok(str_contains($studentForm, 'name="address"') && str_contains($studentForm, 'n
 ok(str_contains($studentForm, e('eine Rechnung über 400 € braucht sie')), 'with the family’s own hint about invoices');
 ok(!str_contains($studentForm, 'name="email"') && !str_contains($profil, 'id="access"'), 'and no address box or access card of the login’s');
 ok(str_contains($studentForm, e('Angaben speichern')), 'the button says what it saves');
-ok(!str_contains($profil, 'avatar_save') && !str_contains($profil, 'type="file"'), 'and no picture to upload: the pictures went (ADR 0026 §8)');
+ok(!str_contains($profil, 'avatar_save') && !str_contains($studentForm, 'type="file"'),
+   'and no picture in it: the child’s picture has a card and forms of its own (ADR 0031)');
 is_same(1, deepest_form_nesting($profil), 'and no form is inside another');
 ok(str_contains(render_view('dashboard'), '<h2>'.e('Noch zu ergänzen').'</h2>'), 'the overview shows the same card');
 

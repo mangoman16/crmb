@@ -152,6 +152,7 @@ $expected = [
     'classes' => 'staff', 'manage' => 'staff', 'invoices' => 'staff', 'attendance' => 'staff',
     'student_new' => 'staff',   // the wizard „Schüler anlegen" (ADR 0023 §5)
     'more' => 'staff',          // „Mehr", the fifth place on staff's bar (ADR 0028)
+    'welcome' => 'everyone',    // „Dein Foto", the step after a first password (ADR 0031)
     'settings' => 'admin', 'history' => 'admin',
     'start' => 'admin',   // the setup checklist: administrator decisions only (ADR 0011)
 ];
@@ -572,7 +573,7 @@ $stored = ['the maintenance flag' => maintenance_file(), 'the backups' => backup
            'the backup override' => backup_override_file(), 'the sign-in sessions' => session_dir(),
            'the record of an unfinished update' => schema_unfinished_file()];
 $kinds = array_keys(upload_references());
-foreach (['avatar', 'proof', 'message'] as $kind)
+foreach (['avatar', 'proof', 'message', 'picture'] as $kind)
     ok(in_array($kind, $kinds, true), 'uploads of kind '.$kind.' are among the folders checked');
 foreach ($kinds as $kind) $stored['uploads of kind '.$kind] = upload_dir($kind);
 foreach ($stored as $what => $path) {
@@ -826,11 +827,13 @@ case_('Every PHP extension the code or a dependency requires is one setup checks
 /* A PHP without one of them installs cleanly and breaks somewhere else later:
    without iconv the family's payment page and every invoice, without ctype
    every paged list. composer.json names what the code calls and the lock file
-   what each dependency calls; extension_checks() is what setup.php refuses to
-   install without, and what Einstellungen → System names when a PHP switched in
-   the hosting panel has lost one. The two have to agree, both ways, apart from
-   what PHP 8.2 cannot be built without: hash and json (since 7.4 and 8.0),
-   random (since 8.2), and pcre, spl, date, standard and reflection (always). */
+   what each dependency calls; extension_checks() is what setup.php checks for -
+   refusing to install without any but gd, without which only pictures are
+   missing (ADR 0031 §4, as amended) - and what Einstellungen → System names
+   when a PHP switched in the hosting panel has lost one. The two have to agree,
+   both ways, apart from what PHP 8.2 cannot be built without: hash and json
+   (since 7.4 and 8.0), random (since 8.2), and pcre, spl, date, standard and
+   reflection (always). */
 $alwaysThere = ['hash', 'json', 'random', 'pcre', 'spl', 'date', 'standard', 'reflection', 'core'];
 // pdo is loaded whenever pdo_mysql is, which needs it, so it is checked through that one.
 $checkedThrough = ['pdo' => 'pdo_mysql'];
@@ -849,6 +852,34 @@ foreach ($required as $extension => $by) {
 }
 foreach ($checked as $extension)
     ok(in_array('composer.json', $required[$extension] ?? [], true), 'composer.json requires '.$extension.', which setup checks for');
+/* gd is called by the code, not by a dependency, so the two lists above could
+   both forget it and still agree: asked of the code itself (ADR 0031 §4). */
+$callsGd = [];
+foreach (glob(APP_ROOT.'/app/*.php') as $path)
+    if (preg_match('/\b(imagecreatefromstring|imagecreatetruecolor|imagecopyresampled|imagejpeg)\s*\(/', (string)file_get_contents($path))) $callsGd[] = basename($path);
+ok($callsGd !== [], 'the code makes pictures with gd ('.implode(', ', $callsGd).')');
+ok(in_array('gd', $checked, true) && in_array('composer.json', $required['gd'] ?? [], true),
+   'so setup checks for gd, and composer.json requires ext-gd');
+
+case_('bin/update.sh lets Composer do without exactly the extensions setup installs without [ADR 0031 §4, as amended]');
+/* gd is the one extension setup installs without ('fatal' => false), and the one
+   bin/update.sh waives when it runs composer install on a host with a shell: the
+   rule is written in two places, so the two are held to each other here. A
+   second optional extension update.sh did not waive would stop a Git host's
+   update where setup installs; a waiver with no optional extension behind it
+   would let an update through that setup refuses. Read from the commands, not
+   the comments; a wildcard (ext-*) or php counts as a waiver too. A waiver is
+   written one way, --ignore-platform-req=name, because that is the way read
+   here: Composer also takes the name after a space, every requirement at once
+   (--ignore-platform-reqs) and COMPOSER_IGNORE_PLATFORM_REQ(S) in the
+   environment, and a waiver written any of those ways would pass unseen. */
+$commands = implode('', array_filter(file(APP_ROOT.'/bin/update.sh') ?: [], fn(string $line): bool => !preg_match('/^\s*#/', $line)));
+preg_match_all('/--ignore-platform-req=(\S+)/', $commands, $flags);
+$waived = array_values(array_unique(array_map(fn(string $req): string => (string)preg_replace('/^ext-([a-z0-9_]+)$/D', '$1', $req), $flags[1])));
+$optional = array_column(array_filter(extension_checks(), fn(array $c): bool => !$c['fatal']), 'extension');
+sort($waived); sort($optional);
+is_same($optional, $waived, 'update.sh waives exactly what setup installs without: '.(implode(', ', $optional) ?: 'nothing'));
+ok(!preg_match('/--ignore-platform-req(s\b|\s)|COMPOSER_IGNORE_PLATFORM_REQ/', $commands), 'and in no other form Composer takes: not the name after a space, not all at once, not through the environment');
 
 case_('The rule for what counts as paid is written once');
 /* Every balance, the overdue filter and the payments screen depend on it. A
@@ -869,25 +900,6 @@ case_('charge_paid_sql() still produces the query it replaced');
 is_same('COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.charge_id=c.id'
        .' AND p.confirmed_at IS NOT NULL AND p.voided=0),0)',
         charge_paid_sql(), 'unchanged from the hand-written version it replaced');
-
-/**
- * The named pieces of one PHP file: one entry per function and per action
- * handler, so a rule can name the handler that is wrong rather than the file it
- * sits in.
- */
-function named_blocks_of(string $path): array {
-    $blocks = []; $name = basename($path).' (file)'; $buffer = '';
-    foreach (file($path) as $line) {
-        if (preg_match('/^\s*function\s+([a-z_][a-z0-9_]*)\s*\(/i', $line, $m)
-         || preg_match("/^\s*case\s+'([a-z0-9_]+)'\s*:/", $line, $m)) {
-            $blocks[$name] = ($blocks[$name] ?? '').$buffer;
-            $buffer = ''; $name = $m[1];
-        }
-        $buffer .= $line;
-    }
-    $blocks[$name] = ($blocks[$name] ?? '').$buffer;
-    return $blocks;
-}
 
 /**
  * The SQL a stretch of PHP hands to the database.
@@ -1306,6 +1318,7 @@ $throttled = [
     'app/actions_config.php payment_remind'   => 'the reminder run, which sends mail',
     'app/actions_config.php feedback_send'    => 'a problem report, which can carry a file',
     'app/actions_config.php proof_upload'     => 'a receipt, a file kept until staff remove it',
+    'app/actions_config.php picture_save'     => 'a child’s picture, the most a request asks of the server (ADR 0031 §3)',
     'app/actions_settings.php smtp_test'      => 'the SMTP test, which talks to the mail server',
     'app/actions_settings.php email_change'   => 'a change of address, which checks a password',
     // Not a dispatcher case: the request's own throttles, before the
@@ -2277,3 +2290,102 @@ is_same([180, 180, 'opaque'], $png('apple-touch-icon.png'), 'apple-touch-icon.pn
 is_same([512, 512, 'opaque'], $png('icon-maskable.png'), 'icon-maskable.png is 512 square and opaque');
 is_same([192, 192, 'see-through where drawn so'], $png('icon-192.png'), 'icon-192.png is 192, with its corners see-through');
 is_same([512, 512, 'see-through where drawn so'], $png('icon-512.png'), 'icon-512.png is 512, with its corners see-through');
+
+// ---------------------------------------------------------------------------
+// ADR 0031: pictures. Each rule below is the record's "Must stay true", read
+// from the code; the behaviour is in the pictures, uploads and robustness suites.
+
+case_('One helper draws a person: no view draws an avatar or initials by hand [ADR 0031 §6, test 4]');
+/* The attendance row drew its own initials, so it would never have shown a
+   face, and a rule about who sees one could never have reached it. Only
+   avatar() writes an avatar's markup, and nothing slices a name into initials
+   but initials(). */
+$handMade = [];
+/* The class anywhere in a tag's list, however the list is written - "avatar
+   small", "face avatar", with more attributes after it, or put together in PHP
+   - and not a class of its own that only starts with the word, such as
+   avatar-add. An avatar's circle around an icon - an invitation not yet
+   anybody's - is no person. */
+$drawsAPerson = function (string $code): bool {
+    preg_match_all('/class=\\\\?(["\'])((?:(?!\\\\?\1).)*)\\\\?\1[^>]*>(?!<\?=icon\()/s', $code, $tags);
+    return preg_grep('/(?<![\w-])avatar(?![\w-])/', $tags[2]) !== [];
+};
+foreach (['<span class="avatar">MA</span>' => true, '<span class="face avatar">MA</span>' => true,
+          '<span class="avatar small" title="Mia">MA</span>' => true, '<span class=\"tiny avatar\">MA</span>' => true,
+          "'<span class=\"'.e('large avatar').'\">'.e(\$initials)" => true,
+          '<button class="avatar-add" type="submit">' => false, '<div class="avatar-editor">' => false, '<span class="my-avatar">MA</span>' => false,
+          '<span class="avatar"><?=icon(\'mail\')?></span>' => false] as $sample => $person)
+    is_same($person, $drawsAPerson($sample), ($person ? 'a person drawn by hand is found: ' : 'and this is no person: ').$sample);
+foreach (array_merge(glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/app/*.php')) as $path) {
+    $file = substr($path, strlen(APP_ROOT) + 1);
+    foreach (named_blocks_of($path) as $block => $code) {
+        if ($file === 'app/shell.php' && in_array($block, ['avatar', 'initials'], true)) continue;
+        if ($drawsAPerson($code)) $handMade[] = $file.' '.$block.' writes an avatar’s markup';
+        if (preg_match('/mb_substr\(\s*\$[a-z]+\[\'(?:first|last)_name\'\]\s*,\s*0\s*,\s*1\s*\)/', $code)) $handMade[] = $file.' '.$block.' slices a name into initials';
+    }
+}
+is_same([], $handMade, 'no view and no other function draws a person: only avatar() does, the attendance row included');
+ok(str_contains(defined_functions_in(APP_ROOT.'/app/shell.php')['avatar'] ?? '', 'may_see_picture ('), 'and avatar() asks the rule before it draws a face');
+
+case_('A photo is decoded only as a JPEG or a PNG, by the function of its own type [ADR 0031 §3, the security review]');
+/* gd brings the host's native decoders, the first a family's file reaches:
+   imagecreatefromstring() takes whatever gd was built with - WebP among them,
+   where CVE-2023-4863 was - so it is called nowhere, and a photo is decoded by
+   the function of the one type read from its bytes. */
+$decoders = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/public/*.php'), glob(APP_ROOT.'/bin/*.php')) as $path)
+    foreach (named_blocks_of($path) as $block => $code)
+        foreach (action_calls_in($code) as $call)
+            if (!$call['method'] && str_starts_with(strtolower($call['name']), 'imagecreatefrom')) $decoders[] = substr($path, strlen(APP_ROOT) + 1).' '.$block.' '.$call['name'];
+sort($decoders);
+is_same(['app/uploads.php square_picture imagecreatefromjpeg', 'app/uploads.php square_picture imagecreatefrompng'], $decoders,
+        'square_picture() decodes with imagecreatefromjpeg() and imagecreatefrompng(), and nothing anywhere decodes otherwise');
+is_same(['image/jpeg', 'image/png'], array_keys(picture_types()), 'and the types a picture is made from are those two');
+
+case_('No picture’s address leaves the pages that draw it: no mail, notice or PDF holds one [ADR 0031 §5, test 11]');
+/* A picture is drawn by avatar() and served by the route, and named nowhere
+   else - not in a mail, a notice in the bell, an invoice, an export or a page
+   for somebody signed out. */
+$addressedAt = [];
+foreach (array_merge(glob(APP_ROOT.'/app/*.php'), glob(APP_ROOT.'/views/*.php'), glob(APP_ROOT.'/bin/*.php'), glob(APP_ROOT.'/public/*.php')) as $path)
+    foreach (named_blocks_of($path) as $block => $code)
+        if (preg_match('/what\'?\s*(?:=>|===|==|=)\s*\'?picture\b/', $code)) $addressedAt[] = substr($path, strlen(APP_ROOT) + 1).' '.$block;
+is_same(['app/shell.php avatar', 'app/uploads.php serve_download'], $addressedAt, 'what=picture is in avatar() and the route, and nowhere else');
+$logout = named_blocks_of(APP_ROOT.'/app/actions.php')['logout'] ?? '';
+ok(str_contains($logout, "header('Clear-Site-Data: \"cache\"')"), 'signing out asks the browser to forget the pictures it keeps for a week (the robustness suite reads the header)');
+
+case_('A picture is written by its one writer, and the yes for the course said by the family alone [ADR 0031 §7, §8, test 12]');
+$writesColumn = fn(string $table, string $column) => fn(string $sql): bool
+    => preg_match('/^(?:UPDATE `?'.$table.'`? SET .*\b'.$column.'\s*=|INSERT INTO `?'.$table.'`? ?\([^)]*\b'.$column.'\b)/i', $sql) === 1;
+is_same(['app/actions_config.php write_child_picture'], $blocksSending($writesColumn('students', 'picture_name')),
+        'students.picture_name is written by write_child_picture() and nowhere else');
+is_same(['app/actions_config.php write_team_picture'], $blocksSending($writesColumn('accounts', 'picture_name')),
+        'accounts.picture_name by write_team_picture() and nowhere else');
+$teamWriter = defined_functions_in(APP_ROOT.'/app/actions_config.php')['write_team_picture'] ?? '';
+$teamCheck = strpos($teamWriter, 'team_picture_holder ( lock_row (');
+ok($teamCheck !== false && $teamCheck < (int)strpos($teamWriter, 'UPDATE accounts SET picture_name')
+   && str_contains(defined_functions_in(APP_ROOT.'/app/actions_config.php')['team_picture_holder'] ?? '', '! is_staff ( $login )'),
+   'which refuses a login that is not the team’s before it writes: a student’s login never has a picture of its own');
+$childWriter = defined_functions_in(APP_ROOT.'/app/actions_config.php')['write_child_picture'] ?? '';
+ok(str_contains($childWriter, "tracked ( 'students'") && str_contains($teamWriter, "tracked ( 'accounts'"), 'each inside tracked(), so „Änderungen" says who');
+ok(preg_match("/delete_upload \( 'picture' , \\\$old \)\s*;\s*}\s*$/", $childWriter) === 1 && preg_match("/delete_upload \( 'picture' , \\\$old \)\s*;\s*}\s*$/", $teamWriter) === 1,
+   'and each deletes the file it replaced, last');
+$sayingYes = [];
+foreach ($blocksSending($writesColumn('students', 'course_sees_picture')) as $where) {
+    [$file, $block] = explode(' ', $where, 2);
+    $code = named_blocks_of(APP_ROOT.'/'.$file)[$block] ?? '';
+    foreach (sql_statements_in($code) as $sql)
+        if ($writesColumn('students', 'course_sees_picture')($sql) && !preg_match('/\bcourse_sees_picture=0\b/', $sql)) $sayingYes[] = $where;
+}
+is_same(['app/actions_config.php picture_consent'], array_values(array_unique($sayingYes)),
+        'course_sees_picture is set to anything but 0 in one place, picture_consent');
+$consent = named_blocks_of(APP_ROOT.'/app/actions_config.php')['picture_consent'] ?? '';
+$refusal = refusal_index_in($consent, 'Einschalten kann nur die Familie');
+$staffAsked = call_index_in($consent, 'is_staff');
+$write = min(array_map(fn($c) => $c['index'], array_filter(action_calls_in($consent), fn($c) => $c['dml'])) ?: [PHP_INT_MAX]);
+ok($refusal !== null && $staffAsked !== null && $staffAsked < $refusal && $refusal < $write,
+   'which refuses staff, and anybody but the child’s own login, before it writes');
+is_same(['app/actions.php replace_login_with_placeholder', 'app/actions_config.php picture_consent', 'app/actions_config.php write_child_picture'],
+        $blocksSending($writesColumn('students', 'course_sees_picture')),
+        'and it is ended - set to 0 - by a picture staff put on and by a replaced login, and by nothing else');
+ok(isset(upload_references()['picture']), 'upload_references() names the picture folder, so the prune knows what is in use');

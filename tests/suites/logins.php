@@ -235,7 +235,7 @@ ok(preg_match('~id="by-email">.*?'.preg_quote(e('Empfohlen'), '~').'.*?'.preg_qu
 case_('The invitation sets the login up, and from then on the address alone signs in, in any capitals');
 $token = make_token((int)$lenaLogin['id'], 'invite');
 $landed = $useLink($token, ['password'=>$password, 'password_confirm'=>$password, 'privacy_seen'=>'1', 'newsletter'=>'1']);
-is_same(['student', ['id'=>$lena]], $landed, 'the first sign-in lands on her own student page');
+is_same(['welcome', []], $landed, 'the first sign-in lands on „Dein Foto“, which leads on to her own student page (ADR 0031)');
 ok(str_contains((string)($_SESSION['flash']['message'] ?? ''), 'Du meldest dich ab jetzt mit lena@beispiel.test an.'), 'told what she signs in with: '.($_SESSION['flash']['message'] ?? ''));
 $after = one('SELECT * FROM accounts WHERE id=?', [(int)$lenaLogin['id']]);
 ok($after['state'] === 'active' && $after['verified_at'] !== null && password_verify($password, (string)$after['password_hash']), 'active, set up, with the password she chose');

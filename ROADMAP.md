@@ -120,8 +120,9 @@ In this order.
      add them, the family can always replace or remove them. This reverses round 2's removal
      of pictures. The owner's answers of the same evening (ADR 0031, amended): trainers and
      administrators have pictures too; a child agrees alone from 14 under Austrian law, a
-     parent below that; an optional „Dein Foto" right after the first password. Specified;
-     migrations 040 and 041 written; the server and the screens being built.
+     parent below that; an optional „Dein Foto" right after the first password. Built, with
+     the audit's „Mehr" at attendance and the child's face beside the greeting; migrations
+     040 and 041 not run on MySQL 8.0. Not walked by hand yet: TESTING.md P.1–P.20.
 10. **Robustness suite: done** (`aa5b1b7`). `tests/suites/robustness.php` sends unexpected values
    to every action as every role and draws every page with them; 751 checks, about 45 s.
    What it cannot reach — uploads, actions no page draws a form for — it lists after a run.
@@ -334,6 +335,11 @@ For the owner to do:
   is past its period — chat messages older than a year, absences that ended more than three
   months ago, and the rest UPDATING.md lists. To set other periods first, UPDATING.md says
   what to switch off before the upload. Then walk TESTING.md D.1–D.7.
+- **Pictures** (ADR 0031, test data only): check under **Einstellungen → System** that
+  nothing says „Profilbilder verkleinern (gd)" is missing. Add your own photo on Mein Konto,
+  a child's from **Anwesenheit** on your iPhone, and set up a test family from an invitation
+  to see „Dein Foto". Before a real family uses it, the privacy notice needs the pictures
+  paragraph, or „Kinder im selben Kurs sehen Fotos" off. Then walk TESTING.md P.1–P.20.
 - **Two minutes on your iPhone: the first start in dark mode** (design document, 0.5a). Turn
   dark mode on, close the app in the app switcher, open it from the home screen, and note the
   colour shown before the first page appears. Dark launch images are built only if it is

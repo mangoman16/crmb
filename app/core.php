@@ -185,8 +185,12 @@ function form_record_id(mixed $id): ?int {
 function form_open(string $action, array $hidden=[], string $class='', bool $multipart=false): void {
     form_context($action, form_record_id($hidden['id'] ?? null));
     // A form carrying a file has to say so, or PHP receives an empty $_FILES and
-    // the upload looks to the person like nothing happened.
-    echo '<form method="post" action="'.e(url()).'" class="'.e($class).'"'.($multipart?' enctype="multipart/form-data"':'').'>';
+    // the upload looks to the person like nothing happened. It says where it
+    // came from in its address as well: a post larger than post_max_size
+    // reaches PHP with no fields at all, and the address is then all there is
+    // to answer on the same page by (post_too_large(), form_bookkeeping()).
+    $back=$multipart ? array_filter(array_intersect_key($hidden,array_flip(FORM_RETURN_FIELDS)),fn($v): bool => !in_array((string)$v,['','0'],true)) : [];
+    echo '<form method="post" action="'.e(url().($back?'?'.http_build_query($back):'')).'" class="'.e($class).'"'.($multipart?' enctype="multipart/form-data"':'').'>';
     foreach (['action'=>$action,'csrf'=>csrf(),'request_id'=>bin2hex(random_bytes(32))]+$hidden as $k=>$v) echo '<input type="hidden" name="'.e($k).'" value="'.e($v).'">';
 }
 
@@ -212,6 +216,9 @@ function is_secret_field(string $key): bool {
     return false;
 }
 
+/** The fields that say where a form came from, and so where its answer goes (form_return()). */
+const FORM_RETURN_FIELDS = ['return_page', 'return_id', 'return_tab', 'return_draft', 'return_anchor'];
+
 /**
  * The fields start_form() adds to every form for the portal's own use: which
  * submission this is, what it asks for, and the page to return to. Nobody typed
@@ -220,7 +227,7 @@ function is_secret_field(string $key): bool {
  * confirmation, record_step() also drops csrf, which is_secret_field() would
  * otherwise record as ***.
  */
-const FORM_BOOKKEEPING_FIELDS = ['request_id', 'action', 'return_page', 'return_id', 'return_tab', 'return_draft', 'return_anchor'];
+const FORM_BOOKKEEPING_FIELDS = ['request_id', 'action', ...FORM_RETURN_FIELDS];
 
 /**
  * The places on a page a form may ask to come back to after a refusal, posted
@@ -282,7 +289,9 @@ function remember_input(string $action): void {
  */
 function form_bookkeeping(string $key): string {
     if (!in_array($key, FORM_BOOKKEEPING_FIELDS, true)) throw new LogicException('Not one of FORM_BOOKKEEPING_FIELDS: '.$key);
-    return form_text($_POST[$key] ?? '') ?? '';
+    // Where the form came from is in a form's address too, where one with a
+    // file puts it (form_open()), for a post that arrived with no fields.
+    return form_text($_POST[$key] ?? (in_array($key, FORM_RETURN_FIELDS, true) ? $_GET[$key] ?? '' : '')) ?? '';
 }
 
 /** Take the held submission out of the session. Called once, before a page renders. */

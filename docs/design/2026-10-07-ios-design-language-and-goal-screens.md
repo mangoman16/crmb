@@ -1062,6 +1062,7 @@ Four gaps land on the overviews (G2, G4, G6, G7) and one in the bell (G5). Speci
   - a plain button „Zurück" to A, for an invitation by address alone.
   - It posts `activate`, which for an address alone takes the details from the session, not the post.
 - **C „Willkommen, {Vorname}!" / „Schritt 3 von 4: Dein Kurs"** (new view `welcome`, signed in, tab bar shown):
+  - *2026-10-08 (ADR 0031):* `?page=welcome` is now „Dein Foto" (`docs/design/2026-10-08-pictures.md`, §7), the one step the invitation's activation lands on after B, and it already greets with „Willkommen, {Vorname}!". When C is built, it needs a view of its own, after „Dein Foto", which has already said „Willkommen"; the activation's banner after B is the one sentence below.
   - one group per open course;
   - header: the course name;
   - value rows: Wann (`class_schedule()`), Wo, Beitrag (amount and interval);
@@ -1088,8 +1089,8 @@ Four gaps land on the overviews (G2, G4, G6, G7) and one in the bell (G5). Speci
 - `t('Weiter','Next')`
 - `t('Dein Passwort','Your password')`
 - `t('Zurück','Back')`
-- After B: `strtr(t('Dein Konto ist bereit. Du meldest dich ab jetzt mit {login} an.',…))`
-- `strtr(t('Willkommen, {name}!','Welcome, {name}!'))`
+- After B: `strtr(t('Dein Konto ist bereit. Du meldest dich ab jetzt mit {login} an.',…))` — as built, the whole banner where „Dein Foto" follows (2026-10-08, ADR 0031); on a server without gd a family's goes on with the welcome of `docs/design/2026-10-05-accounts-and-chat-screens.md` §4
+- `strtr(t('Willkommen, {name}!','Welcome, {name}!'))` — *2026-10-08:* now „Dein Foto"'s title (`docs/design/2026-10-08-pictures.md`, §7), not C's
 - `strtr(t('Schritt {n} von {total}: Dein Kurs','Step {n} of {total}: Your course'))`
 - `t('Wann','When')`, `t('Wo','Where')`, `t('Beitrag','Fee')`, `t('Wie zahlst du?','How do you pay?')`
 - `t('Deine Trainerin sagt dir Bescheid, sobald dein Platz fest ist.','Your coach lets you know once your place is confirmed.')`

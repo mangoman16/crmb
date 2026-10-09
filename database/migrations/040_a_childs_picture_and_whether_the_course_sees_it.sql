@@ -1,0 +1,37 @@
+-- A child has a picture again, and the family says whether the course sees it
+-- (docs/decisions/0031-profile-pictures-come-back-staff-see-every-face-a-course-once-the-family-agrees.md,
+-- §1, §2 and §8).
+--
+-- The owner, on 2026-10-08: "specially good for the trainer to see faces and
+-- not only names to know who people are". The picture is the child's, so it is
+-- on the student, not on a login, which can be replaced or outlive the child.
+--
+-- picture_name is the stored name of the child's picture, in its own upload
+-- folder. '' is no picture, as it is for every stored name the portal keeps -
+-- feedback.screenshot_name, the icon and logo settings, and avatar_name before
+-- 035 and 036 - and upload_references() asks for <>''. NULL would be a second
+-- way of saying "none", which is how a sweep comes to delete a file that is in
+-- use. 40 characters: a stored name is 32 hex digits and .jpg, and
+-- STORED_UPLOAD_NAME allows 38 at most.
+--
+-- course_sees_picture is the family's yes to the children in the child's
+-- courses and their families seeing the picture. 0 until the child's own login
+-- says yes; staff can only take it back.
+--
+-- A child written by the previous version reads '' and 0: no picture, and not
+-- shown to the course, which is what was true of every one of them. An insert
+-- that names neither column, as the previous version's create_student() does,
+-- still writes a child, with '' and 0. No row is written or removed, so the
+-- update's guard, which counts the rows of students, has nothing to refuse,
+-- and no step after the files is needed. The pictures 035 and 036 dropped do
+-- not come back: the update that applies those two deletes their files.
+--
+-- One statement, because it cannot run twice: MySQL 8.0 has no ADD COLUMN IF
+-- NOT EXISTS. Split in two, an update that stopped between them would leave a
+-- file that can no longer start again from its first statement. Run a second
+-- time after it finished, as the next page view would if the update stopped
+-- before the ledger recorded it, the engine refuses it because the column is
+-- there already (1060, SQLSTATE 42S21, on MariaDB 10.11.14), and nothing
+-- changes, as with 031, which adds a column too. Adding two columns in one
+-- ALTER has not been tried on MySQL 8.0.
+ALTER TABLE students ADD COLUMN picture_name VARCHAR(40) NOT NULL DEFAULT '' AFTER last_name, ADD COLUMN course_sees_picture TINYINT NOT NULL DEFAULT 0 AFTER picture_name;
