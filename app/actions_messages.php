@@ -67,8 +67,18 @@ function dispatch_messages(string $action): array {
 
     case 'news_save':
         require_staff();$id=(int)post('id');$title=required_text('title',180);$body=required_text('body',20000);$published=post('published')?1:0;
-        if($id){if(!one('SELECT id FROM news WHERE id=?',[$id]))throw new NotFound(t('Diese Neuigkeit gibt es nicht mehr.','That news item no longer exists.'));run('UPDATE news SET title=?,body=?,published=?,updated_at=? WHERE id=?',[$title,$body,$published,now(),$id]);}
+        // Locked, so that two saves at once cannot both find it unpublished and both tell the families.
+        $wasPublished=0;
+        if($id){$old=one('SELECT published FROM news WHERE id=? FOR UPDATE',[$id]);if(!$old)throw new NotFound(t('Diese Neuigkeit gibt es nicht mehr.','That news item no longer exists.'));$wasPublished=(int)$old['published'];run('UPDATE news SET title=?,body=?,published=?,updated_at=? WHERE id=?',[$title,$body,$published,now(),$id]);}
         else {run('INSERT INTO news (title,body,published,created_at,updated_at) VALUES (?,?,?,?,?)',[$title,$body,$published,now(),now()]);$id=(int)db()->lastInsertId();}
+        // The bell carries the news, since the family's bar gave up „Neues"
+        // (design, Part 7). Published, every active family login hears of it
+        // once, in the trainer's words; an edit tells nobody again. Unpublished,
+        // it leaves every bell: the link would open „Neuigkeit nicht gefunden".
+        if($published && !$wasPublished) {
+            foreach(rows("SELECT id FROM accounts WHERE role='student' AND state='active'") as $a)
+                notify((int)$a['id'],'news',$title,mb_substr($body,0,120),'news',['id'=>$id]);
+        } elseif(!$published && $wasPublished) withdraw_notices('news','news',['id'=>$id]);
         if(post('send_email')) {
             if(!$published)throw new UserError(t('Bitte die Nachricht zuerst veröffentlichen.','Publish the news before emailing it.'));
             foreach(rows("SELECT * FROM accounts WHERE state='active' AND verified_at IS NOT NULL AND newsletter=1 AND role='student'") as $a)queue_mail((int)$a['id'],$a['email'],$title,$body."\n\n".url('news',['id'=>$id]),'newsletter');

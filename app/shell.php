@@ -32,7 +32,19 @@ declare(strict_types=1);
 function notify(int $accountId, string $kind, string $title, string $body = '', string $page = '', array $params = []): void {
     run("INSERT INTO notifications (account_id,kind,title,body,link_page,link_params,created_at) SELECT id,?,?,?,?,?,? FROM accounts WHERE id=? AND state<>'placeholder'",
         [mb_substr($kind, 0, 40), mb_substr($title, 0, 180), mb_substr($body, 0, 500),
-         mb_substr($page, 0, 40), mb_substr(http_build_query($params), 0, 255), now(), $accountId]);
+         mb_substr($page, 0, 40), notice_params($params), now(), $accountId]);
+}
+
+/** A notice's link parameters as stored: the one form notify() writes and withdraw_notices() finds. */
+function notice_params(array $params): string { return mb_substr(http_build_query($params), 0, 255); }
+
+/**
+ * Take back from every bell, read or not, the notices of $kind that point at
+ * $page with $params: for something nobody can open any more, such as a news
+ * item unpublished (design, Part 7).
+ */
+function withdraw_notices(string $kind, string $page, array $params): void {
+    run('DELETE FROM notifications WHERE kind=? AND link_page=? AND link_params=?', [$kind, $page, notice_params($params)]);
 }
 
 /** Tell every member of staff. Used for the things only they can act on. */
@@ -83,6 +95,7 @@ function notice_kinds_shown_while_viewing(array $viewer): array {
         'payment',      // an invoice's number, amount and date, which staff wrote
         'schedule',     // a course's date and whether it takes place, which staff wrote
         'request',      // somebody new, or a course asked for or decided: on pages staff read
+        'news',         // a news item's title and opening, which staff wrote for every family
         // What somebody reported as broken, which administrators read under
         // Einstellungen › Rückmeldungen. Asked of who is looking rather than of
         // whose bell it is: a login that was an administrator once keeps these.
@@ -124,7 +137,7 @@ function notification_link(array $notification): string {
 function notification_icon(string $kind): string {
     return match ($kind) {
         'payment', 'bank' => 'wallet', 'message' => 'chat', 'request' => 'users',
-        'schedule' => 'calendar', 'problem' => 'lock', 'picture' => 'camera', default => 'news',
+        'schedule' => 'calendar', 'problem' => 'lock', 'picture' => 'camera', 'news' => 'news', default => 'news',
     };
 }
 

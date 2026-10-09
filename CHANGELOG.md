@@ -135,6 +135,10 @@ This is the first phase of the design language in
   „Neues" is gone from it: the news is on the overview. „Konto" is gone too:
   **Mein Konto** — password, e-mail address, language, colour and the privacy
   notice — is the row „Anmeldung und Darstellung" on **Profil**.
+- **Published news now appears in every family's bell**, with its title and the
+  first words of its text, and a tap opens it. Editing it does not ring again,
+  and unpublishing takes it back out of every bell, read or not; published
+  again, it rings again. A login that is suspended or not set up yet gets none.
 - **Staff's bar reads Übersicht · Schüler · Anwesend · Chats · Mehr.** „Post" is
   „Chats" now. The numbers on the bar and on the bell are red with a white
   figure, in light and in dark, where they were in the portal's colour.

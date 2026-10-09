@@ -1,6 +1,6 @@
 # UI spec: the portal's design language (Part 0), age on the students list, and the gaps G1–G8 (ui-ux-designer, 2026-10-07)
 
-**Status.** Built so far: Part 0's restyle, its phase 1 (`f5d3c28`, with the review's fixes in `883be4d`); the students list, Part 1 as revised (`b4e457e`); 0.4a and C16a, the waiting shuttle and the mark, in the commit that adds them to this document; and 0.4b, the waiting page that replaces 0.4a's shuttle, in the commit that adds it here. 0.5a waits for a two-minute test on an iPhone (ROADMAP.md). Everything else is still specification.
+**Status.** Built so far: Part 0's restyle, its phase 1 (`f5d3c28`, with the review's fixes in `883be4d`); the students list, Part 1 as revised (`b4e457e`); 0.4a and C16a, the waiting shuttle and the mark (`4b41c1b`); 0.4b, the waiting page that replaces 0.4a's shuttle (`1bc2573`); and Part 7, news in the bell, in the commit that adds it here. 0.5a waits for a two-minute test on an iPhone (ROADMAP.md). Everything else is still specification.
 
 **What was measured.**
 - Measured on commit `1b32834`, the HEAD when this work started, exported with `git archive` into the scratchpad.
@@ -1346,6 +1346,8 @@ Four gaps land on the overviews (G2, G4, G6, G7) and one in the bell (G5). Speci
 
 ## Part 7. G5: news in the bell
 
+**Status.** Built as specified below, except that every publication rings, not only the first: an item unpublished and published again is in every active family's bell again. An edit still rings nobody.
+
 **Who, in their words.** „Ich will mitbekommen, wenn die Trainerin etwas Neues schreibt."
 
 **Behaviour.**
@@ -1562,7 +1564,7 @@ Four gaps land on the overviews (G2, G4, G6, G7) and one in the bell (G5). Speci
 | `payment` (`wallet`) | staff | „Beleg: {Name}" / "Receipt: {name}" | „{Beitrag} · {Betrag}" | `payments#receipts` | a receipt uploaded |
 | `payment` | family | „Bezahlt: {Beitrag}" / "Paid: {label}" | „{Betrag} sind angekommen. Danke!" | Beiträge | any confirmation |
 | `payment` | family | „Wieder offen: {Beitrag}" / "Open again: {label}" | „Deine Trainerin hat die Zahlung korrigiert." | Beiträge | a confirmed payment voided |
-| `news` (`news`) | families | the news title | its first 120 characters | the item | first publication |
+| `news` (`news`) | families | the news title | its first 120 characters | the item | each publication (Part 7, as built) |
 | `schedule` (`calendar`) | families | „Heute kein Training" / "No training today" | „{Kurs} fällt heute aus." plus the note | dashboard | G7 |
 | `schedule` | families | „Heute doch Training" / "Training today after all" | „{Kurs}, {Zeit} · {Ort}." | dashboard | G7 reversed |
 

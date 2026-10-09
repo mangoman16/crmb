@@ -289,6 +289,10 @@ function demo_clear(): array {
         run('DELETE FROM tariff_rates WHERE tariff_id IN (SELECT id FROM tariffs WHERE is_demo=1)');
         run('DELETE FROM tariff_discounts WHERE tariff_id IN (SELECT id FROM tariffs WHERE is_demo=1)');
         run('DELETE FROM tariffs WHERE is_demo=1');
+        // Example news rings nobody, but one a trainer unpublished and published
+        // again rang every family: its notices go with it, rather than open
+        // „Neuigkeit nicht gefunden" (design, Part 7).
+        foreach (rows('SELECT id FROM news WHERE is_demo=1') as $n) withdraw_notices('news', 'news', ['id' => (int)$n['id']]);
         run('DELETE FROM news WHERE is_demo=1');
         run('DELETE FROM mail_jobs WHERE account_id IN (SELECT id FROM accounts WHERE is_demo=1)');
         run('DELETE FROM accounts WHERE is_demo=1');

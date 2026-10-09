@@ -233,3 +233,18 @@ is_same(['trainerin@beispiel.test', 'lena.hofer@beispiel.test', 'jonas.berger@be
         'with it gone, the fill makes its three, staff first, and hands their addresses back');
 foreach ($filled['logins'] as $login) is_same($login['email'], email_value($login['email']), 'each a plain address: '.$login['email']);
 demo_clear();
+
+case_('Clearing takes the example news’ notices out of every bell, so none opens „Neuigkeit nicht gefunden“ [design Part 7]');
+/* Example news is written without ringing anybody, but a trainer who
+   unpublishes it and publishes it again rings every family - real ones too -
+   and the clear then deletes the item those notices open. */
+demo_fill(true);
+$realFamily = make_account(['role'=>'student', 'name'=>'Echte Familie']);
+sign_in_as($admin);
+$example = one('SELECT * FROM news WHERE is_demo=1');
+act('news_save', ['id'=>(string)$example['id'], 'title'=>$example['title'], 'body'=>$example['body']]);
+act('news_save', ['id'=>(string)$example['id'], 'title'=>$example['title'], 'body'=>$example['body'], 'published'=>'1']);
+$rang = fn(): int => (int)scalar("SELECT COUNT(*) FROM notifications WHERE kind='news' AND account_id=?", [$realFamily]);
+is_same(1, $rang(), 'published again, the example item is in a real family’s bell');
+demo_clear();
+is_same(0, $rang(), 'and once the example data is cleared, its notice is gone with it');

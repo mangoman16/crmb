@@ -839,3 +839,40 @@ is_same([['Zweite Trainerin', 'Trainerin', true], ['Trainerin Anna', null, true]
          ["Anna{$nbsp}·{$nbsp}Trainerin Huber", null, true], ['Gelöschtes Konto', null, true]],
         $bubbles,
         'over the bubbles, the trainer’s line carries her role in a pill; a child called „Trainerin Anna“, or „Anna · Trainerin“ either way, the same words at most and never the pill');
+
+case_('A news item reaches every active family’s bell once, when it is published; an edit tells nobody again, and unpublishing takes it back [design Part 7]');
+/* The family's bar gave up „Neues" on the understanding that the bell would
+   carry the news, and the news card is two and a half screens down a family's
+   overview at 320 px (design audit N2). */
+$newsFamily = make_account(['role'=>'student', 'name'=>'Familie Neuigkeit']);
+$suspendedFamily = make_account(['role'=>'student', 'name'=>'Familie Gesperrt', 'state'=>'suspended']);
+$invitedFamily = make_account(['role'=>'student', 'name'=>'Familie Eingeladen', 'state'=>'invited', 'verified_at'=>null]);
+$families = array_map('intval', array_column(rows("SELECT id FROM accounts WHERE role='student' AND state='active' ORDER BY id"), 'id'));
+/** The news notices that open $item, in every bell. */
+$bell = fn(int $item): array => array_values(array_filter(rows("SELECT * FROM notifications WHERE kind='news' ORDER BY account_id, id"),
+    fn(array $notice) => notification_link($notice) === url('news', ['id'=>(string)$item])));
+$text = 'Liebe Familien, ab 4. November trainieren wir dienstags in der neuen Halle an der Brünner Straße – bitte Hallenschuhe mitbringen! Danke!';
+ok(mb_strlen($text) > 120 && substr($text, 0, 120) !== mb_substr($text, 0, 120), 'the text runs past 120 characters, with letters of two bytes and more before them');
+sign_in_as($trainer);
+act('news_save', ['title'=>'Neue Halle ab November', 'body'=>$text]);
+$item = (int)scalar('SELECT MAX(id) FROM news');
+is_same([], $bell($item), 'a draft tells nobody');
+act('news_save', ['id'=>(string)$item, 'title'=>'Neue Halle ab November', 'body'=>$text, 'published'=>'1']);
+$notices = $bell($item);
+is_same($families, array_map('intval', array_column($notices, 'account_id')), 'published, it is in the bell of every active family login, once each, and nobody else’s');
+ok(in_array($newsFamily, $families, true) && !in_array($suspendedFamily, array_map('intval', array_column($notices, 'account_id')), true),
+   'a family whose login was suspended gets none');
+is_same(['Neue Halle ab November', mb_substr($text, 0, 120)], [$notices[0]['title'] ?? null, $notices[0]['body'] ?? null],
+        'the trainer’s title is the notice, and the first 120 characters of the text, cut on a character, its line');
+is_same('news', notification_icon('news'), 'with the news icon');
+view_as($admin, $newsFamily);
+ok(in_array('news', array_column(notifications_for($newsFamily), 'kind'), true), 'staff looking through a family’s eyes see it too: it quotes nothing private');
+sign_in_as($trainer);
+act('news_save', ['id'=>(string)$item, 'title'=>'Neue Halle ab 4. November', 'body'=>$text.' Bis bald!', 'published'=>'1']);
+is_same(array_column($notices, 'id'), array_column($bell($item), 'id'), 'an edit tells nobody again: the same notices, none added');
+act('news_save', ['title'=>'Turnier am Samstag', 'body'=>'Anmeldung bis Freitag.', 'published'=>'1']);
+$otherItem = (int)scalar('SELECT MAX(id) FROM news');
+run('UPDATE notifications SET read_at=? WHERE id=?', [now(), (int)$notices[0]['id']]);
+act('news_save', ['id'=>(string)$item, 'title'=>'Neue Halle ab 4. November', 'body'=>$text]);
+is_same([], $bell($item), 'unpublished, it leaves every bell, read or not: its link would find nothing');
+is_same(count($families), count($bell($otherItem)), 'and the other item’s notices stay');

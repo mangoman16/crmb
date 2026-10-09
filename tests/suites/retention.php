@@ -64,7 +64,7 @@ $proof = function (string $uploaded) use ($stored, $kid, $family): array {
 $absence = fn(string $endsOn): int => fixture('absences', ['student_id'=>$kid, 'reason'=>'sick', 'starts_on'=>$endsOn, 'ends_on'=>$endsOn, 'created_by'=>$family]);
 $session = fn(string $on): int => fixture('attendance', ['class_id'=>$course, 'student_id'=>$kid, 'session_on'=>$on, 'status'=>'present',
                                                         'note'=>'', 'recorded_by'=>$admin, 'created_at'=>now()]);
-$notice = fn(string $at): int => fixture('notifications', ['account_id'=>$family, 'kind'=>'message', 'title'=>'Neue Nachricht', 'body'=>'Bis Donnerstag!',
+$notice = fn(string $at, string $kind = 'message'): int => fixture('notifications', ['account_id'=>$family, 'kind'=>$kind, 'title'=>'Neue Nachricht', 'body'=>'Bis Donnerstag!',
                                                           'link_page'=>'', 'link_params'=>'', 'read_at'=>null, 'created_at'=>$at]);
 $mail = fn(string $queued): int => fixture('mail_jobs', ['account_id'=>$family, 'recipient'=>'lena@beispiel.test', 'subject'=>'Offener Beitrag',
     'payload'=>'', 'category'=>'payments', 'status'=>'sent', 'attempts'=>1, 'created_at'=>$queued, 'sent_at'=>$queued]);
@@ -77,6 +77,7 @@ $rows = [
     'an absence, counted from the day it ended' => ['absences', $absence($daysBack('-3 months +1 day')), $absence($daysBack('-3 months -1 day'))],
     'attendance, counted from the training' => ['attendance', $session($daysBack('-24 months +1 day')), $session($daysBack('-24 months -1 day'))],
     'a notification' => ['notifications', $notice($ago('-89 days')), $notice($ago('-91 days'))],
+    'a news item’s notice, like any other in the bell' => ['notifications', $notice($ago('-89 days'), 'news'), $notice($ago('-91 days'), 'news')],
     'a mail in the outbox, counted from when it was queued' => ['mail_jobs', $mail($ago('-12 months +1 day')), $mail($ago('-12 months -1 day'))],
     'a payment proof, counted from the upload' => ['payment_proofs', ($keptProof = $proof($ago('-24 months +1 day')))[0], ($goneProof = $proof($ago('-24 months -1 day')))[0]],
     'a line in the audit log' => ['audit_log', $audit($ago('-36 months +1 day')), $audit($ago('-36 months -1 day'))],

@@ -92,6 +92,7 @@ release and emptied again for the next.
 - The portal's own icon: U.2–U.8 · the sign-in line: U.1 · rows that line up: U.9–U.12
 - The privacy notice in English is optional: U.35, U.56
 - News by email starts switched on for a new login, and can be switched off when accepting the invitation: [15.2, 15.7](#news-email-and-the-queue), in News and email
+- A news item, once published, is in every active family's bell; an edit tells nobody again, and unpublishing takes it back: [15.8–15.10](#news-email-and-the-queue), in News and email
 - The bell no longer jumps when opened, its panel stays on a phone's screen, its number is a red badge like the one on **Chats**, and a tap elsewhere or Escape closes it: [5.3a–5.3g](#the-shell-the-bar-notifications-feedback-impersonation), in The shell
 - Your picture or initials at the top right open a menu — your name, „Mein Konto", „Abmelden" — checked on the iPhone, at 320 and without JavaScript: [5.3i, 5.3j](#the-shell-the-bar-notifications-feedback-impersonation) · with the bell, only one open at a time: 5.3f
 - The club's own colours and logo under **Einstellungen → Portal**, cards „Aussehen" and „Logo": [6.7–6.20](#the-clubs-colours-and-logo-einstellungen--portal), in Appearance
@@ -1126,6 +1127,17 @@ that.
   that reached nobody would pass this check. Afterwards, on each of the two
   children's pages, **„Anmeldung löschen"**: each child is „Ohne Anmeldung"
   again.
+- [ ] **15.8** Save a news item without „Im Portal veröffentlichen": no bell
+  changes. Tick it and save: signed in as a family, the bell has a count, and
+  its newest entry, with the news icon, is the item's title over the first
+  words of its text; a tap opens the item. A family whose login is „Gesperrt"
+  finds nothing new when restored, and „Portal als diese Person ansehen" on a
+  family shows the entry too.
+- [ ] **15.9** Change the published item's text and save: no family gets a
+  second entry, and no bell's count goes up.
+- [ ] **15.10** Untick „Im Portal veröffentlichen" and save: the entry is gone
+  from every family's bell, read or unread, and where it was unread the count
+  is one lower.
 
 ---
 
