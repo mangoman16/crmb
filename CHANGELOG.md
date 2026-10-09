@@ -97,8 +97,8 @@ What the portal carries has been cut to what the trainer and the families need
 - **Writing to many at once** — „An mehrere schreiben", „Auswahl anschreiben"
   under the **Schüler** filter and „Zahlungserinnerung schreiben" on **Geld** —
   with its **e-mail templates** under **Verwaltung**, which the update deletes.
-  A course's group, the news, „Alle überfälligen per E-Mail erinnern" on
-  **Geld** and the chat with one person are there for what it was used for.
+  A course's group, the news, the payment reminders on **Geld** and the chat
+  with one person are there for what it was used for.
 - **„Warteschlange senden"** on **Postausgang**. Mail goes out by itself just
   after a page has been served, at most once a minute, or by the cron job where
   one is set up.
@@ -238,6 +238,31 @@ These are the first fixes, the audit's N1, N6 and N7.
   signing in is not agreeing to it. An invitation's page links the notice once
   too.
 
+### Geld, and one payment reminder per child
+
+- **A payment reminder is one email per child**, listing every overdue charge —
+  the oldest first, a partly paid one with what is still open — with the total,
+  in the family's language and signed by the club. It names no bank details: it
+  links the child's „Beiträge", and promises bank details and a QR code there
+  only where „Beiträge" shows them. Its subject reads „Noch offen: …", where it
+  said „Offener Badminton-Beitrag", and one charge was one mail.
+- **Nobody is reminded twice on the same day**, by the club's calendar, and two
+  runs at once cannot both send.
+- **Reminders need working mail, not the privacy notice**: they go to logins
+  already set up. Inviting still waits for both.
+- **Sending comes back to Geld › Überfällig**, saying how many reminders go out,
+  and how many children get none, because they have no sign-in or have
+  unsubscribed, or were reminded today already.
+- **Geld says who owes, first** (the audit's N5). Its title is „Geld", with
+  nothing under it — „Rechnungen", the other half of its switch, is titled
+  „Geld" too — then the chips „Alle" and „Überfällig" and the list. Under
+  „Überfällig", „3 Erinnerungen schicken" opens a sheet that says before the tap
+  how many go out, who gets none and why, with „Jetzt schicken"; where none can
+  go, one sentence says why, and there is no button. The monthly charges are one
+  row after the list, „Monatsbeiträge", saying „Automatisch" or how many the
+  month would make, and open by itself when there are some to make, or when the
+  setup checklist's „Beiträge" step leads there, to its switch.
+
 ### Pictures, for the children and the team (ADR 0031)
 
 - **A child can have a profile picture again.** The family adds, replaces and
@@ -344,7 +369,7 @@ These are the first fixes, the audit's N1, N6 and N7.
   **Änderungen**: a child could call itself „Trainerin Anna" and write in a
   course's group under that name. A name a family gave itself before stays until
   the child's record is next saved. Staff choose their own name as before. In a
-  course's group, and in the list on **Nachrichten** where it names who wrote
+  course's group, and in the list on **Chats** where it names who wrote
   last there, a staff member's name has a small grey pill beside it, „Trainerin"
   or „Administrator", which no name typed into a box can make; a child's never
   has one, whatever the child is called.
@@ -1052,8 +1077,8 @@ These are the first fixes, the audit's N1, N6 and N7.
   billed nobody: what bills is the price of the course the child is in. The
   stored values are kept and a save no longer changes them. „Mitgliedschaft bis“
   and the date now called „Im Verein seit“ moved to „Einteilung“. Automatic
-  monthly charges are switched on and off on the **Beiträge** page, by an
-  administrator.
+  monthly charges are switched on and off on **Geld**, under „Monatsbeiträge",
+  by an administrator.
 - **Forms ask for less before they are saved.** A course's price form shows the
   name and the amounts; everything else waits under „Mehr Möglichkeiten“, as
   do the rarer course fields on a child's page. The default payment recipient

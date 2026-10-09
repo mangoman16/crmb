@@ -90,7 +90,7 @@ $staffPages = [
     'classes'    => [[], ['tab'=>'requests'], ['id'=>$course], ['id'=>$course,'tab'=>'tariffs'],
                      ['id'=>$course,'tab'=>'dates'], ['id'=>$course,'tab'=>'attendance'], ['new'=>1]],
     'attendance' => [[], ['id'=>$course], ['id'=>$course,'on'=>'2026-09-07']],
-    'payments'   => [[], ['period'=>'2026-09']],
+    'payments'   => [[], ['period'=>'2026-09'], ['overdue'=>1], ['overdue'=>1, 'period'=>'2026-09']],
     'invoices'   => [[], ['state'=>'open'], ['state'=>'overdue'], ['state'=>'paid'], ['state'=>'all']],
     'accounts'   => [[]],
     'outbox'     => [[], ['p'=>1]],

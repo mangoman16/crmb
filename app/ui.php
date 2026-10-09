@@ -337,8 +337,14 @@ function tabs(array $items,string $active,string $page,array $params=[],string $
     }
     echo '</nav>';
 }
-/** Beiträge and Rechnungen, one of Geld's two pages each (ADR 0011). */
-function money_switch(string $active): void {
+/**
+ * The head of Geld's two pages, Beiträge and Rechnungen (ADR 0011): the
+ * section's title, the word on the bar and in the menu, and the switch that says
+ * which half is open. Drawn here for both, so the two halves cannot be titled
+ * apart again, as Rechnungen was once Beiträge became „Geld" (the audit, N5).
+ */
+function money_head(string $active,string $description=''): void {
+    page_head(t('Geld','Money'),$description);
     tabs(['payments'=>['label'=>t('Beiträge','Payments'),'page'=>'payments'],
           'invoices'=>['label'=>t('Rechnungen','Invoices'),'page'=>'invoices']],$active,$active);
 }
@@ -384,6 +390,16 @@ function student_card(array $s,bool $underBand=false): void {
     echo '</div>'.icon('chevron').'</a>';
 }
 /**
+ * A row that opens what it holds under it, in a card of its own, with how things
+ * stand on its right (Part 0's per-screen row): „Filter" over the students list,
+ * „Monatsbeiträge" on Geld. The caller writes what it holds and closes the
+ * </details>. $open opens it as the page arrives; $class is the caller's own.
+ */
+function fold_row(string $label,string $value='',bool $open=false,string $class=''): void {
+    echo '<details class="card fold-row'.($class!==''?' '.e($class):'').'"'.($open?' open':'').'><summary><span>'.e($label).'</span>'
+        .($value!==''?'<span class="fold-value">'.e($value).'</span>':'').icon('chevron').'</summary>';
+}
+/**
  * The list's filters, folded away under one row, „Filter" (Part 1, revised
  * 2026-10-08). The row says what is chosen - „Kindertraining · Anfänger ·
  * Unter 12" (filter_summary()) - and holds the four choices: Kurs,
@@ -405,9 +421,8 @@ function render_filters(array $f,?array $bands=null): void {
     // Saying so explicitly keeps the fields below from picking up the context of
     // whichever form was written out before them.
     form_context('');
-    echo '<details class="card filter-fold"><summary><span>'.e(t('Filter','Filter')).'</span>'
-        .($summary!==''?'<span class="filter-value">'.e($summary).'</span>':'').icon('chevron').'</summary>'
-        .'<form method="get" class="filters"><input type="hidden" name="page" value="students">';
+    fold_row(t('Filter','Filter'),$summary);
+    echo '<form method="get" class="filters"><input type="hidden" name="page" value="students">';
     foreach(['q','sort','overdue','absence'] as $kept) if(isset($f[$kept])) echo '<input type="hidden" name="'.e($kept).'" value="'.e($f[$kept]).'">';
     select_field('course',t('Kurs','Course'),$choices['course'],$f['course']??'');
     select_field('status',t('Mitgliedschaft','Membership'),$choices['status'],$f['status']??'');

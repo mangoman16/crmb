@@ -532,20 +532,29 @@ function account_mail_ready(): bool { return account_mail_missing()===''; }
  * steps are missing, not the same opening twice.
  */
 function account_mail_missing(): string {
-    $mail=!smtp_tested_ok();
+    $mail=mail_sending_missing();
     $privacy=privacy_notice_missing();
-    if(!is_admin()) {
-        if(!$mail) return $privacy;
-        return $privacy!==''
-            ? t('Eine Administratorin muss zuerst den E-Mail-Versand einrichten und testen und die Datenschutzerklärung freigeben.',
-                'An administrator has to set up and test sending email and release the privacy notice first.')
-            : t('Eine Administratorin muss zuerst den E-Mail-Versand einrichten und testen.',
-                'An administrator has to set up and test sending email first.');
-    }
-    $missing=$mail?[t('E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP“ die Verbindung prüfen.',
-                      'Test sending email first: check the connection under “Settings → SMTP”.')]:[];
-    if($privacy!=='') $missing[]=$privacy;
-    return implode(' ',$missing);
+    if(!is_admin() && $mail!=='' && $privacy!=='')
+        return t('Eine Administratorin muss zuerst den E-Mail-Versand einrichten und testen und die Datenschutzerklärung freigeben.',
+                 'An administrator has to set up and test sending email and release the privacy notice first.');
+    return trim($mail.' '.$privacy);
+}
+
+/**
+ * What is in the way of sending email at all, as the sentence that says what to
+ * do, or '' once a connection test passed (smtp_tested_ok()): an administrator
+ * is sent to the SMTP tab, anybody else told who sets it up. The one rule for
+ * whether payment reminders can go out, for the sheet on Geld and for
+ * payment_remind alike (design N5): they go to logins already set up, so they
+ * wait for working mail, not for the privacy notice an invitation needs.
+ */
+function mail_sending_missing(): string {
+    if(smtp_tested_ok()) return '';
+    return is_admin()
+        ? t('E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP“ die Verbindung prüfen.',
+            'Test sending email first: check the connection under “Settings → SMTP”.')
+        : t('Eine Administratorin muss zuerst den E-Mail-Versand einrichten und testen.',
+            'An administrator has to set up and test sending email first.');
 }
 
 /**

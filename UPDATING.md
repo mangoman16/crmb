@@ -364,7 +364,7 @@ here so that nothing surprises you.
   a course and their families see it only once the child's family has switched
   „Im Kurs-Chat zeigen" on — from 14 the child itself, below that a parent.
   Nobody has a picture right after the update.
-- **Nachrichten works like a messenger**: a group for every course, whose
+- **Chats works like a messenger**: a group for every course, whose
   children are whoever is enrolled now, then the chats with one person. A child
   writes to a trainer or an administrator by name; you write to any child, or to
   a course's group. Group messages send no e-mail. A message is text and photos:
@@ -378,7 +378,7 @@ here so that nothing surprises you.
   children have closed, and takes no new messages.
 - **Administrators can read every chat**, a trainer's with a second trainer and
   the old chats between two children included, under „Alle Einzelchats" at the
-  top of **Nachrichten**. They write only in their own chats, and every chat
+  top of **Chats**. They write only in their own chats, and every chat
   between two people says at the top that the administrators can read along.
   Nothing records that an administrator read a chat: the two in it see nothing,
   and their unread marks stay. Tell the trainers; the families read it in
@@ -437,7 +437,7 @@ here so that nothing surprises you.
   the login, with a line under **Änderungen**; so a child can no longer write in
   a course's group under another name. A name a family gave itself before stays
   until the child's record is next saved. Staff still choose their own name; in
-  a course's group, and in the list on **Nachrichten**, their name now has a
+  a course's group, and in the list on **Chats**, their name now has a
   grey pill beside it, „Trainerin" or „Administrator", which no typed name can
   make and a child's never has.
 - **A chat sends one e-mail until it is read**, not one for every message. A
@@ -462,6 +462,10 @@ here so that nothing surprises you.
   to, its subject and when, but opens without its text. A mail that could not be
   sent keeps its text, so that it can be sent again, for as long as the outbox
   keeps it.
+- **A payment reminder is one mail per child**, with every overdue charge in it,
+  and its subject begins „Noch offen: …". Nobody is reminded twice on the same
+  day, but a family reminded before the upload on the day of it, under the old
+  subject „Offener Badminton-Beitrag", can get one more that day.
 - **When no copy could be taken before an update**, the closed page no longer
   says why: the reason, which could name the hosting account's folder or the
   database, is in the hosting's error log (INSTALL.md).

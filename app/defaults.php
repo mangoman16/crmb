@@ -440,6 +440,12 @@ function setting_schema(): array {
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
             'label' => ['Zuletzt eine Aufbewahrung verkürzt', 'A retention period last shortened'],
         ],
+        // Written first by every reminder run, which holds the row until it
+        // commits: one run at a time (payment_remind).
+        'payment_reminders_last_run' => [
+            'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
+            'label' => ['Zuletzt an offene Beiträge erinnert', 'Last reminded of outstanding charges'],
+        ],
         'billing_last_period' => [
             'kind' => 'raw', 'default' => '', 'group' => 'system', 'internal' => true,
             'label' => ['Zuletzt automatisch abgerechneter Monat', 'Last month billed automatically'],

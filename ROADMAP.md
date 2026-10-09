@@ -138,6 +138,9 @@ In this order.
      item is in every active family's bell once, with its title and first words; an edit
      rings nobody again, unpublishing takes it back, and publishing it again rings again.
      Not walked by hand yet: TESTING.md 15.8–15.10.
+   - **Geld and the reminders (the audit's N5): built.** Geld leads with who owes; a payment
+     reminder is one mail per child with every overdue charge, never twice a day, offered as a
+     sheet that counts before the tap. Not walked by hand yet: TESTING.md 11.12–11.17, M.6–M.11.
 12. **The documents, rechecked after each phase** by docs-writer. Last done 2026-10-07.
 
 ## The owner's goals
@@ -187,6 +190,11 @@ In their words.
 
 ## Decided
 
+- **2026-10-09** — the project manager, on reminders per family or per charge: one reminder
+  per child's login, listing every overdue charge. One login is one child (ADR 0030), so the
+  login is where a family reads about its child, and brothers and sisters get a mail each.
+  One mail per household would need something that links a household's children: a schema
+  change and an ADR of its own, which nothing asks for yet.
 - **2026-10-08** — the owner: "it appears to me that my prompts are too vague or confused,
   make sure to always clarify whenever i give a prompt to reach the ideal prompt and clear
   misunderstandings and reach better results." CLAUDE.md now opens every request with a short
@@ -323,7 +331,6 @@ For the project manager to decide:
 - Should billing warn about a „Beendet" student with no end date?
 - Rejoining a course starts new terms, while restoring a removed child keeps the old ones: is
   that right?
-- Reminders per family instead of per charge?
 
 For the owner to decide:
 
@@ -342,6 +349,8 @@ For the owner to do:
   test family's overview and the child's Profil, then walk TESTING.md M.1–M.5.
 - **News in the bell** (test data only): publish, edit and unpublish a news item and watch a
   test family's bell, as TESTING.md 15.8–15.10 says.
+- **Reminders and Geld** (test data only): on **Geld → „Überfällig"**, send the reminders to a
+  test family and read the mail in its mailbox, then walk TESTING.md 11.12–11.17 and M.6–M.11.
 - **The first cleanup after the update** (ADR 0032, test data only): within a day of the
   upload, or with the first page if nobody opened the portal the day before, it deletes what
   is past its period — chat messages older than a year, absences that ended more than three

@@ -22,9 +22,7 @@ $pages=max(1,(int)ceil(($filter==='all'?array_sum($counts):$counts[$filter])/$pe
 $pageNum=min($pages,page_number());
 $shown=invoice_list($filter,$pageNum,$perPage);
 
-page_head(t('Rechnungen','Invoices'),
-    t('Rechnungen entstehen aus Beiträgen und werden beim jeweiligen Kind angelegt.','Invoices are made from charges, on each child’s page.'));
-money_switch('invoices');
+money_head('invoices',t('Rechnungen entstehen aus Beiträgen und werden beim jeweiligen Kind angelegt.','Invoices are made from charges, on each child’s page.'));
 
 $problems=invoice_issuer_problems();
 if($problems): ?>

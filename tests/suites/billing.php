@@ -540,6 +540,151 @@ ok(str_starts_with($said, '1 '), 'one reminder for the one charge still open: '.
 ok(!str_contains($said, 'übersprungen'), 'and the paid one is not „übersprungen“');
 mail_ready(false);
 
+case_('A reminder goes once a day per child, lists every overdue charge oldest first, and is written in the family’s language [design N5]');
+/* One mail per charge was one mail per month a family was behind, it promised
+   bank details whatever „Beiträge" showed, and a second tap sent everybody a
+   second one. Now one per child with the total, signed by the club, worded for
+   the family, and nobody twice on the same day. */
+mail_ready(true);
+set_setting('club_name', 'TV Beispiel');
+$profileOf = fn(string $iban): int => fixture('payment_profiles', ['name'=>'Konto '.$iban, 'recipient'=>'TV Beispiel', 'iban'=>$iban, 'bic'=>'',
+    'currency'=>'EUR', 'qr_template'=>'', 'note'=>'', 'archived'=>0, 'created_at'=>now()]);
+set_setting('default_payment_profile', $profileOf('AT611904300234573201'));
+$noIban = $profileOf('');
+payment_cache_clear();
+$daysAgo = fn(int $days): string => date('Y-m-d', strtotime(today().' -'.$days.' days'));
+$overdueFor = fn(int $kid, string $label, int $cents, int $daysLate, ?int $profile = null): int => fixture('charges', ['student_id'=>$kid,
+    'label'=>$label, 'amount_cents'=>$cents, 'due_on'=>$daysAgo($daysLate), 'overdue_on'=>$daysAgo($daysLate), 'cancelled'=>0,
+    'origin'=>'manual', 'payment_profile_id'=>$profile, 'created_at'=>now()]);
+$family = function (string $first, string $last, array $login = []) {
+    $account = make_account(['role'=>'student', 'name'=>$first.' '.$last] + $login);
+    return [$account, make_student(['first_name'=>$first, 'last_name'=>$last, 'account_id'=>$account])];
+};
+$mailsTo = fn(int $login): array => rows("SELECT * FROM mail_jobs WHERE account_id=? AND category='payments' ORDER BY id", [$login]);
+$bodyOf = fn(array $job): string => mail_payload(unseal((string)$job['payload']))['body'];
+[$lenaLogin, $lena] = $family('Lena', 'Hofer');
+$tournament = $overdueFor($lena, 'Turniergebühr', 1500, 8);    // written first, due later: listed second
+$overdueFor($lena, 'Beitrag September', 3500, 29);
+fixture('payments', ['charge_id'=>$tournament, 'amount_cents'=>1000, 'paid_on'=>today(), 'method'=>'Bar', 'note'=>'',
+                     'confirmed_by'=>$admin, 'confirmed_at'=>now(), 'voided'=>0]);
+[$tomLogin, $tom] = $family('Tom', 'Baker', ['locale'=>'en']);
+$overdueFor($tom, 'Beitrag September', 3500, 29);
+[$jakobLogin, $jakob] = $family('Jakob', 'Gruber', ['payment_notices'=>0]);
+$overdueFor($jakob, 'Beitrag September', 3500, 29);
+$mia = make_student(['first_name'=>'Mia', 'last_name'=>'Ohne', 'account_id'=>null]);
+$overdueFor($mia, 'Beitrag September', 3500, 29);
+is_same([[0, 1, 0], [0, 1, 0]], array_map(fn(int $kid) => [count(payment_reminders($kid)['send']), payment_reminders($kid)['none'], payment_reminders($kid)['today']], [$jakob, $mia]),
+        'a child whose login takes no payment mails, and one with no login, are counted as getting none');
+
+$counted = array_map(fn(array $reminder) => (int)$reminder['account']['id'], payment_reminders()['send']);
+sort($counted);
+$lastJob = (int)scalar('SELECT COALESCE(MAX(id), 0) FROM mail_jobs');
+is_same(['payments', ['overdue'=>1]], act('payment_remind', []), 'sent, the trainer is back on Geld › Überfällig, not in the outbox');
+is_same($counted, array_map('intval', array_column(rows('SELECT account_id FROM mail_jobs WHERE id>? ORDER BY account_id', [$lastJob]), 'account_id')),
+        'one mail to each login the sheet counted, and to no other');
+ok(in_array($lenaLogin, $counted, true) && in_array($tomLogin, $counted, true) && !in_array($jakobLogin, $counted, true),
+   'Lena and Tom among them, Jakob not');
+ok(str_starts_with((string)($_SESSION['flash']['message'] ?? ''), plural(count($counted), 'Erinnerung geht raus.', 'Erinnerungen gehen raus.', 'reminder is on its way.', 'reminders are on their way.')),
+   'and the banner counts the mails that go out: '.($_SESSION['flash']['message'] ?? ''));
+$lenaMails = $mailsTo($lenaLogin);
+is_same(['Noch offen: 2 Beiträge'], array_column($lenaMails, 'subject'), 'two overdue charges on one login: one mail, its subject the count and no amount');
+is_same("Hallo Lena,\n\n2 Beiträge sind noch offen:\n\n"
+        ."• Beitrag September: 35,00 €, fällig seit ".fmt_date($daysAgo(29))."\n"
+        ."• Turniergebühr: noch 5,00 € von 15,00 €, fällig seit ".fmt_date($daysAgo(8))."\n\n"
+        ."Zusammen: 40,00 €\n\n"
+        ."Bankverbindung und für jeden Beitrag einen QR-Code findest du unter „Beiträge“:\n".url('student', ['id'=>$lena, 'tab'=>'payments'])."\n\n"
+        ."Schon überwiesen? Dann passt alles – danke!\n\nViele Grüße\nTV Beispiel",
+        $bodyOf($lenaMails[0] ?? ['payload'=>seal('')]),
+        'naming both, oldest first, the partly paid one with what is left of it, the total, where to pay and the club');
+$tomMails = $mailsTo($tomLogin);
+is_same(['Still to pay: Beitrag September'], array_column($tomMails, 'subject'), 'a family whose language is English gets it in English, though the trainer’s is German');
+is_same("Hello Tom,\n\nOne charge is still outstanding:\n\n"
+        ."Beitrag September: 35.00 €, due ".in_locale('en', fn() => fmt_date($daysAgo(29)))."\n\n"
+        ."You’ll find the bank details and a QR code for your banking app under “Payments”:\n".url('student', ['id'=>$tom, 'tab'=>'payments'])."\n\n"
+        ."Already paid? Then all is well – thank you!\n\nBest wishes,\nTV Beispiel",
+        $bodyOf($tomMails[0] ?? ['payload'=>seal('')]), 'amounts and dates too, and one charge is one line without a bullet or a total');
+
+$lastJob = (int)scalar('SELECT COALESCE(MAX(id), 0) FROM mail_jobs');
+act('payment_remind', ['student_id'=>(string)$lena]);
+is_same(0, (int)scalar('SELECT COUNT(*) FROM mail_jobs WHERE id>?', [$lastJob]), 'a second tap the same day sends Lena nothing more');
+is_same(['Keine Erinnerung verschickt. Heute schon erinnert: 1 Kind.', 'success'], [$_SESSION['flash']['message'] ?? null, $_SESSION['flash']['kind'] ?? null],
+        'and says none went because she was reminded today, in the plain style: nothing has gone wrong');
+is_same([0, 0, 1], [count(payment_reminders($lena)['send']), payment_reminders($lena)['none'], payment_reminders($lena)['today']], 'which the sheet counts too');
+// The club's day, not UTC's: in Vienna its midnight is 22:00 or 23:00 UTC the day before.
+$lenaReminder = (int)scalar("SELECT MAX(id) FROM mail_jobs WHERE account_id=? AND category='payments'", [$lenaLogin]);
+$clubMidnight = strtotime(today().' 00:00:00');
+run('UPDATE mail_jobs SET created_at=? WHERE id=?', [gmdate('Y-m-d H:i:s', $clubMidnight - 60), $lenaReminder]);
+is_same(0, payment_reminders($lena)['today'], 'reminded a minute before the club’s midnight was yesterday: today she can be reminded again');
+run('UPDATE mail_jobs SET created_at=? WHERE id=?', [gmdate('Y-m-d H:i:s', $clubMidnight + 60), $lenaReminder]);
+is_same(1, payment_reminders($lena)['today'], 'a minute after it is today, though in UTC it is still the day before');
+
+[$paulLogin, $paul] = $family('Paul', 'Moser');
+$overdueFor($paul, 'Beitrag Oktober', 3500, 3);
+set_setting('show_payment_qr', false);
+act('payment_remind', ['student_id'=>(string)$paul]);
+set_setting('show_payment_qr', true);
+ok(str_contains($bodyOf($mailsTo($paulLogin)[0] ?? ['payload'=>seal('')]), "Alles Weitere findest du unter „Beiträge“:\n"),
+   'with the QR codes switched off „Beiträge" shows no bank details, and the mail promises none');
+[$ellaLogin, $ella] = $family('Ella', 'Huber');
+$overdueFor($ella, 'Beitrag September', 3500, 29);
+$overdueFor($ella, 'Trainingslager', 9000, 5, $noIban);
+act('payment_remind', ['student_id'=>(string)$ella]);
+ok(str_contains($bodyOf($mailsTo($ellaLogin)[0] ?? ['payload'=>seal('')]), "Alles Weitere findest du unter „Beiträge“:\n"),
+   'nor when one of the charges listed pays into an account without an IBAN');
+// Six runs an hour per person; this case is the seventh and eighth today.
+run_counter('DELETE FROM rate_limits');
+act('payment_remind', ['student_id'=>(string)$mia]);
+is_same(['Keine Erinnerung verschickt: Diese Kinder melden sich nicht an oder haben Erinnerungen abbestellt.', 'success'],
+        [$_SESSION['flash']['message'] ?? null, $_SESSION['flash']['kind'] ?? null], 'nobody overdue who can take a mail: said, and plain too');
+act('payment_remind', ['student_id'=>(string)make_student(['first_name'=>'Alles', 'last_name'=>'Bezahlt'])]);
+is_same(['Gerade ist nichts überfällig.', 'success'], [$_SESSION['flash']['message'] ?? null, $_SESSION['flash']['kind'] ?? null],
+        'and from a page left open while the last of it was paid, nothing overdue any more');
+
+// Working mail and nothing more, one rule for the sheet and the action
+// (mail_sending_missing()): reminders go to logins already set up, so they do
+// not wait for the privacy notice an invitation needs.
+run_counter('DELETE FROM rate_limits');
+[$sofiaLogin, $sofia] = $family('Sofia', 'Lang');
+$overdueFor($sofia, 'Beitrag Oktober', 3500, 3);
+set_setting('privacy_ready', false);
+ok(account_mail_missing() !== '' && mail_sending_missing() === '', 'with mail tested and no privacy notice released, inviting waits and reminding does not');
+does_not_throw(fn() => act('payment_remind', ['student_id'=>(string)$sofia]), 'and the reminder goes out, as the sheet said it would');
+is_same(1, count($mailsTo($sofiaLogin)), 'one mail, to Sofia');
+set_setting('smtp_last_test', []);
+is_same('E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP“ die Verbindung prüfen.', mail_sending_missing(),
+        'with mail saved but not tested, the sheet names only the mail step');
+ok(str_contains(account_mail_missing(), 'Datenschutz'), 'while the invitation’s notice keeps both its steps');
+throws(fn() => act('payment_remind', ['student_id'=>(string)$sofia]), 'and the action refuses, in the same sentence', mail_sending_missing());
+$trainerHere = make_account(['role'=>'trainer']);
+sign_in_as($trainerHere);
+throws(fn() => act('payment_remind', []), 'a trainer is told who sets it up, in the sheet’s sentence for her',
+       'Eine Administratorin muss zuerst den E-Mail-Versand einrichten und testen.');
+sign_in_as($admin);
+mail_ready(true);
+
+// Two runs at once (security review): the trainer and an administrator, or two
+// tabs. The second waits for the first, and then finds its mails.
+run_counter('DELETE FROM rate_limits');
+[$noahLogin, $noah] = $family('Noah', 'Wagner');
+$overdueFor($noah, 'Beitrag Oktober', 3500, 3);
+$elsewhere = connect();
+$elsewhere->beginTransaction();
+// The other run, under way: it holds the row and has queued Noah's reminder, not committed yet.
+$elsewhere->prepare("INSERT INTO settings (setting_key,setting_value,updated_at) VALUES ('payment_reminders_last_run','\"\"',?)"
+    .' ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)')->execute([now()]);
+$elsewhere->prepare('INSERT INTO mail_jobs (account_id,recipient,subject,payload,category,created_at) VALUES (?,?,?,?,?,?)')
+    ->execute([$noahLogin, (string)scalar('SELECT email FROM accounts WHERE id=?', [$noahLogin]), 'Noch offen: Beitrag Oktober', seal('x'), 'payments', now()]);
+db()->exec('SET SESSION innodb_lock_wait_timeout=1');
+try {
+    throws(fn() => act('payment_remind', ['student_id'=>(string)$noah]), 'while another run is sending, this one waits for it rather than read the outbox', 'Lock wait timeout');
+} finally {
+    db()->exec('SET SESSION innodb_lock_wait_timeout=DEFAULT');
+}
+$elsewhere->commit();
+$elsewhere = null;
+act('payment_remind', ['student_id'=>(string)$noah]);
+is_same(1, count($mailsTo($noahLogin)), 'and once that run has committed, the next finds Noah reminded: one mail, not two');
+
 case_('A charge that is not there is said to be not there, in German');
 throws(fn() => act('charge_cancel', ['id'=>'999999']), 'cancelling one', 'gibt es nicht');
 throws(fn() => act('payment_add', ['charge_id'=>'999999', 'amount'=>'1,00', 'paid_on'=>today(), 'method'=>'Bar']), 'paying one', 'gibt es nicht');

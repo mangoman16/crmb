@@ -169,6 +169,19 @@ function charge_payment_profile(array $charge): ?array {
 }
 
 /**
+ * The bank details „Beiträge" shows for a charge: its payment recipient, when
+ * the QR codes are switched on and the recipient has an IBAN to pay into, and
+ * otherwise null. One rule for the pay box on a child's page and for what a
+ * payment reminder promises (notify_payment()), so a mail never sends a family
+ * looking for bank details the page does not show.
+ */
+function charge_bank_details(array $charge): ?array {
+    if (!setting('show_payment_qr')) return null;
+    $profile = charge_payment_profile($charge);
+    return $profile && $profile['iban'] !== '' ? $profile : null;
+}
+
+/**
  * The memo behind the two lookups below, by reference so it can be emptied.
  *
  * Follows the shape setting_cache() already uses. Holding it for the length of a

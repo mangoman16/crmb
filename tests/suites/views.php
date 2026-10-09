@@ -181,6 +181,32 @@ is_same([money(4500), true, 'Einzeln unter „Beiträge“'], $tile(render_view(
 is_same([money(4500), true, ''], $tile(render_view('student', ['id'=>(string)$kid, 'tab'=>'payments']), 'Überfällig'), 'and so is the overdue amount');
 run('UPDATE charges SET due_on=? WHERE student_id=?', [today(), $kid]);
 
+case_('„Beiträge" shows the bank details exactly when a reminder promises them [spec-a3-reminder, charge_bank_details()]');
+/* A payment reminder says „Bankverbindung und QR-Code … findest du unter
+   „Beiträge“" only when charge_bank_details() gives every charge it lists a
+   recipient with an IBAN. The box on the page goes by that same rule, or a family
+   follows the mail to a page without them. As [boxes, what the rule says]. */
+$recipient = fixture('payment_profiles', ['name'=>'Vereinskonto', 'recipient'=>'Badminton Beispiel', 'iban'=>'AT05 5100 0805 1317 6900',
+                                          'bic'=>'', 'currency'=>'EUR', 'note'=>'', 'qr_template'=>'', 'archived'=>0, 'created_at'=>now()]);
+$defaultRecipient = setting('default_payment_profile');
+set_setting('default_payment_profile', $recipient);
+sign_in_as($family);
+$payBox = function () use ($dom, $classed, $kid): array {
+    payment_cache_clear();
+    $boxes = $dom(render_view('student', ['id'=>(string)$kid, 'tab'=>'payments']))->query('//div['.$classed('qr-box').']')->length;
+    payment_cache_clear();
+    return [$boxes, charge_bank_details(one('SELECT * FROM charges WHERE student_id=? AND cancelled=0', [$kid])) !== null];
+};
+is_same([1, true], $payBox(), 'an open charge, the QR codes on and a recipient with an IBAN: the box');
+set_setting('show_payment_qr', false);
+is_same([0, false], $payBox(), 'with the QR codes off, none');
+set_setting('show_payment_qr', true);
+run('UPDATE payment_profiles SET iban=? WHERE id=?', ['', $recipient]);
+is_same([0, false], $payBox(), 'and none for a recipient without an IBAN');
+run('UPDATE payment_profiles SET iban=? WHERE id=?', ['AT05 5100 0805 1317 6900', $recipient]);
+set_setting('default_payment_profile', $defaultRecipient);
+payment_cache_clear();
+
 case_('The overviews keep to the greeting and what comes next [the audit, N7]');
 /* Part 2's removals, before its groups exist: no line under the greeting, no
    „Nachricht schreiben" (the Chats tab), no card of the family's own (the name
@@ -245,6 +271,143 @@ is_same(status_label('paused'), trim((string)$dom($profil)->query($heading.'//p'
 ok(str_contains($profil, e('Mitgliedschaft bis')) && str_contains($profil, e(fmt_date('2027-06-30'))), 'and „Mitgliedschaft bis" with its date');
 run('UPDATE students SET status=?, ended_on=NULL WHERE id=?', ['active', $kid]);
 ok(!str_contains(render_view('student', ['id'=>(string)$kid, 'tab'=>'classes']), e('Jede Kursteilnahme hat ihren eigenen Tarif.')), 'how tariffs work is staff\'s to know');
+
+case_('Geld shows who owes first, says which list is on, and folds the month away [the audit, N5]');
+/* „Wer schuldet noch was?" The charges came after the month's whole run and three
+   rows of filters, which never showed which was on. Now the title is the word on
+   the bar, two chips say which list it is, the list follows, and the monthly
+   charges are one row after it. */
+$monthly = make_class(['name'=>'Monatskurs']);
+make_enrolment($monthly, make_student(['first_name'=>'Mona', 'last_name'=>'Monat']), ['tariff_id'=>$tariff]);
+set_setting('auto_billing', false);
+mail_ready(false);
+sign_in_as($trainer);
+$x = $dom(render_view('payments'));
+is_same(['Geld', 0], [trim((string)$x->query('//h1')->item(0)?->textContent), $x->query($heading.'//p')->length], 'the title is „Geld", the word on the bar, with no line under it');
+/** A page of Geld's as [its title, the half its switch says is open]. */
+$half = fn(DOMXPath $x): array => [trim((string)$x->query('//h1')->item(0)?->textContent), trim((string)$x->query('//nav['.$classed('tabs').']/a[@aria-current="page"]')->item(0)?->textContent)];
+is_same([['Geld', 'Beiträge'], ['Geld', 'Rechnungen']], [$half($x), $half($dom(render_view('invoices')))],
+        'and Rechnungen, the other half of its switch, is „Geld" too: the switch says which half is open');
+/** The chips as [what each says, whether it is on, its aria-current]. */
+$chips = fn(DOMXPath $x): array => array_map(fn(DOMElement $a) => [trim($a->textContent), str_contains(' '.$a->getAttribute('class').' ', ' is-on '), $a->getAttribute('aria-current')],
+    iterator_to_array($x->query('//nav['.$classed('saved-filters').']/a')));
+is_same([['Alle', true, 'true'], ['Überfällig', false, '']], $chips($x), 'two chips, „Alle" on, and the page says which');
+is_same(0, $x->query('//input[@name="action" and @value="payment_remind"]')->length, 'and nothing to remind of under „Alle"');
+/** The monthly charges' row as [its label, its value, whether it is open]. */
+$fold = fn(DOMXPath $x): array => ($row = $x->query('//details['.$classed('fold-row').' and '.$classed('billing-card').']')->item(0))
+    ? [trim((string)$x->query('./summary/span[1]', $row)->item(0)?->textContent), trim((string)$x->query('./summary/span['.$classed('fold-value').']', $row)->item(0)?->textContent), $row->hasAttribute('open')]
+    : ['no row'];
+$planned = count(array_filter(billing_plan(billing_current_period()), fn(array $r) => $r['skip'] === null));
+ok($planned > 0, 'this month has charges to make, so the next line can tell that the row opens by itself');
+is_same(['Monatsbeiträge', billing_month_name(billing_current_period()).': '.$planned.' anzulegen', true], $fold($x),
+        'after the list, „Monatsbeiträge" says how many this month would make, and is open while they are not made by themselves');
+$html = render_view('payments');
+ok(str_contains($html, e('Erst die Vorschau – angelegt wird erst mit dem Knopf unten.')) && !str_contains($html, e('Beiträge anlegen')),
+   'it holds the preview, opening with its new first sentence and without its old title');
+/* The switch is an administrator's. To the trainer, „Nicht automatisch – die
+   Beiträge werden unten mit Vorschau angelegt." said again what „Erst die
+   Vorschau" had just said. As [the status block, the switch, that line]. */
+$switch = fn(string $html): array => [$dom($html)->query('//div['.$classed('auto-charges').']')->length,
+                                      $dom($html)->query('//input[@name="action" and @value="auto_billing_save"]')->length, str_contains($html, 'Nicht automatisch')];
+is_same([0, 0, false], $switch($html), 'while they are not automatic, the trainer is not told so twice, and has no switch');
+sign_in_as($geldAdmin = make_account(['role'=>'admin']));
+is_same([1, 1, false], $switch(render_view('payments')), 'an administrator has the switch, with the line that says what switching it on would do');
+sign_in_as($trainer);
+is_same(['Monatsbeiträge', billing_month_name('2020-01').': nichts anzulegen'], array_slice($fold($dom(render_view('payments', ['period'=>'2020-01']))), 0, 2),
+        'for a month with nothing to make, it says so');
+set_setting('auto_billing', true);
+is_same(['Monatsbeiträge', 'Automatisch', false], $fold($dom(render_view('payments'))), 'made by themselves, it says „Automatisch" and stays shut');
+is_same([1, 0, false], $switch(render_view('payments')), 'and inside, the trainer is told when they were last made, still with no switch');
+is_same(['Monatsbeiträge', 'Automatisch', true], $fold($dom(render_view('payments', ['period'=>'2020-01']))),
+        'but a month chosen in it keeps it open, so what that month would make is in view after „Monat wechseln"');
+sign_in_as($geldAdmin);
+is_same(['Monatsbeiträge', 'Automatisch', true], $fold($dom(render_view('payments', ['from'=>'start']))),
+        'and the setup checklist\'s „Beiträge" step opens it too: it sends an administrator here for what it holds');
+/* Switched off, the banner sends her to that row by the label it shows. It
+   said „Beiträge anlegen“, a heading the row replaced (code review of N5). */
+act('auto_billing_save', []);
+$said = (string)($_SESSION['flash']['message'] ?? '');
+$label = $fold($dom(render_view('payments')))[0];
+ok($label !== 'no row' && str_contains($said, '„'.$label.'“'), 'switched off, the banner names the row by the label the page shows: '.$said);
+sign_in_as($trainer);
+set_setting('auto_billing', false);
+/* On a phone the value beside the label was cut to „Auto…" - every value at
+   320 px, every month's at 390 (measured). On Geld it goes under the label
+   instead, and this keeps the rule that does it from going quietly. */
+$css = css_rules((string)file_get_contents(APP_ROOT.'/public/assets/app.css'));
+$cut = css_matching($css, '/^\.fold-row>summary>\.fold-value$/');
+$undone = fn(string $property, string $value): bool => array_filter(css_matching($css, '/^\.billing-card>summary>\.fold-value$/'),
+    fn(array $over) => $over['property'] === $property && $over['value'] === $value
+        && array_filter($cut, fn(array $general) => $general['property'] === $property && !css_wins($over, $general)) === []) !== [];
+ok(array_filter($cut, fn(array $row) => $row['property'] === 'white-space' && $row['value'] === 'nowrap') !== [] && $undone('white-space', 'normal') && $undone('overflow', 'visible')
+   && array_filter(css_matching($css, '/^\.billing-card>summary$/'), fn(array $row) => $row['property'] === 'flex-wrap' && $row['value'] === 'wrap') !== [],
+   'and on a narrow phone its value goes under the label rather than being cut');
+$x = $dom(render_view('payments', ['overdue'=>'1']));
+is_same([['Alle', false, ''], ['Überfällig', true, 'true']], $chips($x), 'under „Überfällig" that chip is on');
+/* Past its due date but inside its grace days is open, not late: the rule the
+   reminder sends by (charge_is_overdue_sql()), not the due date alone. */
+$grace = fixture('charges', ['student_id'=>make_student(['first_name'=>'Greta', 'last_name'=>'Gnadenfrist']), 'label'=>'Beitrag in der Gnadenfrist', 'amount_cents'=>2500,
+                             'due_on'=>'2020-03-01', 'overdue_on'=>'2099-03-01', 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+is_same([true, false], [str_contains(render_view('payments'), 'Beitrag in der Gnadenfrist'), str_contains(render_view('payments', ['overdue'=>'1']), 'Beitrag in der Gnadenfrist')],
+        'a charge inside its grace days is under „Alle", and not yet under „Überfällig"');
+run('UPDATE charges SET cancelled=1 WHERE id=?', [$grace]);
+/** What stands where the reminder would: [sheets, buttons, the sentence in its place]. */
+$nobody = fn(DOMXPath $x): array => [$x->query('//details['.$classed('reminder-sheet').']')->length, $x->query('//input[@name="action" and @value="payment_remind"]')->length,
+                                     trim((string)$x->query('//p['.$classed('reminder-none').']')->item(0)?->textContent)];
+/* Reminders go to logins already set up, so they wait for working mail and
+   nothing else (mail_sending_missing(), the rule payment_remind refuses by). */
+is_same([0, 0, mail_sending_missing()], $nobody($x), 'and with mail not tested, the sentence that says so stands where the reminder would, with no button');
+ok(mail_sending_missing() !== '', 'mail is not tested here, so there is a sentence to show');
+
+case_('The reminder says before the tap how many go out, counted by the rule that sends them [spec-a3-reminder, „On Geld"]');
+mail_ready(true);
+sign_in_as($trainer);
+/* A child overdue with no sign-in, beside the ones who can take a mail, so the
+   sheet has somebody to leave out and say so. */
+$noSignIn = fixture('charges', ['student_id'=>make_student(['first_name'=>'Olga', 'last_name'=>'Ohnemail']), 'label'=>'Beitrag Februar', 'amount_cents'=>3500,
+                                'due_on'=>'2020-02-10', 'cancelled'=>0, 'origin'=>'manual', 'created_at'=>now()]);
+$reminders = payment_reminders();
+ok($reminders['send'] !== [] && $reminders['none'] > 0 && $reminders['today'] === 0, 'somebody here is overdue and can take the mail, and somebody cannot');
+set_setting('privacy_ready', false);
+is_same(1, $dom(render_view('payments', ['overdue'=>'1']))->query('//details['.$classed('reminder-sheet').']')->length,
+        'mail that works is all a reminder waits for: no released privacy notice still lets it go');
+set_setting('privacy_ready', true);
+$x = $dom(render_view('payments', ['overdue'=>'1']));
+$sheet = $x->query('//details['.$classed('reminder-sheet').' and @data-sheet]')->item(0);
+is_same(plural(count($reminders['send']), 'Erinnerung schicken', 'Erinnerungen schicken', 'reminder – send', 'reminders – send'),
+        trim((string)($sheet ? $x->query('./summary', $sheet)->item(0)?->textContent : '')), 'a sheet whose row says how many reminders go out');
+is_same(['Pro Kind eine E-Mail mit allen überfälligen Beiträgen und der Summe. Verschickt lässt sie sich nicht zurückholen.', payment_reminders_left_out($reminders), 'Jetzt schicken'],
+        [...($sheet ? array_map(fn(DOMNode $p) => trim($p->textContent), iterator_to_array($x->query('./p', $sheet))) : []),
+         trim((string)($sheet ? $x->query('.//form[.//input[@name="action" and @value="payment_remind"]]//button[@type="submit"]', $sheet)->item(0)?->textContent : ''))],
+        'saying what goes out, that it cannot be called back and who gets none, in the banner\'s words, before „Jetzt schicken"');
+is_same(0, $dom(render_view('payments'))->query('//details['.$classed('reminder-sheet').']')->length, 'never under „Alle"');
+/* Everybody overdue who could take one unsubscribes: the reason, and no button. */
+$overdueLogins = implode(',', array_map(fn(array $r) => (int)$r['account']['id'], $reminders['send']));
+run('UPDATE accounts SET payment_notices=0 WHERE id IN ('.$overdueLogins.')');
+is_same([0, 0, 'Keine Erinnerung möglich: Diese Kinder melden sich nicht an oder haben Erinnerungen abbestellt.'], $nobody($dom(render_view('payments', ['overdue'=>'1']))),
+        'with nobody able to take one, it says why, with no button to press');
+/* The sheet before the tap and the banner after it give that reason in the same
+   words, each with its own opening: one reason, payment_reminders_unreachable(). */
+$sheetSays = $nobody($dom(render_view('payments', ['overdue'=>'1'])))[2];
+act('payment_remind', []);
+is_same(['Keine Erinnerung möglich: '.payment_reminders_unreachable(), 'Keine Erinnerung verschickt: '.payment_reminders_unreachable()],
+        [$sheetSays, (string)($_SESSION['flash']['message'] ?? '')], 'and the banner after „Jetzt schicken" gives the same reason');
+run('UPDATE accounts SET payment_notices=1 WHERE id IN ('.$overdueLogins.')');
+/* Everybody who can take one was reminded today: that is the reason given, not
+   „melden sich nicht an" - the banner's condition, so both say the same. */
+foreach ($reminders['send'] as $reminder) notify_payment($reminder['account'], $reminder['student'], $reminder['charges']);
+$again = payment_reminders();
+is_same([0, 0, payment_reminders_left_out($again)], $nobody($dom(render_view('payments', ['overdue'=>'1']))),
+        'with everybody else reminded today, it says so and who gets none, with no button to press');
+ok($again['today'] === count($reminders['send']) && str_starts_with(payment_reminders_left_out($again), 'Heute schon erinnert: '), 'and that sentence is the one about today');
+run("UPDATE mail_jobs SET status='cancelled' WHERE category='payments' AND account_id IN (".$overdueLogins.')');
+/* Nothing overdue: no row at all. */
+$late = array_map('intval', array_column(rows('SELECT c.id FROM charges c WHERE '.charge_is_overdue_sql(), [today()]), 'id'));
+run('UPDATE charges SET cancelled=1 WHERE id IN ('.implode(',', $late).')');
+is_same([0, 0, ''], $nobody($dom(render_view('payments', ['overdue'=>'1']))), 'and with nothing overdue, no reminder row');
+run('UPDATE charges SET cancelled=0 WHERE id IN ('.implode(',', $late).')');
+run('UPDATE charges SET cancelled=1 WHERE id=?', [$noSignIn]);
+mail_ready(false);
 
 // ---------------------------------------------------------------------------
 case_('A problem report shows the way there, in both shapes it can be stored in');
@@ -386,7 +549,7 @@ $decoded = fn(string $s): string => html_entity_decode($s, ENT_QUOTES | ENT_HTML
 $subtitleOf = fn(string $html, string $name): string => preg_match('~<h3>'.preg_quote(e($name), '~').'</h3><p>([^<]*)</p>~', $html, $m) ? $decoded($m[1]) : '(no row)';
 $rowOf = fn(string $html, string $name): string => preg_match('~<a class="student-card"[^>]*>(?:(?!</a>).)*<h3>'.preg_quote(e($name), '~').'</h3>.*?</a>~s', $html, $m) ? $m[0] : '';
 $control = fn(string $html, string $label): string => preg_match('~<nav class="tabs is-segmented" aria-label="'.preg_quote(e($label), '~').'">(.*?)</nav>~s', $html, $m) ? $m[1] : '';
-$fold = fn(string $html): string => preg_match('~<details class="card filter-fold">(.*?)</details>~s', $html, $m) ? $m[1] : '';
+$fold = fn(string $html): string => preg_match('~<details class="card fold-row">(.*?)</details>~s', $html, $m) ? $m[1] : '';
 $sections = fn(string $html): array => preg_match_all('~<section class="card age-section" id="([^"]+)"~', $html, $m) ? $m[1] : [];
 $list = render_view('students');
 ok(str_contains($list, '<form method="get" class="search" role="search">') && str_contains($list, 'type="search" name="q"') && str_contains($list, 'placeholder="'.e('Suchen').'"'),
@@ -407,7 +570,7 @@ ok(str_contains($sort, 'aria-current="page" href="'.e(url('students', ['course'=
 ok(str_contains($control($sorted, 'Auswahl'), 'href="'.e(url('students', ['overdue'=>1])).'"'), 'while „Überfällig" starts afresh');
 ok(str_contains($sorted, '<input type="hidden" name="course" value="'.$course.'">'), 'and the search keeps the course');
 $chosen = render_view('students', ['course'=>(string)$course, 'level'=>(string)$level['id'], 'age_group'=>(string)$unter12, 'sort'=>'age', 'q'=>'A']);
-ok(str_contains($fold($chosen), '<span class="filter-value">'.e('Kindertraining · '.$level['name'].' · Unter 12').'</span>'), 'chosen, the row names the choices in the fields’ order');
+ok(str_contains($fold($chosen), '<span class="fold-value">'.e('Kindertraining · '.$level['name'].' · Unter 12').'</span>'), 'chosen, the row names the choices in the fields’ order');
 ok(str_contains($fold($chosen), '<input type="hidden" name="q" value="A">') && str_contains($fold($chosen), '<input type="hidden" name="sort" value="age">'),
    'and „Anwenden" keeps the search and the order');
 is_same(['Anna Alt', 'Ben Berg', 'Cora Clever', 'Dan Dazwischen'], array_map($decoded, preg_match_all('~<h3>([^<]*)</h3>~', $list, $m) ? $m[1] : []), 'A–Z is by last name');

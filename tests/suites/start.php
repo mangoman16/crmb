@@ -97,6 +97,10 @@ set_setting('auto_billing', false);
 fixture('charges', ['student_id'=>$kid, 'label'=>'Beitrag', 'amount_cents'=>3700, 'due_on'=>today(), 'cancelled'=>0,
                     'origin'=>'manual', 'created_at'=>now()]);
 is_same(true, $done()['billing'], 'and so is one charge on a real child');
+$billingStep = $steps()['billing'];
+is_same(['payments', ['from'=>'start'], 'auto-charges'], [$billingStep['page'], $billingStep['params'], $billingStep['anchor'] ?? null],
+        'and the step leads to the switch inside „Monatsbeiträge“, not the top of Geld');
+ok(str_contains(render_view('payments', ['from'=>'start']), 'id="auto-charges"'), 'which Geld draws for an administrator under that id');
 
 $login = make_account(['role'=>'student', 'state'=>'invited', 'verified_at'=>null]);
 run('UPDATE students SET account_id=? WHERE id=?', [$login, $kid]);

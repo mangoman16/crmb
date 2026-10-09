@@ -290,31 +290,42 @@ function dispatch_config(string $action): array {
 
     case 'payment_remind':
         $u=require_staff(); throttle('payment-remind',(string)$u['id'],6,3600);
-        if(!setting('smtp',[])) throw new UserError(t('Bitte zuerst SMTP einrichten.','Set up SMTP first.'));
+        // One run at a time (security review): two at once - the trainer and an
+        // administrator, or two tabs - each read the outbox before the other
+        // wrote to it, and every family got two mails. Writing this row holds
+        // it until the run commits, whether it existed yet or not (a SELECT ...
+        // FOR UPDATE on a missing row locks nothing two runs cannot share), so
+        // a second run waits here. And here, before this transaction reads
+        // anything: its first plain read fixes what it sees (REPEATABLE READ),
+        // and one made before the wait would miss the mails the other run
+        // committed meanwhile. What runs before it in the transaction is no
+        // such read: claim_request()'s insert is a write, who is signed in was
+        // read before the transaction began (record_step()), and throttle()
+        // counts on a connection of its own.
+        set_setting('payment_reminders_last_run',now());
+        // Working mail, and nothing more: the same rule as the sheet on Geld.
+        if(($mailMissing=mail_sending_missing())!=='') throw new UserError($mailMissing);
+        // To exactly whom the sheet on Geld counted (payment_reminders()): one
+        // mail per child with all its overdue charges, none to a child that
+        // cannot take one or was reminded today already (design N5).
         $only=(int)post('student_id');
-        $sent=0; $skipped=0;
-        // One reminder per overdue charge, to the student's own login. A student
-        // with no login - including a brother or sister taken off a shared one
-        // by the update to one login per member - is skipped and counted, until
-        // they are invited with an address of their own.
-        foreach(rows('SELECT c.*, s.first_name, s.last_name, s.account_id,'
-            .' '.charge_paid_sql().' AS paid'
-            .' FROM charges c JOIN students s ON s.id=c.student_id'
-            .' WHERE '.charge_is_overdue_sql().($only?' AND s.id=?':'')
-            .' ORDER BY s.account_id, c.due_on', $only?[today(),$only]:[today()]) as $c) {
-            $due=(int)$c['amount_cents']-(int)$c['paid'];
-            if(!$c['account_id']) { $skipped++; continue; }
-            $account=one('SELECT * FROM accounts WHERE id=?',[(int)$c['account_id']]);
-            if(!$account) { $skipped++; continue; }
-            if(notify_payment($account,['id'=>$c['student_id'],'first_name'=>$c['first_name'],'last_name'=>$c['last_name']],$due,(string)$c['due_on'])) $sent++;
-            else $skipped++;
-        }
+        $reminders=payment_reminders($only?:null);
+        $sent=0;
+        foreach($reminders['send'] as $reminder) if(notify_payment($reminder['account'],$reminder['student'],$reminder['charges'])) $sent++;
         audit('payment.reminded','charge');
-        flash($sent
-            ? $sent.' '.t('Erinnerungen liegen im Postausgang.','reminders are in the outbox.').($skipped?' '.$skipped.' '.t('übersprungen (kein Konto oder abgemeldet).','skipped (no account, or unsubscribed).'):'')
-            : t('Keine Erinnerung nötig oder alle Empfänger haben diese E-Mails abbestellt.','Nothing to remind about, or every recipient has unsubscribed from these emails.'),
-            $sent?'success':'error');
-        return ['outbox',[]];
+        $leftOut=payment_reminders_left_out($reminders);
+        // In the plain style whatever went out: a run that sends nothing has
+        // not gone wrong, it found nobody to send to.
+        flash(match(true) {
+            $sent>0 => plural($sent,'Erinnerung geht raus.','Erinnerungen gehen raus.','reminder is on its way.','reminders are on their way.').($leftOut!==''?' '.$leftOut:''),
+            // Everybody overdue cannot take a mail, and nobody was reminded today.
+            $reminders['none']>0 && !$reminders['today'] => t('Keine Erinnerung verschickt: ','No reminder sent: ').payment_reminders_unreachable(),
+            // Said first, or „Heute schon erinnert" alone reads as sent just now.
+            $leftOut!=='' => t('Keine Erinnerung verschickt.','No reminder sent.').' '.$leftOut,
+            // A page left open while the last of it was paid.
+            default => t('Gerade ist nichts überfällig.','Nothing is overdue right now.'),
+        });
+        return ['payments',['overdue'=>1]];
 
     // ---- attendance ----------------------------------------------------
 

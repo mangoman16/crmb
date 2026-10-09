@@ -631,12 +631,12 @@ if(!$charges)echo '<div class="card"><p class="muted">'.e(t('Noch keine Beiträg
 <section class="card charge-card"><div class="section-heading"><div><h2><?=e($c['label'])?></h2><p class="muted"><?=e(t('Fällig am ','Due ').fmt_date($c['due_on']))?></p></div><?php badge($c['cancelled']?t('Storniert','Cancelled'):($remaining===0?t('Bezahlt','Paid'):money($remaining).' '.t('offen','outstanding')),$c['cancelled']?'':($remaining===0?'green':(charge_is_overdue($c)?'red':'')));?></div>
 <dl class="facts"><div><dt><?=e(t('Beitrag','Charge'))?></dt><dd><?=e(money((int)$c['amount_cents']))?></dd></div><div><dt><?=e(t('Zeitraum','Coverage period'))?></dt><dd><?php /* The period the invoice names, not the stored one: a child who joined mid-month is billed from the day they joined (charge_period_text()). */ $period=charge_period_text($c); ?><?=e($period!==''?$period:t('Einmalig / ohne Zeitraum','One-time / no period'))?></dd></div></dl>
 <?php
-// Transfer details for whatever is still open on this charge.
-if($remaining>0 && !$c['cancelled'] && setting('show_payment_qr')):
-    $profile=charge_payment_profile($c);
-    if($profile && $profile['iban']!==''):
-        $reference=charge_reference($c,$s);
-        $payload=qr_payload($profile,$remaining,$reference);
+/* Transfer details for whatever is still open on this charge, by the rule a
+   payment reminder promises them by (charge_bank_details()), so a family the
+   mail sends here for them finds them. */
+if($remaining>0 && !$c['cancelled'] && ($profile=charge_bank_details($c))):
+    $reference=charge_reference($c,$s);
+    $payload=qr_payload($profile,$remaining,$reference);
 ?>
 <div class="qr-box">
     <div class="qr-plate"><?=$payload!==''?qr_svg($payload,200):''?></div>
@@ -653,7 +653,7 @@ if($remaining>0 && !$c['cancelled'] && setting('show_payment_qr')):
         <?php if($profile['note'])echo '<p class="muted">'.e($profile['note']).'</p>';?>
     </div>
 </div>
-<?php endif; endif ?>
+<?php endif ?>
 <?php $payments=$paymentsOf[(int)$c['id']]??[];$allocated=0;foreach($payments as $p):if(!$p['voided'])$allocated+=(int)$p['amount_cents'];?><div class="record-row"><div><strong><?=e(money((int)$p['amount_cents']))?></strong><p><?=e(fmt_date($p['paid_on']).' · '.$p['method'])?></p><?php badge($p['voided']?t('Storniert','Voided'):($p['confirmed_at']?t('Bestätigt','Confirmed'):t('Unbestätigt','Unconfirmed')),$p['confirmed_at']&&!$p['voided']?'green':'');if($p['note'])echo '<p>'.e($p['note']).'</p>';if($staff&&$p['confirmed_at'])echo '<small>'.e(t('Bestätigt von ','Confirmed by ').($p['confirmer']??t('gelöschtem Konto','deleted account')).' · '.fmt_datetime($p['confirmed_at'])).'</small>';?></div>
 <?php if($staff&&!$p['voided']):?><div class="row-actions"><?php if(!$p['confirmed_at']){start_form('payment_state',['id'=>$p['id'],'mode'=>'confirm'],'inline-form');submit_button(t('Bestätigen','Confirm'),'secondary');echo '</form>';}start_form('payment_state',['id'=>$p['id'],'mode'=>'void'],'inline-form');submit_button(t('Stornieren','Void'),'subtle danger-text');?></form></div><?php endif ?></div><?php endforeach ?>
 <?php if($staff&&!$c['cancelled']):?>

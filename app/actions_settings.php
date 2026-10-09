@@ -141,7 +141,8 @@ function dispatch_settings_or_messages(string $action): array {
         require_admin();$on=post('auto_billing')==='1';
         set_setting('auto_billing',$on);audit($on?'billing.auto_on':'billing.auto_off','settings');
         flash($on?t('Monatsbeiträge werden ab jetzt automatisch angelegt: einmal im Monat, beim ersten Seitenaufruf.','Monthly charges are now created automatically: once a month, on the first page view.')
-                 :t('Monatsbeiträge werden nicht mehr automatisch angelegt. Du legst sie unten unter „Beiträge anlegen“ an, mit Vorschau.','Monthly charges are no longer created automatically. Create them below under “Create charges”, with a preview.'));
+                 // By the label of the row on Geld that holds them (fold_row() in views/payments.php).
+                 :t('Monatsbeiträge werden nicht mehr automatisch angelegt. Du legst sie unter „Monatsbeiträge“ selbst an, mit Vorschau.','Monthly charges are no longer created automatically. Create them yourself under “Monthly charges”, with a preview.'));
         return ['payments',[]];
     case 'preferences_save':
         $u=require_user();$newsletter=(bool)post('newsletter');$notifications=(bool)post('notifications');$payments=(bool)post('payment_notices');

@@ -20,7 +20,7 @@ with MariaDB; MySQL is meant to work but has never been run.
 - **„Dein Portal einrichten"**, nine steps from an empty portal to the first invitation, each
   ticked from the data. An administrator lands there at every sign-in until it is done or
   hidden.
-- **A menu of seven**: Übersicht, Schüler, Kurse, Anwesenheit, Geld, Nachrichten, and
+- **A menu of seven**: Übersicht, Schüler, Kurse, Anwesenheit, Geld, Chats, and
   Einstellungen for an administrator or Verwaltung for a trainer. On a phone a bar at the
   bottom holds Übersicht · Schüler · Anwesend · Chats · Mehr for staff, „Mehr" being a page
   with the rest of the menu, Mein Konto, the privacy notice and „Abmelden", and Übersicht ·

@@ -101,6 +101,7 @@ release and emptied again for the next.
 - Families fill in their own details, and every change is in the change log (ADR 0020): A.14–A.18, A.20–A.22, A.25, A.27
 - The chat works like a messenger: a group for every course, chats with one person; looking through somebody's eyes shows no chat notice in the bell and offers nothing to write; a stored photo keeps only the picture (ADR 0022): C.1–C.6, C.10–C.15, C.17–C.20
 - Billing and invoices after the review of October 2026: an archived tariff stays on a child, a cancelled charge can be charged again, „Als bezahlt eintragen" confirms rather than doubles, a charge on an invoice cannot be cancelled, an invoice is not e-mailed to a family who said no, the invoices page counts every invoice, a membership ending mid-month is charged to that day, a child coming back starts afresh, the age filter finds the right children, background charges are German and nobody's, and the „Zahlungsziel" setting that did nothing is gone: [B.1–B.14](#billing-and-invoices-after-the-review-of-october-2026)
+- Payment reminders: one email per child listing every overdue charge with the total, in the family's language, never twice on the same day, and back on **Geld › Überfällig**: [11.12–11.17](#charges-and-billing)
 - Every student has a login — „Ohne Anmeldung" until somebody enters its address and sends the invitation; a wizard „Schüler anlegen" is the one way to add a child; deleting a child's login gives them a fresh, empty one; after the update a login that signed in by a username is „Ohne Anmeldung" and an old sign-in link opens nothing (ADR 0023, amended by ADR 0030): [L.1–L.25a](#every-student-has-a-login-and-the-wizard-adr-0023-amended-by-adr-0030)
 - The screens of ADR 0030: the card „Zugang zum Portal" sends the invitation in one tap and comes back at itself, a shared address is said before anybody taps, „Zugänge" in groups with four chips, Mein Konto with the address and the three switches, the address keyboard, the viewing strip on the public pages, and all of it without JavaScript: L.9a, L.9b, [Z.1–Z.6](#the-screens-of-adr-0030-on-a-phone)
 - A form sent twice — a double tap, or the same form sent again after Back — lands where the first one went, with the first one's message, and makes nothing twice: [L.10b, L.10c](#every-student-has-a-login-and-the-wizard-adr-0023-amended-by-adr-0030) in the wizard
@@ -120,7 +121,7 @@ release and emptied again for the next.
 - How long the portal keeps what it holds: ten periods under **Einstellungen → System**, the daily cleanup deletes what is past them with their files, and never an invoice, a charge or a payment: [D.1–D.7](#how-long-the-portal-keeps-what-it-holds-adr-0032)
 - The security review of 2026-10-08: a family's login is called what the child is, and Mein Konto no longer renames it; a chat mails once until it is read; twenty chat photos an hour per family's login, staff not counted; administrators hear of every change to where the money goes; the QR code is a SEPA transfer into the account shown; a changed address or password is told by mail; a chat photo keeps no file name; the outbox forgets what a sent mail said after 90 days: [S.7–S.14](#the-security-batch-roadmap-item-6), S.3
 - The portal looks and behaves like an iPhone app: the phone's own font, grouped lists, a tab bar (Übersicht · Schüler · Anwesend · Chats · Mehr for staff, Übersicht · Beiträge · Chats · Profil for a family), red counts, switches, sheets, a back button, pages that fade; „Mehr" as a page; Mein Konto for a family through Profil, the language in Mein Konto — on a real iPhone: [I.1–I.11](#the-portal-as-an-iphone-app-design-language-phase-1), and 1.6, 5.0a, 5.1b, 5.3c, 6.10, U.46, U.47, U.48, U.52, U.56
-- The design audit's first fixes: red only once a charge is late; less to read on a child's Profil, and „Im Verein seit"; a family's overview opens with the greeting and the face, and shows no past dates; the chat page is „Chats"; the sign-in page says where to read about your data, with one link: [M.1–M.5](#the-design-audits-first-fixes-n1-n6-n7), 4.7a, U.1
+- The design audit's first fixes: red only once a charge is late; less to read on a child's Profil, and „Im Verein seit"; a family's overview opens with the greeting and the face, and shows no past dates; the chat page is „Chats"; the sign-in page says where to read about your data, with one link: [M.1–M.5](#the-design-audits-first-fixes-n1-n5-n6-n7), 4.7a, U.1 · **Geld** with „Alle" and „Überfällig", the reminder as a sheet that counts first, and „Monatsbeiträge" after the list: M.6–M.11
 - Pictures come back (ADR 0031): a child's, added by the family or the trainer, also from **Anwesenheit**; the team's own on **Mein Konto**; the course sees a child's once the family says yes, a parent's under 14; „Dein Foto" once, after the first password; JPEG and PNG only, up to 24 megapixels; at **Anwesenheit** „Mehr" for the rarer marks and Enter that saves; the child's face beside the greeting: [P.1–P.20](#pictures-adr-0031)
 
 ---
@@ -322,8 +323,9 @@ contact.
 **5 · Enrol them and check the arithmetic.** On the child, **Kurse → In einen
 Kurs eintragen**, pick the course and `Erwachsene`. Open *Tarif, Zahlungsweise
 und Rabatt*, set **Dabei seit** to the 12th of last November and Zahlungsweise
-to jährlich. Save. Then **Beiträge → Beiträge anlegen** for that November: it
-should offer **42,00 €** — November and December of a 252 € year. Create it.
+to jährlich. Save. Then **Geld → „Monatsbeiträge"**, set **Monat** to that
+November and „Monat wechseln": it should offer **42,00 €** — November and
+December of a 252 € year. Create it.
 
 **6 · Invoice it, and watch it refuse first.** On the child, **Rechnungen**.
 It will say what is missing: the operator's name and address under
@@ -925,7 +927,7 @@ that.
 
 ## Charges and billing
 
-- [ ] **11.1** **Beiträge → Beiträge anlegen** previews what would be created:
+- [ ] **11.1** **Geld → „Monatsbeiträge"** previews what would be created:
   one line per enrolment, each naming the course, the tariff and the period,
   and a reason beside anybody who is being skipped.
 - [ ] **11.2** Nothing is created until you press the button. Pressing it twice
@@ -954,10 +956,37 @@ that.
 - [ ] **11.10** A child who leaves mid-period is charged for the days they were
   there, whatever the tariff's joining rule says.
 - [ ] **11.11** Pause a child's billing. The next run skips them and says why.
-- [ ] **11.12** „Alle überfälligen per E-Mail erinnern" queues one email per
-  overdue charge, to the child's own login, and counts as skipped every child it
-  cannot reach by e-mail. (Whether one per family would be better is open in
-  ROADMAP.md.)
+- [ ] **11.12** Send the reminders on **Geld**: one email per child with an
+  overdue charge, to the child's own login, however many charges are overdue.
+  The page comes back on **Geld › Überfällig** saying „1 Erinnerung geht raus."
+  or „3 Erinnerungen gehen raus.", and „1 Kind bekommt keine: ohne Anmeldung
+  oder abbestellt." for each child it cannot reach. The number is the one the
+  reminder button showed before the tap.
+- [ ] **11.13** A child with two overdue charges, one of them partly paid:
+  **Postausgang** has one email „Noch offen: 2 Beiträge" (no amount in the
+  subject). Opened, it lists both, the older first, the partly paid one as
+  „noch 5,00 € von 15,00 €", then „Zusammen:", „Bankverbindung und für jeden
+  Beitrag einen QR-Code findest du unter „Beiträge“:" with a link that opens
+  that child's **Beiträge**, „Schon überwiesen? Dann passt alles – danke!" and
+  „Viele Grüße" with the club's name. No IBAN anywhere in it.
+- [ ] **11.14** A family whose language is English under **Mein Konto** gets
+  „Still to pay: …", „Hello …", amounts as „35.00 €" and English dates, while
+  the trainer's portal stays German.
+- [ ] **11.15** With „QR-Code für offene Beiträge anzeigen" switched off, or a
+  charge paying into a recipient without an IBAN, the mail says „Alles Weitere
+  findest du unter „Beiträge“:" and promises no bank details.
+- [ ] **11.16** Send the reminders a second time on the same day: nobody gets a
+  second email, and the page says „Keine Erinnerung verschickt. Heute schon
+  erinnert: 3 Kinder." (with your count), in the plain banner, not the red one.
+  So do „Keine Erinnerung verschickt: …" and „Gerade ist nichts überfällig.". On
+  the next day by the club's calendar they are reminded again.
+- [ ] **11.17** Reminders need working mail and nothing more. With the mail
+  test passed but the privacy notice not released yet, they still go out,
+  while inviting waits for both. With mail saved but its test not passed, the
+  reminders are refused with „E-Mail-Versand zuerst testen: unter
+  „Einstellungen → SMTP“ die Verbindung prüfen." (a trainer reads „Eine
+  Administratorin muss zuerst den E-Mail-Versand einrichten und testen.") and
+  nothing goes out.
 
 ---
 
@@ -1506,9 +1535,12 @@ Rückmeldungen**, „Technische Einzelheiten"
   text in and release: refused, naming „English". Put a full English text in:
   released, and the version number under the notice has changed.
   *`tests/e2e.sh` at 91520db releases with the English box empty and the family sees the German notice with the line under `&lang=en`: passed. The short and full English texts are still by hand.*
-- [ ] **U.36** **(release)** As the administrator, switch **„Monatsbeiträge automatisch
-  anlegen"** on and off on the **Beiträge** page. A trainer is not offered it. Under **Einstellungen → System** it is no
-  longer listed.
+- [ ] **U.36** **(release)** As the administrator, on **Geld** open „Monatsbeiträge"
+  and switch „Jeden Monat automatisch anlegen" on and off. Switched off, the
+  banner says „Monatsbeiträge werden nicht mehr automatisch angelegt. Du legst
+  sie unter „Monatsbeiträge“ selbst an, mit Vorschau." From the checklist,
+  „Beiträge" lands on that switch, with „Monatsbeiträge" open. A trainer is not
+  offered it. Under **Einstellungen → System** it is no longer listed.
   *`tests/e2e.sh` at 91520db switches it on from the Beiträge page: passed. Off, the trainer and the System tab are still by hand.*
 - [ ] **U.37** **(release)** On an existing child whose record still has a tariff and an agreed
   price from before, save the child's page twice with other changes. **Änderungen**
@@ -1572,8 +1604,8 @@ Rückmeldungen**, „Technische Einzelheiten"
   **„Postausgang"**, each opening its page with **Chats** still marked. An
   administrator also has „Alle Einzelchats" there.
 - [ ] **U.51** At the top of **Beiträge** and of **Rechnungen**, a switch
-  **Beiträge · Rechnungen** takes you from one to the other; **Geld** stays marked
-  on both.
+  **Beiträge · Rechnungen** takes you from one to the other; both are titled
+  „Geld", and **Geld** stays marked on both.
 - [ ] **U.52** **Mein Konto** ends with **„Datenschutz und Hilfe"**: the
   Datenschutzerklärung, „Etwas funktioniert nicht", the version and **Abmelden**.
   On a family's phone this is the only way to the privacy notice — **Profil →
@@ -1849,17 +1881,17 @@ cancel, mark paid or e-mail.
 - [ ] **B.1** **Kurse** → a course → **Tarife**: archive the tariff one child
   is on. On that child, **Kurse** → „Tarif, Zahlungsweise und Rabatt": change
   only the payment day and save. The child's line still names the archived
-  tariff, and **Beiträge → Beiträge anlegen** previews a charge for them rather
-  than „Kein Tarif gewählt". Once the page is updated (frontend-dev), the
-  tariff list shows that tariff with „(archiviert)" after it; choosing another
-  one works, and no other child can be put on the archived one.
+  tariff, and **Geld → „Monatsbeiträge"** previews a charge for them rather than
+  „Kein Tarif gewählt". Once the page is updated (frontend-dev), the tariff list
+  shows that tariff with „(archiviert)" after it; choosing another one works,
+  and no other child can be put on the archived one.
 - [ ] **B.2** On the same form, set „Ausgetreten am" before „Dabei seit" and
   save: „Das Enddatum liegt vor dem Startdatum.", and nothing changed.
-- [ ] **B.3** Run **Beiträge anlegen** for next month. On one child, „Beitrag
-  stornieren" on the new charge, change their agreed price, and run the same
-  month again: one charge is created, at the new price — not „Nichts zu tun".
-  Run it a third time: nothing more. **Änderungen** shows the cancellation as
-  „Storniert", with no `billing_key` line.
+- [ ] **B.3** Make next month's charges under **Geld → „Monatsbeiträge"**. On
+  one child, „Beitrag stornieren" on the new charge, change their agreed price,
+  and run the same month again: one charge is created, at the new price — not
+  „Nichts zu tun". Run it a third time: nothing more. **Änderungen** shows the
+  cancellation as „Storniert", with no `billing_key` line.
 - [ ] **B.4** On a charge with no invoice, „+ Zahlung erfassen" for the whole
   amount *without* „Zahlungseingang bestätigen". Issue an invoice for it
   (**Rechnungen → Rechnung erstellen**), then „Als bezahlt eintragen". The
@@ -1906,9 +1938,9 @@ cancel, mark paid or e-mail.
   open two pages a minute apart. As the trainer, the new charges read „Beitrag
   Oktober" (or the German month), not „Beitrag October", and the audit log has
   „billing.generated" with nobody as the actor.
-- [ ] **B.13** **Beiträge** → „Alle überfälligen per E-Mail erinnern" for a
-  child with one overdue charge and one past its date but fully paid: the
-  message counts one reminder and says nothing is „übersprungen".
+- [ ] **B.13** **Geld → „Überfällig"** → „1 Erinnerung schicken" → „Jetzt
+  schicken", for a child with one overdue charge and one past its date but fully
+  paid: the banner says „1 Erinnerung geht raus." and leaves nobody out.
 - [ ] **B.14** **Verwaltung → Geld & Zahlungen**, the defaults under the
   payment recipients: there is no „Zahlungsziel für Monatsbeiträge" any more. When a charge is due comes from the tariff's
   „Zahltag" and „Tage bis überfällig", which B.9's charge shows.
@@ -2175,8 +2207,8 @@ On the example data or a copy.
   saved view's old address, `?page=students&saved=1`, shows all children.
 - [ ] **R.5** No „An mehrere schreiben", at the top of **Chats** or on
   **Übersicht**; no „Auswahl anschreiben" under the **Schüler** filter; no
-  „Zahlungserinnerung schreiben" on **Geld**, where „Alle überfälligen per
-  E-Mail erinnern" stays. `?page=compose` answers „Seite nicht gefunden.".
+  „Zahlungserinnerung schreiben" on **Geld**, where the reminders under
+  „Überfällig" stay. `?page=compose` answers „Seite nicht gefunden.".
   **Verwaltung** has no „E-Mail-Vorlagen".
 - [ ] **R.6** **Postausgang** has no „Warteschlange senden". With mail set up
   and „Wartende Aufgaben beim Seitenaufruf erledigen" on, as it starts, send an
@@ -2521,8 +2553,8 @@ suite posts such values to every form; these are the ones worth seeing by hand.
 - [ ] **V.3** On a child, **Rechnungen**: **Rechnungsdatum** 31.12.9999 is
   refused with „Bitte ein Datum zwischen 1900 und 2100 eingeben.";
   **Zahlungsziel in Tagen** 200 with „Zahlungsziel: 0 bis 180 Tage."
-- [ ] **V.4** **Beiträge**: **Monat** 9999-12, „Monat wechseln", then the button
-  that creates the charges: refused, and nothing is created.
+- [ ] **V.4** **Geld → „Monatsbeiträge"**: **Monat** 9999-12, „Monat wechseln",
+  then the button that creates the charges: refused, and nothing is created.
 - [ ] **V.5** In the address: `?page=students&p=99999999999999999999`, and the
   same `&p=` on `?page=outbox` and `?page=invoices`, show a page — empty, or
   the last one — and no error. A course's `&tab=dates&on=0` opens its
@@ -2928,7 +2960,7 @@ what could not be checked rather than ticking it. The screens are specified in
 
 
 
-### The design audit's first fixes (N1, N6, N7)
+### The design audit's first fixes (N1, N5, N6, N7)
 
 What the designer found walking the owner's goals at phone width, the first
 batch. Test data only; on a phone at 320 px where it says so.
@@ -2960,6 +2992,37 @@ batch. Test data only; on a phone at 320 px where it says so.
   Open an invitation's link: „Datenschutzerklärung lesen" above the box to tick
   is that page's one link, and its footer shows only the version. „Passwort
   vergessen?" still has the footer's link.
+- [ ] **M.6** **(iPhone)** As the trainer, **Geld** at 320 px: the title „Geld"
+  with nothing under it, „Alle" and „Überfällig" on one row with the chosen one
+  filled, and the first charge right under them. „Rechnungen", the other half of
+  its switch, is titled „Geld" too.
+- [ ] **M.7** With mail tested and somebody overdue, **Geld → „Überfällig"**: „3
+  Erinnerungen schicken" (with your count) opens a sheet; without JavaScript,
+  the row opens in place. It says „Pro Kind eine E-Mail mit allen überfälligen
+  Beiträgen und der Summe. Verschickt lässt sie sich nicht zurückholen.", who
+  gets none and why, and offers „Jetzt schicken". After sending you are back on
+  **Geld › Überfällig**, with the banner of 11.12.
+- [ ] **M.8** When everybody overdue has no sign-in or has unsubscribed, there
+  is no button, only „Keine Erinnerung möglich: Diese Kinder melden sich nicht
+  an oder haben Erinnerungen abbestellt." After sending once, the same day says
+  „Heute schon erinnert: …" in its place.
+- [ ] **M.9** With mail saved but its test not passed, there is no button, only
+  „E-Mail-Versand zuerst testen: unter „Einstellungen → SMTP“ die Verbindung
+  prüfen." (a trainer reads „Eine Administratorin muss zuerst den E-Mail-Versand
+  einrichten und testen."). With the test passed and the privacy notice not
+  released, the reminder is offered all the same.
+- [ ] **M.10** „Monatsbeiträge", after the list: „Automatisch" and shut while
+  the charges make themselves; „Oktober: 4 anzulegen" (with your month and
+  number) and open by itself when they do not and the month has some to make;
+  open after „Monat wechseln", and when the setup checklist's „Beiträge" step
+  leads here, to the switch inside it. Switched off, the banner says
+  „Monatsbeiträge werden nicht mehr automatisch angelegt. Du legst sie unter
+  „Monatsbeiträge“ selbst an, mit Vorschau." (U.36). A trainer sees no line
+  about making them automatically.
+- [ ] **M.11** A child's **Beiträge**: the transfer box with its QR code shows
+  only while „QR-Code für offene Beiträge anzeigen" is on and the charge's
+  recipient has an IBAN, the same rule by which a reminder promises bank details
+  (11.15).
 
 ---
 

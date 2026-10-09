@@ -115,7 +115,9 @@ function setup_steps(): array {
         ['key' => 'billing',
          'what' => t('Beiträge', 'Charges'),
          'why'  => t('Monatsbeiträge automatisch anlegen lassen oder einmal selbst anlegen.', 'Have the monthly charges created automatically, or create them once yourself.'),
-         'page' => 'payments', 'params' => [],
+         // To the switch inside „Monatsbeiträge“, which the visit from here
+         // opens, rather than the top of Geld above the list.
+         'page' => 'payments', 'params' => [], 'anchor' => 'auto-charges',
          'done' => (bool)setting('auto_billing')
              || (bool)scalar('SELECT COUNT(*) FROM charges c JOIN students s ON s.id=c.student_id WHERE s.is_demo=0 AND c.cancelled=0'),
          'blocked_by' => []],

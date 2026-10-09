@@ -337,7 +337,7 @@ Lauf wieder; solange eine Aktualisierung nicht abgeschlossen ist, eine Sicherung
 eingespielt wird oder der Wartungsmodus an ist, bricht sie mit einem Satz ab,
 wie in UPDATING.md beschrieben. Die dritte legt am Monatsersten die Beiträge an
 – nur eintragen, wenn das Portal die Monatsbeiträge automatisch anlegen soll,
-denn sie tut es auch, wenn das auf der Seite **Beiträge** ausgeschaltet ist.
+denn sie tut es auch, wenn das auf der Seite **Geld** ausgeschaltet ist.
 
 Cronjob und Seitenaufruf gleichzeitig sind nicht schädlich – ein
 Datenbankschloss verhindert, dass zwei Läufe dieselbe E-Mail verschicken.
@@ -386,7 +386,7 @@ Release-Ordner und eine gemeinsame Konfiguration siehe [UPDATING.md](UPDATING.md
 | „Die Datenbank ist leer, aber in diesem Ordner lief schon ein Portal.“ | Beim Wiederherstellen: die Sicherung in phpMyAdmin einspielen, dann neu laden. Soll hier wirklich ein neues, leeres Portal entstehen: im Dateimanager `storage/schema.stamp` löschen und neu laden – Belege und Fotos des alten Portals werden danach gelöscht, seine Sicherungen in `storage/backups` bleiben. Die Einrichtungsseite sagt denselben Satz, wenn sie auf eine neue Datenbank zeigt, aber im Ordner eines alten Portals liegt. |
 | „Die hochgeladenen Dateien sind älter als die Datenbank“ | Das falsche Paket hochgeladen. Die neueste Version holen und noch einmal entpacken. |
 | „Die hochgeladenen Dateien sind unvollständig“ | Das Entpacken ist abgebrochen, oder der Upload lief über FTP im Textmodus. Noch einmal hochladen, FTP auf Binärmodus stellen. |
-| E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang** (unter **Nachrichten**), dort steht der Fehler der letzten Zustellung. |
+| E-Mails gehen nicht raus | **Einstellungen → System**: steht dort ein letzter Hintergrundlauf? Sonst **Postausgang** (unter **Chats**), dort steht der Fehler der letzten Zustellung. |
 | „Eine Einladung lässt sich noch nicht verschicken …“ | Die Meldung sagt, was fehlt: unter **Einstellungen → SMTP** **„Nur Verbindung prüfen“**, bis dort **Erfolgreich** steht – nach jeder Änderung der SMTP-Angaben noch einmal –, und unter **Einstellungen → Datenschutz** die deutsche Datenschutzerklärung freigeben. |
 | „Diese E-Mail-Adresse gehört schon zu einem anderen Zugang …“ | Die Adresse ist schon die Anmeldung einer anderen Person, oft eines Geschwisters; jede Person braucht ihre eigene. Für dieses Kind seine eigene Adresse eintragen – bis dahin bleibt es „Ohne Anmeldung“. |
 | Jemand sieht „Die Anwendung ist vorübergehend nicht verfügbar“ oder „Speichern fehlgeschlagen. Bitte erneut versuchen.“ | Das Portal hat den Fehler selbst festgehalten: **Einstellungen → Rückmeldungen**, Eintrag „Automatisch erfasst“, mit der Zahl, wie oft er vorkam. Unter **„Für den Support kopieren“** steht ein Text ohne Namen, E-Mail-Adressen und Eingaben, der an die Person gehen kann, die hilft. |

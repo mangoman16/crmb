@@ -751,6 +751,12 @@ step('5 children', async () => {
 step('6 charges', async () => {
     const page = S.admin.page;
     await openStep(page, 'billing');
+    // The switch is inside „Monatsbeiträge" (the audit, N5), and the step's link
+    // opens that row (from=start), so it is there without a tap. Read as served:
+    // Chromium opens a shut <details> by itself when the link's #auto-charges
+    // points into it, so what this browser shows would pass without the rule.
+    const served = await (await page.request.get(page.url().split('#')[0])).text();
+    must(served.includes('<details class="card fold-row billing-card" open>'), '„Monatsbeiträge“ is served open on arrival from the checklist', page.url());
     const f = page.locator('form:has(input[name=action][value=auto_billing_save])');
     const box = f.locator('[name=auto_billing]');
     await box.check();

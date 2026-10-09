@@ -191,25 +191,125 @@ function mail_greeting(array $account): string {
     return (($account['locale']??'')==='en'?'Hello':'Hallo').($name!==''?' '.$name:'').",\n\n";
 }
 /**
- * Queue a payment reminder for a student's own login.
+ * Who „Jetzt schicken" on Geld reminds of overdue charges, and who it cannot
+ * (design N5): one reminder per login with an overdue charge, listing all of
+ * them, oldest first. One login is one child (ADR 0030), so brothers and
+ * sisters get one each. None for a child with no login or one whose login takes
+ * no payments mail, and none for a login reminded already today, the club's
+ * date, so that a second tap or a page left open sends nobody a second mail.
+ * The sheet on Geld counts with this and payment_remind sends to it, so the
+ * number on the button is the number that goes out. $studentId narrows it to
+ * one child.
+ *
+ * 'send' holds, per login, the account, the child and its overdue charges with
+ * 'paid'; 'none' and 'today' count the children left out, for each reason.
+ */
+function payment_reminders(?int $studentId = null): array {
+    $byChild = [];
+    foreach (rows('SELECT c.*, s.first_name, s.last_name, s.account_id, '.charge_paid_sql().' AS paid'
+        .' FROM charges c JOIN students s ON s.id=c.student_id'
+        .' WHERE '.charge_is_overdue_sql().($studentId ? ' AND s.id=?' : '')
+        .' ORDER BY s.id, c.due_on, c.id', $studentId ? [today(), $studentId] : [today()]) as $charge)
+        $byChild[(int)$charge['student_id']][] = $charge;
+    $accountIds = array_values(array_filter(array_map(fn(array $charges) => (int)$charges[0]['account_id'], $byChild)));
+    $accounts = $accountIds
+        ? array_column(rows('SELECT * FROM accounts WHERE id IN ('.implode(',', array_fill(0, count($accountIds), '?')).')', $accountIds), null, 'id')
+        : [];
+    $remindedToday = array_flip(logins_reminded_today());
+    $reminders = ['send' => [], 'none' => 0, 'today' => 0];
+    foreach ($byChild as $childId => $charges) {
+        $account = $accounts[(int)$charges[0]['account_id']] ?? null;
+        if (!$account || !account_takes_mail($account, 'payments')) { $reminders['none']++; continue; }
+        if (isset($remindedToday[(int)$account['id']])) { $reminders['today']++; continue; }
+        $reminders['send'][] = ['account' => $account, 'charges' => $charges,
+            'student' => ['id' => $childId, 'first_name' => $charges[0]['first_name'], 'last_name' => $charges[0]['last_name']]];
+    }
+    return $reminders;
+}
+
+/**
+ * The logins a payment reminder went to today, the club's calendar date, as the
+ * outbox has them. An invoice goes under the same category, and what a mail
+ * says is sealed, so a reminder is told from it by how its subject begins
+ * (payment_reminder_subject_start()), in either language. One taken back from
+ * the outbox does not count.
+ */
+function logins_reminded_today(): array {
+    $since = (new DateTimeImmutable(today().' 00:00:00'))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+    $begins = fn(string $locale): string => addcslashes(in_locale($locale, payment_reminder_subject_start(...)), '%_\\').'%';
+    return array_map('intval', array_column(rows("SELECT DISTINCT account_id FROM mail_jobs WHERE category='payments' AND status<>'cancelled'"
+        .' AND account_id IS NOT NULL AND created_at>=? AND (subject LIKE ? OR subject LIKE ?)', [$since, $begins('de'), $begins('en')]), 'account_id'));
+}
+
+/** How a payment reminder's subject begins: the one place it is worded, and how the outbox finds it again. */
+function payment_reminder_subject_start(): string { return t('Noch offen: ', 'Still to pay: '); }
+
+/**
+ * Who a reminder run leaves out, and why, as said on the sheet before „Jetzt
+ * schicken" and in the banner after it: '' when it leaves out nobody.
+ */
+function payment_reminders_left_out(array $reminders): string {
+    return trim(($reminders['today'] ? t('Heute schon erinnert: ', 'Already reminded today: ').plural($reminders['today'], 'Kind', 'Kinder', 'child', 'children').'.' : '')
+        .($reminders['none'] ? ' '.plural($reminders['none'], 'Kind bekommt keine', 'Kinder bekommen keine', 'child gets none', 'children get none')
+            .t(': ohne Anmeldung oder abbestellt.', ': no sign-in, or unsubscribed.') : ''));
+}
+
+/**
+ * Why the children overdue cannot be reminded at all: they have no login, or
+ * have unsubscribed from these mails. One reason for the sheet on Geld before
+ * the tap („Keine Erinnerung möglich: …“) and the banner after it („Keine
+ * Erinnerung verschickt: …“), each with its own opening.
+ */
+function payment_reminders_unreachable(): string {
+    return t('Diese Kinder melden sich nicht an oder haben Erinnerungen abbestellt.', 'these children don’t sign in, or have unsubscribed from reminders.');
+}
+
+/**
+ * Queue one payment reminder for a login: every overdue charge of its child,
+ * oldest first, in the family's language - amounts and dates too - and signed
+ * by the club, not by whoever sent it. No bank details: „Beiträge" has each
+ * charge's own account and QR code, and where money goes can change (ADR
+ * 0025), which an IBAN in an old mail never does.
  *
  * Returns false when nothing was queued, so the caller can report how many
- * parents will actually hear about it rather than implying every selected
- * student produced an email.
+ * families will actually hear about it.
  */
-function notify_payment(array $account, array $student, int $amountCents, string $dueOn): bool {
-    if(!account_takes_mail($account,'payments')) return false;
-    $en=$account['locale']==='en';
-    $name=$student['first_name'].' '.$student['last_name'];
-    $body=mail_greeting($account)
-        .($en?'There is an outstanding amount for ':'Für ').$name
-        .($en?' of ':' ist noch ein Betrag von ').money($amountCents)
-        .($en?', due ':' offen, fällig am ').fmt_date($dueOn).".\n\n"
-        .($en?'You can see the amount and the transfer details, including a QR code for your banking app, in the portal:'
-             :'Betrag und Bankverbindung samt QR-Code für die Bank-App findest du im Portal:')."\n"
-        .url('student',['id'=>$student['id'],'tab'=>'payments']);
-    queue_mail((int)$account['id'],$account['email'],
-        $en?'Outstanding badminton payment':'Offener Badminton-Beitrag',$body,'payments');
+function notify_payment(array $account, array $student, array $charges): bool {
+    if (!$charges || !account_takes_mail($account, 'payments')) return false;
+    [$subject, $body] = in_locale((string)$account['locale'], function () use ($account, $student, $charges): array {
+        $several = count($charges) > 1;
+        $lines = []; $labels = []; $total = 0;
+        // The mail promises bank details only when „Beiträge" shows them for
+        // every charge it lists (charge_bank_details()).
+        $details = true;
+        foreach ($charges as $charge) {
+            $amount = (int)$charge['amount_cents'];
+            $open = $amount - (int)$charge['paid'];
+            $total += $open;
+            if (!charge_bank_details($charge)) $details = false;
+            // A label is one line in a form, but nothing stops a line break
+            // sent by hand, and a subject must not carry one (queue_mail()).
+            $labels[] = $label = preg_replace('/\s+/u', ' ', (string)$charge['label']);
+            $lines[] = ($several ? '• ' : '').$label.': '
+                .($open < $amount ? strtr(t('noch {open} von {amount}', '{open} of {amount} still to pay'), ['{open}' => money($open), '{amount}' => money($amount)]) : money($open))
+                .strtr(t(', fällig seit {due}', ', due {due}'), ['{due}' => fmt_date((string)$charge['due_on'])]);
+        }
+        $subject = payment_reminder_subject_start()
+            .($several ? plural(count($charges), 'Beitrag', 'Beiträge', 'charge', 'charges') : mb_substr($labels[0], 0, 200));
+        $paying = !$details ? t('Alles Weitere findest du unter „Beiträge“:', 'You’ll find the details under “Payments”:')
+            : ($several ? t('Bankverbindung und für jeden Beitrag einen QR-Code findest du unter „Beiträge“:', 'You’ll find the bank details, and a QR code for each charge, under “Payments”:')
+                        : t('Bankverbindung und QR-Code für die Bank-App findest du unter „Beiträge“:', 'You’ll find the bank details and a QR code for your banking app under “Payments”:'));
+        $body = mail_greeting($account)
+            .($several ? plural(count($charges), 'Beitrag ist', 'Beiträge sind', 'charge is', 'charges are').t(' noch offen:', ' still outstanding:')
+                       : t('ein Beitrag ist noch offen:', 'One charge is still outstanding:'))."\n\n"
+            .implode("\n", $lines)."\n\n"
+            .($several ? t('Zusammen: ', 'Total: ').money($total)."\n\n" : '')
+            .$paying."\n".url('student', ['id' => $student['id'], 'tab' => 'payments'])."\n\n"
+            .t('Schon überwiesen? Dann passt alles – danke!', 'Already paid? Then all is well – thank you!')."\n\n"
+            .t('Viele Grüße', 'Best wishes,')."\n".setting('club_name');
+        return [$subject, $body];
+    });
+    queue_mail((int)$account['id'], $account['email'], $subject, $body, 'payments');
     return true;
 }
 /**
